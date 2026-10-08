@@ -5,7 +5,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `Opener` (each transaction's clearance as it opens: a subject resolved from the rows it
-  names, or maintenance's for this module's own transactions, ADR 0030), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, the account that began it, one of `grit.identities`, and the label it was created at), `SqlIdentities` (each account an action came through, `grit.identities`, kept as a new person's one account when first seen, its person's id minted by Postgres under a lock on the account, and read back as the principal it is linked to now, ADR 0032), `SqlLinks` (every move of an account between people: a deployment's declaration made so at each start of its own engine (`People.Declared`; any other engine starts `People.AsStored`, changing none), merging into a declared person the people its accounts leave), `SqlUsageLedger`,
+  names, or maintenance's for this module's own transactions, ADR 0030), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, the account that began it, one of `grit.identities`, and the label it was created at), `SqlIdentities` (each account an action came through, `grit.identities`, kept as a new person's one account when first seen, its person's id minted by Postgres under a lock on the account, and read back as the principal it is linked to now, ADR 0032), `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelSettingStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
@@ -36,7 +36,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 - **`engine`** — both, composed: `Link` (an edge's view of the engine: inbox, reads,
   streams, turn status, the holder, its registered edge; `Engine` is one, and
   `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
-  session advisory lock, its `grit.engines` row and heartbeat), `People` (what a start makes of the stored people), `Build` (the grit build this process runs, from the `grit/build.properties`
+  session advisory lock, its `grit.engines` row and heartbeat), `Build` (the grit build this process runs, from the `grit/build.properties`
   Mill writes into this module's jar; each engine start is recorded with it in
   `grit.engine_starts`), `Engine` (what `grit.app`
   starts under the lock, refused as `Unopened` when the lock is held or its deployment drops a

@@ -431,22 +431,15 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
     )
 
   /** `by`'s pending asked schedules, of any job, under a lock on `by` that serialises every
-    * desk's asks for them, so none passes the cap beside another. `Invalid`, saying to ask
-    * again, when `by` is gone: a declaration merged them into a declared person while this
-    * transaction waited on the lock (`SqlLinks`), so nothing may be written for them.
+    * desk's asks for them, so none passes the cap beside another.
     */
   private def pendingOf(by: PrincipalId)(using
       tx: Tx^
   ): Either[StoreError, Vector[(ScheduleId, Schedule)]] =
     for {
-      locked <- many("SELECT 1 FROM grit.principals WHERE id = ? FOR NO KEY UPDATE")(
+      _ <- many("SELECT 1 FROM grit.principals WHERE id = ? FOR NO KEY UPDATE")(
         _.setString(1, PrincipalId.value(by))
       )(_ => ()).map(_.size)
-      _ <- Either.cond(
-        locked == 1,
-        (),
-        StoreError.Invalid("the asker was merged into a declared person; ask again")
-      )
       rows <- many(
         s"""SELECT $Selected FROM $Labelled
            | WHERE s.source = 'asked' AND s.ended IS NULL AND s.principal = ?""".stripMargin

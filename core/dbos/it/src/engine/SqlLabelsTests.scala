@@ -75,8 +75,7 @@ object SqlLabelsTests extends TestSuite {
         "test",
         LiveEngine.Identity,
         LiveEngine.Uncapped,
-        declaring("acme", "ops"),
-        People.AsStored
+        declaring("acme", "ops")
       ) match {
         case Left(why) => Some(why)
         case Right(engine) =>

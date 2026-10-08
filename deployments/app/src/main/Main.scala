@@ -22,7 +22,7 @@ import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
-import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, People, Unopened}
+import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
@@ -237,8 +237,7 @@ object Main {
                     Turn.Epoch,
                     identity,
                     deployment.budget,
-                    deployment.visibility,
-                    People.Declared(deployment.identities)
+                    deployment.visibility
                   ) match {
                     case Right(e) => e
                     case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
@@ -299,14 +298,7 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(
-          config,
-          Turn.Epoch,
-          identity,
-          deployment.budget,
-          deployment.visibility,
-          People.Declared(deployment.identities)
-        ) match {
+        Engine.open(config, Turn.Epoch, identity, deployment.budget, deployment.visibility) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
             val link =

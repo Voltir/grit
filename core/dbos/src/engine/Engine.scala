@@ -16,7 +16,6 @@ import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.Account
-import grit.core.identity.Identities
 import grit.core.inbox.Inbox
 import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
@@ -58,7 +57,6 @@ import grit.dbos.sql.{
   SqlJot,
   SqlLabels,
   SqlLifecycleStore,
-  SqlLinks,
   SqlModelProfileStore,
   SqlModelSettingStore,
   SqlPeriodStore,
@@ -546,12 +544,11 @@ object Engine {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility,
-      people: People
+      visibility: Visibility
   ): Either[Unopened, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(Unopened.Lock(refused))
-      case Right(lock) => start(config, lock, epoch, identity, budget, visibility, people)
+      case Right(lock) => start(config, lock, epoch, identity, budget, visibility)
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
@@ -564,15 +561,7 @@ object Engine {
     * then fail. Its inbox takes new messages as `budget` allows. `visibility`'s compartments
     * are recorded as the ones the database runs under before anything else is written
     * ([[Unopened.Dropped]] when they drop one it ran under, having closed `lock` and claimed
-    * nothing). Then, before it claims the lock's row, under [[People.Declared]] the stored
-    * people are made what its `identities` declares: each declared account linked to its
-    * person, and a person the move leaves with no account merged into the declared one, with
-    * the schedules, edges and tool requests that name them; each account no longer declared a
-    * person of its own again; each handle no longer declared cleared. A start under the
-    * declaration the database already holds changes nothing, and so does one under
-    * [[People.AsStored]]. Throws,
-    * having closed `lock`, when either schema cannot be applied, or the declaration cannot be
-    * recorded.
+    * nothing). Throws, having closed `lock`, when either schema cannot be applied.
     */
   def start(
       config: DbConfig,
@@ -580,8 +569,7 @@ object Engine {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility,
-      people: People
+      visibility: Visibility
   ): Either[Unopened, Engine^] =
     try {
       schemaSetup(config)
@@ -593,10 +581,6 @@ object Engine {
           lock.close()
           Left(Unopened.Dropped(dropped))
         case None =>
-          people match {
-            case People.Declared(identities) => identitiesSetup(config, visibility, identities)
-            case People.AsStored => ()
-          }
           lock
             .claim(epoch, identity, Build.current)
             .left
@@ -629,26 +613,6 @@ object Engine {
         case Left(e) =>
           conn.rollback()
           sys.error(s"the compartments could not be recorded: $e")
-      }
-    }
-
-  /** Makes the stored people what `identities` declares ([[SqlLinks.reconcile]]). Throws when
-    * they cannot be read or written, as a schema that cannot be applied does.
-    */
-  private def identitiesSetup(
-      config: DbConfig,
-      visibility: Visibility,
-      identities: Identities
-  ): Unit =
-    Using.resource(
-      DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
-    ) { conn =>
-      conn.setAutoCommit(false)
-      SqlLinks.reconcile(identities)(using new Opener(visibility).maintained(conn)) match {
-        case Right(()) => conn.commit()
-        case Left(e) =>
-          conn.rollback()
-          sys.error(s"the declared people could not be recorded: $e")
       }
     }
 
