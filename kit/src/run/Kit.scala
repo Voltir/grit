@@ -170,7 +170,9 @@ object Kit {
   }
 
   /** Opens `deployment`'s engine with no sweep of its own and `catchUp` over it; shows `say`
-    * what it would hear from each source, estimated, and that nothing caps a catch-up when
+    * what it would hear from each source, estimated, with the label its conversations are
+    * created at (`deployment.visibility`'s for the source's room), and, before asking, that a
+    * label declared later does not relabel what it hears now; and that nothing caps a catch-up when
     * the estimate is more than today's cap leaves; hears it once `agree` accepts, sweeps
     * until nothing is left to close or ask, says what the day's recorded spend rose by, and
     * closes. Nothing is heard when `agree` declines or nothing is unheard. Refused as
@@ -219,6 +221,7 @@ object Kit {
                 ),
                 env,
                 deployment.budget,
+                deployment.visibility,
                 () => spentToday(link, deployment.budget, Instant.now()),
                 () => engine.sweep(Instant.now()).left.map(_.toString),
                 () => engine.unfinished().left.map(_.toString),

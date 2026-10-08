@@ -131,10 +131,11 @@ object ServedEdge {
 }
 
 /** What an edge would hear from one of its sources: `source`, as a person reads it (a
-  * channel's name), and each thread's messages as their lengths in characters, in the order
-  * they were said.
+  * channel's name), `place`, the room its conversations are in
+  * ([[grit.core.store.Origin.room]]), which decides the label they are heard at, and each
+  * thread's messages as their lengths in characters, in the order they were said.
   */
-final case class Unheard(source: String, threads: Vector[Vector[Int]]) {
+final case class Unheard(source: String, place: Place, threads: Vector[Vector[Int]]) {
 
   def messages: Int = threads.map(_.size).sum
 }

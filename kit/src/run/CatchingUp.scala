@@ -4,6 +4,7 @@ import java.time.{Duration, Instant, LocalDate}
 
 import grit.core.edge.{CatchUp, EdgeStores}
 import grit.core.spend.Budget
+import grit.core.visibility.{Label, Visibility}
 import grit.dbos.engine.Swept
 
 /** A catch-up's flow over an open engine: what it would hear shown, estimated and agreed to,
@@ -14,23 +15,32 @@ private[run] object CatchingUp {
   /** How long [[drain]] waits between looks at the workflows it is waiting out: 2 s. */
   val Pause: Duration = Duration.ofSeconds(2)
 
-  /** What a person reads of `e`, the unheard messages of `source` since the start of `since`. */
-  def line(source: String, e: Estimate, since: LocalDate): String =
-    s"backfill $source: ${e.messages} messages in ${e.threads} threads since $since; " +
+  /** Said once before a backfill asks to hear: what it hears keeps the label shown. */
+  val Relabel: String =
+    "backfill: each source is heard at the label shown beside it; a label declared later does " +
+      "not relabel what is heard now"
+
+  /** What a person reads of `e`, the unheard messages of `source`, heard at `label`, since the
+    * start of `since`.
+    */
+  def line(source: String, label: Label, e: Estimate, since: LocalDate): String =
+    s"backfill $source, heard at ${Label.written(label)}: ${e.messages} messages in ${e.threads} threads since $since; " +
       s"up to ${usd(e.total)} (triage ${usd(e.triage)}, closings up to ${usd(e.closings)})"
 
   /** `amount` in dollars, rounded up to a hundredth of a cent. */
   def usd(amount: BigDecimal): String =
     "$" + amount.bigDecimal.setScale(4, java.math.RoundingMode.UP).stripTrailingZeros.toPlainString
 
-  /** [[Kit.catchUp]]'s flow, over `stores`, reading today's spend with `spent`, sweeping with
-    * `sweep` and counting what is left with `unfinished`.
+  /** [[Kit.catchUp]]'s flow, over `stores`, each source shown at the label `visibility` gives
+    * its room, reading today's spend with `spent`, sweeping with `sweep` and counting what is
+    * left with `unfinished`.
     */
   def run(
       catchUp: CatchUp,
       stores: EdgeStores^,
       env: Map[String, String],
       budget: Budget,
+      visibility: Visibility,
       spent: () => Either[String, BigDecimal],
       sweep: () => Either[String, Swept],
       unfinished: () => Either[String, Int],
@@ -43,14 +53,15 @@ private[run] object CatchingUp {
       case Right(open) =>
         try {
           val from = Kit.dayOf(open.since, budget)
-          val each = open.unheard.map(u => (u.source, Estimate.of(u)))
-          each.foreach((source, e) => say(line(source, e, from)))
+          val each = open.unheard.map(u => (u, Estimate.of(u)))
+          each.foreach((u, e) => say(line(u.source, visibility.roomLabel(u.place), e, from)))
           val all = each.map(_._2).foldLeft(Estimate.Zero)(_ + _)
           if (all.messages == 0) {
             say("backfill: nothing unheard")
             Right(())
           } else
             spent().left.map(KitFailure.Store(_)).flatMap { before =>
+              say(Relabel)
               budget.cap.foreach { cap =>
                 val left = cap.usd - before
                 if (all.total > left)

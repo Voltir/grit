@@ -55,6 +55,10 @@ object ServedTests extends TestSuite {
   /** A channel whose id sorts before [[C]]'s. */
   private val First = ChannelId("C0AAAAAAAA1")
 
+  /** The room a thread of `channel` in grit's team is in. */
+  private def roomOf(channel: ChannelId): Place =
+    Origin.Slack(Team, ChannelId.value(channel), "1.0").room
+
   /** A channel Slack gives no name. */
   private val Unnamed = ChannelId("C0UNNAMED1")
 
@@ -373,7 +377,7 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "backfill reads each channel's unheard threads as their messages' lengths, in channel id order, and hears them on hear"
+      "backfill reads each channel's unheard threads as their messages' lengths, in channel id order, each in its channel's room, and hears them on hear"
     ) {
       val w = new World
       w.slack.channelNames = w.slack.channelNames + (First -> "general")
@@ -396,16 +400,16 @@ object ServedTests extends TestSuite {
       (open.since, open.unheard) ==> (
         Instant.EPOCH,
         Vector(
-          Unheard("#general (C0AAAAAAAA1)", Vector(Vector(5))),
-          Unheard("#standup (C123ABC456)", Vector(Vector(17, 5), Vector(6)))
+          Unheard("#general (C0AAAAAAAA1)", roomOf(First), Vector(Vector(5))),
+          Unheard("#standup (C123ABC456)", roomOf(C), Vector(Vector(17, 5), Vector(6)))
         )
       )
       open.hear() ==> Right(())
       Served.backfill(channels, 3, w.connect).open(w.stores, Env, now, _ => ()) match {
         case Right(again) =>
           again.unheard ==> Vector(
-            Unheard("#general (C0AAAAAAAA1)", Vector.empty),
-            Unheard("#standup (C123ABC456)", Vector.empty)
+            Unheard("#general (C0AAAAAAAA1)", roomOf(First), Vector.empty),
+            Unheard("#standup (C123ABC456)", roomOf(C), Vector.empty)
           )
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }

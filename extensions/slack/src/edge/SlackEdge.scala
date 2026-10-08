@@ -809,7 +809,7 @@ object SlackEdge {
     Service.of("slack").fold(why => throw new IllegalStateException(why), identity)
 
   /** What `channels` said over the `days` before the catch-up opens that the database has not
-    * recorded, one [[grit.core.edge.Unheard]] per channel; heard at the times it was said,
+    * recorded, one [[grit.core.edge.Unheard]] per channel, in the channel's room; heard at the times it was said,
     * a past mention of grit never answered, each author checked first as [[serving]]'s edge
     * checks one. Refused when `channels` is empty.
     */

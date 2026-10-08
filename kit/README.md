@@ -43,7 +43,7 @@ In dependency order:
   `Attesting.Every`; each edge's stores carry an `Attesting` over the realms the deployment
   trusts its attester for, whose reports are logged at info, warn or error by
   `Kit.reported`), `Kit.catchUp` (an edge's
-  `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
+  `CatchUp` heard once, estimated, each source's label shown, and agreed to first, then swept until nothing is left to
   close), the two alone ending what the deployment's identities no longer trust as they start,
   since they alone serve every attester it trusts, each failing as a `KitFailure`; `Kit.launch`
   (the engine's workflows, for grit's own chat, ending no attestation); `Launch`, the workflows launched the same way by every way grit runs, with the
