@@ -86,7 +86,12 @@ object UntrustLiveTests extends TestSuite {
       val before = attestations()
       val ended = untrusted(trusting(Set(T2), Claimed))
       val after = attestations()
-      (ended, after.map(_.take(4)), before.map(_(3)), after.map(_(4)) == before.map(_(4))) ==> (
+      (
+        ended,
+        after.map(_.take(4)),
+        before.map(_(3)),
+        after.map(_(4)).zip(before.map(_(4))).map(_ == _)
+      ) ==> (
         Right(
           Vector(
             Linking.Unlinked(a, pA, Internal, Label.Public),
@@ -100,7 +105,7 @@ object UntrustLiveTests extends TestSuite {
           Vector(Account.written(c), "kept@example.com", "true", before(2)(3))
         ),
         after.map(_(3)),
-        false
+        Vector(false, false, true)
       )
     }
 
