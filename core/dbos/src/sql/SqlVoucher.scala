@@ -77,6 +77,44 @@ private[dbos] final class SqlVoucher(
       }
     )
 
+  /** Ends every attestation this voucher would not make now: of an account none of [[realms]]
+    * holds, or holding an email in none of its domains. Each is kept as no full member, with no
+    * email, answered when it was; one already so is not written. Each change, in the accounts'
+    * order, is a [[Linking]] as [[vouch]] reports it.
+    */
+  def untrust(using tx: Tx^): Either[StoreError, Vector[Linking]] =
+    many(
+      """SELECT account, email FROM grit.attestations
+        | WHERE member OR email IS NOT NULL ORDER BY account""".stripMargin
+    )(_ => ())(rs => (rs.getString(1), Option(rs.getString(2))))
+      .flatMap(live =>
+        live.foldLeft[Either[StoreError, Vector[Linking]]](Right(Vector.empty)) {
+          case (so, (text, stored)) =>
+            so.flatMap { said =>
+              SqlIdentities.read(text).flatMap { account =>
+                val claimed = stored.forall(e =>
+                  Email.of(e).toOption.exists(kept => domains.contains(Email.domain(kept)))
+                )
+                if (realms.exists(_.holds(account)) && claimed) Right(said)
+                else ended(account).map(said ++ _)
+              }
+            }
+        }
+      )
+
+  /** `account`'s attestation made no full member with no email, unless it is already. */
+  private def ended(account: Account)(using tx: Tx^): Either[StoreError, Vector[Linking]] =
+    many(
+      """UPDATE grit.attestations SET email = NULL, member = false
+        | WHERE account = ? AND (member OR email IS NOT NULL)
+        |RETURNING old.email, old.member, new.email, new.member""".stripMargin
+    )(_.setString(1, SqlIdentities.written(account)))(rs =>
+      Row(
+        Some(Said(Option(rs.getString(1)), rs.getBoolean(2))),
+        Said(Option(rs.getString(3)), rs.getBoolean(4))
+      )
+    ).flatMap(_.headOption.fold(Right(Vector.empty))(changes(account, _)))
+
   /** `e`'s person, minted when no realm has attested `e` before, under `e`'s lock, which the
     * transaction holds to its end: of two first attestations at once, the second waits for the
     * first to commit and finds its person.

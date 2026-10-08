@@ -15,7 +15,7 @@ import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, Domain, Realm}
+import grit.core.identity.{Account, Domain, Identities, Realm}
 import grit.core.inbox.Inbox
 import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
@@ -30,6 +30,7 @@ import grit.core.store.{
   EntryStore,
   Jot,
   LifecycleStore,
+  Linking,
   ModelProfileStore,
   ModelSettingStore,
   Origin,
@@ -160,6 +161,19 @@ final class Engine private (
     */
   def voucher(realms: Set[Realm], domains: Set[Domain]): Voucher =
     new SqlVoucher(realms, domains, visibility)
+
+  /** Ends now, in a transaction of its own, every attestation `identities` would not make: of an
+    * account no realm it trusts holds, or holding an email in no domain it claims. Each is kept
+    * as no full member, with no email. Each account it moves home, or whose membership it ends,
+    * is one [[Linking]]. Only a deployment's own start calls it, with its own identities: an
+    * engine opened by a tool or for the eval calls nothing. What it ends, the account's next
+    * answer from a realm still trusted makes again. It writes no attestation already ended, so a
+    * second start under the same identities writes nothing.
+    */
+  def untrust(identities: Identities): Either[StoreError, Vector[Linking]] =
+    Link.transaction(dataSource, opener)(
+      new SqlVoucher(identities.realms, identities.domains, visibility).untrust
+    )
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 
