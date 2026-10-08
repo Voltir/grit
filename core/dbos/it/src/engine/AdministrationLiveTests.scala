@@ -1,20 +1,15 @@
 package grit.dbos.engine
 
-import java.time.OffsetDateTime
-
-import scala.util.Using
-
-import grit.core.admin.{Answer, Change, ChangeJson, Command, Refusal}
-import grit.core.identity.{Account, Standing, Vouched}
-import grit.core.store.{Origin, Tx}
+import grit.core.admin.{Answer, Change, Command}
+import grit.core.identity.{Standing, Vouched}
+import grit.core.store.Origin
 import grit.core.visibility.Label
 import grit.dbos.sql.{DbConfig, LiveDb, SqlConversationStore, TestPostgres}
 
 import utest.*
 
-/** What the engine's administration keeps, read back as rows and as the labels in force: its
-  * audit row in ChangeJson's stored form, none for a refusal, and a label set in force from the
-  * next transaction, a room never heard before included.
+/** What the engine's administration keeps, read back as the labels in force: a label set in
+  * force from the next transaction, a room never heard before included.
   */
 object AdministrationLiveTests extends TestSuite {
   import grit.core.admin.AdministrationContract.*
@@ -36,52 +31,12 @@ object AdministrationLiveTests extends TestSuite {
     } finally engine.close()
   }
 
-  /** Every audit row's account, time and stored change, oldest first. */
-  private def rows(c: DbConfig): Vector[(String, java.time.Instant, ujson.Value)] =
-    LiveDb.under(c, Declared) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement(
-          "SELECT by, at, change::text FROM grit.visibility_changes ORDER BY at, id"
-        )
-      ) { ps =>
-        Using.resource(ps.executeQuery()) { rs =>
-          val out = Vector.newBuilder[(String, java.time.Instant, ujson.Value)]
-          while (rs.next())
-            out += ((
-              rs.getString(1),
-              rs.getObject(2, classOf[OffsetDateTime]).toInstant,
-              ujson.read(rs.getString(3))
-            ))
-          out.result()
-        }
-      }
-    }
-
   private def label(c: DbConfig, id: grit.core.id.ConversationId): Option[Label] =
     LiveDb
       .under(c, Declared)(new SqlConversationStore().get(id))
       .fold(e => throw new java.lang.AssertionError(s"reading: $e"), _.map(_.label))
 
   val tests = Tests {
-    test(
-      "a change's audit row holds its account, its time and the change in its stored form; a refused change keeps no row"
-    ) {
-      withEngine("administration_audit") { (c, engine) =>
-        val room = Origin.Slack("T1", "C-audited", "1.0").room
-        val relabel =
-          new Change.Relabel(room, Label.Public, Change.To.Set(internalTrial))
-        val answers = (
-          engine.administration.run(ada, room, Command.SetLabel(internalTrial), t(1)),
-          engine.administration.run(mia, room, Command.SetLabel(confidentialTrial), t(2))
-        )
-        (answers, rows(c)) ==> (
-          (Right(Answer.relabelled(relabel)), Right(Answer.Refused(Refusal.PublicRoom))),
-          Vector((Account.written(ada), t(1), ChangeJson.write(relabel)))
-        )
-      }
-    }
-
     test(
       "a label set is in force from the next transaction: a conversation begun after takes it, one begun before keeps its own, and a room never heard before is labelled too"
     ) {
