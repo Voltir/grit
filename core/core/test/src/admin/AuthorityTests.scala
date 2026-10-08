@@ -143,7 +143,8 @@ object AuthorityTests extends TestSuite {
 
     test(
       "a private room's first label needs an administrator, or a steward of every compartment " +
-        "it holds; one holding none, an administrator"
+        "it holds; one holding none, an administrator; one keeping unmapped is a raise, free " +
+        "to a member"
     ) {
       val both = relabel(first, at(Level.Confidential, trial, acme))
       val none = relabel(first, at(Level.Internal))
