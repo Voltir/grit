@@ -10,7 +10,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.edge.ServedEdge
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
-import grit.core.identity.{Account, Identities}
+import grit.core.identity.{Account, Identities, Vouching}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
@@ -34,8 +34,8 @@ import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.remind.Reminders
-import grit.slack.edge.SlackEdge
-import grit.slack.event.ChannelId
+import grit.slack.edge.{SlackAccounts, SlackEdge}
+import grit.slack.event.{ChannelId, TeamId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
@@ -74,8 +74,10 @@ import grit.turn.{Turn, TurnLoop}
   * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` (under `grit serve`, `room` when unset:
   * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
   * (or SQL) changes them from the next sweep and turn on, until the next start. The email
-  * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; each start of
-  * its own engine ends what its identities no longer trust ([[Kit.trusting]]).
+  * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; serving
+  * Slack, it trusts Slack to say who the people of the workspace its bot token is installed in
+  * are ([[SlackEdge.installedIn]]), and no one otherwise; each start of its own engine ends what
+  * its identities no longer trust ([[Kit.trusting]]).
   *
   * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
   * it: its TUI serves its own directory and shows its conversations, the header saying
@@ -147,6 +149,10 @@ object Main {
     val edges: Vector[ServedEdge] =
       (if (slack) Vector(SlackEdge.serving(listen)) else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
+    // Serving Slack, the workspace its bot token is installed in is trusted to say who its
+    // people are.
+    val slackIn =
+      if (slack) Some(exitOnLeft(SlackEdge.installedIn(env).left.map(_.message))) else None
     val deployment =
       exitOnLeft(
         Main.deployment(
@@ -154,7 +160,8 @@ object Main {
           offered,
           edges,
           githubEdge.map(_._2).toVector,
-          java.time.ZoneId.systemDefault()
+          java.time.ZoneId.systemDefault(),
+          slackIn
         )
       )
     val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))
@@ -500,15 +507,18 @@ object Main {
     * and the conversations `worksIn` links working in their services, its days beginning in
     * `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
     * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
-    * `GRIT_DAILY_USD` is; the first variable malformed, or the deployment refused, is the
-    * failure.
+    * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
+    * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
+    * ([[SlackAccounts.realm]]), and refuses unless one of `edges` is that attester. The first
+    * variable malformed, or the deployment refused, is the failure.
     */
   private[main] def deployment(
       env: Map[String, String],
       offered: Offered,
       edges: Vector[ServedEdge],
       worksIn: Vector[WorksIn],
-      zone: java.time.ZoneId
+      zone: java.time.ZoneId,
+      slackIn: Option[TeamId] = None
   ): Either[String, Deployment] = {
     val serving = edges.nonEmpty
     for {
@@ -525,7 +535,14 @@ object Main {
       plugins <- pluginChoice(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
       domains <- Claimed.fromEnv(env)
-      identities <- Identities.of(Vector.empty, domains).left.map(_.message)
+      trusted <- slackIn.fold[Either[String, Vector[Vouching]]](Right(Vector.empty))(team =>
+        SlackAccounts
+          .realm(team)
+          .map(realm => Vector(Vouching(SlackAccounts.Attester, realm)))
+          .left
+          .map(why => s"the Slack team grit is installed in: $why")
+      )
+      identities <- Identities.of(trusted, domains).left.map(_.message)
       deployment <- Deployment
         .of(
           edges = edges,

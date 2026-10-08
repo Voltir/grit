@@ -10,6 +10,7 @@ import grit.core.edge.{
   Asked,
   Attesting,
   CatchUp,
+  EdgeRefusal,
   EdgeStores,
   Part,
   Pending,
@@ -814,6 +815,14 @@ object SlackEdge {
     */
   def backfill(channels: Set[ChannelId], days: Int): CatchUp =
     Served.backfill(channels, days, Socket)
+
+  /** The team grit's bot token, `SLACK_BOT_TOKEN`, is installed in (`auth.test`): the
+    * workspace [[serving]]'s edge attests, which a deployment trusts by default for it. Refused,
+    * naming the variable, when either token is unset or malformed, or when Slack refuses the
+    * token or cannot be reached, as the edge's open would be.
+    */
+  def installedIn(env: Map[String, String]): Either[EdgeRefusal, TeamId] =
+    Served.installedIn(env, Socket)
 
   private object Socket extends Served.Connect {
     def apply(bot: BotToken, app: AppToken): Slack^ = new SocketSlack(bot, app)

@@ -346,6 +346,27 @@ object ServedTests extends TestSuite {
       open.close()
     }
 
+    test(
+      "the team the bot token is installed in is Slack's answer to who grit is; refused as opening is, Slack closed"
+    ) {
+      val w = new World
+      val installed = Served.installedIn(Env, w.connect)
+      val closed = w.slack.closed
+      val down = new World
+      down.slack.down = true
+      (
+        installed,
+        closed,
+        Served.installedIn(Map("SLACK_APP_TOKEN" -> "xapp-1"), w.connect),
+        Served.installedIn(Env, down.connect)
+      ) ==> (
+        Right(TeamId(Team)),
+        true,
+        Left(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN"))),
+        Left(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
+      )
+    }
+
     test("serving cannot answer a tool call that asks first") {
       Served.serving(Set(C), None, None, new World().connect).answersAsks ==> false
     }

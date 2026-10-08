@@ -163,7 +163,8 @@ declared data:
   deployment trusts it with `Vouching(SlackAccounts.Attester, SlackAccounts.realm(team))`,
   and writes the workspace's full members as a group naming that realm. Its Slack app needs
   `users:read` (who is a full member), `users:read.email` (the address each confirmed;
-  without it nothing links by email), and the `user_change` event.
+  without it nothing links by email), and the `user_change` event. The reference deployment
+  trusts it for the workspace its bot token is installed in (`SlackEdge.installedIn`).
 - `domains`: the email domains (`Domain`, each matched exactly, so a subdomain is its own)
   the deployment claims. Accounts a trusted realm attests one address in a claimed domain
   are one person, across realms; an address in any other domain is not kept. With none

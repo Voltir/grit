@@ -45,6 +45,16 @@ private[slack] object Served {
     } yield (bot, app)
   }
 
+  /** The team grit's bot token is installed in, as `env`'s tokens open Slack through `connect`
+    * (`auth.test`); refused as the edge's open is refused, Slack closed either way.
+    */
+  def installedIn(env: Map[String, String], connect: Connect^): Either[EdgeRefusal, TeamId] =
+    tokens(env).flatMap { (bot, app) =>
+      val slack = connect(bot, app)
+      try slack.self().map(_.team).left.map(refusedToken)
+      finally slack.close()
+    }
+
   private def refusedToken(e: Any): EdgeRefusal =
     EdgeRefusal.Refused(s"Slack refused the bot token: $e")
 

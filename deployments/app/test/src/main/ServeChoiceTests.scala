@@ -5,6 +5,8 @@ import grit.core.id.EdgeName
 import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
 import grit.kit.deployment.Offered
+import grit.slack.edge.{SlackAccounts, SlackEdge}
+import grit.slack.event.TeamId
 
 import utest.*
 
@@ -38,6 +40,24 @@ object ServeChoiceTests extends TestSuite {
         Right((PlaceScope.Room, DailyCap.of("1.00").toOption)),
         Right((grit.core.period.LifecycleSettings.Default.locality.scope, None))
       )
+    }
+
+    test(
+      "serving Slack installed in a team trusts the Slack attester for that team's accounts; with no team, nothing is trusted"
+    ) {
+      def trusted(slackIn: Option[TeamId]) =
+        Main
+          .deployment(
+            Map.empty,
+            Offered.Read,
+            Vector(SlackEdge.serving(Set.empty)),
+            Vector.empty,
+            java.time.ZoneOffset.UTC,
+            slackIn
+          )
+          .map(_.identities.realmsOf(SlackAccounts.Attester))
+      (trusted(Some(TeamId("T0FAKE"))), trusted(None)) ==>
+        (SlackAccounts.realm(TeamId("T0FAKE")).map(Set(_)), Right(Set.empty))
     }
 
     test("a listened channel that is not a channel id is refused, naming it") {
