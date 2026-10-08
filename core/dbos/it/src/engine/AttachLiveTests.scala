@@ -4,6 +4,7 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.{Success, Try}
 
+import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.identity.Account
@@ -34,7 +35,14 @@ object AttachLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("attach_send")
       val engine = LiveEngine.open(config, "test")
       val link =
-        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
+        Link.attach(
+          config,
+          "test",
+          LiveEngine.Identity,
+          LiveEngine.Uncapped,
+          Visibility.Shipped,
+          Clock.system()
+        )
       try {
         engine.launch(
           id => d ?=> s"ran ${WorkflowId.value(id)}",
@@ -65,7 +73,14 @@ object AttachLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("attach_holder")
       val engine = LiveEngine.open(config, "test")
       val link =
-        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
+        Link.attach(
+          config,
+          "test",
+          LiveEngine.Identity,
+          LiveEngine.Uncapped,
+          Visibility.Shipped,
+          Clock.system()
+        )
       try {
         link.holder().map(h => (h.machine, h.pid, h.epoch)) ==> Some(
           ("test-machine", 4242L, "test")
@@ -82,7 +97,14 @@ object AttachLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("attach_stream")
       val engine = LiveEngine.open(config, "test")
       val link =
-        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
+        Link.attach(
+          config,
+          "test",
+          LiveEngine.Identity,
+          LiveEngine.Uncapped,
+          Visibility.Shipped,
+          Clock.system()
+        )
       try {
         // Recorded, never started: DBOS has no workflow for it.
         val turn = link.inbox
@@ -104,7 +126,14 @@ object AttachLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("attach_epoch")
       val engine = LiveEngine.open(config, "test")
       val link =
-        Link.attach(config, "older", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
+        Link.attach(
+          config,
+          "older",
+          LiveEngine.Identity,
+          LiveEngine.Uncapped,
+          Visibility.Shipped,
+          Clock.system()
+        )
       try {
         val place =
           Place.of(Directory.of("/attach").getOrElse(throw new java.lang.AssertionError()))

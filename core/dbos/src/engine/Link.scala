@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.clock.Clock
 import grit.core.document.DocumentSearch
 import grit.core.edge.{Desk, DeskError, Desks}
 import grit.core.host.ProcessIdentity
@@ -141,8 +142,9 @@ object Link {
 
   /** A link to the engine another process runs on the database `config` names, as grit of
     * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
-    * only its client, the stores and the inbox, which takes new messages as `budget` allows
-    * and labels the conversations it creates as `visibility` labels their rooms.
+    * only its client, the stores and the inbox, which takes new messages as `budget` allows,
+    * dating each, and reading the day its cap counts, by `clock`, and labels the conversations
+    * it creates as `visibility` labels their rooms.
     * Throws when the database cannot be reached, or when no engine has migrated DBOS's
     * schema there yet (none, or DBOS 1.0's): the next engine to start migrates it.
     */
@@ -151,13 +153,14 @@ object Link {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility
+      visibility: Visibility,
+      clock: Clock^
   ): Link^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget, visibility)
+    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget, visibility, clock)
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */
@@ -230,7 +233,8 @@ private[engine] final class Attached(
     epoch: String,
     identity: ProcessIdentity,
     val budget: Budget,
-    visibility: Visibility
+    visibility: Visibility,
+    clock: Clock^
 ) extends Link {
 
   private val conversations: ConversationStore = new SqlConversationStore()
@@ -279,9 +283,7 @@ private[engine] final class Attached(
       budget,
       new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
       visibility,
-      // clock-check: the link's own time: an edge's message is dated, and its day's cap read,
-      // when it reaches this process
-      grit.core.clock.Clock.system()
+      clock
     )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()

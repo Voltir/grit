@@ -6,6 +6,7 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
@@ -51,7 +52,8 @@ object EngineLockTests extends TestSuite {
           "test",
           LiveEngine.Identity,
           LiveEngine.Uncapped,
-          Visibility.Shipped
+          Visibility.Shipped,
+          Clock.system()
         ) match {
           case Right(e) => e
           case Left(refused) => sys.error(refused.message(java.time.Instant.now()))

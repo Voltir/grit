@@ -113,7 +113,8 @@ final class Engine private (
     epoch: String,
     identity: ProcessIdentity,
     val budget: Budget,
-    visibility: Visibility
+    visibility: Visibility,
+    clock: Clock^
 ) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()
@@ -243,9 +244,7 @@ final class Engine private (
       budget,
       sqlSchedules,
       visibility,
-      // clock-check: the engine's own time: an edge's message is dated, and its day's cap read,
-      // when it reaches this process
-      Clock.system()
+      clock
     )
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
@@ -585,11 +584,12 @@ object Engine {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility
+      visibility: Visibility,
+      clock: Clock^
   ): Either[Unopened, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(Unopened.Lock(refused))
-      case Right(lock) => start(config, lock, epoch, identity, budget, visibility)
+      case Right(lock) => start(config, lock, epoch, identity, budget, visibility, clock)
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
@@ -599,7 +599,8 @@ object Engine {
     * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
-    * then fail. Its inbox takes new messages as `budget` allows. `visibility`'s compartments
+    * then fail. Its inbox takes new messages as `budget` allows, dating each, and reading the
+    * day its cap counts, by `clock`. `visibility`'s compartments
     * are recorded as the ones the database runs under before anything else is written
     * ([[Unopened.Dropped]] when they drop one it ran under, having closed `lock` and claimed
     * nothing). Throws, having closed `lock`, when either schema cannot be applied.
@@ -610,7 +611,8 @@ object Engine {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility
+      visibility: Visibility,
+      clock: Clock^
   ): Either[Unopened, Engine^] =
     try {
       schemaSetup(config)
@@ -626,7 +628,7 @@ object Engine {
             .claim(epoch, identity, Build.current)
             .left
             .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-          val engine = build(config, dbosConfig, lock, epoch, identity, budget, visibility)
+          val engine = build(config, dbosConfig, lock, epoch, identity, budget, visibility, clock)
           engine.beating()
           Right(engine)
       }
@@ -678,14 +680,15 @@ object Engine {
       epoch: String,
       identity: ProcessIdentity,
       budget: Budget,
-      visibility: Visibility
+      visibility: Visibility,
+      clock: Clock^
   ): Engine^ = {
     val dbos = new DBOS(dbosConfig)
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config, epoch, identity, budget, visibility)
+    new Engine(dbos, ds, lock, config, epoch, identity, budget, visibility, clock)
   }
 
   /** Applies `core/dbos/resources/schema.sql` idempotently. */

@@ -250,7 +250,8 @@ object Main {
                     Turn.Epoch,
                     identity,
                     deployment.budget,
-                    deployment.visibility
+                    deployment.visibility,
+                    clock
                   ) match {
                     case Right(e) => e
                     case Left(refused) => sys.error(refused.message(clock.now()))
@@ -277,7 +278,8 @@ object Main {
                     Turn.Epoch,
                     identity,
                     deployment.budget,
-                    deployment.visibility
+                    deployment.visibility,
+                    clock
                   )
                 serveHere(link, Place.of(directory), hosted, instructions, offered)
                 link
@@ -313,11 +315,25 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch, identity, deployment.budget, deployment.visibility) match {
+        Engine.open(
+          config,
+          Turn.Epoch,
+          identity,
+          deployment.budget,
+          deployment.visibility,
+          clock
+        ) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
             val link =
-              Link.attach(config, Turn.Epoch, identity, deployment.budget, deployment.visibility)
+              Link.attach(
+                config,
+                Turn.Epoch,
+                identity,
+                deployment.budget,
+                deployment.visibility,
+                clock
+              )
             try say(link, args.toList)
             finally link.close()
           case Left(refused) => Some(refused.message(clock.now()))

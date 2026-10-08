@@ -781,7 +781,7 @@ object Main {
       f: Engine^ => Either[String, A]
   ): Either[String, A] =
     try {
-      Engine.open(config, "eval-synthetic", Builder, Uncapped, Visibility.Shipped) match {
+      Engine.open(config, "eval-synthetic", Builder, Uncapped, Visibility.Shipped, clock) match {
         case Left(refused) => Left(s"the engine could not open: ${refused.message(clock.now())}")
         case Right(engine) =>
           try f(engine)

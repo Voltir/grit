@@ -316,8 +316,8 @@ object Kit {
     }
   }
 
-  /** `deployment`'s engine, opened, with what its identities no longer trust ended; a refusal
-    * says when, by `clock`, the database's engine was last seen held.
+  /** `deployment`'s engine, opened with `clock`, with what its identities no longer trust
+    * ended; a refusal says when, by `clock`, the database's engine was last seen held.
     */
   private def open(
       deployment: Deployment,
@@ -329,7 +329,8 @@ object Kit {
       Turn.Epoch,
       LocalMachine.identity(),
       deployment.budget,
-      deployment.visibility
+      deployment.visibility,
+      clock
     ) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
       case Right(engine) =>

@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.clock.Clock
 import grit.core.model.{Catalog, CatalogJson, Profile}
 import grit.core.spend.Budget
 import grit.core.visibility.{Subject, Visibility}
@@ -26,6 +27,7 @@ object PromoteModelSettings {
 
   def main(args: Array[String]): Unit = {
     val _ = args
+    val clock: Clock^ = Clock.system() // clock-check: a one-shot command's composition root
     val env = DotEnv
       .load(java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
       .fold(fail, identity)
@@ -40,12 +42,11 @@ object PromoteModelSettings {
       Budget(java.time.ZoneOffset.UTC, None),
       // The reference deployment's: it declares none. A database that ran under compartments
       // is refused, naming one, rather than opened as if it had not.
-      Visibility.Shipped
+      Visibility.Shipped,
+      clock
     ) match {
       case Right(open) => open
-      case Left(refused) =>
-        // clock-check: a one-shot command's composition root, read once for its refusal
-        fail(refused.message(grit.core.clock.Clock.system().now()))
+      case Left(refused) => fail(refused.message(clock.now()))
     }
     try
       engine.db.read(Subject.Public)(engine.modelSettings.all()) match {
