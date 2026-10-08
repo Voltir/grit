@@ -42,8 +42,9 @@ In dependency order:
   met and keyed by, never taken apart), and `LabelParts`, the level and compartments it is
   stored as, which only this package and `grit.dbos` may name (enola-intent.yaml);
   `Compartments`, a deployment's closed set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
-  deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
-  is cleared for what; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
+  deployment's declared labels for rooms, each a `Room` (its place and the `RoomAccess` its edge
+  reports); `GroupName`, `Group`, `Grant` and `Memberships`, who
+  is cleared for what, and `Steward`, a compartment's stewards; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
   deployment injects it, refused as a `VisibilityRefusal`; `Recorded`, what is recorded beside
   it (rooms' set labels, access and quiet, and people added to groups through grit), as a
   transaction read it when it opened; `Item`, a labelled row as reading it is decided;
@@ -249,7 +250,7 @@ In dependency order:
 - **`admin`** — changes to who may see what that people make through grit: `Command`, what
   a person asks by command, read from the words after its name; `Change`, what one changes
   (relabel, quiet, clear, remove), with what it replaces, and `ChangeJson`, its audit row's
-  form; `Authority`, the one rule over what a change lowers and removes, whose `Allowed` is
+  form; `Authority`, the one rule over what a change raises, lowers and removes, whose `Allowed` is
   what applying a change takes, or a `Refusal`; `Answer`, what a command did, in the
   words its asker reads; and `Administration`, which runs a command in one transaction,
   reading who administers and stewards from the deployment's declared groups, and keeps
