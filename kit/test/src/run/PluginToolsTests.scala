@@ -18,7 +18,7 @@ import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Desks, PluginBinding, TestPlugins}
 import grit.models.StubModels
-import grit.tools.{About, Cleared, Coding, Names, Probes, Tuning}
+import grit.tools.{Coding, Names}
 
 import utest.*
 
@@ -120,20 +120,17 @@ object PluginToolsTests extends TestSuite {
       )
     }
 
-    test("grit's own tool names are those of every tool the kit offers besides the plugins'") {
-      val about = About.load(Persona.Grit).fold(why => sys.error(why), _.name)
+    test(
+      "grit's own tool names are those of every tool a launch offers besides the plugins': its own, the operator's, and the coding tools"
+    ) {
       val noOne: Askers = new Askers {
         def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
       }
+      val models = new StubModels()
       val offered =
-        Vector(
-          about,
-          Cleared.tool(noOne, Visibility.Shipped, FakeDb).name,
-          Tuning.propose(Unkept).name,
-          Probes.probe(new StubModels()).name
-        ) ++ Coding.hosted.map(_.name)
-      Names.all.toSet ==> offered.toSet
-      Names.all.size ==> offered.size
+        Launch.own(Persona.Grit, noOne, Visibility.Shipped, FakeDb).map(_.name) ++
+          Launch.operator(Unkept, models).map(_.name) ++ Coding.hosted.map(_.name)
+      (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }
   }
 }

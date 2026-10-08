@@ -11,15 +11,16 @@ import grit.core.context.ContextAssembler
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
-import grit.core.model.{Catalog, Pinned}
+import grit.core.model.{Catalog, ModelSettings, Pinned}
 import grit.core.period.{LifecycleSettings, Probability}
+import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
-import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
+import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.Engine
 import grit.job.clock.ClockEdge
 import grit.job.run.{RunEnv, RunRecords}
@@ -354,17 +355,12 @@ private[grit] object Launch {
     // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a
     // model. The coding tools are hosted: offered here, run by the edge serving the
     // conversation's directory (ADR 0017).
-    // What grit is, from the docs grit.tools ships; offered under either choice.
-    val about: Tool[Option[About.Subject]] =
-      About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
-    // What the person asking is cleared for, read for the call's turn under the visibility the
-    // engine runs under: the kit alone holds the engine's askers, so no plugin's tool can read
-    // who asked.
-    val cleared: Tool[Unit]^{store} = Cleared.tool(engine.askers, engine.visibility, store)
-    // Offered everywhere: what grit is, what the asker is cleared for, and every plugin's tools.
+    // Offered everywhere: grit's own, and every plugin's tools.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
       Toolbox.of[caps.CapSet^{store, desks}](
-        (Vector[Tool.Offered^{store, desks}](about, cleared) ++
+        (Vector[Tool.Offered^{store, desks}](
+          own(d.persona, engine.askers, engine.visibility, store)*
+        ) ++
           plugged.map(_.over(store, desks)))*
       )
     val launching = d.offer.tools match {
@@ -390,7 +386,7 @@ private[grit] object Launch {
         val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, clock)
         (
           everyone,
-          Toolbox.of[caps.CapSet^{tuned, models}](Tuning.propose(tuned), Probes.probe(models))
+          Toolbox.of[caps.CapSet^{tuned, models}](operator(tuned, models)*)
         ) match {
           case (Right(tools), Right(operator)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
@@ -421,6 +417,33 @@ private[grit] object Launch {
     }
     engine
   }
+
+  /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
+    * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`
+    * resolves them, explained under `visibility` and read through `store` ([[Cleared]]); the
+    * kit alone holds the engine's askers, so no plugin's tool can read who asked. Throws when
+    * grit's shipped docs cannot be read, a fault of the build.
+    */
+  private[run] def own(
+      persona: Persona,
+      askers: Askers,
+      visibility: Visibility,
+      store: Db^
+  ): Vector[Tool.Offered^{store}] = {
+    val about: Tool[Option[About.Subject]] =
+      About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
+    Vector[Tool.Offered^{store}](about, Cleared.tool(askers, visibility, store))
+  }
+
+  /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person
+    * approves it ([[Tuning]]), and a battery of calls measuring a model through `models`
+    * ([[Probes]]).
+    */
+  private[run] def operator(
+      tuned: ModelSettings^,
+      models: Models^
+  ): Vector[Tool.Offered^{tuned, models}] =
+    Vector[Tool.Offered^{tuned, models}](Tuning.propose(tuned), Probes.probe(models))
 
   /** `said`, what the body of the workflow `id` returned, once `finished` is told its
     * [[TurnTally.line]], or `said` and why the tally could not be read.
