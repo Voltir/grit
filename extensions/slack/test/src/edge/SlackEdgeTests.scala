@@ -876,15 +876,25 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "in a private channel grit's bot is a member of, a message is heard and a mention is a turn, as in a public one"
+      "in a private channel grit's bot is a member of, recorded invited, a message is heard and a mention is a turn, as in a public one"
     ) {
-      val w = new World
+      val w = new World(reconciled = false)
       w.slack.privateChannels = Set(C)
+      w.first.reconcile() ==> Right(())
       val inPrivate = Seq("channel_type" -> ujson.Str("group"))
       w.slack.deliver(message("2.0", "standup moves to 10:00", extra = inPrivate)) ==> true
       w.slack.deliver(mention("3.0")) ==> true
-      (w.heard("2.0"), w.turnOf("3.0", "3.0").toVector == w.inbox.started, w.inbox.started.size) ==>
-        (Vector(("standup moves to 10:00", Some("Ana Lima"))), true, 1)
+      (
+        w.joins.access(Room),
+        w.heard("2.0"),
+        w.turnOf("3.0", "3.0").toVector == w.inbox.started,
+        w.inbox.started.size
+      ) ==> (
+        Some(RoomAccess.Invited),
+        Vector(("standup moves to 10:00", Some("Ana Lima"))),
+        true,
+        1
+      )
     }
 
     test(
