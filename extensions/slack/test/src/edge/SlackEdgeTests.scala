@@ -942,7 +942,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a direct message is a turn of its thread in its author's direct room, written through their account, started, awaited in its thread and marked, with no channel listened in"
+      "a direct message is a turn of its thread in its author's direct room, written through their account, started, awaited in its thread and marked"
     ) {
       val w = new World
       w.slack.deliver(direct("9.0", "what am I cleared for?")) ==> true

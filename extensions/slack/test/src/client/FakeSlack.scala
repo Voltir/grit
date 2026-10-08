@@ -85,11 +85,11 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var rootless = Set.empty[Ts]
 
-  /** The named channels that are private. */
+  /** The channels there are ([[channelNames]]) that are private. */
   @caps.unsafe.untrackedCaptures
   var privateChannels = Set.empty[ChannelId]
 
-  /** The named conversations that are not channels: direct messages, group ones. */
+  /** The conversations there are that are not channels: direct messages, group ones. */
   @caps.unsafe.untrackedCaptures
   var directs = Set.empty[ChannelId]
 
@@ -342,13 +342,15 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var unlisted: Option[SlackError] = None
 
-  /** The order [[channels]] lists the channels it names in, as Slack's pages give them, an
-    * order Slack does not promise; a named channel not in it follows, by id.
+  /** The order [[channels]] lists the channels it returns in, as Slack's pages give them, an
+    * order Slack does not promise; a channel not in it follows, by id.
     */
   @caps.unsafe.untrackedCaptures
   var listing: Vector[ChannelId] = Vector.empty
 
-  /** The named channels grit's bot is in, in [[listing]]'s order, each read as [[kind]] reads it. */
+  /** The channels there are that grit's bot is in, in [[listing]]'s order, each read as
+    * [[kind]] reads it.
+    */
   def channels(): Either[SlackError, Vector[(ChannelId, ChannelKind)]] =
     patient(SocketSlack.Retries).flatMap(_ => unlisted.toLeft(())).map { _ =>
       val named = channelNames.keys.toVector
@@ -364,7 +366,9 @@ final class FakeSlack extends Slack {
       else Right(kindOf(channel))
     }
 
-  /** What `channel` is to grit's bot: unseen unless named, a channel and not in [[notIn]]. */
+  /** What `channel` is to grit's bot: unseen unless it is one there is ([[channelNames]]), a
+    * channel and not in [[notIn]].
+    */
   private def kindOf(channel: ChannelId): ChannelKind =
     if (!channelNames.contains(channel) || directs.contains(channel) || notIn.contains(channel))
       ChannelKind.Unseen

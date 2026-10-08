@@ -113,7 +113,7 @@ object PostingTests extends TestSuite {
   private val RootLink = "https://acme.slack.com/archives/C0C5U2FPAL8/p1790782262102319"
 
   val tests = Tests {
-    test("it posts at a declared channel's top level, tagged with its request, and says where") {
+    test("it posts at an offered channel's top level, tagged with its request, and says where") {
       val w = new World
       w.call(post("The build is **green**.")) ==> Outcome.Done("Posted in #probably-not-skynet.")
       w.posted.map((c, _, text, tag) => (c, text, tag)) ==>
