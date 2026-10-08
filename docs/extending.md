@@ -131,7 +131,7 @@ compartments each start declared: a start may add some, but one that drops or re
 compartment the database ran under does not open, and says which, since a label
 holding it could then be read by a clearance that could not read it before.
 
-**Identities** ([ADR 0032](decisions/0032-a-principal-is-a-person-edges-name-accounts-and-accounts-link-to-a-person-only-on-declared-or-vouched-evidence.md)).
+**Identities** ([ADR 0032](decisions/0032-a-principal-is-a-person-edges-name-accounts-and-trusted-realms-attest-who-they-are.md)).
 Who a deployment says is whom is injected beside its visibility, `Deployment.of(identities =
 …)`, an `Identities` built by `Identities.of`, which refuses a mistake in it
 (`IdentityRefusal`); left out, it is `Identities.Shipped`: no one declared and no realm
