@@ -165,6 +165,41 @@ object VisibilityTests extends TestSuite {
       ) ==> Left(VisibilityRefusal.NoSuchGroup(group("nobody")))
     }
 
+    test("an administrators group not declared is refused") {
+      Visibility.of(
+        compartments,
+        RoomLabels.Public,
+        groups,
+        grants,
+        administrators = Some(group("admins"))
+      ) ==>
+        Left(VisibilityRefusal.NoSuchGroup(group("admins")))
+    }
+
+    test(
+      "an administrators group named as a declared compartment is refused: clear could add administrators"
+    ) {
+      Visibility.of(
+        compartments,
+        RoomLabels.Public,
+        groups :+ Group(group("trial"), Set(ana)),
+        grants,
+        administrators = Some(group("trial"))
+      ) ==> Left(VisibilityRefusal.AdministersCompartment(group("trial")))
+    }
+
+    test("a declared administrators group no compartment is named for is kept") {
+      Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups :+ Group(group("admins"), Set(bo)),
+          grants,
+          administrators = Some(group("admins"))
+        )
+        .map(_.administrators) ==> Right(Some(group("admins")))
+    }
+
     test("a service is trusted with its declared label, and with public when none is declared") {
       val trusted = Visibility
         .of(

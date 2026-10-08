@@ -12,7 +12,8 @@ final case class Visibility private (
     rooms: Labeller[Room],
     groups: Vector[Group],
     grants: Vector[Grant],
-    trusts: Vector[Trust]
+    trusts: Vector[Trust],
+    administrators: Option[GroupName]
 ) {
 
   /** `principal`'s clearance: grit's is [[Compartments.top]]; a person's, the join of the
@@ -76,6 +77,10 @@ final case class Visibility private (
 
 object Visibility {
 
+  /** The declared compartment `group` is named for: the one whose own group it is. */
+  private def ownGroupOf(compartments: Compartments, group: GroupName): Option[Compartment] =
+    compartments.declared.find(c => Compartment.name(c) == GroupName.value(group))
+
   /** No compartment but unmapped, every room public, no group, no service trusted above
     * public: every label is public, so every reader reads what it read before labels existed.
     */
@@ -85,20 +90,25 @@ object Visibility {
       RoomLabels.Public,
       Vector.empty,
       Vector.empty,
-      Vector.empty
+      Vector.empty,
+      None
     )
 
   /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
     * compartment `compartments` does not declare, named by a declared room label,
     * `rooms.requires`, a grant or a trust (`Undeclared`, saying where); two groups of one name;
-    * a grant to a group not declared; or a service trusted twice.
+    * a grant to a group not declared; a service trusted twice; or `administrators` naming no
+    * declared group (`NoSuchGroup`), or a compartment's own group, the one named as it
+    * (`AdministersCompartment`), which people cleared for it through grit join. `administrators`' declared
+    * members alone may make the changes reserved to administrators; with none, no one may.
     */
   def of(
       compartments: Compartments,
       rooms: Labeller[Room],
       groups: Vector[Group],
       grants: Vector[Grant],
-      trusts: Vector[Trust] = Vector.empty
+      trusts: Vector[Trust] = Vector.empty,
+      administrators: Option[GroupName] = None
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -136,7 +146,11 @@ object Visibility {
           val services = trusts.map(_.service)
           services.diff(services.distinct).headOption.map(VisibilityRefusal.TrustedTwice(_))
         }
-    refusal.toLeft(new Visibility(compartments, rooms, groups, grants, trusts))
+        .orElse(administrators.flatMap { g =>
+          if (!names.contains(g)) Some(VisibilityRefusal.NoSuchGroup(g))
+          else ownGroupOf(compartments, g).map(_ => VisibilityRefusal.AdministersCompartment(g))
+        })
+    refusal.toLeft(new Visibility(compartments, rooms, groups, grants, trusts, administrators))
   }
 }
 
@@ -173,6 +187,11 @@ enum VisibilityRefusal {
 
   /** A grant is to `group`, which no declared group is named. */
   case NoSuchGroup(group: GroupName)
+
+  /** `group`, the administrators group, is named as a declared compartment: people added to that
+    * compartment through grit would administer.
+    */
+  case AdministersCompartment(group: GroupName)
 
   /** Two trusts name `service`. */
   case TrustedTwice(service: Service)
