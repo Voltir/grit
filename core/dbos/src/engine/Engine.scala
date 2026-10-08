@@ -232,6 +232,9 @@ final class Engine private (
   /** Short write transactions, for a step that records what it did as it goes. */
   val jot: Jot = new SqlJot(dataSource, opener)
 
+  val administration: grit.core.admin.Administration =
+    new grit.dbos.sql.SqlAdministration(jot, opener)
+
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
