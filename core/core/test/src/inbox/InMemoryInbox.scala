@@ -38,8 +38,18 @@ final class InMemoryInbox(
     val principals: InMemoryPrincipals,
     val ledger: InMemoryUsageLedger,
     budget: Budget,
-    visibility: Visibility
+    initially: Visibility
 ) extends Inbox {
+
+  // An immutable value, written and read only on the test's own thread, through the calls it
+  // makes and waits on.
+  @caps.unsafe.untrackedCaptures
+  private var visibility = initially
+
+  /** Runs on under `now`, as the SQL inbox does once its engine is reopened under a changed
+    * deployment: everything recorded is kept.
+    */
+  def reopen(now: Visibility): Unit = visibility = now
 
   /** The conversations' periods, over [[entries]]. */
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)

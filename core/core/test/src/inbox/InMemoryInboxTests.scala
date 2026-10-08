@@ -20,6 +20,24 @@ object InMemoryInboxTests extends InboxContract {
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
   ): A = {
+    val (inbox, store) = opened(budget, visibility)
+    body(inbox, store)
+  }
+
+  protected def reopening[A, B](budget: Budget, was: Visibility, now: Visibility)(
+      before: (Inbox, InboxContract.Store^) => A
+  )(after: (A, Inbox, InboxContract.Store^) => B): B = {
+    val (inbox, store) = opened(budget, was)
+    val a = before(inbox, store)
+    inbox.reopen(now)
+    after(a, inbox, store)
+  }
+
+  /** A fresh inbox under `visibility`, and the store under it. */
+  private def opened(
+      budget: Budget,
+      visibility: Visibility
+  ): (InMemoryInbox, InboxContract.Store^) = {
     val inbox = InMemoryInbox.fresh(budget, visibility)
     def spend(usd: BigDecimal): Unit = {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
@@ -82,7 +100,7 @@ object InMemoryInboxTests extends InboxContract {
       inbox.principals
         .name(account, name)(using TestTx.fake)
         .fold(e => sys.error(e.toString), identity)
-    body(
+    (
       inbox,
       InboxContract.Store(
         spend,

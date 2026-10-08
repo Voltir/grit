@@ -48,6 +48,14 @@ abstract class InboxContract extends TestSuite {
       body: (Inbox, InboxContract.Store^) => A
   ): A
 
+  /** As [[withInbox]], over one store twice: `before` runs with its inbox under `was`; that
+    * inbox is closed and opened again under `now`, as a restart under a changed deployment is,
+    * and `after` runs with it, given what `before` returned.
+    */
+  protected def reopening[A, B](budget: Budget, was: Visibility, now: Visibility)(
+      before: (Inbox, InboxContract.Store^) => A
+  )(after: (A, Inbox, InboxContract.Store^) => B): B
+
   /** [[withInbox]] under the shipped visibility: every room public. */
   private def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A =
     withInbox(budget, Visibility.Shipped)(body)
@@ -82,6 +90,31 @@ abstract class InboxContract extends TestSuite {
 
   /** When the slots below are due. */
   private val Due = Instant.parse("2026-10-07T09:00:00Z")
+
+  private val ConfidentialTrial = Label.at(Level.Confidential, TestLabels.trial)
+
+  private val Internal = Label.at(Level.Internal)
+
+  /** [[TestLabels.trial]] declared and every room internal; `trial` naming `named`, cleared
+    * confidential·trial.
+    */
+  private def naming(named: Set[Account]): Visibility =
+    (for {
+      compartments <- Compartments.of(Vector(TestLabels.trial)).left.map(_.toString)
+      rooms <- RoomLabels
+        .of(Vector.empty, Labelled.Mapped(Internal))
+        .left
+        .map(_.toString)
+      v <- Visibility
+        .of(
+          compartments,
+          rooms,
+          Vector(Group(TestLabels.group("trial"), named)),
+          Vector(Grant(TestLabels.group("trial"), ConfidentialTrial))
+        )
+        .left
+        .map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** A turn `started` names, and the slot. */
   private def begun(started: Either[InboxError, Slotted]): (TurnRef, Slot) =
@@ -446,6 +479,57 @@ abstract class InboxContract extends TestSuite {
         val _ = inbox.ingest(hers, SourceId("1.0"), said("one"), dana)
         val _ = inbox.ingest(his, SourceId("1.0"), said("two"), ed)
         Vector(hers, his).map(store.labelled) ==> Vector(Some(confidential), Some(Label.Public))
+      }
+    }
+
+    test(
+      "after a fall, a new message in a direct message's thread is Sealed and records nothing, a redelivery of one recorded is still its turn, and a new thread is created at the clearance now"
+    ) {
+      val dana = TestAccounts.sourced("slack:T/U-dana-fallen")
+      val old: Origin.Direct = Origin.Direct(dana, "1.0")
+      val next = Origin.Direct(dana, "2.0")
+      reopening(Uncapped, naming(Set(dana)), naming(Set.empty))((inbox, _) =>
+        inbox.ingest(old, SourceId("1.0"), said("one"), dana)
+      ) { (turn, inbox, store) =>
+        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), dana)
+        val again = inbox.ingest(old, SourceId("1.0"), said("one"), dana)
+        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), dana)
+        (
+          refused,
+          again,
+          inbox.recorded(old, Set(SourceId("1.1"))),
+          store.labelled(old),
+          store.labelled(next)
+        ) ==> (
+          Left(InboxError.Sealed(old)),
+          turn,
+          Right(Set()),
+          Some(ConfidentialTrial),
+          Some(Label.Public)
+        )
+      }
+    }
+
+    test(
+      "over the day's cap, a new message in a sealed thread is Sealed, not OverCap; one in a new thread is OverCap"
+    ) {
+      val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
+      val dana = TestAccounts.sourced("slack:T/U-dana-capped")
+      val old: Origin.Direct = Origin.Direct(dana, "1.0")
+      val next = Origin.Direct(dana, "2.0")
+      reopening(Budget(ZoneOffset.UTC, Some(cap)), naming(Set(dana)), naming(Set.empty)) {
+        (inbox, store) =>
+          val _ = inbox.ingest(old, SourceId("1.0"), said("one"), dana)
+          store.spend(BigDecimal("1"))
+      } { (_, inbox, store) =>
+        (
+          inbox.ingest(old, SourceId("1.1"), said("more"), dana),
+          inbox.ingest(next, SourceId("2.0"), said("two"), dana).left.map {
+            case InboxError.OverCap(_, c, _) => c
+            case other => other
+          },
+          store.exists(next)
+        ) ==> (Left(InboxError.Sealed(old)), Left(cap), false)
       }
     }
 

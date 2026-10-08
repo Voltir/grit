@@ -4,7 +4,6 @@ import java.time.Instant
 
 import grit.core.id.{EntryId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.{Account, Standing, Vouched}
-import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{
@@ -145,35 +144,6 @@ object DirectLiveTests extends TestSuite {
       (was, after) ==> (
         (ConfidentialTrial, ids(turn, "1.0")),
         ((Label.Public, Vector()), (Label.Public, Vector()))
-      )
-    }
-
-    test(
-      "after a fall, a new message in the old thread is Sealed and records nothing, a redelivery of its own is its turn, and a new thread begins at the clearance now"
-    ) {
-      val config = fresh("direct_sealed")
-      val turn = engine(config, Cleared)(e => told(e, dana, "1.0", "1.0"))
-      val old: Origin.Direct = Origin.Direct(dana, "1.0")
-      val (refused, again, next) = engine(config, Fallen) { e =>
-        (
-          e.inbox.ingest(old, SourceId("1.1"), Message.User("more"), dana),
-          e.inbox.ingest(old, SourceId("1.0"), Message.User("message 1.0"), dana),
-          told(e, dana, "2.0", "2.0")
-        )
-      }
-      val recorded = engine(config, Cleared)(e => e.inbox.recorded(old, Set(SourceId("1.1"))))
-      (
-        refused,
-        again,
-        recorded,
-        created(config, Origin.Direct(dana, "2.0")),
-        next.conversationId != turn.conversationId
-      ) ==> (
-        Left(InboxError.Sealed(old)),
-        Right(turn),
-        Right(Set()),
-        Label.Public,
-        true
       )
     }
 

@@ -50,10 +50,31 @@ object SqlInboxContractTests extends InboxContract {
     */
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
-  ): A = {
-    val db =
+  ): A =
+    over(
       if (visibility == Visibility.Shipped) config
-      else TestPostgres.freshDatabase("sql_inbox_contract_labelled")
+      else TestPostgres.freshDatabase("sql_inbox_contract_labelled"),
+      budget,
+      visibility
+    )(body)
+
+  /** Over a database of its own, its engine closed after `before` and launched again under
+    * `now`.
+    */
+  protected def reopening[A, B](budget: Budget, was: Visibility, now: Visibility)(
+      before: (Inbox, InboxContract.Store^) => A
+  )(after: (A, Inbox, InboxContract.Store^) => B): B = {
+    val db = TestPostgres.freshDatabase("sql_inbox_contract_reopened")
+    val a = over(db, budget, was)(before)
+    over(db, budget, now)((inbox, store) => after(a, inbox, store))
+  }
+
+  /** Runs `body` with the inbox of an engine launched on `db` under `visibility`, taking new
+    * messages as `budget` allows, and the store under it; the engine closed after.
+    */
+  private def over[A](db: DbConfig, budget: Budget, visibility: Visibility)(
+      body: (Inbox, InboxContract.Store^) => A
+  ): A = {
     val engine = LiveEngine.open(
       db,
       Turn.Epoch,
