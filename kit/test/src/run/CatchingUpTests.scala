@@ -117,23 +117,26 @@ object CatchingUpTests extends TestSuite {
       visibility: Visibility,
       clock: SetClock
   ): (Vector[String], Vector[Instant]) = {
-    val (lines, opened, _) = labelledBy(
+    val (lines, opened, _, _) = labelledBy(
       place => Right(Tx.roomLabel(place)(using TestTx.inForce(visibility))),
-      clock
+      clock,
+      agreed = false
     )
     (lines, opened)
   }
 
   /** What a catch-up of `unheard`, read since the epoch, says with each room's label read by
-    * `labelled`, declined, its clock `clock`; the time its source was opened at; and what it
-    * returned.
+    * `labelled`, agreed to when `agreed`, its clock `clock`; the time its source was opened at;
+    * what it returned; and how many times its source was told to hear.
     */
   private def labelledBy(
       labelled: Place => Either[String, Label],
-      clock: SetClock
-  ): (Vector[String], Vector[Instant], Either[KitFailure, Unit]) = {
+      clock: SetClock,
+      agreed: Boolean
+  ): (Vector[String], Vector[Instant], Either[KitFailure, Unit], Int) = {
     val lines = Vector.newBuilder[String]
     val opened = Vector.newBuilder[Instant]
+    val heard = new java.util.concurrent.atomic.AtomicInteger
     val catchUp = new CatchUp {
       def name: EdgeName = EdgeName("test")
       def needs: Vector[Variable] = Vector.empty
@@ -147,7 +150,10 @@ object CatchingUpTests extends TestSuite {
         Right(new CatchUp.Open {
           def since: Instant = Instant.EPOCH
           def unheard: Vector[Unheard] = Vector(trial, general)
-          def hear(): Either[EdgeRefusal, Unit] = Right(())
+          def hear(): Either[EdgeRefusal, Unit] = {
+            val _ = heard.incrementAndGet()
+            Right(())
+          }
           def close(): Unit = ()
         })
       }
@@ -162,10 +168,10 @@ object CatchingUpTests extends TestSuite {
       () => Right(BigDecimal(0)),
       () => Right(Swept.nothing),
       () => Right(0),
-      _ => false,
+      _ => agreed,
       lines += _
     )
-    (lines.result(), opened.result(), returned)
+    (lines.result(), opened.result(), returned, heard.get)
   }
 
   private val epoch = LocalDate.parse("1970-01-01")
@@ -185,11 +191,13 @@ object CatchingUpTests extends TestSuite {
     test(
       "a room whose label cannot be read refuses the catch-up before anything is said or heard"
     ) {
-      val (lines, _, returned) = labelledBy(
+      val (lines, _, returned, heard) = labelledBy(
         place => if (place == general.place) Left("down") else Right(Label.Public),
-        new SetClock(Instant.EPOCH)
+        new SetClock(Instant.EPOCH),
+        agreed = true
       )
-      (lines, returned) ==> (Vector(), Left(KitFailure.Store("a room's label is unread: down")))
+      (lines, returned, heard) ==>
+        (Vector(), Left(KitFailure.Store("a room's label is unread: down")), 0)
     }
 
     test("a catch-up's source is opened at its clock's time") {
