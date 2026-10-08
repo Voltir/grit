@@ -6,7 +6,6 @@ import grit.core.visibility.{
   Compartment,
   Compartments,
   Explained,
-  Explanation,
   Label,
   Level,
   RoomAccess
@@ -58,13 +57,19 @@ object AnswerTests extends TestSuite {
       "a direct message's label is shown as its person's clearance, another's clearance as its label, and one's own in its explanation's words"
     ) {
       val e = Explained.fullClearance
-      (Answer.direct(internal), Answer.theirs(confidential), Answer.clearance(e)) ==> (
+      (
+        Answer.direct(internal),
+        Answer.theirs(confidential),
+        Answer.clearance(e).text.linesIterator.toVector.headOption
+      ) ==> (
         Answer.Shown(
           "This is a direct message: its label is your clearance, [level: internal], and it " +
             "cannot be changed."
         ),
         Answer.Shown("Their clearance is [level: confidential, in: {trial}]."),
-        Answer.Shown(Explanation.cleared(e))
+        Some(
+          "You are cleared for up to [level: confidential, in: {finance, trial}], wherever you ask."
+        )
       )
     }
 
