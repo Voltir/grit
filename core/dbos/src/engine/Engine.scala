@@ -235,6 +235,8 @@ final class Engine private (
   val administration: grit.core.admin.Administration =
     new grit.dbos.sql.SqlAdministration(jot, opener)
 
+  val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
+
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.

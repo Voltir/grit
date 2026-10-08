@@ -309,10 +309,13 @@ CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id
 -- A room grit knows beyond its conversations (ADR 0033): its access as its edge last reported
 -- it, the label people set for it through grit (NULL: none), whether it is quiet, and its
 -- edge's bot's membership: joined_at, left_at (each kept only when later than the other's
--- event), and backfilled_join, the joined_at whose backfill is done or was skipped. Every
--- transaction reads every row when it opens (SqlRecorded).
--- Retention: kept: one row per room an edge's bot has been in or someone labelled or quieted;
--- bounded by the workspaces' channels (tens to hundreds). Its place is kept while it exists.
+-- event, Joins.Kept), and backfilled_join, the joined_at whose backfill is done or was skipped.
+-- Every transaction reads every row when it opens (SqlRecorded).
+-- Retention: kept, until an edge's open forgets a room its bot left over a day ago
+-- (Joins.KeptLeft) and has not rejoined, unless someone labelled or quieted it (Joins.forget);
+-- kept that long so a join reported late is still ordered against the leave. Bounded by the
+-- rooms the bots are in, those left within the day, and those labelled or quieted: tens to
+-- hundreds. Its place is kept while it exists.
 CREATE TABLE IF NOT EXISTS grit.rooms (
     place_id        UUID PRIMARY KEY REFERENCES grit.places(id),
     name            TEXT,   -- the name its edge last reported (`meeting-notes`)

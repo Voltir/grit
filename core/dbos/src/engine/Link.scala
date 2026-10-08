@@ -108,6 +108,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The changes to who may see what that people make by command, and what they read of them. */
   val administration: grit.core.admin.Administration
 
+  /** The rooms an edge's bot is a member of, as the edge reports its joins and leaves. */
+  val joins: grit.core.edge.Joins
+
   /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
     * edge's first ingest would.
     */
@@ -277,6 +280,8 @@ private[engine] final class Attached(
 
   val administration: grit.core.admin.Administration =
     new grit.dbos.sql.SqlAdministration(jot, opener)
+
+  val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
   val inbox: Inbox =
     new SqlInbox(
