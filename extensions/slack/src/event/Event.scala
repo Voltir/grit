@@ -133,6 +133,35 @@ object Events {
         }
       }
 
+  /** The slash command a Socket Mode envelope's `payload` carries, as Slack's form fields:
+    * `command`, `text` (none is no words), `team_id`, `channel_id`, `user_id` and
+    * `response_url`. Why not, naming the first field it lacks, or when it is not JSON.
+    */
+  def command(payload: String): Either[String, Commanded] =
+    scala.util
+      .Try(ujson.read(payload))
+      .toEither
+      .left
+      .map(e => s"not JSON: ${e.getMessage}")
+      .flatMap { p =>
+        def field(name: String): Either[String, String] =
+          str(p, name).toRight(s"a slash command without $name")
+        for {
+          command <- field("command")
+          team <- field("team_id")
+          channel <- field("channel_id")
+          user <- field("user_id")
+          url <- field("response_url")
+        } yield Commanded(
+          TeamId(team),
+          ChannelId(channel),
+          UserId(user),
+          command,
+          str(p, "text").getOrElse(""),
+          ResponseUrl(url)
+        )
+      }
+
   /** The `channel_type`s of a `message` in a channel: a public one, and a private one. Any
     * other kind (`im`, `mpim`, `app_home`, one Slack adds later) is not a channel's.
     */

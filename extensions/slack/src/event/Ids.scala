@@ -38,3 +38,13 @@ object Ts {
   def apply(value: String): Ts = value
   def value(ts: Ts): String = ts
 }
+
+/** Where a slash command's answers go (its `response_url`): Slack takes up to 5 there, for 30
+  * minutes after the command.
+  */
+opaque type ResponseUrl = String
+
+object ResponseUrl {
+  def apply(value: String): ResponseUrl = value
+  def value(url: ResponseUrl): String = url
+}

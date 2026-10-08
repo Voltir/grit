@@ -14,6 +14,37 @@ object Payloads {
   /** A person. */
   val Ana = "U061F7AUR"
 
+  /** The response url of [[command]]'s payloads. */
+  val Hook = "https://hooks.slack.com/commands/T123ABC456/1234567890/abcdefXYZ"
+
+  /** A slash command `name`, with `text`, asked by `user` in `channel`: the fields Slack's
+    * docs give for a slash command's request, as a Socket Mode envelope's `payload` holds
+    * them.
+    */
+  def command(
+      text: String,
+      name: String = "/grit",
+      user: String = Ana,
+      channel: String = "C123ABC456"
+  ): String =
+    ujson
+      .Obj(
+        "token" -> "XXYYZZ",
+        "team_id" -> Team,
+        "team_domain" -> "acme",
+        "channel_id" -> channel,
+        "channel_name" -> (if (channel.startsWith("D")) "directmessage" else "standup"),
+        "user_id" -> user,
+        "user_name" -> "ana",
+        "command" -> name,
+        "text" -> text,
+        "api_app_id" -> "A123ABC456",
+        "is_enterprise_install" -> "false",
+        "response_url" -> Hook,
+        "trigger_id" -> "13345224609.738474920.8088930838d88f008e0"
+      )
+      .render()
+
   private def callback(event: ujson.Obj): String =
     ujson
       .Obj(

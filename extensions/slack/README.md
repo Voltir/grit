@@ -18,8 +18,9 @@ In dependency order:
   `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names, by a user of their own team: its `user_team`, else its `team`, else the installing workspace, so a user of a workspace sharing a channel is never spelled as one of grit's), a
   person's direct message to grit `Told` (a group direct message is `Ignored`), a
   reaction to a message added or removed (`Reacted`), or `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
-  message of a channel's history by `Events.listed`, under the same rules; and `MessageLink`, the
-  channel and thread a message's link names. Imports nothing in slack.
+  message of a channel's history by `Events.listed`, under the same rules; `Commanded`, a slash
+  command read from its payload by `Events.command`, its answers going to its `ResponseUrl`; and
+  `MessageLink`, the channel and thread a message's link names. Imports nothing in slack.
 - **`text`** — Slack's text, both ways: `Incoming`, a person's message as grit stores it
   (mentions and channel links as names, markup written out, escapes undone), and `RichText`, grit's reply (a
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
