@@ -113,7 +113,10 @@ final class Engine private (
     epoch: String,
     identity: ProcessIdentity,
     val budget: Budget,
-    visibility: Visibility,
+    /** What it was opened under: the compartments its database runs under, and its rooms'
+      * labels.
+      */
+    val visibility: Visibility,
     clock: Clock^
 ) extends Link {
 

@@ -357,9 +357,10 @@ private[grit] object Launch {
     // What grit is, from the docs grit.tools ships; offered under either choice.
     val about: Tool[Option[About.Subject]] =
       About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
-    // What the person asking is cleared for, read for the call's turn: the kit alone holds the
-    // engine's askers, so no plugin's tool can read who asked.
-    val cleared: Tool[Unit]^{store} = Cleared.tool(engine.askers, d.visibility, store)
+    // What the person asking is cleared for, read for the call's turn under the visibility the
+    // engine runs under: the kit alone holds the engine's askers, so no plugin's tool can read
+    // who asked.
+    val cleared: Tool[Unit]^{store} = Cleared.tool(engine.askers, engine.visibility, store)
     // Offered everywhere: what grit is, what the asker is cleared for, and every plugin's tools.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
       Toolbox.of[caps.CapSet^{store, desks}](
