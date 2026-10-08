@@ -64,6 +64,8 @@ object AboutTests extends TestSuite {
       "the security topic names Bell–LaPadula, reads it in plain words, and says where grit departs from it"
     ) {
       val security = asked(ujson.Obj("topic" -> "security"))
+      // grit's model-facing wording, kept verbatim on purpose: these are the claims the model
+      // must be able to quote when asked how grit decides who may see what.
       (
         security == Outcome.Done(shipped("security")),
         Vector(

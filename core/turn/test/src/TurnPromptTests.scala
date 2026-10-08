@@ -199,6 +199,8 @@ object TurnPromptTests extends TestSuite {
     test(
       "every turn is told, in brief, the model grit enforces, by name, and the tools that explain it"
     ) {
+      // grit's model-facing wording, kept verbatim on purpose: a change to it is a change to
+      // what every turn is told.
       (TurnPrompt.Security.layer, TurnPrompt.Security.text) ==> (
         Layer.Base,
         "Who may see what is grit's rule, not yours to keep: a Bell–LaPadula-style model, no " +
