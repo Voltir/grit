@@ -8,7 +8,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
 import grit.core.id.{AttesterName, EdgeName}
-import grit.core.identity.{Identities, Realm}
+import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.message.Cost
 import grit.core.spend.Budget
 import grit.core.store.{Linking, StoreError}
@@ -355,13 +355,26 @@ object Kit {
       attesting
     )
 
-  /** The voucher of the realms `identities` trusts `attester` for, none when there is none. */
+  /** The voucher an edge attesting as `attester` records through: of [[trustOf]]'s realms and
+    * domains.
+    */
   private def voucherOf(
       engine: Engine^,
       identities: Identities,
       attester: Option[AttesterName]
-  ): grit.core.store.Voucher =
-    engine.voucher(attester.fold(Set.empty[Realm])(identities.realmsOf), identities.domains)
+  ): grit.core.store.Voucher = {
+    val (realms, domains) = trustOf(identities, attester)
+    engine.voucher(realms, domains)
+  }
+
+  /** What an edge attesting as `attester` records for: the realms `identities` trusts that
+    * attester for, none when the edge attests nothing, and every domain `identities` claims.
+    */
+  private[run] def trustOf(
+      identities: Identities,
+      attester: Option[AttesterName]
+  ): (Set[Realm], Set[Domain]) =
+    (attester.fold(Set.empty[Realm])(identities.realmsOf), identities.domains)
 
   /** Tells the log what an edge's check or look reported: a change at `info`, a source that
     * could not be reached at `warn`, and an alarm at `error`, each line beginning `identity: `.
