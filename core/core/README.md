@@ -215,8 +215,13 @@ In dependency order:
   `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `place`, `message`, `model`, `store`, `provider`, `approval`
-- **`act`** — what an actor may do, and under what (ADR 0034): a move's `MoveName`, a run's
-  `MoveLimits` per `MoveKind`. Imports nothing in core.
+- **`act`** — what an actor may do, and under what (ADR 0034): `Acting`, who acts (its turn,
+  whom its requests record, `ActsFor`, what its asks may spend, `Allowance`, and what becomes
+  of a call whose tool asks a person first, `Gates`), pure data; `Moves`, a planner's ask and
+  call, each made once under its `MoveName` within its run's `MoveLimits` per `MoveKind`, and
+  `Keeping`, those and a keep over its plugin's own documents; what they come to (`Asked`,
+  `Called`) or why one was not made (`MoveError`). ← `id`, `place`, `visibility`, `message`,
+  `store`, `document`, `spend`, `durable`, `provider`, `tool`
 - **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
   or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
   schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
