@@ -18,7 +18,10 @@ final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P
   * the asker, the author of the message the turn at the call answers; reported where that
   * turn's reply is posted, through the edge its conversation came by ([[Report.Posted]],
   * [[grit.core.store.Origin.edge]]); kept under the id its call makes
-  * ([[grit.core.id.ScheduleId.asked]]); and the asker's alone to list and cancel. A desk holds
+  * ([[grit.core.id.ScheduleId.asked]]); and the asker's to list and cancel. The asker is
+  * the person that message's account is now (ADR 0032); while a trusted realm links that
+  * account to an email's person, what was asked through it before, kept for its home, is listed,
+  * cancelled and capped through it beside the person's own. A desk holds
   * its plugin's job names, and refuses a booking of any other job with
   * [[DeskRefusal.NotOwn]]. Every method is [[DeskRefusal.Unavailable]] when the store fails.
   */
@@ -34,7 +37,8 @@ trait ScheduleDesk extends caps.SharedCapability {
     *     draft grit has not posted), or the call's turn is not recorded;
     *   - `Past` when `when` is not after now;
     *   - `TooFar` when it is more than [[ScheduleDesk.Horizon]] after now;
-    *   - `TooMany` when the asker has [[ScheduleDesk.PendingCap]] pending, of any job;
+    *   - `TooMany` when the asker, with the asking account's home while it is linked, has
+    *     [[ScheduleDesk.PendingCap]] pending, of any job;
     *   - `NotOwn`.
     */
   def ask[P <: caps.Pure](

@@ -45,7 +45,8 @@ import grit.core.visibility.{Label, Subject}
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the principal whose
-  * account wrote its call's turn's first entry (`grit.authors`), and its address that turn's
+  * account wrote its call's turn's first entry (`grit.authors`), listing, cancelling and capping
+  * beside that account's home's, and its address that turn's
   * `grit.deliveries` row's. Ids order bytewise (`COLLATE "C"`), as the in-memory fake orders
   * them; instants are kept to the microsecond.
   */
@@ -313,11 +314,11 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
               case Some(r) => Right(kept(id, r.schedule, booking.job))
               case None =>
                 asker(call.turn).flatMap {
-                  case Some((by, Some(to))) =>
+                  case Some((by, home, Some(to))) =>
                     if (!at.isAfter(now)) Right(Left(DeskRefusal.Past(at, now)))
                     else if (at.isAfter(limit)) Right(Left(DeskRefusal.TooFar(at, limit)))
                     else
-                      pendingOf(by).flatMap { mine =>
+                      pendingOf(by, home).flatMap { mine =>
                         if (mine.size >= ScheduleDesk.PendingCap)
                           Right(Left(DeskRefusal.TooMany(ScheduleDesk.PendingCap)))
                         else
@@ -340,8 +341,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             .write(Subject.Turn(call.turn)) {
               asker(call.turn).flatMap {
                 case None => Right(Vector.empty)
-                case Some((by, _)) =>
-                  pendingOf(by).flatMap(mine =>
+                case Some((by, home, _)) =>
+                  pendingOf(by, home).flatMap(mine =>
                     readable(mine.map(_._1)).map(read => mine.filter((id, _) => read(id)))
                   )
               }
@@ -364,7 +365,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
           val now = clock.now()
           written(jot.write(Subject.Turn(call.turn)) {
             for {
-              by <- asker(call.turn).map(_.map(_._1))
+              by <- asker(call.turn).map(_.fold(Set.empty[PrincipalId])((p, h, _) => Set(p, h)))
               r <- row(id, lock = true)
               read <- readable(Vector(id))
               done <- r.filter(r =>
@@ -395,18 +396,19 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
   ): Either[DeskRefusal, A] =
     e.left.map(DeskRefusal.Unavailable(_)).flatMap(identity)
 
-  /** The principal whose account wrote `turn`'s first entry, as linked now, and where its reply
-    * is posted, through its conversation's edge; `None` when that entry is not inbound, or
-    * `turn` holds none.
+  /** The principal whose account wrote `turn`'s first entry, as linked now, that account's
+    * home, and where its reply is posted, through its conversation's edge; `None` when that
+    * entry is not inbound, or `turn` holds none.
     */
   private def asker(turn: TurnRef)(using
       tx: Tx^
-  ): Either[StoreError, Option[(PrincipalId, Option[Destination])]] =
+  ): Either[StoreError, Option[(PrincipalId, PrincipalId, Option[Destination])]] =
     many(
-      """SELECT a.principal_id, d.address, c.origin::text
+      """SELECT a.principal_id, d.address, c.origin::text, i.home
         |  FROM (SELECT id FROM grit.entries WHERE conversation_id = ?::uuid AND turn_seq = ?
         |         ORDER BY seq LIMIT 1) e
         |  JOIN grit.authors a ON a.entry_id = e.id
+        |  JOIN grit.identities i ON i.account = a.account
         |  JOIN grit.conversations c ON c.id = ?::uuid
         |  LEFT JOIN grit.deliveries d ON d.workflow = ?""".stripMargin
     ) { ps =>
@@ -420,6 +422,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         .map(origin =>
           (
             PrincipalIds.stored(rs.getString(1)),
+            PrincipalIds.stored(rs.getString(4)),
             Option(rs.getString(2)).map(Destination(origin.edge, _))
           )
         )
@@ -430,24 +433,36 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       }
     )
 
-  /** `by`'s pending asked schedules, of any job, under a lock on `by` that serialises every
-    * desk's asks for them, so none passes the cap beside another.
+  /** The pending asked schedules of `by` and of `home`, the asking account's own (the same
+    * principal while it is linked to no one), of any job, under a lock on each, taken in their
+    * ids' order, that serialises every desk's asks for them, so none passes the cap beside
+    * another and two asks through two accounts of one person never wait on each other in
+    * opposite orders.
     */
-  private def pendingOf(by: PrincipalId)(using
+  private def pendingOf(by: PrincipalId, home: PrincipalId)(using
       tx: Tx^
-  ): Either[StoreError, Vector[(ScheduleId, Schedule)]] =
+  ): Either[StoreError, Vector[(ScheduleId, Schedule)]] = {
+    val whose = Vector(PrincipalId.value(by), PrincipalId.value(home)).distinct.sorted
     for {
-      _ <- many("SELECT 1 FROM grit.principals WHERE id = ? FOR NO KEY UPDATE")(
-        _.setString(1, PrincipalId.value(by))
-      )(_ => ()).map(_.size)
+      _ <- whose.foldLeft[Either[StoreError, Unit]](Right(())) { (so, id) =>
+        so.flatMap(_ =>
+          many("SELECT 1 FROM grit.principals WHERE id = ? FOR NO KEY UPDATE")(
+            _.setString(1, id)
+          )(_ => ()).map(_ => ())
+        )
+      }
       rows <- many(
         s"""SELECT $Selected FROM $Labelled
-           | WHERE s.source = 'asked' AND s.ended IS NULL AND s.principal = ?""".stripMargin
-      )(_.setString(1, PrincipalId.value(by)))(rs => (rs.getString("id"), stored(rs)))
+           | WHERE s.source = 'asked' AND s.ended IS NULL AND s.principal IN (?, ?)""".stripMargin
+      ) { ps =>
+        ps.setString(1, PrincipalId.value(by))
+        ps.setString(2, PrincipalId.value(home))
+      }(rs => (rs.getString("id"), stored(rs)))
       read <- traverse(rows) { (id, row) =>
         ScheduleId.of(id).flatMap(i => row.map(i -> _))
       }
     } yield read
+  }
 
   /** Which of `ids`, asked schedules, the transaction reads: as anything kept in the room that
     * asked for it (its `room_id`).
