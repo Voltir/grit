@@ -131,8 +131,8 @@ object SlackEdgeLiveTests extends TestSuite {
       _ => ()
     )
 
-  /** `inner`, but each turn started and each message heard is first shown to `seen`: the
-    * turn, or the account it was heard through.
+  /** `inner`, but each turn started and each message ingested or heard is first shown to
+    * `seen`: the turn, or the account the message was written through.
     */
   private final class Watched(inner: Inbox, seen: Either[Account, TurnRef] -> Unit) extends Inbox {
     def ingest(
@@ -140,7 +140,10 @@ object SlackEdgeLiveTests extends TestSuite {
         source: SourceId,
         message: Message.User,
         by: Account
-    ): Either[InboxError, TurnRef] = inner.ingest(origin, source, message, by)
+    ): Either[InboxError, TurnRef] = {
+      seen(Left(by))
+      inner.ingest(origin, source, message, by)
+    }
     def hear(
         origin: Origin,
         source: SourceId,
@@ -229,7 +232,7 @@ object SlackEdgeLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a new user's first-ever message is recorded once Slack has answered for them, which enrols and attests them"
+      "a new user's first-ever message is recorded once Slack has answered for them, which attests them a full member"
     ) {
       val config = TestPostgres.freshDatabase("slack_attest_new")
       val slack = new FakeSlack
@@ -254,12 +257,14 @@ object SlackEdgeLiveTests extends TestSuite {
       val slack = new FakeSlack
       slack.standings = Map(UserId(Ana) -> Standing.Outside)
       val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
-      val (received, opened) =
+      val (received, opened, standing) =
         try {
           launch(engine, engine.entries, new CountingProvider)
           memberAnHourAgo(engine, config)
           // As the turn would open once started: its asker cleared as the store says then.
           var opened = Vector.empty[Either[String, Label]]
+          // Whether its author is a full member as the store says when the message is recorded.
+          var standing = Vector.empty[Vector[String]]
           // Assumed pure: called only by the edge's receive, on the test's thread, inside the
           // deliver the test waits on; neither the closure nor what it writes outlives the test.
           val inbox = new Watched(
@@ -270,14 +275,14 @@ object SlackEdgeLiveTests extends TestSuite {
                   .write(Subject.Turn(turn))((tx: Tx^) ?=> Right(Tx.cleared(tx)))
                   .left
                   .map(_.toString)
-              case Left(_) => ()
+              case Left(by) => standing = standing :+ member(config, by)
             }
           )
           val _ = slack.listen(attesting(engine, slack, inbox).receive)
-          (slack.deliver(mention("1.0")), opened)
+          (slack.deliver(mention("1.0")), opened, standing)
         } finally engine.close()
-      (received, opened, member(config, ana)) ==>
-        (true, Vector(Right(Label.Public)), Vector("false"))
+      (received, opened, standing) ==>
+        (true, Vector(Right(Label.Public)), Vector(Vector("false")))
     }
 
     test(
