@@ -3,6 +3,8 @@ package grit.app.main
 import java.time.Instant
 import java.util.UUID
 
+import scala.util.Using
+
 import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.{Inbox, InboxContract}
@@ -10,10 +12,10 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
-import grit.core.store.{Entry, Origin, Payload, StoreError}
+import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{Subject, Visibility}
-import grit.dbos.engine.LiveEngine
-import grit.dbos.sql.TestPostgres
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.turn.Turn
 
 /** The inbox contract, kept by SqlInbox against a real Postgres, under a launched engine (a
@@ -27,12 +29,32 @@ object SqlInboxContractTests extends InboxContract {
   /** A database of its own for each other visibility: a start that drops a compartment the
     * database ran under is refused.
     */
+  /** `origin`'s conversation, in the database `config` names, made to name as its creator an
+    * account no account could be, which the store reads as `Invalid`.
+    */
+  private def unreadable(engine: Engine^, config: DbConfig, origin: Origin): Unit = {
+    val id = engine.db
+      .read(Subject.Public)(engine.conversations.find(origin))
+      .fold(e => sys.error(e.toString), _.map(_.id))
+      .getOrElse(sys.error(s"no conversation of $origin"))
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Vector(
+        "INSERT INTO grit.principals (id, kind) VALUES ('unreadable', 'person') ON CONFLICT DO NOTHING",
+        "INSERT INTO grit.identities (account, home) VALUES ('no one', 'unreadable') ON CONFLICT DO NOTHING",
+        s"UPDATE grit.conversations SET created_by = 'no one' WHERE id = '${ConversationId.value(id)}'::uuid"
+      ).foreach(sql => Using.resource(conn.prepareStatement(sql))(ps => ps.executeUpdate()))
+    }
+  }
+
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
   ): A = {
-    val engine = LiveEngine.open(
+    val db =
       if (visibility == Visibility.Shipped) config
-      else TestPostgres.freshDatabase("sql_inbox_contract_labelled"),
+      else TestPostgres.freshDatabase("sql_inbox_contract_labelled")
+    val engine = LiveEngine.open(
+      db,
       Turn.Epoch,
       budget,
       visibility
@@ -182,7 +204,8 @@ object SqlInboxContractTests extends InboxContract {
           origin =>
             engine.db
               .read(Subject.Public)(engine.conversations.find(origin))
-              .fold(e => sys.error(e.toString), _.map(_.label))
+              .fold(e => sys.error(e.toString), _.map(_.label)),
+          origin => unreadable(engine, db, origin)
         )
       )
     } finally engine.close()

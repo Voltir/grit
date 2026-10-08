@@ -10,7 +10,8 @@ import grit.core.visibility.Label
   * the `Tx`; each new conversation's id is `c` and its number, from 1, never reused after a
   * removal, and it is created at the epoch. A removal deletes the conversation's entries and
   * next positions in `entries`, when given; nothing of any other store (its periods and
-  * verdicts are kept).
+  * verdicts are kept). A conversation in [[unreadable]] is found as a row the store cannot
+  * read: `Invalid`, as SqlConversationStore reads a malformed one.
   */
 final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None)
     extends ConversationStore {
@@ -21,10 +22,22 @@ final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None
   @caps.unsafe.untrackedCaptures
   private var made = 0
 
+  /** The conversations [[find]] and [[get]] read as `Invalid`. */
+  @caps.unsafe.untrackedCaptures
+  var unreadable = Set.empty[ConversationId]
+
+  /** `found`, unless it is [[unreadable]]. */
+  private def read(found: Option[Conversation]): Either[StoreError, Option[Conversation]] =
+    found match {
+      case Some(c) if unreadable(c.id) =>
+        Left(StoreError.Invalid(s"conversation ${ConversationId.value(c.id)} is unreadable"))
+      case other => Right(other)
+    }
+
   def findOrCreate(origin: Origin, by: Account, label: Label)(using
       Tx^
   ): Either[StoreError, Conversation] =
-    all.find(_.origin == origin) match {
+    read(all.find(_.origin == origin)).flatMap {
       case Some(found) => Right(found)
       case None =>
         made += 1
@@ -34,10 +47,10 @@ final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None
     }
 
   def find(origin: Origin)(using Tx^): Either[StoreError, Option[Conversation]] =
-    Right(all.find(_.origin == origin))
+    read(all.find(_.origin == origin))
 
   def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]] =
-    Right(all.find(_.id == id))
+    read(all.find(_.id == id))
 
   /** The call each conversation's opening post was made by, as an inbox keeps it. */
   @caps.unsafe.untrackedCaptures

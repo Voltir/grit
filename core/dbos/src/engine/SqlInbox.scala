@@ -576,12 +576,7 @@ final class SqlInbox(
           case Right(_) => conn.commit()
           case Left(_) => conn.rollback()
         }
-        result.left.map {
-          case StoreError.DatabaseError(cause) => InboxError.Unavailable(cause)
-          case StoreError.Invalid(cause) => InboxError.Unavailable(cause)
-          case StoreError.DuplicateId(id) =>
-            InboxError.Unavailable(s"entry ${EntryId.value(id)} appeared mid-transaction")
-        }
+        result.left.map(InboxError.stored)
       }
     } catch {
       case NonFatal(e) => Left(SqlInbox.unavailable(e))

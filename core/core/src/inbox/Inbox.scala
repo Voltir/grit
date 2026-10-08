@@ -3,13 +3,13 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.job.Slot
 import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
-import grit.core.store.Origin
+import grit.core.store.{Origin, StoreError}
 
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
   * that is unsure whether one happened repeats it.
@@ -164,6 +164,17 @@ enum InboxError {
 }
 
 object InboxError {
+
+  /** What an inbox reports for its store's failure `e`: [[Invalid]] for what the store holds
+    * or is asked and cannot make good, which no retry changes; [[Unavailable]] for a database
+    * that failed, or an entry another writer made meanwhile, which a retry finds.
+    */
+  def stored(e: StoreError): InboxError = e match {
+    case StoreError.DatabaseError(cause) => Unavailable(cause)
+    case StoreError.Invalid(why) => Invalid(why)
+    case StoreError.DuplicateId(id) =>
+      Unavailable(s"entry ${EntryId.value(id)} appeared mid-transaction")
+  }
 
   /** What an edge tells a person, once, in a thread whose message was [[Sealed]]. */
   val SealedReply: String =

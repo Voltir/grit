@@ -113,7 +113,11 @@ object InMemoryInboxTests extends InboxContract {
           inbox.schedules
             .replied(slot, version, at)(using TestTx.fake)
             .fold(e => sys.error(e.toString), identity),
-        o => inbox.conversations.all.find(_.origin == o).map(_.label)
+        o => inbox.conversations.all.find(_.origin == o).map(_.label),
+        o =>
+          inbox.conversations.all
+            .find(_.origin == o)
+            .foreach(c => inbox.conversations.unreadable += c.id)
       )
     )
   }

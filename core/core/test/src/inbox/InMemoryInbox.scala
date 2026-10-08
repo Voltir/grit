@@ -10,6 +10,7 @@ import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{
+  Conversation,
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
@@ -87,6 +88,10 @@ final class InMemoryInbox(
 
   private def unavailable = Left(InboxError.Unavailable("the database is down"))
 
+  /** `origin`'s conversation, as [[conversations]] reads it. */
+  private def found(origin: Origin): Either[StoreError, Option[Conversation]] =
+    inTx(conversations.find(origin))
+
   def ingest(
       origin: Origin,
       source: SourceId,
@@ -142,7 +147,7 @@ final class InMemoryInbox(
       inTx(speech.heard(turn, reach)) match {
         // A message recorded as a turn before is not heard, and keeps no reach.
         case Left(StoreError.Invalid(_)) | Right(()) => Right(())
-        case Left(other) => Left(InboxError.Unavailable(other.toString))
+        case Left(other) => Left(InboxError.stored(other))
       }
     }
 
@@ -162,8 +167,8 @@ final class InMemoryInbox(
     if (down) unavailable
     else
       inTx {
-        val known = conversations.all.find(_.origin == origin)
         val result: Either[StoreError, Either[InboxError, TurnRef]] = for {
+          known <- found(origin)
           before <- known.fold(Right(None): Either[StoreError, Option[Entry]])(c =>
             entries.get(InboundId.of(c.id, source))
           )
@@ -196,7 +201,7 @@ final class InMemoryInbox(
               }
           }
         } yield turn
-        result.left.map(e => InboxError.Unavailable(e.toString)).flatMap(identity)
+        result.left.map(InboxError.stored).flatMap(identity)
       }
 
   /** [[InboxError.Sealed]] for a direct message whose conversation, `known`, was created at a
@@ -204,7 +209,7 @@ final class InMemoryInbox(
     */
   private def sealedOf(
       origin: Origin,
-      known: Option[grit.core.store.Conversation]
+      known: Option[Conversation]
   ): Option[InboxError] = origin match {
     case d @ Origin.Direct(_, _) =>
       known.filter(c => !labelOf(origin).dominates(c.label)).map(_ => InboxError.Sealed(d))
@@ -234,62 +239,71 @@ final class InMemoryInbox(
   ): Either[InboxError, Boolean] =
     if (down) unavailable
     else if (origin.place.direct) Left(InboxError.Invalid("grit's posts begin no direct message"))
-    else if (conversations.all.exists(_.origin == origin)) Right(false)
     else
       inTx {
-        val result: Either[StoreError, Boolean] = for {
-          conversation <- conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room))
-          next <- entries.lockNext(conversation.id)
-          _ <- periods.openFor(conversation.id, next.turnSeq, at)
-          _ <- entries.insert(
-            Entry(
-              InboundId.of(conversation.id, source),
-              conversation.id,
-              next.turnSeq,
-              None,
-              next.seq,
-              Payload.Posted(text),
-              at
-            )
-          )
-        } yield {
-          conversations.posts = conversations.posts.updated(conversation.id, request)
-          true
+        val result: Either[StoreError, Boolean] = found(origin).flatMap {
+          case Some(_) => Right(false)
+          case None =>
+            for {
+              conversation <- conversations.findOrCreate(
+                origin,
+                by,
+                visibility.roomLabel(origin.room)
+              )
+              next <- entries.lockNext(conversation.id)
+              _ <- periods.openFor(conversation.id, next.turnSeq, at)
+              _ <- entries.insert(
+                Entry(
+                  InboundId.of(conversation.id, source),
+                  conversation.id,
+                  next.turnSeq,
+                  None,
+                  next.seq,
+                  Payload.Posted(text),
+                  at
+                )
+              )
+            } yield {
+              conversations.posts = conversations.posts.updated(conversation.id, request)
+              true
+            }
         }
-        result.left.map(e => InboxError.Unavailable(e.toString))
+        result.left.map(InboxError.stored)
       }
 
   def begun(origin: Origin): Either[InboxError, Boolean] =
-    if (down) unavailable else Right(conversations.all.exists(_.origin == origin))
+    if (down) unavailable else found(origin).map(_.nonEmpty).left.map(InboxError.stored)
 
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
     if (down) unavailable
     else
       inTx {
-        conversations.all.find(_.origin == origin) match {
-          case None => Right(None)
-          case Some(c) =>
-            entries
-              .get(InboundId.of(c.id, source))
-              .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
-                TurnRef(e.conversationId, e.turnSeq)
-              })
-              .left
-              .map(e => InboxError.Unavailable(e.toString))
-        }
+        found(origin)
+          .flatMap {
+            case None => Right(None)
+            case Some(c) =>
+              entries
+                .get(InboundId.of(c.id, source))
+                .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
+                  TurnRef(e.conversationId, e.turnSeq)
+                })
+          }
+          .left
+          .map(InboxError.stored)
       }
 
   def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]] =
     if (down) unavailable
     else
       inTx {
-        conversations.all.find(_.origin == origin) match {
-          case None => Right(Set.empty)
-          case Some(c) =>
-            Right(
+        found(origin)
+          .map {
+            case None => Set.empty
+            case Some(c) =>
               sources.filter(s => entries.get(InboundId.of(c.id, s)).exists(_.nonEmpty))
-            )
-        }
+          }
+          .left
+          .map(InboxError.stored)
       }
 
   def progress(turn: TurnRef): Either[InboxError, Progress] =
@@ -321,8 +335,7 @@ final class InMemoryInbox(
             }
             (turn, state)
           }
-          val stored = (e: Either[StoreError, Unit]) =>
-            e.left.map(x => InboxError.Unavailable(x.toString))
+          val kept = (e: Either[StoreError, Unit]) => e.left.map(InboxError.stored)
           Starting.of(
             rule,
             next,
@@ -352,23 +365,23 @@ final class InMemoryInbox(
                 case Some(turn) =>
                   if (!started.contains(turn)) started = started :+ turn
                   Right(Slotted.Restarted(turn))
-                case None => Left(InboxError.Unavailable("a run restarted, with none recorded"))
+                case None => Left(InboxError.Invalid("a run restarted, with none recorded"))
               }
             case Starting.Fail =>
               last match {
                 case Some((slot, _)) =>
-                  stored(schedules.failed(schedule, now))
+                  kept(schedules.failed(schedule, now))
                     .map(_ => Slotted.Failed(Slot(schedule, slot)))
-                case None => Left(InboxError.Unavailable("a run failed, with none started"))
+                case None => Left(InboxError.Invalid("a run failed, with none started"))
               }
             case Starting.Miss(at) =>
-              stored(schedules.missed(schedule, now)).map(_ => Slotted.Missed(Slot(schedule, at)))
+              kept(schedules.missed(schedule, now)).map(_ => Slotted.Missed(Slot(schedule, at)))
             case Starting.Passed(following) =>
               last match {
                 case Some((slot, _)) =>
-                  stored(schedules.passed(schedule, following, now))
+                  kept(schedules.passed(schedule, following, now))
                     .map(_ => Slotted.Ran(Slot(schedule, slot)))
-                case None => Left(InboxError.Unavailable("a slot ran, with no run started"))
+                case None => Left(InboxError.Invalid("a slot ran, with no run started"))
               }
           }
       }
@@ -388,11 +401,13 @@ final class InMemoryInbox(
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable
     else
-      conversations.all.find(_.id == turn.conversationId).flatMap(c => Slot.of(c.origin)) match {
-        case Some(slot) => Left(InboxError.SlotRun(slot))
-        case None =>
-          if (!started.contains(turn)) started = started :+ turn
-          Right(())
+      inTx(conversations.get(turn.conversationId)).left.map(InboxError.stored).flatMap { c =>
+        c.flatMap(c => Slot.of(c.origin)) match {
+          case Some(slot) => Left(InboxError.SlotRun(slot))
+          case None =>
+            if (!started.contains(turn)) started = started :+ turn
+            Right(())
+        }
       }
 
   def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit] =

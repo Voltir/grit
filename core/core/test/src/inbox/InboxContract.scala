@@ -483,6 +483,27 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "what the store holds but cannot read is Invalid on every path, never Unavailable: no retry makes it good"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "unreadable")
+        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
+        store.unreadable(here)
+        Vector(
+          inbox.ingest(here, SourceId("m2"), said("two"), Account.Local).map(_ => ()),
+          inbox.hear(here, SourceId("m3"), "three", Account.Local, Said, Reach.Nowhere),
+          inbox
+            .posted(here, SourceId("root"), "four", PostedAt, Asking, Account.Local)
+            .map(_ => ()),
+          inbox.begun(here).map(_ => ()),
+          inbox.ingested(here, SourceId("m1")).map(_ => ()),
+          inbox.recorded(here, Set(SourceId("m1"))).map(_ => ()),
+          first.flatMap(inbox.startTurn)
+        ).map(_.left.map(_.getClass.getSimpleName)) ==> Vector.fill(7)(Left("Invalid"))
+      }
+    }
+
     test("a post records nothing once its origin has anything, a repeat of itself included") {
       withInbox(Uncapped) { (inbox, store) =>
         val heard = Origin.Task("inbox", "posted-late")
@@ -558,7 +579,8 @@ object InboxContract {
     * those due; `end` ends a run, which its job left, without a
     * reply, and returns once it has; `replied` records a slot's run at a version replied, as of a
     * time, as the run's reply does; `labelled`, the label an origin's conversation was created
-    * at.
+    * at; `unreadable` leaves an origin's conversation, which exists, holding what its store
+    * reads as `Invalid`.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -575,6 +597,7 @@ object InboxContract {
       waiting: Instant => Vector[ScheduleId],
       end: TurnRef => Unit,
       replied: (Slot, Int, Instant) => Unit,
-      labelled: Origin => Option[Label]
+      labelled: Origin => Option[Label],
+      unreadable: Origin => Unit
   )
 }
