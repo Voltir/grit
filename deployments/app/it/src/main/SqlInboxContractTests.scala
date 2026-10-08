@@ -6,7 +6,8 @@ import java.util.UUID
 import scala.util.Using
 
 import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.identity.Account
+import grit.core.admin.{Answer, Command}
+import grit.core.identity.{Account, Standing, TestAccounts, Vouched}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
@@ -45,24 +46,26 @@ object SqlInboxContractTests extends InboxContract {
     }
   }
 
-  /** `room`, in the database `config` names, made quiet, as a person's command would. */
-  private def quieted(config: DbConfig, room: Place): Unit =
-    LiveDb.transaction(config) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      val path = ujson.Arr.from(room.segments.map(ujson.Str(_))).render()
-      Vector(
-        """INSERT INTO grit.places (path) VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))
-          |ON CONFLICT (path) DO NOTHING""".stripMargin,
-        """INSERT INTO grit.rooms (place_id, quiet)
-          |SELECT id, true FROM grit.places WHERE path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
-          |ON CONFLICT (place_id) DO UPDATE SET quiet = true""".stripMargin
-      ).foreach(sql =>
-        Using.resource(conn.prepareStatement(sql)) { ps =>
-          ps.setString(1, path)
-          ps.executeUpdate()
-        }
+  /** A full member of [[InboxContract.T1]], who makes a room quiet in [[quieted]]. */
+  private val Quieter: Account = TestAccounts.account("slack:T1/U-quieter")
+
+  /** `room` made quiet through `engine`'s administration by [[Quieter]], attested a full member
+    * first, as a person's command is.
+    */
+  private def quieted(engine: Engine^, room: Place): Unit = {
+    engine.jot
+      .write(Subject.Public)(
+        engine
+          .voucher(Set(InboxContract.T1, InboxContract.T2), InboxContract.Claimed)
+          .vouch(Vouched(Quieter, Standing.Full(None)))
       )
+      .fold(e => sys.error(e.toString), _ => ())
+    engine.administration.run(Quieter, room, Command.Quiet(true), Instant.EPOCH) match {
+      case Right(Answer.Refused(why)) => sys.error(s"quieting refused: $why")
+      case Right(_) => ()
+      case Left(e) => sys.error(e.toString)
     }
+  }
 
   /** Over the suite's shared database under the shipped visibility, and over a database of its
     * own under any other: an engine refuses to start under compartments that drop one its
@@ -256,7 +259,7 @@ object SqlInboxContractTests extends InboxContract {
                   .vouch(vouched)
               )
               .fold(e => sys.error(e.toString), _ => ()),
-          room => quieted(db, room)
+          room => quieted(engine, room)
         )
       )
     } finally engine.close()
