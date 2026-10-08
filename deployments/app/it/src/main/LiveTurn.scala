@@ -125,7 +125,8 @@ object LiveTurn {
               engine.toolSets,
               engine.requests,
               engine.edgeDirectory,
-              engine.voices
+              engine.voices,
+              engine.askers
             ),
             new LinearAssembler(
               entries,

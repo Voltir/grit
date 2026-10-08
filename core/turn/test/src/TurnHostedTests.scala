@@ -5,7 +5,8 @@ import scala.collection.immutable.VectorMap
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
-import grit.core.id.{TestCallSlots, ToolCallId}
+import grit.core.id.{TestCallSlots, TestPrincipalIds, ToolCallId}
+import grit.core.identity.Principal
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
@@ -183,6 +184,30 @@ object TurnHostedTests extends TestSuite {
         (TestCallSlots.at(turn, index = 1), Permit.Free)
       )
       results(provider).map(_.content) ==> Vector("read a.txt", "read b.txt")
+    }
+
+    test("a turn's request records its asker") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
+      val provider = model(("t1", "fetch", "a.txt"))
+      val dana = askedBy(Some(Principal.Person(TestPrincipalIds.stored("dana"), Set.empty)))
+      durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = dana)) ==> Done
+      edge.sent.map(_.principal) ==> Vector(TestPrincipalIds.stored("dana"))
+    }
+
+    test("a turn with no asker sends no request and answers Failed") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
+      val provider = model(("t1", "fetch", "a.txt"))
+      val nobody = askedBy(None)
+      durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = nobody)) ==> Done
+      edge.sent ==> Vector.empty
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("This turn has no asker to make this call for, so it did not run.", true))
     }
 
     test(

@@ -132,7 +132,8 @@ object TurnSpeechTests extends TestSuite {
           ToolSets,
           edges,
           edges,
-          new grit.core.store.InMemoryVoiceStore
+          new grit.core.store.InMemoryVoiceStore,
+          LocalAsker
         )
         val done = new InMemoryDurable().run(w.turn.workflowId)(
           turnBodyWith(

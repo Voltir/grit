@@ -130,7 +130,8 @@ object RecordTurnHistories {
             ToolSets,
             edges,
             edges,
-            new grit.core.store.InMemoryVoiceStore
+            new grit.core.store.InMemoryVoiceStore,
+            LocalAsker
           )
         )
       )

@@ -163,7 +163,8 @@ private[grit] object Launch {
             engine.toolSets,
             engine.requests,
             engine.edgeDirectory,
-            engine.voices
+            engine.voices,
+            engine.askers
           ),
           assembler,
           classifier,
@@ -420,7 +421,8 @@ private[grit] object Launch {
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
     * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`
     * resolves them, explained as read through `store` ([[Cleared]]); the
-    * kit alone holds the engine's askers, so no plugin's tool can read who asked. Throws when
+    * kit, and the turn it launches, which reads them in its dispatch, alone hold the engine's
+    * askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
     */
   private[run] def own(

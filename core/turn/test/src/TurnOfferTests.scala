@@ -83,7 +83,8 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore
+      new InMemoryVoiceStore,
+      TurnFixtures.LocalAsker
     )
     val tooling = TurnTooling[{}](
       Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d.toString), identity),
@@ -143,7 +144,8 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore
+      new InMemoryVoiceStore,
+      TurnFixtures.LocalAsker
     )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
@@ -203,7 +205,8 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore
+      new InMemoryVoiceStore,
+      TurnFixtures.LocalAsker
     )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
@@ -261,7 +264,8 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore
+      new InMemoryVoiceStore,
+      TurnFixtures.LocalAsker
     )
     val slackTeams = Place.under(grit.core.place.Namespace.Slack, Vector.empty)
     val tooling = TurnTooling[{}](
@@ -400,7 +404,15 @@ object TurnOfferTests extends TestSuite {
       edges.advertiseAs(edges.register(Set(at)), at, set, Vector.empty)
     }
     val hosting =
-      TurnHosting(conversations, Prompts, ToolSets, edges, edges, new InMemoryVoiceStore)
+      TurnHosting(
+        conversations,
+        Prompts,
+        ToolSets,
+        edges,
+        edges,
+        new InMemoryVoiceStore,
+        TurnFixtures.LocalAsker
+      )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
       Toolbox.Empty,

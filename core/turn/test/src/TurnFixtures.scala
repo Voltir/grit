@@ -27,9 +27,17 @@ import grit.core.host.{
   Shell,
   Workspace
 }
-import grit.core.id.{CallSlot, ConversationId, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  EntryId,
+  PrincipalId,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.id.{EntrySeq, PeriodSeq, TurnSeq}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Principal}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -40,6 +48,7 @@ import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{InMemoryStitchStore, Tuning}
 import grit.core.store.{
+  Askers,
   Db,
   Entry,
   EntryStore,
@@ -143,8 +152,18 @@ object TurnFixtures {
   ): TurnHosting = {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
-    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices)
+    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, LocalAsker)
   }
+
+  /** Askers that resolve every turn to `asker`. */
+  def askedBy(asker: Option[Principal]): Askers = new Askers {
+    def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(asker)
+  }
+
+  /** The fixture's asker for every turn: the local person, as a terminal session's turns are
+    * asked.
+    */
+  val LocalAsker: Askers = askedBy(Some(Principal.Person(PrincipalId.Local, Set.empty)))
 
   /** A search that finds nothing: what a turn whose conversation is never stitched reads. */
   object NoSearch extends grit.core.store.EntrySearch {
@@ -611,7 +630,8 @@ object TurnFixtures {
     * `served`, its model offered `hosted` where the edge serves them, its tool sets kept in
     * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
     * fixture's TUI session unless given, linked to a service by `worksIn`, and to services it
-    * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]).
+    * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]); its asker is
+    * as `askers` resolves it.
     */
   def hostedBody(
       entries: EntryStore,
@@ -627,7 +647,8 @@ object TurnFixtures {
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       knowledge: grit.core.triage.Corpora = grit.core.triage.Corpora.Empty,
       weighing: TurnWeighing^ = noTriage(),
-      ledger: UsageLedger = new InMemoryUsageLedger
+      ledger: UsageLedger = new InMemoryUsageLedger,
+      askers: Askers = LocalAsker
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -649,7 +670,8 @@ object TurnFixtures {
           toolSets,
           requests,
           served.edges,
-          new InMemoryVoiceStore
+          new InMemoryVoiceStore,
+          askers
         ),
         new LinearAssembler(
           entries,
@@ -1457,7 +1479,8 @@ object TurnFixtures {
         ToolSets,
         new grit.core.edge.InMemoryEdges,
         new grit.core.edge.InMemoryEdges,
-        new grit.core.store.InMemoryVoiceStore
+        new grit.core.store.InMemoryVoiceStore,
+        LocalAsker
       )
       val done = durable.run(turn.workflowId)(
         turnBodyWith(

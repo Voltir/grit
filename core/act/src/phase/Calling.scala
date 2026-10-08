@@ -6,7 +6,7 @@ import grit.core.act.{ActsFor, Gates}
 import grit.core.approval.Approval
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{EdgeDirectory, Permit, RequestState, ToolRequest, ToolRequests}
-import grit.core.id.{CallSlot, PrincipalId, ToolCallId}
+import grit.core.id.{CallSlot, PrincipalId, ToolCallId, TurnRef}
 import grit.core.identity.Principal
 import grit.core.job.ScheduleStore
 import grit.core.place.{Place, Service}
@@ -82,23 +82,28 @@ object Calling {
     }
 
   /** Whom `actsFor` names for the call at `cs`, read in this transaction: its turn's asker
-    * through `askers` (grit as [[PrincipalId.Grit]], a person as their id), or its schedule's
-    * principal through `schedules`. `None` when there is no asker or the schedule is gone: the
-    * call is not sent.
+    * ([[asker]]), or its schedule's principal through `schedules`. `None` when there is no asker
+    * or the schedule is gone: the call is not sent.
     */
   def principal(actsFor: ActsFor, cs: CallSlot, askers: Askers, schedules: ScheduleStore)(using
       Tx^
   ): Either[StoreError, Option[PrincipalId]] =
     actsFor match {
-      case ActsFor.Asker =>
-        askers
-          .of(cs.turn)
-          .map(_.map {
-            case Principal.Grit => PrincipalId.Grit
-            case Principal.Person(id, _) => id
-          })
+      case ActsFor.Asker => asker(cs.turn, askers)
       case ActsFor.Scheduled(schedule) => schedules.read(schedule).map(_.map(_.principal))
     }
+
+  /** `turn`'s asker, read in this transaction through `askers`, as a request names them: grit
+    * as [[PrincipalId.Grit]], a person as their id. `None` when the turn has none: its calls are
+    * not sent.
+    */
+  def asker(turn: TurnRef, askers: Askers)(using Tx^): Either[StoreError, Option[PrincipalId]] =
+    askers
+      .of(turn)
+      .map(_.map {
+        case Principal.Grit => PrincipalId.Grit
+        case Principal.Person(id, _) => id
+      })
 
   /** The request for the call at `cs`, bound to `hosted`, addressed to `place`, let through by
     * `permit`, for `principal`, from `cs`'s conversation.

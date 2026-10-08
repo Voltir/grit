@@ -9,6 +9,7 @@ import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document, DocumentSearch}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
+import grit.core.edge.Permit
 import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
@@ -1151,10 +1152,11 @@ object Turn {
                     val step =
                       if (workspace.contains(place)) Step.dispatch(round)
                       else Step.reach(round, place)
-                    d.transact(step, Subject.Turn(turn))(TurnHosted.dispatch(hosting, place, qs))
-                      .map { sent =>
-                        dispatched.update((round.index, place), sent)
-                      }
+                    d.transact(step, Subject.Turn(turn))(
+                      TurnHosted.dispatch(hosting, turn, place, qs, Permit.Free)
+                    ).map { sent =>
+                      dispatched.update((round.index, place), sent)
+                    }
                   }
                 }
               }
