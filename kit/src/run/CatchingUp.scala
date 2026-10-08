@@ -1,6 +1,6 @@
 package grit.kit.run
 
-import java.time.{Duration, Instant, LocalDate}
+import java.time.{Duration, LocalDate}
 
 import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeStores}
