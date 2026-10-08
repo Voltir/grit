@@ -174,9 +174,10 @@ final class Engine private (
   /** Ends now, in a transaction of its own, every attestation `identities` would not make: of an
     * account no realm it trusts holds, or holding an email in no domain it claims. Each is kept
     * as no full member, with no email. Each account it moves home, or whose membership it ends,
-    * is one [[Linking]]. Only a start serving a deployment's edges calls it, with its identities:
-    * an engine opened for a chat, a tool or the eval calls nothing, since its identities need
-    * not be all the deployment trusts. What it ends, the account's next
+    * is one [[Linking]]. Only a start built from a whole deployment, one serving its edges or
+    * catching them up, calls it, with its identities: an engine opened for a chat, a tool or the
+    * eval calls nothing, since a chat may be declared with fewer edges, and so trust fewer
+    * realms. What it ends, the account's next
     * answer from a realm still trusted makes again. It writes no attestation already ended, so a
     * second start under the same identities writes nothing.
     */

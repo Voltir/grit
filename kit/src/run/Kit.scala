@@ -250,9 +250,9 @@ object Kit {
   /** Ends what `deployment`'s identities no longer support ([[Engine.untrust]]), logging each
     * change at info in the `grit.serve` log; and warns there when realms are trusted and no email
     * domain is claimed, so no account is linked to another by email. `Store` when the database
-    * fails. Called by [[open]] alone, so only a start that serves the deployment's edges, and with
-    * them every attester it trusts, withdraws trust: a process running its own chat
-    * ([[launch]]) may be declared with fewer edges, and so trust fewer realms.
+    * fails. Called through [[open]] by [[serve]] and [[catchUp]] alone, both built from the whole
+    * deployment and every attester it trusts; a chat start ([[launch]]) never withdraws trust,
+    * since a chat may be declared with fewer edges, and so trust fewer realms.
     */
   private def trusting(engine: Engine^, deployment: Deployment): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")

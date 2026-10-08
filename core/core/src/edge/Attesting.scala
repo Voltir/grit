@@ -21,7 +21,7 @@ enum Asked {
 /** A source a deployment trusts to say who a realm's accounts are (ADR 0032): a chat
   * workspace's members, a company directory, a login's identity provider. It reports what the
   * source states and decides nothing: [[Attesting]] decides when it is asked, and which emails
-  * count. The plugin of the attester a deployment trusts implements it.
+  * count. The edge that attests a realm implements it, as its own source.
   */
 trait RealmSource {
 

@@ -8,5 +8,3 @@ conversation's topics (ADR 0008), assemble, call the model, send its hosted tool
 the edge serving its directory and wait for their answers, append, summarise.
 Written against `grit.core`'s seams and `Durable`, never DBOS, so its tests run it over
 core's in-memory fakes (`InMemoryDurable`, `InMemoryEntryStore`).
-
-Design: `roadmap/mechanisms/durable-turn.md`.
