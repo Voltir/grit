@@ -38,8 +38,9 @@ In dependency order:
   `.env` file under the real environment) and `Secrets` (the database, OpenRouter's key, and
   Jev's settings for `Topics.Jev`). An edge's credentials are its own `needs`. ← `deployment`
 - **`run`** — running a deployment: `Kit.serve` (the engine and every edge, delivered to
-  every `Kit.DeliverEvery` until the process is stopped, and a declared review's messages
-  picked every `Kit.PickEvery`; each edge's stores carry an `Attesting` over the realms the deployment
+  every `Kit.DeliverEvery` until the process is stopped, a declared review's messages
+  picked every `Kit.PickEvery`, and each attesting edge asked for a look at once and every
+  `Attesting.Every`; each edge's stores carry an `Attesting` over the realms the deployment
   trusts its attester for, whose reports are logged at info, warn or error by
   `Kit.reported`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
@@ -50,7 +51,7 @@ In dependency order:
   edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
   same with its models, classifiers and the jobs' clock given, is how a live test counts
   calls and sets the time);
-  `Serving`, the edges opened, delivered to and closed; `Picking`, a review's pick round,
+  `Serving`, the edges opened, delivered to, asked for looks and closed; `Picking`, a review's pick round,
   of the messages its place may receive;
   `CatchingUp` and `Estimate`, a
   catch-up's flow and its bound; `KeptModelSettings`. ← `deployment`, `environment`

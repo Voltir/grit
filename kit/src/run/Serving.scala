@@ -16,12 +16,19 @@ private[run] object Serving {
       */
     def round(warn: String => Unit): Unit
 
+    /** Asks every edge for one look at the accounts its attester answers for
+      * ([[ServedEdge.Open.attest]]); an edge whose store failed is named to `warn`, and asked
+      * again at the next look.
+      */
+    def attest(warn: String => Unit): Unit
+
     /** Closes every edge, once each, the last opened first. */
     def close(): Unit
   }
 
   private object NoneOpened extends Opened {
     def round(warn: String => Unit): Unit = ()
+    def attest(warn: String => Unit): Unit = ()
     def close(): Unit = ()
   }
 
@@ -33,6 +40,13 @@ private[run] object Serving {
         .left
         .foreach(e => warn(s"${EdgeName.value(name)}: replies not read: $e"))
       rest.round(warn)
+    }
+    def attest(warn: String => Unit): Unit = {
+      first
+        .attest()
+        .left
+        .foreach(e => warn(s"${EdgeName.value(name)}: accounts not attested: $e"))
+      rest.attest(warn)
     }
     def close(): Unit = {
       rest.close()
@@ -65,15 +79,17 @@ private[run] object Serving {
     }
 
   /** Asks `opened` to deliver, a round at a time, `pause` between rounds, until `stopped` says
-    * so before a round.
+    * so before a round; before each round `looking` says, it asks `opened` for a look.
     */
   def deliver(
       opened: Opened^,
       stopped: () => Boolean,
+      looking: () => Boolean,
       pause: () => Unit,
       warn: String => Unit
   ): Unit =
     while (!stopped()) {
+      if (looking()) opened.attest(warn)
       opened.round(warn)
       pause()
     }

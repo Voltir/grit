@@ -73,7 +73,8 @@ object Kit {
     * identities no longer trust is ended ([[trusting]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
-    * What each edge's attesting reports is logged as [[reported]] says.
+    * Each edge that is an attester the deployment trusts is asked for a look once its edges
+    * open and every [[Attesting.Every]] after; what it reports is logged as [[reported]] says.
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
@@ -121,12 +122,20 @@ object Kit {
                     stopped.countDown()
                     val _ = closed.await(ClosedWithin.toMillis, TimeUnit.MILLISECONDS)
                   })
-                  // The next pick round is due at `pickAt`, run between deliveries.
+                  // The next pick round is due at `pickAt`, and the next look at `lookAt`, each
+                  // run between deliveries.
                   var pickAt = Instant.EPOCH
+                  var lookAt = Instant.EPOCH
                   try
                     Serving.deliver(
                       opened,
                       () => stopped.getCount == 0,
+                      () => {
+                        val now = Instant.now()
+                        val due = !now.isBefore(lookAt)
+                        if (due) lookAt = now.plusMillis(Attesting.Every.toMillis)
+                        due
+                      },
                       () => {
                         deployment.review.foreach { review =>
                           val now = Instant.now()
