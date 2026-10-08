@@ -1,6 +1,5 @@
 package grit.core.store
 
-import grit.core.id.ShortHash
 import grit.core.identity.TestAccounts
 import grit.core.visibility.{Label, TestLabels}
 
@@ -9,23 +8,17 @@ import utest.*
 /** A vouching's changes as the log writes them. */
 object LinkingTests extends TestSuite {
 
-  private val mail = TestAccounts.account("email:a@b.c")
   private val slack = TestAccounts.account("slack:T1/U1")
-  private val nick = TestAccounts.principalId(slack)
-  private val hashed = s"email:#${ShortHash.of("a@b.c")}"
+  private val person = TestAccounts.principalId(TestAccounts.account("slack:T1/U9"))
 
   val tests = Tests {
-    test("a link or unlink of an email account writes its address's hash, never the address") {
-      val lines = Vector(
-        Linking.Linked(mail, nick, Label.Public, TestLabels.Trial),
-        Linking.Unlinked(mail, nick, TestLabels.Trial, Label.Public)
-      ).map(_.message)
-      (lines, lines.exists(_.contains("@"))) ==> (
-        Vector(
-          s"$hashed linked to slack:T1/U1: public -> public+trial",
-          s"$hashed unlinked from slack:T1/U1: public+trial -> public"
-        ),
-        false
+    test("a link or unlink names its account as spelled, the person and the clearances") {
+      Vector(
+        Linking.Linked(slack, person, Label.Public, TestLabels.Trial),
+        Linking.Unlinked(slack, person, TestLabels.Trial, Label.Public)
+      ).map(_.message) ==> Vector(
+        "slack:T1/U1 linked to slack:T1/U9: public -> public+trial",
+        "slack:T1/U1 unlinked from slack:T1/U9: public+trial -> public"
       )
     }
 
@@ -39,15 +32,10 @@ object LinkingTests extends TestSuite {
       )
     }
 
-    test("a refusal names its account and why, never an address") {
-      Vector(
-        Linking.Refused(slack, LinkRefusal.OutsideRealms),
-        Linking.Refused(slack, LinkRefusal.Declared),
-        Linking.Refused(mail, LinkRefusal.Joins(nick))
-      ).map(_.message) ==> Vector(
-        "slack:T1/U1 not linked: no realm vouched for holds it",
-        "slack:T1/U1 not linked: the deployment declares it",
-        s"$hashed not linked: its email is slack:T1/U1's, and it is not alone in its own person"
+    test("an account outside the voucher's realms, and an unclaimed email, each say so apart") {
+      (Linking.Outside(slack).message, Linking.Unclaimed(slack).message) ==> (
+        "slack:T1/U1 not recorded: no realm the voucher holds holds it",
+        "slack:T1/U1's verified email is in no domain the deployment claims: no email kept"
       )
     }
   }

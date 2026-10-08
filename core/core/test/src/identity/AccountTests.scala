@@ -7,8 +7,8 @@ object AccountTests extends TestSuite {
   private def account(namespace: String, name: String): Account =
     Account.of(namespace, name).getOrElse(throw new java.lang.AssertionError(s"$namespace:$name"))
 
-  private def email(raw: String): Email =
-    Email.of(raw).getOrElse(throw new java.lang.AssertionError(raw))
+  private val Refused =
+    "email is no account's namespace: an address is what a realm attests of an account"
 
   val tests = Tests {
     test("a namespace is a lowercase letter, then lowercase letters, digits or -") {
@@ -31,10 +31,17 @@ object AccountTests extends TestSuite {
       )
     }
 
-    test("of refuses the email namespace, whose accounts only an address makes") {
-      Account.of("email", "alice@example.com") ==>
-        Left("email accounts are made from an address (Account.email), never named")
-      Account.written(Account.email(email(" Alice@Example.com "))) ==> "email:alice@example.com"
+    test("no account is an email address: of and read refuse the email namespace") {
+      (Account.of("email", "alice@example.com"), Account.read("email:a@b.c")) ==> (
+        Left(Refused),
+        Left(Refused)
+      )
+    }
+
+    test("a tripwire: Account has no email, so no account can be made from an address") {
+      // Pins a deletion, not a rule: it fails only if the method comes back.
+      val error = assertCompileError("""Email.of("a@b.c").map(Account.email)""")
+      assert(error.msg.contains("email"))
     }
 
     test(
@@ -43,26 +50,14 @@ object AccountTests extends TestSuite {
       val each = List(
         account("slack", "T0123/U0456"),
         account("slack", "a:b"),
-        Account.email(email("a.b+c@x")),
         Account.Local,
         Account.Grit
       )
       each.map(a => Account.read(Account.written(a))) ==> each.map(Right(_))
       // A pin of the stored form: the store keeps an account as written.
-      each.map(Account.written) ==>
-        List("slack:T0123/U0456", "slack:a:b", "email:a.b+c@x", "local", "grit")
-      List("slack", "slack:", ":U1", "Slack:U1", "email:Alice@x", "email:a@", "Local")
-        .map(Account.read(_).isRight) ==> List(false, false, false, false, false, false, false)
-      Account.read("email:Alice@x") ==>
-        Left("an email account's address is as Email.of writes it: Alice@x")
-    }
-
-    test("address is the address of an email account, and of no other, whatever its name holds") {
-      List(
-        Account.email(email("a@b.c")),
-        account("slack", "T1/a@b.c"),
-        Account.Local
-      ).map(Account.address) ==> List(Some(email("a@b.c")), None, None)
+      each.map(Account.written) ==> List("slack:T0123/U0456", "slack:a:b", "local", "grit")
+      List("slack", "slack:", ":U1", "Slack:U1", "Local")
+        .map(Account.read(_).isRight) ==> List(false, false, false, false, false)
     }
   }
 }

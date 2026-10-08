@@ -10,7 +10,7 @@ final case class Realm private (namespace: String, within: String) {
 
 object Realm {
 
-  /** Or why not: `namespace` as [[Account.of]] takes one (never `email`); `within` not blank,
+  /** Or why not: `namespace` as [[Account.of]] takes one; `within` not blank,
     * with no `/` and no whitespace.
     */
   def of(namespace: String, within: String): Either[String, Realm] =

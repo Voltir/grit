@@ -12,7 +12,6 @@ object IdentitiesTests extends TestSuite {
   private val nick = ok(Handle.of("nick"))
   private val ana = ok(Handle.of("ana"))
   private val slackNick = ok(Account.of("slack", "T1/U1"))
-  private val mailNick = Account.email(ok(Email.of("nick@example.com")))
   private val slackAna = ok(Account.of("slack", "T1/U2"))
   private val t1 = ok(Realm.of("slack", "T1"))
   private val t2 = ok(Realm.of("slack", "T2"))
@@ -31,7 +30,7 @@ object IdentitiesTests extends TestSuite {
 
     test("people each with their own accounts, and realms each with one edge, are declared") {
       val people = Vector(
-        DeclaredPerson(nick, Set(slackNick, mailNick)),
+        DeclaredPerson(nick, Set(slackNick)),
         DeclaredPerson(ana, Set(slackAna))
       )
       val vouchers = Vector(Vouching(chat, t1), Vouching(other, t2))

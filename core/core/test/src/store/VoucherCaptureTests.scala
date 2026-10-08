@@ -36,7 +36,7 @@ object VoucherCaptureTests extends TestSuite {
   val tests = Tests {
     test("control: a voucher answering through the transaction it is given compiles") {
       probe(
-        voucher("Right(Vector(Linking.Refused(vouched.account, LinkRefusal.OutsideRealms)))")
+        voucher("Right(Vector(Linking.Outside(vouched.account)))")
       ) ==> Nil
     }
 

@@ -29,8 +29,8 @@ In dependency order:
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
 - **`identity`** — who someone is across sources (ADR 0032): `Account` (how one source names
-  someone, `{namespace}:{name}`, or `local` or `grit`), `Email` (an address, as sharing by
-  address names it), `Realm` (the accounts one source names, as one Slack workspace's),
+  someone, `{namespace}:{name}`, or `local` or `grit`; never an email address), `Email` (an
+  address, which a realm attests of an account), `Realm` (the accounts one source names, as one Slack workspace's),
   `Handle`; `DeclaredPerson`, `Vouching` and `Identities`, who a deployment says is whom and
   which edge it trusts to vouch for each realm, refused as an `IdentityRefusal`; `Evidence`,
   `Held` and `Principal`, a person as the store resolves them; `Standing` and `Vouched`, what a
@@ -93,7 +93,7 @@ In dependency order:
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelSettingStore` (settings of pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `VoiceStore` (the voice in force), `Principals` (the accounts an edge named, by name), `Voucher` (what a trusted realm's source says of its accounts, held only by the edge a deployment names for it, ADR 0032), each change it makes a `Linking`, and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  settings in force), `VoiceStore` (the voice in force), `Principals` (the accounts an edge named, by name), `Voucher` (the right to record what a trusted realm's source says of its accounts, ADR 0032), each change it makes, or why it made none, a `Linking`, and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
 - **`document`** — plugins' documents (ADR 0028): a `Document` is one version of a plugin's
   document under a key, kept at a place, its `DocText` shown and searched, its data the

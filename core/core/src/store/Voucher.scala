@@ -2,26 +2,25 @@ package grit.core.store
 
 import grit.core.identity.{Realm, Vouched}
 
-/** The right to say what a trusted realm's source says of its accounts (ADR 0032), held only by
-  * the edge a deployment names for [[realms]] ([[grit.core.identity.Identities.realms]]).
+/** The right to record what trusted realms' sources say of their accounts (ADR 0032), for the
+  * realms a deployment trusts one source to answer for
+  * ([[grit.core.identity.Identities.realms]]).
   */
 trait Voucher extends caps.Pure {
 
+  /** The realms whose accounts it records. */
   def realms: Set[Realm]
 
-  /** Keeps `vouched.standing` as what its account's source says now: whether it is a full
-    * member, and the email verified for it; then relinks by the email. An account an earlier
-    * vouching linked, whose email is now another or none, first goes back to the person of its
-    * own it was when first seen. Then, when an email is vouched and its account is not already
-    * the account's person's: held by no one, it is created in the account's person; held alone
-    * and only enrolled, it moves there; held by anyone else, the account moves to them if it is
-    * its person's only account and only enrolled. Every link an earlier vouching made that this
-    * one no longer supports goes back the same way. A person left with no account by a move is
-    * kept, for the account to go back to. Each change is one [[Linking]], none when nothing
-    * changed. An account outside [[realms]] is [[Linking.Refused]] and nothing changes; one the
-    * deployment declares keeps its standing and is never moved (`Refused(Declared)` when its
-    * email would have moved it); one that is not alone while another person holds its email is
-    * `Refused(Joins)`, its standing kept.
+  /** Records what `vouched.account`'s realm says of it now, replacing what it said before:
+    * whether it is a full member, and the email its source verified, kept only when the
+    * deployment claims the email's domain. While that record holds an email, the account is
+    * that email's person, whom every account any realm says that email for is too, made the
+    * first time one does; otherwise it is the person of its own it was when first seen. An
+    * account not seen before is first a new person's one account. Each change this makes to the
+    * account's person or membership is one [[Linking]], none when nothing changed; an email
+    * whose domain is not claimed is [[Linking.Unclaimed]]. Two vouchings of one account, or of
+    * one email, wait for each other rather than deadlock. [[Linking.Outside]], recording
+    * nothing, for an account no realm in [[realms]] holds.
     */
   def vouch(vouched: Vouched)(using Tx^): Either[StoreError, Vector[Linking]]
 }
