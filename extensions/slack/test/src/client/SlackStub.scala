@@ -16,6 +16,9 @@ import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
   * `limited` requests are answered with the hand-written rate limit (`rate-limited.json`), and
   * each request whose key (its method, then its keyed params as `name=value`, space-separated)
   * is in `failing` with Slack's `fatal_error`. Listens on a free port of 127.0.0.1 until closed.
+  * Four recordings were written by hand from Slack's API docs, not captured: `036` and `037`
+  * (`users.info`) and `047` and `048` (`users.list`), checked against a live workspace's
+  * answers by shape only.
   */
 final class SlackStub(limited: Int, failing: Set[String] = Set.empty) extends AutoCloseable {
   import SlackStub.*

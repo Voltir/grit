@@ -13,7 +13,9 @@ import grit.slack.text.Post
   * Socket Mode would, and says whether it was acknowledged), the posts made, each with its tag,
   * and grit's reactions. Every post is made at a ts a microsecond after the latest it knows.
   * A message it knows is one listed, posted, or delivered as a person's message; a thread it
-  * knows is one such message begins.
+  * knows is one such message begins. Its people are user ids with no team of their own: each
+  * named in [[names]] is a full member of grit's team unless [[standings]] says otherwise, and
+  * outside in any other, so a test that wants a guest says so.
   */
 final class FakeSlack extends Slack {
 

@@ -20,7 +20,9 @@ import grit.core.store.{
 /** An in-memory [[RoomReads]] for tests, keeping [[RoomReadsContract]] and
   * [[grit.core.store.ClearanceContract]], over the entries `entries` holds, which decides what a
   * transaction reads, each conversation at `origin`'s place, and the authors `principals` was
-  * told. Otherwise it ignores the `Tx`.
+  * told. Otherwise it ignores the `Tx`. An author is the person of that one account, by its
+  * spelling ([[TestAccounts.principalId]]): it links no two accounts, so what a person said
+  * through an account linked to another is read only by the SQL suites.
   */
 final class InMemoryRoomReads(
     entries: InMemoryEntryStore,

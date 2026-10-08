@@ -18,7 +18,9 @@ import grit.core.visibility.Visibility
 
 /** An in-memory [[Voucher]] for tests, keeping [[VoucherContract]], for `realms`, keeping an
   * email only in one of `domains`, and saying each change's clearances as `visibility` clears
-  * people. It ignores the `Tx`, and holds the accounts it has seen itself ([[saw]]).
+  * people. It ignores the `Tx`, and holds the accounts it has seen itself ([[saw]]), apart from
+  * any other in-memory store's: an account another fake was told of is unseen here until a
+  * suite says so, where the SQL voucher shares one table of accounts with every store.
   */
 final class InMemoryVoucher(val realms: Set[Realm], domains: Set[Domain], visibility: Visibility)
     extends Voucher {

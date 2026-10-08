@@ -16,7 +16,9 @@ import grit.dbos.sql.TestTx
   * database (who asked, where its reply is posted, what a transaction opened for it reads) it
   * reads from what [[asking]] recorded, resolving the asker's clearance under `visibility` as
   * an opener would. It marks ended schedules in `tombstones`, and ignores the `Tx`: nothing is
-  * rolled back.
+  * rolled back. An asker is the person of that one account, by its spelling
+  * ([[TestAccounts.principal]]), whom no realm attests a member: it links no two accounts, so a
+  * schedule asked through an account linked to another is pinned only by the SQL suites.
   */
 final class InMemorySchedules(
     val tombstones: InMemoryTombstones = new InMemoryTombstones(),
