@@ -114,20 +114,6 @@ In dependency order:
   of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
   and deletes of them (terms declared at each start, placements, a version or a plugin's
   every document collected). ← `id`, `place`, `store`
-- **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
-  or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
-  schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
-  whose run is `InFlight` gets (left, enqueued again, failed, or superseded at the current
-  version); `Slot`, one slot of a schedule: the run name of its run's `Origin.Task`
-  conversation, and the opening grit writes there; `Report`, where a schedule's runs report
-  beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. A `Job`
-  (versioned code a slot's run replies with, from its `JobRun`), a deployment's `Jobs` by name,
-  a `Declared` schedule (a job and its typed parameters, under a key), and how a schedule
-  `Ending`s; `ScheduleStore`, the stored schedules (declared ones reconciled at start, those
-  `due` and those `inFlight`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
-  book them (a `Booking`, or `NotOwn`); and `ScheduleDesk`, one plugin's capability to write,
-  list and cancel a person's once slots from a tool call, asked for `When` (an `Asked`, their
-  `Pending`, or a `DeskRefusal`). ← `id`, `message`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
@@ -177,17 +163,14 @@ In dependency order:
   message (`recv`); `StepRecord`, a step as a reader after the fact sees it. ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
-- **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs
+- **`context`**, **`provider`** — the seams the engine plugs
   into: `ContextAssembler` (and the `Window` it builds, as wide as its request's `Width`
   asks: as deployed, or within a budget the eval harness names; and `Shown`: what the model is
   shown of a window, each line grit writes into it under its `SectionTag`: the record, a
   section from afar, a document a plugin keeps, a gap where turns were left out; and a grit
   label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
   and `Models` (the
-  catalog in force, and a provider per role's pin; ← `model`), and `Inbox` (which also
-  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, takes a direct message only from its own person and labels it at their clearance, refusing a new message in a direct thread begun when they were cleared for more (`InboxError.Sealed`), answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
-  `InboundId`'s). Each names only the packages above, never
-  another of the three.
+  catalog in force, and a provider per role's pin; ← `model`). Neither names the other.
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
   a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
   followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, its
@@ -232,6 +215,26 @@ In dependency order:
   `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `place`, `message`, `model`, `store`, `provider`, `approval`
+- **`act`** — what an actor may do, and under what (ADR 0034): a move's `MoveName`, a run's
+  `MoveLimits` per `MoveKind`. Imports nothing in core.
+- **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
+  or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
+  schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
+  whose run is `InFlight` gets (left, enqueued again, failed, or superseded at the current
+  version); `Slot`, one slot of a schedule: the run name of its run's `Origin.Task`
+  conversation, and the opening grit writes there; `Report`, where a schedule's runs report
+  beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. A `Job`
+  (versioned code a slot's run replies with, from its `JobRun`), a deployment's `Jobs` by name,
+  a `Declared` schedule (a job and its typed parameters, under a key), and how a schedule
+  `Ending`s; `ScheduleStore`, the stored schedules (declared ones reconciled at start, those
+  `due` and those `inFlight`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
+  book them (a `Booking`, or `NotOwn`); and `ScheduleDesk`, one plugin's capability to write,
+  list and cancel a person's once slots from a tool call, asked for `When` (an `Asked`, their
+  `Pending`, or a `DeskRefusal`). ← `id`, `message`, `store`
+- **`inbox`** — the seam the engine takes messages through: `Inbox` (which also
+  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, takes a direct message only from its own person and labels it at their clearance, refusing a new message in a direct thread begun when they were cleared for more (`InboxError.Sealed`), answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
+  `InboundId`'s). ← `id`, `identity`, `message`, `store`, `spend`, `triage`, `speech`,
+  `approval`, `job`
 
 - **`plugin`** — features a deployment turns on (ADR 0027), each a pure bundle of
   contributions to core's points: `Plugin` (a name, a version, the plugins it `needs`, and
