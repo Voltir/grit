@@ -59,6 +59,7 @@ private[slack] object Served {
     EdgeRefusal.Refused(s"Slack refused the bot token: $e")
 
   def serving(
+      command: SlackCommand,
       channels: Set[ChannelId],
       posts: Option[Posts],
       review: Option[SlackReview],
@@ -103,13 +104,13 @@ private[slack] object Served {
                 case Right(name) => log(s"slack: grit's bot is named $name in Slack")
                 case Left(why) => log(s"slack: grit's bot's name is unread: $why")
               }
-              slack.listen(edge.receive) match {
+              slack.listen(edge.receive, edge.command(command)) match {
                 case Left(e) =>
                   slack.close()
                   Left(EdgeRefusal.Refused(s"Socket Mode would not open: $e"))
                 case Right(()) =>
                   log(
-                    s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}"
+                    s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}, answering ${command.name}"
                   )
                   val stopPosting = posts match {
                     case Some(p) => posting(slack, self.team, p, stores, clock, log)

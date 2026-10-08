@@ -19,8 +19,9 @@ import grit.slack.event.{
 import grit.slack.text.Post
 
 /** A [[Slack]] for tests, keeping what [[Slack]] says in memory and held to it by
-  * [[SlackContract]]: the handler `listen` was given ([[deliver]] hands it a payload, as
-  * Socket Mode would, and says whether it was acknowledged), the posts made, each with its tag,
+  * [[SlackContract]]: the handlers `listen` was given ([[deliver]] hands an event's payload
+  * to one, as Socket Mode would, and says whether it was acknowledged; [[command]] a slash
+  * command's to the other), what each command was answered ([[responses]]), the posts made, each with its tag,
   * and grit's reactions. Every post is made at a ts a microsecond after the latest it knows.
   * A message it knows is one listed, posted, or delivered as a person's message; a thread it
   * knows is one such message begins. Its people are user ids with no team of their own: each
@@ -33,6 +34,9 @@ final class FakeSlack extends Slack {
 
   @caps.unsafe.untrackedCaptures
   var handler: Option[String -> Boolean] = None
+
+  @caps.unsafe.untrackedCaptures
+  var commander: Option[String -> Unit] = None
 
   @caps.unsafe.untrackedCaptures
   var posts = Vector.empty[Posted]
@@ -150,11 +154,24 @@ final class FakeSlack extends Slack {
 
   def self(): Either[SlackError, Self] = request(Right(me))
 
-  def listen(handle: String => Boolean): Either[SlackError, Unit] = {
-    // Kept past the call, as Socket Mode keeps its listener: the test that made this fake
-    // is the only caller of deliver, and it outlives neither the handler nor the fake.
-    handler = Some(caps.unsafe.unsafeAssumePure(handle))
+  def listen[C^](
+      events: String ->{C} Boolean,
+      commands: String ->{C} Unit
+  ): Either[SlackError, Unit] = {
+    // Kept past the call, as Socket Mode keeps its listeners: the test that made this fake
+    // is the only caller of deliver and command, and it outlives neither the handlers nor
+    // the fake.
+    handler = Some(caps.unsafe.unsafeAssumePure(events))
+    commander = Some(caps.unsafe.unsafeAssumePure(commands))
     Right(())
+  }
+
+  /** Hands the slash command `payload` to the listening handler, as Socket Mode would once it
+    * has acknowledged it; whether there was one.
+    */
+  def command(payload: String): Boolean = commander.fold(false) { handle =>
+    handle(payload)
+    true
   }
 
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =

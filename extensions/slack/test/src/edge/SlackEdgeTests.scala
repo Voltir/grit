@@ -124,7 +124,7 @@ object SlackEdgeTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var logged = Vector.empty[String]
 
-    def edge(): SlackEdge^ =
+    def edge(): SlackEdge^{this} =
       new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot)),
@@ -166,8 +166,8 @@ object SlackEdgeTests extends TestSuite {
             .fold(e => throw new java.lang.AssertionError(e.toString), Ts.value)
         case _ => throw new java.lang.AssertionError("nothing to post")
       }
-    val first: SlackEdge^ = edge()
-    val _ = slack.listen(first.receive)
+    val first: SlackEdge^{this} = edge()
+    val _ = slack.listen(first.receive, _ => ())
 
     def origin(thread: String): Origin = Origin.Slack(Team, "C123ABC456", thread)
 

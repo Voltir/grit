@@ -50,6 +50,22 @@ object SocketSlackTests extends TestSuite {
   }
 
   val tests = Tests {
+    test("a slash command is acknowledged before its handler is started, then handled") {
+      // A Java list: the three callbacks share it, as one thread runs each in turn here.
+      val seen = new java.util.ArrayList[String]()
+      SocketSlack.commanded(
+        "E1",
+        "{}",
+        id => { val _ = seen.add(s"acknowledged $id") },
+        run => {
+          val _ = seen.add("started")
+          run()
+        },
+        payload => { val _ = seen.add(s"handled $payload") }
+      )
+      seen.asScala.toVector ==> Vector("acknowledged E1", "started", "handled {}")
+    }
+
     test(
       "a response url's refusal is Slack's word for it, from a JSON body or a plain one, else the status"
     ) {

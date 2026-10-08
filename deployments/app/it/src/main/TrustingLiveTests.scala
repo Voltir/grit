@@ -14,7 +14,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.Offered
 import grit.kit.environment.Secrets
 import grit.kit.run.{Kit, Launch}
-import grit.slack.edge.SlackEdge
+import grit.slack.edge.{SlackCommand, SlackEdge}
 import grit.slack.event.TeamId
 import grit.turn.Turn
 
@@ -116,7 +116,12 @@ object TrustingLiveTests extends TestSuite {
         .deployment(
           env,
           Offered.Read,
-          Vector(SlackEdge.serving(Set.empty)),
+          Vector(
+            SlackEdge.serving(
+              SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity),
+              Set.empty
+            )
+          ),
           Vector.empty,
           java.time.ZoneOffset.UTC,
           Some(TeamId("T2"))

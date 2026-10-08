@@ -22,7 +22,7 @@ import com.slack.api.methods.request.users.{UsersInfoRequest, UsersListRequest}
 import com.slack.api.methods.{MethodsClient, SlackApiException, SlackApiTextResponse}
 import com.slack.api.model.{Message, ResponseMetadata, User}
 import com.slack.api.socket_mode.SocketModeClient
-import com.slack.api.socket_mode.request.EventsApiEnvelope
+import com.slack.api.socket_mode.request.{EventsApiEnvelope, SlashCommandsEnvelope}
 import com.slack.api.socket_mode.response.AckResponse
 import com.slack.api.{Slack => Sdk, SlackConfig}
 
@@ -53,15 +53,28 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
     call(methods.authTest(AuthTestRequest.builder().build()))
       .map(r => Self(TeamId(r.getTeamId), UserId(r.getUserId)))
 
-  def listen(handle: String => Boolean): Either[SlackError, Unit] =
+  def listen[C^](
+      events: String ->{C} Boolean,
+      commands: String ->{C} Unit
+  ): Either[SlackError, Unit] =
     try {
       val client = sdk.socketMode(app.value, SocketModeClient.Backend.JavaWebSocket)
       client.setAutoReconnectEnabled(true)
+      def ack(id: String): Unit =
+        client.sendSocketModeResponse(AckResponse.builder().envelopeId(id).build())
       client.addEventsApiEnvelopeListener { (envelope: EventsApiEnvelope) =>
-        if (handle(envelope.getPayload.toString))
-          client.sendSocketModeResponse(
-            AckResponse.builder().envelopeId(envelope.getEnvelopeId).build()
-          )
+        if (events(envelope.getPayload.toString)) ack(envelope.getEnvelopeId)
+      }
+      client.addSlashCommandsEnvelopeListener { (envelope: SlashCommandsEnvelope) =>
+        // Each command's own virtual thread holds only `commands`. One still running at close
+        // may still answer: a response url needs no socket.
+        commanded(
+          envelope.getEnvelopeId,
+          Option(envelope.getPayload).fold("")(_.toString),
+          ack,
+          run => { val _ = Thread.ofVirtual().start(() => run()) },
+          commands
+        )
       }
       client.connect()
       socket = Some(client)
@@ -374,6 +387,21 @@ object SocketSlack {
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
     case Tag.Sent(request) => Map("request" -> request)
     case Tag.Prompt(entry) => Map("entry" -> entry)
+  }
+
+  /** A slash command's envelope `id` and `payload`, as [[Slack.listen]] takes one: `ack`
+    * acknowledges `id` at once, then `start` runs `handle` over `payload` on a thread of its
+    * own, so a slow answer never outlasts the 3 s Slack allows for the acknowledgement.
+    */
+  def commanded(
+      id: String,
+      payload: String,
+      ack: String => Unit,
+      start: (() => Unit) => Unit,
+      handle: String => Unit
+  ): Unit = {
+    ack(id)
+    start(() => handle(payload))
   }
 
   /** The body [[Slack.respond]] posts at a command's response url: `text`, escaped as

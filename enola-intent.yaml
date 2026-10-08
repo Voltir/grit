@@ -453,6 +453,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
 
+  - id: only-slack-imports-slash-commands-envelope
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.socket_mode.request.SlashCommandsEnvelope"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
   - id: only-slack-imports-ack-response
     forbid_name: outside-slack
     pattern: "* -> com.slack.api.socket_mode.response.AckResponse"

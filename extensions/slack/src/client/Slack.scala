@@ -80,12 +80,17 @@ trait Slack extends caps.SharedCapability {
   /** Who grit is. */
   def self(): Either[SlackError, Self]
 
-  /** Hands each Events API payload to `handle`, possibly several at once on the client's
-    * threads, and acknowledges it only once `handle` returns `true`; `false` leaves it
-    * unacknowledged, and Slack delivers it again, a few times at most. Returns once connected,
-    * and reconnects by itself until closed.
+  /** Hands each Events API payload to `events`, possibly several at once on the client's
+    * threads, and acknowledges it only once `events` returns `true`; `false` leaves it
+    * unacknowledged, and Slack delivers it again, a few times at most. Acknowledges each slash
+    * command at once, then hands its payload to `commands` on a thread of its own, so a slow
+    * answer never fails the command; it is answered with [[respond]]. Returns once connected,
+    * and reconnects by itself until closed. Both handlers may hold the same capabilities, `C`.
     */
-  def listen(handle: String => Boolean): Either[SlackError, Unit]
+  def listen[C^](
+      events: String ->{C} Boolean,
+      commands: String ->{C} Unit
+  ): Either[SlackError, Unit]
 
   /** Posts `post` as a reply in `thread` of `channel`, carrying `tag`; the new message's ts.
     * `Refused("not_in_channel")` when grit's bot is not a member.

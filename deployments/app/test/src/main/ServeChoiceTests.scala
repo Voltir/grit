@@ -7,7 +7,7 @@ import grit.core.identity.Domain
 import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
 import grit.kit.deployment.Offered
-import grit.slack.edge.{SlackAccounts, SlackEdge}
+import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.TeamId
 
 import utest.*
@@ -16,6 +16,9 @@ import utest.*
   * touches the database or Slack.
   */
 object ServeChoiceTests extends TestSuite {
+
+  private val Grit: SlackCommand =
+    SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** An edge that is never opened here. */
   private object Quiet extends ServedEdge {
@@ -62,7 +65,7 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             Map.empty,
             Offered.Read,
-            Vector(SlackEdge.serving(Set.empty)),
+            Vector(SlackEdge.serving(Grit, Set.empty)),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -70,6 +73,20 @@ object ServeChoiceTests extends TestSuite {
           .map(_.identities.realmsOf(SlackAccounts.Attester))
       (trusted(Some(TeamId("T0FAKE"))), trusted(None)) ==>
         (SlackAccounts.realm(TeamId("T0FAKE")).map(Set(_)), Right(Set.empty))
+    }
+
+    test(
+      "the slash command answered is GRIT_SLACK_COMMAND, /grit when unset, refused naming the variable when Slack would not take it"
+    ) {
+      (
+        Main.slackCommand(Map.empty).map(_.name),
+        Main.slackCommand(Map("GRIT_SLACK_COMMAND" -> " /acme ")).map(_.name),
+        Main.slackCommand(Map("GRIT_SLACK_COMMAND" -> "acme"))
+      ) ==> (
+        Right("/grit"),
+        Right("/acme"),
+        Left("GRIT_SLACK_COMMAND: acme: a slash command is / then 1 to 32 of a-z, 0-9, - and _")
+      )
     }
 
     test("a listened channel that is not a channel id is refused, naming it") {

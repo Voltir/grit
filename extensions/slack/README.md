@@ -56,16 +56,17 @@ In dependency order:
   the inbox has recorded, then each of those heard at its own time, a past mention of grit
   included, since a past message is never answered. At start it logs the name grit's bot goes by in Slack
   (`displayName`); the assistant's name is the deployment's persona (ADR 0026), not Slack's.
-  `SlackEdge.serving(channels)` is the module's entry: the edge as a deployment serves it
-  (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN` and
-  `SLACK_APP_TOKEN` as it opens; `SlackEdge.serving(channels, posts)` also serves
+  `SlackEdge.serving(command, channels)` is the module's entry: the edge as a deployment
+  serves it (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN`
+  and `SLACK_APP_TOKEN` as it opens, answering the slash command the deployment registered
+  (`SlackCommand`, below); `SlackEdge.serving(command, channels, posts)` also serves
   `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
   `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
   there (`grit.core.place.Reaches`). It is a writing tool (`grit.core.tool.Writing`, ADR
   0031): each channel is offered under its name, with and without `#`, at the place
   `slack:{team}/{id}`, so a turn is offered only the channels its room may write to, and the
-  edge posts in the channel its request was checked to write to. `SlackEdge.serving(channels,
-  posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
+  edge posts in the channel its request was checked to write to. `SlackEdge.serving(command,
+  channels, posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
   `slack:{team}/{channel id}` grit does not listen in, refused otherwise, and in the bot's own
   team, or the edge does not open; `ServedEdge.reviewsAt`): each delivery posts the prompts
   the kit picked that its place may receive (`grit.core.review.Reviews.unposted`) whose
@@ -88,6 +89,14 @@ In dependency order:
   own: when to ask, and which addresses count, are core's. How a deployment trusts the edge:
   [`docs/extending.md`](../../docs/extending.md) (Identities); what the app needs for it:
   below.
+  Its slash command (`SlackEdge.command`) changes and reads who may see what through core's
+  `grit.core.admin.Administration`: Socket Mode acknowledges each command at once and hands
+  it to the edge on a thread of its own, the edge reads its words with `Command.read` (a
+  mention naming that user's account), checks its asker first as it checks an author, runs it
+  as theirs in its room (its channel's, member or not, or, from any direct message, the
+  asker's own direct room), and answers them alone at its response url (`Slack.respond`).
+  Any other command is ignored. The edge hands core words and accounts and shows
+  `Answer.text`; it never sees a transaction or a label's parts.
   ← `client`, `text`, `event`
 
 **Direct messages.** A person's message in their direct message with grit's bot is recorded
@@ -112,7 +121,10 @@ edge calls or is sent:
   `reaction_removed`), and the `:eyes:` mark and a prompt's reactions it adds and removes;
 - `users:read`, `users:read.email`: who an author is, and whether a full member, for the names
   windows show and for attesting (event `user_change`); without `users:read.email` no account is
-  linked to another by email.
+  linked to another by email;
+- `commands`: its slash command, registered under the name the deployment gives it (Socket
+  Mode needs no request URL), with "Escape channels, users, and links sent to your app" on, so
+  a person it names arrives as a mention.
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
 `GRIT_DAILY_USD` ($1.00 when unset); a message after that is not recorded, and its thread is

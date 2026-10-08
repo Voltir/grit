@@ -242,7 +242,7 @@ object SlackEdgeLiveTests extends TestSuite {
       val (received, turn) =
         try {
           launch(engine, engine.entries, new CountingProvider)
-          val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+          val _ = slack.listen(attesting(engine, slack, engine.inbox).receive, _ => ())
           (
             slack.deliver(mention("1.0")),
             engine.inbox.ingested(Origin.Slack(Team, "C123ABC456", "1.0"), SourceId("1.0"))
@@ -280,7 +280,7 @@ object SlackEdgeLiveTests extends TestSuite {
               case Left(by) => standing = standing :+ member(config, by)
             }
           )
-          val _ = slack.listen(attesting(engine, slack, inbox).receive)
+          val _ = slack.listen(attesting(engine, slack, inbox).receive, _ => ())
           (slack.deliver(mention("1.0")), opened, standing)
         } finally engine.close()
       (received, opened, standing) ==>
@@ -324,7 +324,7 @@ object SlackEdgeLiveTests extends TestSuite {
       val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
       try {
         launch(engine, engine.entries, new CountingProvider)
-        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive, _ => ())
         (
           slack.deliver(direct("9.0", "hello")),
           slack.deliver(direct("9.0", "hello", user = Ben)),
@@ -342,7 +342,7 @@ object SlackEdgeLiveTests extends TestSuite {
       val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
       try {
         launch(engine, engine.entries, new CountingProvider)
-        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive, _ => ())
         slack.deliver(direct("9.0", "hello")) ==> true
         slack.standings = Map(UserId(Ana) -> Standing.Outside)
         slack.deliver(userChange()) ==> true
@@ -368,7 +368,7 @@ object SlackEdgeLiveTests extends TestSuite {
       val first = LiveEngine.open(config, Turn.Epoch)
       try {
         launch(first, first.entries, new CountingProvider)
-        val _ = slack.listen(edge(first, slack).receive)
+        val _ = slack.listen(edge(first, slack).receive, _ => ())
         slack.deliver(mention("1.0")) ==> true
       } finally first.close()
       slack.posts ==> Vector.empty

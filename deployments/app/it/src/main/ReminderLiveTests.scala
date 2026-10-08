@@ -234,7 +234,7 @@ object ReminderLiveTests extends TestSuite {
 
   /** `payload` heard by `edge`'s Slack, and delivered until Slack holds `posts` posts. */
   private def heard(edge: SlackEdge^, slack: FakeSlack^, payload: String, posts: Int): Unit = {
-    val _ = slack.listen(edge.receive)
+    val _ = slack.listen(edge.receive, _ => ())
     slack.deliver(payload) ==> true
     delivered(edge, slack, posts)
   }

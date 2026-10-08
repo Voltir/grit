@@ -38,6 +38,9 @@ object ReviewingTests extends TestSuite {
 
   private val C = ChannelId("C123ABC456")
 
+  private val Grit: SlackCommand =
+    SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** The review's place: a private channel grit's bot is in. */
   private val Place = ChannelId("C0REVIEW1")
 
@@ -126,7 +129,7 @@ object ReviewingTests extends TestSuite {
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )
-    val _ = slack.listen(edge.receive)
+    val _ = slack.listen(edge.receive, _ => ())
 
     /** Message `ts` said at the top of C, known to Slack, heard, and picked as `reason`. */
     def picked(ts: String, reason: Reason = Reason.ShadowOnly): EntryId = {
@@ -294,8 +297,8 @@ object ReviewingTests extends TestSuite {
 
     test("a review is refused a place grit listens in, and served anywhere else") {
       (
-        SlackEdge.serving(Set(C, Place), None, Review),
-        SlackEdge.serving(Set(C), None, Review).map(_.name)
+        SlackEdge.serving(Grit, Set(C, Place), None, Review),
+        SlackEdge.serving(Grit, Set(C), None, Review).map(_.name)
       ) ==> (
         Left(
           "review prompts are not posted in C0REVIEW1: grit listens there, so they would be heard"

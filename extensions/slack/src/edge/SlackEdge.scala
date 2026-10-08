@@ -863,14 +863,15 @@ object SlackEdge {
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in `channels` heard (ADR 0020), a message addressed to grit answered in its
-    * thread, and grit's bot's Slack name logged at open. It cannot answer a tool call that asks
-    * first. It is the attester [[SlackAccounts.Attester]]: for the realm of its own workspace,
-    * when a deployment trusts it there, it says who each account is as Slack states it
-    * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists the
-    * workspace's users once when any account is due.
+    * thread, `command` answered to its asker alone ([[SlackEdge.command]]), and grit's bot's
+    * Slack name logged at open. It cannot answer a tool call that asks first. It is the
+    * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a deployment
+    * trusts it there, it says who each account is as Slack states it ([[SlackEdge.receive]]),
+    * and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists the workspace's users once
+    * when any account is due.
     */
-  def serving(channels: Set[ChannelId]): ServedEdge =
-    Served.serving(channels, None, None, Socket)
+  def serving(command: SlackCommand, channels: Set[ChannelId]): ServedEdge =
+    Served.serving(command, channels, None, None, Socket)
 
   /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
     * place, offering the channels of `posts` whose names Slack gives at open; one without is
@@ -881,8 +882,8 @@ object SlackEdge {
     * in it becomes a mention), and one Slack message at most; it never asks first and is never
     * run again after a crash.
     */
-  def serving(channels: Set[ChannelId], posts: Posts): ServedEdge =
-    Served.serving(channels, Some(posts), None, Socket)
+  def serving(command: SlackCommand, channels: Set[ChannelId], posts: Posts): ServedEdge =
+    Served.serving(command, channels, Some(posts), None, Socket)
 
   /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
     * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
@@ -891,6 +892,7 @@ object SlackEdge {
     * not open when `review`'s team is not the bot's.
     */
   def serving(
+      command: SlackCommand,
       channels: Set[ChannelId],
       posts: Option[Posts],
       review: SlackReview
@@ -899,7 +901,7 @@ object SlackEdge {
       Left(
         s"review prompts are not posted in ${ChannelId.value(review.channel)}: grit listens there, so they would be heard"
       )
-    else Right(Served.serving(channels, posts, Some(review), Socket))
+    else Right(Served.serving(command, channels, posts, Some(review), Socket))
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].

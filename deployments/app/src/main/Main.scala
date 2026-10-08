@@ -35,7 +35,7 @@ import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.remind.Reminders
-import grit.slack.edge.{SlackAccounts, SlackEdge}
+import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{ChannelId, TeamId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
@@ -94,7 +94,9 @@ import grit.turn.{Turn, TurnLoop}
   *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
   *     `SLACK_APP_TOKEN`, until stopped. In the channels, public or private, `GRIT_SLACK_LISTEN` names (ids,
   *     comma-separated; none by default) it also hears what is not said to it, and a private
-  *     channel is served at all only when named there. Its tools are `read`'s, as in a run with arguments:
+  *     channel is served at all only when named there. It answers the slash command
+  *     `GRIT_SLACK_COMMAND` names (default `/grit`, as registered for the Slack app) to its
+  *     asker alone ([[SlackEdge.command]]). Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
@@ -149,7 +151,9 @@ object Main {
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
     val edges: Vector[ServedEdge] =
-      (if (slack) Vector(SlackEdge.serving(listen)) else Vector.empty) ++ githubEdge.map(_._1)
+      // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
+      (if (slack) Vector(SlackEdge.serving(exitOnLeft(slackCommand(env)), listen))
+       else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
     // people are.
@@ -597,6 +601,17 @@ object Main {
         .map(_.message)
     } yield deployment
   }
+
+  /** The variable naming the slash command `grit serve` answers, as registered for its Slack
+    * app.
+    */
+  private val CommandVar = "GRIT_SLACK_COMMAND"
+
+  /** The slash command `env` says `grit serve` answers ([[CommandVar]]), `/grit` when unset;
+    * why not, naming the variable, when Slack would not register it.
+    */
+  private[main] def slackCommand(env: Map[String, String]): Either[String, SlackCommand] =
+    SlackCommand.of(env.getOrElse(CommandVar, "/grit")).left.map(why => s"$CommandVar: $why")
 
   /** The variable naming the channels grit listens in: their ids, comma-separated. Unset, it
     * listens in none.
