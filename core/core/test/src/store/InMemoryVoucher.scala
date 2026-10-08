@@ -72,6 +72,12 @@ final class InMemoryVoucher(
       )
     }
 
+  /** Whom `account` is linked to now, as [[principal]] says, without seeing it: `None` for an
+    * account never seen, as the SQL stores read one.
+    */
+  def known(account: Account): Option[Principal] =
+    Option.when(account == Account.Grit || homes.contains(account))(principal(account))
+
   /** Arranges `account`'s last answer as given `ago` before now; nothing when it has none. */
   def aged(account: Account, ago: FiniteDuration): Unit =
     attested.get(account).foreach(s => attested = attested.updated(account, s.copy(ago = ago)))

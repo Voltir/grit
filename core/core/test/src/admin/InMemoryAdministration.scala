@@ -56,8 +56,8 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
     }
   }
 
-  /** Whom `account` is linked to now, as the voucher says. */
-  private def whom(account: Account): Option[Principal] = Some(voucher.principal(account))
+  /** Whom `account` is linked to now, as the voucher says; `None` for one never seen. */
+  private def whom(account: Account): Option[Principal] = voucher.known(account)
 
   /** Keeps `change`; whether anything recorded changed (a repeat changes nothing). */
   private def keep(change: Change): Boolean = change match {
@@ -65,7 +65,10 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
       records.room(room)(_.copy(label = Some(label)))
     case Change.Relabel(room, _, Change.To.Default(_)) => records.room(room)(_.copy(label = None))
     case Change.Quiet(room, on) => records.room(room)(_.copy(quiet = on))
-    case Change.Clear(person, c) => records.group(GroupName.own(c))(_ + person)
+    case Change.Clear(person, c) =>
+      // A person cleared is kept as an account, as SQL enrols them, seen from then on.
+      voucher.saw(person)
+      records.group(GroupName.own(c))(_ + person)
     case Change.Remove(person, c) => records.group(GroupName.own(c))(_ - person)
   }
 }

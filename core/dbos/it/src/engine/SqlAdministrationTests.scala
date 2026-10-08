@@ -48,6 +48,9 @@ object SqlAdministrationTests extends AdministrationContract {
   protected def seen(a: Administration, account: Account): Unit =
     Vouchings.enrolled(account)(using fresh0.config)
 
+  protected def known(a: Administration, account: Account): Boolean =
+    under(fresh0.voucher.lastWords(T1)).exists(_.exists(_.account == account))
+
   protected def reported(a: Administration, room: Place, access: RoomAccess): Unit =
     under { (tx: Tx^) ?=>
       SqlPlaces.id(room).flatMap { place =>

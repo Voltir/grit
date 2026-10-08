@@ -43,6 +43,9 @@ abstract class AdministrationContract extends TestSuite {
     */
   protected def seen(a: Administration, account: Account): Unit
 
+  /** Whether the store `a` reads has seen `account`. */
+  protected def known(a: Administration, account: Account): Boolean
+
   /** Has `room`'s access reported as `access`, as its edge would. */
   protected def reported(a: Administration, room: Place, access: RoomAccess): Unit
 
@@ -249,6 +252,31 @@ abstract class AdministrationContract extends TestSuite {
     }
 
     test(
+      "an asker never seen is no one: their clearance is public and explained as no one's, any change is refused, and asking keeps no account"
+    ) {
+      val a = arranged()
+      (
+        run(a, una, publicRoom, Command.Clearance(None)),
+        run(a, una, publicRoom, Command.Quiet(true)),
+        known(a, una),
+        kept(a)
+      ) ==> (
+        Answer.clearance(Tx.explain(None, Label.Public)(using TestTx.inForce(Declared))),
+        Answer.Refused(Refusal.NotVouched),
+        false,
+        Vector()
+      )
+    }
+
+    test(
+      "an administrator asking the clearance of an account never seen is told public, and the account is still unseen"
+    ) {
+      val a = arranged()
+      (run(a, ada, publicRoom, Command.Clearance(Some(una))), known(a, una)) ==>
+        (Answer.theirs(Label.Public), false)
+    }
+
+    test(
       "compartments shows an administrator every one, a steward also those they steward, anyone else those they are cleared for"
     ) {
       val a = arranged()
@@ -303,6 +331,9 @@ object AdministrationContract {
 
   /** Seen, and no realm vouches a member. */
   val gus: Account = TestAccounts.account("slack:T1/U-gus")
+
+  /** Never seen. */
+  val una: Account = TestAccounts.account("slack:T1/U-una")
 
   val Members: Vector[Account] = Vector(ada, tess, fin, mia, max)
 

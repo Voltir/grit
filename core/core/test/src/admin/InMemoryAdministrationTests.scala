@@ -4,6 +4,7 @@ import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.store.InMemoryVoucher
 import grit.core.visibility.RoomAccess
+import grit.dbos.sql.TestTx
 
 /** The administration contract, kept by the in-memory fake. */
 object InMemoryAdministrationTests extends AdministrationContract {
@@ -20,6 +21,9 @@ object InMemoryAdministrationTests extends AdministrationContract {
   protected def member(a: Administration, account: Account): Unit = fake(a).member(account)
 
   protected def seen(a: Administration, account: Account): Unit = fake(a).voucher.saw(account)
+
+  protected def known(a: Administration, account: Account): Boolean =
+    fake(a).voucher.lastWords(T1)(using TestTx.fake).exists(_.exists(_.account == account))
 
   protected def reported(a: Administration, room: Place, access: RoomAccess): Unit =
     fake(a).reported(room, access)
