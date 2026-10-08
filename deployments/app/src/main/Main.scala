@@ -3,14 +3,14 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.{Budgets, Durations, Lifecycle, Prefs}
+import grit.app.config.{Budgets, Claimed, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.edge.ServedEdge
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Identities}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
@@ -73,7 +73,9 @@ import grit.turn.{Turn, TurnLoop}
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
   * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` (under `grit serve`, `room` when unset:
   * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
-  * (or SQL) changes them from the next sweep and turn on, until the next start.
+  * (or SQL) changes them from the next sweep and turn on, until the next start. The email
+  * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; each start of
+  * its own engine ends what its identities no longer trust ([[Kit.trusting]]).
   *
   * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
   * it: its TUI serves its own directory and shows its conversations, the header saying
@@ -243,6 +245,7 @@ object Main {
                     case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
                   }
                 try {
+                  Kit.trusting(started, deployment).left.foreach(f => sys.error(f.message))
                   val running = launched(started)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
                   running
@@ -307,7 +310,11 @@ object Main {
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
           case Right(engine) =>
-            try say(launched(engine), args.toList)
+            try
+              Kit.trusting(engine, deployment) match {
+                case Left(failure) => Some(failure.message)
+                case Right(()) => say(launched(engine), args.toList)
+              }
             finally {
               // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and
               // mill, waiting forever.
@@ -517,6 +524,8 @@ object Main {
       )
       plugins <- pluginChoice(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
+      domains <- Claimed.fromEnv(env)
+      identities <- Identities.of(Vector.empty, domains).left.map(_.message)
       deployment <- Deployment
         .of(
           edges = edges,
@@ -533,7 +542,8 @@ object Main {
           speaking = Speaking.Off,
           sweep = sweep,
           // The reference deployment is grit itself, in a terminal and in Slack alike.
-          persona = Persona.Grit
+          persona = Persona.Grit,
+          identities = identities
         )
         .left
         .map(_.message)

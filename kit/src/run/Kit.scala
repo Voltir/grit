@@ -5,8 +5,10 @@ import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores}
 import grit.core.id.EdgeName
+import grit.core.identity.Identities
 import grit.core.message.Cost
 import grit.core.spend.Budget
+import grit.core.store.{Linking, StoreError}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Link}
 import grit.host.LocalMachine
@@ -67,7 +69,8 @@ object Kit {
     * that stops serving, closes each edge, then the engine (which waits up to 30 s for running
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
-    * those already opened. Each finished turn is logged in one line at INFO under [[TurnLog]].
+    * those already opened. Once the engine opens, and before any edge does, what the deployment's
+    * identities no longer trust is ended ([[trusting]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
     */
@@ -148,10 +151,11 @@ object Kit {
 
   /** Opens `deployment`'s engine with no sweep of its own and `catchUp` over it; shows `say`
     * what it would hear from each source, estimated, and that nothing caps a catch-up when
-    * the estimate is more than today's cap leaves; hears it once `agree` accepts, sweeps
+    * the estimate is more than today's cap leaves, once [[trusting]] has run; hears it once `agree` accepts, sweeps
     * until nothing is left to close or ask, says what the day's recorded spend rose by, and
     * closes. Nothing is heard when `agree` declines or nothing is unheard. Refused as
-    * [[serve]] is, before the engine opens. Each finished turn is logged as [[serve]] logs it.
+    * [[serve]] is, before the engine opens; once it opens, what the deployment's identities no
+    * longer trust is ended ([[trusting]]). Each finished turn is logged as [[serve]] logs it.
     */
   def catchUp(
       deployment: Deployment,
@@ -191,6 +195,40 @@ object Kit {
             } finally engine.close()
         }
     }
+
+  /** Ends what `deployment`'s identities no longer support ([[Engine.untrust]]), logging each
+    * change at info in the `grit.serve` log; and warns there, at every start, when realms are
+    * trusted and no email domain is claimed, so no account is linked to another by email: what
+    * each start of the deployment's own engine calls before anything serves. `Store` when the
+    * database fails.
+    */
+  def trusting(engine: Engine^, deployment: Deployment): Either[KitFailure, Unit] = {
+    val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
+    trusted(engine.untrust, deployment.identities, said => log.info(said), said => log.warn(said))
+  }
+
+  /** [[trusting]] over `untrust`, saying its changes to `info` and its warning to `warn`. */
+  private[run] def trusted(
+      untrust: Identities => Either[StoreError, Vector[Linking]],
+      identities: Identities,
+      info: String => Unit,
+      warn: String => Unit
+  ): Either[KitFailure, Unit] = {
+    if (identities.realms.nonEmpty && identities.domains.isEmpty) {
+      val realms = identities.realms.toVector.map(r => s"${r.namespace}:${r.within}/").sorted
+      warn(
+        s"identity: realms are trusted (${realms.mkString(", ")}) but no email domain is " +
+          "claimed, so no account is linked to another by email; each is its own person, and " +
+          "membership still counts. Claim the deployment's domains (GRIT_CLAIMED_DOMAINS in " +
+          "the reference deployment) to link them."
+      )
+    }
+    untrust(identities) match {
+      case Left(e) =>
+        Left(KitFailure.Store(s"identity: what the deployment no longer trusts was not ended: $e"))
+      case Right(changes) => Right(changes.foreach(l => info(s"identity: ${l.message}")))
+    }
+  }
 
   /** `engine` with `deployment`'s workflows launched, for a process that runs its own edge
     * (the chat), sweeping as `deployment` says, its finished turns not logged: a line on the
@@ -234,7 +272,13 @@ object Kit {
       deployment.visibility
     ) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(Instant.now())))
-      case Right(engine) => Right(engine)
+      case Right(engine) =>
+        trusting(engine, deployment) match {
+          case Left(failure) =>
+            engine.close()
+            Left(failure)
+          case Right(()) => Right(engine)
+        }
     }
 
   private def stores(link: Link^): EdgeStores^{link} =

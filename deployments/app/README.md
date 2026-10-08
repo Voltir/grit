@@ -16,6 +16,7 @@ In dependency order:
   and `GRIT_WEIGHT` over the database's on every start (logged as they stand), and changed
   one at a time by `/set` until the next start. `Budgets`: the daily cap on model spend,
   `GRIT_DAILY_USD` (`grit serve`'s default $1.00).
+  `Claimed`: the email domains the deployment claims as its own, `GRIT_CLAIMED_DOMAINS`.
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks

@@ -41,7 +41,8 @@ In dependency order:
   every `Kit.DeliverEvery` until the process is stopped, and a declared review's messages
   picked every `Kit.PickEvery`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
-  close) and `Kit.launch` (the engine's workflows, for grit's own chat), each failing as a
+  close), `Kit.launch` (the engine's workflows, for grit's own chat) and `Kit.trusting` (what
+  the deployment's identities no longer trust ended, at each start of its own engine), each failing as a
   `KitFailure`; `Launch`, the workflows launched the same way by every way grit runs, with the
   deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
   edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
