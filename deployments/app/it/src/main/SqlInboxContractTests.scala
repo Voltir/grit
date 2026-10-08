@@ -26,9 +26,6 @@ object SqlInboxContractTests extends InboxContract {
 
   private lazy val config = TestPostgres.freshDatabase("sql_inbox_contract")
 
-  /** A database of its own for each other visibility: a start that drops a compartment the
-    * database ran under is refused.
-    */
   /** `origin`'s conversation, in the database `config` names, made to name as its creator an
     * account no account could be, which the store reads as `Invalid`.
     */
@@ -47,6 +44,10 @@ object SqlInboxContractTests extends InboxContract {
     }
   }
 
+  /** Over the suite's shared database under the shipped visibility, and over a database of its
+    * own under any other: an engine refuses to start under compartments that drop one its
+    * database ran under.
+    */
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
   ): A = {
