@@ -570,6 +570,7 @@ object TurnTests extends TestSuite {
             TurnPrompt.Answering.text,
             edge,
             person,
+            TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
             reach
           )
             .mkString("\n\n")
@@ -624,6 +625,7 @@ object TurnTests extends TestSuite {
           TurnPrompt.Candour.text,
           TurnPrompt.Answering.text,
           TurnPrompt.edge(origin).text,
+          TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
           TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text
         ).mkString("\n\n")
       )

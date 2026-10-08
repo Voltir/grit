@@ -89,10 +89,11 @@ object TurnOffer {
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
     * and not at all when none is; one the engine describes, only when it writes to all of its
     * places. Its prompt: the base,
-    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's fragment, where its reply goes
-    * ([[TurnPrompt.destination]]), what it is called (`tooling.persona`, [[TurnPrompt.called]]),
-    * [[TurnPrompt.unprompted]] when its root is heard,
-    * what it may reach there, what it reaches besides ([[TurnPrompt.reached]], for each
+    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's
+    * fragment, where its reply goes ([[TurnPrompt.destination]]), what it is called
+    * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
+    * heard, its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
+    * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice's fragment (none for plain), and the
     * instruction files the edge read there. Its root is `ByName` when its first entry in
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
@@ -119,7 +120,7 @@ object TurnOffer {
       weighed: Option[Tags],
       answering: Boolean
   )(using
-      Tx^
+      tx: Tx^
   ): Either[TurnFailure, Recorded] =
     (for {
       found <- hosting.conversations.get(turn.conversationId)
@@ -199,6 +200,7 @@ object TurnOffer {
         ) ++ TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
           unasked ++
+          Vector(TurnPrompt.room(conversation.origin, Tx.floor(tx))) ++
           Option.when(kept)(
             TurnPrompt.reach(
               workspace,

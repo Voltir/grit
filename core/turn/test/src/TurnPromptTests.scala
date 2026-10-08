@@ -196,6 +196,33 @@ object TurnPromptTests extends TestSuite {
       TurnPrompt.reached(elsewhere, ToolSet.Empty) ==> None
     }
 
+    test(
+      "a turn is told its own room's label in written form and where what is said there may be read; in a direct message, that it is read only there"
+    ) {
+      val label = grit.core.visibility.Label
+        .read("confidential+trial")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val dm = Origin.Direct(
+        grit.core.identity.Account
+          .of("slack", "T1/U1")
+          .fold(e => throw new java.lang.AssertionError(e), identity),
+        "1.0"
+      )
+      Vector(TurnPrompt.room(Origin.Slack("T1", "C1", "1.0"), label), TurnPrompt.room(dm, label))
+        .map(f => (f.layer, f.text)) ==> Vector(
+        (
+          Layer.Reach,
+          "This conversation is labelled confidential+trial: what is said here may be read " +
+            "only where that label is allowed."
+        ),
+        (
+          Layer.Reach,
+          "This is a direct message, labelled confidential+trial at its person's clearance: " +
+            "what is said here is read only in this direct message."
+        )
+      )
+    }
+
     test("each layer's fragment is in its layer, in grit's words") {
       val origin = Origin.Tui(dir, "s")
       Vector(

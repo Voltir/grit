@@ -330,6 +330,7 @@ object TurnOfferTests extends TestSuite {
           TurnPrompt.edge(origin)
         ) ++
           TurnPrompt.destination(origin) ++ TurnPrompt.called(persona, origin) :+
+          TurnPrompt.room(origin, Label.Public) :+
           TurnPrompt.reach(None, TurnPrompt.Serving.Unserved)
       )
       .render
@@ -471,6 +472,14 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
+      "a turn is told its own room's label, its transaction's floor, never the asker's clearance"
+    ) {
+      val (_, _, prompt) = inSlack(inTrial(internal))
+      prompt.split("\n\n").toVector.filter(_.startsWith("This conversation is labelled")) ==>
+        Vector(TurnPrompt.room(slack, confidentialTrial).text)
+    }
+
+    test(
       "a reached service not trusted with the room's label is offered its writing tools but none that declare no destination"
     ) {
       val (recorded, set, prompt) = inSlack(inTrial(internal))
@@ -592,6 +601,7 @@ object TurnOfferTests extends TestSuite {
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
         "In this workspace you are called grit.",
+        TurnPrompt.room(slack, Label.Public).text,
         TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
       ).mkString("\n\n")
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
@@ -601,6 +611,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.edge(tui).text,
+        TurnPrompt.room(tui, Label.Public).text,
         TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text
       ).mkString("\n\n")
     }
@@ -621,6 +632,7 @@ object TurnOfferTests extends TestSuite {
         "Your reply is posted in this direct message and nowhere else. You can post anywhere " +
           "else only by calling a tool that does it, and only if one is offered to you.",
         "In this workspace you are called grit.",
+        TurnPrompt.room(dm, Label.Public).text,
         TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
       ).mkString("\n\n")
     }
@@ -665,7 +677,11 @@ object TurnOfferTests extends TestSuite {
             TurnPrompt.edge(slack)
           ) ++
             TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
-            Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, TurnPrompt.Serving.Unserved))
+            Vector(
+              TurnPrompt.unprompted,
+              TurnPrompt.room(slack, Label.Public),
+              TurnPrompt.reach(None, TurnPrompt.Serving.Unserved)
+            )
         )
         .render
     }
@@ -758,6 +774,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Answering,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
+        TurnPrompt.room(slack, Label.Public),
         TurnPrompt
           .reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
