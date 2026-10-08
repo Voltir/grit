@@ -266,9 +266,19 @@ object grit extends Module {
     def folder = os.sub / "core" / "act"
     def moduleDeps = Seq(core)
 
-    /* The phases under core's in-memory durability and store fakes. */
+    /* The phases under core's in-memory durability and store fakes. PhaseCaptureTests compiles
+     * probe sources against act, with act's own flags. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
+      }
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_PROBE_CLASSPATH" -> act.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> act.probeOptions().mkString(" ")
+        )
+      }
     }
   }
 
