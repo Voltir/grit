@@ -11,8 +11,7 @@ object FakeSlackContractTests extends SlackContract {
     slack.me = Self(Team, Bot)
     slack.domain = Domain
     slack.names = Map(Ana -> Some("Ana"), Bot -> Some("grit"), Gia -> Some("Gia"))
-    slack.standings =
-      Map(Ana -> AnaStanding, Bot -> Standing.Outside, Gia -> Standing.Outside)
+    slack.standings = Map(Ana -> AnaStanding, Bot -> Standing.Outside, Gia -> Standing.Outside)
     slack.channelNames =
       Map(Public -> "grit-contract", Private -> "grit-private", Outside -> "grit-outside")
     slack.privateChannels = Set(Private)

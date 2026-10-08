@@ -82,8 +82,10 @@ object SocketSlackTests extends TestSuite {
     }
 
     test("members whose later page fails is that failure, never the pages before it") {
-      val bot = BotToken.of("xoxb-contract").fold(e => throw new java.lang.AssertionError(e), identity)
-      val app = AppToken.of("xapp-contract").fold(e => throw new java.lang.AssertionError(e), identity)
+      val bot =
+        BotToken.of("xoxb-contract").fold(e => throw new java.lang.AssertionError(e), identity)
+      val app =
+        AppToken.of("xapp-contract").fold(e => throw new java.lang.AssertionError(e), identity)
       val stub = new SlackStub(0, failing = Set("users.list cursor=dXNlcjpVMDAwMDAwMDAz"))
       val slack = new SocketSlack(bot, app, stub.api)
       try slack.members(SlackContract.Team) ==> Left(SlackError.Refused("fatal_error"))

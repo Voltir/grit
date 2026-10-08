@@ -185,7 +185,9 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
         case Left(e) => Left(e)
         case Right(r) =>
           val here = found ++ Option(r.getMembers).fold(Vector.empty[User])(_.asScala.toVector)
-          Option(r.getResponseMetadata).flatMap(m => Option(m.getNextCursor)).filter(_.nonEmpty) match {
+          Option(r.getResponseMetadata)
+            .flatMap(m => Option(m.getNextCursor))
+            .filter(_.nonEmpty) match {
             case Some(next) => from(Some(next), here)
             case None => Right(here)
           }
