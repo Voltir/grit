@@ -84,6 +84,34 @@ object Payloads {
     callback(event)
   }
 
+  /** grit's direct-message channel with [[Ana]]. */
+  val AnasDm = "D0ANA00001"
+
+  /** A person's message in their direct message with grit (`message.im`), in the thread rooted
+    * at `thread` when given, by `user` of the team `userTeam` names when given.
+    */
+  def direct(
+      ts: String,
+      text: String,
+      thread: Option[String] = None,
+      user: String = Ana,
+      userTeam: Option[String] = None,
+      extra: Seq[(String, ujson.Value)] = Nil
+  ): String = {
+    val event = ujson.Obj(
+      "type" -> "message",
+      "channel" -> AnasDm,
+      "user" -> user,
+      "text" -> text,
+      "ts" -> ts,
+      "channel_type" -> "im"
+    )
+    thread.foreach(t => event("thread_ts") = t)
+    userTeam.foreach(t => event("user_team") = t)
+    extra.foreach((k, v) => event(k) = v)
+    callback(event)
+  }
+
   /** A post grit's bot made with its bot token at the top level of `channel`
     * (`chat.postMessage`, as `slack_post` makes one), as Slack delivers it: by grit's bot user,
     * with the bot's and the app's ids and no subtype; as an `app_mention` when `mention`.

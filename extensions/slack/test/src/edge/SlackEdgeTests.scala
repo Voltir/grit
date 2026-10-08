@@ -23,7 +23,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.identity.{Account, TestAccounts}
-import grit.core.inbox.InMemoryInbox
+import grit.core.inbox.{InMemoryInbox, InboxError}
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.InMemoryReviews
@@ -640,6 +640,74 @@ object SlackEdgeTests extends TestSuite {
       w.slack.posts.map(p => (p.thread, p.post.fallback, p.tag)) ==>
         Vector((Ts("1.0"), Budget.Refusal, Tag.Refused(Ts("1.0"))))
       (w.slack.reactions, w.pending, w.inbox.started) ==> (Set.empty, Vector.empty, Vector.empty)
+    }
+
+    test(
+      "a direct message is a turn of its thread in its author's direct room, written through their account, started, awaited in its thread and marked, with no channel listened in"
+    ) {
+      val w = new World
+      w.slack.deliver(direct("9.0", "what am I cleared for?")) ==> true
+      val dm = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ana"), "9.0")
+      val t = w.inbox
+        .ingested(dm, SourceId("9.0"))
+        .toOption
+        .flatten
+        .getOrElse(throw new java.lang.AssertionError("not recorded"))
+      val entries =
+        w.inbox.entries.list(t.conversationId)(using TestTx.fake).getOrElse(Vector.empty)
+      (
+        entries.map(_.payload),
+        entries.map(e => w.inbox.principals.author(e.id)),
+        w.inbox.started,
+        w.pending.map(p => (p.turn, p.to)),
+        w.slack.reactions
+      ) ==> (
+        Vector(Payload.Message(Message.User("what am I cleared for?"))),
+        Vector(Some(TestAccounts.account(s"slack:$Team/$Ana"))),
+        Vector(t),
+        Vector((t, s"$AnasDm/9.0/9.0")),
+        Set((ChannelId(AnasDm), Ts("9.0"), "eyes"))
+      )
+    }
+
+    test(
+      "a direct message in a sealed thread is told so once in its thread, recorded nowhere, and a redelivery posts nothing more"
+    ) {
+      val w = new World
+      val ana = TestAccounts.sourced(s"slack:$Team/$Ana")
+      val dm = Origin.Direct(ana, "9.0")
+      // Begun when Ana was cleared for more than she is now.
+      val _ = w.inbox.conversations.findOrCreate(
+        dm,
+        ana,
+        grit.core.visibility.Label.at(grit.core.visibility.Level.Internal)
+      )(using TestTx.fake)
+      w.slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
+      w.slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
+      (
+        w.inbox.recorded(dm, Set(SourceId("9.1"))),
+        w.slack.posts.map(p => (p.channel, p.thread, p.post.fallback, p.tag)),
+        w.slack.reactions,
+        w.inbox.started
+      ) ==> (
+        Right(Set()),
+        Vector(
+          (ChannelId(AnasDm), Ts("9.0"), InboxError.SealedReply, Tag.Refused(Ts("9.1")))
+        ),
+        Set(),
+        Vector()
+      )
+    }
+
+    test("a guest's direct message is a turn too, at public") {
+      val w = new World
+      w.slack.standings = Map(UserId(Ben) -> grit.core.identity.Standing.Outside)
+      w.slack.deliver(direct("9.0", "hello", user = Ben)) ==> true
+      val dm = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ben"), "9.0")
+      (
+        w.inbox.ingested(dm, SourceId("9.0")).map(_.nonEmpty),
+        w.inbox.conversations.all.filter(_.origin == dm).map(_.label)
+      ) ==> (Right(true), Vector(grit.core.visibility.Label.Public))
     }
 
     test("a message the database cannot record is not acknowledged, so Slack sends it again") {

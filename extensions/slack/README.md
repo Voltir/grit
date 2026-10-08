@@ -14,6 +14,7 @@ In dependency order:
 
 - **`event`** — what Slack says, as grit reads it: the opaque ids (`TeamId`, `ChannelId`,
   `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names, by a user of their own team: its `user_team`, else its `team`, else the installing workspace, so a user of a workspace sharing a channel is never spelled as one of grit's), a
+  person's direct message to grit `Told` (a group direct message is `Ignored`), a
   reaction to a message added or removed (`Reacted`), or `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
   message of a channel's history by `Events.listed`, under the same rules; and `MessageLink`, the
   channel and thread a message's link names. Imports nothing in slack.
@@ -84,6 +85,15 @@ In dependency order:
   own: when to ask, and which addresses count, are core's. Which scopes and event the app
   needs, and how a deployment trusts the edge: [`docs/extending.md`](../../docs/extending.md).
   ← `client`, `text`, `event`
+
+**Direct messages.** A person's message in their direct message with grit's bot is recorded
+as a mention is, whatever the edge listens in, as a turn of its thread's conversation in their
+direct room (`Origin.Direct`), which is labelled at their clearance and read only there (ADR
+0032); a message in a thread begun when they were cleared for more is answered once with
+`InboxError.SealedReply` and not recorded. Group direct messages are not heard, and direct
+messages are never backfilled. The Slack app needs the scopes `im:history` and `im:read`, the
+event `message.im`, and App Home's Messages tab on, with "Allow users to send messages", or no
+one can write to the bot.
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
 `GRIT_DAILY_USD` ($1.00 when unset); a message after that is not recorded, and its thread is

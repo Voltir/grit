@@ -39,7 +39,9 @@ object EventsTests extends TestSuite {
     test("a message is said at the time its ts names, to the microsecond") {
       Events.read(message("1515449522.000016", "hi"), bot).map {
         case m: Event.Said => Some(m.at)
-        case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) => None
+        case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
+            Event.Told(_, _, _, _, _, _, _, _) =>
+          None
       } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
     }
 
@@ -49,7 +51,8 @@ object EventsTests extends TestSuite {
       def author(extra: (String, ujson.Value)*): Either[String, Option[TeamId]] =
         Events.read(message("2.0", "hi", extra = extra), bot).map {
           case m: Event.Said => Some(m.author)
-          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) =>
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
+              Event.Told(_, _, _, _, _, _, _, _) =>
             None
         }
       (
@@ -123,7 +126,48 @@ object EventsTests extends TestSuite {
     }
 
     test(
-      "grit's own messages, other bots', edits, and messages outside a channel (a direct message, a group one, an app's home) are ignored"
+      "a person's direct message is told, in the thread it is in, by its author of the team user_team names, else the callback's"
+    ) {
+      (
+        Events.read(direct("9.0", "hi grit"), bot),
+        Events.read(direct("9.2", "more", Some("9.0"), userTeam = Some("T0OTHER01")), bot)
+      ) ==> (
+        Right(
+          Event.Told(
+            TeamId(Team),
+            TeamId(Team),
+            ChannelId(AnasDm),
+            Ts("9.0"),
+            Ts("9.0"),
+            UserId(Ana),
+            "hi grit",
+            Instant.ofEpochSecond(9)
+          )
+        ),
+        Right(
+          Event.Told(
+            TeamId(Team),
+            TeamId("T0OTHER01"),
+            ChannelId(AnasDm),
+            Ts("9.2"),
+            Ts("9.0"),
+            UserId(Ana),
+            "more",
+            Instant.ofEpochSecond(9, 200000000)
+          )
+        )
+      )
+    }
+
+    test("grit's own direct message, and a bot's, are ignored, as in a channel") {
+      (
+        Events.read(direct("9.3", "reply", user = Bot), bot),
+        Events.read(direct("9.4", "beep", extra = Seq("bot_id" -> "B1")), bot)
+      ) ==> (Right(Event.Ignored("a bot's message")), Right(Event.Ignored("a bot's message")))
+    }
+
+    test(
+      "grit's own messages, other bots', edits, a group direct message, and messages outside a channel (an app's home) are ignored"
     ) {
       Events.read(message("4.0", "reply", user = Bot), bot) ==> Right(
         Event.Ignored("a bot's message")
@@ -132,10 +176,8 @@ object EventsTests extends TestSuite {
         Right(Event.Ignored("a bot's message"))
       Events.read(message("4.2", "x", extra = Seq("subtype" -> "message_changed")), bot) ==>
         Right(Event.Ignored("a message's message_changed"))
-      Events.read(message("4.3", "x", extra = Seq("channel_type" -> "im")), bot) ==>
-        Right(Event.Ignored("a message outside a channel (im)"))
       Events.read(message("4.4", "x", extra = Seq("channel_type" -> "mpim")), bot) ==>
-        Right(Event.Ignored("a message outside a channel (mpim)"))
+        Right(Event.Ignored("a group direct message is not heard"))
       Events.read(message("4.5", "x", extra = Seq("channel_type" -> "app_home")), bot) ==>
         Right(Event.Ignored("a message outside a channel (app_home)"))
     }
@@ -173,7 +215,8 @@ object EventsTests extends TestSuite {
         )
         .map {
           case m: Event.Said => Some((m.team, m.author))
-          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) =>
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
+              Event.Told(_, _, _, _, _, _, _, _) =>
             None
         } ==> Right(Some((TeamId(Team), TeamId("T0THEIRS"))))
     }

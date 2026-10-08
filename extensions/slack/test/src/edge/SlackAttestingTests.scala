@@ -108,6 +108,24 @@ object SlackAttestingTests extends TestSuite {
     }
 
     test(
+      "a direct message's author is asked about before it is recorded; one Slack cannot answer for, never answered, is not recorded and left for Slack to send again"
+    ) {
+      val dm = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ana"), "9.0")
+      def recorded(w: World^): Boolean =
+        w.inbox.recorded(dm, Set(SourceId("9.0"))) == Right(Set(SourceId("9.0")))
+      val asked = new World
+      val down = new World
+      down.slack.unasked = Some(SlackError.Refused("missing_scope"))
+      (
+        asked.slack.deliver(direct("9.0", "hi")),
+        asked.voucher.vouched,
+        recorded(asked),
+        down.slack.deliver(direct("9.0", "hi")),
+        recorded(down)
+      ) ==> (true, Vector(Vouched(ana, Standing.Full(None))), true, false, false)
+    }
+
+    test(
       "an author answered for less than a minute ago is not asked again, and one answered longer ago is"
     ) {
       val w = new World

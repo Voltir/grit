@@ -12,7 +12,7 @@ object SlackAccounts {
   /** `user` of `team`: `slack:{team}/{user}`; why not, when either id is blank or holds `/` or
     * whitespace, as no id Slack sends does.
     */
-  def account(team: TeamId, user: UserId): Either[String, Account] =
+  def account(team: TeamId, user: UserId): Either[String, Account.Sourced] =
     for {
       t <- id("team", TeamId.value(team))
       u <- id("user", UserId.value(user))

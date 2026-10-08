@@ -116,6 +116,11 @@ final class SlackEdge(
     * thread kept as where a reply would go and whom it names besides grit
     * ([[grit.core.speech.Reach]]): grit replies there only when it drafts a reply and the
     * draft is posted (ADR 0022).
+    * A person's direct message to grit ([[Event.Told]]) is recorded as an addressed message is,
+    * as a turn of its thread's conversation in its author's direct room
+    * ([[grit.core.store.Origin.Direct]]), whatever `listening` holds; one the inbox refuses as
+    * sealed is answered once in its thread with [[InboxError.SealedReply]], and one refused
+    * over the cap as a channel's is. A group direct message is ignored.
     * A message recorded or heard that begins its conversation as a reply in a thread whose root
     * grit's bot posted with `slack_post` ([[Tag.Sent]]) first records that post as the
     * conversation's opening ([[grit.core.inbox.Inbox.posted]]), in its text as Slack gives it,
@@ -142,6 +147,15 @@ final class SlackEdge(
       case Right(Event.Ignored(_)) => true
       case Right(r: Event.Reacted) => reacted(r)
       case Right(c: Event.UserChanged) => changed(c)
+      case Right(t: Event.Told) =>
+        told(t) match {
+          case Right(()) => true
+          case Left(why) =>
+            said(
+              s"slack: direct message ${Ts.value(t.ts)} not recorded, left for Slack to send again: $why"
+            )
+            false
+        }
       case Right(m: Event.Said) =>
         val origin =
           Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
@@ -265,7 +279,8 @@ final class SlackEdge(
             Events.listed(l, self.team, channel, self.bot) match {
               case Right(m: Event.Said) => Some(m)
               case Right(
-                    Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _)
+                    Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) |
+                    Event.UserChanged(_, _) | Event.Told(_, _, _, _, _, _, _, _)
                   ) =>
                 None
               case Left(why) =>
@@ -340,31 +355,51 @@ final class SlackEdge(
     */
   private def spoken(m: Event.Said): Either[String, Option[(Account, String)]] =
     served(m.channel).flatMap { open =>
-      if (!open) Right(None)
-      else {
-        for {
-          author <- SlackAccounts.account(m.author, m.user)
-          _ <- stores.attesting.before(source, author).left.map {
-            case Attesting.Unchecked.Unattested(_, why) =>
-              s"${Account.written(author)} was never attested and Slack could not be asked: $why"
-            case Attesting.Unchecked.Store(e) => e.toString
-          }
-          mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
-          known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
-          linked = Incoming
-            .channels(m.text)
-            .collect { case (c, None) => c }
-            .distinct
-            .flatMap(c => channelNameOf(c).map(c -> _))
-            .toMap
-          _ <- stores.jot
-            .write(Subject.Public)(
-              stores.principals.name(author, known.getOrElse(m.user, UserId.value(m.user)))
-            )
-            .left
-            .map(_.toString)
-        } yield Some((author, Incoming.text(m.text, self.bot, known.get, linked.get)))
+      if (!open) Right(None) else voiced(m.author, m.user, m.text).map(Some(_))
+    }
+
+  /** The account of `user` of `team`, checked first ([[Attesting.before]]) and named as Slack
+    * names them, and `text`, which they wrote, in their words.
+    */
+  private def voiced(
+      team: TeamId,
+      user: UserId,
+      text: String
+  ): Either[String, (Account.Sourced, String)] =
+    for {
+      author <- SlackAccounts.account(team, user)
+      _ <- stores.attesting.before(source, author).left.map {
+        case Attesting.Unchecked.Unattested(_, why) =>
+          s"${Account.written(author)} was never attested and Slack could not be asked: $why"
+        case Attesting.Unchecked.Store(e) => e.toString
       }
+      mentioned = Mentioned.findAllMatchIn(text).map(x => UserId(x.group(1))).toVector
+      known = (user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
+      linked = Incoming
+        .channels(text)
+        .collect { case (c, None) => c }
+        .distinct
+        .flatMap(c => channelNameOf(c).map(c -> _))
+        .toMap
+      _ <- stores.jot
+        .write(Subject.Public)(
+          stores.principals.name(author, known.getOrElse(user, UserId.value(user)))
+        )
+        .left
+        .map(_.toString)
+    } yield (author, Incoming.text(text, self.bot, known.get, linked.get))
+
+  /** Records `m` as a turn of its thread's conversation in its author's direct room, as
+    * [[receive]] says.
+    */
+  private def told(m: Event.Told): Either[String, Unit] =
+    voiced(m.author, m.user, m.text).flatMap { (author, text) =>
+      ingest(
+        Origin.Direct(author, Ts.value(m.thread)),
+        Address(m.channel, m.thread, m.ts),
+        Message.User(text),
+        author
+      )
     }
 
   private def record(m: Event.Said, origin: Origin): Either[String, Unit] =
@@ -372,29 +407,42 @@ final class SlackEdge(
       case None => Right(())
       case Some((author, text)) =>
         val message: Message.User = Message.User(text)
-        opening(m, origin, author).flatMap(_ => ingest(m, origin, message, author))
+        opening(m, origin, author).flatMap(_ =>
+          ingest(origin, Address(m.channel, m.thread, m.ts), message, author)
+        )
     }
 
+  /** Records `message`, the one at `at`, written through `author`, as a turn of `origin`'s
+    * conversation, its reply awaited at `at`, its turn started and the message marked; a
+    * refusal over the cap, or of a sealed thread, answered once in its thread instead.
+    */
   private def ingest(
-      m: Event.Said,
       origin: Origin,
+      at: Address,
       message: Message.User,
       author: Account
   ): Either[String, Unit] =
-    stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
-      case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
+    stores.inbox.ingest(origin, SourceId(Ts.value(at.answered)), message, author) match {
+      case Left(over @ InboxError.OverCap(_, _, _)) =>
+        said(
+          s"slack: message ${Ts.value(at.answered)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"
+        )
+        refuse(at, Budget.Refusal)
+      case Left(InboxError.Sealed(_)) =>
+        said(
+          s"slack: message ${Ts.value(at.answered)} refused: its thread began when its author was cleared for more"
+        )
+        refuse(at, InboxError.SealedReply)
       case Left(other) => Left(other.toString)
       case Right(turn) =>
         for {
           _ <- stores.jot
-            .write(Subject.Turn(turn))(
-              stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
-            )
+            .write(Subject.Turn(turn))(stores.deliveries.await(turn, at.written))
             .left
             .map(_.toString)
           _ <- stores.inbox.startTurn(turn).left.map(_.toString)
         } yield slack
-          .react(m.channel, m.ts, Working)
+          .react(at.channel, at.answered, Working)
           .left
           .foreach(e => said(s"slack: not marked: $e"))
     }
@@ -442,23 +490,20 @@ final class SlackEdge(
           }
       }
 
-  /** Tells the person who wrote `m` that it was not taken ([[Budget.Refusal]]), in its
+  /** Tells the person who wrote the message at `at` that it was not taken, in `line`, in its
     * thread, once: a refusal already there under its tag is not posted again.
     */
-  private def refuse(m: Event.Said, over: InboxError.OverCap): Either[String, Unit] = {
-    said(
-      s"slack: message ${Ts.value(m.ts)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"
-    )
-    val tag = Tag.Refused(m.ts)
+  private def refuse(at: Address, line: String): Either[String, Unit] = {
+    val tag = Tag.Refused(at.answered)
     slack
-      .tagged(m.channel, m.thread, tag)
+      .tagged(at.channel, at.thread, tag)
       .flatMap { there =>
         if (there.nonEmpty) Right(())
         else
           RichText
-            .render(Doc(Vector(Block.Paragraph(Text.plain(Budget.Refusal)))))
+            .render(Doc(Vector(Block.Paragraph(Text.plain(line)))))
             .foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
-              done.flatMap(_ => slack.post(m.channel, m.thread, post, tag).map(_ => ()))
+              done.flatMap(_ => slack.post(at.channel, at.thread, post, tag).map(_ => ()))
             )
       }
       .left

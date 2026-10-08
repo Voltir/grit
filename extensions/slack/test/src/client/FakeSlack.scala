@@ -98,7 +98,9 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var down = false
 
-  /** The messages delivered as a person's message: their own ts, and their thread's. */
+  /** The messages delivered as a person's message, in a channel or a direct message: their
+    * own ts, and their thread's.
+    */
   @caps.unsafe.untrackedCaptures
   var delivered = Set.empty[(ChannelId, Ts)]
 
@@ -113,6 +115,8 @@ final class FakeSlack extends Slack {
     Events.read(payload, me.bot) match {
       case Right(said: Event.Said) =>
         delivered = delivered + ((said.channel, said.ts)) + ((said.channel, said.thread))
+      case Right(told: Event.Told) =>
+        delivered = delivered + ((told.channel, told.ts)) + ((told.channel, told.thread))
       case _ => ()
     }
     handler.exists(_(payload))

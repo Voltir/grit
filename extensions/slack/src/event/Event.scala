@@ -23,6 +23,22 @@ enum Event {
       at: Instant
   )
 
+  /** A person's direct message to grit (`channel_type` `im`): `ts` in the direct-message
+    * channel `channel` of `team`, in the thread rooted at `thread` (its own `ts` when in none),
+    * by `user` of their own team `author` (the event's `user_team`, else `team`), with `text`
+    * as Slack sent it, said `at`. Always addressed to grit.
+    */
+  case Told(
+      team: TeamId,
+      author: TeamId,
+      channel: ChannelId,
+      ts: Ts,
+      thread: Ts,
+      user: UserId,
+      text: String,
+      at: Instant
+  )
+
   /** `user`, anyone's (grit's bot included), `added` the reaction `emoji` to message `ts` of
     * `channel` in `team`, or removed it when not: `emoji` as Slack names it, without colons,
     * a skin tone after `::` (`+1::skin-tone-2`); `at`, the time the event's `event_ts` names.
@@ -44,8 +60,9 @@ enum Event {
   case UserChanged(team: TeamId, user: UserId)
 
   /** Something grit does not act on, and why: a bot's message (grit's own included), an
-    * edit or another change to a message, a message outside a channel, a reaction to anything
-    * but a message, an event of another type.
+    * edit or another change to a message, a message outside a channel or a direct message with
+    * grit (a group direct message included), a reaction to anything but a message, an event of
+    * another type.
     */
   case Ignored(why: String)
 }
@@ -91,6 +108,8 @@ object Events {
   /** The event an Events API payload (a Socket Mode envelope's `payload`) carries, grit's own
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
     * only from a person, in a channel, public or private, new or broadcast from a thread, or sharing a file),
+    * a person's `message` in a direct message with grit (`im`) as [[Event.Told]], one in a group
+    * direct message (`mpim`) [[Event.Ignored]],
     * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], `user_change`
     * as [[Event.UserChanged]], everything else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
     * `team`, else the callback's `team_id`, the workspace grit's app is installed in. Why not, when it is not an event callback, or an event
@@ -132,6 +151,13 @@ object Events {
           case (Some(sub), _, _) if !Spoken.contains(sub) =>
             Right(Event.Ignored(s"a message's $sub"))
           case (_, Some(_), _) => Right(Event.Ignored("a bot's message"))
+          case (_, _, Some("im")) =>
+            message(event, team, bot, mention = false).map {
+              case m: Event.Said =>
+                Event.Told(m.team, m.author, m.channel, m.ts, m.thread, m.user, m.text, m.at)
+              case other => other
+            }
+          case (_, _, Some("mpim")) => Right(Event.Ignored("a group direct message is not heard"))
           case (_, _, Some(kind)) if !Channels.contains(kind) =>
             Right(Event.Ignored(s"a message outside a channel ($kind)"))
           case _ => message(event, team, bot, mention = false)
