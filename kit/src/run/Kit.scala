@@ -347,6 +347,7 @@ object Kit {
   private def stores(link: Link^, attesting: Attesting^): EdgeStores^{link, attesting} =
     EdgeStores(
       link.inbox,
+      link.administration,
       link.principals,
       link.deliveries,
       link.acknowledgements,

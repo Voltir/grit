@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.clock.Clock
 import grit.core.edge.{
   Attesting,
@@ -77,6 +78,7 @@ object McpEdgeTests extends TestSuite {
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
     val stores = EdgeStores(
       inbox,
+      InMemoryAdministration.none(),
       inbox.principals,
       new InMemoryDeliveries,
       new InMemoryAcknowledgements,

@@ -4,6 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{
   Acknowledgement,
@@ -86,6 +87,7 @@ object ServedTests extends TestSuite {
     val stores =
       EdgeStores(
         inbox,
+        InMemoryAdministration.none(),
         inbox.principals,
         new InMemoryDeliveries,
         acknowledgements,

@@ -50,6 +50,7 @@ object SlackEdgeLiveTests extends TestSuite {
       self,
       EdgeStores(
         engine.inbox,
+        engine.administration,
         engine.principals,
         engine.deliveries,
         engine.acknowledgements,
@@ -117,6 +118,7 @@ object SlackEdgeLiveTests extends TestSuite {
       self,
       EdgeStores(
         inbox,
+        engine.administration,
         engine.principals,
         engine.deliveries,
         engine.acknowledgements,

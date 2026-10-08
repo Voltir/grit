@@ -87,3 +87,12 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
     Recorded(r.rooms, if (now.isEmpty) r.added.removed(group) else r.added.updated(group, now))
   }
 }
+
+object InMemoryAdministration {
+
+  /** One under the shipped visibility, vouching no one: every command only reads, and any
+    * change is refused ([[Refusal.NotVouched]]). For a suite whose edge runs no command.
+    */
+  def none(): InMemoryAdministration =
+    new InMemoryAdministration(Visibility.Shipped, InMemoryVoucher.none())
+}

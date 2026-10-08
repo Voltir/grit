@@ -152,6 +152,7 @@ object RunRetentionLiveTests extends TestSuite {
           Self(TeamId(Team), UserId(Bot)),
           EdgeStores(
             engine.inbox,
+            engine.administration,
             engine.principals,
             engine.deliveries,
             engine.acknowledgements,

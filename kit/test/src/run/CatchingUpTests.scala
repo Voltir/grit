@@ -4,6 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{
   Attesting,
@@ -76,6 +77,7 @@ object CatchingUpTests extends TestSuite {
   private val stores =
     EdgeStores(
       inbox,
+      InMemoryAdministration.none(),
       inbox.principals,
       new InMemoryDeliveries,
       new InMemoryAcknowledgements,

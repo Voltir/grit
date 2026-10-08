@@ -4,6 +4,7 @@ import java.time.ZoneOffset
 
 import scala.concurrent.duration.*
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.edge.{
   Attesting,
   EdgeStores,
@@ -83,6 +84,7 @@ object SlackAttestingTests extends TestSuite {
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(
           inbox,
+          InMemoryAdministration.none(),
           inbox.principals,
           new InMemoryDeliveries,
           new InMemoryAcknowledgements,

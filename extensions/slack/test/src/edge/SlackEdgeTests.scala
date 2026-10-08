@@ -2,6 +2,7 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.edge.{
   Acknowledgement,
   Attesting,
@@ -129,6 +130,7 @@ object SlackEdgeTests extends TestSuite {
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(
           inbox,
+          InMemoryAdministration.none(),
           inbox.principals,
           deliveries,
           acknowledgements,

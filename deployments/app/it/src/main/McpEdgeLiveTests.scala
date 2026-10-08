@@ -99,6 +99,7 @@ object McpEdgeLiveTests extends TestSuite {
         val stores =
           EdgeStores(
             engine.inbox,
+            engine.administration,
             engine.principals,
             engine.deliveries,
             engine.acknowledgements,

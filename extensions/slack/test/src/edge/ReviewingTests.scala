@@ -2,6 +2,7 @@ package grit.slack.edge
 
 import java.time.Instant
 
+import grit.core.admin.InMemoryAdministration
 import grit.core.edge.{
   Attesting,
   EdgeStores,
@@ -111,6 +112,7 @@ object ReviewingTests extends TestSuite {
       Self(TeamId(Team), UserId(Bot)),
       EdgeStores(
         inbox,
+        InMemoryAdministration.none(),
         inbox.principals,
         new InMemoryDeliveries,
         new InMemoryAcknowledgements,

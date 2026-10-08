@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.admin.Administration
 import grit.core.clock.Clock
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.inbox.Inbox
@@ -11,7 +12,8 @@ import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
-  * reads turns from, the accounts it names, the replies it awaits, the messages it marks as
+  * reads turns from, the administration it runs a person's commands through, the accounts it
+  * names, the replies it awaits, the messages it marks as
   * being answered while their turns run, the review prompts it posts
   * and the labels their rater gives, `jot`, the short transactions it writes those in,
   * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
@@ -19,6 +21,7 @@ import grit.core.visibility.Compartment
   */
 final case class EdgeStores(
     inbox: Inbox,
+    administration: Administration,
     principals: Principals,
     deliveries: Deliveries,
     acknowledgements: Acknowledgements,
