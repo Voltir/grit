@@ -8,20 +8,9 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Using
 
 import grit.core.id.{PrincipalId, PrincipalIds, TurnRef, TurnSeq}
-import grit.core.identity.{Account, Domain, Email, Realm, Standing, TestAccounts, Vouched}
-import grit.core.store.{LastWord, Linking, Origin, StoreError, Tx, Voucher}
-import grit.core.visibility.{
-  Clearance,
-  Compartments,
-  Grant,
-  Group,
-  Label,
-  Level,
-  RoomLabels,
-  Subject,
-  TestLabels,
-  Visibility
-}
+import grit.core.identity.{Account, Domain, Realm, Standing, TestAccounts, Vouched}
+import grit.core.store.{LastWord, Linking, Origin, StoreError, Voucher}
+import grit.core.visibility.{Clearance, Label, Subject}
 import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlIdentities, TestPostgres}
 
 import utest.*
