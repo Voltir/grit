@@ -46,12 +46,12 @@ object TxTests extends TestSuite {
 
   /* The deployment's rooms: a declared table, but one place returns a compartment the
    * deployment does not declare, and anything else is unplaced. */
-  private val rooms: Labeller[Place] = new Labeller[Place] {
-    def label(item: Place): Labelled =
-      if (item == undeclared) Labelled.Mapped(Label.at(Level.Internal, ops))
+  private val rooms: Labeller[Room] = new Labeller[Room] {
+    def label(item: Room): Labelled =
+      if (item.place == undeclared) Labelled.Mapped(Label.at(Level.Internal, ops))
       else
         declared
-          .collectFirst { case (p, l) if p == item => Labelled.Mapped(l) }
+          .collectFirst { case (p, l) if p == item.place => Labelled.Mapped(l) }
           .getOrElse(Labelled.Unmapped(Label.Public))
     def requires: Vector[Compartment] = Vector(trial, finance)
   }

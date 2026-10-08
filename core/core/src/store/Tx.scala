@@ -1,7 +1,7 @@
 package grit.core.store
 
 import grit.core.place.{Place, Service}
-import grit.core.visibility.{Clearance, Item, Label, Labelled, Visibility}
+import grit.core.visibility.{Clearance, Item, Label, Labelled, Room, Visibility}
 
 /** Capability to read and write inside one database transaction, opened for a
   * [[grit.core.visibility.Subject]]: what it reads of labelled rows, and the least label it
@@ -48,14 +48,14 @@ object Tx {
   def floor(tx: Tx^): Label = tx.clearance.floor
 
   /** The label `to` is written at outside grit: the label the deployment's rooms' labeller maps
-    * it to, when it maps it explicitly with only declared compartments; `None` otherwise, and
-    * then nothing writes to it. `None` for a direct message's room ([[Place.direct]]): only its
-    * own turns write there.
+    * it to as a room whose access is not reported, when it maps it explicitly with only declared
+    * compartments; `None` otherwise, and then nothing writes to it. `None` for a direct
+    * message's room ([[Place.direct]]): only its own turns write there.
     */
   def writable(to: Place)(using tx: Tx^): Option[Label] =
     if (to.direct) None
     else
-      tx.visibility.rooms.label(to) match {
+      tx.visibility.rooms.label(Room(to, None)) match {
         case Labelled.Mapped(l) if tx.visibility.compartments.admit(l) == l => Some(l)
         case _ => None
       }

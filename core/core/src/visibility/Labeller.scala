@@ -34,31 +34,52 @@ trait Labeller[-A] extends caps.Pure {
   def requires: Vector[Compartment]
 }
 
-/** A deployment's labels for rooms ([[grit.core.store.Origin.room]]): a room takes the
-  * label declared at the longest declared place it is within, or `otherwise`. Which rooms
-  * are labelled how, never which rooms may read which.
+/** A deployment's labels for rooms: a room takes the label declared at its own place; else,
+  * when its access is reported, `open` for [[RoomAccess.Open]] and unmapped for
+  * [[RoomAccess.Invited]]; else the label declared at the longest declared place it is within,
+  * or `otherwise`. Which rooms are labelled how, never which rooms may read which.
   */
-final case class RoomLabels private (declared: Vector[(Place, Label)], otherwise: Labelled)
-    extends Labeller[Place] {
+final case class RoomLabels private (
+    declared: Vector[(Place, Label)],
+    otherwise: Labelled,
+    open: Labelled
+) extends Labeller[Room] {
 
-  def label(item: Place): Labelled =
-    declared
-      .filter((place, _) => item.within(place))
-      .maxByOption((place, _) => place.segments.size)
-      .fold(otherwise)((_, l) => Labelled.Mapped(l))
+  def label(item: Room): Labelled =
+    declared.collectFirst { case (place, l) if place == item.place => Labelled.Mapped(l) } match {
+      case Some(own) => own
+      case None =>
+        item.access match {
+          case Some(RoomAccess.Open) => open
+          case Some(RoomAccess.Invited) => Labelled.Unmapped(Label.Public)
+          case None =>
+            declared
+              .filter((place, _) => item.place.within(place))
+              .maxByOption((place, _) => place.segments.size)
+              .fold(otherwise)((_, l) => Labelled.Mapped(l))
+        }
+    }
 
   def requires: Vector[Compartment] =
-    (declared.map(_._2) :+ otherwise.label).flatMap(Label.compartments).distinct
+    (declared.map(_._2) :+ otherwise.label :+ open.label).flatMap(Label.compartments).distinct
 }
 
 object RoomLabels {
 
   /** Every room public. */
-  val Public: RoomLabels = new RoomLabels(Vector.empty, Labelled.Mapped(Label.Public))
+  val Public: RoomLabels =
+    new RoomLabels(Vector.empty, Labelled.Mapped(Label.Public), Labelled.Mapped(Label.Public))
 
-  /** These, or the place declared twice. */
-  def of(declared: Vector[(Place, Label)], otherwise: Labelled): Either[Place, RoomLabels] = {
+  /** These, or the place declared twice; `open` is `otherwise` when not given. */
+  def of(
+      declared: Vector[(Place, Label)],
+      otherwise: Labelled,
+      open: Option[Labelled] = None
+  ): Either[Place, RoomLabels] = {
     val places = declared.map(_._1)
-    places.diff(places.distinct).headOption.toLeft(new RoomLabels(declared, otherwise))
+    places
+      .diff(places.distinct)
+      .headOption
+      .toLeft(new RoomLabels(declared, otherwise, open.getOrElse(otherwise)))
   }
 }

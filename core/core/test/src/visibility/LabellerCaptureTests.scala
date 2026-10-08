@@ -24,16 +24,16 @@ object LabellerCaptureTests extends TestSuite {
   /* Its type left to inference, so only the labeller's own self type can refuse `p`. */
   private def labeller(decides: String): String =
     s"""def make(p: Provider^): Unit = {
-       |    val made = new Labeller[Place] {
-       |      def label(item: Place): Labelled = Labelled.Mapped($decides)
+       |    val made = new Labeller[Room] {
+       |      def label(item: Room): Labelled = Labelled.Mapped($decides)
        |      def requires: Vector[Compartment] = Vector.empty
        |    }
-       |    val _ = made.label(Place.Everywhere)
+       |    val _ = made.label(Room(Place.Everywhere, None))
        |  }""".stripMargin
 
   val tests = Tests {
     test("control: a labeller deciding by the item alone compiles") {
-      probe(labeller("if (item.segments.isEmpty) Label.Public else Label.Public")) ==> Nil
+      probe(labeller("if (item.place.segments.isEmpty) Label.Public else Label.Public")) ==> Nil
     }
 
     test("a labeller that calls a capability it holds is rejected") {

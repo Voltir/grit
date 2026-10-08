@@ -9,7 +9,7 @@ import grit.core.place.{Place, Service}
   */
 final case class Visibility private (
     compartments: Compartments,
-    rooms: Labeller[Place],
+    rooms: Labeller[Room],
     groups: Vector[Group],
     grants: Vector[Grant],
     trusts: Vector[Trust]
@@ -59,13 +59,13 @@ final case class Visibility private (
     }
 
   /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the
-    * one [[rooms]] gives it, a compartment not declared kept at [[Compartment.Unmapped]]
+    * one [[rooms]] gives it as a room whose access is not reported, a compartment not declared kept at [[Compartment.Unmapped]]
     * instead ([[Compartments.admit]]). A direct message's room ([[Place.direct]]) is
     * [[Compartments.top]]: its label is its person's clearance, which only a transaction can
     * resolve (ADR 0032), so anything labelling it without one fails high.
     */
   def roomLabel(room: Place): Label =
-    if (room.direct) compartments.top else compartments.admit(rooms.label(room).label)
+    if (room.direct) compartments.top else compartments.admit(rooms.label(Room(room, None)).label)
 
   /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
     * declared.
@@ -95,7 +95,7 @@ object Visibility {
     */
   def of(
       compartments: Compartments,
-      rooms: Labeller[Place],
+      rooms: Labeller[Room],
       groups: Vector[Group],
       grants: Vector[Grant],
       trusts: Vector[Trust] = Vector.empty
@@ -105,7 +105,7 @@ object Visibility {
     val declaredRooms = rooms match {
       case r: RoomLabels =>
         r.declared.map((place, label) => (Namer.RoomAt(place), label)) :+
-          (Namer.OtherRooms, r.otherwise.label)
+          (Namer.OtherRooms, r.otherwise.label) :+ (Namer.OpenRooms, r.open.label)
       case _ => Vector.empty
     }
     val names = groups.map(_.name)
@@ -151,6 +151,9 @@ enum Namer {
 
   /** A [[RoomLabels]]' `otherwise`. */
   case OtherRooms
+
+  /** A [[RoomLabels]]' `open`. */
+  case OpenRooms
 
   /** A grant to `group`. */
   case Granted(group: GroupName)

@@ -21,8 +21,8 @@ object TxVisibilityCaptureTests extends TestSuite {
          |import grit.core.visibility.*
          |object Probe {
          |  def f(c: java.sql.Connection^, other: java.sql.Connection^): Unit = {
-         |    val rooms = new Labeller[Place] {
-         |      def label(item: Place): Labelled = Labelled.Mapped($decides)
+         |    val rooms = new Labeller[Room] {
+         |      def label(item: Room): Labelled = Labelled.Mapped($decides)
          |      def requires: Vector[Compartment] = Vector.empty
          |    }
          |    val opened = Visibility
@@ -36,7 +36,7 @@ object TxVisibilityCaptureTests extends TestSuite {
 
   val tests = Tests {
     test("control: a transaction opened with a visibility whose labeller decides by data") {
-      probe("if (item.segments.isEmpty) Label.Public else Label.Public") ==> Nil
+      probe("if (item.place.segments.isEmpty) Label.Public else Label.Public") ==> Nil
     }
 
     test("a visibility whose labeller holds a connection is rejected") {

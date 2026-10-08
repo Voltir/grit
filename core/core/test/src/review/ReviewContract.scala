@@ -23,7 +23,15 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Bound, Gate, Kind, Reading, ShadowAnswers, Shadowed, Tags, TriageShadows}
-import grit.core.visibility.{Compartment, Compartments, Labelled, Labeller, TestLabels, Visibility}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Labelled,
+  Labeller,
+  Room,
+  TestLabels,
+  Visibility
+}
 
 import utest.*
 
@@ -178,10 +186,10 @@ abstract class ReviewContract extends TestSuite {
     * [[publicPlace]] at public, every other place unmapped.
     */
   private val posting: Visibility = {
-    val rooms: Labeller[Place] = new Labeller[Place] {
-      def label(item: Place): Labelled =
-        if (item == trialPlace) Labelled.Mapped(TestLabels.Trial)
-        else if (item == publicPlace) Labelled.Mapped(grit.core.visibility.Label.Public)
+    val rooms: Labeller[Room] = new Labeller[Room] {
+      def label(item: Room): Labelled =
+        if (item.place == trialPlace) Labelled.Mapped(TestLabels.Trial)
+        else if (item.place == publicPlace) Labelled.Mapped(grit.core.visibility.Label.Public)
         else Labelled.Unmapped(grit.core.visibility.Label.Public)
       def requires: Vector[Compartment] = Vector(TestLabels.trial)
     }

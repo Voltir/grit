@@ -83,6 +83,7 @@ import grit.core.visibility.{
   Label,
   Labelled,
   Labeller,
+  Room,
   Subject,
   TestLabels,
   Trust,
@@ -116,10 +117,10 @@ object TurnFixtures {
       places: Vector[(Place, Label)],
       trusts: Vector[Trust] = Vector.empty
   ): Visibility = {
-    val rooms: Labeller[Place] = new Labeller[Place] {
-      def label(item: Place): Labelled =
+    val rooms: Labeller[Room] = new Labeller[Room] {
+      def label(item: Room): Labelled =
         places
-          .collectFirst { case (p, l) if p == item => Labelled.Mapped(l) }
+          .collectFirst { case (p, l) if p == item.place => Labelled.Mapped(l) }
           .getOrElse(Labelled.Unmapped(Label.Public))
       def requires: Vector[Compartment] = Vector(trial, finance)
     }

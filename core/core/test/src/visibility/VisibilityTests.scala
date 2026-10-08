@@ -114,8 +114,8 @@ object VisibilityTests extends TestSuite {
 
     test("a compartment not declared is refused, saying what names it") {
       val ops = compartment("ops")
-      val opsRooms = new Labeller[grit.core.place.Place] {
-        def label(item: grit.core.place.Place): Labelled = Labelled.Mapped(Label.Public)
+      val opsRooms = new Labeller[Room] {
+        def label(item: Room): Labelled = Labelled.Mapped(Label.Public)
         def requires: Vector[Compartment] = Vector(ops)
       }
       Visibility.of(compartments, opsRooms, groups, grants) ==>
@@ -132,6 +132,15 @@ object VisibilityTests extends TestSuite {
         .fold(p => throw new java.lang.AssertionError(p.written), identity)
       Visibility.of(compartments, otherwise, groups, grants) ==>
         Left(VisibilityRefusal.Undeclared(Namer.OtherRooms, ops))
+      val open = RoomLabels
+        .of(
+          Vector.empty,
+          Labelled.Mapped(Label.Public),
+          Some(Labelled.Mapped(Label.at(Level.Internal, ops)))
+        )
+        .fold(p => throw new java.lang.AssertionError(p.written), identity)
+      Visibility.of(compartments, open, groups, grants) ==>
+        Left(VisibilityRefusal.Undeclared(Namer.OpenRooms, ops))
       Visibility.of(
         compartments,
         RoomLabels.Public,
