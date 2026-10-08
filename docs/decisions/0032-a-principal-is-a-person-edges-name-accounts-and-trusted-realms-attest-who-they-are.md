@@ -53,7 +53,8 @@ Decision:
 - Revocation is a lapse. An account has one attestation, and its person is computed from it,
   so a changed or withdrawn attestation returns the account at once, in the change itself,
   before anything relinks. A deployment that stops trusting a realm or a domain ends what they
-  attested when it next starts, keeping no address it no longer claims; since nothing ages out,
+  attested when it next starts serving its edges (a process that serves none, such as a
+  terminal chat on the same database, ends nothing), keeping no address it no longer claims; since nothing ages out,
   that is the only way such trust ends. What was asked through an account before its link stays
   with its home; what was asked while linked stays with the email's person. While linked, the
   account still lists and cancels what it asked before, and the limit on what a person may have

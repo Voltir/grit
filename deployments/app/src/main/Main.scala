@@ -76,8 +76,9 @@ import grit.turn.{Turn, TurnLoop}
   * (or SQL) changes them from the next sweep and turn on, until the next start. The email
   * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; serving
   * Slack, it trusts Slack to say who the people of the workspace its bot token is installed in
-  * are ([[SlackEdge.installedIn]]), and no one otherwise; each start of its own engine ends what
-  * its identities no longer trust ([[Kit.trusting]]).
+  * are ([[SlackEdge.installedIn]]), and no one otherwise; `grit serve` and `grit backfill` end
+  * what its identities no longer trust as they start, and the chat and a run with arguments
+  * end nothing ([[ownEngine]]).
   *
   * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
   * it: its TUI serves its own directory and shows its conversations, the header saying
@@ -204,7 +205,6 @@ object Main {
     // A run with arguments prints each model call, so a replayed turn is visibly one that
     // did not call.
     val run = Launch.Run(announced = !tui, stubDelay)
-    def launched(engine: Engine^): Engine^{engine} = Kit.launch(engine, deployment, secrets, run)
 
     // This process, as the engine's row and this edge's registration name it.
     val identity = LocalMachine.identity()
@@ -252,8 +252,7 @@ object Main {
                     case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
                   }
                 try {
-                  Kit.trusting(started, deployment).left.foreach(f => sys.error(f.message))
-                  val running = launched(started)
+                  val running = ownEngine(started, deployment, secrets, run)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
                   running
                 } catch {
@@ -317,11 +316,7 @@ object Main {
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
           case Right(engine) =>
-            try
-              Kit.trusting(engine, deployment) match {
-                case Left(failure) => Some(failure.message)
-                case Right(()) => say(launched(engine), args.toList)
-              }
+            try say(ownEngine(engine, deployment, secrets, run), args.toList)
             finally {
               // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and
               // mill, waiting forever.
@@ -335,6 +330,20 @@ object Main {
       sys.exit(1)
     }
   }
+
+  /** `engine`, the database's engine this process holds for the chat or a run with arguments,
+    * with `deployment`'s workflows launched ([[Kit.launch]]). It ends no attestation, whatever
+    * `deployment` trusts: only `grit serve` and `grit backfill` do, since they alone serve the
+    * Slack attester, and a chat's environment may claim other domains than theirs. Throws as
+    * [[Kit.launch]] does.
+    */
+  private[main] def ownEngine(
+      engine: Engine^,
+      deployment: Deployment,
+      secrets: Secrets,
+      run: Launch.Run
+  ): Engine^{engine} =
+    Kit.launch(engine, deployment, secrets, run)
 
   /** This process's edge (ADR 0017), registered through `engine` for `place`: it offers
     * `hosted` and the directory's `instructions` there, and runs the requests addressed to it

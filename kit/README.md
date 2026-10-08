@@ -44,9 +44,9 @@ In dependency order:
   trusts its attester for, whose reports are logged at info, warn or error by
   `Kit.reported`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
-  close), `Kit.launch` (the engine's workflows, for grit's own chat) and `Kit.trusting` (what
-  the deployment's identities no longer trust ended, at each start of its own engine), each failing as a
-  `KitFailure`; `Launch`, the workflows launched the same way by every way grit runs, with the
+  close), the two alone ending what the deployment's identities no longer trust as they start,
+  since they alone serve every attester it trusts, each failing as a `KitFailure`; `Kit.launch`
+  (the engine's workflows, for grit's own chat, ending no attestation); `Launch`, the workflows launched the same way by every way grit runs, with the
   deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
   edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
   same with its models, classifiers and the jobs' clock given, is how a live test counts

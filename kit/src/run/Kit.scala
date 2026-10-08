@@ -70,7 +70,7 @@ object Kit {
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
     * those already opened. Once the engine opens, and before any edge does, what the deployment's
-    * identities no longer trust is ended ([[trusting]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
+    * identities no longer trust is ended ([[Engine.untrust]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
     * Each edge that is an attester the deployment trusts is asked for a look once its edges
@@ -171,11 +171,11 @@ object Kit {
 
   /** Opens `deployment`'s engine with no sweep of its own and `catchUp` over it; shows `say`
     * what it would hear from each source, estimated, and that nothing caps a catch-up when
-    * the estimate is more than today's cap leaves, once [[trusting]] has run; hears it once `agree` accepts, sweeps
+    * the estimate is more than today's cap leaves; hears it once `agree` accepts, sweeps
     * until nothing is left to close or ask, says what the day's recorded spend rose by, and
     * closes. Nothing is heard when `agree` declines or nothing is unheard. Refused as
     * [[serve]] is, before the engine opens; once it opens, what the deployment's identities no
-    * longer trust is ended ([[trusting]]). Each finished turn is logged as [[serve]] logs it.
+    * longer trust is ended ([[Engine.untrust]]). Each finished turn is logged as [[serve]] logs it.
     */
   def catchUp(
       deployment: Deployment,
@@ -230,12 +230,13 @@ object Kit {
     }
 
   /** Ends what `deployment`'s identities no longer support ([[Engine.untrust]]), logging each
-    * change at info in the `grit.serve` log; and warns there, at every start, when realms are
-    * trusted and no email domain is claimed, so no account is linked to another by email: what
-    * each start of the deployment's own engine calls before anything serves. `Store` when the
-    * database fails.
+    * change at info in the `grit.serve` log; and warns there when realms are trusted and no email
+    * domain is claimed, so no account is linked to another by email. `Store` when the database
+    * fails. Called by [[open]] alone, so only a start that serves the deployment's edges, and with
+    * them every attester it trusts, withdraws trust: a process running its own chat
+    * ([[launch]]) may be declared with fewer edges, and so trust fewer realms.
     */
-  def trusting(engine: Engine^, deployment: Deployment): Either[KitFailure, Unit] = {
+  private def trusting(engine: Engine^, deployment: Deployment): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
     trusted(engine.untrust, deployment.identities, said => log.info(said), said => log.warn(said))
   }
@@ -265,7 +266,9 @@ object Kit {
 
   /** `engine` with `deployment`'s workflows launched, for a process that runs its own edge
     * (the chat), sweeping as `deployment` says, its finished turns not logged: a line on the
-    * terminal would draw over the chat. Throws as [[Launch.apply]] does.
+    * terminal would draw over the chat. It ends no attestation: a process that serves no
+    * attester leaves what each attested standing ([[serve]] and [[catchUp]] end what the
+    * deployment no longer trusts). Throws as [[Launch.apply]] does.
     */
   private[grit] def launch(
       engine: Engine^,
