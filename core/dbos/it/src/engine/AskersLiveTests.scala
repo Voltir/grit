@@ -1,6 +1,6 @@
 package grit.dbos.engine
 
-import grit.core.id.{SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, SourceId, TestCallSlots, TurnRef, TurnSeq}
 import grit.core.identity.{Account, Evidence, Held, Principal, TestAccounts, Vouched}
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
@@ -56,14 +56,9 @@ object AskersLiveTests extends TestSuite {
         val turn = told(e, origin, ana, "1.0")
         val (asker, clearance) = asked(e, turn)
         val person = LiveDb.principal(config, ana)
-        (
-          asker,
-          clearance,
-          asker.map(Vouchings.Seen.cleared)
-        ) ==> (
+        (asker, clearance) ==> (
           Some(Principal.Person(person, Set(Held(ana, Evidence.Vouched, member = true)))),
-          Clearance.inRoom(origin.room, Vouchings.Confidential, Vouchings.Internal),
-          Some(Vouchings.Internal)
+          Clearance.inRoom(origin.room, Vouchings.Confidential, Vouchings.Internal)
         )
       }
     }
@@ -82,6 +77,28 @@ object AskersLiveTests extends TestSuite {
             Set(Held(dana, Evidence.Home, member = false))
           )
         )
+      }
+    }
+
+    test(
+      "a channel's turn grit's own post begins is grit's; a direct message whose account was never seen, and a conversation gone, have no asker"
+    ) {
+      engine("askers_edges") { (e, config) =>
+        val posted = Origin.Slack("T1", "C-grit", "1.0")
+        e.inbox.posted(
+          posted,
+          SourceId("1.0"),
+          "a summary",
+          java.time.Instant.EPOCH,
+          TestCallSlots.First,
+          Account.Grit
+        ) ==> Right(true)
+        val begun = TurnRef(LiveDb.conversation(config, posted).id, TurnSeq.First)
+        val unseen = Origin.Direct(TestAccounts.sourced("slack:T1/U-never-seen"), "1.0")
+        val dm = TurnRef(LiveDb.conversation(config, unseen).id, TurnSeq.First)
+        val gone = TurnRef(ConversationId(java.util.UUID.randomUUID().toString), TurnSeq.First)
+        (asked(e, begun)._1, asked(e, dm)._1, asked(e, gone)._1) ==>
+          (Some(Principal.Grit), None, None)
       }
     }
 
