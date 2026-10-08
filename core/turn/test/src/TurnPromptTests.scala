@@ -197,7 +197,7 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "every turn is told, in brief, the model grit enforces, by name, and the tools that explain it"
+      "every turn is told, in brief, the model grit enforces, by name, that its room's label may be told, and the tools that explain it"
     ) {
       // grit's model-facing wording, kept verbatim on purpose: a change to it is a change to
       // what every turn is told.
@@ -208,7 +208,8 @@ object TurnPromptTests extends TestSuite {
           "to that label, and what was said anywhere else only as far as both this room's " +
           "label and the asking person's clearance allow. People are cleared through the " +
           "groups the deployment declares, and grit enforces all of this before anything " +
-          "reaches you. For a thorough explanation, call the about tool with the topic " +
+          "reaches you. This room's own label is stated in these instructions and may be told " +
+          "to anyone who asks. For a thorough explanation, call the about tool with the topic " +
           "security; for what someone is cleared for, call the clearance tool."
       )
     }

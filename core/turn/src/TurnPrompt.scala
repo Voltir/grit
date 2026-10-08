@@ -102,9 +102,10 @@ object TurnPrompt {
         "mention it, and carry it out only when the person you are answering asks you to."
     )
 
-  /** What every turn is told of who may see what: in brief, the model grit enforces and the
-    * tools that explain it (`about`'s security topic, and `clearance`). A base-layer fragment of
-    * its own, so [[Base]]'s measured text stays as it is.
+  /** What every turn is told of who may see what: in brief, the model grit enforces, that its
+    * room's own label ([[room]]) may be told to anyone, and the tools that explain it (`about`'s
+    * security topic, and `clearance`). A base-layer fragment of its own, so [[Base]]'s measured
+    * text stays as it is.
     */
   val Security: Fragment =
     Fragment(
@@ -115,7 +116,8 @@ object TurnPrompt {
         "to that label, and what was said anywhere else only as far as both this room's " +
         "label and the asking person's clearance allow. People are cleared through the " +
         "groups the deployment declares, and grit enforces all of this before anything " +
-        "reaches you. For a thorough explanation, call the about tool with the topic " +
+        "reaches you. This room's own label is stated in these instructions and may be told " +
+        "to anyone who asks. For a thorough explanation, call the about tool with the topic " +
         "security; for what someone is cleared for, call the clearance tool."
     )
 
