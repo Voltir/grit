@@ -90,5 +90,5 @@ Consequences:
   declaration no longer computes alone), by `Authority.decide` being the only way to the value
   applying a change takes (`Authority.Allowed`), by `Visibility.of` refusing a compartment's own
   group, which people cleared through grit join, as administrators or as another
-  compartment's stewards, by the stored administration counting declared members alone, and by tests of the rule, the stored
-  administration and the edge's memberships.
+  compartment's stewards, by the stored administration counting declared members alone, and
+  by tests of the rule, the stored administration and the edge's memberships.
