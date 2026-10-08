@@ -23,7 +23,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{Label, Recorded, Visibility}
+import grit.core.visibility.{InMemoryRecorded, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
@@ -37,7 +37,9 @@ import grit.dbos.sql.TestTx
   * `principals` names an account's speaker by its spelling, linking no two accounts; only
   * `person` can model linking ([[grit.core.store.InMemoryVoucher.principal]]), and the default,
   * [[TestAccounts.principal]], takes every account to be a person of its own whom no realm
-  * attests a member.
+  * attests a member. A room's label and quiet, and the people added to groups, are read from
+  * `records`, shared with the fakes that record them
+  * ([[grit.core.store.InMemoryVoucher.records]]).
   */
 final class InMemoryInbox(
     val conversations: InMemoryConversationStore,
@@ -46,7 +48,8 @@ final class InMemoryInbox(
     val ledger: InMemoryUsageLedger,
     budget: Budget,
     initially: Visibility,
-    person: Account -> Principal
+    person: Account -> Principal,
+    records: InMemoryRecorded
 ) extends Inbox {
 
   // An immutable value, written and read only on the test's own thread, through the calls it
@@ -59,19 +62,13 @@ final class InMemoryInbox(
     */
   def reopen(now: Visibility): Unit = visibility = now
 
-  // An immutable value, written and read only on the test's own thread, as `visibility` is.
-  @caps.unsafe.untrackedCaptures
-  private var recorded = Recorded.Empty
-
   /** Has `room` made quiet, as a person's command would. */
-  def quiet(room: Place): Unit =
-    recorded = Recorded(
-      recorded.rooms.updated(
-        room,
-        recorded.rooms.getOrElse(room, Recorded.Kept(None, None, quiet = false)).copy(quiet = true)
-      ),
-      recorded.added
-    )
+  def quiet(room: Place): Unit = {
+    val _ = records.room(room)(_.copy(quiet = true))
+  }
+
+  /** A transaction whose labels in force are `visibility`'s and what is recorded now. */
+  private def inForce: Tx = TestTx.inForce(visibility, records.now)
 
   /** The conversations' periods, over [[entries]]. */
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
@@ -165,9 +162,9 @@ final class InMemoryInbox(
     */
   private def labelOf(origin: Origin): Label = origin match {
     case Origin.Direct(account, _) =>
-      Tx.clearanceOf(person(account))(using TestTx.inForce(visibility, recorded))
+      Tx.clearanceOf(person(account))(using inForce)
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
-      Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded))
+      Tx.roomLabel(origin.room)(using inForce)
   }
 
   def hear(
@@ -186,12 +183,12 @@ final class InMemoryInbox(
           source,
           Payload.Heard(text),
           by,
-          Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded)),
+          Tx.roomLabel(origin.room)(using inForce),
           at,
           capped = false
         )
     }).flatMap { turn =>
-      val kept = Reach.heardIn(origin.room, reach)(using TestTx.inForce(visibility, recorded))
+      val kept = Reach.heardIn(origin.room, reach)(using inForce)
       inTx(speech.heard(turn, kept)) match {
         // A message recorded as a turn before is not heard, and keeps no reach.
         case Left(StoreError.Invalid(_)) | Right(()) => Right(())
@@ -301,7 +298,7 @@ final class InMemoryInbox(
               conversation <- conversations.findOrCreate(
                 origin,
                 by,
-                Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded))
+                Tx.roomLabel(origin.room)(using inForce)
               )
               next <- entries.lockNext(conversation.id)
               _ <- periods.openFor(conversation.id, next.turnSeq, at)
@@ -474,12 +471,13 @@ final class InMemoryInbox(
 object InMemoryInbox {
 
   /** Empty in-memory stores, under `visibility`, taking an account's person to be as `person`
-    * says.
+    * says, reading what `records` holds of rooms and groups.
     */
   def fresh(
       budget: Budget = Budget(java.time.ZoneOffset.UTC, None),
       visibility: Visibility = Visibility.Shipped,
-      person: Account -> Principal = TestAccounts.principal
+      person: Account -> Principal = TestAccounts.principal,
+      records: InMemoryRecorded = new InMemoryRecorded()
   ): InMemoryInbox =
     new InMemoryInbox(
       new InMemoryConversationStore,
@@ -488,6 +486,7 @@ object InMemoryInbox {
       new InMemoryUsageLedger,
       budget,
       visibility,
-      person
+      person,
+      records
     )
 }

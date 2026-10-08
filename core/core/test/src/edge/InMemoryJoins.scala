@@ -5,25 +5,22 @@ import java.time.Instant
 import grit.core.identity.{Account, Standing, Vouched}
 import grit.core.place.Place
 import grit.core.store.{InMemoryVoucher, StoreError}
-import grit.core.visibility.RoomAccess
+import grit.core.visibility.{InMemoryRecorded, RoomAccess}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Joins]] for tests, keeping [[JoinsContract]]: each room's membership as
-  * [[Joins.Kept]] orders it, its access as last reported ([[access]]), and whether a person
-  * decided its label or quiet ([[decide]]); an inviter is whom `voucher` links their account to.
+  * [[Joins.Kept]] orders it, and its access as last reported ([[access]]) kept in `voucher`'s
+  * [[InMemoryRecorded]], whose label and quiet, set by a person through any fake sharing it,
+  * keep it from being forgotten; an inviter is whom `voucher` links their account to.
   */
 final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
 
-  // Each var holds an immutable value, written and read only on the test's own thread, through
-  // the calls it makes and waits on.
+  private val records: InMemoryRecorded = voucher.records
+
+  // An immutable value, written and read only on the test's own thread, through the calls it
+  // makes and waits on.
   @caps.unsafe.untrackedCaptures
   private var kept = Map.empty[Place, Joins.Kept]
-
-  @caps.unsafe.untrackedCaptures
-  private var reported = Map.empty[Place, RoomAccess]
-
-  @caps.unsafe.untrackedCaptures
-  private var decided = Set.empty[Place]
 
   /** When set, every call fails as the database would. */
   @caps.unsafe.untrackedCaptures
@@ -34,11 +31,17 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
     val _ = voucher.vouch(Vouched(account, Standing.Full(None)))(using TestTx.fake)
   }
 
-  /** Has a person set `room`'s label or made it quiet, as a command would. */
-  def decide(room: Place): Unit = decided = decided + room
+  /** Has a person made `room` quiet, or spoken there again, as a command would. */
+  def quiet(room: Place, on: Boolean): Unit = {
+    val _ = records.room(room)(_.copy(quiet = on))
+  }
 
   /** `room`'s access as last reported; `None` when it never was, or it was forgotten. */
-  def access(room: Place): Option[RoomAccess] = reported.get(room)
+  def access(room: Place): Option[RoomAccess] = records.now.rooms.get(room).flatMap(_.access)
+
+  /** Whether a person set `room`'s label or made it quiet. */
+  private def decided(room: Place): Boolean =
+    records.now.rooms.get(room).exists(k => k.label.nonEmpty || k.quiet)
 
   private def unavailable = Left(StoreError.DatabaseError("the database is down"))
 
@@ -53,7 +56,7 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
       val skip = Joins.skips(inviter.map(a => Some(voucher.principal(a))))
       val now = kept.getOrElse(room, Joins.Never).join(at, skip)
       kept = kept.updated(room, now)
-      reported = reported.updated(room, access)
+      val _ = records.room(room)(_.copy(access = Some(access)))
       Right(now.membership)
     }
 
@@ -96,10 +99,10 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
     if (down) unavailable
     else {
       val gone = kept.collect {
-        case (room, k) if room.within(under) && k.forgotten(before, decided.contains(room)) => room
+        case (room, k) if room.within(under) && k.forgotten(before, decided(room)) => room
       }.toSet
       kept = kept -- gone
-      reported = reported -- gone
+      gone.foreach(records.forget)
       Right(gone.size)
     }
 }

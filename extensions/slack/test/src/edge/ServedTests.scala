@@ -98,13 +98,19 @@ object ServedTests extends TestSuite {
     val clock: SetClock = new SetClock(Instant.EPOCH)
     val voucher =
       new InMemoryVoucher(if (attests) Set(Ours) else Set.empty, Set.empty, Visibility.Shipped)
-    val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
+    val inbox: InMemoryInbox =
+      InMemoryInbox.fresh(
+        Budget(ZoneOffset.UTC, None),
+        Visibility.Shipped,
+        voucher.principal,
+        voucher.records
+      )
     val edges: InMemoryEdges = new InMemoryEdges
     val picks = new PickedPrompts(inbox)
     val acknowledgements = new InMemoryAcknowledgements
 
-    /** Where its edges record their bot's memberships. */
-    val joins: InMemoryJoins = InMemoryJoins.none()
+    /** Where its edges record their bot's memberships, beside what [[admin]] records. */
+    val joins: InMemoryJoins = new InMemoryJoins(voucher)
 
     /** Where people's commands are run, and what they record kept: as the labels in force
       * of every transaction [[jot]] opens.

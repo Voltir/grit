@@ -104,9 +104,10 @@ object SlackEdgeTests extends TestSuite {
     val slack = new FakeSlack
     private val voucher =
       if (staff) new InMemoryVoucher(Set(Ours), Set.empty, Staff) else InMemoryVoucher.none()
+    private val visibility = if (staff) Staff else Visibility.Shipped
     val inbox: InMemoryInbox =
-      if (staff) InMemoryInbox.fresh(budget, Staff, voucher.principal)
-      else InMemoryInbox.fresh(budget)
+      if (staff) InMemoryInbox.fresh(budget, Staff, voucher.principal, voucher.records)
+      else InMemoryInbox.fresh(budget, records = voucher.records)
 
     /** Records a call that cost `usd` today. */
     def spend(usd: String): Unit = {
@@ -125,6 +126,9 @@ object SlackEdgeTests extends TestSuite {
 
     /** The joins the edge records its bot's memberships through, vouching as the inbox does. */
     val joins = new InMemoryJoins(voucher)
+
+    /** Where people's commands are run, recording what the inbox and joins read. */
+    val admin = new InMemoryAdministration(visibility, voucher)
     val acknowledgements = new InMemoryAcknowledgements
 
     /** What the edges said, in order. */
@@ -137,7 +141,7 @@ object SlackEdgeTests extends TestSuite {
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(
           inbox,
-          InMemoryAdministration.none(),
+          admin,
           joins,
           inbox.principals,
           deliveries,

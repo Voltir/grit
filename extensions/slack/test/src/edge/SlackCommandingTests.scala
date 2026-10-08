@@ -126,7 +126,8 @@ object SlackCommandingTests extends TestSuite {
       def run(by: Account, room: Place, command: Command, at: Instant) =
         Left(StoreError.DatabaseError("gone"))
     }
-    private val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
+    private val inbox: InMemoryInbox =
+      InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None), Declared, voucher.principal, voucher.records)
 
     /** What the edge said, in order. */
     @caps.unsafe.untrackedCaptures
@@ -139,7 +140,7 @@ object SlackCommandingTests extends TestSuite {
         EdgeStores(
           inbox,
           if (failing) down else admin,
-          InMemoryJoins.none(),
+          new InMemoryJoins(voucher),
           inbox.principals,
           new InMemoryDeliveries,
           new InMemoryAcknowledgements,

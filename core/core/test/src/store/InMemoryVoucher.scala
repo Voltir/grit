@@ -14,7 +14,7 @@ import grit.core.identity.{
   Standing,
   Vouched
 }
-import grit.core.visibility.Visibility
+import grit.core.visibility.{InMemoryRecorded, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Voucher]] for tests, keeping [[VoucherContract]], for `realms`, keeping an
@@ -22,9 +22,16 @@ import grit.dbos.sql.TestTx
   * people. It ignores the `Tx`, and holds the accounts it has seen itself ([[saw]]), apart from
   * any other in-memory store's: an account another fake was told of is unseen here until a
   * suite says so, where the SQL voucher shares one table of accounts with every store.
+  * `records` is what is recorded of rooms and groups, which the fakes built over this voucher
+  * share ([[grit.core.admin.InMemoryAdministration]], [[grit.core.edge.InMemoryJoins]]) and an
+  * inbox shares when given it.
   */
-final class InMemoryVoucher(val realms: Set[Realm], domains: Set[Domain], visibility: Visibility)
-    extends Voucher {
+final class InMemoryVoucher(
+    val realms: Set[Realm],
+    domains: Set[Domain],
+    visibility: Visibility,
+    val records: InMemoryRecorded = new InMemoryRecorded()
+) extends Voucher {
   import InMemoryVoucher.Said
 
   // Each var holds an immutable value, written and read only on the test's own thread, through
