@@ -5,7 +5,17 @@ import java.time.Instant
 import scala.concurrent.duration.Duration
 
 import grit.core.identity.Standing
-import grit.slack.event.{ChannelId, Event, Events, Listed, Payloads, TeamId, Ts, UserId}
+import grit.slack.event.{
+  ChannelId,
+  Event,
+  Events,
+  Listed,
+  Payloads,
+  ResponseUrl,
+  TeamId,
+  Ts,
+  UserId
+}
 import grit.slack.text.Post
 
 /** A [[Slack]] for tests, keeping what [[Slack]] says in memory and held to it by
@@ -287,6 +297,23 @@ final class FakeSlack extends Slack {
         )
     }
   }
+
+  /** What each slash command was answered, oldest first: its url and the words. */
+  @caps.unsafe.untrackedCaptures
+  var responses = Vector.empty[(ResponseUrl, String)]
+
+  /** The response urls of commands asked more than 30 minutes ago. */
+  @caps.unsafe.untrackedCaptures
+  var expired = Set.empty[ResponseUrl]
+
+  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit] =
+    request {
+      if (expired.contains(url)) Left(SlackError.Refused("expired_url"))
+      else {
+        responses = responses :+ (url, text)
+        Right(())
+      }
+    }
 
   def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
     request {

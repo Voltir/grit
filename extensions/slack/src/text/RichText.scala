@@ -34,7 +34,7 @@ object RichText extends Renderer[Vector[Post]] {
   /** `text` with `&`, `<` and `>` written as Slack's mrkdwn escapes them, so a message's
     * plain text reads as written: nothing in it becomes a mention, a broadcast or a link.
     */
-  private def escaped(text: String): String =
+  private[slack] def escaped(text: String): String =
     text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
   /** A Slack block and its plain text, which is what counts against [[MaxChars]]. */

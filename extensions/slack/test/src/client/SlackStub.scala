@@ -18,7 +18,9 @@ import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
   * is in `failing` with Slack's `fatal_error`. Listens on a free port of 127.0.0.1 until closed.
   * Four recordings were written by hand from Slack's API docs, not captured: `036` and `037`
   * (`users.info`) and `047` and `048` (`users.list`), checked against a live workspace's
-  * answers by shape only.
+  * answers by shape only. It also answers slash commands' response urls ([[commands]]), by
+  * hand as well: `live` takes every answer (`200`, `ok`) and keeps it ([[responses]]), and
+  * `expired` refuses each (`404`, `expired_url`), as a url past its 30 minutes is refused.
   */
 final class SlackStub(limited: Int, failing: Set[String] = Set.empty) extends AutoCloseable {
   import SlackStub.*
@@ -29,12 +31,43 @@ final class SlackStub(limited: Int, failing: Set[String] = Set.empty) extends Au
   @caps.unsafe.untrackedCaptures
   private var served = Map.empty[String, Int]
 
+  // Written by the server's one dispatcher thread before it answers; read by the test after
+  // the call it waits on returns.
+  @caps.unsafe.untrackedCaptures
+  @volatile private var answered = Vector.empty[(String, String)]
+
   private val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
   server.createContext("/api/", Handler)
+  server.createContext("/commands/", Commands)
   server.start()
 
   /** The Web API URL [[SocketSlack]] is pointed at. */
   val api: String = s"http://127.0.0.1:${server.getAddress.getPort}/api/"
+
+  /** The response url of the slash command `name`, `live` or `expired`. */
+  def commands(name: String): String =
+    s"http://127.0.0.1:${server.getAddress.getPort}/commands/$name"
+
+  /** Every body `live` took, oldest first, with the url it was posted to. */
+  def responses: Vector[(String, String)] = answered
+
+  private object Commands extends HttpHandler {
+    def handle(exchange: HttpExchange): Unit = {
+      val url = commands(exchange.getRequestURI.getPath.stripPrefix("/commands/"))
+      val body = new String(exchange.getRequestBody.readAllBytes(), UTF_8)
+      val (status, answer) =
+        if (url == commands("live")) {
+          answered = answered :+ (url, body)
+          (200, "ok")
+        } else (404, "expired_url")
+      val bytes = answer.getBytes(UTF_8)
+      exchange.getResponseHeaders.add("content-type", "text/plain")
+      exchange.sendResponseHeaders(status, bytes.length.toLong)
+      val out = exchange.getResponseBody
+      try out.write(bytes)
+      finally out.close()
+    }
+  }
 
   def close(): Unit = server.stop(0)
 

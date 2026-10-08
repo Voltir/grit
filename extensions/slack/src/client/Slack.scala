@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.identity.Standing
-import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 /** Slack's bot token, `xoxb-…`. It shows only as `BotToken(****)`. */
@@ -146,6 +146,13 @@ trait Slack extends caps.SharedCapability {
     * it is `Limited`; `Refused("not_in_channel")` when grit's bot is not in the channel.
     */
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]]
+
+  /** Answers the slash command whose answers go to `url`, seen by its asker alone, in `text` as
+    * written: nothing in it becomes a mention, a link or markup. Slack takes up to 5 answers at
+    * a url, for 30 minutes after its command; one past either is `Refused` with Slack's word
+    * for it (`expired_url`).
+    */
+  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit]
 
   /** Stops listening and disconnects; nothing is asked of it after. */
   def close(): Unit

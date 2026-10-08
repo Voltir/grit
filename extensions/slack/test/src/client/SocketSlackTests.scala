@@ -51,6 +51,22 @@ object SocketSlackTests extends TestSuite {
 
   val tests = Tests {
     test(
+      "a response url's refusal is Slack's word for it, from a JSON body or a plain one, else the status"
+    ) {
+      Vector(
+        SocketSlack.answered(200, "ok"),
+        SocketSlack.answered(404, """{"ok":false,"error":"used_url"}"""),
+        SocketSlack.answered(410, "expired_url\n"),
+        SocketSlack.answered(500, "")
+      ) ==> Vector(
+        Right(()),
+        Left(SlackError.Refused("used_url")),
+        Left(SlackError.Refused("expired_url")),
+        Left(SlackError.Refused("http 500"))
+      )
+    }
+
+    test(
       "a user is a full member with their confirmed address, whatever its domain, only of their own team and when none of guest, stranger, bot, app, invited or deactivated"
     ) {
       def standing(change: User -> Unit): Standing = SocketSlack.member(Ours, user(change)).standing

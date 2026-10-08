@@ -7,8 +7,8 @@ import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import grit.core.identity.{Email, Standing}
-import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
-import grit.slack.text.Post
+import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
+import grit.slack.text.{Post, RichText}
 
 import com.slack.api.methods.request.auth.AuthTestRequest
 import com.slack.api.methods.request.chat.{ChatGetPermalinkRequest, ChatPostMessageRequest}
@@ -271,6 +271,12 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
         case other => Left(other)
       }
 
+  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit] =
+    try {
+      val r = sdk.send(ResponseUrl.value(url), response(text))
+      answered(Option(r.getCode).fold(0)(_.toInt), Option(r.getBody).getOrElse(""))
+    } catch { case NonFatal(e) => Left(unreachable(e)) }
+
   def close(): Unit = socket.foreach { s =>
     try s.close()
     catch { case NonFatal(_) => () }
@@ -368,6 +374,35 @@ object SocketSlack {
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
     case Tag.Sent(request) => Map("request" -> request)
     case Tag.Prompt(entry) => Map("entry" -> entry)
+  }
+
+  /** The body [[Slack.respond]] posts at a command's response url: `text`, escaped as
+    * [[RichText]] escapes a reply's plain text and with markup off, seen by its asker alone.
+    * The SDK's own webhook payload has no `response_type`, so it is written here.
+    */
+  def response(text: String): String =
+    ujson
+      .Obj(
+        "response_type" -> "ephemeral",
+        "text" -> RichText.escaped(text),
+        "mrkdwn" -> false
+      )
+      .render()
+
+  /** What a response url answered with `status` and `body`: taken on a 2xx; else `Refused`
+    * with Slack's word for it, the error of a JSON body, or the plain text of another, or the
+    * status when there is none.
+    */
+  def answered(status: Int, body: String): Either[SlackError, Unit] = {
+    val word = scala.util
+      .Try(ujson.read(body))
+      .toOption
+      .flatMap(_.objOpt)
+      .flatMap(_.get("error"))
+      .flatMap(_.strOpt)
+      .orElse(Some(body.trim).filter(w => w.nonEmpty && !w.startsWith("{")))
+    if (status >= 200 && status < 300) Right(())
+    else Left(SlackError.Refused(word.getOrElse(s"http $status")))
   }
 
   /** `user` as a [[Member]] of `team`, as [[Slack.member]] says: the one reading of Slack's

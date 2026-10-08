@@ -6,7 +6,7 @@ import scala.concurrent.duration.Duration
 
 import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
-import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
 import grit.slack.text.{Post, RichText}
 
 import utest.*
@@ -24,6 +24,12 @@ abstract class SlackContract extends TestSuite {
     * be reached at all.
     */
   protected def withSlack[A](limited: Int = 0, down: Boolean = false)(body: Slack => A): A
+
+  /** Runs `body` over a Slack as [[withSlack]] does, given [[Hooks]]: the response urls of two
+    * slash commands and what each was answered. When `down`, Slack cannot be reached there
+    * either.
+    */
+  protected def withCommand[A](down: Boolean = false)(body: (Slack, Hooks^) => A): A
 
   private val w = Workspace
 
@@ -227,6 +233,30 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test("respond answers its asker alone, at the command's url, in the words given") {
+      withCommand() { (slack, hooks) =>
+        val words = "label <level> & <!channel> &lt;: *not bold*"
+        (slack.respond(hooks.live, words), hooks.answered()) ==>
+          (Right(()), Vector(Answered(hooks.live, ephemeral = true, words)))
+      }
+    }
+
+    test("respond at a command's url past its 30 minutes is Refused(expired_url)") {
+      withCommand() { (slack, hooks) =>
+        (slack.respond(hooks.expired, "too late"), hooks.answered()) ==>
+          (Left(SlackError.Refused("expired_url")), Vector.empty)
+      }
+    }
+
+    test("respond where Slack cannot be reached is Unreachable") {
+      withCommand(down = true) { (slack, hooks) =>
+        slack.respond(hooks.live, "hi") match {
+          case Left(SlackError.Unreachable(_)) => ()
+          case other => throw new java.lang.AssertionError(s"not Unreachable: $other")
+        }
+      }
+    }
+
     test("a Slack that cannot be reached is Unreachable from every call but listen") {
       withSlack(down = true) { slack =>
         val m1 = w.ts("m1")
@@ -255,6 +285,24 @@ abstract class SlackContract extends TestSuite {
 }
 
 object SlackContract {
+
+  /** Two slash commands' response urls, and what each has been answered. */
+  trait Hooks {
+
+    /** The url of a command Slack still takes answers at. */
+    def live: ResponseUrl
+
+    /** The url of a command asked more than 30 minutes ago. */
+    def expired: ResponseUrl
+
+    /** What Slack took at either url, oldest first. */
+    def answered(): Vector[Answered]
+  }
+
+  /** An answer Slack took at `url`: whether only its asker sees it, and its words as they
+    * read in Slack.
+    */
+  final case class Answered(url: ResponseUrl, ephemeral: Boolean, shown: String)
 
   /** The ids the recordings use: the capture maps every real id to these. */
   val Team = TeamId("T0000000001")
