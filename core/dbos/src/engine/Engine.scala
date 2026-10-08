@@ -242,7 +242,9 @@ final class Engine private (
       spending,
       budget,
       sqlSchedules,
-      visibility
+      visibility,
+      // An edge's message is dated, and its day's cap read, when it reaches this process.
+      Clock.system()
     )
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */

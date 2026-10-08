@@ -120,6 +120,43 @@ object SqlInboxTests extends TestSuite {
       } finally engine.close()
     }
 
+    test(
+      "an ingested message is dated by the inbox's clock, and so is the period it opens"
+    ) {
+      val at = Instant.parse("2031-02-03T04:05:06Z")
+      val ds = new org.postgresql.ds.PGSimpleDataSource()
+      ds.setURL(config.jdbcUrl)
+      ds.setUser(config.user)
+      ds.setPassword(config.password)
+      val client = new dev.dbos.transact.DBOSClient(ds)
+      try {
+        val entries = new grit.dbos.sql.SqlEntryStore()
+        val periods = new grit.dbos.sql.SqlPeriodStore(entries)
+        val inbox = new SqlInbox(
+          ds,
+          client,
+          new grit.dbos.sql.SqlConversationStore(),
+          entries,
+          periods,
+          new grit.dbos.sql.SqlSpeechStore,
+          new grit.dbos.sql.SqlUsageLedger(),
+          LiveEngine.Uncapped,
+          new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
+          grit.core.visibility.Visibility.Shipped,
+          new grit.core.clock.SetClock(at)
+        )
+        val turn = inbox
+          .ingest(Origin.Task("sql", "clocked"), SourceId("m1"), Message.User("hi"), Account.Local)
+          .fold(e => sys.error(e.toString), identity)
+        LiveDb.transaction(config)(
+          for {
+            all <- entries.list(turn.conversationId)
+            opened <- periods.all(turn.conversationId)
+          } yield (all.map(_.createdAt), opened.map(_.openedAt))
+        ) ==> Right((Vector(at), Vector(at)))
+      } finally client.close()
+    }
+
     test("a post is searched by its text, and the call that made it goes with its entry") {
       val origin = Origin.Task("sql", "posted")
       val slot = CallSlot

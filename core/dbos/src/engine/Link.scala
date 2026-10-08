@@ -278,7 +278,9 @@ private[engine] final class Attached(
       spending,
       budget,
       new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
-      visibility
+      visibility,
+      // An edge's message is dated, and its day's cap read, when it reaches this process.
+      grit.core.clock.Clock.system()
     )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()

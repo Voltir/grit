@@ -257,7 +257,8 @@ object EngineLockTests extends TestSuite {
                 new grit.dbos.sql.SqlUsageLedger(),
                 LiveEngine.Uncapped,
                 new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
-                Visibility.Shipped
+                Visibility.Shipped,
+                grit.core.clock.Clock.system()
               ),
               "after"
             )

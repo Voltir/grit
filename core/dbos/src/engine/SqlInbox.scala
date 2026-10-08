@@ -7,6 +7,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.approval.Approval
+import grit.core.clock.Clock
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -46,8 +47,8 @@ import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, which refuses a new message once `spending` says today's spend has
-  * reached `budget`'s cap (today by this machine's clock, in `budget`'s zone), and a turn is
-  * started by enqueueing it through `client`. A conversation it creates for an edge's origin is
+  * reached `budget`'s cap (today by `clock`, in `budget`'s zone), an ingested message dated by
+  * `clock`, and a turn is started by enqueueing it through `client`. A conversation it creates for an edge's origin is
   * labelled as `visibility` labels its room.
   */
 final class SqlInbox(
@@ -60,7 +61,8 @@ final class SqlInbox(
     spending: Spending,
     budget: Budget,
     schedules: SqlSchedules,
-    visibility: Visibility
+    visibility: Visibility,
+    clock: Clock^
 ) extends Inbox {
   import SqlInbox.{Begun, Heard, Ingested}
 
@@ -79,7 +81,8 @@ final class SqlInbox(
       source: SourceId,
       message: Message.User,
       by: Account
-  ): Either[InboxError, TurnRef] =
+  ): Either[InboxError, TurnRef] = {
+    val now = clock.now()
     inTransaction {
       conversations
         .find(origin)
@@ -87,7 +90,7 @@ final class SqlInbox(
           // No conversation yet: the message is new, and is refused over the cap before its
           // conversation is created.
           case None =>
-            overCap(Instant.now()).flatMap {
+            overCap(now).flatMap {
               case Some(refused) => Right(Left(refused))
               case None =>
                 roomOf(origin).flatMap(label =>
@@ -97,7 +100,7 @@ final class SqlInbox(
                     Payload.Message(message),
                     by,
                     label,
-                    Instant.now(),
+                    now,
                     capped = true
                   )
                 )
@@ -110,7 +113,7 @@ final class SqlInbox(
                 Payload.Message(message),
                 by,
                 label,
-                Instant.now(),
+                now,
                 capped = true
               )
             )
@@ -125,6 +128,7 @@ final class SqlInbox(
         .fold[Either[InboxError, Unit]](Right(()))(o => enqueue(Stitches.enqueueOptions(o)))
         .flatMap(_ => ingested.turn)
     }
+  }
 
   def hear(
       origin: Origin,
