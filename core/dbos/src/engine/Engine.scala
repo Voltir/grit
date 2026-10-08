@@ -15,7 +15,7 @@ import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Domain, Realm}
 import grit.core.inbox.Inbox
 import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
@@ -39,7 +39,8 @@ import grit.core.store.{
   StoreError,
   Tombstones,
   UsageLedger,
-  VoiceStore
+  VoiceStore,
+  Voucher
 }
 import grit.core.tool.ToolSets
 import grit.core.triage.{Shadowing, TriageShadows, TriageStore}
@@ -72,7 +73,8 @@ import grit.dbos.sql.{
   SqlTriageShadows,
   SqlTriageStore,
   SqlUsageLedger,
-  SqlVoiceStore
+  SqlVoiceStore,
+  SqlVoucher
 }
 import grit.dbos.workflow.{
   Closes,
@@ -151,6 +153,13 @@ final class Engine private (
   val voices: VoiceStore = new SqlVoiceStore()
 
   val principals: Principals = new SqlPrincipals()
+
+  /** The voucher for `realms` ([[Voucher]]), keeping an attested email only in one of
+    * `domains`: what a deployment records its trusted attesters' answers with, for the realms it
+    * trusts each for and the domains it claims.
+    */
+  def voucher(realms: Set[Realm], domains: Set[Domain]): Voucher =
+    new SqlVoucher(realms, domains, visibility)
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 

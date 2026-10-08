@@ -14,7 +14,7 @@ object VoucherCaptureTests extends TestSuite {
     Probes.errors(
       s"""package outside
          |import grit.core.store.*
-         |import grit.core.identity.{Realm, Vouched}
+         |import grit.core.identity.{Account, Realm, Vouched}
          |trait Provider extends caps.SharedCapability { def call(): String }
          |object Probe {
          |  $body
@@ -29,6 +29,10 @@ object VoucherCaptureTests extends TestSuite {
        |      def realms: Set[Realm] = Set.empty
        |      def vouch(vouched: Vouched)(using Tx^): Either[StoreError, Vector[Linking]] =
        |        $vouches
+       |      def lastWord(account: Account)(using Tx^): Either[StoreError, LastWord] =
+       |        Right(LastWord(account, None))
+       |      def lastWords(realm: Realm)(using Tx^): Either[StoreError, Vector[LastWord]] =
+       |        Right(Vector.empty)
        |    }
        |    val _ = made.realms
        |  }""".stripMargin
