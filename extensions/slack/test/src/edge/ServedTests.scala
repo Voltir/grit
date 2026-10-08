@@ -679,6 +679,8 @@ object ServedTests extends TestSuite {
     ) {
       val w = new World
       w.slack.channelNames = w.slack.channelNames + (First -> "general")
+      // Slack lists them out of id order.
+      w.slack.listing = Vector(C, First)
       w.slack.histories = Map(
         C -> Vector(
           Listed(Ts("1.0"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "is the freeze on?"),
