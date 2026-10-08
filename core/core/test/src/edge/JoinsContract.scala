@@ -111,6 +111,45 @@ abstract class JoinsContract extends TestSuite {
         (Some(RoomAccess.Open), Some(RoomAccess.Invited), None)
     }
 
+    test(
+      "backfilled marks the backfill of a room's last join done, so it is no longer pending; one of an earlier join, or of a room never joined, changes nothing"
+    ) {
+      val j = fresh()
+      ok(j.joined(general, RoomAccess.Open, None, t(1)))
+      ok(j.joined(ops, RoomAccess.Invited, None, t(1)))
+      ok(j.left(ops, t(2)))
+      ok(j.joined(ops, RoomAccess.Invited, None, t(3)))
+      (
+        ok(j.backfilled(general, t(1))),
+        ok(j.backfilled(ops, t(1))),
+        ok(j.backfilled(trial, t(1))),
+        ok(j.members(Team))
+      ) ==> (
+        (),
+        (),
+        (),
+        Vector(
+          general -> Membership.Member(t(1), None),
+          ops -> Membership.Member(t(3), Some(t(3)))
+        )
+      )
+    }
+
+    test(
+      "backfilledSince counts the rooms within a place whose latest join with its backfill done or skipped was made at or after then; none pending, earlier or elsewhere"
+    ) {
+      val j = fresh()
+      ok(j.joined(general, RoomAccess.Open, None, t(5)))
+      ok(j.backfilled(general, t(5)))
+      ok(j.joined(ops, RoomAccess.Invited, Some(gus), t(6)))
+      ok(j.joined(trial, RoomAccess.Invited, None, t(1)))
+      ok(j.backfilled(trial, t(1)))
+      ok(j.joined(lounge, RoomAccess.Open, None, t(7)))
+      ok(j.joined(elsewhere, RoomAccess.Open, None, t(8)))
+      ok(j.backfilled(elsewhere, t(8)))
+      (ok(j.backfilledSince(Team, t(5))), ok(j.backfilledSince(Team, t(6)))) ==> (2, 1)
+    }
+
     test("members are the rooms within a place the bot is a member of, and no others") {
       val j = fresh()
       ok(j.joined(general, RoomAccess.Open, None, t(1)))

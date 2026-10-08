@@ -45,6 +45,16 @@ trait Joins extends caps.SharedCapability {
     */
   def left(room: Place, at: Instant): Either[StoreError, Membership]
 
+  /** Records the backfill of `room`'s join at `join` done or skipped, so it is no longer
+    * pending ([[Membership.Member]]); nothing when `join` is not the room's last join.
+    */
+  def backfilled(room: Place, join: Instant): Either[StoreError, Unit]
+
+  /** How many rooms within `under` had a join's backfill done or skipped, the latest such
+    * join made at or after `since`: a room counts once however often it was joined.
+    */
+  def backfilledSince(under: Place, since: Instant): Either[StoreError, Int]
+
   /** Every room within `under` the bot is recorded a member of. */
   def members(under: Place): Either[StoreError, Vector[(Place, Membership.Member)]]
 
@@ -101,6 +111,17 @@ object Joins {
     def leave(at: Instant): Kept =
       if (joined.exists(_.isAfter(at)) || left.exists(_.isAfter(at))) this
       else copy(left = Some(at))
+
+    /** Its join at `join` with its backfill done or skipped, as [[Joins.backfilled]] records
+      * it: unchanged unless `join` is its last join.
+      */
+    def backfilledAt(join: Instant): Kept =
+      if (joined.contains(join)) copy(backfilled = Some(join)) else this
+
+    /** Whether [[Joins.backfilledSince]] counts it: the latest join whose backfill is done or
+      * skipped made at or after `since`.
+      */
+    def backfilledSince(since: Instant): Boolean = backfilled.exists(!_.isBefore(since))
 
     /** Whether [[Joins.forget]] forgets it, before `before`, when no person `decided` its label
       * or quiet.

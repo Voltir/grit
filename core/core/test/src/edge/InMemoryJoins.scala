@@ -65,6 +65,17 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
       Right(now.membership)
     }
 
+  def backfilled(room: Place, join: Instant): Either[StoreError, Unit] =
+    if (down) unavailable
+    else {
+      kept.get(room).foreach(k => kept = kept.updated(room, k.backfilledAt(join)))
+      Right(())
+    }
+
+  def backfilledSince(under: Place, since: Instant): Either[StoreError, Int] =
+    if (down) unavailable
+    else Right(kept.count((room, k) => room.within(under) && k.backfilledSince(since)))
+
   def members(under: Place): Either[StoreError, Vector[(Place, Membership.Member)]] =
     if (down) unavailable
     else

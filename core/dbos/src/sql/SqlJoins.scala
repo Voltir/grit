@@ -47,6 +47,21 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
       } yield now.membership
     }
 
+  def backfilled(room: Place, join: Instant): Either[StoreError, Unit] =
+    jot.write(Subject.Public) {
+      found(room).flatMap {
+        case None => Right(())
+        case Some((place, was)) => kept(place, was.backfilledAt(join), None)
+      }
+    }
+
+  def backfilledSince(under: Place, since: Instant): Either[StoreError, Int] =
+    jot.write(Subject.Public) {
+      rows("r.backfilled_join IS NOT NULL", lock = false).map(_.count { case Row(_, room, k, _) =>
+        room.within(under) && k.backfilledSince(since)
+      })
+    }
+
   def members(under: Place): Either[StoreError, Vector[(Place, Membership.Member)]] =
     jot.write(Subject.Public) {
       rows("r.joined_at IS NOT NULL", lock = false).map(_.collect {
@@ -109,6 +124,30 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
             .map(room => done :+ Row(id, room, k, decided))
         )
     })
+  }
+
+  /** `room`'s place id and the membership kept for it, locked until the transaction ends;
+    * `None`, making nothing, when no row is kept for it.
+    */
+  private def found(
+      room: Place
+  )(using tx: Tx^): Either[StoreError, Option[(String, Joins.Kept)]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT r.place_id::text, r.joined_at, r.left_at, r.backfilled_join
+            |  FROM grit.rooms r JOIN grit.places p ON p.id = r.place_id
+            | WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+            |   FOR UPDATE OF r""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, SqlPlaces.path(room))
+        Using.resource(ps.executeQuery())(rs =>
+          Option.when(rs.next())((rs.getString(1), keptOf(rs, 2)))
+        )
+      }
+    }
   }
 
   /** The membership kept for the place `place`, its row made first when there is none, and
