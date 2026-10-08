@@ -16,7 +16,8 @@ In dependency order:
   and `GRIT_WEIGHT` over the database's on every start (logged as they stand), and changed
   one at a time by `/set` until the next start. `Budgets`: the daily cap on model spend,
   `GRIT_DAILY_USD` (`grit serve`'s default $1.00).
-  `Claimed`: the email domains the deployment claims as its own, `GRIT_CLAIMED_DOMAINS`.
+  `Claimed`: the email domains the deployment claims as its own, `GRIT_CLAIMED_DOMAINS`
+  (comma-separated; ADR 0032).
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
@@ -65,7 +66,10 @@ In dependency order:
   in the channels `GRIT_SLACK_LISTEN` names, and with `GITHUB_MCP_TOKEN` set, GitHub's
   read-only MCP tools at `service:github` for every Slack conversation, `McpEdge.serving`
   (`Main.github`), through `Kit.serve`), catches it up (`grit
-  backfill`: `SlackEdge.backfill` over the last `GRIT_BACKFILL_DAYS`, through `Kit.catchUp`),
+  backfill`: `SlackEdge.backfill` over the last `GRIT_BACKFILL_DAYS`, through `Kit.catchUp`;
+  serving Slack, it trusts Slack to say who the people of the workspace its bot token is
+  installed in are, `SlackEdge.installedIn`, and no one otherwise, and the two end what its
+  identities no longer trust as they start, where the chat and a run with arguments end nothing),
   or opens the engine and launches the turn
   (OpenRouter with a key, the stub without; Jev placing messages among topics with
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering

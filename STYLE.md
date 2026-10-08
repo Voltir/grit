@@ -46,6 +46,10 @@ def loadBranch(s: SessionId)(using Tx): Vector[Entry]
 If you find yourself wanting a global to avoid threading a parameter, that is the rule
 working. Thread the parameter.
 
+The time and fresh values reach main sources only through `grit.core.clock`'s `Clock` and
+`Fresh`; `scripts/check`'s clock tier (`scripts/clock-check`, whose header says how a
+composition root is marked) refuses any other read of the JVM's time or randomness.
+
 ## 3. Expected failure lives in the return type
 
 `Either` or a sealed ADT for anything the domain anticipates. Exceptions only for the

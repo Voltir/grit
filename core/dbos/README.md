@@ -19,7 +19,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   heard message's reach, and grit's decisions to speak or not, kept with their period's usage),
   `SqlRoomReads` (what a room said before a time, as a pool reads it), `SqlClearance` (a transaction's clearance
   as SQL: the one filter every read of labelled rows puts in its `WHERE`, inside any ranked or
-  limited subquery, ADR 0030), `SqlLabels` (labels as
+  limited subquery, ADR 0030; what is said in a direct message is read only in its own room), `SqlLabels` (labels as
   `grit.labels` interns them, the one translation through `LabelParts`, and the compartment sets
   the database has run under, ADR 0030), `SqlReviews` (every
   heard message a review considered, its prompt and the verdict standing on it,
@@ -42,7 +42,10 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   Mill writes into this module's jar; each engine start is recorded with it in
   `grit.engine_starts`), `Engine` (what `grit.app`
   starts under the lock, refused as `Unopened` when the lock is held or its deployment drops a
-  compartment the database ran under; closing it, or losing the lock, stops the sweep, then DBOS, waits
+  compartment the database ran under; it keeps the `visibility` and the `clock` it was opened
+  with, which its rooms are labelled under and its inbox, sweep and desks tell the time by; `voucher`
+  records what a trusted realm says of its accounts, and `untrust` ends the attestations a
+  deployment's identities no longer make (ADR 0032); closing it, or losing the lock, stops the sweep, then DBOS, waits
   for running bodies, and releases the lock last; `every` runs a pass on a thread of its own, one
   at a time, until the engine closes, and the sweep is one; `unfinished` counts the workflows still
   queued or running, which `grit backfill` waits out; `placements` waits for an opening's

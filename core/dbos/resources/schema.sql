@@ -147,7 +147,8 @@ $$;
 
 -- Where conversations happen (grit.core.place.Place, ADR 0013): one containment tree whose
 -- root is everywhere. A path runs from its namespace down: {fs,home,nick,Projects,grit},
--- {slack,acme,#grit-dev,1712.3}, {task,m0,main}; segments verbatim, never empty or NULL. A
+-- {slack,acme,#grit-dev,1712.3}, {task,m0,main}, {direct,slack,T0123/U0456,1712.3} (a direct
+-- message's thread, under its person's account); segments verbatim, never empty or NULL. A
 -- place is recorded with its first conversation, from that conversation's origin
 -- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
 -- within which is Place.within's alone: nothing here tests it.
@@ -284,7 +285,9 @@ CREATE OR REPLACE VIEW grit.links AS
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
 -- its origin's, set when it is created, and so is its room (Origin.room: by identity, never by
 -- containment); `created_by` the account whose message created it, and `label_id` the
--- label it was created at (ADR 0030), each kept whoever finds it later. `next_turn` and `next_seq` are past every turn and
+-- label it was created at (ADR 0030; SqlRooms: its room's, or for a direct message its person's
+-- clearance then, which a read meets with their clearance now), each kept whoever finds it
+-- later. `next_turn` and `next_seq` are past every turn and
 -- entry ever written in it, purged ones included: each entry's insert raises them, under the
 -- row's lock (EntryStore.lockNext), so no position is taken twice.
 -- Retention: ledger: deleted whole once quiet past the ledger window (Target.Quiet).

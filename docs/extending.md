@@ -28,8 +28,10 @@ A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.e
 ## Extension points
 
 A shipped extension implements core's traits. A deployment's own code, outside grit, can
-supply four of them as values in `Deployment.of` today: a `ServedEdge` or `CatchUp`, a
-`Plugin`, a `Job` with the schedules that run it, and the `Labeller` of its rooms. The rest it chooses among grit's
+supply these as values in `Deployment.of` today: a `ServedEdge` or `CatchUp` (with, inside an
+edge that attests, the `RealmSource` of the realm it speaks for), a `Plugin`, a `Job` with the
+schedules that run it, and the `Labeller` of its rooms; beside them it declares, as data, its
+`Visibility` and its `Identities` (below). The rest it chooses among grit's
 shipped implementations, by the kit's enums.
 
 | Trait (package) | Shipped | A deployment's own? |
@@ -38,6 +40,7 @@ shipped implementations, by the kit's enums.
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
 | `Job`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
 | `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
+| `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
@@ -126,7 +129,12 @@ it dominates are picked and prompted. So label each place a deployment posts to;
 unmapped one is written to by no one.
 
 A conversation takes its room's label when it is created and keeps it, whatever the
-deployment declares later; a job's run takes its schedule's. A database remembers the
+deployment declares later; a job's run takes its schedule's. A direct message is the
+exception ([ADR 0032](decisions/0032-a-principal-is-a-person-edges-name-accounts-and-trusted-realms-attest-who-they-are.md)):
+its room, `direct:{namespace}/{name}`, is one person's, spelled by their account; `rooms`
+may not label it (`Visibility.of` refuses a room declared within `direct`). Its conversation
+is created at that person's clearance, read at most at their clearance now, and what is said
+in it is read only there; a thread begun when they were cleared for more takes no new message. A database remembers the
 compartments each start declared: a start may add some, but one that drops or renames a
 compartment the database ran under does not open, and says which, since a label
 holding it could then be read by a clearance that could not read it before.
@@ -161,10 +169,10 @@ declared data:
   the realm `SlackAccounts.realm(team)`, every `slack:{team}/` account; a user of a workspace
   sharing a channel is spelled in their own team, so is in no realm trusted for this one. A
   deployment trusts it with `Vouching(SlackAccounts.Attester, SlackAccounts.realm(team))`,
-  and writes the workspace's full members as a group naming that realm. Its Slack app needs
-  `users:read` (who is a full member), `users:read.email` (the address each confirmed;
-  without it nothing links by email), and the `user_change` event. The reference deployment
-  trusts it for the workspace its bot token is installed in (`SlackEdge.installedIn`).
+  and writes the workspace's full members as a group naming that realm. The scopes and
+  events its Slack app needs for that are in [`extensions/slack/README.md`](../extensions/slack/README.md).
+  The reference deployment trusts it for the workspace its bot token is installed in
+  (`SlackEdge.installedIn`).
 - `domains`: the email domains (`Domain`, each matched exactly, so a subdomain is its own)
   the deployment claims. Accounts a trusted realm attests one address in a claimed domain
   are one person, across realms; an address in any other domain is not kept. With none

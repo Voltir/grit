@@ -45,7 +45,9 @@ In dependency order:
   deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
   is cleared for what; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
   deployment injects it, refused as a `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
-  transaction reads and the least label it writes at; `Subject`, whom it is opened for; and
+  transaction reads and the least label it writes at, what is said in a direct message read
+  only in its own room; `Subject`, whom it is opened for; `Explanation`, what a person is told
+  of their clearance, naming nothing above the room they ask in; and
   `Maintenance`, `grit.dbos`'s own clearance. ← `id`, `place`, `identity`
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
   edge, person, reach, place: the most stable first, for a provider's prompt cache),
@@ -90,13 +92,13 @@ In dependency order:
   deployment does: where it may write outside grit, what it may read from a source, and
   which services it may send a call's arguments to, ADR 0031), `Db` (reads), `Reads` (reads fixed to
   one subject, for code that must not choose), `Jot` (short writes from inside a step), `Entry`,
-  its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
+  its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (a TUI session, a Slack thread, a task's run, or a direct message with one person, `Origin.Direct`, its room spelled by their account; and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelSettingStore` (settings of pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `VoiceStore` (the voice in force), `Principals` (the accounts an edge named, by name), `Voucher` (the right to record what a trusted realm's source says of its accounts, ADR 0032), each change it makes, or why it made none, a `Linking`, and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
-  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
+  settings in force), `VoiceStore` (the voice in force), `Principals` (the accounts an edge named, by name), `Voucher` (the right to record what a trusted realm's source says of its accounts, ADR 0032), each change it makes, or why it made none, a `Linking`, `Askers` (who a turn answers, by the one asker rule its transactions' clearance is resolved by; held only by what a deployment's kit builds), and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
 - **`document`** — plugins' documents (ADR 0028): a `Document` is one version of a plugin's
   document under a key, kept at a place, its `DocText` shown and searched, its data the
   plugin's own, with its `Placement` (how many windows held it); a version is current until
@@ -178,7 +180,7 @@ In dependency order:
   label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
   and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), and `Inbox` (which also
-  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
+  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, takes a direct message only from its own person and labels it at their clearance, refusing a new message in a direct thread begun when they were cleared for more (`InboxError.Sealed`), answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
   `InboundId`'s). Each names only the packages above, never
   another of the three.
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
@@ -261,7 +263,7 @@ In dependency order:
   writes a request its transaction may not send already answered with its `refusal` (ADR
   0031), settle, abandon, and each request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
   `Advert`). Named for the same idea as the `grit.edge` module: this package is the types
-  every side agrees on, that module the loop an edge runs over them. ← `id`, `place`,
+  every side agrees on, that module the loop an edge runs over them. ← `clock`, `id`, `place`,
   `identity`, `visibility`, `prompt`, `store`, `model`, `message`, `approval`, `tool`
 
 No source file sits at core's root, and no two packages import each other in a circle:

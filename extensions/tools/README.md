@@ -14,7 +14,10 @@ One package, `grit.tools`:
 - `Tuning` — `propose_model_setting`: a measured setting of a model, kept once a person
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
-- `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how it works, from the docs in `resources/about`.
+- `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how
+  it works, from the docs in `resources/about`, one per topic (`About.Subject`): grit itself,
+  memory, markers, periods, places, and security (who may see what, and how a person is known
+  across sources).
 - `Cleared` — `clearance`: what the person asking is cleared for and why, answered only in a
   direct message with them (one constant line anywhere else), over the store and the engine's
   askers, which only the kit holds.

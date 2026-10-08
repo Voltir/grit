@@ -1,9 +1,11 @@
 # grit.slack
 
-Implements `ServedEdge` and `CatchUp`, and serves `slack_post` as a `Hosted` (what a
+Implements `ServedEdge` and `CatchUp`, each its workspace's attester over a `RealmSource` of
+its own, and serves `slack_post` as a `Hosted` (what a
 deployment can supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
-The Slack edge (ADR 0019): a Slack thread is a conversation, brought into the engine and
+The Slack edge (ADR 0019): a Slack thread, or a thread of a person's direct message with grit,
+is a conversation, brought into the engine and
 answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE rule 8):
 `com.slack.*` is named in `client/SocketSlack.scala` and nowhere else in grit, and the law's
 `only-slack-imports-*` rules hold it there. Depends on `grit.core`, `grit.prose` and
@@ -82,8 +84,9 @@ In dependency order:
   recorded, so Slack sends the message again, and a backfill stops there. `user_change`
   (`Event.UserChanged`) asks again, and each look the kit asks for (`Open.attest`) lists the
   workspace once when any account is due. The edge holds no answer, clock or domain of its
-  own: when to ask, and which addresses count, are core's. Which scopes and event the app
-  needs, and how a deployment trusts the edge: [`docs/extending.md`](../../docs/extending.md).
+  own: when to ask, and which addresses count, are core's. How a deployment trusts the edge:
+  [`docs/extending.md`](../../docs/extending.md) (Identities); what the app needs for it:
+  below.
   ← `client`, `text`, `event`
 
 **Direct messages.** A person's message in their direct message with grit's bot is recorded
@@ -91,9 +94,24 @@ as a mention is, whatever the edge listens in, as a turn of its thread's convers
 direct room (`Origin.Direct`), which is labelled at their clearance and read only there (ADR
 0032); a message in a thread begun when they were cleared for more is answered once with
 `InboxError.SealedReply` and not recorded. Group direct messages are not heard, and direct
-messages are never backfilled. The Slack app needs the scopes `im:history` and `im:read`, the
-event `message.im`, and App Home's Messages tab on, with "Allow users to send messages", or no
-one can write to the bot.
+messages are never backfilled. App Home's Messages tab must be on, with "Allow users to send
+messages", or no one can write to the bot.
+
+**The Slack app.** Socket Mode, with an app-level token (`SLACK_APP_TOKEN`, scope
+`connections:write`) and a bot token (`SLACK_BOT_TOKEN`) with these scopes, each for what the
+edge calls or is sent:
+
+- `app_mentions:read`, `channels:history`, `groups:history`, `im:history`: the messages it is
+  sent (events `app_mention`, `message.channels`, `message.groups`, `message.im`), and a
+  thread's replies and a channel's history read back (a thread's root, its own post found
+  again by its tag, a backfill);
+- `channels:read`, `groups:read`, `im:read`: what a conversation is, and its name;
+- `chat:write`: its replies, refusals, `slack_post`'s posts and a review's prompts;
+- `reactions:read`, `reactions:write`: a rater's reactions (events `reaction_added`,
+  `reaction_removed`), and the `:eyes:` mark and a prompt's reactions it adds and removes;
+- `users:read`, `users:read.email`: who an author is, and whether a full member, for the names
+  windows show and for attesting (event `user_change`); without `users:read.email` no account is
+  linked to another by email.
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
 `GRIT_DAILY_USD` ($1.00 when unset); a message after that is not recorded, and its thread is

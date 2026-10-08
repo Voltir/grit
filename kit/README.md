@@ -44,13 +44,16 @@ In dependency order:
   trusts its attester for, whose reports are logged at info, warn or error by
   `Kit.reported`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated, each source's label shown, and agreed to first, then swept until nothing is left to
-  close), the two alone ending what the deployment's identities no longer trust as they start,
-  since they alone serve every attester it trusts, each failing as a `KitFailure`; `Kit.launch`
-  (the engine's workflows, for grit's own chat, ending no attestation); `Launch`, the workflows launched the same way by every way grit runs, with the
+  close), the two alone ending what the deployment's identities no longer trust as they start
+  (a process running its own chat may be declared with fewer edges, and so trust fewer
+  realms), each failing as a `KitFailure`; `Kit.launch`
+  (the engine's workflows, for grit's own chat, ending no attestation); `Launch`, the workflows launched the same way by every way grit runs, telling the time by the
+  clock the engine was opened with (`Engine.clock`), with the
   deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
-  edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
-  same with its models, classifiers and the jobs' clock given, is how a live test counts
-  calls and sets the time);
+  edge (`grit.job.clock.ClockEdge`) starting what they have waiting, and grit's own tools
+  offered in every conversation (`about`, and `clearance` over the engine's askers, which the
+  kit alone holds) beside every plugin's (`Launch.asking`, the same with its models and
+  classifiers given, is how a live test counts calls);
   `Serving`, the edges opened, delivered to, asked for looks and closed; `Picking`, a review's pick round,
   of the messages its place may receive;
   `CatchingUp` and `Estimate`, a

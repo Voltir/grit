@@ -2,7 +2,7 @@
 
 The durable turn: one workflow per user-visible turn — weigh its root by the answers triage
 kept, or, for a message said to grit whose answers its recipe reads, by live triage's set
-asked of it (`TurnWeighing`), decide what it offers (its tools and its system prompt as fragments, ADRs 0016, 0017),
+asked of it (`TurnWeighing`), decide what it offers (its tools and its system prompt as fragments, among them its own room's label and, in brief, who may see what and how grit keeps it; ADRs 0016, 0017),
 shaped by its deployment's recipe (ADR 0025), place its message among the
 conversation's topics (ADR 0008), assemble, call the model, send its hosted tool calls to
 the edge serving its directory and wait for their answers, append, summarise.
