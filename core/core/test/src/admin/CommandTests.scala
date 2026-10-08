@@ -61,7 +61,9 @@ object CommandTests extends TestSuite {
       (read(""), read("   ")) ==> (Right(Command.Help), Right(Command.Help))
     }
 
-    test("a level and the keywords are read in any case; a compartment only as declared") {
+    test(
+      "a level and the keywords are read in any case; a compartment's name only in lower case"
+    ) {
       (
         read("  LABEL   Internal  "),
         read("Clear <@U-bo> FOR trial"),
