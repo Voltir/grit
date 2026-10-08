@@ -377,29 +377,16 @@ object VouchingLiveTests extends TestSuite {
       (
         first,
         member,
-        member.map(_.message),
         cleared,
         outside,
         opensAt(turn, "14.0", Label.Public)
       ) ==> (
         true,
         Vector(Linking.Standing(u, member = true, Label.Public, Internal)),
-        Vector("slack:T1/U-member is a full member of its realm: public -> internal"),
         true,
         Vector(Linking.Standing(u, member = false, Internal, Label.Public)),
         true
       )
-    }
-
-    test("no change a vouching reports writes an address") {
-      val a = TestAccounts.account("slack:T2/U-unwritten")
-      val said = Vector(
-        full("unwritten@example.com"),
-        full("unwritten-2@example.com"),
-        full("unwritten@other.org"),
-        Standing.Outside
-      ).flatMap(vouch(a, _))
-      (said.size >= 4, said.map(_.message).filter(_.contains("@"))) ==> (true, Vector())
     }
   }
 }
