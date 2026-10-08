@@ -78,7 +78,7 @@ In dependency order:
   `SlackEdge.serving(command, backfill)` is the module's entry: the edge as a deployment
   serves it (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN`
   and `SLACK_APP_TOKEN` as it opens, answering the slash command the deployment registered
-  (`SlackCommand`, below), and bounding each join's backfill by `backfill`;
+  (`SlackCommand`), and bounding each join's backfill by `backfill`;
   `SlackEdge.serving(command, backfill, posting, review)`, given a rate as `posting`, also
   serves `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in any channel
   the bot is a member of that is not quiet, within that rate across them all (`Posting`), for
@@ -150,7 +150,10 @@ edge calls or is sent:
   linked to another by email;
 - `commands`: its slash command, registered under the name the deployment gives it (Socket
   Mode needs no request URL), with "Escape channels, users, and links sent to your app" on, so
-  a person it names arrives as a mention.
+  a person it names arrives as a mention; its usage hint may list what its `help` answers
+  (`Command.Usage`).
+
+A scope added takes effect only once the app is reinstalled to the workspace.
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
 `GRIT_DAILY_USD` ($1.00 when unset); a message after that is not recorded, and its thread is
