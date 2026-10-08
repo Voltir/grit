@@ -79,6 +79,12 @@ final class InMemoryInbox(
   @caps.unsafe.untrackedCaptures
   var down = false
 
+  /** When set, every ingest is refused with it, recording nothing: a refusal a test scripts
+    * rather than arranges.
+    */
+  @caps.unsafe.untrackedCaptures
+  var refusing: Option[InboxError] = None
+
   @caps.unsafe.untrackedCaptures
   private var finished = Map.empty[TurnRef, Progress.Done]
 
@@ -110,6 +116,15 @@ final class InMemoryInbox(
     inTx(conversations.find(origin))
 
   def ingest(
+      origin: Origin,
+      source: SourceId,
+      message: Message.User,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    refusing.toLeft(()).flatMap(_ => taken(origin, source, message, by))
+
+  /** [[ingest]], unscripted. */
+  private def taken(
       origin: Origin,
       source: SourceId,
       message: Message.User,

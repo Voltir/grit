@@ -22,7 +22,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.{Account, TestAccounts}
+import grit.core.identity.{Account, Realm, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, InboxError}
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -30,7 +30,15 @@ import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
-import grit.core.visibility.Subject
+import grit.core.visibility.{
+  Compartments,
+  Grant,
+  Group,
+  RoomLabels,
+  Subject,
+  TestLabels,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 import grit.prose.markdown.Markdown
 import grit.slack.client.{FakeSlack, Self, Tag}
@@ -57,12 +65,43 @@ object SlackEdgeTests extends TestSuite {
   /** Another person, whom a message may name. */
   private val Ben = "U0BEN0001"
 
+  /** grit's team's accounts. */
+  private val Ours: Realm =
+    SlackAccounts.realm(TeamId(Team)).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** What the team's full members are cleared for under [[Staff]]. */
+  private val StaffGrant = grit.core.visibility.Label.at(grit.core.visibility.Level.Internal)
+
+  /** Every full member of grit's team is staff, cleared [[StaffGrant]]; every room public. */
+  private val Staff: Visibility =
+    (for {
+      compartments <- Compartments.of(Vector.empty).left.map(_.toString)
+      v <- Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          Vector(Group(TestLabels.group("staff"), Set.empty, Set(Ours))),
+          Vector(Grant(TestLabels.group("staff"), StaffGrant))
+        )
+        .left
+        .map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The edge over the in-memory stores and a fake Slack: when `staff`, trusted for grit's team,
+    * whose members [[Staff]] clears, its inbox resolving people as linking does; otherwise
+    * attesting no one, under the shipped visibility.
+    */
   private final class World(
       budget: Budget = Budget(ZoneOffset.UTC, None),
-      listening: Set[ChannelId] = Set.empty
+      listening: Set[ChannelId] = Set.empty,
+      staff: Boolean = false
   ) {
     val slack = new FakeSlack
-    val inbox: InMemoryInbox = InMemoryInbox.fresh(budget)
+    private val voucher =
+      if (staff) new InMemoryVoucher(Set(Ours), Set.empty, Staff) else InMemoryVoucher.none()
+    val inbox: InMemoryInbox =
+      if (staff) InMemoryInbox.fresh(budget, Staff, voucher.principal)
+      else InMemoryInbox.fresh(budget)
 
     /** Records a call that cost `usd` today. */
     def spend(usd: String): Unit = {
@@ -96,7 +135,7 @@ object SlackEdgeTests extends TestSuite {
           InMemoryReviews.over(inbox),
           FakeJot,
           new InMemoryEdges,
-          new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+          new Attesting(voucher, FakeJot, _ => ())
         ),
         listening,
         None,
@@ -674,14 +713,8 @@ object SlackEdgeTests extends TestSuite {
       "a direct message in a sealed thread is told so once in its thread, recorded nowhere, and a redelivery posts nothing more"
     ) {
       val w = new World
-      val ana = TestAccounts.sourced(s"slack:$Team/$Ana")
-      val dm = Origin.Direct(ana, "9.0")
-      // Begun when Ana was cleared for more than she is now.
-      val _ = w.inbox.conversations.findOrCreate(
-        dm,
-        ana,
-        grit.core.visibility.Label.at(grit.core.visibility.Level.Internal)
-      )(using TestTx.fake)
+      val dm: Origin.Direct = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ana"), "9.0")
+      w.inbox.refusing = Some(InboxError.Sealed(dm))
       w.slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
       w.slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
       (
@@ -699,15 +732,22 @@ object SlackEdgeTests extends TestSuite {
       )
     }
 
-    test("a guest's direct message is a turn too, at public") {
-      val w = new World
+    test(
+      "a direct message is a turn at its author's clearance as Slack attests them: a full member of the team at its members' grant, a guest at public"
+    ) {
+      val w = new World(staff = true)
       w.slack.standings = Map(UserId(Ben) -> grit.core.identity.Standing.Outside)
+      w.slack.deliver(direct("9.0", "hello")) ==> true
       w.slack.deliver(direct("9.0", "hello", user = Ben)) ==> true
-      val dm = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ben"), "9.0")
+      val dms =
+        Vector(Ana, Ben).map(u => Origin.Direct(TestAccounts.sourced(s"slack:$Team/$u"), "9.0"))
       (
-        w.inbox.ingested(dm, SourceId("9.0")).map(_.nonEmpty),
-        w.inbox.conversations.all.filter(_.origin == dm).map(_.label)
-      ) ==> (Right(true), Vector(grit.core.visibility.Label.Public))
+        dms.map(dm => w.inbox.ingested(dm, SourceId("9.0")).map(_.nonEmpty)),
+        dms.map(dm => w.inbox.conversations.all.filter(_.origin == dm).map(_.label))
+      ) ==> (
+        Vector(Right(true), Right(true)),
+        Vector(Vector(StaffGrant), Vector(grit.core.visibility.Label.Public))
+      )
     }
 
     test("a message the database cannot record is not acknowledged, so Slack sends it again") {

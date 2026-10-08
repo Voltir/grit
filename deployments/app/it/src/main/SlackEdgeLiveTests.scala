@@ -27,7 +27,7 @@ import grit.core.visibility.{
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.prose.markdown.Markdown
-import grit.slack.client.{FakeSlack, Self}
+import grit.slack.client.{FakeSlack, Self, Tag}
 import grit.slack.edge.{SlackAccounts, SlackEdge}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.RichText
@@ -71,6 +71,21 @@ object SlackEdgeLiveTests extends TestSuite {
   private val ana: Account = TestAccounts.account(s"slack:$Team/$Ana")
 
   private val C = ChannelId("C123ABC456")
+
+  /** Another person of grit's team. */
+  private val Ben = "U0BEN0001"
+
+  /** `user`'s direct message thread rooted at `thread`. */
+  private def dm(user: String, thread: String): Origin.Direct =
+    Origin.Direct(TestAccounts.sourced(s"slack:$Team/$user"), thread)
+
+  /** The label `origin`'s conversation was created at, as `engine` reads it; none when it has
+    * none.
+    */
+  private def labelled(engine: Engine^, origin: Origin): Option[Label] =
+    engine.db
+      .read(Subject.Public)(engine.conversations.find(origin))
+      .fold(e => throw new java.lang.AssertionError(s"reading: $e"), _.map(_.label))
 
   /** Every full member of grit's team is staff, cleared Internal; every room Confidential, so
     * what a turn reads outside its room is what its asker is cleared for.
@@ -291,6 +306,51 @@ object SlackEdgeLiveTests extends TestSuite {
           (e.unheard(C, Instant.EPOCH).flatMap(e.backfill), standing)
         } finally engine.close()
       (heard, standing) ==> (Right(()), Vector(Vector("false")))
+    }
+
+    test(
+      "a direct message opens at its author's clearance as Slack attests them before it is recorded: a full member of grit's team at staff's grant, a guest at public"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_direct_cleared")
+      val slack = new FakeSlack
+      slack.standings = Map(UserId(Ben) -> Standing.Outside)
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      try {
+        launch(engine, engine.entries, new CountingProvider)
+        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+        (
+          slack.deliver(direct("9.0", "hello")),
+          slack.deliver(direct("9.0", "hello", user = Ben)),
+          labelled(engine, dm(Ana, "9.0")),
+          labelled(engine, dm(Ben, "9.0"))
+        ) ==> (true, true, Some(Label.at(Level.Internal)), Some(Label.Public))
+      } finally engine.close()
+    }
+
+    test(
+      "a direct message in a thread begun when its author was cleared for more is told so once in its thread, and recorded nowhere"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_direct_sealed")
+      val slack = new FakeSlack
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      try {
+        launch(engine, engine.entries, new CountingProvider)
+        val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+        slack.deliver(direct("9.0", "hello")) ==> true
+        slack.standings = Map(UserId(Ana) -> Standing.Outside)
+        slack.deliver(userChange()) ==> true
+        slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
+        slack.deliver(direct("9.1", "and another", Some("9.0"))) ==> true
+        (
+          labelled(engine, dm(Ana, "9.0")),
+          engine.inbox.recorded(dm(Ana, "9.0"), Set(SourceId("9.1"))),
+          slack.posts.map(p => (p.channel, p.thread, p.post.fallback, p.tag))
+        ) ==> (
+          Some(Label.at(Level.Internal)),
+          Right(Set()),
+          Vector((ChannelId(AnasDm), Ts("9.0"), InboxError.SealedReply, Tag.Refused(Ts("9.1"))))
+        )
+      } finally engine.close()
     }
 
     test(
