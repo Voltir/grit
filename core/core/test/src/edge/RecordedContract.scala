@@ -1,6 +1,6 @@
 package grit.core.edge
 
-import grit.core.admin.AdministrationContract.{Declared, ada, confidentialTrial, mia, t, unmapped}
+import grit.core.admin.AdministrationContract.{ada, confidentialTrial, mia, t, unmapped}
 import grit.core.admin.{Administration, Answer, Change, Command}
 import grit.core.id.SourceId
 import grit.core.inbox.Inbox
@@ -18,10 +18,10 @@ import utest.*
   */
 abstract class RecordedContract extends TestSuite {
 
-  /** Runs `body` with an administration, joins and inbox over one store under [[Declared]],
-    * which has recorded nothing of any room and has [[mia]] and [[ada]] vouched full members by
-    * their realm, and with the label the conversation of an origin was created at (`None` for one
-    * never begun).
+  /** Runs `body` with an administration, joins and inbox over one store under
+    * [[grit.core.admin.AdministrationContract.Declared]], which has recorded nothing of any room
+    * and has [[mia]] and [[ada]] vouched full members by their realm, and with the label the
+    * conversation of an origin was created at (`None` for one never begun).
     */
   protected def withStores[A](
       body: (Administration, Joins, Inbox, Origin => Option[Label]) => A
@@ -30,7 +30,7 @@ abstract class RecordedContract extends TestSuite {
   private def ok[A](r: Either[?, A]): A =
     r.fold(e => throw new java.lang.AssertionError(s"the store failed: $e"), identity)
 
-  /** A room of [[T1]]'s workspace, which the deployment declares nothing of. */
+  /** A room of the workspace T1, which the deployment declares nothing of. */
   private def room(channel: String): Origin = Origin.Slack("T1", channel, "1.0")
 
   private val Team: Place = place("slack:T1")
