@@ -228,7 +228,7 @@ object grit extends Module {
    * roadmap/mechanisms/durable-turn.md. */
   object turn extends GritPublished with Placed {
     def folder = os.sub / "core" / "turn"
-    def moduleDeps = Seq(core)
+    def moduleDeps = Seq(core, act)
 
     /* The turn under core's in-memory durability and store fakes, with the stub provider
      * and the linear assembler: a provider called once, without Postgres. */

@@ -1,5 +1,7 @@
 package grit.turn
 
+import grit.act.phase.{Heard as Hearer, Hearing}
+import grit.core.clock.{Clock, Fresh}
 import grit.core.durable.StreamWriter
 import grit.core.provider.Delta
 
@@ -84,6 +86,20 @@ object TurnStream {
       case Delta.Calling(_) => MaxChars
     }
   }
+
+  /** A model call's attempts told to `out`: each a [[Writer]] of its own attempt, tagged by
+    * `fresh` and paced by `clock`, flushed when the attempt is done.
+    */
+  def hearing(out: StreamWriter^, fresh: Fresh^, clock: Clock^): Hearing^ =
+    new Hearing {
+      def attempt(): Hearer^ = {
+        val writer = new Writer(out, fresh.nonce(), () => clock.millis())
+        new Hearer {
+          def tell(delta: Delta): Unit = writer.tell(delta)
+          def done(): Unit = writer.flush()
+        }
+      }
+    }
 
   /** How long a piece may wait to be written. */
   val MaxMs = 100L

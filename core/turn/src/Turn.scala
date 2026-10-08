@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.act.phase.Asking
 import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document, DocumentSearch}
@@ -12,7 +13,7 @@ import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
 import grit.core.place.Place
-import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{
@@ -1313,10 +1314,7 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      _ <- ledger
-        .record(id, turn, turn.workflowId, reply.model, reply.usage, estimator.request(sent))
-        .left
-        .map(storeFailure)
+      _ <- Asking.spent(ledger, id, turn, reply, estimator.request(sent)).left.map(storeFailure)
     } yield id
   }
 
@@ -1336,10 +1334,8 @@ object Turn {
   ): Either[TurnFailure, Message.Assistant] =
     callShaped(heard, turn, window, shape(_))
 
-  /** As [[callModel]], the request shaped by `shape`. A provider that is
-    * [[ProviderError.Unavailable]] is asked again after each wait of [[Retries]], each try a
-    * fresh attempt on the stream; the last failure, or a [[ProviderError.Refused]], fails the
-    * call.
+  /** As [[callModel]], the request shaped by `shape`, asked as [[Asking.reply]] says: each try
+    * a fresh attempt on the stream ([[TurnStream.hearing]]); its failure fails the call.
     */
   private def callShaped(
       heard: StreamWriter^,
@@ -1352,32 +1348,15 @@ object Turn {
       offer: TurnOffer
   ): Either[TurnFailure, Message.Assistant] =
     request(env, offer.system, turn, window).flatMap { req =>
-      val sent = shape(req)
-      def attempt(
-          waits: List[FiniteDuration],
-          tries: Int
-      ): Either[TurnFailure, Message.Assistant] = {
-        val told = new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
-        val result = env.models.provider(pins.turn).stream(sent, told.tell)
-        told.flush()
-        (result, waits) match {
-          case (Left(ProviderError.Unavailable(_)), wait :: rest) =>
-            env.clock.sleep(wait)
-            attempt(rest, tries + 1)
-          case (Left(error), _) =>
-            val after = if (tries == 1) "" else s" (after $tries tries)"
-            Left(TurnFailure.Model(error.cause + after))
-          case (Right(reply), _) => Right(reply)
-        }
-      }
-      attempt(Retries, 1)
+      val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
+      Asking
+        .reply(env.models.provider(pins.turn), shape(req), hearing, env.clock)
+        .left
+        .map(TurnFailure.Model(_))
     }
 
-  /** How long a model call waits before each retry of a provider that was
-    * [[ProviderError.Unavailable]]: two retries, 2 s then 6 s, so three tries in all. A pinned
-    * upstream has no fallback, and one 5xx would otherwise end a turn that had gone well.
-    */
-  val Retries: List[FiniteDuration] = List(2.seconds, 6.seconds)
+  /** How long a model call waits before each retry: [[Asking.Retries]]. */
+  val Retries: List[FiniteDuration] = Asking.Retries
 
   /** After a first call that offered the `topic` tool for `c` ([[TurnVerdict.round]]): the
     * reply that answers the turn, its further calls made as the `call-model-again` and
@@ -1695,10 +1674,7 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      _ <- ledger
-        .record(id, turn, turn.workflowId, message.model, message.usage, estimator.request(sent))
-        .left
-        .map(storeFailure)
+      _ <- Asking.spent(ledger, id, turn, message, estimator.request(sent)).left.map(storeFailure)
       _ <- offer.root match {
         case TurnOffer.Root.ByName =>
           speech

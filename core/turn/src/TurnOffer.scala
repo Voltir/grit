@@ -160,12 +160,12 @@ object TurnOffer {
       described = tooling.hosted.filter { h =>
         val whole = h.entry
         names.contains(h.name) &&
-        offerable(whole, sends).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
+        whole.offerable(sends).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
       engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.hosted.map(_.name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
-        .flatMap(offerable(_, sends))
+        .flatMap(_.offerable(sends))
         .flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
       // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
@@ -369,24 +369,13 @@ object TurnOffer {
           sends = Tx.sendsTo(service)
           entries = set.tools
             .filter(e => !done._2.contains(e.name))
-            .flatMap(offerable(_, sends))
+            .flatMap(_.offerable(sends))
             .filter(Hosted.advertised(_).nonEmpty)
           // A ToolSet's entries have distinct names, so a subset's do too.
           offered = ToolSet.of(entries).getOrElse(ToolSet.Empty)
         } yield (done._1 :+ (service, offered), done._2 ++ entries.map(_.name))
       }
       .map(_._1)
-
-  /** `entry` as a turn offers it at a service it `sends` to or not: one that declares no
-    * destination only when it does, its arguments going to that service; one that writes, less
-    * the places the turn does not write to ([[grit.core.store.Tx.writesTo]]); `None` when
-    * neither is left.
-    */
-  private def offerable(entry: ToolSet.Entry, sends: Boolean)(using Tx^): Option[ToolSet.Entry] =
-    entry.writes match {
-      case None => Option.when(sends)(entry)
-      case Some(writes) => writes.narrowed(Tx.writesTo(_)).map(n => entry.copy(writes = Some(n)))
-    }
 
   private def describe(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${grit.core.id.EntryId.value(id)} already exists"
