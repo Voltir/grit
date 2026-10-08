@@ -246,6 +246,9 @@ In dependency order:
   new generation) and `PostRef` (one posting run, and its workflow id). ← `id`, `period`,
   `store`, `document`, `job`, `tool`
 
+- **`admin`** — changes to who may see what that people make through grit: `Command`, what
+  a person asks by command, read from the words after its name. ← `identity`, `visibility`
+
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
   edge reaches the engine through, ADR 0002) with the `Variable`s it `needs`, refused as an
