@@ -76,6 +76,17 @@ object Tx {
     if (room.direct) tx.visibility.compartments.top
     else tx.visibility.compartments.admit(labelled(room).label)
 
+  /** The label conversations in `room` would be created at were none set for it through
+    * grit: [[roomLabel]] but for its second step. What `unlabel` sets a room back to.
+    */
+  def defaultLabel(room: Place)(using tx: Tx^): Label =
+    if (room.direct) tx.visibility.compartments.top
+    else tx.visibility.compartments.admit(declared(room).label)
+
+  /** Whether a label is set for `room` through grit, so [[roomLabel]] is that one. */
+  def labelSet(room: Place)(using tx: Tx^): Boolean =
+    tx.recorded.rooms.get(room).exists(_.label.isDefined)
+
   /** `room`'s access as its edge last reported it; `None` when no edge has reported one. */
   def access(room: Place)(using tx: Tx^): Option[RoomAccess] =
     tx.recorded.rooms.get(room).flatMap(_.access)
@@ -155,13 +166,14 @@ object Tx {
   /** `room`'s label before its compartments are admitted: the one set through grit, else the
     * deployment's labeller's for it with its reported access.
     */
-  private def labelled(room: Place)(using tx: Tx^): Labelled = {
-    val kept = tx.recorded.rooms.get(room)
-    kept.flatMap(_.label) match {
-      case Some(set) => Labelled.Mapped(set)
-      case None => tx.visibility.rooms.label(Room(room, kept.flatMap(_.access)))
-    }
-  }
+  private def labelled(room: Place)(using tx: Tx^): Labelled =
+    tx.recorded.rooms.get(room).flatMap(_.label).fold(declared(room))(Labelled.Mapped(_))
+
+  /** `room`'s label from the deployment's labeller, with its reported access, before its
+    * compartments are admitted.
+    */
+  private def declared(room: Place)(using tx: Tx^): Labelled =
+    tx.visibility.rooms.label(Room(room, access(room)))
 
   /** Each declared group `held`'s person is in, in the deployment's order, with the join of
     * its grants and the kinds of the accounts and realms that put them in it.

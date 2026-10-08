@@ -71,6 +71,18 @@ object RoomLabelsTests extends TestSuite {
         Label.at(Level.Public, Compartment.Unmapped)
     }
 
+    test(
+      "a room's label is declared for it at its own place, or, of unreported access, at a place it is within; open, invited and otherwise are defaults"
+    ) {
+      (
+        opening.declares(Room(place("slack:acme/#trial"), Some(RoomAccess.Invited))),
+        opening.declares(unreported("slack:acme/#trial/1712.3")),
+        opening.declares(Room(place("slack:acme/#general"), Some(RoomAccess.Open))),
+        opening.declares(Room(place("slack:acme/#general"), Some(RoomAccess.Invited))),
+        opening.declares(unreported("slack:other/#x"))
+      ) ==> (true, true, false, false, false)
+    }
+
     test("open is otherwise when not given") {
       rooms.label(Room(place("slack:other/#x"), Some(RoomAccess.Open))) ==>
         Labelled.Unmapped(Label.Public)

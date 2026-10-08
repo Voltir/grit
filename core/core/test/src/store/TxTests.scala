@@ -184,6 +184,30 @@ object TxTests extends TestSuite {
         )
       }
 
+      test(
+        "a room's default is its label in force but for one set through grit, and only a set label is said to be set"
+      ) {
+        given Tx = under(
+          room -> kept(label = Some(internalFinance)),
+          sameLevel -> kept(access = Some(RoomAccess.Invited), label = Some(internal)),
+          public -> kept(access = Some(RoomAccess.Open))
+        )
+        val direct = place("direct:slack/T/U")
+        (
+          Vector(room, sameLevel, public, unplaced, direct).map(Tx.defaultLabel),
+          Vector(room, sameLevel, public, unplaced, direct).map(Tx.labelSet)
+        ) ==> (
+          Vector(
+            confidentialTrial,
+            unmapped,
+            internal,
+            Label.Public,
+            Label.at(Level.Restricted, trial, finance, Compartment.Unmapped)
+          ),
+          Vector(true, true, false, false, false)
+        )
+      }
+
       test("a quiet room is never writable, though its label is; a room not quiet is") {
         given Tx = under(
           room -> kept(quiet = true),

@@ -46,18 +46,27 @@ final case class RoomLabels private (
 ) extends Labeller[Room] {
 
   def label(item: Room): Labelled =
-    declared.collectFirst { case (place, l) if place == item.place => Labelled.Mapped(l) } match {
-      case Some(own) => own
-      case None =>
-        item.access match {
-          case Some(RoomAccess.Open) => open
-          case Some(RoomAccess.Invited) => Labelled.Unmapped(Label.Public)
-          case None =>
-            declared
-              .filter((place, _) => item.place.within(place))
-              .maxByOption((place, _) => place.segments.size)
-              .fold(otherwise)((_, l) => Labelled.Mapped(l))
-        }
+    declaredFor(item).fold(item.access match {
+      case Some(RoomAccess.Open) => open
+      case Some(RoomAccess.Invited) => Labelled.Unmapped(Label.Public)
+      case None => otherwise
+    })(Labelled.Mapped(_))
+
+  /** Whether `item`'s label is one declared for it: at its own place, or, with no access
+    * reported, at a place it is within. Otherwise it takes a default: `open`, unmapped or
+    * `otherwise`.
+    */
+  def declares(item: Room): Boolean = declaredFor(item).isDefined
+
+  /** The label declared for `item`, as [[declares]] says. */
+  private def declaredFor(item: Room): Option[Label] =
+    declared.collectFirst { case (place, l) if place == item.place => l }.orElse {
+      if (item.access.isDefined) None
+      else
+        declared
+          .filter((place, _) => item.place.within(place))
+          .maxByOption((place, _) => place.segments.size)
+          .map(_._2)
     }
 
   def requires: Vector[Compartment] =
