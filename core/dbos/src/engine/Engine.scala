@@ -15,7 +15,7 @@ import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, Domain, Identities, Realm}
+import grit.core.identity.{Account, Domain, Identities, Principal, Realm}
 import grit.core.inbox.Inbox
 import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
@@ -23,6 +23,7 @@ import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
 import grit.core.speech.SpeechStore
 import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
+  Askers,
   ClosedPeriod,
   ConversationStore,
   Db,
@@ -39,6 +40,7 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
+  Tx,
   UsageLedger,
   VoiceStore,
   Voucher
@@ -209,6 +211,15 @@ final class Engine private (
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource, opener)
+
+  /** Who each turn answers, as this engine's transactions resolve it. */
+  val askers: Askers = {
+    val resolving = opener
+    new Askers {
+      def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
+        resolving.asker(turn)
+    }
+  }
 
   /** Short write transactions, for a step that records what it did as it goes. */
   val jot: Jot = new SqlJot(dataSource, opener)

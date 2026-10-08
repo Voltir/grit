@@ -4,7 +4,7 @@ import java.sql.Connection
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, TurnSeq}
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Maintenance, RoomLabels, Subject, Visibility}
@@ -100,6 +100,13 @@ private[dbos] final class Opener(visibility: Visibility) {
             }
           })
     }
+
+  /** `turn`'s asker, by [[Opener.asker]]'s rule, read in the transaction open: `None` when its
+    * conversation is gone.
+    */
+  def asker(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
+    named(turn.conversationId, Some(turn.turnSeq))
+      .flatMap(_.fold(Right(None))(n => Opener.asker(n.origin, n.first)))
 
   /** A direct message's conversation `n` as any of its subjects reads it: its person's
     * clearance now ([[Opener.asker]]), and its own room up to its stored label met with that.
