@@ -2,6 +2,7 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
+import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.message.Tokens
@@ -37,8 +38,9 @@ object Deployments {
       def open(
           stores: EdgeStores^,
           env: Map[String, String],
+          clock: Clock^,
           log: String => Unit
-      ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] =
+      ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] =
         Left(EdgeRefusal.Refused("never opened here"))
     }
   }

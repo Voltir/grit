@@ -1,5 +1,6 @@
 package grit.kit.run
 
+import grit.core.clock.Clock
 import grit.core.edge.{EdgeStores, ServedEdge}
 import grit.core.id.EdgeName
 
@@ -54,22 +55,23 @@ private[run] object Serving {
     }
   }
 
-  /** Each of `edges` opened over the stores `stores` builds for it, with `env`'s credentials,
-    * in order. The first that refuses closes those already opened, and is the failure.
+  /** Each of `edges` opened over the stores `stores` builds for it, with `env`'s credentials
+    * and `clock`, in order. The first that refuses closes those already opened, and is the failure.
     */
   def open(
       edges: List[ServedEdge],
       stores: ServedEdge => EdgeStores^,
       env: Map[String, String],
+      clock: Clock^,
       log: String => Unit
-  ): Either[KitFailure, Opened^{stores, log, caps.any}] =
+  ): Either[KitFailure, Opened^{stores, clock, log, caps.any}] =
     edges match {
       case Nil => Right(NoneOpened)
       case edge :: others =>
-        edge.open(stores(edge), env, log) match {
+        edge.open(stores(edge), env, clock, log) match {
           case Left(refusal) => Left(KitFailure.Edge(edge.name, refusal))
           case Right(first) =>
-            open(others, stores, env, log) match {
+            open(others, stores, env, clock, log) match {
               case Left(failure) =>
                 first.close()
                 Left(failure)

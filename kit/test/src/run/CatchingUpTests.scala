@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.clock.SetClock
+import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{
   Attesting,
   CatchUp,
@@ -123,10 +123,10 @@ object CatchingUpTests extends TestSuite {
       def open(
           stores: EdgeStores^,
           env: Map[String, String],
-          now: Instant,
+          clock: Clock^,
           log: String => Unit
-      ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}] = {
-        opened += now
+      ): Either[EdgeRefusal, CatchUp.Open^{stores, clock, log, caps.any}] = {
+        opened += clock.now()
         Right(new CatchUp.Open {
           def since: Instant = Instant.EPOCH
           def unheard: Vector[Unheard] = Vector(trial, general)

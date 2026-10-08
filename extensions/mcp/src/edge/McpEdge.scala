@@ -62,10 +62,9 @@ object McpEdge {
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
+        clock: Clock^,
         log: String => Unit
-    ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] = {
-      // clock-check: an edge's open is its own composition root; the kit hands it no clock
-      val clock: Clock = Clock.system()
+    ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] = {
       val place = service.place
       val bearers = servers.foldLeft[Either[EdgeRefusal, Vector[Bearer]]](Right(Vector.empty)) {
         (read, server) => read.flatMap(bs => Bearer.of(env, server.token).map(bs :+ _))

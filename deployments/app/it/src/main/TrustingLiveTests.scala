@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, Unheard, Variable}
 import grit.core.id.EdgeName
 import grit.core.identity.{Account, TestAccounts}
@@ -93,11 +94,11 @@ object TrustingLiveTests extends TestSuite {
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
-        now: Instant,
+        clock: Clock^,
         log: String => Unit
-    ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}] =
+    ): Either[EdgeRefusal, CatchUp.Open^{stores, clock, log, caps.any}] =
       Right(new CatchUp.Open {
-        def since: Instant = now
+        def since: Instant = clock.now()
         def unheard: Vector[Unheard] = Vector.empty
         def hear(): Either[EdgeRefusal, Unit] = Right(())
         def close(): Unit = ()

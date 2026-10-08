@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.place.Scope as PlaceScope
@@ -23,8 +24,9 @@ object ServeChoiceTests extends TestSuite {
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
+        clock: Clock^,
         log: String => Unit
-    ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] =
+    ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] =
       Left(EdgeRefusal.Refused("never opened here"))
   }
 

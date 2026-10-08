@@ -72,8 +72,9 @@ private[slack] object Served {
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
+        clock: Clock^,
         log: String => Unit
-    ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] =
+    ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] =
       tokens(env) match {
         case Left(refused) => Left(refused)
         case Right((bot, app)) =>
@@ -91,8 +92,7 @@ private[slack] object Served {
                 )
               )
             case Right(self) =>
-              // clock-check: an edge's open is its own composition root; the kit hands it no clock
-              val edge = new SlackEdge(slack, self, stores, channels, review, Clock.system(), log)
+              val edge = new SlackEdge(slack, self, stores, channels, review, clock, log)
               log(edge.listened() match {
                 case Vector() => "slack: listening in no channel"
                 case listened => s"slack: listening in ${listened.sorted.mkString(", ")}"
@@ -112,7 +112,7 @@ private[slack] object Served {
                     s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}"
                   )
                   val stopPosting = posts match {
-                    case Some(p) => posting(slack, self.team, p, stores, log)
+                    case Some(p) => posting(slack, self.team, p, stores, clock, log)
                     case None => None
                   }
                   Right(new ServedEdge.Open {
@@ -140,15 +140,16 @@ private[slack] object Served {
   /** `slack_post` served at [[SlackEdge.PostsAt]] as `posts` allows, over the channels of
     * `posts` Slack gives a name, each left out logged, each written to at its place in `team`;
     * `None`, logged, when none has one or the desk would not register or advertise, so the edge
-    * serves its replies without it. What stops serving it.
+    * serves its replies without it. Its rate is counted on `clock`. What stops serving it.
     */
   private def posting(
       slack: Slack^,
       team: TeamId,
       posts: Posts,
       stores: EdgeStores^,
+      clock: Clock^,
       log: String => Unit
-  ): Option[() ->{slack, stores, log, caps.any} Unit] = {
+  ): Option[() ->{slack, stores, clock, log, caps.any} Unit] = {
     val named = posts.to.toVector.sortBy(ChannelId.value).flatMap { id =>
       val shown = ChannelId.value(id)
       slack.channelName(id) match {
@@ -166,8 +167,7 @@ private[slack] object Served {
       log(s"slack: posts nowhere: $why")
       None
     }
-    // clock-check: an edge's open is its own composition root; the kit hands it no clock
-    Posting.of(slack, Clock.system(), posts.rate, team, named) match {
+    Posting.of(slack, clock, posts.rate, team, named) match {
       case Left(_) if named.isEmpty => nowhere("no channel it may post to has a name grit can read")
       case Left(why) => nowhere(why)
       case Right(tool) =>
@@ -202,9 +202,9 @@ private[slack] object Served {
       def open(
           stores: EdgeStores^,
           env: Map[String, String],
-          now: Instant,
+          clock: Clock^,
           log: String => Unit
-      ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}] =
+      ): Either[EdgeRefusal, CatchUp.Open^{stores, clock, log, caps.any}] =
         if (channels.isEmpty)
           Left(EdgeRefusal.Refused("Slack listens in no channel: there is nothing to backfill"))
         else
@@ -217,9 +217,8 @@ private[slack] object Served {
                   slack.close()
                   Left(refusedToken(e))
                 case Right(self) =>
-                  // clock-check: a catch-up's open is its own composition root; the kit hands it no clock
-                  val edge = new SlackEdge(slack, self, stores, channels, None, Clock.system(), log)
-                  val from = now.minus(Duration.ofDays(days.toLong))
+                  val edge = new SlackEdge(slack, self, stores, channels, None, clock, log)
+                  val from = clock.now().minus(Duration.ofDays(days.toLong))
                   val sorted = channels.toVector.sortBy(ChannelId.value)
                   val read =
                     sorted.foldLeft[Either[EdgeRefusal, Vector[(ChannelId, Vector[Event.Said])]]](

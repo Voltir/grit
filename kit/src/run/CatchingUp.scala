@@ -33,7 +33,7 @@ private[run] object CatchingUp {
     "$" + amount.bigDecimal.setScale(4, java.math.RoundingMode.UP).stripTrailingZeros.toPlainString
 
   /** [[Kit.catchUp]]'s flow, over `stores`, each source shown at the label `visibility` gives
-    * its room and opened at `clock`'s time, reading today's spend with `spent`, sweeping with
+    * its room and opened with `clock`, reading today's spend with `spent`, sweeping with
     * `sweep` and counting what is left with `unfinished`.
     */
   def run(
@@ -50,7 +50,7 @@ private[run] object CatchingUp {
       say: String => Unit
   ): Either[KitFailure, Unit] = {
     val name = catchUp.name
-    catchUp.open(stores, env, clock.now(), say) match {
+    catchUp.open(stores, env, clock, say) match {
       case Left(refusal) => Left(KitFailure.Edge(name, refusal))
       case Right(open) =>
         try {

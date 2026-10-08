@@ -2,6 +2,7 @@ package grit.app.main
 
 import scala.concurrent.duration.*
 
+import grit.core.clock.Clock
 import grit.core.edge.{Attesting, EdgeStores, Variable}
 import grit.core.id.SourceId
 import grit.core.identity.Account
@@ -99,7 +100,7 @@ object McpEdgeLiveTests extends TestSuite {
             engine,
             new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
           )
-        edge.open(stores, Map("FAKE_MCP_TOKEN" -> fake.token), _ => ()) match {
+        edge.open(stores, Map("FAKE_MCP_TOKEN" -> fake.token), Clock.system(), _ => ()) match {
           case Left(refused) => sys.error(refused.message)
           case Right(open) =>
             try {

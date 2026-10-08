@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.clock.Clock
 import grit.core.edge.{
   Attesting,
   Desk,
@@ -88,7 +89,7 @@ object McpEdgeTests extends TestSuite {
     val edge = McpEdge
       .serving(Github, Vector(server(fake, allow = allow, scope = scope)), instructions)
       .fold(why => throw new java.lang.AssertionError(why), identity)
-    val result = edge.open(stores, env, line => { val _ = log.add(line) }) match {
+    val result = edge.open(stores, env, Clock.system(), line => { val _ = log.add(line) }) match {
       case Left(refusal) => Left(refusal)
       case Right(open) => Right(open.close())
     }

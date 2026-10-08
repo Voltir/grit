@@ -1,5 +1,6 @@
 package grit.kit.run
 
+import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{
   Attesting,
   EdgeRefusal,
@@ -24,6 +25,9 @@ import utest.*
   * what was asked of them.
   */
 object ServingTests extends TestSuite {
+
+  /** A clock for an edge opened here; none of them reads it. */
+  private def stopped(): Clock^ = new SetClock(java.time.Instant.EPOCH)
 
   private object FakeJot extends Jot {
     def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
@@ -62,8 +66,9 @@ object ServingTests extends TestSuite {
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
+        clock: Clock^,
         log: String => Unit
-    ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] =
+    ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] =
       refuse match {
         case Some(r) => Left(r)
         case None =>
@@ -91,7 +96,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val refused = EdgeRefusal.Refused("no")
       val edges = List(new Fake("a", seen), new Fake("b", seen), new Fake("c", seen, Some(refused)))
-      val failure = Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
+      val failure = Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
         case Left(f) => Some(f)
         case Right(_) => None
       }
@@ -107,7 +112,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val warned = log()
       val edges = List(new Fake("a", seen, unreadable = true), new Fake("b", seen))
-      Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
+      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           val rounds = new java.util.concurrent.atomic.AtomicInteger(2)
@@ -141,7 +146,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val warned = log()
       val edges = List(new Fake("a", seen, unattestable = true), new Fake("b", seen))
-      Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
+      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           opened.attest(w => { val _ = warned.add(w) })
@@ -156,7 +161,7 @@ object ServingTests extends TestSuite {
     test("delivering asks for a look before each round its look says is due, and only then") {
       val seen = log()
       val edges = List(new Fake("a", seen))
-      Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
+      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           val rounds = new java.util.concurrent.atomic.AtomicInteger(3)
@@ -188,6 +193,7 @@ object ServingTests extends TestSuite {
         edges,
         e => { val _ = built.add(EdgeName.value(e.name)); stores },
         Map.empty,
+        stopped(),
         _ => ()
       )
       opened.foreach(_.close())

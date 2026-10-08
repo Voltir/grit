@@ -117,6 +117,7 @@ object Kit {
                     )
                   ),
                 env,
+                clock,
                 said => log.info(said)
               ) match {
                 case Left(failure) => Left(failure)

@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.clock.Clock
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
@@ -99,13 +100,15 @@ trait ServedEdge {
   def attester: Option[AttesterName] = None
 
   /** Connects to the edge's service with `env`'s credentials and starts taking its messages
-    * into `stores`, telling `log` what a person running it may want to read.
+    * into `stores`, reading the time only from `clock`, and telling `log` what a person
+    * running it may want to read.
     */
   def open(
       stores: EdgeStores^,
       env: Map[String, String],
+      clock: Clock^,
       log: String => Unit
-  ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}]
+  ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}]
 }
 
 object ServedEdge {
@@ -155,15 +158,16 @@ trait CatchUp {
     */
   def attester: Option[AttesterName] = None
 
-  /** Connects with `env`'s credentials and reads what was said before `now` that `stores`
-    * have not recorded; nothing is heard until [[CatchUp.Open.hear]].
+  /** Connects with `env`'s credentials and reads what was said before `clock`'s time now that
+    * `stores` have not recorded, reading the time only from `clock`; nothing is heard until
+    * [[CatchUp.Open.hear]].
     */
   def open(
       stores: EdgeStores^,
       env: Map[String, String],
-      now: Instant,
+      clock: Clock^,
       log: String => Unit
-  ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}]
+  ): Either[EdgeRefusal, CatchUp.Open^{stores, clock, log, caps.any}]
 }
 
 object CatchUp {
