@@ -32,7 +32,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
-import grit.tools.{About, Coding, Probes, Tuning}
+import grit.tools.{About, Cleared, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTally, TurnTooling}
 
 /** The engine's workflows, launched on an open engine the same way by every way grit runs:
@@ -356,10 +356,14 @@ private[grit] object Launch {
     // What grit is, from the docs grit.tools ships; offered under either choice.
     val about: Tool[Option[About.Subject]] =
       About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
-    // Offered everywhere: what grit is, and every plugin's tools.
+    // What the person asking is cleared for, read for the call's turn: the kit alone holds the
+    // engine's askers, so no plugin's tool can read who asked.
+    val cleared: Tool[Unit]^{store} = Cleared.tool(engine.askers, d.visibility, store)
+    // Offered everywhere: what grit is, what the asker is cleared for, and every plugin's tools.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
       Toolbox.of[caps.CapSet^{store, desks}](
-        (Vector[Tool.Offered^{store, desks}](about) ++ plugged.map(_.over(store, desks)))*
+        (Vector[Tool.Offered^{store, desks}](about, cleared) ++
+          plugged.map(_.over(store, desks)))*
       )
     val launching = d.offer.tools match {
       case Offered.Read =>

@@ -15,4 +15,7 @@ One package, `grit.tools`:
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
 - `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how it works, from the docs in `resources/about`.
+- `Cleared` — `clearance`: what the person asking is cleared for and why, answered only in a
+  direct message with them (one constant line anywhere else), over the store and the engine's
+  askers, which only the kit holds.
 - `Names` — every name above, which a plugin's tool may not take (`Deployment.of` refuses it).

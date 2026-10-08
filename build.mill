@@ -361,8 +361,15 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "tools"
     def moduleDeps = Seq(core)
 
+    /* ClearedCaptureTests compiles probe sources against tools, with tools' own flags. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_PROBE_CLASSPATH" -> tools.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> tools.probeOptions().mkString(" ")
+        )
+      }
     }
   }
 

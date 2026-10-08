@@ -4,20 +4,21 @@ import java.time.Instant
 
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
-import grit.core.id.{JobName, PluginName, TestCallSlots, ToolCallId}
+import grit.core.id.{JobName, PluginName, TestCallSlots, ToolCallId, TurnRef}
+import grit.core.identity.Principal
 import grit.core.job.{InMemorySchedules, ScheduleDesk}
 import grit.core.message.AssistantBlock
 import grit.core.model.{ModelSetting, ModelSettings}
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
 import grit.core.plugin.{InMemoryPlugins, PluginReads}
-import grit.core.store.{Db, StoreError, Tx}
+import grit.core.store.{Askers, Db, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Desks, PluginBinding, TestPlugins}
 import grit.models.StubModels
-import grit.tools.{About, Coding, Names, Probes, Tuning}
+import grit.tools.{About, Cleared, Coding, Names, Probes, Tuning}
 
 import utest.*
 
@@ -121,9 +122,16 @@ object PluginToolsTests extends TestSuite {
 
     test("grit's own tool names are those of every tool the kit offers besides the plugins'") {
       val about = About.load(Persona.Grit).fold(why => sys.error(why), _.name)
+      val noOne: Askers = new Askers {
+        def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
+      }
       val offered =
-        Vector(about, Tuning.propose(Unkept).name, Probes.probe(new StubModels()).name) ++
-          Coding.hosted.map(_.name)
+        Vector(
+          about,
+          Cleared.tool(noOne, Visibility.Shipped, FakeDb).name,
+          Tuning.propose(Unkept).name,
+          Probes.probe(new StubModels()).name
+        ) ++ Coding.hosted.map(_.name)
       Names.all.toSet ==> offered.toSet
       Names.all.size ==> offered.size
     }
