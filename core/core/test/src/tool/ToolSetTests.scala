@@ -4,8 +4,16 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.place.Place
 import grit.core.store.Tx
-import grit.core.visibility.{Clearance, Compartments, Label, Labelled, Level, RoomLabels, Visibility}
 import grit.core.visibility.TestLabels.place
+import grit.core.visibility.{
+  Clearance,
+  Compartments,
+  Label,
+  Labelled,
+  Level,
+  RoomLabels,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -115,7 +123,10 @@ object ToolSetTests extends TestSuite {
 
     test("a writing entry is offerable less the places its transaction may not write to, or not") {
       val narrowed =
-        post.offerable(sends = true)(using floored(internal)).flatMap(_.writes).map(_.to.keys.toVector)
+        post
+          .offerable(sends = true)(using floored(internal))
+          .flatMap(_.writes)
+          .map(_.to.keys.toVector)
       narrowed ==> Some(Vector("general", "#general"))
       post.offerable(sends = true)(using floored(Label.at(Level.Confidential))) ==> None
     }
