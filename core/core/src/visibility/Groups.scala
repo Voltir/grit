@@ -26,8 +26,8 @@ final case class Group(name: GroupName, accounts: Set[Account], realms: Set[Real
 final case class Grant(group: GroupName, label: Label)
 
 /** The declared members of `group` (never people added through grit) steward `compartment`:
-  * they may clear and remove people for it, and remove it from a private room's label.
-  * `Steward(c, c)`, `c`'s own group named, makes the compartment's own declared members its
+  * they may clear and remove people for it, and remove it from a private room's label
+  * ([[grit.core.admin.Authority]]). `Steward(c, c)`, `c`'s own group named, makes the compartment's own declared members its
   * stewards.
   */
 final case class Steward(compartment: Compartment, group: GroupName)
