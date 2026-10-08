@@ -1,6 +1,7 @@
 # 0031. A write out of grit names its place, and a service is a place and a party
 
-Status: accepted (2026-10-07)
+Status: accepted (2026-10-07); amended (2026-10-08) by ADR 0033: a place written to may be
+labelled through grit, and a quiet room is written to by no one
 
 Context: ADR 0030 filtered what a transaction reads of grit's own rows and floored what it
 writes there. Effects that leave grit (a post to another channel, a call to an outside service)
@@ -18,9 +19,10 @@ Decision:
 - A tool that writes outside grit declares its destinations as places, each offered to the model
   by a name in one argument core owns, `to`. Core reads `to` against the declared names, and the
   edge's tool is told the checked destination, never what the model sent.
-- A turn writes only to a place the deployment's rooms' labeller maps explicitly, with declared
-  compartments, at a label dominating its floor, its room's label (no write down). An unmapped
-  place is written to by no one, whatever the floor.
+- A turn writes only to a place the deployment's rooms' labeller maps explicitly, or whose
+  label is set through grit (amended by ADR 0033), with declared compartments, at a label
+  dominating its floor, its room's label (no write down). An unmapped place, and a quiet room
+  (ADR 0033), is written to by no one, whatever the floor.
 - A service is a place and a party. Its place's label is what it **contains**, given as any
   room's: a call's results are read under ADR 0030's read rule. The deployment says what it is
   **trusted with** (`trusts`, public for a service it does not name): a call sends its arguments
@@ -39,9 +41,9 @@ Consequences:
   searched from rooms at internal and at confidential in that compartment, and from none in
   another compartment.
 - A conversation's label is fixed when it is created (ADR 0030), and a place's label is the
-  labeller's now. A room relabelled down fails safe, its old threads' floors staying high; a room
-  relabelled up does not raise its existing threads' floors, which still write at their old,
-  lower label.
+  one in force now (amended by ADR 0033). A room relabelled down fails safe, its old threads'
+  floors staying high; a room relabelled up does not raise its existing threads' floors,
+  which still write at their old, lower label.
 - An edge that posts somewhere other than where it was told, or a tool that writes beyond its
   service while declaring nothing, is outside core's view: core trusts an edge's use of its own
   SDK and its tools' declared properties (STYLE rule 8's boundary).

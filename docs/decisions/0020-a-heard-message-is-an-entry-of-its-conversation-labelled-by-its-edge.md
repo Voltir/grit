@@ -4,7 +4,8 @@ Status: accepted (2026-09-28); amended (2026-10-03): triage asks a question set,
 answers kept by name; amended (2026-10-03): a message said to grit is asked the same set in
 its turn, when its recipe reads the answers, and keeps no tags; amended (2026-10-04):
 triage asks v3, adding whether a message is directed at grit, in its persona's name; amended
-(2026-10-04): triage asks v4, adding `anchor-record`, the anchor question reworded
+(2026-10-04): triage asks v4, adding `anchor-record`, the anchor question reworded; amended
+(2026-10-08) by ADR 0033: what is heard is every channel grit's bot is a member of
 
 Context: grit was answering only what was said to it. A deployment also wants the rest of a
 listened place (a Slack channel's threads) kept, so a later question can be answered from
@@ -31,7 +32,9 @@ Decision:
   waiting. An addressed message is dated when it is ingested. The closing itself is dated
   when the sweep reaches it, not at its deadline.
 - **What was said before grit listened is heard by a command, `grit backfill`**, run before
-  `grit serve`, never as a catch-up inside it. It reads each listened channel's last days,
+  `grit serve`, never as a catch-up inside it. It reads the last days of each channel grit's
+  bot is a member of (amended by ADR 0033, under which a join made while serving hears its
+  own bounded backfill),
   shows what hearing them would cost at most, and asks first. It hears each message at its
   own time, a past mention of grit included (a past message is never answered), then sweeps
   until nothing due is left and every workflow it started has ended. Nothing caps what it

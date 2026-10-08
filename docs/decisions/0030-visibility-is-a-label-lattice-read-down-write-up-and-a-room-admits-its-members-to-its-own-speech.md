@@ -1,6 +1,7 @@
 # 0030. Visibility is a label lattice: readers read down, writers write up, and a room admits its members to its own speech
 
-Status: accepted (2026-10-06)
+Status: accepted (2026-10-06); amended (2026-10-08) by ADR 0033: a room's label in force is
+one set through grit, else the deployment's mapping of the room with its reported access
 
 Context: ADR 0013 made place rank candidates rather than decide who sees them, and ADR 0019
 made one database one trust boundary. Every room's closings, documents and plugin tools could
@@ -35,7 +36,9 @@ Decision:
 - Bell–LaPadula: no read up, no write down. Every database transaction is opened for a subject
   and carries the clearance that subject has: it reads only rows its clearance dominates, and
   what it labels is kept at least at the clearance's floor.
-- A room has one label, given by the mapping its deployment declares. What is said in a room
+- A room has one label, given by the mapping its deployment declares. (Amended by ADR 0033:
+  the label in force, one set through grit, else that mapping given the room's reported
+  access.) What is said in a room
   takes its label (over-classifying is the safe direction), so a reply is never above its room.
 - A turn reads for room ∧ asker. A room's members read everything grit derived in it, whether
   or not the edge showed it to them, up to the room's label, since the room admitted them.

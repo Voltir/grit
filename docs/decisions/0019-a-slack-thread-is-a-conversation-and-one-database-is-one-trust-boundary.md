@@ -1,7 +1,9 @@
 # 0019. A Slack thread is a conversation, and one database is one trust boundary
 
 Status: accepted (2026-09-27), revised (2026-09-28), amended (2026-10-01): posting beyond
-a thread; amended (2026-10-01): a post's thread; revised (2026-10-07): private channels
+a thread; amended (2026-10-01): a post's thread; revised (2026-10-07): private channels;
+amended (2026-10-08) by ADR 0033: every channel grit's bot is a member of is heard, and
+`slack_post` posts in any of them not quiet
 
 Context: grit's first edge for several people is Slack. Two choices shape every later
 edge that serves more than one person.
@@ -29,11 +31,10 @@ Decision:
   under itself.
 - **One database is one trust boundary.** Everyone who can write to the conversations a
   database holds may see everything it holds. `grit serve` runs on a database of its own,
-  serving one workspace of trusted colleagues. A public channel grit's bot is in is
-  served. A private one is served only when the deployment names it among the channels
-  grit listens in: being invited is not enough, since naming it is the deployer's
-  deliberate act, and its room's label (ADR 0030) is then the deployment's declaration.
-  Served, it is inside the same boundary: its threads reach the others through `[afar]`
+  serving one workspace of trusted colleagues. (Amended by ADR 0033.) Every channel grit's
+  bot is a member of, public or private, is served: inviting grit is its members' deliberate
+  act, and its room's label is the one in force there (ADR 0033). Served, it is inside the
+  same boundary: its threads reach the others through `[afar]`
   and `recent_activity` unless that label is above public. Direct messages, and more than
   one team on one database, are not served.
 
@@ -45,14 +46,15 @@ Consequences:
 - A colleague's word grounds a Standing line as a person's (ADR 0018), the same as the
   asker's.
 - Visibility, when it comes, narrows this boundary. It never has to widen it.
-- A deployment names the channels grit listens in (ADR 0020). Every message in them is
-  recorded inside the boundary, as a mention was. No notice is posted in the channel:
-  which channels are listened in is the deployment's configuration. A private channel not
-  named there, a direct message and a group one are never served, addressed or heard.
+- grit hears every channel its bot is a member of (ADR 0020; amended by ADR 0033). Every
+  message in them is recorded inside the boundary, as a mention was. No notice is posted in
+  the channel: inviting grit is the members' act. A channel grit's bot is not in, and a
+  group direct message, are never served, addressed or heard; a direct message is ADR
+  0032's.
 - grit posts outside the thread it answers only through `slack_post`, a tool the Slack
-  edge serves at `service:slack` (ADR 0017's reach): to the channels the deployment
-  declares, by id, within a rate it declares, on turns addressed to grit, never asking first
-  and never run again after a crash. Anyone who can address the deployment may ask for a
+  edge serves at `service:slack` (ADR 0017's reach): to any channel its bot is a member of
+  that is not quiet (amended by ADR 0033), by id, within a rate the deployment declares, on
+  turns addressed to grit, never asking first and never run again after a crash. Anyone who can address the deployment may ask for a
   post, bounded by where it may post and by the rate. A post's text is literal, so it never
   mentions or broadcasts. A post is grit's bot's message, so it is never heard or answered,
   wherever it lands. A post at a channel's top level is recorded in the thread it begins
@@ -62,11 +64,10 @@ Consequences:
   conversations. Until then, and for a post into an existing thread, the turn that made it
   keeps what it posted where.
 - Enforced by:
-  - `SlackEdge` ignoring any conversation Slack does not report as a channel, and any
-    private channel it does not listen in, and hearing only in
-    the channels it is told to listen in (`SlackEdgeTests`);
+  - `SlackEdge` hearing only the channels its bot is recorded a member of (`SlackEdgeTests`;
+    amended by ADR 0033);
   - `grit serve` refusing to attach to an engine another grit holds;
-  - `slack_post` refusing a channel not declared, a link into another channel and a post
+  - `slack_post` refusing a channel not offered, a link into another channel and a post
     past the rate (`PostingTests`), and a turn rooted on a heard message never being
     offered it (`TurnOfferTests`);
   - a post's thread beginning with it (`SlackEdgeTests`, `InboxContract`), and the turn

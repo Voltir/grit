@@ -1,7 +1,8 @@
 # 0032. A principal is a person; edges name accounts, and trusted realms attest who they are
 
 Status: accepted (2026-10-07; amended the same day: no declared people, emails as attestations,
-re-checked and never aged out)
+re-checked and never aged out); amended (2026-10-08) by ADR 0033: a clearance read by command,
+answered to its asker alone, anywhere; a channel labelled by its own audience
 
 Context: ADR 0021 gave each principal a kind asserted by its edge, and ADR 0030 cleared a
 person by the grants of their groups. Each edge enrolled the people it saw under its own name
@@ -85,7 +86,8 @@ Decision:
 - A person may ask what they are cleared for. In a direct message the answer is in full: their
   clearance, the groups that give it, and their accounts by kind and evidence, never by name.
   Asked anywhere else, nothing about their clearance is said there: grit asks them, in one
-  constant line, to write to it directly.
+  constant line, to write to it directly. (Amended by ADR 0033.) By command, whose answer is
+  shown to them alone, they read it in full wherever they ask.
 - Services stay out of principals (ADR 0031): no account is ever a service's.
 
 Consequences:
@@ -112,12 +114,14 @@ Consequences:
 - A deployment can clear every full member of a workspace with one group and one grant, and a
   guest or a partner from another organisation stays at what it grants no one. A channel's
   label still comes from the deployment's labeller, which cannot tell a public channel from a
-  private one; labelling a channel by its own audience is a later decision.
+  private one; labelling a channel by its own audience is a later decision. (Amended by ADR
+  0033: an edge reports each room's access, and its members label it through grit.)
 - A second trusted realm, a directory or a login, joins the same people under the same rules
   with no change to them. A login's issuer is named by a short name the deployment gives it,
   since a realm's name holds no `/`.
 - "What am I cleared for" is answered only where the person alone reads it. An edge that cannot
-  message a person directly cannot answer it.
+  message a person directly cannot answer it. (Amended by ADR 0033: a command's answer shown
+  to its asker alone is such a place.)
 - A clearance that falls leaves a direct message's earlier threads unread, never relabelled;
   the person starts a new thread. A group direct message has no one person's clearance and is
   not heard.
