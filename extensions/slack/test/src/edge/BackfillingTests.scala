@@ -1,6 +1,6 @@
 package grit.slack.edge
 
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import scala.concurrent.duration.*
@@ -62,30 +62,51 @@ object BackfillingTests extends TestSuite {
     test(
       "close tells the work under way to stop and waits for it at most `within`; after close no work starts"
     ) {
-      val release = new CountDownLatch(1)
-      val told = new AtomicBoolean(false)
+      val starts = new AtomicInteger
+      val first = new AtomicReference[Option[Backfilling.Running]](None)
+      val counted: Backfilling.Start = new Backfilling.Start {
+        def apply(body: () => Unit): Backfilling.Running = {
+          val _ = starts.incrementAndGet()
+          val running = Backfilling.Virtual(body)
+          val _ = first.compareAndSet(None, Some(running))
+          running
+        }
+      }
       val entered = new CountDownLatch(1)
+      val told = new CountDownLatch(1)
+      val release = new CountDownLatch(1)
       val asked = new AtomicInteger
       val b = new Backfilling(
-        Backfilling.Virtual,
+        counted,
         work(
           () => { asked.incrementAndGet(); true },
           stopping => {
             entered.countDown()
-            while (!stopping()) Thread.onSpinWait()
-            told.set(true)
-            val _ = release.await(10, TimeUnit.SECONDS)
+            // Polls as a run does between messages, parked between looks; gives up after a
+            // minute so a broken close fails the test rather than hanging it.
+            val giveUp = System.nanoTime() + 60.seconds.toNanos
+            while (!stopping() && System.nanoTime() < giveUp)
+              java.util.concurrent.locks.LockSupport.parkNanos(1.millis.toNanos)
+            if (stopping()) told.countDown()
+            val _ = release.await(60, TimeUnit.SECONDS)
           }
         )
       )
       b.wake()
-      entered.await(5, TimeUnit.SECONDS) ==> true
-      val began = System.nanoTime()
+      val began = entered.await(30, TimeUnit.SECONDS)
+      val closing = System.nanoTime()
+      // The run is held until released, so close waits out all of `within` and returns.
       b.close(200.millis)
-      val waited = (System.nanoTime() - began).nanos
-      b.wake()
+      val waited = (System.nanoTime() - closing).nanos
+      val wasTold = told.await(30, TimeUnit.SECONDS)
       release.countDown()
-      (told.get, waited >= 200.millis, waited < 5.seconds, asked.get) ==> (true, true, true, 1)
+      first.get.foreach(_.join(30.seconds))
+      val runEnded = first.get.exists(!_.alive)
+      // The run has ended, so only closing can keep a wake from starting another.
+      b.wake()
+      (began, wasTold, runEnded, waited >= 200.millis, waited < 30.seconds) ==>
+        (true, true, true, true, true)
+      (asked.get, starts.get) ==> (1, 1)
     }
   }
 }
