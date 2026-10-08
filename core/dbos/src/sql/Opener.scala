@@ -97,17 +97,16 @@ private[dbos] final class Opener(visibility: Visibility) {
       Using.resource(
         conn.prepareStatement(
           s"""SELECT c.origin::text AS origin, ${SqlLabels.columns("l")},
-             |       e.id AS first_entry, a.principal_id, a.kind, p.handle, h.held::text AS held
+             |       e.id AS first_entry, a.principal_id, a.kind, h.held::text AS held
              |  FROM grit.conversations c
              |  JOIN grit.labels l ON l.id = c.label_id
              |  LEFT JOIN LATERAL (SELECT id FROM grit.entries
              |                      WHERE conversation_id = c.id AND turn_seq = ?
              |                      ORDER BY seq LIMIT 1) e ON true
              |  LEFT JOIN grit.authors a ON a.entry_id = e.id
-             |  LEFT JOIN grit.principals p ON p.id = a.principal_id
-             |  LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_array(n.account, n.evidence, n.member))
+             |  LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_array(n.account, n.vouched, n.member))
              |                       AS held
-             |                      FROM grit.identities n WHERE n.principal_id = a.principal_id) h
+             |                      FROM grit.links n WHERE n.principal_id = a.principal_id) h
              |    ON true
              | WHERE c.id = ?::uuid""".stripMargin
         )
@@ -124,7 +123,6 @@ private[dbos] final class Opener(visibility: Visibility) {
                 (
                   id,
                   rs.getString("kind"),
-                  Option(rs.getString("handle")),
                   Option(rs.getString("held")).getOrElse("[]")
                 )
               )
@@ -142,8 +140,8 @@ private[dbos] final class Opener(visibility: Visibility) {
             .left
             .map(why => StoreError.Invalid(s"conversation ${ConversationId.value(id)}: $why"))
           author <- first match {
-            case Some(Some((id, kind, handle, held))) =>
-              SqlIdentities.principal(id, kind, handle, held).map(p => Some(Some(p)))
+            case Some(Some((id, kind, held))) =>
+              SqlIdentities.principal(id, kind, held).map(p => Some(Some(p)))
             case Some(None) => Right(Some(None))
             case None => Right(None)
           }

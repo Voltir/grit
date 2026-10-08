@@ -41,24 +41,31 @@ object PeopleLiveTests extends TestSuite {
     c
   }
 
-  /** `moved` made the person `onto` is, as a vouching links it: both kept first, and `moved`'s
-    * home kept.
+  /** `accounts` made one person, as two vouchings of one claimed email make them: each kept
+    * first, the email's person minted, and each attested that email, no full member.
     */
-  private def linked(config: DbConfig, moved: Account, onto: Account): Unit =
+  private def attestedOneEmail(config: DbConfig, accounts: Account*): Unit =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
-      SqlIdentities.enroll(Set(moved, onto)).fold(e => sys.error(s"enrolling: $e"), identity)
+      SqlIdentities.enroll(accounts.toSet).fold(e => sys.error(s"enrolling: $e"), identity)
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement(
-          """UPDATE grit.identities
-            |   SET principal_id = (SELECT principal_id FROM grit.identities WHERE account = ?),
-            |       evidence = 'vouched', email = 'person@example.com'
-            | WHERE account = ?""".stripMargin
+          """WITH person AS (INSERT INTO grit.principals (id, kind)
+            |                VALUES (uuidv7()::text, 'person') RETURNING id)
+            |INSERT INTO grit.emails (email, principal_id)
+            |SELECT 'person@example.com', id FROM person""".stripMargin
         )
-      ) { ps =>
-        ps.setString(1, Account.written(onto))
-        ps.setString(2, Account.written(moved))
-        val _ = ps.executeUpdate()
+      )(ps => { val _ = ps.executeUpdate() })
+      accounts.foreach { account =>
+        Using.resource(
+          conn.prepareStatement(
+            """INSERT INTO grit.attestations (account, email, member, seen_at)
+              |VALUES (?, 'person@example.com', false, now())""".stripMargin
+          )
+        ) { ps =>
+          ps.setString(1, Account.written(account))
+          val _ = ps.executeUpdate()
+        }
       }
     }
 
@@ -79,7 +86,7 @@ object PeopleLiveTests extends TestSuite {
       val origin = Origin.Slack("T1", "C1", "1.0")
       val turn = TurnRef(LiveDb.conversation(config, origin, TestLabels.Trial).id, TurnSeq.First)
       LiveDb.asking(config, turn, ana, None)
-      linked(config, ana, TestLabels.Trialist)
+      attestedOneEmail(config, ana, TestLabels.Trialist)
       LiveDb.transaction(config)(
         new Opener(TestLabels.Trialled).clearance(Subject.Turn(turn))
       ) ==> Right(Clearance.inRoom(origin.room, TestLabels.Trial, TestLabels.Trial))
@@ -91,7 +98,7 @@ object PeopleLiveTests extends TestSuite {
       val his = u.turn("4.1")
       u.asking(hers, ana, Some("C1/4.0"))
       u.asking(his, ben, Some("C1/4.1"))
-      linked(config, ben, ana)
+      attestedOneEmail(config, ana, ben)
       val d = desk(u)
       def ask(from: TurnRef, index: Int) =
         d.ask(
@@ -113,7 +120,7 @@ object PeopleLiveTests extends TestSuite {
         LiveDb.asking(config, turn, by, None)
         turn
       }
-      linked(config, ben, ana)
+      attestedOneEmail(config, ana, ben)
       val person: PrincipalId = LiveDb.principal(config, ana)
       LiveDb
         .transaction(config)(
@@ -141,7 +148,7 @@ object PeopleLiveTests extends TestSuite {
       u.asking(asked, ana, Some("C9/6.0"))
       u.asking(same, ben, Some("C9/6.1"))
       u.asking(lower, ben, Some("C8/6.2"))
-      linked(config, ben, ana)
+      attestedOneEmail(config, ana, ben)
       val d = desk(u)
       val id = d
         .ask(TestCallSlots.at(asked), booking(remind), When.In(1.hour), hour, Count(1))

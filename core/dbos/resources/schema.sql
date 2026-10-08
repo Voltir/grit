@@ -194,53 +194,86 @@ CREATE TABLE IF NOT EXISTS grit.engine_starts (
 );
 
 -- Who actions are done for (grit.core.id.PrincipalId): a person, under an id minted here
--- (uuidv7) when one of their accounts is first seen, or grit itself; `local` is the person the
--- local edge acts for. `handle` is a declared person's (grit.core.identity.Identities), NULL
--- for every other. Other tables name a principal here, never by a free string.
--- Retention: kept. One home per account in grit.identities, one per declared person, and local
--- and grit: about one row per account seen.
+-- (uuidv7), or grit itself; `local` is the person the local edge acts for (ADR 0032). A person
+-- is one account's home (grit.identities) or one claimed email's person (grit.emails). Other
+-- tables name a principal here, never by a free string.
+-- Retention: kept; deleted by nothing (parked: forgetting a person). One row per account seen,
+-- one per claimed address attested, and local and grit.
 CREATE TABLE IF NOT EXISTS grit.principals (
-    id     TEXT PRIMARY KEY,
-    kind   TEXT NOT NULL CHECK (kind IN ('person', 'grit')),
-    handle TEXT UNIQUE
+    id   TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('person', 'grit'))
 );
 
 INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'grit')
     ON CONFLICT (id) DO NOTHING;
 
 -- Each account an action has come through (grit.core.identity.Account, as Account.written
--- spells it), and the principal it belongs to (ADR 0032). `evidence` says why: enrolled (seen
--- first, a person of its own), declared (the deployment's Identities) or vouched (a trusted
--- realm's verified email). `name` is what its source calls it (Principals.name); `email` the
--- address its realm vouches for now, and `member` whether it vouches the account a full member
--- now (neither ever set for an email account itself). `home` is the person of its own it was
--- when first seen, which a vouched link that lapses returns it to; NULL while declared. An
--- account first seen takes an advisory lock on its spelling before its home is minted
--- (SqlIdentities.enroll), so two first sightings make one person. Holds PII: `account` (an
--- email account's address) as well as `email`.
--- Retention: kept; deleted by nothing yet. Bounded by the people who have written through an
--- edge, and the accounts declared or vouched for them: about two rows a person.
+-- spells it; never an email address), its home, and the name its source gives it
+-- (Principals.name). Its home is the person of its own minted when it was first seen
+-- (SqlIdentities.enroll, under an advisory lock on the account, so two first sightings make one
+-- person), which holds no other account. Holds PII (`account`, `name`).
+-- Retention: kept; deleted by nothing yet (parked: forgetting a person). One row per account
+-- seen.
 CREATE TABLE IF NOT EXISTS grit.identities (
-    account      TEXT PRIMARY KEY,
-    principal_id TEXT NOT NULL REFERENCES grit.principals(id),
-    evidence     TEXT NOT NULL CHECK (evidence IN ('enrolled', 'declared', 'vouched')),
-    name         TEXT,
-    email        TEXT,
-    member       BOOLEAN NOT NULL DEFAULT false,
-    home         TEXT REFERENCES grit.principals(id),
-    linked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK ((evidence = 'declared') = (home IS NULL)),
-    CHECK (account NOT LIKE 'email:%' OR (email IS NULL AND NOT member)),
-    CHECK (evidence <> 'vouched' OR account LIKE 'email:%' OR email IS NOT NULL)
+    account TEXT PRIMARY KEY,
+    home    TEXT NOT NULL UNIQUE REFERENCES grit.principals(id),
+    name    TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_identities_principal ON grit.identities (principal_id);
-CREATE INDEX IF NOT EXISTS idx_identities_home ON grit.identities (home);
+-- A realm's accounts by prefix (`slack:T0123/%`): the key's default collation cannot serve
+-- LIKE.
+CREATE INDEX IF NOT EXISTS idx_identities_account_prefix
+    ON grit.identities (account text_pattern_ops);
 
--- local's and grit's one account each, spelled as their ids; never enrolled or vouched.
-INSERT INTO grit.identities (account, principal_id, evidence)
-    VALUES ('local', 'local', 'declared'), ('grit', 'grit', 'declared')
+-- local's and grit's one account each, spelled as their ids, each its own home; no realm
+-- holds either, so neither is ever attested.
+INSERT INTO grit.identities (account, home) VALUES ('local', 'local'), ('grit', 'grit')
     ON CONFLICT (account) DO NOTHING;
+
+-- The person of each claimed address a trusted realm has attested (ADR 0032): minted the first
+-- time any realm attests it, under an advisory lock on the address, and every account whose
+-- attestation holds it is that person. Holds PII (`email`).
+-- Retention: kept; never cleared, even once no attestation holds the address (parked:
+-- forgetting a person, and a new person for a reused address). One row per claimed address ever
+-- attested.
+CREATE TABLE IF NOT EXISTS grit.emails (
+    email        TEXT PRIMARY KEY,
+    principal_id TEXT NOT NULL UNIQUE REFERENCES grit.principals(id)
+);
+
+-- What its trusted realm last said of an account, and when (Voucher.vouch): `email`, the
+-- address its source verified, kept only in a domain the deployment claims, else NULL;
+-- `member`, whether it is a full member. It stands whatever its age; `seen_at` only makes it due
+-- to be asked again. Holds PII (`email`). A renewal changes only `seen_at`, which no index
+-- covers, so with the page's free space it is a HOT update: keep `seen_at` unindexed.
+-- Retention: kept, overwritten by each answer; deleted by nothing yet (parked: forgetting a
+-- person). At most one row per account a trusted realm has held.
+CREATE TABLE IF NOT EXISTS grit.attestations (
+    account TEXT PRIMARY KEY REFERENCES grit.identities(account),
+    email   TEXT REFERENCES grit.emails(email),
+    member  BOOLEAN NOT NULL,
+    seen_at TIMESTAMPTZ NOT NULL
+) WITH (fillfactor = 90);
+
+CREATE INDEX IF NOT EXISTS idx_attestations_email ON grit.attestations (email);
+
+-- Who each account is now: the person of its attestation's email, else its home; whether that
+-- is by a vouching; and whether its attestation says it is a full member. The one definition
+-- every reader joins (the opener, grit.authors). Two arms, so a read by person id or by account
+-- uses an index in each (emails.principal_id or identities.home; the primary keys).
+CREATE OR REPLACE VIEW grit.links AS
+    -- Linked: its attestation holds a claimed email, so it is that email's person.
+    SELECT a.account, i.home, e.principal_id, true AS vouched, a.member
+      FROM grit.attestations a
+      JOIN grit.emails e ON e.email = a.email
+      JOIN grit.identities i ON i.account = a.account
+    UNION ALL
+    -- At home: no attestation, or one holding no email.
+    SELECT i.account, i.home, i.home AS principal_id, false AS vouched,
+           COALESCE(a.member, false) AS member
+      FROM grit.identities i
+      LEFT JOIN grit.attestations a ON a.account = i.account
+     WHERE a.email IS NULL;
 
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
@@ -301,13 +334,13 @@ CREATE TABLE IF NOT EXISTS grit.inbound (
     account  TEXT NOT NULL REFERENCES grit.identities(account)
 );
 
--- Who wrote each inbound entry, as linked now: the one definition every reader of an author
--- joins (the opener, a desk's asker, a room's reads, speakers).
+-- Who wrote each inbound entry, as linked now (grit.links): the one definition every reader of
+-- an author joins (the opener, a desk's asker, a room's reads, speakers).
 CREATE OR REPLACE VIEW grit.authors AS
-    SELECT i.entry_id, i.account, a.principal_id, p.kind
+    SELECT i.entry_id, i.account, l.principal_id, p.kind
       FROM grit.inbound i
-      JOIN grit.identities a ON a.account = i.account
-      JOIN grit.principals p ON p.id = a.principal_id;
+      JOIN grit.links l ON l.account = i.account
+      JOIN grit.principals p ON p.id = l.principal_id;
 
 -- One row per model response: what it cost. Keyed by the entry that holds the response,
 -- so the turn's append writes both in one transaction and a replay cannot count twice. Not a

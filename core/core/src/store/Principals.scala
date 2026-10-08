@@ -4,12 +4,14 @@ import grit.core.id.EntryId
 import grit.core.identity.Account
 
 /** The accounts actions come through, and the names they go by; and whose names a window
-  * shows on the inbound entries they wrote.
+  * shows on the inbound entries they wrote. An account is a person of its own until a trusted
+  * realm attests it an email the deployment claims (ADR 0032).
   */
 trait Principals {
 
-  /** Records that `account` goes by `name`, trimmed, as its source names it now; an account not
-    * seen before is a new person's one account. `Invalid` for a blank name, or for
+  /** Records that `account` goes by `name`, trimmed, as its source names it now, writing
+    * nothing when that is already its name; an account not seen before is a new person's one
+    * account. `Invalid` for a blank name, or for
     * [[Account.Local]] or [[Account.Grit]], which are never named.
     */
   def name(account: Account, name: String)(using Tx^): Either[StoreError, Unit]

@@ -112,7 +112,7 @@ object LiveDb {
     transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
-        conn.prepareStatement("SELECT principal_id FROM grit.identities WHERE account = ?")
+        conn.prepareStatement("SELECT principal_id FROM grit.links WHERE account = ?")
       ) { ps =>
         ps.setString(1, Account.written(account))
         Using.resource(ps.executeQuery()) { rs =>

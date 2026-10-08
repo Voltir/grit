@@ -20,10 +20,14 @@ final class SqlPrincipals extends Principals {
         SqlIdentities.enroll(Set(account)).flatMap { _ =>
           attempt {
             Using.resource(
-              conn.prepareStatement("UPDATE grit.identities SET name = ? WHERE account = ?")
+              conn.prepareStatement(
+                """UPDATE grit.identities SET name = ?
+                  | WHERE account = ? AND name IS DISTINCT FROM ?""".stripMargin
+              )
             ) { ps =>
               ps.setString(1, name.trim)
               ps.setString(2, SqlIdentities.written(account))
+              ps.setString(3, name.trim)
               ps.executeUpdate()
               ()
             }
