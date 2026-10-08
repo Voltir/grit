@@ -3,7 +3,10 @@ package grit.core.tool
 import scala.collection.immutable.VectorMap
 
 import grit.core.place.Place
+import grit.core.store.Tx
+import grit.core.visibility.{Clearance, Compartments, Label, Labelled, Level, RoomLabels, Visibility}
 import grit.core.visibility.TestLabels.place
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -42,6 +45,25 @@ object ToolSetTests extends TestSuite {
         .toOption
         .map(_.placed)
     )
+
+  private val internal = Label.at(Level.Internal)
+
+  /* `general`'s channel is internal, `random`'s public. */
+  private val channels: Visibility =
+    (for {
+      labels <- RoomLabels
+        .of(
+          Vector(place("slack:T/C1") -> internal, place("slack:T/C2") -> Label.Public),
+          Labelled.Mapped(Label.Public)
+        )
+        .left
+        .map(_.written)
+      compartments <- Compartments.of(Vector.empty).left.map(_.toString)
+      v <- Visibility.of(compartments, labels, Vector.empty, Vector.empty).left.map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A transaction whose floor is `floor`, under [[channels]]. */
+  private def floored(floor: Label): Tx = TestTx.fake(Clearance.of(floor), channels)
 
   private def set(entries: ToolSet.Entry*): ToolSet =
     ToolSet.of(entries.toVector).getOrElse(throw new java.lang.AssertionError("a duplicate"))
@@ -89,6 +111,18 @@ object ToolSetTests extends TestSuite {
         )
       )
       ToolSet.read(twice) ==> Left("a tool set names peek twice")
+    }
+
+    test("a writing entry is offerable less the places its transaction may not write to, or not") {
+      val narrowed =
+        post.offerable(sends = true)(using floored(internal)).flatMap(_.writes).map(_.to.keys.toVector)
+      narrowed ==> Some(Vector("general", "#general"))
+      post.offerable(sends = true)(using floored(Label.at(Level.Confidential))) ==> None
+    }
+
+    test("an entry declaring no destination is offerable only where its arguments may be sent") {
+      given Tx = floored(Label.Public)
+      (peek.offerable(sends = true), peek.offerable(sends = false)) ==> (Some(peek), None)
     }
   }
 }

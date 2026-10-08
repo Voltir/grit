@@ -4,6 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.id.ShortHash
 import grit.core.place.Place
+import grit.core.store.Tx
 
 /** A tool set as offered to one turn: each tool's name, description, schema, whether it asks
   * a person first, and its retry, in the order offered. Equal sets have equal ids
@@ -31,7 +32,19 @@ object ToolSet {
       asks: Boolean,
       retry: Retry,
       writes: Option[Writes[Place]] = None
-  )
+  ) {
+
+    /** This entry as a call may reach it from a transaction that `sends` its arguments to the
+      * service it runs at, or not: one that declares no destination only when it does; one
+      * that writes, less the places the transaction does not write to
+      * ([[grit.core.store.Tx.writesTo]]); `None` when neither is left.
+      */
+    def offerable(sends: Boolean)(using Tx^): Option[Entry] =
+      writes match {
+        case None => Option.when(sends)(this)
+        case Some(w) => w.narrowed(Tx.writesTo(_)).map(n => copy(writes = Some(n)))
+      }
+  }
 
   val Empty: ToolSet = ToolSet(Vector.empty)
 
