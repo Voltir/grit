@@ -65,6 +65,27 @@ object ClearanceTests extends TestSuite {
       )
     }
 
+    test(
+      "an item in or kept in a direct message's room is read only by a reader whose own room it is, up to its own label, whatever it reads everywhere"
+    ) {
+      val dm = place("direct:slack/T/U")
+      val another = place("direct:slack/T/V")
+      val top = Label.at(Level.Restricted, compartment("trial"))
+      val inChannel = Clearance.inRoom(room, top, top)
+      val inDm = Clearance.inRoom(dm, trialLabel, top)
+      val inAnother = Clearance.inRoom(another, top, top)
+      Vector(inChannel, Clearance.of(top), inDm, inAnother).map(c =>
+        (c.reads(Item.InRoom(dm), trialLabel), c.reads(Item.Kept(Some(dm)), trialLabel))
+      ) ==> Vector((false, false), (false, false), (true, true), (false, false))
+      inDm.reads(Item.InRoom(dm), top) ==> false
+    }
+
+    test("maintenance reads a direct message's items, as every other row") {
+      Maintenance
+        .clearance(Label.at(Level.Restricted))
+        .reads(Item.InRoom(place("direct:slack/T/U")), Label.at(Level.Internal)) ==> true
+    }
+
     test("a reader in a room writes at the room's label; one in none at its label") {
       uncleared.floor ==> trialLabel
       Clearance.of(Label.at(Level.Internal)).floor ==> Label.at(Level.Internal)

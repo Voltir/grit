@@ -1,6 +1,8 @@
 package grit.dbos.engine
 
-import grit.core.id.{EntryId, SourceId, TurnRef}
+import java.time.Instant
+
+import grit.core.id.{EntryId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.{Account, Standing, Vouched}
 import grit.core.inbox.InboxError
 import grit.core.message.Message
@@ -16,7 +18,7 @@ import grit.core.visibility.{
   TestLabels,
   Visibility
 }
-import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlEntrySearch, SqlEntryStore, SqlRoomReads, TestPostgres}
 
 import utest.*
 
@@ -34,6 +36,9 @@ object DirectLiveTests extends TestSuite {
 
   private val dana = sourced("slack:T1/U-dana")
   private val ed = sourced("slack:T1/U-ed")
+
+  /** Long after anything here is said. */
+  private val Far = Instant.parse("2100-01-01T00:00:00Z")
 
   private val ConfidentialTrial = Label.at(Level.Confidential, TestLabels.trial)
 
@@ -206,6 +211,34 @@ object DirectLiveTests extends TestSuite {
         created(config, Origin.Direct(dana, "2.0")),
         fresh2.conversationId != old.conversationId
       ) ==> (Label.Public, Label.Public, ConfidentialTrial, true)
+    }
+
+    test(
+      "a direct message's entries are read only in it: a channel turn at its label, asked by its person, reads none by search or room reads; its own turn does"
+    ) {
+      val config = fresh("direct_only_there")
+      val channel = Origin.Slack("T1", "C-trial", "1.0")
+      val asked = TurnRef(LiveDb.conversation(config, channel, ConfidentialTrial).id, TurnSeq.First)
+      LiveDb.asking(config, asked, dana, None)
+      val (inChannel, inDm) = engine(config, Cleared) { e =>
+        val dm = told(e, dana, "1.0", "1.0")
+        val person = LiveDb.principal(config, dana)
+        val room = Origin.Direct(dana, "1.0").room
+        def reads(subject: Subject): (Int, Int, Int) =
+          e.jot
+            .write(subject) {
+              val rooms = new SqlRoomReads
+              for {
+                found <- new SqlEntrySearch()
+                  .search(dm.conversationId, TurnSeq.First, TurnSeq(10), "message", 10)
+                said <- rooms.said(room, Instant.EPOCH, Far, Set.empty, 10)
+                saidBy <- rooms.saidBy(room, person, Instant.EPOCH, Far, Set.empty, 10)
+              } yield (found.size, said.size, saidBy.size)
+            }
+            .fold(err => throw new java.lang.AssertionError(s"reading: $err"), identity)
+        (reads(Subject.Turn(asked)), reads(Subject.Turn(dm)))
+      }
+      (inChannel, inDm) ==> ((0, 0, 0), (1, 1, 1))
     }
   }
 }

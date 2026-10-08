@@ -2,6 +2,7 @@ package grit.dbos.sql
 
 import java.sql.PreparedStatement
 
+import grit.core.place.Namespace
 import grit.core.visibility.Clearance
 
 /** A statement's transaction's clearance ([[grit.core.store.Tx.clearance]]) as SQL (ADR 0030): the one place a
@@ -13,10 +14,12 @@ import grit.core.visibility.Clearance
 private[sql] object SqlClearance {
 
   /** The `WITH` item `clearance`, one row: the ids of the labels the transaction reads
-    * everywhere (`everywhere`), the ids of those its own room's label dominates (`own`), and its
+    * everywhere (`everywhere`), the ids of those its own room's label dominates (`own`), its
     * own room's `grit.places` id (`room`, NULL when it has none, or the place was never
-    * recorded). Dominance is `grit.label_dominates` over `grit.labels`, run with the statement,
-    * so a label interned earlier in the same transaction is covered.
+    * recorded), and the ids of the places under `direct` (`direct`), whose rows the everywhere
+    * branch never reads, none when the transaction is maintenance's. Dominance is
+    * `grit.label_dominates` over `grit.labels`, run with the statement, so a label interned
+    * earlier in the same transaction is covered.
     */
   val With: String =
     s"""clearance AS (
@@ -27,11 +30,13 @@ private[sql] object SqlClearance {
        |                WHERE grit.label_dominates(${SqlLabels.Arg},
        |                                           ROW(l.level, l.compartments)::grit.label)) AS own,
        |         (SELECT p.id FROM grit.places p
-       |           WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))) AS room
+       |           WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))) AS room,
+       |         ARRAY(SELECT p.id FROM grit.places p
+       |                WHERE NOT ?::boolean AND p.path[1] = '${Namespace.Direct.key}') AS direct
        |)""".stripMargin
 
   /** How many parameters [[With]] takes, all before any other of its statement's. */
-  val Params: Int = 5
+  val Params: Int = 6
 
   /** Sets [[With]]'s parameters, from `at`, to `clearance`: the statement's transaction's
     * ([[grit.core.store.Tx.clearance]]), read before the statement is bound, since a binding closure may not
@@ -45,13 +50,16 @@ private[sql] object SqlClearance {
       at + 4,
       ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
     )
+    ps.setBoolean(at + 5, clearance.maintaining)
   }
 
   /** Whether the transaction reads the `grit.entries` row aliased `e`
     * ([[grit.core.visibility.Item.InRoom]] of its conversation's room).
     */
   def entry(e: String): String =
-    s"""($e.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($e.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+       |   AND $e.conversation_id NOT IN (SELECT dc.id FROM grit.conversations dc
+       |                                   WHERE dc.room_id = ANY ((SELECT direct FROM clearance)::uuid[])))
        |  OR ($e.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $e.conversation_id IN (SELECT rc.id FROM grit.conversations rc
        |                                  WHERE rc.room_id = (SELECT room FROM clearance))))""".stripMargin
@@ -60,7 +68,8 @@ private[sql] object SqlClearance {
     * entries, every one kept at its label, and where it happens.
     */
   def conversation(c: String): String =
-    s"""($c.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($c.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+       |   AND $c.room_id <> ALL ((SELECT direct FROM clearance)::uuid[]))
        |  OR ($c.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $c.room_id = (SELECT room FROM clearance)))""".stripMargin
 
@@ -68,7 +77,8 @@ private[sql] object SqlClearance {
     * row aliased `d` ([[grit.core.visibility.Item.Kept]] in its `room_id`, NULL for none).
     */
   def kept(d: String): String =
-    s"""($d.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($d.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+       |   AND ($d.room_id IS NULL OR $d.room_id <> ALL ((SELECT direct FROM clearance)::uuid[])))
        |  OR ($d.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $d.room_id = (SELECT room FROM clearance)))""".stripMargin
 }

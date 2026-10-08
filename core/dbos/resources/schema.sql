@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS grit.places (
                 AND array_position(path, NULL) IS NULL)
 );
 
+-- The places of direct messages (Place.direct), which every clearance-filtered read lists
+-- (SqlClearance's `direct`) so it reads their rows only in their own room: one row per direct
+-- message's room and thread.
+CREATE INDEX IF NOT EXISTS idx_places_direct ON grit.places (id) WHERE path[1] = 'direct';
+
 -- The engine holding this database's lock (EngineLock, ADR 0015), as it described itself.
 -- The lock is the truth; this row says who holds it. It is current only while its
 -- backend_pid holds the advisory lock (pg_locks): a row a dead engine left is overwritten by

@@ -12,6 +12,7 @@ import grit.core.id.{
   ToolCallId,
   TurnRef
 }
+import grit.core.identity.TestAccounts
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.place.{Directory, Place}
@@ -306,6 +307,33 @@ abstract class ClearanceContract extends TestSuite {
           Vector(EntryId.value(here.message)),
           Vector(EntryId.value(here.message)),
           Vector.empty
+        )
+      )
+    }
+
+    test(
+      "a direct message's entries are read only by a reader whose own room it is, whatever it reads everywhere: get, list, at, ofTurn, closingBefore, RoomReads.said"
+    ) {
+      val dm = Origin.Direct(TestAccounts.sourced("slack:T1/U-cl13"), "1.0")
+      val r = record(dm, TestLabels.Trial, "direct", 0)
+      val top = TestLabels.Trialled.compartments.top
+      val inChannel = Clearance.inRoom(thread("CL13", "1.0").room, top, top)
+      val inAnother =
+        Clearance.inRoom(
+          Origin.Direct(TestAccounts.sourced("slack:T1/U-cl14"), "1.0").room,
+          top,
+          top
+        )
+      val inDm = Clearance.inRoom(dm.room, TestLabels.Trial, Label.Public)
+      def said(clearance: Clearance): Vector[String] =
+        transaction(clearance)(heardIds(right(rooms.said(dm.room, at(-1), at(10), Set.empty, 10))))
+      Vector(everything, inChannel, inAnother, inDm).map(c => (read(c, r), said(c))) ==> Vector(
+        (Vector.fill(5)(Vector.empty[String]), Vector.empty),
+        (Vector.fill(5)(Vector.empty[String]), Vector.empty),
+        (Vector.fill(5)(Vector.empty[String]), Vector.empty),
+        (
+          Vector(r.ids, r.ids, r.ids, r.ids, Vector(EntryId.value(r.closing))),
+          Vector(EntryId.value(r.message))
         )
       )
     }
