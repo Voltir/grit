@@ -46,7 +46,18 @@ In dependency order:
   a channel not recorded a member (one racing its join) asks Slack once whether the bot is in it
   (`Slack.kind`): the join is recorded first when it is, the message ignored when not, and left
   for Slack to send again when Slack cannot be asked. The review's channel is never recorded a
-  member, and nothing said there is heard. A person's message in a member channel becomes a turn of its thread's conversation when it is addressed to grit (it
+  member, and nothing said there is heard. What was said before a join is heard
+  (`backfillJoins`), within a `Backfill` (the days before the join, the newest messages of
+  them, and the joins a day), less what the inbox has recorded, each message at its own time
+  and never answered; then the join is marked done (`Joins.backfilled`). A join made while
+  the day's spend is over the inbox's cap (`Inbox.overCap`), or after a day's joins were
+  backfilled (`Joins.backfilledSince`), is marked done unheard, and why is said. Served, the
+  backfills run on a thread of their own, one join at a time (`Backfilling`, `private[slack]`):
+  those pending at open (a crash's or a close's included) as it opens, each join after from
+  the next delivery; closing waits for one under way at most `Backfill.StopWithin`, and one
+  cut short is heard from where it stopped at the next open. Each message heard is triaged
+  once and its thread closed once; none is answered, since a past message keeps no reply
+  address. A person's message in a member channel becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
   in its thread, once, found again by its tag after a crash. A message is marked `:eyes:`
   while grit works on it: one addressed to grit from when it is recorded, and one heard that
@@ -64,17 +75,18 @@ In dependency order:
   the inbox has recorded, then each of those heard at its own time, a past mention of grit
   included, since a past message is never answered. At start it logs the name grit's bot goes by in Slack
   (`displayName`); the assistant's name is the deployment's persona (ADR 0026), not Slack's.
-  `SlackEdge.serving(command)` is the module's entry: the edge as a deployment
+  `SlackEdge.serving(command, backfill)` is the module's entry: the edge as a deployment
   serves it (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN`
   and `SLACK_APP_TOKEN` as it opens, answering the slash command the deployment registered
-  (`SlackCommand`, below); `SlackEdge.serving(command, posts)` also serves
+  (`SlackCommand`, below), and bounding each join's backfill by `backfill`;
+  `SlackEdge.serving(command, backfill, posts)` also serves
   `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
   `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
   there (`grit.core.place.Reaches`). It is a writing tool (`grit.core.tool.Writing`, ADR
   0031): each channel is offered under its name, with and without `#`, at the place
   `slack:{team}/{id}`, so a turn is offered only the channels its room may write to, and the
   edge posts in the channel its request was checked to write to. `SlackEdge.serving(command,
-  posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
+  backfill, posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
   `slack:{team}/{channel id}`, refused otherwise, never heard, and in the bot's own
   team, or the edge does not open; `ServedEdge.reviewsAt`): each delivery posts the prompts
   the kit picked that its place may receive (`grit.core.review.Reviews.unposted`) whose
@@ -145,6 +157,9 @@ turns already running spend (each up to `GRIT_TOOL_ROUNDS` model calls of about
 `GRIT_WINDOW_TOKENS` in and `GRIT_MAX_TOKENS` out) and a closing summary per period they end.
 A call its provider does not price counts as nothing: under such a provider the cap is never
 reached, and `grit serve` says so at start. Days begin at this machine's midnight; OpenRouter
-counts its own daily figure in UTC.
+counts its own daily figure in UTC. A join's backfill is checked once, as it starts: one
+started under the cap hears up to its `Backfill`'s messages, each triaged by one classifier
+call, which the recorded spend does not count, as for any message heard, and each thread it
+begins closed once, whose closing summary it does count.
 
 No source file sits at the module's root, and the test tree mirrors it.

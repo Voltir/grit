@@ -1,6 +1,6 @@
 package grit.slack.edge
 
-import java.time.ZoneOffset
+import java.time.{Instant, ZoneOffset}
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.edge.{
@@ -305,6 +305,26 @@ object SlackEdgeTests extends TestSuite {
   /** When [[Payloads.joined]] says grit's bot joined, and when message 2.0 was said. */
   private val JoinedAt = java.time.Instant.parse("2018-01-08T22:13:20.000100Z")
   private val Said2 = java.time.Instant.ofEpochSecond(2)
+
+  /** What [[C]] said around grit's bot joining it ([[JoinedAt]]): a thread [[Asked]], its root
+    * a mention of grit, and messages before the day before the join ([[TooOld]]), older than the
+    * thread ([[Older]]), and after the join ([[After]]).
+    */
+  private val Asked = "1515449300.000000"
+  private val TooOld = "1515363100.000000"
+  private val Older = "1515449000.000000"
+  private val After = "1515449700.000000"
+  private val History: Vector[Listed] = Vector(
+    Listed(Ts(TooOld), None, Some(UserId(Ana)), false, None, "standup moved"),
+    Listed(Ts(Older), None, Some(UserId(Ana)), false, None, "lunch?"),
+    Listed(Ts(Asked), None, Some(UserId(Ana)), false, None, s"<@$Bot> is the freeze on Thursday?"),
+    Listed(Ts("1515449500.000000"), Some(Ts(Asked)), Some(UserId(Ana)), false, None, "it is"),
+    Listed(Ts(After), None, Some(UserId(Ana)), false, None, "hello, grit")
+  )
+
+  /** A backfill of the day before a join, its newest two messages at most. */
+  private val OneDayTwo: Backfill =
+    Backfill.of(1, 2, 10).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** A review in a channel of its own, [[C]]. */
   private val Review: SlackReview =
@@ -697,6 +717,110 @@ object SlackEdgeTests extends TestSuite {
       w.slack.notIn = Set(C)
       w.slack.deliver(message("2.0", "hello")) ==> true
       (w.joins.members(Workspace), w.heard("2.0")) ==> (Right(Vector.empty), Vector.empty)
+    }
+
+    test(
+      "a join hears what was said in the days before it, its newest messages at most, each at its own time and never answered, and is marked done; a join again while a member hears nothing more"
+    ) {
+      val w = new World(reconciled = false)
+      w.slack.histories = Map(C -> History)
+      w.slack.deliver(joined(inviter = "")) ==> true
+      val first = w.first.backfillJoins(OneDayTwo, () => false)
+      val heard = w.heard(Asked)
+      w.slack.deliver(joined(inviter = "", eventTs = Some("1515449650.000000"))) ==> true
+      (
+        first,
+        w.first.backfillJoins(OneDayTwo, () => false),
+        heard,
+        Vector(Older, TooOld, After).map(w.heard),
+        w.dated(Asked),
+        w.reached(Asked),
+        (w.inbox.started, w.pending, w.slack.posts, w.slack.reactions),
+        w.joins.members(Workspace),
+        w.logged.filter(_.contains("before grit's bot joined"))
+      ) ==> (
+        Right(1),
+        Right(0),
+        Vector(("is the freeze on Thursday?", Some("Ana Lima")), ("it is", Some("Ana Lima"))),
+        Vector(Vector(), Vector(), Vector()),
+        Vector(Instant.ofEpochSecond(1515449300L), Instant.ofEpochSecond(1515449500L)),
+        Vector(Some(Reach.Nowhere), Some(Reach.Nowhere)),
+        (Vector(), Vector(), Vector(), Set()),
+        Right(Vector(Room -> Membership.Member(JoinedAt, None))),
+        Vector("slack: heard 2 messages said in #standup (C123ABC456) before grit's bot joined")
+      )
+      w.heard(Asked) ==> heard
+    }
+
+    test(
+      "a backfill stopped between messages leaves its join pending, and the next one hears the rest, each message once"
+    ) {
+      val w = new World(reconciled = false)
+      w.slack.histories = Map(C -> History)
+      w.slack.deliver(joined(inviter = "")) ==> true
+      val asked = new java.util.concurrent.atomic.AtomicInteger
+      val stopped = w.first.backfillJoins(OneDayTwo, () => asked.incrementAndGet() > 1)
+      val part = (w.heard(Asked).map(_._1), w.joins.members(Workspace))
+      (stopped, part, w.first.backfillJoins(OneDayTwo, () => false), w.heard(Asked).map(_._1)) ==>
+        (
+          Right(0),
+          (
+            Vector("is the freeze on Thursday?"),
+            Right(Vector(Room -> Membership.Member(JoinedAt, Some(JoinedAt))))
+          ),
+          Right(1),
+          Vector("is the freeze on Thursday?", "it is")
+        )
+    }
+
+    test(
+      "a join made while the day's spend is over the cap, or after the joins a day allows were backfilled, hears nothing, is marked done, and says why"
+    ) {
+      val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
+      val w = new World(Budget(ZoneOffset.UTC, Some(cap)), reconciled = false)
+      w.slack.histories = Map(C -> History)
+      w.spend("1.00")
+      w.slack.deliver(joined(inviter = "")) ==> true
+      val Ops = ChannelId("C222")
+      val v = new World(reconciled = false)
+      v.slack.channelNames = v.slack.channelNames.updated(Ops, "ops")
+      v.slack.histories = Map(C -> History, Ops -> History)
+      v.slack.deliver(joined(inviter = "")) ==> true
+      v.slack.deliver(
+        joined(channel = "C222", inviter = "", eventTs = Some("1515449610.000000"))
+      ) ==> true
+      val once = Backfill.of(1, 2, 1).fold(e => throw new java.lang.AssertionError(e), identity)
+      (
+        w.first.backfillJoins(OneDayTwo, () => false),
+        w.heard(Asked),
+        w.joins.members(Workspace),
+        w.logged.filter(_.contains("before grit's bot joined")),
+        v.first.backfillJoins(once, () => false),
+        v.heard(Asked).size,
+        v.inbox.conversations.all.count(_.origin.room == Origin.channel(Team, "C222")),
+        v.joins.members(Workspace).map(_.map(_._2)),
+        v.logged.filter(_.contains("before grit's bot joined"))
+      ) ==> (
+        Right(1),
+        Vector(),
+        Right(Vector(Room -> Membership.Member(JoinedAt, None))),
+        Vector(
+          "slack: what was said in #standup (C123ABC456) before grit's bot joined is not heard: the day's spend, $1, has reached its cap, $1"
+        ),
+        Right(2),
+        2,
+        0,
+        Right(
+          Vector(
+            Membership.Member(JoinedAt, None),
+            Membership.Member(Instant.ofEpochSecond(1515449610L), None)
+          )
+        ),
+        Vector(
+          "slack: heard 2 messages said in #standup (C123ABC456) before grit's bot joined",
+          "slack: what was said in #ops (C222) before grit's bot joined is not heard: 1 joins were backfilled in the day before it, the most a day allows"
+        )
+      )
     }
 
     test(

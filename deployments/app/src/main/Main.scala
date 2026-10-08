@@ -36,7 +36,7 @@ import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.remind.Reminders
-import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
+import grit.slack.edge.{Backfill, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
@@ -152,7 +152,7 @@ object Main {
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
-      (if (slack) Vector(SlackEdge.serving(exitOnLeft(slackCommand(env))))
+      (if (slack) Vector(SlackEdge.serving(exitOnLeft(slackCommand(env)), Backfill.Default))
        else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its

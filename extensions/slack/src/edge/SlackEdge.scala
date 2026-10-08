@@ -62,6 +62,12 @@ final class SlackEdge(
   @caps.unsafe.untrackedCaptures
   private val started = new AtomicBoolean(false)
 
+  // Set as a join is recorded pending, and taken by joinsWaiting, each atomically. A set racing
+  // a take is either seen now or by the next take; the joins it stands for are read from the
+  // store, never from it, so a lost set leaves a join pending until the next join or open.
+  @caps.unsafe.untrackedCaptures
+  private val waiting = new AtomicBoolean(true)
+
   /** The channels grit's bot is a member of: what it hears. */
   private val members: Members^{stores} = new Members(stores.joins, self.team)
 
@@ -335,37 +341,123 @@ final class SlackEdge(
   def unheard(channel: ChannelId, since: Instant): Either[String, Vector[Event.Said]] =
     served(channel, clock.now()).flatMap { open =>
       if (!open) Right(Vector.empty)
-      else
-        slack.history(channel, since).left.map(_.toString).flatMap { listed =>
-          val spoken = listed.flatMap(l =>
-            Events.listed(l, self.team, channel, self.bot) match {
-              case Right(m: Event.Said) => Some(m)
-              case Right(
-                    Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) |
-                    Event.UserChanged(_, _) | Event.Told(_, _, _, _, _, _, _, _) |
-                    Event.Joined(_, _, _, _) | Event.Left(_, _, _)
-                  ) =>
-                None
-              case Left(why) =>
-                said(s"slack: a listed message grit cannot read, left out: $why")
-                None
-            }
-          )
-          spoken
-            .groupBy(_.thread)
-            .toVector
-            .foldLeft[Either[String, Set[Ts]]](Right(Set.empty)) { case (acc, (thread, ms)) =>
-              acc.flatMap(known =>
-                stores.inbox
-                  .recorded(originOf(channel, thread), ms.map(m => SourceId(Ts.value(m.ts))).toSet)
-                  .left
-                  .map(_.toString)
-                  .map(r => known ++ r.map(s => Ts(SourceId.value(s))))
-              )
-            }
-            .map(known => spoken.filterNot(m => known.contains(m.ts)))
-        }
+      else listed(channel, since).flatMap(unrecorded(channel, _))
     }
+
+  /** Each message said in `channel` from `since` on, read as [[receive]] reads a live one
+    * ([[Events.listed]]), oldest first; a listing grit cannot read is left out, and said.
+    */
+  private def listed(channel: ChannelId, since: Instant): Either[String, Vector[Event.Said]] =
+    slack.history(channel, since).left.map(_.toString).map { listed =>
+      listed.flatMap(l =>
+        Events.listed(l, self.team, channel, self.bot) match {
+          case Right(m: Event.Said) => Some(m)
+          case Right(
+                Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
+                Event.Told(_, _, _, _, _, _, _, _) | Event.Joined(_, _, _, _) | Event.Left(_, _, _)
+              ) =>
+            None
+          case Left(why) =>
+            said(s"slack: a listed message grit cannot read, left out: $why")
+            None
+        }
+      )
+    }
+
+  /** Those of `spoken`, said in `channel`, the inbox has not recorded, in their order. */
+  private def unrecorded(
+      channel: ChannelId,
+      spoken: Vector[Event.Said]
+  ): Either[String, Vector[Event.Said]] =
+    spoken
+      .groupBy(_.thread)
+      .toVector
+      .foldLeft[Either[String, Set[Ts]]](Right(Set.empty)) { case (acc, (thread, ms)) =>
+        acc.flatMap(known =>
+          stores.inbox
+            .recorded(originOf(channel, thread), ms.map(m => SourceId(Ts.value(m.ts))).toSet)
+            .left
+            .map(_.toString)
+            .map(r => known ++ r.map(s => Ts(SourceId.value(s))))
+        )
+      }
+      .map(known => spoken.filterNot(m => known.contains(m.ts)))
+
+  /** Whether a join has been recorded with its backfill pending since this was last asked
+    * ([[backfillJoins]] has work); `true` when first asked, so an open resumes what a crash or
+    * a close left pending.
+    */
+  private[slack] def joinsWaiting(): Boolean = waiting.getAndSet(false)
+
+  /** Hears what was said before grit's bot joined each channel whose join's backfill is
+    * pending ([[Membership.Member]]), one join at a time, within `bounds`: of what was said in
+    * its `days` before the join, the newest `messages` at most, less what the inbox has
+    * recorded, each heard as [[backfill]] hears one, at its own time and never answered; then
+    * the join is marked done ([[grit.core.edge.Joins.backfilled]]) and how many were heard is
+    * said. A join is instead marked done unheard, and why said, while the day's spend is over
+    * the inbox's cap ([[grit.core.inbox.Inbox.overCap]]), or when `bounds.joinsPerDay` joins
+    * had their backfill done or skipped in the day before it. `stopping` is asked before each
+    * message: once it says so, nothing more is heard and the join stays pending, to be heard
+    * from where it stopped. How many joins it marked done; why not, naming the channel, when
+    * Slack, the inbox or the database could not be asked or an author was never attested and
+    * Slack could not be asked about them, the join then left pending.
+    */
+  def backfillJoins(bounds: Backfill, stopping: () => Boolean): Either[String, Int] =
+    members.pending().left.map(_.toString).flatMap {
+      _.foldLeft[Either[String, Int]](Right(0)) { case (done, (channel, join)) =>
+        done.flatMap(n =>
+          caughtUp(channel, join, bounds, stopping).left
+            .map(why => s"${shown(channel)} not backfilled: $why")
+            .map(finished => if (finished) n + 1 else n)
+        )
+      }
+    }
+
+  /** One join's backfill, as [[backfillJoins]] says; whether it was marked done. */
+  private def caughtUp(
+      channel: ChannelId,
+      join: Instant,
+      bounds: Backfill,
+      stopping: () => Boolean
+  ): Either[String, Boolean] = {
+    def skipped(why: String): Either[String, Boolean] =
+      members.backfilled(channel, join).left.map(_.toString).map { _ =>
+        said(
+          s"slack: what was said in ${shown(channel)} before grit's bot joined is not heard: $why"
+        )
+        true
+      }
+    stores.inbox.overCap().left.map(_.toString).flatMap {
+      case Some(over) =>
+        skipped(
+          s"the day's spend, ${over.spent.cost.written}, has reached its cap, $$${over.cap.usd}"
+        )
+      case None =>
+        members
+          .backfilledSince(join.minus(java.time.Duration.ofDays(1)))
+          .left
+          .map(_.toString)
+          .flatMap { n =>
+            if (n >= bounds.joinsPerDay)
+              skipped(s"$n joins were backfilled in the day before it, the most a day allows")
+            else
+              for {
+                all <- listed(channel, join.minus(java.time.Duration.ofDays(bounds.days.toLong)))
+                before = all.filterNot(_.at.isAfter(join)).takeRight(bounds.messages)
+                fresh <- unrecorded(channel, before)
+                finished <- heard(fresh, stopping)
+                _ <-
+                  if (!finished) Right(())
+                  else
+                    members.backfilled(channel, join).left.map(_.toString).map { _ =>
+                      said(
+                        s"slack: heard ${fresh.size} messages said in ${shown(channel)} before grit's bot joined"
+                      )
+                    }
+              } yield finished
+          }
+    }
+  }
 
   /** The conversation of the thread rooted at `thread` in `channel`. */
   private def originOf(channel: ChannelId, thread: Ts): Origin =
@@ -380,11 +472,25 @@ final class SlackEdge(
     * attested and Slack could not be asked about them; those before it stay heard.
     */
   def backfill(messages: Vector[Event.Said]): Either[String, Unit] =
-    messages.foldLeft[Either[String, Unit]](Right(())) { (done, m) =>
-      done.flatMap { _ =>
-        val origin =
-          Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
-        hear(m, origin, live = false).left.map(why => s"message ${Ts.value(m.ts)} not heard: $why")
+    heard(messages, () => false).map(_ => ())
+
+  /** Hears each of `messages`, in order, as [[backfill]] says, asking `stopping` before each;
+    * whether all were heard: `false` once it said to stop.
+    */
+  private def heard(
+      messages: Vector[Event.Said],
+      stopping: () => Boolean
+  ): Either[String, Boolean] =
+    messages.foldLeft[Either[String, Boolean]](Right(true)) { (going, m) =>
+      going.flatMap { on =>
+        if (!on || stopping()) Right(false)
+        else {
+          val origin =
+            Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
+          hear(m, origin, live = false).left
+            .map(why => s"message ${Ts.value(m.ts)} not heard: $why")
+            .map(_ => true)
+        }
       }
     }
 
@@ -587,7 +693,8 @@ final class SlackEdge(
           case None => Right(false)
           case Some(access) =>
             members.joined(channel, access, None, at).left.map(_.toString).map {
-              case Membership.Member(_, _) =>
+              case Membership.Member(_, backfill) =>
+                if (backfill.nonEmpty) waiting.set(true)
                 said(s"slack: grit's bot is in ${shown(channel)}, found by a message from it")
                 true
               case Membership.Gone => false
@@ -635,6 +742,7 @@ final class SlackEdge(
                   )
                   false
                 case Right(Membership.Member(at, backfill)) =>
+                  if (backfill.nonEmpty) waiting.set(true)
                   if (at == j.at)
                     said(
                       s"slack: grit's bot joined ${shown(j.channel)}" + (backfill match {
@@ -955,14 +1063,19 @@ object SlackEdge {
     * ([[SlackEdge.command]]), and grit's bot's Slack name logged at open. At open, which
     * channels the bot is in is read from Slack and recorded ([[SlackEdge.reconcile]]); each
     * join and leave after is recorded as it happens, and a channel left is not heard from
-    * then. Refused at open when Slack will not list its channels. It cannot answer a tool call
-    * that asks first. It is the attester [[SlackAccounts.Attester]]: for the realm of its own
-    * workspace, when a deployment trusts it there, it says who each account is as Slack states
-    * it ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
+    * then. What was said before each join is heard within `backfill`
+    * ([[SlackEdge.backfillJoins]]), on a thread of its own, one join at a time: those pending
+    * at open (found then, or left by a crash or a close) as it opens, and each join after from
+    * the next delivery; closing waits for one under way at most [[Backfill.StopWithin]], and
+    * one cut short is heard from where it stopped at the next open. Refused at open when Slack
+    * will not list its channels. It cannot answer a tool call that asks first. It is the
+    * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a
+    * deployment trusts it there, it says who each account is as Slack states it
+    * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
     * the workspace's users once when any account is due.
     */
-  def serving(command: SlackCommand): ServedEdge =
-    Served.serving(command, None, None, Socket)
+  def serving(command: SlackCommand, backfill: Backfill): ServedEdge =
+    Served.serving(command, backfill, None, None, Socket, Backfilling.Virtual)
 
   /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
     * place, offering the channels of `posts` whose names Slack gives at open; one without is
@@ -973,8 +1086,8 @@ object SlackEdge {
     * in it becomes a mention), and one Slack message at most; it never asks first and is never
     * run again after a crash.
     */
-  def serving(command: SlackCommand, posts: Posts): ServedEdge =
-    Served.serving(command, Some(posts), None, Socket)
+  def serving(command: SlackCommand, backfill: Backfill, posts: Posts): ServedEdge =
+    Served.serving(command, backfill, Some(posts), None, Socket, Backfilling.Virtual)
 
   /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
     * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
@@ -982,8 +1095,13 @@ object SlackEdge {
     * [[SlackEdge.receive]]); nothing said in the review's channel is heard. It does not open
     * when `review`'s team is not the bot's.
     */
-  def serving(command: SlackCommand, posts: Option[Posts], review: SlackReview): ServedEdge =
-    Served.serving(command, posts, Some(review), Socket)
+  def serving(
+      command: SlackCommand,
+      backfill: Backfill,
+      posts: Option[Posts],
+      review: SlackReview
+  ): ServedEdge =
+    Served.serving(command, backfill, posts, Some(review), Socket, Backfilling.Virtual)
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].

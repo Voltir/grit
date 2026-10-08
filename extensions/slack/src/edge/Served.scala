@@ -60,9 +60,11 @@ private[slack] object Served {
 
   def serving(
       command: SlackCommand,
+      backfill: Backfill,
       posts: Option[Posts],
       review: Option[SlackReview],
-      connect: Connect^
+      connect: Connect^,
+      start: Backfilling.Start
   ): ServedEdge^{connect} = new ServedEdge {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
@@ -116,8 +118,26 @@ private[slack] object Served {
                         case Some(p) => posting(slack, self.team, p, stores, clock, log)
                         case None => None
                       }
+                      val backfilling = new Backfilling(
+                        start,
+                        new Backfilling.Work {
+                          def wanted(): Boolean = edge.joinsWaiting()
+                          def run(stopping: () => Boolean): Unit =
+                            edge
+                              .backfillJoins(backfill, stopping)
+                              .left
+                              .foreach(why =>
+                                log(
+                                  s"slack: $why; it is heard from where it stopped at the next open"
+                                )
+                              )
+                        }
+                      )
+                      // What a crash or a close left pending, and any channel found at open.
+                      backfilling.wake()
                       Right(new ServedEdge.Open {
                         def deliver(): Either[StoreError, Int] = {
+                          backfilling.wake()
                           // First, so a slow post never holds back a mark.
                           edge
                             .acknowledge()
@@ -130,6 +150,7 @@ private[slack] object Served {
                         override def attest(): Either[StoreError, Int] = edge.attest()
                         def close(): Unit = {
                           stopPosting.foreach(_())
+                          backfilling.close(Backfill.StopWithin)
                           slack.close()
                         }
                       })

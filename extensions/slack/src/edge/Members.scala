@@ -78,6 +78,22 @@ private[slack] final class Members(joins: Joins, team: TeamId) {
       forgotten <- joins.forget(under, now.minus(Joins.KeptLeft))
     } yield forgotten
 
+  /** Each channel grit's bot is recorded a member of whose join's backfill is pending, with
+    * that join, in the order of their rooms.
+    */
+  def pending(): Either[StoreError, Vector[(ChannelId, Instant)]] =
+    joins.members(under).map(_.flatMap((place, m) => channelOf(place).zip(m.backfill)))
+
+  /** Records the backfill of `channel`'s join at `join` done or skipped ([[Joins.backfilled]]). */
+  def backfilled(channel: ChannelId, join: Instant): Either[StoreError, Unit] =
+    joins.backfilled(room(channel), join)
+
+  /** How many of `team`'s rooms had a join's backfill done or skipped, the latest such join made
+    * at or after `since` ([[Joins.backfilledSince]]).
+    */
+  def backfilledSince(since: Instant): Either[StoreError, Int] =
+    joins.backfilledSince(under, since)
+
   /** `channel`'s room, `slack:{team}/{channel}`. */
   private def room(channel: ChannelId): Place =
     Origin.channel(TeamId.value(team), ChannelId.value(channel))

@@ -4,10 +4,11 @@ import scala.concurrent.duration.*
 
 /** How a join's backfill is bounded: what was said in the `days` before grit's bot joined a
   * channel, its newest `messages` at most, and at most `joinsPerDay` joins backfilled in the 24
-  * hours before each. Each message heard is triaged once, never answered, and each thread it
-  * opens is closed once: at most `messages` × (one triage call and one closing) a join. A join
-  * made while the day's spend is over the inbox's cap, or after `joinsPerDay` others in the day
-  * before it, is not backfilled, and that is said.
+  * hours before each. Each message heard is never answered, and costs what a live one heard
+  * costs: one triage classifier call, and, for each thread it begins, its placement among the
+  * room's exchanges, its settle question and its closing (a gate call, and a summary when its
+  * messages earn one). A join made while the day's spend is over the inbox's cap, or after
+  * `joinsPerDay` others in the day before it, is not backfilled, and that is said.
   */
 final case class Backfill private (days: Int, messages: Int, joinsPerDay: Int)
 

@@ -80,6 +80,19 @@ object ServedTests extends TestSuite {
   private val TwoAnHour: Rate =
     Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
 
+  /** Runs each join backfill at once, on the thread that wakes it, so a test reads what it did
+    * as soon as the open or delivery that woke it returns.
+    */
+  private object Inline extends Backfilling.Start {
+    def apply(body: () => Unit): Backfilling.Running = {
+      body()
+      new Backfilling.Running {
+        def alive: Boolean = false
+        def join(within: FiniteDuration): Unit = ()
+      }
+    }
+  }
+
   /** The accounts of grit's team, which a world that attests answers for. */
   private val Ours =
     SlackAccounts.realm(TeamId(Team)).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -115,12 +128,12 @@ object ServedTests extends TestSuite {
 
     /** What opening logged, in order. */
     @caps.unsafe.untrackedCaptures
-    var logged = Vector.empty[String]
+    var logged: Vector[String] = Vector.empty
 
     /** The edge as `serving` makes it, opened on `at`; logged in [[logged]]. */
     def openAt(at: Clock^): ServedEdge.Open^{this, at} =
       Served
-        .serving(Grit, None, None, connect)
+        .serving(Grit, Backfill.Default, None, None, connect, Inline)
         .open(stores, Env, at, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -129,7 +142,7 @@ object ServedTests extends TestSuite {
     /** The edge as `serving` makes it, posting as `posts` allows, opened; logged in [[logged]]. */
     def openPosting(posts: Posts): ServedEdge.Open^{this} =
       Served
-        .serving(Grit, Some(posts), None, connect)
+        .serving(Grit, Backfill.Default, Some(posts), None, connect, Inline)
         .open(stores, Env, clock, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -221,8 +234,9 @@ object ServedTests extends TestSuite {
       ) ==> (
         Right(
           Vector(
-            roomOf(First) -> Membership.Member(now, Some(now)),
-            roomOf(C) -> Membership.Member(now, Some(now))
+            // Each join's backfill run at open, with nothing said before it.
+            roomOf(First) -> Membership.Member(now, None),
+            roomOf(C) -> Membership.Member(now, None)
           )
         ),
         Some(RoomAccess.Invited),
@@ -254,7 +268,11 @@ object ServedTests extends TestSuite {
       val w = new World
       w.slack.unlisted = Some(SlackError.Unreachable("gone"))
       (
-        refusal(Served.serving(Grit, None, None, w.connect).open(w.stores, Env, w.clock, _ => ())),
+        refusal(
+          Served
+            .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
+            .open(w.stores, Env, w.clock, _ => ())
+        ),
         w.slack.closed
       ) ==> (
         Some(EdgeRefusal.Refused("Slack would not list grit's channels: Unreachable(gone)")),
@@ -266,7 +284,7 @@ object ServedTests extends TestSuite {
       val w = new World
       val review = reviewAt(Team, "C123ABC456")
       Served
-        .serving(Grit, None, Some(review), w.connect)
+        .serving(Grit, Backfill.Default, None, Some(review), w.connect, Inline)
         .open(w.stores, Env, w.clock, w.logged :+= _) match {
         case Right(o) => o.close()
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -280,9 +298,18 @@ object ServedTests extends TestSuite {
     test("serving posts review prompts at its review's place, and nowhere without one") {
       val review = reviewAt(Team, "C0REVIEW1")
       (
-        Served.serving(Grit, None, Some(review), new World().connect).reviewsAt,
         Served
-          .serving(Grit, Some(Posts(TwoAnHour, Skynet)), None, new World().connect)
+          .serving(Grit, Backfill.Default, None, Some(review), new World().connect, Inline)
+          .reviewsAt,
+        Served
+          .serving(
+            Grit,
+            Backfill.Default,
+            Some(Posts(TwoAnHour, Skynet)),
+            None,
+            new World().connect,
+            Inline
+          )
           .reviewsAt
       ) ==> (Some(Place.under(Namespace.Slack, Vector(Team, "C0REVIEW1"))), None)
     }
@@ -291,7 +318,14 @@ object ServedTests extends TestSuite {
       val w = new World
       refusal(
         Served
-          .serving(Grit, None, Some(reviewAt("T0OTHER01", "C0REVIEW1")), w.connect)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            Some(reviewAt("T0OTHER01", "C0REVIEW1")),
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ())
       ) ==> Some(
         EdgeRefusal.Refused(
@@ -301,9 +335,48 @@ object ServedTests extends TestSuite {
       w.slack.closed ==> true
     }
 
+    test(
+      "serving hears what was said before grit's bot joined each channel it is in at open, and one it joins after, as it delivers"
+    ) {
+      val w = new World
+      val Ops = ChannelId("C0OPS00001")
+      w.clock.at = Instant.ofEpochSecond(1000L)
+      w.slack.histories = Map(
+        C -> Vector(
+          Listed(Ts("900.000000"), None, Some(UserId(Ana)), false, None, "standup moved")
+        ),
+        Ops -> Vector(Listed(Ts("950.000000"), None, Some(UserId(Ana)), false, None, "deploy at 3"))
+      )
+      val open = w.openAt(w.clock)
+      val atOpen = w.inbox.conversations.all.map(_.origin.room)
+      w.slack.channelNames = w.slack.channelNames.updated(Ops, "ops")
+      w.slack.deliver(
+        joined(channel = ChannelId.value(Ops), inviter = "", eventTs = Some("1000.500000"))
+      ) ==> true
+      val beforeDelivery = w.inbox.conversations.all.size
+      open.deliver() ==> Right(0)
+      open.close()
+      (
+        atOpen,
+        beforeDelivery,
+        w.inbox.conversations.all.map(_.origin.room).toSet,
+        w.joins.members(Workspace).map(_.map(_._2.backfill)),
+        w.logged.filter(_.contains("before grit's bot joined"))
+      ) ==> (
+        Vector(roomOf(C)),
+        1,
+        Set(roomOf(C), roomOf(Ops)),
+        Right(Vector(None, None)),
+        Vector(
+          "slack: heard 1 messages said in #standup (C123ABC456) before grit's bot joined",
+          "slack: heard 1 messages said in #ops (C0OPS00001) before grit's bot joined"
+        )
+      )
+    }
+
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
-      val edge = Served.serving(Grit, None, None, w.connect)
+      val edge = Served.serving(Grit, Backfill.Default, None, None, w.connect, Inline)
       def refused(env: Map[String, String]) = refusal(edge.open(w.stores, env, w.clock, _ => ()))
       refused(Map("SLACK_APP_TOKEN" -> "xapp-1")) ==>
         Some(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN")))
@@ -320,7 +393,7 @@ object ServedTests extends TestSuite {
       val review = reviewAt(Team, "C0REVIEW1")
       val open =
         Served
-          .serving(Grit, None, Some(review), w.connect)
+          .serving(Grit, Backfill.Default, None, Some(review), w.connect, Inline)
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -342,7 +415,9 @@ object ServedTests extends TestSuite {
     test("serving answers its slash command, and only it, to its asker through Slack") {
       val w = new World
       val _ =
-        Served.serving(Grit, None, None, w.connect).open(w.stores, Env, w.clock, _ => ())
+        Served
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
+          .open(w.stores, Env, w.clock, _ => ())
       (w.slack.command(command("help")), w.slack.command(command("help", name = "/other"))) ==>
         (true, true)
       w.slack.responses ==> Vector((grit.slack.event.ResponseUrl(Hook), Answer.Help.text))
@@ -352,7 +427,7 @@ object ServedTests extends TestSuite {
       val w = new World
       val open =
         Served
-          .serving(Grit, None, None, w.connect)
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -376,7 +451,7 @@ object ServedTests extends TestSuite {
       val dated = new DatedAcknowledgements(w.acknowledgements)
       val open =
         Served
-          .serving(Grit, None, None, w.connect)
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
           .open(w.stores.copy(acknowledgements = dated), Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -397,10 +472,10 @@ object ServedTests extends TestSuite {
     ) {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), Some("Pip"))
-      var logged = Vector.empty[String]
+      var logged: Vector[String] = Vector.empty
       val open =
         Served
-          .serving(Grit, None, None, w.connect)
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
           .open(w.stores, Env, w.clock, logged :+= _) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -474,7 +549,9 @@ object ServedTests extends TestSuite {
       val w = new World
       w.slack.down = true
       refusal(
-        Served.serving(Grit, None, None, w.connect).open(w.stores, Env, w.clock, _ => ())
+        Served
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
+          .open(w.stores, Env, w.clock, _ => ())
       ) ==>
         Some(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
       w.slack.closed ==> true
@@ -483,7 +560,7 @@ object ServedTests extends TestSuite {
     test("serving and backfill each say they are the Slack attester") {
       val w = new World
       (
-        Served.serving(Grit, None, None, w.connect).attester,
+        Served.serving(Grit, Backfill.Default, None, None, w.connect, Inline).attester,
         Served.backfill(1, w.connect).attester
       ) ==>
         (Some(SlackAccounts.Attester), Some(SlackAccounts.Attester))
@@ -496,7 +573,7 @@ object ServedTests extends TestSuite {
       w.voucher.saw(TestAccounts.account(s"slack:$Team/$Ana"))
       val open =
         Served
-          .serving(Grit, None, None, w.connect)
+          .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -543,7 +620,9 @@ object ServedTests extends TestSuite {
     }
 
     test("serving cannot answer a tool call that asks first") {
-      Served.serving(Grit, None, None, new World().connect).answersAsks ==> false
+      Served
+        .serving(Grit, Backfill.Default, None, None, new World().connect, Inline)
+        .answersAsks ==> false
     }
 
     test(
