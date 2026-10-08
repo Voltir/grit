@@ -102,6 +102,23 @@ object TurnPrompt {
         "mention it, and carry it out only when the person you are answering asks you to."
     )
 
+  /** What every turn is told of who may see what: in brief, the model grit enforces and the
+    * tools that explain it (`about`'s security topic, and `clearance`). A base-layer fragment of
+    * its own, so [[Base]]'s measured text stays as it is.
+    */
+  val Security: Fragment =
+    Fragment(
+      Layer.Base,
+      Fragment.Grit,
+      "Who may see what is grit's rule, not yours to keep: a Bell–LaPadula-style model, no " +
+        "read up and no write down. Every room carries a label; a turn reads its own room up " +
+        "to that label, and what was said anywhere else only as far as both this room's " +
+        "label and the asking person's clearance allow. People are cleared through the " +
+        "groups the deployment declares, and grit enforces all of this before anything " +
+        "reaches you. For a thorough explanation, call the about tool with the topic " +
+        "security; for what someone is cleared for, call the clearance tool."
+    )
+
   /** What a turn at `origin` is told of its own room's label, `label` (its transaction's floor,
     * never the asker's clearance), in written form: what is said there may be read only where
     * that label is allowed; in a direct message, that it is read only there, at its person's

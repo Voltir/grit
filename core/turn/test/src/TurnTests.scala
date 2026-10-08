@@ -568,6 +568,7 @@ object TurnTests extends TestSuite {
             TurnPrompt.Base.text,
             TurnPrompt.Candour.text,
             TurnPrompt.Answering.text,
+            TurnPrompt.Security.text,
             edge,
             person,
             TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
@@ -624,6 +625,7 @@ object TurnTests extends TestSuite {
           TurnPrompt.Base.text,
           TurnPrompt.Candour.text,
           TurnPrompt.Answering.text,
+          TurnPrompt.Security.text,
           TurnPrompt.edge(origin).text,
           TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
           TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text

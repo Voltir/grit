@@ -327,6 +327,7 @@ object TurnOfferTests extends TestSuite {
           TurnPrompt.Base,
           TurnPrompt.Candour,
           TurnPrompt.Answering,
+          TurnPrompt.Security,
           TurnPrompt.edge(origin)
         ) ++
           TurnPrompt.destination(origin) ++ TurnPrompt.called(persona, origin) :+
@@ -597,6 +598,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
         TurnPrompt.edge(slack).text,
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
@@ -610,6 +612,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
         TurnPrompt.edge(tui).text,
         TurnPrompt.room(tui, Label.Public).text,
         TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text
@@ -627,6 +630,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
         "You are in a direct message with one person, who alone reads it. Your replies are " +
           "rendered from Markdown; keep them short.",
         "Your reply is posted in this direct message and nowhere else. You can post anywhere " +
@@ -674,6 +678,7 @@ object TurnOfferTests extends TestSuite {
             TurnPrompt.Base,
             TurnPrompt.Candour,
             TurnPrompt.Answering,
+            TurnPrompt.Security,
             TurnPrompt.edge(slack)
           ) ++
             TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
@@ -772,6 +777,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Base,
         TurnPrompt.Candour,
         TurnPrompt.Answering,
+        TurnPrompt.Security,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
         TurnPrompt.room(slack, Label.Public),

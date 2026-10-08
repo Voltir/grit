@@ -243,6 +243,7 @@ object TurnFixtures {
           TurnPrompt.Base,
           TurnPrompt.Candour,
           TurnPrompt.Answering,
+          TurnPrompt.Security,
           TurnPrompt.edge(origin),
           TurnPrompt.room(origin, grit.core.visibility.Label.Public),
           TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved)

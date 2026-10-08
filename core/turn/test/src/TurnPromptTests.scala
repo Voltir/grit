@@ -197,6 +197,21 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
+      "every turn is told, in brief, the model grit enforces, by name, and the tools that explain it"
+    ) {
+      (TurnPrompt.Security.layer, TurnPrompt.Security.text) ==> (
+        Layer.Base,
+        "Who may see what is grit's rule, not yours to keep: a Bell–LaPadula-style model, no " +
+          "read up and no write down. Every room carries a label; a turn reads its own room up " +
+          "to that label, and what was said anywhere else only as far as both this room's " +
+          "label and the asking person's clearance allow. People are cleared through the " +
+          "groups the deployment declares, and grit enforces all of this before anything " +
+          "reaches you. For a thorough explanation, call the about tool with the topic " +
+          "security; for what someone is cleared for, call the clearance tool."
+      )
+    }
+
+    test(
       "a turn is told its own room's label in written form and where what is said there may be read; in a direct message, that it is read only there"
     ) {
       val label = grit.core.visibility.Label

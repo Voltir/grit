@@ -89,7 +89,7 @@ object TurnOffer {
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
     * and not at all when none is; one the engine describes, only when it writes to all of its
     * places. Its prompt: the base,
-    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's
+    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]], its edge's
     * fragment, where its reply goes ([[TurnPrompt.destination]]), what it is called
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
     * heard, its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
@@ -196,6 +196,7 @@ object TurnOffer {
           TurnPrompt.Base,
           TurnPrompt.Candour,
           TurnPrompt.Answering,
+          TurnPrompt.Security,
           TurnPrompt.edge(conversation.origin)
         ) ++ TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
