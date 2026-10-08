@@ -3,8 +3,8 @@ package grit.core.admin
 import grit.core.identity.Principal
 import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomAccess}
 
-/** Who may make which [[Change]]: one rule, deciding on what a change lowers and removes, never
-  * on which command asked, so a later sort of change is decided by the same rule.
+/** Who may make which [[Change]]: one rule, deciding on what a change raises, lowers and
+  * removes, never on which command asked, so a later sort of change is decided by the same rule.
   */
 object Authority {
 
