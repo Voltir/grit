@@ -1,6 +1,6 @@
 package grit.core.visibility
 
-import grit.core.identity.Principal
+import grit.core.identity.{Held, Principal}
 import grit.core.place.{Place, Service}
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
@@ -22,15 +22,40 @@ final case class Visibility private (
     principal match {
       case Principal.Grit => compartments.top
       case Principal.Person(_, held) =>
-        val in = groups
-          .filter(g =>
-            held.exists(h =>
-              g.accounts.contains(h.account) || (h.member && g.realms.exists(_.holds(h.account)))
-            )
-          )
-          .map(_.name)
-          .toSet
-        grants.filter(g => in.contains(g.group)).map(_.label).foldLeft(Label.Public)(_.join(_))
+        memberships(held).map(_.label).foldLeft(Label.Public)(_.join(_))
+    }
+
+  /** What `asker` (`None`: no one asked) is told of their clearance in a room labelled `room`
+    * ([[Explanation]]).
+    */
+  def explain(asker: Option[Principal], room: Label): Explanation = {
+    val (who, in) = asker match {
+      case None => (Explanation.Asker.Nobody, Vector.empty)
+      case Some(Principal.Grit) => (Explanation.Asker.Grit, Vector.empty)
+      case Some(Principal.Person(_, held)) =>
+        val shown = held.toVector
+          .map(h => Explanation.Shown(Explanation.Namespace.of(h.account), h.evidence, h.member))
+          .sortBy(s => (s.namespace, s.evidence.ordinal, s.member))
+        (Explanation.Asker.Person(shown), memberships(held).filter(i => room.dominates(i.label)))
+    }
+    Explanation(room, room.meet(asker.fold(Label.Public)(cleared)), who, in)
+  }
+
+  /** Each group `held`'s person is in, in the deployment's order, with the join of its grants
+    * and the kinds of the accounts and realms that put them in it.
+    */
+  private def memberships(held: Set[Held]): Vector[Explanation.In] =
+    groups.flatMap { g =>
+      val through = held.filter(h => g.accounts.contains(h.account))
+      val members = g.realms.filter(r => held.exists(h => h.member && r.holds(h.account)))
+      Option.when(through.nonEmpty || members.nonEmpty)(
+        Explanation.In(
+          g.name,
+          grants.filter(_.group == g.name).map(_.label).foldLeft(Label.Public)(_.join(_)),
+          through.map(h => Explanation.Namespace.of(h.account)),
+          members.map(Explanation.Namespace.of)
+        )
+      )
     }
 
   /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the
