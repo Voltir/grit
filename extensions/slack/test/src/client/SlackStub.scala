@@ -116,7 +116,9 @@ object SlackStub {
     "timestamp",
     "message_ts",
     "name",
-    "include_all_metadata"
+    "include_all_metadata",
+    "types",
+    "exclude_archived"
   )
 
   /** An HTTP answer as recorded. */

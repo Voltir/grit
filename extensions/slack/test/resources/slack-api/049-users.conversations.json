@@ -1,6 +1,9 @@
 {
   "method": "users.conversations",
-  "params": {},
+  "params": {
+    "types": "public_channel,private_channel",
+    "exclude_archived": "true"
+  },
   "status": 200,
   "headers": {
     "content-type": "application/json; charset=utf-8"

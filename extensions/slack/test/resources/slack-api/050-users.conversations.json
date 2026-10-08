@@ -1,6 +1,8 @@
 {
   "method": "users.conversations",
   "params": {
+    "types": "public_channel,private_channel",
+    "exclude_archived": "true",
     "cursor": "Y2hhbm5lbDpDMDAwMDAwMDAwMg=="
   },
   "status": 200,
