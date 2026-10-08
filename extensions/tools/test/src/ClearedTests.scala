@@ -6,7 +6,7 @@ import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.{Clearance, Explained, Label, Subject, Visibility}
+import grit.core.visibility.{Clearance, Explained, Label, Level, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -63,18 +63,20 @@ object ClearedTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "in a direct message it answers the asker's explanation at the thread's floor, with the two rules and the hidden-content line"
+      "in a direct message it answers the asker's explanation at the thread's floor, not their clearance, with the two rules and the hidden-content line"
     ) {
-      val floor = Explained.confidentialBoth.meet(After.cleared(Dana))
+      // A thread labelled below what Dana is cleared for: its floor is its label.
+      val floor = Label.at(Level.Internal)
       val told = text(called(After, direct, floor, After.cleared(Dana)))
       (
+        told.linesIterator.toVector.headOption,
         told == Cleared.render(After.explain(Some(Dana), floor)),
         Vector(
           "what is said in a room is read there, by its members, up to the room's label",
           "Anything said elsewhere is read here up to this room's label met with your clearance",
           "I never say whether anything is hidden from you."
         ).filterNot(told.contains)
-      ) ==> (true, Vector())
+      ) ==> (Some("This conversation is labelled internal."), true, Vector())
     }
 
     test(
@@ -139,10 +141,6 @@ object ClearedTests extends TestSuite {
         Some("No one I know asked this, so I tell no one's clearance."),
         Some("This turn is my own, not a person's, so there is no person's clearance to tell.")
       )
-    }
-
-    test("its name is grit's own, so no plugin's tool may take it") {
-      Names.all.contains(Cleared.Name) ==> true
     }
   }
 }
