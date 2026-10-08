@@ -29,7 +29,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.store.{Jot, NoVoucher, Origin, Payload, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.prose.markdown.Markdown
@@ -96,7 +96,7 @@ object SlackEdgeTests extends TestSuite {
           InMemoryReviews.over(inbox),
           FakeJot,
           new InMemoryEdges,
-          new Attesting(NoVoucher, FakeJot, _ => ())
+          new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
         ),
         listening,
         None,

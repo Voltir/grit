@@ -13,7 +13,7 @@ import grit.core.id.{EdgeName, EntryId}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
-import grit.core.store.{Jot, NoVoucher, Origin, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, Tag}
@@ -117,7 +117,7 @@ object ReviewingTests extends TestSuite {
         watched,
         FakeJot,
         new InMemoryEdges,
-        new Attesting(NoVoucher, FakeJot, _ => ())
+        new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
       ),
       Set.empty,
       Some(Review),

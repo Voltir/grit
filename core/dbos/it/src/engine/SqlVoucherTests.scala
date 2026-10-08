@@ -30,6 +30,14 @@ object SqlVoucherTests extends VoucherContract {
     finally engine.close()
   }
 
+  protected def none(): Voucher = {
+    val c = TestPostgres.freshDatabase(s"sql_voucher_${made.incrementAndGet()}")
+    val engine = LiveEngine.open(c, "test", visibility = Cleared)
+    database = Some(c)
+    try engine.voucher(Set.empty, Claimed)
+    finally engine.close()
+  }
+
   protected def saw(voucher: Voucher, account: Account): Unit =
     Vouchings.enrolled(account)(using config)
 

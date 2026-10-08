@@ -11,6 +11,8 @@ object InMemoryVoucherTests extends VoucherContract {
 
   protected def fresh(): Voucher = new InMemoryVoucher(Set(T1, T2), Claimed, Cleared)
 
+  protected def none(): Voucher = InMemoryVoucher.none()
+
   private def fake(voucher: Voucher): InMemoryVoucher = voucher match {
     case v: InMemoryVoucher => v
     case _ => throw new java.lang.AssertionError("not the in-memory voucher")

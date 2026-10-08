@@ -29,6 +29,11 @@ abstract class VoucherContract extends TestSuite {
     */
   protected def fresh(): Voucher
 
+  /** A voucher of no realms, as the kit builds for an edge whose deployment trusts it for none,
+    * over a store that has seen no account.
+    */
+  protected def none(): Voucher
+
   /** Has the store `voucher` writes to see `account`, as a first message through it would. */
   protected def saw(voucher: Voucher, account: Account): Unit
 
@@ -56,6 +61,15 @@ abstract class VoucherContract extends TestSuite {
       val v = fresh()
       val a = TestAccounts.account("slack:T9/U-outside")
       (vouch(v, a, Standing.Full(None)), transaction(v.lastWord(a))) ==>
+        (Vector(Linking.Outside(a)), Right(LastWord(a, None)))
+    }
+
+    test(
+      "a voucher of no realms says every account is outside, a claimed member's included, and keeps no word of any"
+    ) {
+      val v = none()
+      val a = TestAccounts.account("slack:T1/U-unattested")
+      (vouch(v, a, full("unattested@example.com")), transaction(v.lastWord(a))) ==>
         (Vector(Linking.Outside(a)), Right(LastWord(a, None)))
     }
 

@@ -31,7 +31,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.plugin.PostRef
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, NoVoucher, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
 import grit.core.visibility.{
   Compartments,
   Label,
@@ -81,7 +81,7 @@ object CatchingUpTests extends TestSuite {
       InMemoryReviews.over(inbox),
       FakeJot,
       new InMemoryEdges,
-      new Attesting(NoVoucher, FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
     )
 
   private def room(channel: String): Place = Place.under(Namespace.Slack, Vector("T1", channel))

@@ -14,7 +14,7 @@ import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, NoVoucher, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
@@ -42,7 +42,7 @@ object ServingTests extends TestSuite {
       InMemoryReviews.over(inbox),
       FakeJot,
       new InMemoryEdges,
-      new Attesting(NoVoucher, FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
     )
 
   /** An edge named `called` that records, in `seen`, each open, deliver, look and close; it

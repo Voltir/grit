@@ -150,8 +150,13 @@ final class InMemoryVoucher(val realms: Set[Realm], domains: Set[Domain], visibi
       }
 }
 
-private object InMemoryVoucher {
+object InMemoryVoucher {
+
+  /** A voucher of no realms, as the kit builds for an edge that attests nothing: every account
+    * is outside, and nothing is recorded.
+    */
+  def none(): InMemoryVoucher = new InMemoryVoucher(Set.empty, Set.empty, Visibility.Shipped)
 
   /** What an account's realm last said of it: its kept email, its membership, and how long ago. */
-  final case class Said(email: Option[Email], member: Boolean, ago: FiniteDuration)
+  private[store] final case class Said(email: Option[Email], member: Boolean, ago: FiniteDuration)
 }

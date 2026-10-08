@@ -21,7 +21,7 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.place.{Place, Service}
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, NoVoucher, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -82,7 +82,7 @@ object McpEdgeTests extends TestSuite {
       InMemoryReviews.over(inbox),
       FakeJot,
       if (reachable) edges else Unreachable,
-      new Attesting(NoVoucher, FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge
