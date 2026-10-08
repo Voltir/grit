@@ -372,7 +372,7 @@ object CallingTests extends TestSuite {
     }
 
     test(
-      "a rung request's answer is read; one holding none, gone or unreadable is Failed, saying so"
+      "a rung request's answer is read; one holding none or gone is Failed, saying so, and an unreadable one is the caller's failure"
     ) {
       given Tx = TestTx.fake
       val (open, _) = sent(claimed = true)
@@ -385,13 +385,15 @@ object CallingTests extends TestSuite {
         def answered(slot: CallSlot)(using Tx^) =
           Left(StoreError.DatabaseError("the database is down"))
       }
-      Vector(done, open, new InMemoryEdges, broken).map(Calling.answer(_, cs)) ==> Vector(
-        Outcome.Done("ok"),
-        Outcome.Failed(
-          "The edge rang, but its request holds no answer, so this call's result is unknown."
+      Vector(done, open, new InMemoryEdges, broken).map(Calling.answer[String](_, cs)) ==> Vector(
+        Right(Outcome.Done("ok")),
+        Right(
+          Outcome.Failed(
+            "The edge rang, but its request holds no answer, so this call's result is unknown."
+          )
         ),
-        Outcome.Failed("This call's request is no longer kept, so its result is unknown."),
-        Outcome.Failed("The request could not be read: the database is down")
+        Right(Outcome.Failed("This call's request is no longer kept, so its result is unknown.")),
+        Left("store: DatabaseError(the database is down)")
       )
     }
   }

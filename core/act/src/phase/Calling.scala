@@ -207,15 +207,17 @@ object Calling {
     }
 
   /** The answer on the request at `cs`, read for this transaction, its edge having rung: a
-    * `Failed` saying why when it holds none, is no longer kept, or cannot be read. The one place
-    * an answer is read.
+    * `Failed` saying why when it holds none or is no longer kept; `Left`, the store's failure in
+    * `F`'s form, when it cannot be read. The one place an answer is read.
     */
-  def answer(requests: ToolRequests, cs: CallSlot)(using Tx^): Outcome =
+  def answer[F](requests: ToolRequests, cs: CallSlot)(using
+      Tx^
+  )(using faults: Faults[F]): Either[F, Outcome] =
     requests.answered(cs) match {
-      case Right(Some(o)) => o
-      case Right(None) => Outcome.Failed(RungUnanswered)
-      case Left(StoreError.Invalid(_)) => Outcome.Failed(RungGone)
-      case Left(e) => Outcome.Failed(s"The request could not be read: ${describe(e)}")
+      case Right(Some(o)) => Right(o)
+      case Right(None) => Right(Outcome.Failed(RungUnanswered))
+      case Left(StoreError.Invalid(_)) => Right(Outcome.Failed(RungGone))
+      case Left(e) => Left(faults.store(e.toString))
     }
 
   private def standing[F](state: Either[StoreError, RequestState])(using
@@ -233,10 +235,4 @@ object Calling {
 
   private def noService(service: Service): String =
     s"No edge is serving ${service.name} right now, so this call did not run."
-
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${grit.core.id.EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-  }
 }
