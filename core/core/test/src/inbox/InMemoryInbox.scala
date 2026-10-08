@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
@@ -93,15 +93,30 @@ final class InMemoryInbox(
       message: Message.User,
       by: Account
   ): Either[InboxError, TurnRef] =
-    recorded(
-      origin,
-      source,
-      Payload.Message(message),
-      by,
-      visibility.roomLabel(origin.room),
-      java.time.Instant.EPOCH,
-      capped = true
-    )
+    origin match {
+      case Origin.Direct(account, _) if (account: Account) != by =>
+        Left(InboxError.Invalid("a direct message written through another's account"))
+      case _ =>
+        recorded(
+          origin,
+          source,
+          Payload.Message(message),
+          by,
+          labelOf(origin),
+          java.time.Instant.EPOCH,
+          capped = true
+        )
+    }
+
+  /** The label `origin`'s conversation is created at: a direct message's, its person's
+    * clearance, its account's one-account person ([[TestAccounts.principal]]); any other's, its
+    * room's.
+    */
+  private def labelOf(origin: Origin): Label = origin match {
+    case Origin.Direct(account, _) => visibility.cleared(TestAccounts.principal(account))
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+      visibility.roomLabel(origin.room)
+  }
 
   def hear(
       origin: Origin,
@@ -111,15 +126,19 @@ final class InMemoryInbox(
       at: java.time.Instant,
       reach: Reach
   ): Either[InboxError, Unit] =
-    recorded(
-      origin,
-      source,
-      Payload.Heard(text),
-      by,
-      visibility.roomLabel(origin.room),
-      at,
-      capped = false
-    ).flatMap { turn =>
+    (origin match {
+      case Origin.Direct(_, _) => Left(InboxError.Invalid("a direct message is never heard"))
+      case _ =>
+        recorded(
+          origin,
+          source,
+          Payload.Heard(text),
+          by,
+          visibility.roomLabel(origin.room),
+          at,
+          capped = false
+        )
+    }).flatMap { turn =>
       inTx(speech.heard(turn, reach)) match {
         // A message recorded as a turn before is not heard, and keeps no reach.
         case Left(StoreError.Invalid(_)) | Right(()) => Right(())
@@ -148,7 +167,9 @@ final class InMemoryInbox(
           before <- known.fold(Right(None): Either[StoreError, Option[Entry]])(c =>
             entries.get(InboundId.of(c.id, source))
           )
-          refused <- before.fold(if (capped) overCap else Right(None))(_ => Right(None))
+          refused <- before.fold(
+            sealedOf(origin, known).fold(if (capped) overCap else Right(None))(w => Right(Some(w)))
+          )(_ => Right(None))
           turn <- (before, refused) match {
             case (Some(e), _) => Right(Right(TurnRef(e.conversationId, e.turnSeq)))
             case (None, Some(why)) => Right(Left(why))
@@ -178,6 +199,18 @@ final class InMemoryInbox(
         result.left.map(e => InboxError.Unavailable(e.toString)).flatMap(identity)
       }
 
+  /** [[InboxError.Sealed]] for a direct message whose conversation, `known`, was created at a
+    * label its person's clearance does not dominate; `None` otherwise.
+    */
+  private def sealedOf(
+      origin: Origin,
+      known: Option[grit.core.store.Conversation]
+  ): Option[InboxError] = origin match {
+    case d @ Origin.Direct(_, _) =>
+      known.filter(c => !labelOf(origin).dominates(c.label)).map(_ => InboxError.Sealed(d))
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => None
+  }
+
   /** Why the spend on the day `ledger.now` falls on refuses a new message; `None` when it
     * does not.
     */
@@ -200,6 +233,7 @@ final class InMemoryInbox(
       by: Account
   ): Either[InboxError, Boolean] =
     if (down) unavailable
+    else if (origin.place.direct) Left(InboxError.Invalid("grit's posts begin no direct message"))
     else if (conversations.all.exists(_.origin == origin)) Right(false)
     else
       inTx {

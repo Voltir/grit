@@ -72,6 +72,14 @@ final class SqlInbox(
       message: Message.User,
       by: Account
   ): Either[InboxError, TurnRef] =
+    SqlInbox.writtenBy(origin, by).flatMap(_ => ingested(origin, source, message, by))
+
+  private def ingested(
+      origin: Origin,
+      source: SourceId,
+      message: Message.User,
+      by: Account
+  ): Either[InboxError, TurnRef] =
     inTransaction {
       conversations
         .find(origin)
@@ -119,6 +127,18 @@ final class SqlInbox(
     }
 
   def hear(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      by: Account,
+      at: Instant,
+      reach: Reach
+  ): Either[InboxError, Unit] =
+    SqlInbox
+      .undirected(origin, "a direct message is never heard")
+      .flatMap(_ => heard(origin, source, text, by, at, reach))
+
+  private def heard(
       origin: Origin,
       source: SourceId,
       text: String,
@@ -182,6 +202,21 @@ final class SqlInbox(
           .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
 
+  /** Why a new message in `origin`'s conversation, created at `label`, is refused as
+    * [[InboxError.Sealed]]: a direct message's thread whose label its person's clearance now
+    * does not dominate; `None` for any other.
+    */
+  private def sealedOf(origin: Origin, label: Label)(using
+      Tx^
+  ): Either[StoreError, Option[InboxError]] =
+    origin match {
+      case d @ Origin.Direct(_, _) =>
+        SqlRooms
+          .label(visibility, d)
+          .map(now => Option.when(!now.dominates(label))(InboxError.Sealed(d)))
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => Right(None)
+    }
+
   /** The label a conversation an edge's message begins from `origin` is created at. */
   private def roomOf(origin: Origin)(using Tx^): Either[StoreError, Label] =
     SqlRooms.label(visibility, origin)
@@ -207,7 +242,11 @@ final class SqlInbox(
       // this one's entry and its sequence numbers.
       next <- entries.lockNext(conversation.id)
       existing <- entries.get(id)
-      refused <- existing.fold(if (capped) overCap(at) else Right(None))(_ => Right(None))
+      refused <- existing.fold(
+        sealedOf(origin, conversation.label).flatMap(
+          _.fold(if (capped) overCap(at) else Right(None))(why => Right(Some(why)))
+        )
+      )(_ => Right(None))
       turn <- (existing, refused) match {
         case (Some(entry), _) => Right(Right(TurnRef(entry.conversationId, entry.turnSeq)))
         case (None, Some(why)) => Right(Left(why))
@@ -232,6 +271,18 @@ final class SqlInbox(
     } yield turn
 
   def posted(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      at: Instant,
+      request: CallSlot,
+      by: Account
+  ): Either[InboxError, Boolean] =
+    SqlInbox
+      .undirected(origin, "grit's posts begin no direct message")
+      .flatMap(_ => postedAs(origin, source, text, at, request, by))
+
+  private def postedAs(
       origin: Origin,
       source: SourceId,
       text: String,
@@ -601,6 +652,27 @@ private[dbos] object SqlInbox {
   /** The idempotency key of every answer to `call` of `workflow`: one per call. */
   def answerKey(workflow: WorkflowId, call: ToolCallId): String =
     s"answer:${WorkflowId.value(workflow)}:${ToolCallId.value(call)}"
+
+  /** `Invalid` for a direct message written through an account not its own: a person writes
+    * only their own.
+    */
+  def writtenBy(origin: Origin, by: Account): Either[InboxError, Unit] =
+    origin match {
+      case Origin.Direct(account, _) if (account: Account) != by =>
+        Left(
+          InboxError.Invalid(
+            s"a direct message with ${Account.written(account)} written through ${Account.written(by)}"
+          )
+        )
+      case _ => Right(())
+    }
+
+  /** `Invalid`, saying `why`, for a direct message. */
+  def undirected(origin: Origin, why: String): Either[InboxError, Unit] =
+    origin match {
+      case Origin.Direct(_, _) => Left(InboxError.Invalid(why))
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => Right(())
+    }
 
   def unavailable(e: Throwable): InboxError.Unavailable =
     InboxError.Unavailable(Option(e.getMessage).getOrElse(e.toString))

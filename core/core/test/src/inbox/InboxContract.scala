@@ -23,6 +23,8 @@ import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
 import grit.core.visibility.{
   Compartments,
+  Grant,
+  Group,
   Label,
   Labelled,
   Level,
@@ -412,6 +414,72 @@ abstract class InboxContract extends TestSuite {
         )
         val (_, slot) = begun(inbox.startSlot(scheduled("labelled"), Some(1), Due))
         store.labelled(slot.origin(remind.name)) ==> Some(confidential)
+      }
+    }
+
+    test(
+      "a direct message's conversation is created at its person's clearance, whatever its room's labeller says"
+    ) {
+      val trial = TestLabels.compartment("trial")
+      val confidential = Label.at(Level.Confidential, trial)
+      val dana = TestAccounts.sourced("slack:T/U-dana-label")
+      val ed = TestAccounts.sourced("slack:T/U-ed-label")
+      val visibility = (for {
+        compartments <- Compartments.of(Vector(trial)).left.map(_.toString)
+        rooms <- RoomLabels
+          .of(Vector.empty, Labelled.Mapped(Label.at(Level.Internal)))
+          .left
+          .map(_.toString)
+        v <- Visibility
+          .of(
+            compartments,
+            rooms,
+            Vector(Group(TestLabels.group("trial"), Set(dana))),
+            Vector(Grant(TestLabels.group("trial"), confidential))
+          )
+          .left
+          .map(_.toString)
+      } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+      withInbox(Uncapped, visibility) { (inbox, store) =>
+        val hers = Origin.Direct(dana, "1.0")
+        val his = Origin.Direct(ed, "1.0")
+        val _ = inbox.ingest(hers, SourceId("1.0"), said("one"), dana)
+        val _ = inbox.ingest(his, SourceId("1.0"), said("two"), ed)
+        Vector(hers, his).map(store.labelled) ==> Vector(Some(confidential), Some(Label.Public))
+      }
+    }
+
+    test(
+      "a direct message written through another's account is Invalid, and nothing is recorded"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val dm = Origin.Direct(TestAccounts.sourced("slack:T/U-dana-own"), "1.0")
+        val other = TestAccounts.account("slack:T/U-ed-own")
+        (
+          inbox
+            .ingest(dm, SourceId("1.0"), said("as her"), other)
+            .left
+            .map(_.getClass.getSimpleName),
+          store.exists(dm)
+        ) ==> (Left("Invalid"), false)
+      }
+    }
+
+    test("a direct message is never heard, and grit's posts begin none: each Invalid") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val dana = TestAccounts.sourced("slack:T/U-dana-heard")
+        val dm = Origin.Direct(dana, "1.0")
+        (
+          inbox
+            .hear(dm, SourceId("1.0"), "heard", dana, Said, Reach.Nowhere)
+            .left
+            .map(_.getClass.getSimpleName),
+          inbox
+            .posted(dm, SourceId("1.0"), "posted", PostedAt, Asking, Account.Grit)
+            .left
+            .map(_.getClass.getSimpleName),
+          store.exists(dm)
+        ) ==> (Left("Invalid"), Left("Invalid"), false)
       }
     }
 
