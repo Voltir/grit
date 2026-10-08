@@ -11,8 +11,8 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** [[Cleared]]: the asker's clearance in plain words in a direct message, and one constant line
-  * anywhere else.
+/** [[Cleared]]: the asker's clearance in plain words in a direct message, and the room's label
+  * with one fixed line anywhere else.
   */
 object ClearedTests extends TestSuite {
 
@@ -80,17 +80,35 @@ object ClearedTests extends TestSuite {
     }
 
     test(
-      "outside a direct message it answers one constant line, the same under visibilities that differ in everything, and naming no label"
+      "outside a direct message it answers the room's label and then one fixed line, whatever the visibility and whoever asks"
     ) {
+      val internal = Label.at(Level.Internal)
       (
-        called(Before, channel, Explained.confidentialBoth, Before.cleared(Dana)),
-        called(Visibility.Shipped, channel, Label.Public, Label.Public)
+        called(Before, channel, internal, Before.cleared(Dana)),
+        called(Visibility.Shipped, channel, internal, Label.Public)
       ) ==> (
-        Outcome.Done(Cleared.OnlyDirect),
-        Outcome.Done(Cleared.OnlyDirect)
+        Outcome.Done(
+          "This conversation is labelled [level: internal]. I tell people their own clearance " +
+            "only in a direct message to me. Write to me there and ask again."
+        ),
+        Outcome.Done(
+          "This conversation is labelled [level: internal]. I tell people their own clearance " +
+            "only in a direct message to me. Write to me there and ask again."
+        )
       )
-      Cleared.OnlyDirect ==> "I tell people their clearance only in a direct message to me. " +
-        "Write to me there and ask again."
+    }
+
+    test(
+      "outside a direct message it never names the clearance of an asker cleared above the room"
+    ) {
+      val internal = Label.at(Level.Internal)
+      val cleared = After.cleared(Dana)
+      val told = text(called(After, channel, internal, cleared))
+      (
+        cleared.dominates(internal) && cleared != internal,
+        told.contains(Label.shown(cleared)),
+        told.contains("trial")
+      ) ==> (true, false, false)
     }
 
     test("a store it cannot read is an error that names nothing of what failed") {

@@ -13,24 +13,28 @@ import grit.core.visibility.{Explanation, GroupName, Label, Subject, Visibility}
   * ([[grit.core.place.Place.direct]]) it answers [[render]] of
   * [[grit.core.visibility.Visibility.explain]] of the turn's asker
   * ([[grit.core.store.Askers.of]]) and the label that transaction writes at (`Tx.floor`: the
-  * thread's label met with the person's clearance now). Anywhere else it answers
-  * [[OnlyDirect]], whoever asks, and records nothing.
+  * thread's label met with the person's clearance now). Anywhere else it answers the room's own
+  * label, which everyone in the room reads at and so is no secret, then [[OnlyDirect]]: the
+  * same whoever asks, naming nothing of the asker's clearance, and recording nothing; a turn
+  * with no room of its own is told [[OnlyDirect]] alone.
   */
 object Cleared {
 
   /** Its tool's name, `clearance`. */
   val Name: ToolName = ToolName("clearance")
 
-  /** The answer outside a direct message. */
+  /** The fixed line that ends the answer outside a direct message. */
   val OnlyDirect: String =
-    "I tell people their clearance only in a direct message to me. Write to me there and ask " +
-      "again."
+    "I tell people their own clearance only in a direct message to me. Write to me there and " +
+      "ask again."
 
   /** The answer when the store cannot be read: it names nothing of what failed. */
   val Unread: String = "I could not read your clearance just now. Ask again in a moment."
 
-  /** `clearance`, explaining the asker `askers` resolves under `visibility` (the engine's), each
-    * call read from `store`; an error [[Outcome]], [[Unread]], when that read fails.
+  /** `clearance`, explaining the asker `askers` resolves under `visibility` (the engine's) in a
+    * direct message, and outside one telling the room's label (e.g. "This conversation is
+    * labelled [level: internal].") then [[OnlyDirect]]; each call read from `store`; an error
+    * [[Outcome]], [[Unread]], when that read fails.
     */
   def tool(askers: Askers, visibility: Visibility, store: Db^): Tool[Unit]^{store} =
     described.calling((_, at) =>
@@ -39,7 +43,9 @@ object Cleared {
           Tx.clearance(tx).own match {
             case Some(own) if own.room.direct =>
               askers.of(at.turn).map(asker => render(visibility.explain(asker, Tx.floor(tx))))
-            case _ => Right(OnlyDirect)
+            case Some(own) =>
+              Right(s"This conversation is labelled ${label(own.label)}. $OnlyDirect")
+            case None => Right(OnlyDirect)
           }
         }
         .fold(_ => Outcome.Failed(Unread), Outcome.Done(_))
@@ -52,8 +58,9 @@ object Cleared {
         Name,
         "What the person asking is cleared for, and why: the labels they read here and " +
           "elsewhere, and the groups that clear them. Call it when the person asks what they " +
-          "can see, what they are cleared for, or why something is not shown to them. It " +
-          "answers only in a direct message with them; anywhere else it says so.",
+          "can see, what they are cleared for, or why something is not shown to them. This " +
+          "room's own label is in your instructions: answer a question about it directly. " +
+          "It tells a person's clearance only in a direct message with them.",
         Args.of(NamedTuple.Empty).map(_ => ()),
         retry = Retry.Rerun
       ),

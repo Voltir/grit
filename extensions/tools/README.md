@@ -19,6 +19,6 @@ One package, `grit.tools`:
   memory, markers, periods, places, and security (who may see what, and how a person is known
   across sources).
 - `Cleared` — `clearance`: what the person asking is cleared for and why, answered only in a
-  direct message with them (one constant line anywhere else), over the store and the engine's
-  askers, which only the kit holds.
+  direct message with them (anywhere else, the room's own label and one fixed line), over the
+  store and the engine's askers, which only the kit holds.
 - `Names` — every name above, which a plugin's tool may not take (`Deployment.of` refuses it).

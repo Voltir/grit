@@ -31,7 +31,8 @@ Direct messages. A direct message with grit is a room of one person, labelled at
 clearance when its thread began, and read only there. If their clearance later falls, the
 thread is read at most at their clearance now and takes no new message; a new thread begins at
 the lower clearance. Asked what they are cleared for, grit answers only in a direct message
-(the `clearance` tool), never in a channel.
+(the `clearance` tool); in a channel it tells only the channel's own label, which everyone in
+it reads at.
 
 Writes out of grit. A call that writes outside grit names its place, and is allowed only to a
 place whose label is at least this room's; a call that sends arguments to an outside service
