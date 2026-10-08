@@ -1,6 +1,7 @@
 package grit.kit.run
 
 import grit.core.edge.{
+  Attesting,
   EdgeRefusal,
   EdgeStores,
   InMemoryAcknowledgements,
@@ -13,7 +14,7 @@ import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.store.{Jot, NoVoucher, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
@@ -40,7 +41,8 @@ object ServingTests extends TestSuite {
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       FakeJot,
-      new InMemoryEdges
+      new InMemoryEdges,
+      new Attesting(NoVoucher, FakeJot, _ => ())
     )
 
   /** An edge named `called` that records, in `seen`, each open, deliver and close; it refuses
@@ -83,7 +85,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val refused = EdgeRefusal.Refused("no")
       val edges = List(new Fake("a", seen), new Fake("b", seen), new Fake("c", seen, Some(refused)))
-      val failure = Serving.open(edges, stores, Map.empty, _ => ()) match {
+      val failure = Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
         case Left(f) => Some(f)
         case Right(_) => None
       }
@@ -99,7 +101,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val warned = log()
       val edges = List(new Fake("a", seen, unreadable = true), new Fake("b", seen))
-      Serving.open(edges, stores, Map.empty, _ => ()) match {
+      Serving.open(edges, _ => stores, Map.empty, _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           val rounds = new java.util.concurrent.atomic.AtomicInteger(2)
@@ -124,6 +126,20 @@ object ServingTests extends TestSuite {
         ),
         Vector.fill(2)("a: replies not read: Invalid(gone)")
       )
+    }
+
+    test("each edge is opened over the stores built for it") {
+      val seen = log()
+      val built = log()
+      val edges = List(new Fake("a", seen), new Fake("b", seen))
+      val opened = Serving.open(
+        edges,
+        e => { val _ = built.add(EdgeName.value(e.name)); stores },
+        Map.empty,
+        _ => ()
+      )
+      opened.foreach(_.close())
+      built.asScala.toVector ==> Vector("a", "b")
     }
   }
 }

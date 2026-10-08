@@ -1,6 +1,6 @@
 package grit.app.main
 
-import grit.core.edge.EdgeStores
+import grit.core.edge.{Attesting, EdgeStores}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.prose.markdown.Markdown
@@ -32,7 +32,8 @@ object SlackEdgeLiveTests extends TestSuite {
         engine.acknowledgements,
         engine.reviews,
         engine.jot,
-        engine
+        engine,
+        new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
       ),
       Set.empty,
       None,

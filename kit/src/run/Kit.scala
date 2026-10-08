@@ -3,9 +3,9 @@ package grit.kit.run
 import java.time.{Instant, LocalDate}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
-import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores}
-import grit.core.id.EdgeName
-import grit.core.identity.Identities
+import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
+import grit.core.id.{AttesterName, EdgeName}
+import grit.core.identity.{Identities, Realm}
 import grit.core.message.Cost
 import grit.core.spend.Budget
 import grit.core.store.{Linking, StoreError}
@@ -73,6 +73,7 @@ object Kit {
     * identities no longer trust is ended ([[trusting]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
+    * What each edge's attesting reports is logged as [[reported]] says.
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
@@ -96,9 +97,19 @@ object Kit {
               )
               val link: Link^{engine} = engine
               metered(link, deployment.budget, Instant.now()).foreach(log.info)
+              val report: Attesting.Report => Unit =
+                reported(_, said => log.info(said), said => log.warn(said), said => log.error(said))
               Serving.open(
                 deployment.edges.toList,
-                stores(link),
+                edge =>
+                  stores(
+                    link,
+                    new Attesting(
+                      voucherOf(engine, deployment.identities, edge.attester),
+                      link.jot,
+                      report
+                    )
+                  ),
                 env,
                 said => log.info(said)
               ) match {
@@ -181,9 +192,22 @@ object Kit {
                 said => turns.info(said)
               )
               val link: Link^{engine} = engine
+              val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
               CatchingUp.run(
                 catchUp,
-                stores(link),
+                stores(
+                  link,
+                  new Attesting(
+                    voucherOf(engine, deployment.identities, catchUp.attester),
+                    link.jot,
+                    reported(
+                      _,
+                      said => log.info(said),
+                      said => log.warn(said),
+                      said => log.error(said)
+                    )
+                  )
+                ),
                 env,
                 deployment.budget,
                 () => spentToday(link, deployment.budget, Instant.now()),
@@ -281,7 +305,7 @@ object Kit {
         }
     }
 
-  private def stores(link: Link^): EdgeStores^{link} =
+  private def stores(link: Link^, attesting: Attesting^): EdgeStores^{link, attesting} =
     EdgeStores(
       link.inbox,
       link.principals,
@@ -289,8 +313,31 @@ object Kit {
       link.acknowledgements,
       link.reviews,
       link.jot,
-      link
+      link,
+      attesting
     )
+
+  /** The voucher of the realms `identities` trusts `attester` for, none when there is none. */
+  private def voucherOf(
+      engine: Engine^,
+      identities: Identities,
+      attester: Option[AttesterName]
+  ): grit.core.store.Voucher =
+    engine.voucher(attester.fold(Set.empty[Realm])(identities.realmsOf), identities.domains)
+
+  /** Tells the log what an edge's check or look reported: a change at `info`, a source that
+    * could not be reached at `warn`, and an alarm at `error`, each line beginning `identity: `.
+    */
+  private[run] def reported(
+      report: Attesting.Report,
+      info: String => Unit,
+      warn: String => Unit,
+      error: String => Unit
+  ): Unit = report match {
+    case Attesting.Report.Changed(_) => info(s"identity: ${report.message}")
+    case Attesting.Report.Unreached(_, _, _) => warn(s"identity: ${report.message}")
+    case Attesting.Report.Overdue(_, _, _) => error(s"identity: ${report.message}")
+  }
 
   /** What the log says of `budget` as `link`'s ledger stands at `now`: the cap, and, when
     * some of today's calls were not priced, that the cap counts them as nothing (a provider

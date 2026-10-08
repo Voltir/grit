@@ -12,8 +12,9 @@ import grit.core.visibility.Compartment
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
   * reads turns from, the accounts it names, the replies it awaits, the messages it marks as
   * being answered while their turns run, the review prompts it posts
-  * and the labels their rater gives, `jot`, the short transactions it writes those in, and
-  * `desks`, where it registers places it hosts tools in.
+  * and the labels their rater gives, `jot`, the short transactions it writes those in,
+  * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
+  * source says who the accounts of the realms its attester answers for are.
   */
 final case class EdgeStores(
     inbox: Inbox,
@@ -22,7 +23,8 @@ final case class EdgeStores(
     acknowledgements: Acknowledgements,
     reviews: Reviews,
     jot: Jot,
-    desks: Desks^
+    desks: Desks^,
+    attesting: Attesting^
 )
 
 /** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its
@@ -117,6 +119,12 @@ object ServedEdge {
       */
     def deliver(): Either[StoreError, Int]
 
+    /** One look at the due accounts of the realms its attester answers for, through its source
+      * ([[Attesting.round]]); how many it recorded. The kit calls it every [[Attesting.Every]].
+      * `Right(0)` by default, for an edge that attests nothing.
+      */
+    def attest(): Either[StoreError, Int] = Right(0)
+
     /** Stops taking messages and disconnects. Called once, last. */
     def close(): Unit
   }
@@ -140,6 +148,11 @@ trait CatchUp {
 
   /** The environment variables [[open]] reads, as [[ServedEdge.needs]]. */
   def needs: Vector[Variable]
+
+  /** The attester it also is, as [[ServedEdge.attester]]: its source answers
+    * [[Attesting.before]] for each message it hears. None by default.
+    */
+  def attester: Option[AttesterName] = None
 
   /** Connects with `env`'s credentials and reads what was said before `now` that `stores`
     * have not recorded; nothing is heard until [[CatchUp.Open.hear]].

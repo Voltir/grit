@@ -242,6 +242,11 @@ In dependency order:
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
   edge reaches the engine through, ADR 0002) with the `Variable`s it `needs`, refused as an
   `EdgeRefusal`, and the attester it also is, if any (ADR 0032); `CatchUp`, what an edge hears once before serving, as `Unheard` per source;
+  a trusted realm's source (`RealmSource`, which answers `ask` and `all` as `Asked`, deciding
+  nothing) and `Attesting`, core's rules for asking it: before each message unless answered
+  within `Fresh`, on the source's word of a change, and in a look every `Every` at accounts
+  answered `Due` ago, an unreachable source keeping the last word, each answer recorded in a
+  transaction of its own;
   `Deliveries` (the replies an edge has yet
   to post outside grit, each part `Posting` or `Posted`), `Acknowledgements` (the messages an
   edge marks as being answered while their turns run, each `Acknowledgement` shown or not),
@@ -255,7 +260,7 @@ In dependency order:
   0031), settle, abandon, and each request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
   `Advert`). Named for the same idea as the `grit.edge` module: this package is the types
   every side agrees on, that module the loop an edge runs over them. ← `id`, `place`,
-  `prompt`, `store`, `model`, `message`, `approval`, `tool`
+  `identity`, `visibility`, `prompt`, `store`, `model`, `message`, `approval`, `tool`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

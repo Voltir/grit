@@ -11,7 +11,7 @@ import grit.core.id.{PrincipalId, PrincipalIds, TurnRef, TurnSeq}
 import grit.core.identity.{Account, Domain, Realm, Standing, TestAccounts, Vouched}
 import grit.core.store.{LastWord, Linking, Origin, StoreError, Voucher}
 import grit.core.visibility.{Clearance, Label, Subject}
-import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlIdentities, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, Opener, TestPostgres}
 
 import utest.*
 
@@ -76,18 +76,6 @@ object VouchingLiveTests extends TestSuite {
       person
     ).flatten
 
-  /** `account`'s attestation: its email (empty for none) and membership. */
-  private def attestation(account: Account)(using DbConfig): Vector[Vector[String]] =
-    rows(
-      "SELECT coalesce(email, ''), member::text FROM grit.attestations WHERE account = ?",
-      Account.written(account)
-    )
-
-  private def enrolled(account: Account)(using in: DbConfig): Unit =
-    LiveDb
-      .transaction(in)(SqlIdentities.enroll(Set(account)))
-      .fold(e => throw new java.lang.AssertionError(s"enrolling: $e"), identity)
-
   /** A turn asked through `by` in a conversation labelled Confidential, above every clearance
     * [[Seen]] grants, so the turn's floor is its asker's clearance.
     */
@@ -109,16 +97,6 @@ object VouchingLiveTests extends TestSuite {
     LiveDb
       .transaction(config)(voucher.lastWord(account))
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
-
-  /** Arranges `account`'s attestation as answered `ago` (an interval) before now. */
-  private def aged(account: Account, ago: String): Unit = {
-    val _ = rows(
-      """UPDATE grit.attestations SET seen_at = now() - ?::interval WHERE account = ?
-        |RETURNING account""".stripMargin,
-      ago,
-      Account.written(account)
-    )
-  }
 
   val tests = Tests {
     test(

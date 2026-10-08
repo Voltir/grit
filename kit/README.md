@@ -39,7 +39,9 @@ In dependency order:
   Jev's settings for `Topics.Jev`). An edge's credentials are its own `needs`. ← `deployment`
 - **`run`** — running a deployment: `Kit.serve` (the engine and every edge, delivered to
   every `Kit.DeliverEvery` until the process is stopped, and a declared review's messages
-  picked every `Kit.PickEvery`), `Kit.catchUp` (an edge's
+  picked every `Kit.PickEvery`; each edge's stores carry an `Attesting` over the realms the deployment
+  trusts its attester for, whose reports are logged at info, warn or error by
+  `Kit.reported`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
   close), `Kit.launch` (the engine's workflows, for grit's own chat) and `Kit.trusting` (what
   the deployment's identities no longer trust ended, at each start of its own engine), each failing as a

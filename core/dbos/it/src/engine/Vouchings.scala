@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import scala.util.Using
 
-import grit.core.identity.{Domain, Email, Realm, Standing, TestAccounts}
+import grit.core.identity.{Account, Domain, Email, Realm, Standing, TestAccounts}
 import grit.core.store.Tx
 import grit.core.visibility.{
   Compartments,
@@ -14,7 +14,7 @@ import grit.core.visibility.{
   TestLabels,
   Visibility
 }
-import grit.dbos.sql.{DbConfig, LiveDb}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlIdentities}
 
 /** What the suites of trusted realms' attestations share: their realms, the claimed domain, the
   * visibility they clear people under, and reads of the rows they arrange.
@@ -82,6 +82,29 @@ private[engine] object Vouchings {
         }
       }
     }
+
+  /** `account`'s attestation: its email (empty for none) and membership. */
+  def attestation(account: Account)(using DbConfig): Vector[Vector[String]] =
+    rows(
+      "SELECT coalesce(email, ''), member::text FROM grit.attestations WHERE account = ?",
+      Account.written(account)
+    )
+
+  /** `account` seen, as a first message through it would make it. */
+  def enrolled(account: Account)(using in: DbConfig): Unit =
+    LiveDb
+      .transaction(in)(SqlIdentities.enroll(Set(account)))
+      .fold(e => throw new java.lang.AssertionError(s"enrolling: $e"), identity)
+
+  /** Arranges `account`'s attestation as answered `ago` (an interval) before now. */
+  def aged(account: Account, ago: String)(using DbConfig): Unit = {
+    val _ = rows(
+      """UPDATE grit.attestations SET seen_at = now() - ?::interval WHERE account = ?
+        |RETURNING account""".stripMargin,
+      ago,
+      Account.written(account)
+    )
+  }
 
   /** How many people `in` holds. */
   def people(in: DbConfig): Long =

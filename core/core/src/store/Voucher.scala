@@ -22,7 +22,9 @@ trait Voucher extends caps.Pure {
     * account's person or membership is one [[Linking]], with [[Linking.Unclaimed]] beside them
     * when the email it did not keep is in no claimed domain; none when nothing changed, as when
     * the same answer is recorded again. Two vouchings of one account, or of one email, wait for
-    * each other rather than deadlock. [[Linking.Outside]], recording nothing, for an account no
+    * each other rather than deadlock; two transactions each vouching several accounts can
+    * deadlock, so each vouching is a transaction of its own
+    * ([[grit.core.edge.Attesting]], its one holder, records each answer so). [[Linking.Outside]], recording nothing, for an account no
     * realm in [[realms]] holds.
     */
   def vouch(vouched: Vouched)(using Tx^): Either[StoreError, Vector[Linking]]

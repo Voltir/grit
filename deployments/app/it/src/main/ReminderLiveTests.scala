@@ -9,7 +9,7 @@ import scala.util.Using
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.{SetClock, Utc}
-import grit.core.edge.EdgeStores
+import grit.core.edge.{Attesting, EdgeStores}
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, ScheduleId, ToolCallId, TurnRef}
 import grit.core.inbox.Slotted
 import grit.core.job.{Ending, Schedule, Slot}
@@ -181,7 +181,8 @@ object ReminderLiveTests extends TestSuite {
         engine.acknowledgements,
         engine.reviews,
         engine.jot,
-        engine
+        engine,
+        new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
       ),
       Set.empty,
       None,

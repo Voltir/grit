@@ -146,6 +146,16 @@ declared data:
   (`ServedEdge.attester`). Trusting a realm trusts its administrators, who decide both.
   `Deployment.of` refuses an attester no edge served is, two edges saying they are one
   attester, and a group of the visibility naming a realm no attester is trusted for.
+
+  An extension that attests a realm names its attester (`ServedEdge.attester`,
+  `CatchUp.attester`) and implements `RealmSource`: `ask`, what its source says of one
+  account now, and `all`, the same of every account of a realm in one whole listing, either
+  `Unreached` when the source could not be asked. It decides nothing else. Its stores' `Attesting`
+  holds core's rules: it is called before each message the edge records (`before`, which
+  refuses an account its source never answered for while it cannot be reached), on the
+  source's word of a change (`changed`), and from the edge's `Open.attest`, which the kit
+  calls every `Attesting.Every` (`round`); when to ask, what a failure keeps, and which
+  addresses count are core's.
 - `domains`: the email domains (`Domain`, each matched exactly, so a subdomain is its own)
   the deployment claims. Accounts a trusted realm attests one address in a claimed domain
   are one person, across realms; an address in any other domain is not kept. With none

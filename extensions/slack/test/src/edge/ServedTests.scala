@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.edge.{
+  Attesting,
   EdgeRefusal,
   EdgeStores,
   InMemoryAcknowledgements,
@@ -22,7 +23,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
-import grit.core.store.{Jot, Origin, StoreError, Tx}
+import grit.core.store.{Jot, NoVoucher, Origin, StoreError, Tx}
 import grit.core.tool.Outcome
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -73,7 +74,8 @@ object ServedTests extends TestSuite {
         acknowledgements,
         picks.reviews,
         FakeJot,
-        edges
+        edges,
+        new Attesting(NoVoucher, FakeJot, _ => ())
       )
 
     /** What opening logged, in order. */

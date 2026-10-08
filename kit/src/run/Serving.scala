@@ -40,19 +40,19 @@ private[run] object Serving {
     }
   }
 
-  /** Each of `edges` opened over `stores` with `env`'s credentials, in order. The first that
-    * refuses closes those already opened, and is the failure.
+  /** Each of `edges` opened over the stores `stores` builds for it, with `env`'s credentials,
+    * in order. The first that refuses closes those already opened, and is the failure.
     */
   def open(
       edges: List[ServedEdge],
-      stores: EdgeStores^,
+      stores: ServedEdge => EdgeStores^,
       env: Map[String, String],
       log: String => Unit
   ): Either[KitFailure, Opened^{stores, log, caps.any}] =
     edges match {
       case Nil => Right(NoneOpened)
       case edge :: others =>
-        edge.open(stores, env, log) match {
+        edge.open(stores(edge), env, log) match {
           case Left(refusal) => Left(KitFailure.Edge(edge.name, refusal))
           case Right(first) =>
             open(others, stores, env, log) match {

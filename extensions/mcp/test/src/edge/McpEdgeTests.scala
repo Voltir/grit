@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 
 import grit.core.edge.{
+  Attesting,
   Desk,
   DeskError,
   Desks,
@@ -20,7 +21,7 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.place.{Place, Service}
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.store.{Jot, NoVoucher, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -80,7 +81,8 @@ object McpEdgeTests extends TestSuite {
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       FakeJot,
-      if (reachable) edges else Unreachable
+      if (reachable) edges else Unreachable,
+      new Attesting(NoVoucher, FakeJot, _ => ())
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge

@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.clock.SetClock
-import grit.core.edge.EdgeStores
+import grit.core.edge.{Attesting, EdgeStores}
 import grit.core.id.{
   ConversationId,
   Declarer,
@@ -158,7 +158,8 @@ object RunRetentionLiveTests extends TestSuite {
             engine.acknowledgements,
             engine.reviews,
             engine.jot,
-            engine
+            engine,
+            new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
           ),
           Set.empty,
           None,
