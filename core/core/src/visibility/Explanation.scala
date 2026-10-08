@@ -3,8 +3,8 @@ package grit.core.visibility
 import grit.core.identity.{Account, Evidence, Realm}
 
 /** What a person asking in a room labelled `room` is told of why they read what they read
-  * ([[Visibility.explain]], ADR 0032), naming nothing `room` does not dominate: `beyond`, what
-  * a turn there reads outside the room (`room` met with the asker's clearance,
+  * ([[grit.core.store.Tx.explain]], ADR 0032), naming nothing `room` does not dominate:
+  * `beyond`, what a turn there reads outside the room (`room` met with the asker's clearance,
   * [[Clearance.inRoom]]); `asker`, who they are taken to be; and `groups`, each group they are in
   * whose grant `room` dominates, in the deployment's order. Asked in a direct message, whose
   * label is the asker's clearance, it names what they are cleared for and nothing more.
@@ -56,12 +56,14 @@ object Explanation {
   final case class Shown(namespace: Namespace, evidence: Evidence, member: Boolean)
 
   /** `group`, granted `label`, which the asker is in through an account of each kind in
-    * `through`, or as a full member of a realm of each kind in `members`.
+    * `through` (named by the deployment), as a full member of a realm of each kind in
+    * `members`, or through an account of each kind in `added` (added through grit).
     */
   final case class In(
       group: GroupName,
       label: Label,
       through: Set[Namespace],
-      members: Set[Namespace]
+      members: Set[Namespace],
+      added: Set[Namespace]
   )
 }

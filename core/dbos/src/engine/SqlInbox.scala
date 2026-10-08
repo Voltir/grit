@@ -216,14 +216,14 @@ final class SqlInbox(
     origin match {
       case d @ Origin.Direct(_, _) =>
         SqlRooms
-          .label(visibility, d)
+          .label(d)
           .map(now => Option.when(!now.dominates(label))(InboxError.Sealed(d)))
       case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => Right(None)
     }
 
   /** The label a conversation an edge's message begins from `origin` is created at. */
   private def roomOf(origin: Origin)(using Tx^): Either[StoreError, Label] =
-    SqlRooms.label(visibility, origin)
+    SqlRooms.label(origin)
 
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
     * as the period it opens is, its conversation created at `label` if it is new: its existing
@@ -574,7 +574,7 @@ final class SqlInbox(
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using opener.maintained(conn))
+          try opener.maintained(conn).flatMap(tx => body(using tx))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         result match {
           case Right(_) => conn.commit()

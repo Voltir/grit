@@ -14,7 +14,7 @@ import grit.core.persona.Persona
 import grit.core.plugin.{InMemoryPlugins, PluginReads}
 import grit.core.store.{Askers, Db, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Desks, PluginBinding, TestPlugins}
 import grit.models.StubModels
@@ -128,7 +128,7 @@ object PluginToolsTests extends TestSuite {
       }
       val models = new StubModels()
       val offered =
-        Launch.own(Persona.Grit, noOne, Visibility.Shipped, FakeDb).map(_.name) ++
+        Launch.own(Persona.Grit, noOne, FakeDb).map(_.name) ++
           Launch.operator(Unkept, models).map(_.name) ++ Coding.hosted.map(_.name)
       (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }

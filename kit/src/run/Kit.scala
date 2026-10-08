@@ -10,9 +10,10 @@ import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.message.Cost
+import grit.core.place.Place
 import grit.core.spend.Budget
-import grit.core.store.{Linking, StoreError}
-import grit.core.visibility.Subject
+import grit.core.store.{Linking, StoreError, Tx}
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, Link}
 import grit.host.LocalMachine
 import grit.kit.deployment.Deployment
@@ -221,7 +222,7 @@ object Kit {
                 ),
                 env,
                 deployment.budget,
-                engine.visibility,
+                place => roomLabel(link, place),
                 clock,
                 () => spentToday(link, deployment.budget, clock.now()),
                 () => engine.sweep(clock.now()).left.map(_.toString),
@@ -412,6 +413,10 @@ object Kit {
   /** The dollars `link`'s ledger recorded on the day `now` falls on in `budget`'s zone, a call
     * no provider priced counted as nothing.
     */
+  /** The label in force for `room` ([[Tx.roomLabel]]), read in a transaction of its own. */
+  private def roomLabel(link: Link^, room: Place): Either[String, Label] =
+    link.db.read(Subject.Public)(Right(Tx.roomLabel(room))).left.map(_.toString)
+
   private def spentToday(link: Link^, budget: Budget, now: Instant): Either[String, BigDecimal] =
     link.db
       .read(Subject.Public)(link.spending.on(budget.today(now)))

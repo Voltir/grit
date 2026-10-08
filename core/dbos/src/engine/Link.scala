@@ -208,7 +208,8 @@ object Link {
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
   /** Runs `body` in a transaction of its own on `dataSource`, at `opener`'s maintenance:
-    * committed on `Right`, rolled back otherwise.
+    * committed on `Right`, rolled back otherwise; the opener's error, and no body run, when the
+    * transaction cannot open.
     */
   private[engine] def transaction[A](dataSource: DataSource, opener: Opener)(
       body: (Tx^) ?=> Either[StoreError, A]
@@ -217,7 +218,7 @@ object Link {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using opener.maintained(conn))
+          try opener.maintained(conn).flatMap(tx => body(using tx))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         if (result.isRight) conn.commit() else conn.rollback()
         result
@@ -291,7 +292,7 @@ private[engine] final class Attached(
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
     Link.transaction(dataSource, opener)(
       grit.dbos.sql.SqlRooms
-        .label(visibility, origin)
+        .label(origin)
         .flatMap(conversations.findOrCreate(origin, by, _))
         .map(_.id)
     )

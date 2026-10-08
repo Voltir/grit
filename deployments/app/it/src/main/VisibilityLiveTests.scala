@@ -303,7 +303,8 @@ object VisibilityLiveTests extends TestSuite {
       posted.foreach(run => assert(finished(config, run.workflowId)))
 
       val keeper = engine.keeper(notes.name, Notes.Terms)
-      val high = visibility.roomLabel(RoomA)
+      val high =
+        ok("reading #a's label")(engine.db.read(Subject.Public)(Right(Tx.roomLabel(RoomA))))
       def note(subject: Subject, key: String, label: Label, text: String): Unit =
         ok("noting")(engine.jot.write(subject) {
           for {

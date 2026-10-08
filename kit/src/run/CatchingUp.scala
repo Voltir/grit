@@ -4,8 +4,9 @@ import java.time.{Duration, LocalDate}
 
 import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeStores}
+import grit.core.place.Place
 import grit.core.spend.Budget
-import grit.core.visibility.{Label, Visibility}
+import grit.core.visibility.Label
 import grit.dbos.engine.Swept
 
 /** A catch-up's flow over an open engine: what it would hear shown, estimated and agreed to,
@@ -32,16 +33,17 @@ private[run] object CatchingUp {
   def usd(amount: BigDecimal): String =
     "$" + amount.bigDecimal.setScale(4, java.math.RoundingMode.UP).stripTrailingZeros.toPlainString
 
-  /** [[Kit.catchUp]]'s flow, over `stores`, each source shown at the label `visibility` gives
-    * its room and opened with `clock`, reading today's spend with `spent`, sweeping with
-    * `sweep` and counting what is left with `unfinished`.
+  /** [[Kit.catchUp]]'s flow, over `stores`, each source shown at the label `labelled` reads for
+    * its room (the label in force, [[grit.core.store.Tx.roomLabel]]; refused with the first that
+    * cannot be read, before anything is heard) and opened with `clock`, reading today's spend
+    * with `spent`, sweeping with `sweep` and counting what is left with `unfinished`.
     */
   def run(
       catchUp: CatchUp,
       stores: EdgeStores^,
       env: Map[String, String],
       budget: Budget,
-      visibility: Visibility,
+      labelled: Place => Either[String, Label],
       clock: Clock^,
       spent: () => Either[String, BigDecimal],
       sweep: () => Either[String, Swept],
@@ -56,36 +58,44 @@ private[run] object CatchingUp {
         try {
           val from = Kit.dayOf(open.since, budget)
           val each = open.unheard.map(u => (u, Estimate.of(u)))
-          each.foreach((u, e) => say(line(u.source, visibility.roomLabel(u.place), e, from)))
-          val all = each.map(_._2).foldLeft(Estimate.Zero)(_ + _)
-          if (all.messages == 0) {
-            say("backfill: nothing unheard")
-            Right(())
-          } else
-            spent().left.map(KitFailure.Store(_)).flatMap { before =>
-              say(Relabel)
-              budget.cap.foreach { cap =>
-                val left = cap.usd - before
-                if (all.total > left)
-                  say(
-                    s"backfill: up to ${usd(all.total)} is more than the ${usd(left.max(0))} today's cap leaves; " +
-                      "nothing caps what backfill spends, and grit serve takes no new message once the cap is reached"
-                  )
+          val labels = each.foldLeft[Either[String, Vector[Label]]](Right(Vector.empty)) {
+            case (read, (u, _)) => read.flatMap(ls => labelled(u.place).map(ls :+ _))
+          }
+          labels.left.map(why => KitFailure.Store(s"a room's label is unread: $why")).flatMap {
+            labels =>
+              each.zip(labels).foreach { case ((u, e), label) =>
+                say(line(u.source, label, e, from))
               }
-              if (!agree(s"hear ${all.messages} messages, up to ${usd(all.total)}?")) {
-                say("backfill: nothing heard")
+              val all = each.map(_._2).foldLeft(Estimate.Zero)(_ + _)
+              if (all.messages == 0) {
+                say("backfill: nothing unheard")
                 Right(())
               } else
-                for {
-                  _ <- open.hear().left.map(KitFailure.Edge(name, _))
-                  _ = say(s"backfill: heard ${all.messages} messages; closing what is due")
-                  _ <- drain(sweep, unfinished, () => Thread.sleep(Pause.toMillis)).left
-                    .map(why => KitFailure.Store(s"the sweep failed: $why"))
-                  after <- spent().left.map(KitFailure.Store(_))
-                } yield say(
-                  s"backfill: spent ${usd(after - before)} (estimated up to ${usd(all.total)})"
-                )
-            }
+                spent().left.map(KitFailure.Store(_)).flatMap { before =>
+                  say(Relabel)
+                  budget.cap.foreach { cap =>
+                    val left = cap.usd - before
+                    if (all.total > left)
+                      say(
+                        s"backfill: up to ${usd(all.total)} is more than the ${usd(left.max(0))} today's cap leaves; " +
+                          "nothing caps what backfill spends, and grit serve takes no new message once the cap is reached"
+                      )
+                  }
+                  if (!agree(s"hear ${all.messages} messages, up to ${usd(all.total)}?")) {
+                    say("backfill: nothing heard")
+                    Right(())
+                  } else
+                    for {
+                      _ <- open.hear().left.map(KitFailure.Edge(name, _))
+                      _ = say(s"backfill: heard ${all.messages} messages; closing what is due")
+                      _ <- drain(sweep, unfinished, () => Thread.sleep(Pause.toMillis)).left
+                        .map(why => KitFailure.Store(s"the sweep failed: $why"))
+                      after <- spent().left.map(KitFailure.Store(_))
+                    } yield say(
+                      s"backfill: spent ${usd(after - before)} (estimated up to ${usd(all.total)})"
+                    )
+                }
+          }
         } finally open.close()
     }
   }

@@ -297,7 +297,7 @@ object IdentitiesLiveTests extends TestSuite {
         ConversationId.value(c)
       )
       LiveDb.transaction(config)(new SqlConversationStore().get(c)) ==> Left(misspelt)
-      LiveDb.transaction(config)(LiveDb.Trialled.clearance(Subject.Turn(turn))) ==> Left(misspelt)
+      LiveDb.connected(config)(LiveDb.Trialled.clearance(Subject.Turn(turn), _)) ==> Left(misspelt)
     }
 
     test("a review's rater stored in no account's spelling is Invalid where it is read back") {

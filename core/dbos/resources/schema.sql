@@ -150,10 +150,10 @@ $$;
 -- {slack,acme,#grit-dev,1712.3}, {task,m0,main}, {direct,slack,T0123/U0456,1712.3} (a direct
 -- message's thread, under its person's account); segments verbatim, never empty or NULL. A
 -- place is recorded with its first conversation, from that conversation's origin
--- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
--- within which is Place.within's alone: nothing here tests it.
+-- (Origin.place), or with its first grit.rooms row, and never changes; so is a conversation's
+-- room (Origin.room). Which place is within which is Place.within's alone: nothing here tests it.
 -- Retention: ledger: deleted when no conversation names it by place_id or room_id, and no
--- document, plugin's document or schedule by room_id (Target.Quiet).
+-- document, plugin's document, schedule or grit.rooms row by room_id or place_id (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -305,6 +305,36 @@ CREATE TABLE IF NOT EXISTS grit.conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id);
+
+-- A room grit knows beyond its conversations (ADR 0033): its access as its edge last reported
+-- it, the label people set for it through grit (NULL: none), whether it is quiet, and its
+-- edge's bot's membership: joined_at, left_at (each kept only when later than the other's
+-- event), and backfilled_join, the joined_at whose backfill is done or was skipped. Every
+-- transaction reads every row when it opens (SqlRecorded).
+-- Retention: kept: one row per room an edge's bot has been in or someone labelled or quieted;
+-- bounded by the workspaces' channels (tens to hundreds). Its place is kept while it exists.
+CREATE TABLE IF NOT EXISTS grit.rooms (
+    place_id        UUID PRIMARY KEY REFERENCES grit.places(id),
+    name            TEXT,   -- the name its edge last reported (`meeting-notes`)
+    access          TEXT CHECK (access IN ('open', 'invited')),
+    label_id        SMALLINT REFERENCES grit.labels(id),
+    quiet           BOOLEAN NOT NULL DEFAULT false,
+    joined_at       TIMESTAMPTZ,
+    left_at         TIMESTAMPTZ,
+    backfilled_join TIMESTAMPTZ,
+    CHECK (backfilled_join IS NULL OR backfilled_join <= joined_at)
+);
+
+-- People added to a group through grit (`clear @person for <compartment>`), by account
+-- (ADR 0032). Counted only while the deployment declares the group; never toward its
+-- administrators group (Visibility.of refuses one that is a compartment's own). Every
+-- transaction reads every row when it opens (SqlRecorded). Holds PII (`account`).
+-- Retention: kept until removed (`remove`): one row per person per compartment group; tens.
+CREATE TABLE IF NOT EXISTS grit.group_members (
+    group_name TEXT NOT NULL,
+    account    TEXT NOT NULL REFERENCES grit.identities(account),
+    PRIMARY KEY (group_name, account)
+);
 
 -- Retention: journal: a closed period's raw entries after the raw window (Target.Raw); its closing
 -- entry is ledger (Target.Superseded, Target.Quiet).

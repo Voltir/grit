@@ -56,25 +56,38 @@ private[dbos] final class Opener(visibility: Visibility) {
     */
   val maintenance: Clearance = Maintenance.clearance(visibility.compartments.top)
 
-  /** `conn`'s transaction, opened for `subject`, its clearance resolved on `conn` first; a
-    * `DatabaseError` when that read fails.
+  /** `conn`'s transaction, opened for `subject`: what is recorded beside the deployment's
+    * declaration read on `conn` ([[SqlRecorded.read]]), then its clearance resolved under both;
+    * the error of the first read that fails.
     */
   def open(subject: Subject, conn: Connection^): Either[StoreError, Tx^{conn}] =
-    clearance(subject)(using maintained(conn)).map(at(_, conn))
+    SqlRecorded.read(conn).flatMap { recorded =>
+      resolved(subject)(using Tx.open(conn, maintenance, visibility, recorded))
+        .map(Tx.open(conn, _, visibility, recorded))
+    }
 
-  /** `conn`'s transaction at `clearance`, labelling places as the deployment does. */
-  def at(clearance: Clearance, conn: Connection^): Tx^{conn} =
-    Tx.open(conn, clearance, visibility)
+  /** `conn`'s transaction at `clearance`, under the deployment's declaration and what is
+    * recorded beside it, read on `conn` ([[SqlRecorded.read]]); that read's error when it fails.
+    */
+  def at(clearance: Clearance, conn: Connection^): Either[StoreError, Tx^{conn}] =
+    SqlRecorded.read(conn).map(Tx.open(conn, clearance, visibility, _))
 
-  /** `conn`'s transaction at [[maintenance]]. */
-  def maintained(conn: Connection^): Tx^{conn} = at(maintenance, conn)
+  /** `conn`'s transaction at [[maintenance]], as [[at]] opens it. */
+  def maintained(conn: Connection^): Either[StoreError, Tx^{conn}] = at(maintenance, conn)
+
+  /** The clearance `subject` reads at on `conn`, as [[open]] resolves it; the error of the first
+    * read that fails.
+    */
+  def clearance(subject: Subject, conn: Connection^): Either[StoreError, Clearance] =
+    open(subject, conn).map(tx => Tx.clearance(tx))
 
   /** The clearance `subject` reads at, as [[Subject]]'s cases say: one read of its
     * conversation, its label, and its turn's first entry and the principal its account is
     * linked to now; in a direct message, its own label is its stored one met with its person's
-    * clearance now, so nothing kept above a fallen clearance is read again.
+    * clearance now, so nothing kept above a fallen clearance is read again. Its people are
+    * cleared under `tx`'s labels in force, which [[open]] makes this opener's.
     */
-  def clearance(subject: Subject)(using tx: Tx^): Either[StoreError, Clearance] =
+  private def resolved(subject: Subject)(using tx: Tx^): Either[StoreError, Clearance] =
     subject match {
       case Subject.Public => Right(Clearance.of(Label.Public))
       case Subject.Conversation(id) =>
@@ -95,7 +108,7 @@ private[dbos] final class Opener(visibility: Visibility) {
                   .asker(n.origin, n.first)
                   .map(asker =>
                     Clearance
-                      .inRoom(n.origin.room, n.label, asker.fold(Label.Public)(visibility.cleared))
+                      .inRoom(n.origin.room, n.label, asker.fold(Label.Public)(Tx.clearanceOf))
                   )
             }
           })
@@ -113,7 +126,7 @@ private[dbos] final class Opener(visibility: Visibility) {
     */
   private def direct(n: Named)(using Tx^): Either[StoreError, Clearance] =
     Opener.asker(n.origin, n.first).map { asker =>
-      val cleared = asker.fold(Label.Public)(visibility.cleared)
+      val cleared = asker.fold(Label.Public)(Tx.clearanceOf)
       Clearance.inRoom(n.origin.room, n.label.meet(cleared), cleared)
     }
 

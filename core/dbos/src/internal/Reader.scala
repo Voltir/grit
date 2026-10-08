@@ -122,9 +122,11 @@ object Reader {
   final case class Recorded(status: String, epoch: String, created: Instant)
 
   /** Reads `config`'s database under the compartments it last ran under, every room public and
-    * no group declared: [[Reader.all]] reads every row, whatever deployment labelled it. Records
-    * nothing, those compartments included. Throws when the database cannot be reached, or the
-    * compartments it ran under cannot be read.
+    * no group declared, beside the room labels set through grit that it holds: [[Reader.all]]
+    * reads every row, whatever deployment labelled it. Records nothing, those compartments
+    * included. Throws when the database cannot be reached, or the compartments it ran under, or
+    * what it records of rooms and groups (`grit.rooms`, `grit.group_members`; a database no
+    * engine of this version has opened has neither), cannot be read.
     */
   def open(config: DbConfig): Reader^ = {
     val ds = new PGSimpleDataSource()
@@ -137,9 +139,9 @@ object Reader {
     // Read at the shipped visibility's maintenance: grit.compartments carries no label.
     val shipped = new Opener(Visibility.Shipped)
     val opener = new SqlDb(ds, shipped)
-      .transaction(conn => Right(shipped.maintained(conn)))(Opener.recorded)
+      .transaction(conn => shipped.maintained(conn))(Opener.recorded)
       .fold(
-        e => throw new IllegalStateException(s"the database's compartments are unread: $e"),
+        e => throw new IllegalStateException(s"the database is unread: $e"),
         identity
       )
     new Opened(ds, new DBOSClient(ds), opener)
@@ -151,7 +153,7 @@ object Reader {
     val db: Db = sql
     val all: Reads = new Reads {
       def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-        sql.transaction(conn => Right(opener.maintained(conn)))(body)
+        sql.transaction(conn => opener.maintained(conn))(body)
     }
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()

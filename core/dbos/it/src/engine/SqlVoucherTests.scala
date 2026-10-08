@@ -44,5 +44,7 @@ object SqlVoucherTests extends VoucherContract {
   protected def aged(voucher: Voucher, account: Account, ago: FiniteDuration): Unit =
     Vouchings.aged(account, s"${ago.toMillis} milliseconds")(using config)
 
-  protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+  /* Under the engine's visibility, as the engine's own transactions are: the voucher says each
+   * change's clearances as the transaction it runs in clears people. */
+  protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.under(config, Cleared)(body)
 }

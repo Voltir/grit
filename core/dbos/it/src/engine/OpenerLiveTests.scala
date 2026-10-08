@@ -66,7 +66,7 @@ object OpenerLiveTests extends TestSuite {
   private val opener = new Opener(visibility)
 
   private def resolved(subject: Subject): Either[StoreError, Clearance] =
-    LiveDb.transaction(config)(opener.clearance(subject))
+    LiveDb.connected(config)(opener.clearance(subject, _))
 
   private def slack(thread: String): Origin = Origin.Slack("T1", "C1", thread)
 

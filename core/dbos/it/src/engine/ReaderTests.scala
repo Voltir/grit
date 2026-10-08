@@ -254,8 +254,11 @@ object ReaderTests extends TestSuite {
       val reader = Reader.open(config)
       try {
         // Through a connection the driver was not told is read-only: only the server refuses.
+        // The transaction its opening read began is ended first: the driver refuses the change
+        // inside one.
         reader.all.read { (tx: Tx^) ?=>
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+          conn.rollback()
           conn.setReadOnly(false)
           Using.resource(conn.createStatement()) { st =>
             Using.resource(st.executeQuery("SHOW transaction_read_only")) { rs =>

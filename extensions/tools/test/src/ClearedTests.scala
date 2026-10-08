@@ -6,7 +6,16 @@ import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.{Clearance, Explained, Label, Level, Subject, Visibility}
+import grit.core.visibility.{
+  Clearance,
+  Explained,
+  Label,
+  Level,
+  Recorded,
+  Subject,
+  TestLabels,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -16,7 +25,7 @@ import utest.*
   */
 object ClearedTests extends TestSuite {
 
-  import Explained.{Above, After, Before, Dana, Named, confidentialTrial, names}
+  import Explained.{Above, After, Before, Dana, Named, cleared, confidentialTrial, explain, names}
 
   /** Askers answering Dana for every turn. */
   private val danaAsks: Askers = new Askers {
@@ -53,7 +62,7 @@ object ClearedTests extends TestSuite {
         else body(using TestTx.fake(clearance, visibility))
     }
     Toolbox
-      .of(Cleared.tool(danaAsks, visibility, store))
+      .of(Cleared.tool(danaAsks, store))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
         AssistantBlock.ToolCall(ToolCallId("c1"), "clearance", ujson.Obj()),
@@ -75,10 +84,10 @@ object ClearedTests extends TestSuite {
     ) {
       // A thread labelled below what Dana is cleared for: its floor is its label.
       val floor = Label.at(Level.Internal)
-      val told = text(called(After, direct, floor, After.cleared(Dana)))
+      val told = text(called(After, direct, floor, cleared(After, Dana)))
       (
         told.linesIterator.toVector.headOption,
-        told == Cleared.render(After.explain(Some(Dana), floor)),
+        told == Cleared.render(explain(After, Some(Dana), floor)),
         Vector(
           "what is said in a room is read there, by its members, up to the room's label",
           "Anything said elsewhere is read here up to this room's label met with your clearance",
@@ -95,7 +104,7 @@ object ClearedTests extends TestSuite {
           "told only in a direct message with them; say so only if they asked about their own " +
           "clearance."
       (
-        called(Before, channel, confidentialTrial, Before.cleared(Dana)),
+        called(Before, channel, confidentialTrial, cleared(Before, Dana)),
         called(Visibility.Shipped, channel, confidentialTrial, confidentialTrial)
       ) ==> (Outcome.Done(told), Outcome.Done(told))
     }
@@ -111,11 +120,11 @@ object ClearedTests extends TestSuite {
       "outside a direct message it never names the clearance of an asker cleared above the room"
     ) {
       val internal = Label.at(Level.Internal)
-      val cleared = After.cleared(Dana)
-      val told = text(called(After, channel, internal, cleared))
+      val danas = cleared(After, Dana)
+      val told = text(called(After, channel, internal, danas))
       (
-        cleared.dominates(internal) && cleared != internal,
-        told.contains(Label.shown(cleared)),
+        danas.dominates(internal) && danas != internal,
+        told.contains(Label.shown(danas)),
         told.contains("trial")
       ) ==> (true, false, false)
     }
@@ -156,11 +165,29 @@ object ClearedTests extends TestSuite {
           |I never say whether anything is hidden from you.""".stripMargin
     }
 
+    test(
+      "a group the person was added to through grit says so, by the kind of the account added"
+    ) {
+      val told = explain(
+        After,
+        Some(Dana),
+        confidentialTrial,
+        Recorded(
+          Map.empty,
+          Map(TestLabels.group("trial") -> Set(TestAccounts.account("slack:T/U-dana")))
+        )
+      )
+      Cleared.render(told).linesIterator.toVector.filter(_.startsWith("- trial")) ==> Vector(
+        "- trial: [level: confidential, in: {trial}], through your slack account and through " +
+          "your test account and added through grit for your slack account"
+      )
+    }
+
     test("no one, and grit, are told as such") {
       (
-        Cleared.render(Before.explain(None, Label.Public)).linesIterator.toVector.lift(4),
+        Cleared.render(explain(Before, None, Label.Public)).linesIterator.toVector.lift(4),
         Cleared
-          .render(Before.explain(Some(Principal.Grit), Label.Public))
+          .render(explain(Before, Some(Principal.Grit), Label.Public))
           .linesIterator
           .toVector
           .lift(4)

@@ -378,7 +378,7 @@ object SqlDesk {
       Using.resource(dataSource.getConnection()) { c =>
         c.setAutoCommit(false)
         val result =
-          try body(using opener.maintained(c))
+          try opener.maintained(c).flatMap(tx => body(using tx))
           catch { case NonFatal(e) => c.rollback(); throw e }
         if (result.isRight) c.commit() else c.rollback()
         result.left.map(e => DeskError(e.toString))

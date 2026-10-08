@@ -20,7 +20,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.job.clock.ClockEdge
 import grit.job.run.{RunEnv, RunRecords}
@@ -358,7 +358,7 @@ private[grit] object Launch {
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
       Toolbox.of[caps.CapSet^{store, desks}](
         (Vector[Tool.Offered^{store, desks}](
-          own(d.persona, engine.askers, engine.visibility, store)*
+          own(d.persona, engine.askers, store)*
         ) ++
           plugged.map(_.over(store, desks)))*
       )
@@ -419,19 +419,18 @@ private[grit] object Launch {
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
     * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`
-    * resolves them, explained under `visibility` and read through `store` ([[Cleared]]); the
+    * resolves them, explained as read through `store` ([[Cleared]]); the
     * kit alone holds the engine's askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
     */
   private[run] def own(
       persona: Persona,
       askers: Askers,
-      visibility: Visibility,
       store: Db^
   ): Vector[Tool.Offered^{store}] = {
     val about: Tool[Option[About.Subject]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
-    Vector[Tool.Offered^{store}](about, Cleared.tool(askers, visibility, store))
+    Vector[Tool.Offered^{store}](about, Cleared.tool(askers, store))
   }
 
   /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person

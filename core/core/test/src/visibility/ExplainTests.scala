@@ -3,6 +3,7 @@ package grit.core.visibility
 import grit.core.identity.{Evidence, Principal, TestAccounts}
 
 import utest.*
+import TestLabels.group
 
 /** What a person is told of their clearance names nothing the room's label does not dominate,
   * and shows their accounts by kind alone.
@@ -17,7 +18,7 @@ object ExplainTests extends TestSuite {
     ) {
       val told = sealedThread
       (
-        Before.cleared(Dana).dominates(confidentialBoth),
+        cleared(Before, Dana).dominates(confidentialBoth),
         told.room,
         told.beyond,
         told.groups.map(g => GroupName.value(g.group))
@@ -53,7 +54,7 @@ object ExplainTests extends TestSuite {
       "a person cleared for public, asked in a room labelled above that, is told of no group, and beyond is public"
     ) {
       val ed = TestAccounts.principal(TestAccounts.account("slack:T/U-ed"))
-      val told = Before.explain(Some(ed), confidentialBoth)
+      val told = explain(Before, Some(ed), confidentialBoth)
       (told.room, told.beyond, told.groups) ==> (confidentialBoth, Label.Public, Vector())
     }
 
@@ -82,11 +83,31 @@ object ExplainTests extends TestSuite {
     }
 
     test(
+      "a group a person was added to through grit is explained by the kind of the account added, apart from the deployment's own"
+    ) {
+      val ed = TestAccounts.account("slack:T/U-ed")
+      val told = explain(
+        After,
+        Some(TestAccounts.principal(ed)),
+        confidentialBoth,
+        Recorded(Map.empty, Map(group("leadership") -> Set(ed)))
+      )
+      told.groups.map(g =>
+        (
+          GroupName.value(g.group),
+          g.label,
+          g.through.map(Explanation.Namespace.value),
+          g.added.map(Explanation.Namespace.value)
+        )
+      ) ==> Vector(("leadership", confidentialBoth, Set(), Set("slack")))
+    }
+
+    test(
       "no one asking is told no one, beyond public; grit is grit, beyond the room's label; each in no group"
     ) {
       (
-        Before.explain(None, confidentialBoth),
-        Before.explain(Some(Principal.Grit), confidentialBoth)
+        explain(Before, None, confidentialBoth),
+        explain(Before, Some(Principal.Grit), confidentialBoth)
       ) ==> (
         Explanation(confidentialBoth, Label.Public, Explanation.Asker.Nobody, Vector()),
         Explanation(confidentialBoth, confidentialBoth, Explanation.Asker.Grit, Vector())

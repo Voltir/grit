@@ -15,6 +15,7 @@ import grit.core.identity.{
   Vouched
 }
 import grit.core.visibility.Visibility
+import grit.dbos.sql.TestTx
 
 /** An in-memory [[Voucher]] for tests, keeping [[VoucherContract]], for `realms`, keeping an
   * email only in one of `domains`, and saying each change's clearances as `visibility` clears
@@ -111,8 +112,10 @@ final class InMemoryVoucher(val realms: Set[Realm], domains: Set[Domain], visibi
       after <- whom(account).map(id => (id, held(id)))
     } yield {
       val (from, to) = (before._1, after._1)
-      val wasCleared = visibility.cleared(Principal.Person(from, before._2))
-      val nowCleared = visibility.cleared(Principal.Person(to, after._2))
+      val wasCleared =
+        Tx.clearanceOf(Principal.Person(from, before._2))(using TestTx.inForce(visibility))
+      val nowCleared =
+        Tx.clearanceOf(Principal.Person(to, after._2))(using TestTx.inForce(visibility))
       Vector(
         Option.when(was.email.isDefined && from != to)(
           Linking.Unlinked(account, from, wasCleared, nowCleared)

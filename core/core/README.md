@@ -44,7 +44,10 @@ In dependency order:
   `Compartments`, a deployment's closed set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
   deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
   is cleared for what; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
-  deployment injects it, refused as a `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
+  deployment injects it, refused as a `VisibilityRefusal`; `Recorded`, what is recorded beside
+  it (rooms' set labels, access and quiet, and people added to groups through grit), as a
+  transaction read it when it opened; `Item`, a labelled row as reading it is decided;
+  `Clearance`, what a
   transaction reads and the least label it writes at, what is said in a direct message read
   only in its own room; `Subject`, whom it is opened for; `Explanation`, what a person is told
   of their clearance, naming nothing above the room they ask in; and
@@ -88,8 +91,9 @@ In dependency order:
   current, an ended schedule), its stored form, how long each kind of target is kept (`Retention`: a window, or as
   its plugin declares), and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx` (opened for a
-  `Subject`, at the clearance it resolves to, ADR 0030, and labelling places as the
-  deployment does: where it may write outside grit, what it may read from a source, and
+  `Subject`, at the clearance it resolves to, ADR 0030, under the labels in force, the
+  deployment's and what is recorded beside them: each room's label and each person's
+  clearance, where it may write outside grit, what it may read from a source, and
   which services it may send a call's arguments to, ADR 0031), `Db` (reads), `Reads` (reads fixed to
   one subject, for code that must not choose), `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (a TUI session, a Slack thread, a task's run, or a direct message with one person, `Origin.Direct`, its room spelled by their account; and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),

@@ -18,19 +18,17 @@ import grit.core.identity.{
   Vouched
 }
 import grit.core.store.{LastWord, Linking, StoreError, Tx, Voucher}
-import grit.core.visibility.Visibility
 
 /** [[Voucher]] over `grit.attestations`, `grit.emails` and `grit.identities` (ADR 0032), for
   * `realms`, keeping an email only in one of `domains`, and saying each change's clearances as
-  * `visibility` clears people. A vouching that keeps an email takes that email's lock before it
-  * touches the account's row, always, so two vouchings never wait on each other in opposite
-  * orders; the row is one upsert, which a renewal leaves a heap-only update (`seen_at` is
+  * the transaction it runs in clears people ([[Tx.clearanceOf]]). A vouching that keeps an
+  * email takes that email's lock before it touches the account's row, always, so two vouchings
+  * never wait on each other in opposite orders; the row is one upsert, which a renewal leaves a heap-only update (`seen_at` is
   * unindexed).
   */
 private[dbos] final class SqlVoucher(
     val realms: Set[Realm],
-    domains: Set[Domain],
-    visibility: Visibility
+    domains: Set[Domain]
 ) extends Voucher {
   import SqlEntryStore.attempt
   import SqlVoucher.*
@@ -176,8 +174,8 @@ private[dbos] final class SqlVoucher(
     for {
       before <- before(account, was)
       after <- now(account)
-      wasCleared = visibility.cleared(before)
-      nowCleared = visibility.cleared(after)
+      wasCleared = Tx.clearanceOf(before)
+      nowCleared = Tx.clearanceOf(after)
     } yield {
       val (from, to) = (idOf(before), idOf(after))
       Vector(

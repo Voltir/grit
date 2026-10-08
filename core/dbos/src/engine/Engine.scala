@@ -169,7 +169,7 @@ final class Engine private (
     * trusts each for and the domains it claims.
     */
   def voucher(realms: Set[Realm], domains: Set[Domain]): Voucher =
-    new SqlVoucher(realms, domains, visibility)
+    new SqlVoucher(realms, domains)
 
   /** Ends now, in a transaction of its own, every attestation `identities` would not make: of an
     * account no realm it trusts holds, or holding an email in no domain it claims. Each is kept
@@ -183,7 +183,7 @@ final class Engine private (
     */
   def untrust(identities: Identities): Either[StoreError, Vector[Linking]] =
     Link.transaction(dataSource, opener)(
-      new SqlVoucher(identities.realms, identities.domains, visibility).untrust
+      new SqlVoucher(identities.realms, identities.domains).untrust
     )
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
@@ -532,7 +532,7 @@ final class Engine private (
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
     Link.transaction(dataSource, opener)(
       grit.dbos.sql.SqlRooms
-        .label(visibility, origin)
+        .label(origin)
         .flatMap(conversations.findOrCreate(origin, by, _))
         .map(_.id)
     )
@@ -611,7 +611,8 @@ object Engine {
     * day its cap counts, by `clock`. `visibility`'s compartments
     * are recorded as the ones the database runs under before anything else is written
     * ([[Unopened.Dropped]] when they drop one it ran under, having closed `lock` and claimed
-    * nothing). Throws, having closed `lock`, when either schema cannot be applied.
+    * nothing). Throws, having closed `lock`, when either schema cannot be applied, or what the
+    * database records of rooms and groups beside the declaration cannot be read.
     */
   def start(
       config: DbConfig,
@@ -648,16 +649,17 @@ object Engine {
 
   /** Records `visibility`'s compartments as the ones the database runs under
     * ([[SqlLabels.reconcile]]); the one they drop, if any. Throws when they cannot be read or
-    * written, as a schema that cannot be applied does.
+    * written, or the transaction recording them cannot open, as a schema that cannot be applied
+    * does.
     */
   private def compartmentsSetup(config: DbConfig, visibility: Visibility): Option[Compartment] =
     Using.resource(
       DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
     ) { conn =>
       conn.setAutoCommit(false)
-      SqlLabels.reconcile(visibility.compartments)(using
-        new Opener(visibility).maintained(conn)
-      ) match {
+      new Opener(visibility)
+        .maintained(conn)
+        .flatMap(tx => SqlLabels.reconcile(visibility.compartments)(using tx)) match {
         case Right(dropped) =>
           conn.commit()
           dropped

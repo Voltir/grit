@@ -44,7 +44,7 @@ object VouchingLiveTests extends TestSuite {
   ): Vector[Linking] = {
     val before = people(in)
     val said = LiveDb
-      .transaction(in)(by.vouch(Vouched(account, standing)))
+      .under(in, Seen)(by.vouch(Vouched(account, standing)))
       .fold(e => throw new java.lang.AssertionError(s"vouching: $e"), identity)
     assert(people(in) >= before)
     said
@@ -90,7 +90,7 @@ object VouchingLiveTests extends TestSuite {
 
   /** The clearance `turn` opens at, its asker cleared `asker`. */
   private def opensAt(turn: TurnRef, thread: String, asker: Label): Boolean =
-    LiveDb.transaction(config)(new Opener(Seen).clearance(Subject.Turn(turn))) ==
+    LiveDb.connected(config)(new Opener(Seen).clearance(Subject.Turn(turn), _)) ==
       Right(Clearance.inRoom(Origin.Slack("T1", "C1", thread).room, Confidential, asker))
 
   private def lastWord(account: Account): LastWord =
@@ -205,7 +205,7 @@ object VouchingLiveTests extends TestSuite {
       val said = vouch(a, full("same@example.com"), open, unclaimed)
       vouch(b, full("same@example.com"), open, unclaimed)
       val turn = asked(a, "6.0")(using unclaimed)
-      val opened = LiveDb.transaction(unclaimed)(new Opener(Seen).clearance(Subject.Turn(turn)))
+      val opened = LiveDb.connected(unclaimed)(new Opener(Seen).clearance(Subject.Turn(turn), _))
       (
         said,
         whom(a)(using unclaimed) == homeOf(a)(using unclaimed),
@@ -298,7 +298,7 @@ object VouchingLiveTests extends TestSuite {
         (1 to 100).foreach { _ =>
           open
             .vouch(Vouched(a, full("hot@example.com")))(using
-              LiveDb.Trialled.at(LiveDb.Everything, conn)
+              LiveDb.opened(new Opener(Seen).maintained(conn))
             )
             .fold(e => throw new java.lang.AssertionError(s"renewing: $e"), identity)
           conn.commit()

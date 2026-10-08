@@ -27,7 +27,7 @@ object TxVisibilityCaptureTests extends TestSuite {
          |    }
          |    val opened = Visibility
          |      .of(Compartments.Shipped, rooms, Vector.empty, Vector.empty)
-         |      .map(v => Tx.open(c, Clearance.of(Label.Public), v))
+         |      .map(v => Tx.open(c, Clearance.of(Label.Public), v, Recorded.Empty))
          |    val _ = opened
          |  }
          |}

@@ -2,7 +2,7 @@ package grit.dbos.sql
 
 import scala.util.Using
 
-import grit.core.place.Place
+import grit.core.place.{Namespace, Place}
 import grit.core.store.{StoreError, Tx}
 
 /** `grit.places`: each place grit has recorded anything at, by its segments. */
@@ -42,4 +42,14 @@ private[dbos] object SqlPlaces {
     * crosses JDBC.
     */
   def path(place: Place): String = ujson.Arr.from(place.segments.map(ujson.Str(_))).render()
+
+  /** The place whose segments `json` holds (`array_to_json(path)`); why not, when its first
+    * segment is no namespace's.
+    */
+  def read(json: String): Either[String, Place] =
+    ujson.read(json).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)) match {
+      case ns +: rest =>
+        Namespace.of(ns).map(Place.under(_, rest)).toRight(s"a place: no namespace $ns")
+      case _ => Right(Place.Everywhere)
+    }
 }

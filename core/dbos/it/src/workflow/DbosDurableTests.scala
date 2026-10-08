@@ -23,7 +23,13 @@ import org.postgresql.ds.PGSimpleDataSource
 /** [[DurableContract]] against [[DbosDurable]], on DBOS over a throwaway Postgres. */
 object DbosDurableTests extends DurableContract {
 
-  private lazy val shared: DbosRuntime = new DbosRuntime(TestPostgres.freshDatabase("durable"))
+  /* grit's schema applied first, as an engine's start applies it: a transaction step's
+   * transaction reads what is recorded of rooms and groups as it opens. */
+  private lazy val shared: DbosRuntime = {
+    val c = TestPostgres.freshDatabase("durable")
+    grit.dbos.engine.LiveEngine.open(c, "test").close()
+    new DbosRuntime(c)
+  }
 
   def runtime: DurableRuntime = shared
 

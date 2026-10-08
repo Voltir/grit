@@ -47,7 +47,7 @@ object SqlEdgesTests extends EdgesContract {
       conn =>
         conn.setAutoCommit(false)
         try {
-          val a = body(using new Opener(visibility).at(clearance, conn))
+          val a = body(using LiveDb.opened(new Opener(visibility).at(clearance, conn)))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }

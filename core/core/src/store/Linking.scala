@@ -5,7 +5,7 @@ import grit.core.identity.Account
 import grit.core.visibility.Label
 
 /** One change a vouching made, or why it made none. `was` and `now` are what writing through
-  * the account was cleared for before and after ([[grit.core.visibility.Visibility.cleared]]).
+  * the account was cleared for before and after ([[Tx.clearanceOf]]).
   * None holds an email.
   */
 enum Linking {

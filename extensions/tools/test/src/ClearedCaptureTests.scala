@@ -14,7 +14,7 @@ object ClearedCaptureTests extends TestSuite {
       s"""package outside
          |import grit.core.store.{Askers, Db, Tx}
          |import grit.core.tool.{Args, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
-         |import grit.core.visibility.{Subject, Visibility}
+         |import grit.core.visibility.Subject
          |import grit.tools.Cleared
          |trait Provider extends caps.SharedCapability { def call(): String }
          |object Probe {
@@ -25,7 +25,7 @@ object ClearedCaptureTests extends TestSuite {
 
   /* A model of `Cleared.tool` at its declared type, whose run does `runs` before reading. */
   private def model(runs: String): String =
-    s"""def tool(askers: Askers, v: Visibility, store: Db^, p: Provider^): Tool[Unit]^{store} =
+    s"""def tool(askers: Askers, store: Db^, p: Provider^): Tool[Unit]^{store} =
        |    Hosted[Unit](
        |      ToolSpec(ToolName("clearance"), "d", Args.of(NamedTuple.Empty).map(_ => ())),
        |      Gate.Free,
@@ -39,7 +39,7 @@ object ClearedCaptureTests extends TestSuite {
     test("control: the tool itself, and a model reading only the store, compile at that type") {
       (
         probe(
-          "def made(askers: Askers, v: Visibility, store: Db^): Tool[Unit]^{store} = Cleared.tool(askers, v, store)"
+          "def made(askers: Askers, store: Db^): Tool[Unit]^{store} = Cleared.tool(askers, store)"
         ),
         probe(model("()"))
       ) ==> (Nil, Nil)

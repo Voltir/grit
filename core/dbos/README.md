@@ -5,9 +5,12 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `Opener` (each transaction's clearance as it opens: a subject resolved from the rows it
-  names, or maintenance's for this module's own transactions, ADR 0030; and the one asker
-  rule, `Opener.asker`, a direct message's being its person's), `SqlRooms` (the label every
-  conversation is created at: a direct message's person's clearance, else its room's), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, the account that began it, one of `grit.identities`, and the label it was created at), `SqlIdentities` (each account an action came through, `grit.identities`, kept as its home, a new person's one account, when first seen, its person's id minted by Postgres under a lock on the account; and read back as the person `grit.links` says it is now: the person of the claimed email its realm's attestation holds, `grit.attestations` and `grit.emails`, else its home, ADR 0032), `SqlVoucher` (what a trusted realm says of each of its accounts, `grit.attestations`, each claimed email's person minted under a lock on the address taken before the account's row, so two vouchings never wait on each other in opposite orders), `SqlUsageLedger`,
+  names, or maintenance's for this module's own transactions, ADR 0030, under the labels in
+  force read as it opens; and the one asker rule, `Opener.asker`, a direct message's being its
+  person's), `SqlRecorded` (what is recorded beside the deployment's declaration, `grit.rooms`
+  and `grit.group_members`, read whole as each transaction opens), `SqlPlaces` (each place,
+  `grit.places`, found or made), `SqlRooms` (the label every conversation is created at: a
+  direct message's person's clearance, else its room's label in force), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, the account that began it, one of `grit.identities`, and the label it was created at), `SqlIdentities` (each account an action came through, `grit.identities`, kept as its home, a new person's one account, when first seen, its person's id minted by Postgres under a lock on the account; and read back as the person `grit.links` says it is now: the person of the claimed email its realm's attestation holds, `grit.attestations` and `grit.emails`, else its home, ADR 0032), `SqlVoucher` (what a trusted realm says of each of its accounts, `grit.attestations`, each claimed email's person minted under a lock on the address taken before the account's row, so two vouchings never wait on each other in opposite orders), `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelSettingStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one

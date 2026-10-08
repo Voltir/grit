@@ -14,7 +14,7 @@ import grit.dbos.sql.{Opener, SqlEntryStore}
 private[engine] object Transact {
 
   /** `body` in a read-write transaction at `opener`'s maintenance, committed on `Right`, rolled
-    * back otherwise.
+    * back otherwise; the opener's error, and no body run, when the transaction cannot open.
     */
   def write[A](
       dataSource: DataSource,
@@ -24,14 +24,16 @@ private[engine] object Transact {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using opener.maintained(conn))
+          try opener.maintained(conn).flatMap(tx => body(using tx))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         if (result.isRight) conn.commit() else conn.rollback()
         result
       }
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
-  /** `body` in a read-only transaction at `opener`'s maintenance. */
+  /** `body` in a read-only transaction at `opener`'s maintenance; the opener's error, and no
+    * body run, when the transaction cannot open.
+    */
   def read[A](
       dataSource: DataSource,
       opener: Opener
@@ -40,7 +42,7 @@ private[engine] object Transact {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         conn.setReadOnly(true)
-        try body(using opener.maintained(conn))
+        try opener.maintained(conn).flatMap(tx => body(using tx))
         finally conn.rollback()
       }
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }

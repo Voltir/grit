@@ -2,6 +2,8 @@ package grit.core.visibility
 
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
 import grit.core.place.Service
+import grit.core.store.Tx
+import grit.dbos.sql.TestTx
 
 import utest.*
 import TestLabels.{compartment, group, place}
@@ -49,16 +51,33 @@ object VisibilityTests extends TestSuite {
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
 
   val tests = Tests {
+    test(
+      "a room's label, a clearance and an explanation are read only on a transaction, never " +
+        "from the declaration alone, which knows nothing set through grit"
+    ) {
+      import scala.compiletime.testing.typeChecks
+      assert(
+        typeChecks("Visibility.Shipped.trusted(github)"),
+        !typeChecks("Visibility.Shipped.roomLabel(place(\"slack:acme/C1\"))"),
+        !typeChecks("Visibility.Shipped.cleared(Principal.Grit)"),
+        !typeChecks("Visibility.Shipped.explain(None, Label.Public)")
+      )
+    }
+
     test("a person is cleared for the join of their groups' grants, and no one else for any") {
-      visibility.cleared(person(ana -> false)) ==> Label.at(Level.Confidential, trial, acme)
-      visibility.cleared(person(bo -> false)) ==> Label.at(Level.Confidential, acme)
-      visibility.cleared(person(TestAccounts.account("test:cy") -> false)) ==> Label.Public
+      Explained
+        .cleared(visibility, person(ana -> false)) ==> Label.at(Level.Confidential, trial, acme)
+      Explained.cleared(visibility, person(bo -> false)) ==> Label.at(Level.Confidential, acme)
+      Explained.cleared(
+        visibility,
+        person(TestAccounts.account("test:cy") -> false)
+      ) ==> Label.Public
     }
 
     test("a person holding several accounts is cleared for the join over the groups of each") {
       (
-        visibility.cleared(person(bo -> false, anaAtWork -> false)),
-        visibility.cleared(person(anaAtWork -> false, bo -> false))
+        Explained.cleared(visibility, person(bo -> false, anaAtWork -> false)),
+        Explained.cleared(visibility, person(anaAtWork -> false, bo -> false))
       ) ==> (Label.at(Level.Restricted, acme), Label.at(Level.Restricted, acme))
     }
 
@@ -68,21 +87,34 @@ object VisibilityTests extends TestSuite {
     ) {
       val outsider = TestAccounts.account("slack:T10/U1")
       (
-        visibility.cleared(person(TestAccounts.account("slack:T1/U1") -> true)),
-        visibility.cleared(person(TestAccounts.account("slack:T1/U1") -> false)),
-        visibility.cleared(person(outsider -> true))
+        Explained.cleared(visibility, person(TestAccounts.account("slack:T1/U1") -> true)),
+        Explained.cleared(visibility, person(TestAccounts.account("slack:T1/U1") -> false)),
+        Explained.cleared(visibility, person(outsider -> true))
       ) ==> (Label.at(Level.Internal, trial), Label.Public, Label.Public)
     }
 
+    test(
+      "a person added to a declared group through grit is cleared for its grants as a declared member is; an account added to a group not declared clears for nothing"
+    ) {
+      val cy = TestAccounts.account("test:cy")
+      val recorded = Recorded(
+        Map.empty,
+        Map(group("trial-team") -> Set(bo), group("not-declared") -> Set(cy))
+      )
+      given Tx = TestTx.inForce(visibility, recorded)
+      (Tx.clearanceOf(person(bo -> false)), Tx.clearanceOf(person(cy -> false))) ==>
+        (Label.at(Level.Confidential, trial, acme), Label.Public)
+    }
+
     test("grit is cleared for every declared compartment at the top level") {
-      visibility.cleared(Principal.Grit) ==>
+      Explained.cleared(visibility, Principal.Grit) ==>
         Label.at(Level.Restricted, trial, acme, Compartment.Unmapped)
     }
 
     test("the shipped visibility clears no one beyond public and labels every room public") {
       (
-        Visibility.Shipped.cleared(person(ana -> false)),
-        Visibility.Shipped.roomLabel(place("slack:acme/C1"))
+        Explained.cleared(Visibility.Shipped, person(ana -> false)),
+        Tx.roomLabel(place("slack:acme/C1"))(using TestTx.inForce(Visibility.Shipped))
       ) ==> (Label.Public, Label.Public)
     }
 
@@ -99,7 +131,10 @@ object VisibilityTests extends TestSuite {
           grants
         )
         .fold(r => throw new java.lang.AssertionError(r.toString), identity)
-      (internal.roomLabel(place("direct:slack/T/U")), internal.roomLabel(place("slack:T/C"))) ==>
+      {
+        given Tx = TestTx.inForce(internal)
+        (Tx.roomLabel(place("direct:slack/T/U")), Tx.roomLabel(place("slack:T/C")))
+      } ==>
         (compartments.top, Label.at(Level.Internal))
     }
 

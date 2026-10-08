@@ -26,6 +26,13 @@ object LiveDb {
   /** What opens these transactions: [[TestLabels.Trialled]]'s. */
   lazy val Trialled: Opener = new Opener(TestLabels.Trialled)
 
+  /** `tx`, opened; throws, failing the test, when it could not be. */
+  def opened[C^](tx: Either[StoreError, Tx^{C}]): Tx^{C} =
+    tx match {
+      case Right(t) => t
+      case Left(e) => throw new java.lang.AssertionError(s"a transaction did not open: $e")
+    }
+
   /** Runs `body` in one transaction on `config`'s database, opened at `clearance`: committed
     * if it returns, rolled back if it throws.
     */
@@ -34,10 +41,21 @@ object LiveDb {
       conn =>
         conn.setAutoCommit(false)
         try {
-          val a = body(using Trialled.at(clearance, conn))
+          val a = body(using opened(Trialled.at(clearance, conn)))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }
+    }
+
+  /** `body` given a connection to `config`'s database in a transaction of its own, rolled back
+    * after.
+    */
+  def connected[A](config: DbConfig)(body: (c: java.sql.Connection^) => A): A =
+    Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+      conn =>
+        conn.setAutoCommit(false)
+        try body(conn)
+        finally conn.rollback()
     }
 
   /** Runs `body` as [[transaction]] does, at maintenance's clearance, labelling places as
@@ -49,7 +67,7 @@ object LiveDb {
         conn.setAutoCommit(false)
         try {
           val opener = new Opener(visibility)
-          val a = body(using opener.maintained(conn))
+          val a = body(using opened(opener.maintained(conn)))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }

@@ -87,8 +87,8 @@ object PeopleLiveTests extends TestSuite {
       val turn = TurnRef(LiveDb.conversation(config, origin, TestLabels.Trial).id, TurnSeq.First)
       LiveDb.asking(config, turn, ana, None)
       attestedOneEmail(config, ana, TestLabels.Trialist)
-      LiveDb.transaction(config)(
-        new Opener(TestLabels.Trialled).clearance(Subject.Turn(turn))
+      LiveDb.connected(config)(
+        new Opener(TestLabels.Trialled).clearance(Subject.Turn(turn), _)
       ) ==> Right(Clearance.inRoom(origin.room, TestLabels.Trial, TestLabels.Trial))
     }
 

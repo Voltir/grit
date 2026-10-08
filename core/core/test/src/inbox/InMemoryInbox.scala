@@ -149,9 +149,10 @@ final class InMemoryInbox(
     * clearance now; any other's, its room's.
     */
   private def labelOf(origin: Origin): Label = origin match {
-    case Origin.Direct(account, _) => visibility.cleared(person(account))
+    case Origin.Direct(account, _) =>
+      Tx.clearanceOf(person(account))(using TestTx.inForce(visibility))
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
-      visibility.roomLabel(origin.room)
+      Tx.roomLabel(origin.room)(using TestTx.inForce(visibility))
   }
 
   def hear(
@@ -170,7 +171,7 @@ final class InMemoryInbox(
           source,
           Payload.Heard(text),
           by,
-          visibility.roomLabel(origin.room),
+          Tx.roomLabel(origin.room)(using TestTx.inForce(visibility)),
           at,
           capped = false
         )
@@ -279,7 +280,7 @@ final class InMemoryInbox(
               conversation <- conversations.findOrCreate(
                 origin,
                 by,
-                visibility.roomLabel(origin.room)
+                Tx.roomLabel(origin.room)(using TestTx.inForce(visibility))
               )
               next <- entries.lockNext(conversation.id)
               _ <- periods.openFor(conversation.id, next.turnSeq, at)

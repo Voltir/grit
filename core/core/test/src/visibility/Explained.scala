@@ -1,6 +1,8 @@
 package grit.core.visibility
 
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
+import grit.core.store.Tx
+import grit.dbos.sql.TestTx
 
 import TestLabels.{compartment, group}
 
@@ -62,6 +64,19 @@ object Explained {
       )
     )
 
+  /** `principal`'s clearance in a transaction under `v`, nothing recorded beside it. */
+  def cleared(v: Visibility, principal: Principal): Label =
+    Tx.clearanceOf(principal)(using TestTx.inForce(v))
+
+  /** What `asker` is told in a room labelled `room`, in a transaction under `v` and `recorded`. */
+  def explain(
+      v: Visibility,
+      asker: Option[Principal],
+      room: Label,
+      recorded: Recorded = Recorded.Empty
+  ): Explanation =
+    Tx.explain(asker, room)(using TestTx.inForce(v, recorded))
+
   /** Whether `text` holds any of `names`. */
   def names(text: String, names: String*): Vector[String] =
     names.toVector.filter(text.contains)
@@ -74,13 +89,13 @@ object Explained {
     * below leadership's grant.
     */
   def sealedThread: Explanation =
-    Before.explain(Some(Dana), restrictedTrial.meet(Before.cleared(Dana)))
+    explain(Before, Some(Dana), restrictedTrial.meet(cleared(Before, Dana)))
 
   /** A direct thread begun at confidential·trial, Dana since added to leadership. */
-  def raisedThread: Explanation = Before.explain(Some(Dana), confidentialTrial)
+  def raisedThread: Explanation = explain(Before, Some(Dana), confidentialTrial)
 
   /** Dana asked at her full clearance. */
-  def fullClearance: Explanation = Before.explain(Some(Dana), Before.cleared(Dana))
+  def fullClearance: Explanation = explain(Before, Some(Dana), cleared(Before, Dana))
 
   /** What no explanation of [[sealedThread]] or [[raisedThread]] may hold: the compartment and
     * group they do not dominate.

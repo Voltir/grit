@@ -95,7 +95,7 @@ object AttestingLiveTests extends TestSuite {
     ds.setUser(config.user)
     ds.setPassword(config.password)
     new Attesting(
-      wrap(new SqlVoucher(Set(realm), Claimed, Seen)),
+      wrap(new SqlVoucher(Set(realm), Claimed)),
       new SqlJot(ds, new Opener(Seen)),
       r => { val _ = reports.add(r) }
     )
@@ -107,7 +107,7 @@ object AttestingLiveTests extends TestSuite {
   /** How long ago `account` was last answered for, by the database's clock. */
   private def ago(account: Account): Option[FiniteDuration] =
     LiveDb
-      .transaction(config)(new SqlVoucher(Set.empty, Set.empty, Seen).lastWord(account))
+      .transaction(config)(new SqlVoucher(Set.empty, Set.empty).lastWord(account))
       .fold(e => throw new java.lang.AssertionError(s"$e"), _.ago)
 
   private def recent(account: Account): Boolean = ago(account).exists(_ < 5.seconds)
@@ -342,7 +342,7 @@ object AttestingLiveTests extends TestSuite {
       val checks = attesting(realm, new ConcurrentLinkedQueue)
       LiveDb
         .transaction(config)(
-          new SqlVoucher(Set(realm), Claimed, Seen).vouch(Vouched(a, full("away@example.com")))
+          new SqlVoucher(Set(realm), Claimed).vouch(Vouched(a, full("away@example.com")))
         )
         .fold(e => throw new java.lang.AssertionError(s"vouching: $e"), identity)
       val person = LiveDb.principal(config, a)

@@ -16,19 +16,18 @@ import grit.core.store.{Origin, StoreError}
   */
 trait Inbox extends caps.SharedCapability {
 
-  /** Records `message` from `origin`'s conversation, written through `by`, as the first entry
-    * of a new turn, and returns that turn; an account not seen before is, unnamed, a new
-    * person's one account. The conversation is created by `by` if it is new, at
-    * its room's label ([[grit.core.visibility.Visibility.roomLabel]]), a direct message's at
-    * its person's clearance then. A
+  /** Records `message` from `origin`'s conversation, written through `by`, as the first entry of a
+    * new turn, and returns that turn; an account not seen before is, unnamed, a new person's one
+    * account. The conversation is created by `by` if it is new, at its room's label
+    * ([[grit.core.store.Tx.roomLabel]]), a direct message's at its person's clearance then. A
     * message whose `source` id was already recorded for `origin` is not recorded again: its
-    * existing turn is returned, with its first author, whatever was spent. A new message once
-    * the day's recorded spend has reached the inbox's cap ([[grit.core.spend.Budget]]) is
+    * existing turn is returned, with its first author, whatever was spent. A new message once the
+    * day's recorded spend has reached the inbox's cap ([[grit.core.spend.Budget]]) is
     * [[InboxError.OverCap]]: nothing is recorded, its conversation not even created.
-    * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]] whose account is not `by`:
-    * a person writes only their own direct message. [[InboxError.Sealed]] for a new message in
-    * a direct message's thread begun when its person was cleared for more than they are now:
-    * nothing is recorded, and a message in a new thread begins one at their clearance now.
+    * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]] whose account is not `by`: a
+    * person writes only their own direct message. [[InboxError.Sealed]] for a new message in a
+    * direct message's thread begun when its person was cleared for more than they are now: nothing
+    * is recorded, and a message in a new thread begins one at their clearance now.
     */
   def ingest(
       origin: Origin,

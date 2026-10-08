@@ -111,6 +111,103 @@ object TxTests extends TestSuite {
       (Tx.writable(undeclared), Tx.writable(public)) ==> (None, Some(Label.Public))
     }
 
+    test("labels in force") {
+      /* Declared at its own place, an open room's default, and everywhere else `otherwise`. */
+      val labels = RoomLabels
+        .of(
+          Vector(room -> confidentialTrial),
+          Labelled.Mapped(Label.Public),
+          Some(Labelled.Mapped(internal))
+        )
+        .fold(p => throw new java.lang.AssertionError(p.written), identity)
+      val inForce = Visibility
+        .of(
+          Compartments
+            .of(Vector(trial, finance))
+            .fold(c => throw new java.lang.AssertionError(c), identity),
+          labels,
+          Vector.empty,
+          Vector.empty
+        )
+        .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+      def kept(
+          access: Option[RoomAccess] = None,
+          label: Option[Label] = None,
+          quiet: Boolean = false
+      ) =
+        Recorded.Kept(access, label, quiet)
+      def under(rooms: (Place, Recorded.Kept)*): Tx =
+        TestTx.fake(Clearance.of(Label.Public), inForce, Recorded(rooms.toMap, Map.empty))
+
+      test(
+        "a label set through grit is in force over the one declared at its place and over the access default; a direct message's room stays top"
+      ) {
+        given Tx = under(
+          room -> kept(label = Some(internalFinance)),
+          public -> kept(access = Some(RoomAccess.Open), label = Some(confidentialTrial)),
+          place("direct:slack/T/U") -> kept(label = Some(Label.Public))
+        )
+        (Tx.roomLabel(room), Tx.roomLabel(public), Tx.roomLabel(place("direct:slack/T/U"))) ==>
+          (
+            internalFinance,
+            confidentialTrial,
+            Label.at(Level.Restricted, trial, finance, Compartment.Unmapped)
+          )
+        (Tx.writable(room), Tx.writable(public)) ==> (
+          Some(internalFinance),
+          Some(confidentialTrial)
+        )
+      }
+
+      test(
+        "a set label holding a compartment not declared is in force at unmapped, and so not writable"
+      ) {
+        given Tx = under(room -> kept(label = Some(Label.at(Level.Internal, ops))))
+        (Tx.roomLabel(room), Tx.writable(room)) ==>
+          (Label.at(Level.Internal, Compartment.Unmapped), None)
+      }
+
+      test(
+        "with nothing set or declared at its place, a room's reported access picks its default: open for open, unmapped for invited, otherwise the declared map"
+      ) {
+        given Tx = under(
+          sameLevel -> kept(access = Some(RoomAccess.Open)),
+          above -> kept(access = Some(RoomAccess.Invited)),
+          room -> kept(access = Some(RoomAccess.Invited))
+        )
+        (
+          Vector(sameLevel, above, unplaced, room).map(Tx.roomLabel),
+          Vector(sameLevel, above, unplaced).map(Tx.access)
+        ) ==> (
+          Vector(internal, unmapped, Label.Public, confidentialTrial),
+          Vector(Some(RoomAccess.Open), Some(RoomAccess.Invited), None)
+        )
+      }
+
+      test("a quiet room is never writable, though its label is; a room not quiet is") {
+        given Tx = under(
+          room -> kept(quiet = true),
+          sameLevel -> kept(label = Some(confidentialTrial), quiet = true),
+          public -> kept()
+        )
+        (
+          Vector(room, sameLevel, public).map(Tx.quiet),
+          Vector(room, sameLevel, public).map(Tx.writable)
+        ) ==> (Vector(true, true, false), Vector(None, None, Some(Label.Public)))
+      }
+
+      test(
+        "a source is read from at the label in force: one raised through grit above the reader is not read"
+      ) {
+        given Tx = TestTx.fake(
+          Clearance.inRoom(room, confidentialTrial, internal),
+          inForce,
+          Recorded(Map(public -> kept(label = Some(Label.at(Level.Restricted)))), Map.empty)
+        )
+        Tx.readsFrom(public) ==> false
+      }
+    }
+
     test("a source is read from up to the room's label in its own room, elsewhere up to the meet") {
       given Tx = inRoom(internal)
       Vector(room, github.place, jira.place, unplaced).map(Tx.readsFrom) ==>

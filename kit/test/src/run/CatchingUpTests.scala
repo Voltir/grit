@@ -108,13 +108,26 @@ object CatchingUpTests extends TestSuite {
   private def said(visibility: Visibility): Vector[String] =
     declined(visibility, new SetClock(Instant.EPOCH))._1
 
-  /** What a catch-up of `unheard`, read since the epoch, says under `visibility`, declined, its
-    * clock `clock`; and the time its source was opened at.
-    */
+  /** As [[declined]], each room's label read by `labelled`; and what the catch-up returned. */
   private def declined(
       visibility: Visibility,
       clock: SetClock
   ): (Vector[String], Vector[Instant]) = {
+    val (lines, opened, _) = labelledBy(
+      place => Right(Tx.roomLabel(place)(using TestTx.inForce(visibility))),
+      clock
+    )
+    (lines, opened)
+  }
+
+  /** What a catch-up of `unheard`, read since the epoch, says with each room's label read by
+    * `labelled`, declined, its clock `clock`; the time its source was opened at; and what it
+    * returned.
+    */
+  private def labelledBy(
+      labelled: Place => Either[String, Label],
+      clock: SetClock
+  ): (Vector[String], Vector[Instant], Either[KitFailure, Unit]) = {
     val lines = Vector.newBuilder[String]
     val opened = Vector.newBuilder[Instant]
     val catchUp = new CatchUp {
@@ -135,12 +148,12 @@ object CatchingUpTests extends TestSuite {
         })
       }
     }
-    val _ = CatchingUp.run(
+    val returned = CatchingUp.run(
       catchUp,
       stores,
       Map.empty,
       budget,
-      visibility,
+      labelled,
       clock,
       () => Right(BigDecimal(0)),
       () => Right(Swept.nothing),
@@ -148,7 +161,7 @@ object CatchingUpTests extends TestSuite {
       _ => false,
       lines += _
     )
-    (lines.result(), opened.result())
+    (lines.result(), opened.result(), returned)
   }
 
   private val epoch = LocalDate.parse("1970-01-01")
@@ -163,6 +176,16 @@ object CatchingUpTests extends TestSuite {
         CatchingUp.Relabel,
         "backfill: nothing heard"
       )
+    }
+
+    test(
+      "a room whose label cannot be read refuses the catch-up before anything is said or heard"
+    ) {
+      val (lines, _, returned) = labelledBy(
+        place => if (place == general.place) Left("down") else Right(Label.Public),
+        new SetClock(Instant.EPOCH)
+      )
+      (lines, returned) ==> (Vector(), Left(KitFailure.Store("a room's label is unread: down")))
     }
 
     test("a catch-up's source is opened at its clock's time") {

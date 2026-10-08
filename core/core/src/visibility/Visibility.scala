@@ -1,11 +1,12 @@
 package grit.core.visibility
 
-import grit.core.identity.{Held, Principal}
 import grit.core.place.{Place, Service}
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
   * compartments, the labeller of its rooms, its groups and what each group's members are
-  * cleared for, and what it trusts each outside service with.
+  * cleared for, and what it trusts each outside service with. What a room is labelled and a
+  * person is cleared for in force is read on a transaction ([[grit.core.store.Tx.roomLabel]],
+  * [[grit.core.store.Tx.clearanceOf]]), which adds what is recorded through grit.
   */
 final case class Visibility private (
     compartments: Compartments,
@@ -16,58 +17,6 @@ final case class Visibility private (
     administrators: Option[GroupName],
     stewards: Vector[Steward]
 ) {
-
-  /** `principal`'s clearance: grit's is [[Compartments.top]]; a person's, the join of the
-    * grants of every group they are in ([[Group]]), or [[Label.Public]].
-    */
-  def cleared(principal: Principal): Label =
-    principal match {
-      case Principal.Grit => compartments.top
-      case Principal.Person(_, held) =>
-        memberships(held).map(_.label).foldLeft(Label.Public)(_.join(_))
-    }
-
-  /** What `asker` (`None`: no one asked) is told of their clearance in a room labelled `room`
-    * ([[Explanation]]).
-    */
-  def explain(asker: Option[Principal], room: Label): Explanation = {
-    val (who, in) = asker match {
-      case None => (Explanation.Asker.Nobody, Vector.empty)
-      case Some(Principal.Grit) => (Explanation.Asker.Grit, Vector.empty)
-      case Some(Principal.Person(_, held)) =>
-        val shown = held.toVector
-          .map(h => Explanation.Shown(Explanation.Namespace.of(h.account), h.evidence, h.member))
-          .sortBy(s => (s.namespace, s.evidence.ordinal, s.member))
-        (Explanation.Asker.Person(shown), memberships(held).filter(i => room.dominates(i.label)))
-    }
-    Explanation(room, room.meet(asker.fold(Label.Public)(cleared)), who, in)
-  }
-
-  /** Each group `held`'s person is in, in the deployment's order, with the join of its grants
-    * and the kinds of the accounts and realms that put them in it.
-    */
-  private def memberships(held: Set[Held]): Vector[Explanation.In] =
-    groups.flatMap { g =>
-      val through = held.filter(h => g.accounts.contains(h.account))
-      val members = g.realms.filter(r => held.exists(h => h.member && r.holds(h.account)))
-      Option.when(through.nonEmpty || members.nonEmpty)(
-        Explanation.In(
-          g.name,
-          grants.filter(_.group == g.name).map(_.label).foldLeft(Label.Public)(_.join(_)),
-          through.map(h => Explanation.Namespace.of(h.account)),
-          members.map(Explanation.Namespace.of)
-        )
-      )
-    }
-
-  /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the
-    * one [[rooms]] gives it as a room whose access is not reported, a compartment not declared kept at [[Compartment.Unmapped]]
-    * instead ([[Compartments.admit]]). A direct message's room ([[Place.direct]]) is
-    * [[Compartments.top]]: its label is its person's clearance, which only a transaction can
-    * resolve (ADR 0032), so anything labelling it without one fails high.
-    */
-  def roomLabel(room: Place): Label =
-    if (room.direct) compartments.top else compartments.admit(rooms.label(Room(room, None)).label)
 
   /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
     * declared.
@@ -101,8 +50,9 @@ object Visibility {
     * `rooms.requires`, a grant or a trust (`Undeclared`, saying where); two groups of one name;
     * a grant to a group not declared; a service trusted twice; or `administrators` naming no
     * declared group (`NoSuchGroup`), or a compartment's own group, the one named as it
-    * (`AdministersCompartment`), which people cleared for it through grit join. `administrators`' declared
-    * members alone may make the changes reserved to administrators; with none, no one may. A
+    * (`AdministersCompartment`), which people cleared for it through grit join.
+    * `administrators`' declared members alone may make the changes reserved to administrators;
+    * with none, no one may. A
     * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
     * [[Compartment.Unmapped]] (`StewardsUnmapped`), through a group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),

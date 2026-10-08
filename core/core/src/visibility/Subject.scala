@@ -8,16 +8,16 @@ import grit.core.id.TurnRef
   */
 enum Subject {
 
-  /** A turn, read for the person it answers: everything recorded or kept in its conversation's
-    * room up to the label its conversation was created with; anything else, other rooms and
-    * documents kept in none included, up to that label met with its asker's clearance
-    * ([[Visibility.cleared]]). The asker, resolved when the transaction opens, with every
-    * account linked to them then: in a direct message ([[grit.core.store.Origin.Direct]]), the
-    * person its account is linked to, whoever wrote the turn's first entry; in a job's run,
-    * grit; otherwise the author of the turn's first entry when that entry is inbound, grit when
-    * it is grit's own, and no one, whose clearance is public, when it has none. In a direct
-    * message, the label its room is read up to is also met with that person's clearance now,
-    * as for [[Conversation]]. A turn whose conversation is gone reads only what is public.
+  /** A turn, read for the person it answers: everything recorded or kept in its conversation's room
+    * up to the label its conversation was created with; anything else, other rooms and documents
+    * kept in none included, up to that label met with its asker's clearance
+    * ([[grit.core.store.Tx.clearanceOf]]). The asker, resolved when the transaction opens, with
+    * every account linked to them then: in a direct message ([[grit.core.store.Origin.Direct]]),
+    * the person its account is linked to, whoever wrote the turn's first entry; in a job's run,
+    * grit; otherwise the author of the turn's first entry when that entry is inbound, grit when it
+    * is grit's own, and no one, whose clearance is public, when it has none. In a direct message,
+    * the label its room is read up to is also met with that person's clearance now, as for
+    * [[Conversation]]. A turn whose conversation is gone reads only what is public.
     */
   case Turn(turn: TurnRef)
 
