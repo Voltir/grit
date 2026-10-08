@@ -246,6 +246,22 @@ abstract class DeskContract extends TestSuite {
         listed(sameRoom)
       ) ==> (Right(Vector()), Left(DeskRefusal.NotFound(id)), Right(Vector(id)))
     }
+
+    test(
+      "pending asked from another {trial} room lists the asker's own asked in a {trial} room " +
+        "once a person has added them through grit to the group trial is granted to"
+    ) {
+      val u = fresh()
+      val trial = u.turn(Origin.Slack("T1", "C9", "2.6"), TestLabels.Trial)
+      val other = u.turn(Origin.Slack("T1", "C7", "2.7"), TestLabels.Trial)
+      u.added(Ann, TestLabels.group("trialists"))
+      u.asking(trial, Ann, Some("C9/2.6"))
+      u.asking(other, Ann, Some("C7/2.7"))
+      val desk = u.desk(reminders, Vector(remind.name), new SetClock(at("09:00")))
+      val id = asked(ask(desk, TestCallSlots.at(trial), When.In(30.minutes)))
+      desk.pending(TestCallSlots.at(other), booking(remind)).map(_.schedules.map(_.id)) ==>
+        Right(Vector(id))
+    }
   }
 
   /** The label of the schedule `by` asks for from thread `thread` of a `{trial}` room. */

@@ -18,7 +18,7 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.{Label, Level, TestLabels}
+import grit.core.visibility.{GroupName, Label, Level, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -242,6 +242,9 @@ object ScheduleContract {
       * nowhere.
       */
     def asking(turn: TurnRef, by: Account, address: Option[String]): Unit
+
+    /** Has a person add `account` to `group` through grit, as a command would. */
+    def added(account: Account, group: GroupName): Unit
 
     /** The person `account`, an asker already recorded, is linked to, as the store keeps it. */
     def principal(account: Account): PrincipalId

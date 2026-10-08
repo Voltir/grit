@@ -74,7 +74,7 @@ final class InMemoryInbox(
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
 
   /** The schedules whose slots [[startSlot]] starts. */
-  val schedules: InMemorySchedules = new InMemorySchedules()
+  val schedules: InMemorySchedules = new InMemorySchedules(records = records)
 
   /** Where each heard message could be answered, over [[entries]] and [[ledger]]. */
   val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger)

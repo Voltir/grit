@@ -8,21 +8,22 @@ import grit.core.identity.{Account, TestAccounts}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
-import grit.core.visibility.{Clearance, Item, Label, Visibility}
+import grit.core.visibility.{Clearance, InMemoryRecorded, Item, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
   * [[ScheduleContract]] and [[DeskContract]]. What a desk derives from a call's turn in the
   * database (who asked, where its reply is posted, what a transaction opened for it reads) it
-  * reads from what [[asking]] recorded, resolving the asker's clearance under `visibility` as
-  * an opener would. It marks ended schedules in `tombstones`, and ignores the `Tx`: nothing is
+  * reads from what [[asking]] recorded, resolving the asker's clearance under `visibility` and
+  * what `records` holds when the desk is called, as an opener would. It marks ended schedules in `tombstones`, and ignores the `Tx`: nothing is
   * rolled back. An asker is the person of that one account, by its spelling
   * ([[TestAccounts.principal]]), whom no realm attests a member: it links no two accounts, so a
   * schedule asked through an account linked to another is pinned only by the SQL suites.
   */
 final class InMemorySchedules(
     val tombstones: InMemoryTombstones = new InMemoryTombstones(),
-    visibility: Visibility = Visibility.Shipped
+    visibility: Visibility = Visibility.Shipped,
+    records: InMemoryRecorded = new InMemoryRecorded()
 ) extends ScheduleStore {
   import InMemorySchedules.Row
 
@@ -30,10 +31,10 @@ final class InMemorySchedules(
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[ScheduleId, Row]
 
-  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, its room,
-  // and the clearance a transaction opened for it holds.
+  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, its room, and
+  // its conversation's label.
   @caps.unsafe.untrackedCaptures
-  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination], Place, Clearance)]
+  private var turns = Map.empty[TurnRef, (Account, Option[Destination], Place, Label)]
 
   /** `turn`, of `from`'s conversation, created at `label`, recorded as rooted on a message `by`
     * wrote, its reply posted at `address`, or nowhere: what the database holds of a turn as its
@@ -45,19 +46,19 @@ final class InMemorySchedules(
       by: Account,
       address: Option[String],
       label: Label = Label.Public
-  ): Unit = {
-    // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
-    val clearance =
-      Clearance.inRoom(
-        from.room,
-        label,
-        Tx.clearanceOf(TestAccounts.principal(by))(using TestTx.inForce(visibility))
-      )
-    turns = turns.updated(
-      turn,
-      (TestAccounts.principalId(by), address.map(Destination(from.edge, _)), from.room, clearance)
-    )
-  }
+  ): Unit =
+    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), from.room, label))
+
+  /** `turn`'s asker, where its reply is posted, and the clearance a transaction opened for it
+    * now holds; `None` for a turn never recorded.
+    */
+  private def asker(turn: TurnRef): Option[(PrincipalId, Option[Destination], Place, Clearance)] =
+    turns.get(turn).map { (by, to, room, label) =>
+      // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
+      val cleared =
+        Tx.clearanceOf(TestAccounts.principal(by))(using TestTx.inForce(visibility, records.now))
+      (TestAccounts.principalId(by), to, room, Clearance.inRoom(room, label, cleared))
+    }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
     * starts one.
@@ -216,7 +217,7 @@ final class InMemorySchedules(
           asked <- rows.get(id) match {
             case Some(r) => kept(id, r, booking.job)
             case None =>
-              turns.get(call.turn) match {
+              asker(call.turn) match {
                 case Some((by, Some(to), room, clearance)) =>
                   val now = clock.now()
                   val at = Slot.kept(when.from(now))
@@ -254,7 +255,7 @@ final class InMemorySchedules(
         own(booking).map { _ =>
           val now = clock.now()
           val mine =
-            turns.get(call.turn).fold(Vector.empty)((by, _, _, c) => pendingOf(by).filter(read(c)))
+            asker(call.turn).fold(Vector.empty)((by, _, _, c) => pendingOf(by).filter(read(c)))
           Pending(
             now,
             mine
@@ -266,11 +267,11 @@ final class InMemorySchedules(
 
       def cancel(call: CallSlot, booking: Booking[?], id: ScheduleId): Either[DeskRefusal, Unit] =
         own(booking).flatMap { _ =>
-          val asker = turns.get(call.turn)
+          val asking = asker(call.turn)
           rows
             .get(id)
             .filter(r =>
-              asker.exists((by, _, _, c) => r.principal == by && read(c)(id -> r))
+              asking.exists((by, _, _, c) => r.principal == by && read(c)(id -> r))
             ) match {
             case Some(r) if r.job == booking.job.name =>
               r.ended match {
