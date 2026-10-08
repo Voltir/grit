@@ -13,11 +13,15 @@ object ExplainTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a sealed direct thread is told its fallen floor and the groups it dominates: neither finance nor leadership appears"
+      "a sealed direct thread is told its fallen floor and the groups it dominates: neither finance nor leadership appears, though she is still in leadership"
     ) {
       val told = sealedThread
-      (told.beyond, told.groups.map(g => GroupName.value(g.group))) ==>
-        (confidentialTrial, Vector("trial", "staff"))
+      (
+        Before.cleared(Dana).dominates(confidentialBoth),
+        told.room,
+        told.beyond,
+        told.groups.map(g => GroupName.value(g.group))
+      ) ==> (true, confidentialTrial, confidentialTrial, Vector("trial", "staff"))
       names(told.toString, Above*) ==> Vector()
     }
 
@@ -45,10 +49,12 @@ object ExplainTests extends TestSuite {
       )
     }
 
-    test("a person cleared for public, asked in a public room, is told of no group") {
-      val nobody = TestAccounts.principal(TestAccounts.account("slack:T/U-ed"))
-      val told = Before.explain(Some(nobody), Label.Public)
-      (told.beyond, told.groups) ==> (Label.Public, Vector())
+    test(
+      "a person cleared for public, asked in a room labelled above that, is told of no group, and beyond is public"
+    ) {
+      val ed = TestAccounts.principal(TestAccounts.account("slack:T/U-ed"))
+      val told = Before.explain(Some(ed), confidentialBoth)
+      (told.room, told.beyond, told.groups) ==> (confidentialBoth, Label.Public, Vector())
     }
 
     test(
@@ -75,13 +81,15 @@ object ExplainTests extends TestSuite {
       names(told.toString, Named*) ==> Vector()
     }
 
-    test("no one asking is told no one, and grit is grit, each in no group") {
+    test(
+      "no one asking is told no one, beyond public; grit is grit, beyond the room's label; each in no group"
+    ) {
       (
-        Before.explain(None, Label.Public),
-        Before.explain(Some(Principal.Grit), confidentialBoth).asker
+        Before.explain(None, confidentialBoth),
+        Before.explain(Some(Principal.Grit), confidentialBoth)
       ) ==> (
-        Explanation(Label.Public, Label.Public, Explanation.Asker.Nobody, Vector()),
-        Explanation.Asker.Grit
+        Explanation(confidentialBoth, Label.Public, Explanation.Asker.Nobody, Vector()),
+        Explanation(confidentialBoth, confidentialBoth, Explanation.Asker.Grit, Vector())
       )
     }
   }

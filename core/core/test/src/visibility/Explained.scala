@@ -50,13 +50,15 @@ object Explained {
   val Before = visibility(Set(dana))
   val After = visibility(Set.empty)
 
-  /** Dana, holding her work account, vouched and a full member, and her home account. */
+  /** Dana, holding her work account, vouched and a full member, and her home account; the home
+    * account first, so an explanation shows them in its own order, not the set's.
+    */
   val Dana: Principal =
     Principal.Person(
       TestAccounts.principalId(dana),
       Set(
-        Held(dana, Evidence.Vouched, member = true),
-        Held(danaAtHome, Evidence.Home, member = false)
+        Held(danaAtHome, Evidence.Home, member = false),
+        Held(dana, Evidence.Vouched, member = true)
       )
     )
 
@@ -64,11 +66,15 @@ object Explained {
   def names(text: String, names: String*): Vector[String] =
     names.toVector.filter(text.contains)
 
-  /** A sealed direct thread: stored at confidential·{trial, finance}, Dana since out of
-    * leadership, so its floor is what she is cleared for now.
+  /** Restricted·trial: above anything any group here grants. */
+  val restrictedTrial = Label.at(Level.Restricted, trial)
+
+  /** A sealed direct thread: stored at [[restrictedTrial]], begun when Dana was cleared for it,
+    * and she since cleared for less, though still in leadership; its floor is confidential·trial,
+    * below leadership's grant.
     */
   def sealedThread: Explanation =
-    After.explain(Some(Dana), confidentialBoth.meet(After.cleared(Dana)))
+    Before.explain(Some(Dana), restrictedTrial.meet(Before.cleared(Dana)))
 
   /** A direct thread begun at confidential·trial, Dana since added to leadership. */
   def raisedThread: Explanation = Before.explain(Some(Dana), confidentialTrial)
