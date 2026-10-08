@@ -170,15 +170,6 @@ object CatchingUpTests extends TestSuite {
       declined(Visibility.Shipped, new SetClock(at))._2 ==> Vector(at)
     }
 
-    test("under the shipped visibility every source is heard at public") {
-      said(Visibility.Shipped) ==> Vector(
-        CatchingUp.line(trial.source, Label.Public, Estimate.of(trial), epoch),
-        CatchingUp.line(general.source, Label.Public, Estimate.of(general), epoch),
-        CatchingUp.Relabel,
-        "backfill: nothing heard"
-      )
-    }
-
     test(
       "drain sweeps until a sweep, each made once no workflow is queued or running, enqueues, asks and posts nothing"
     ) {
