@@ -47,6 +47,12 @@ object OriginTests extends TestSuite {
       )
     }
 
+    test("a direct message is only ever with an account a source names, never local or grit") {
+      val error =
+        assertCompileError("Origin.Direct(grit.core.identity.Account.Local, \"1712.3\")")
+      assert(error.msg.contains("Sourced"))
+    }
+
     test("only a TUI session is held with the operator") {
       val dir = Directory.of("/work").getOrElse(throw new java.lang.AssertionError())
       Origin.Tui(dir, "s").audience.operator ==> true
