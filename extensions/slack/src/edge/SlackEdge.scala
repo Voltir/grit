@@ -13,6 +13,7 @@ import grit.core.edge.{
   CatchUp,
   EdgeRefusal,
   EdgeStores,
+  Membership,
   Part,
   Pending,
   RealmSource,
@@ -30,17 +31,7 @@ import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
-import grit.slack.client.{
-  AppToken,
-  BotToken,
-  ChannelKind,
-  Root,
-  Self,
-  Slack,
-  SlackError,
-  SocketSlack,
-  Tag
-}
+import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
 import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
@@ -53,7 +44,6 @@ final class SlackEdge(
     slack: Slack,
     self: Self,
     stores: EdgeStores^,
-    listening: Set[ChannelId],
     review: Option[SlackReview],
     clock: Clock^,
     said: String => Unit
@@ -70,10 +60,10 @@ final class SlackEdge(
   private val channelNames = new ConcurrentHashMap[ChannelId, String]()
 
   @caps.unsafe.untrackedCaptures
-  private val kinds = new ConcurrentHashMap[ChannelId, ChannelKind]()
-
-  @caps.unsafe.untrackedCaptures
   private val started = new AtomicBoolean(false)
+
+  /** The channels grit's bot is a member of: what it hears. */
+  private val members: Members^{stores} = new Members(stores.joins, self.team)
 
   /** The name grit's bot user goes by in Slack, for the log; why not, when Slack could not be
     * asked or the bot has no name there.
@@ -84,44 +74,60 @@ final class SlackEdge(
       name <- named.name.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
     } yield name
 
-  /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
-    * has no name); or, with its id,
-    * that nothing in it is heard because it is not a channel grit can see, or that
-    * Slack could not be asked.
+  /** Records which channels grit's bot is a member of, as Slack lists them now
+    * ([[Slack.channels]]): each listed a member (the review's channel left out: it is never
+    * heard), each recorded member Slack no longer lists left, and rooms left at least
+    * [[grit.core.edge.Joins.KeptLeft]] ago forgotten ([[Members.reconcile]]); and says which,
+    * as a person reads them. Why not, when Slack or the database could not be asked.
     */
-  def listened(): Vector[String] =
-    listening.toVector.map { channel =>
-      val id = ChannelId.value(channel)
-      served(channel)
-        .flatMap(open =>
-          if (!open) Right(s"$id (not a channel grit can see: nothing there is heard)")
-          else
-            slack
-              .channelName(channel)
-              .left
-              .map(_.toString)
-              .map(_.fold(id)(name => s"#$name ($id)"))
-        )
-        .fold(why => s"$id (Slack not asked: $why)", identity)
+  def reconcile(): Either[String, Unit] =
+    slack.channels().left.map(e => s"Slack would not list grit's channels: $e").flatMap { listed =>
+      val (reviewed, heard) = listed.partition((c, _) => review.exists(_.channel == c))
+      reviewed.foreach((c, _) => said(s"slack: the review's channel, ${shown(c)}, is never heard"))
+      val access = heard.flatMap((c, k) => Members.access(k).map(c -> _))
+      members.reconcile(access, clock.now()).left.map(_.toString).map { forgotten =>
+        said(members.all match {
+          case Vector() => "slack: a member of no channel"
+          case all => s"slack: a member of ${all.map(shown).mkString(", ")}"
+        })
+        if (forgotten > 0) said(s"slack: forgot $forgotten rooms left over a day ago")
+      }
     }
 
-  /** One Events API payload. A person's message in a public channel, or in a private one in
-    * `listening`, is addressed to grit when
-    * it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
+  /** Every channel grit's bot is a member of, by id, as last recorded. */
+  def channels: Vector[ChannelId] = members.all
+
+  /** `channel` as a person reads it: `#{name} ({id})`, its id alone when Slack gives no name. */
+  private def shown(channel: ChannelId): String = {
+    val id = ChannelId.value(channel)
+    channelNameOf(channel).fold(id)(name => s"#$name ($id)")
+  }
+
+  /** One Events API payload. A person's message in a channel grit's bot is a member of (never
+    * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
     * its thread's conversation, in the person's words ([[Incoming]]), written through their
     * account in their own team ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them, its turn started, its reply
     * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
     * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
-    * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
+    * with [[Budget.Refusal]]. A message not addressed is heard
     * ([[grit.core.inbox.Inbox.hear]]) in the same words under the same name, with no mark, its
     * thread kept as where a reply would go and whom it names besides grit
     * ([[grit.core.speech.Reach]]): grit replies there only when it drafts a reply and the
     * draft is posted (ADR 0022).
     * A person's direct message to grit ([[Event.Told]]) is recorded as an addressed message is,
     * as a turn of its thread's conversation in its author's direct room
-    * ([[grit.core.store.Origin.Direct]]), whatever `listening` holds; one the inbox refuses as
+    * ([[grit.core.store.Origin.Direct]]); one the inbox refuses as
     * sealed is answered once in its thread with [[InboxError.SealedReply]], and one refused
     * over the cap as a channel's is. A group direct message is ignored.
+    * A message from a channel not recorded a member of, as when it races its channel's join,
+    * asks Slack once whether grit's bot is in it ([[Slack.kind]]): when it is, the join is
+    * recorded first, as of the message, then the message is taken; when not, it is ignored.
+    * grit's bot joining a channel ([[Event.Joined]]) is recorded with the channel's access as
+    * Slack reports it, and its inviter's account, checked first ([[Attesting.before]]), so a
+    * join whose inviter is no full member skips its backfill, which is said; leaving or being
+    * removed from one ([[Event.Left]]) is recorded, and nothing said there after is heard. Each
+    * is ordered by when it happened ([[grit.core.edge.Joins]]); the review's channel is never
+    * recorded a member, and a join Slack says the bot is no longer in is not recorded.
     * A message recorded or heard that begins its conversation as a reply in a thread whose root
     * grit's bot posted with `slack_post` ([[Tag.Sent]]) first records that post as the
     * conversation's opening ([[grit.core.inbox.Inbox.posted]]), in its text as Slack gives it,
@@ -138,7 +144,7 @@ final class SlackEdge(
     * to a user ([[Event.UserChanged]]) asks Slack again ([[Attesting.changed]]).
     * `true` once that is done or needs no doing (a redelivery included), so the payload may be
     * acknowledged; `false` when Slack or the database could not be asked, so Slack sends it
-    * again.
+    * again (a message racing its channel's join included, so the join wins on a later try).
     */
   def receive(payload: String): Boolean =
     Events.read(payload, self.bot) match {
@@ -146,7 +152,8 @@ final class SlackEdge(
         said(s"slack: an event grit cannot read, acknowledged: $why")
         true
       case Right(Event.Ignored(_)) => true
-      case Right(Event.Joined(_, _, _, _) | Event.Left(_, _, _)) => true
+      case Right(j: Event.Joined) => joined(j)
+      case Right(l: Event.Left) => left(l)
       case Right(r: Event.Reacted) => reacted(r)
       case Right(c: Event.UserChanged) => changed(c)
       case Right(t: Event.Told) =>
@@ -173,8 +180,7 @@ final class SlackEdge(
                 .map(_.toString)
           done <-
             if (wanted) record(m, origin)
-            else if (listening.contains(m.channel)) hear(m, origin, live = true)
-            else Right(())
+            else hear(m, origin, live = true)
         } yield done
         result match {
           case Right(()) => true
@@ -323,11 +329,11 @@ final class SlackEdge(
 
   /** What [[backfill]] would hear of `channel`: each message said there from `since` on,
     * read as [[receive]] reads a live one ([[Events.listed]]), that the inbox has not
-    * recorded, oldest first; none unless `channel` is a public channel, or a private one in `listening`. A listing grit cannot read
+    * recorded, oldest first; none unless grit's bot is a member of `channel`. A listing grit cannot read
     * is left out, and said. Why not, when Slack or the inbox could not be asked.
     */
   def unheard(channel: ChannelId, since: Instant): Either[String, Vector[Event.Said]] =
-    served(channel).flatMap { open =>
+    served(channel, clock.now()).flatMap { open =>
       if (!open) Right(Vector.empty)
       else
         slack.history(channel, since).left.map(_.toString).flatMap { listed =>
@@ -369,7 +375,7 @@ final class SlackEdge(
     * ([[grit.core.inbox.Inbox.hear]]), in the person's words under their Slack name, a mention of grit
     * included: a past message is heard, never answered; a thread under a post of grit's
     * begins with that post, as in [[receive]], and each author is checked first, as there.
-    * Nothing but in a public channel, or a private one in `listening`. Why not, naming the
+    * Nothing but in a channel grit's bot is a member of. Why not, naming the
     * first message not heard, when Slack or the inbox could not be asked, or its author was never
     * attested and Slack could not be asked about them; those before it stay heard.
     */
@@ -411,7 +417,7 @@ final class SlackEdge(
     * in a conversation grit does not serve.
     */
   private def spoken(m: Event.Said): Either[String, Option[(Account, String)]] =
-    served(m.channel).flatMap { open =>
+    served(m.channel, m.at).flatMap { open =>
       if (!open) Right(None) else voiced(m.author, m.user, m.text).map(Some(_))
     }
 
@@ -568,23 +574,103 @@ final class SlackEdge(
   }
 
   /** Whether grit serves `channel`: addresses, hears and backfills what is said there. A
-    * public channel it is in, yes; a private one only when it is in `listening`, since naming a
-    * private channel is the deployment's deliberate act, and the room's label then its
-    * declaration; nothing else. What `channel` is, Slack is asked once.
+    * channel grit's bot is recorded a member of, yes, but never the review's; any other, only
+    * when Slack says the bot is in it, its join then recorded as of `at` first, with no
+    * inviter named; nothing else. Why not, when Slack or the database could not be asked.
     */
-  private def served(channel: ChannelId): Either[String, Boolean] =
-    Option(kinds.get(channel))
-      .fold(
-        slack.kind(channel).left.map(_.toString).map { k =>
-          val _ = kinds.put(channel, k)
-          k
+  private def served(channel: ChannelId, at: Instant): Either[String, Boolean] =
+    if (review.exists(_.channel == channel)) Right(false)
+    else if (members.contains(channel)) Right(true)
+    else
+      slack.kind(channel).left.map(_.toString).flatMap { kind =>
+        Members.access(kind) match {
+          case None => Right(false)
+          case Some(access) =>
+            members.joined(channel, access, None, at).left.map(_.toString).map {
+              case Membership.Member(_, _) =>
+                said(s"slack: grit's bot is in ${shown(channel)}, found by a message from it")
+                true
+              case Membership.Gone => false
+            }
         }
-      )(Right(_))
-      .map {
-        case ChannelKind.Public => true
-        case ChannelKind.Private => listening.contains(channel)
-        case ChannelKind.Unseen => false
       }
+
+  /** Records grit's bot joining `j`'s channel, as [[receive]] says; whether it may be
+    * acknowledged.
+    */
+  private def joined(j: Event.Joined): Boolean =
+    if (review.exists(_.channel == j.channel)) {
+      said(s"slack: grit's bot joined the review's channel, ${shown(j.channel)}: never heard")
+      true
+    } else
+      slack.kind(j.channel) match {
+        case Left(e) =>
+          said(
+            s"slack: a join of ${ChannelId.value(j.channel)} not recorded, left for Slack to send again: $e"
+          )
+          false
+        case Right(kind) =>
+          Members.access(kind) match {
+            case None =>
+              said(
+                s"slack: a join of ${ChannelId.value(j.channel)} not recorded: Slack says grit's bot is not in it"
+              )
+              true
+            case Some(access) =>
+              val inviter = j.inviter.flatMap { user =>
+                SlackAccounts.account(j.team, user).toOption.map { account =>
+                  // An inviter Slack cannot answer for is no full member: the join skips its
+                  // backfill, the safe side.
+                  stores.attesting
+                    .before(source, account)
+                    .left
+                    .foreach(e => said(s"slack: inviter ${Account.written(account)} unchecked: $e"))
+                  account
+                }
+              }
+              members.joined(j.channel, access, inviter, j.at) match {
+                case Left(e) =>
+                  said(
+                    s"slack: a join of ${ChannelId.value(j.channel)} not recorded, left for Slack to send again: $e"
+                  )
+                  false
+                case Right(Membership.Member(at, backfill)) =>
+                  if (at == j.at)
+                    said(
+                      s"slack: grit's bot joined ${shown(j.channel)}" + (backfill match {
+                        case None =>
+                          s"; what was said before is not heard: ${inviter.fold("")(Account.written)} " +
+                            "invited it, whom no trusted realm vouches a full member"
+                        case Some(_) => ""
+                      })
+                    )
+                  true
+                case Right(Membership.Gone) =>
+                  said(
+                    s"slack: a join of ${shown(j.channel)} made before its recorded leave, ignored"
+                  )
+                  true
+              }
+          }
+      }
+
+  /** Records grit's bot leaving `l`'s channel, as [[receive]] says; whether it may be
+    * acknowledged.
+    */
+  private def left(l: Event.Left): Boolean =
+    members.left(l.channel, l.at) match {
+      case Left(e) =>
+        said(
+          s"slack: a leave of ${ChannelId.value(l.channel)} not recorded, left for Slack to send again: $e"
+        )
+        false
+      case Right(Membership.Gone) =>
+        said(s"slack: grit's bot left ${shown(l.channel)}: nothing there is heard")
+        true
+      case Right(Membership.Member(_, _)) =>
+        said(s"slack: a leave of ${shown(l.channel)} made before its recorded join, ignored")
+        true
+    }
 
   /** `user`'s Slack name, asked of Slack once per user; `None` when they have none, or Slack
     * could not say (the id stands in, and they are asked again next time).
@@ -864,16 +950,19 @@ final class SlackEdge(
 object SlackEdge {
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
-    * every message in `channels` heard (ADR 0020), a message addressed to grit answered in its
-    * thread, `command` answered to its asker alone ([[SlackEdge.command]]), and grit's bot's
-    * Slack name logged at open. It cannot answer a tool call that asks first. It is the
-    * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a deployment
-    * trusts it there, it says who each account is as Slack states it ([[SlackEdge.receive]]),
-    * and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists the workspace's users once
-    * when any account is due.
+    * every message in a channel its bot is a member of heard (ADR 0020, 0033), one addressed to
+    * grit answered in its thread, `command` answered to its asker alone
+    * ([[SlackEdge.command]]), and grit's bot's Slack name logged at open. At open, which
+    * channels the bot is in is read from Slack and recorded ([[SlackEdge.reconcile]]); each
+    * join and leave after is recorded as it happens, and a channel left is not heard from
+    * then. Refused at open when Slack will not list its channels. It cannot answer a tool call
+    * that asks first. It is the attester [[SlackAccounts.Attester]]: for the realm of its own
+    * workspace, when a deployment trusts it there, it says who each account is as Slack states
+    * it ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
+    * the workspace's users once when any account is due.
     */
-  def serving(command: SlackCommand, channels: Set[ChannelId]): ServedEdge =
-    Served.serving(command, channels, None, None, Socket)
+  def serving(command: SlackCommand): ServedEdge =
+    Served.serving(command, None, None, Socket)
 
   /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
     * place, offering the channels of `posts` whose names Slack gives at open; one without is
@@ -884,26 +973,17 @@ object SlackEdge {
     * in it becomes a mention), and one Slack message at most; it never asks first and is never
     * run again after a crash.
     */
-  def serving(command: SlackCommand, channels: Set[ChannelId], posts: Posts): ServedEdge =
-    Served.serving(command, channels, Some(posts), None, Socket)
+  def serving(command: SlackCommand, posts: Posts): ServedEdge =
+    Served.serving(command, Some(posts), None, Socket)
 
   /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
     * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
     * gives a prompt there is kept as the prompt's verdict ([[SlackEdge.prompt]],
-    * [[SlackEdge.receive]]). Refused, saying why, when the place is one of `channels`; it does
-    * not open when `review`'s team is not the bot's.
+    * [[SlackEdge.receive]]); nothing said in the review's channel is heard. It does not open
+    * when `review`'s team is not the bot's.
     */
-  def serving(
-      command: SlackCommand,
-      channels: Set[ChannelId],
-      posts: Option[Posts],
-      review: SlackReview
-  ): Either[String, ServedEdge] =
-    if (channels.contains(review.channel))
-      Left(
-        s"review prompts are not posted in ${ChannelId.value(review.channel)}: grit listens there, so they would be heard"
-      )
-    else Right(Served.serving(command, channels, posts, Some(review), Socket))
+  def serving(command: SlackCommand, posts: Option[Posts], review: SlackReview): ServedEdge =
+    Served.serving(command, posts, Some(review), Socket)
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].
@@ -912,13 +992,15 @@ object SlackEdge {
     // "slack" is a service's name by Service.of's rule, so the Left is never taken.
     Service.of("slack").fold(why => throw new IllegalStateException(why), identity)
 
-  /** What `channels` said over the `days` before the catch-up opens that the database has not
-    * recorded, one [[grit.core.edge.Unheard]] per channel, in the channel's room; heard at the times it was said,
-    * a past mention of grit never answered, each author checked first as [[serving]]'s edge
-    * checks one. Refused when `channels` is empty.
+  /** What every channel grit's bot is a member of said over the `days` before the catch-up
+    * opens that the database has not recorded, one [[grit.core.edge.Unheard]] per channel, in
+    * the channel's room; heard at the times it was said, a past mention of grit never
+    * answered, each author checked first as [[serving]]'s edge checks one. Which channels the
+    * bot is in is read from Slack and recorded as [[serving]]'s open records it. Refused when
+    * the bot is in none, or Slack will not list them.
     */
-  def backfill(channels: Set[ChannelId], days: Int): CatchUp =
-    Served.backfill(channels, days, Socket)
+  def backfill(days: Int): CatchUp =
+    Served.backfill(days, Socket)
 
   /** The team grit's bot token, `SLACK_BOT_TOKEN`, is installed in (`auth.test`): the
     * workspace [[serving]]'s edge attests, which a deployment trusts by default for it. Refused,

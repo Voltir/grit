@@ -5,6 +5,7 @@ import java.time.ZoneOffset
 import scala.concurrent.duration.*
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
   EdgeStores,
@@ -85,6 +86,7 @@ object SlackAttestingTests extends TestSuite {
         EdgeStores(
           inbox,
           InMemoryAdministration.none(),
+          InMemoryJoins.none(),
           inbox.principals,
           new InMemoryDeliveries,
           new InMemoryAcknowledgements,
@@ -93,7 +95,6 @@ object SlackAttestingTests extends TestSuite {
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, r => reported = reported :+ r)
         ),
-        Set(C),
         None,
         grit.core.clock.Clock.system(),
         s => logged = logged :+ s

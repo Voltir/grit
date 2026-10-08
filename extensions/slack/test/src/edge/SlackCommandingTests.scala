@@ -16,7 +16,8 @@ import grit.core.edge.{
   EdgeStores,
   InMemoryAcknowledgements,
   InMemoryDeliveries,
-  InMemoryEdges
+  InMemoryEdges,
+  InMemoryJoins
 }
 import grit.core.identity.{Account, Realm, TestAccounts}
 import grit.core.inbox.InMemoryInbox
@@ -138,6 +139,7 @@ object SlackCommandingTests extends TestSuite {
         EdgeStores(
           inbox,
           if (failing) down else admin,
+          InMemoryJoins.none(),
           inbox.principals,
           new InMemoryDeliveries,
           new InMemoryAcknowledgements,
@@ -146,7 +148,6 @@ object SlackCommandingTests extends TestSuite {
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())
         ),
-        Set.empty,
         None,
         Stopped,
         s => logged = logged :+ s

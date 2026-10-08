@@ -13,6 +13,7 @@ import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{
+  Compartment,
   Compartments,
   Grant,
   Group,
@@ -51,6 +52,7 @@ object SlackEdgeLiveTests extends TestSuite {
       EdgeStores(
         engine.inbox,
         engine.administration,
+        engine.joins,
         engine.principals,
         engine.deliveries,
         engine.acknowledgements,
@@ -59,7 +61,6 @@ object SlackEdgeLiveTests extends TestSuite {
         engine,
         new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
       ),
-      Set.empty,
       None,
       grit.core.clock.Clock.system(),
       _ => ()
@@ -109,7 +110,7 @@ object SlackEdgeLiveTests extends TestSuite {
         .map(_.toString)
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  /** The edge as a deployment trusting it for [[Ours]] serves it, listening in C, over
+  /** The edge as a deployment trusting it for [[Ours]] serves it, over
     * `inbox`.
     */
   private def attesting(engine: Engine^, slack: FakeSlack, inbox: Inbox): SlackEdge^ =
@@ -119,6 +120,7 @@ object SlackEdgeLiveTests extends TestSuite {
       EdgeStores(
         inbox,
         engine.administration,
+        engine.joins,
         engine.principals,
         engine.deliveries,
         engine.acknowledgements,
@@ -127,7 +129,6 @@ object SlackEdgeLiveTests extends TestSuite {
         engine,
         new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
       ),
-      Set(C),
       None,
       grit.core.clock.Clock.system(),
       _ => ()
@@ -233,6 +234,41 @@ object SlackEdgeLiveTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "a message in a private channel grit's bot was invited to is heard at unmapped, and in a public one at the open rooms' label"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_private_unmapped")
+      val slack = new FakeSlack
+      val hidden = ChannelId("C0PRIV0001")
+      slack.channelNames = slack.channelNames + (hidden -> "hidden")
+      slack.privateChannels = Set(hidden)
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      val (received, labels) =
+        try {
+          launch(engine, engine.entries, new CountingProvider)
+          val _ = slack.listen(edge(engine, slack).receive, _ => ())
+          val inPrivate =
+            Seq("channel_type" -> ujson.Str("group"), "channel" -> ujson.Str("C0PRIV0001"))
+          (
+            Vector(
+              slack.deliver(message("1.0", "in private", extra = inPrivate)),
+              slack.deliver(message("2.0", "in public"))
+            ),
+            Vector(
+              labelled(engine, Origin.Slack(Team, "C0PRIV0001", "1.0")),
+              labelled(engine, Origin.Slack(Team, "C123ABC456", "2.0"))
+            )
+          )
+        } finally engine.close()
+      (received, labels) ==> (
+        Vector(true, true),
+        Vector(
+          Some(Label.at(Level.Public, Compartment.Unmapped)),
+          Some(Label.at(Level.Confidential))
+        )
+      )
+    }
+
     test(
       "a new user's first-ever message is recorded once Slack has answered for them, which attests them a full member"
     ) {

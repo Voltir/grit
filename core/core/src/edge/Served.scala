@@ -12,8 +12,8 @@ import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
-  * reads turns from, the administration it runs a person's commands through, the accounts it
-  * names, the replies it awaits, the messages it marks as
+  * reads turns from, the administration it runs a person's commands through, the joins it
+  * records its bot's memberships through, the accounts it names, the replies it awaits, the messages it marks as
   * being answered while their turns run, the review prompts it posts
   * and the labels their rater gives, `jot`, the short transactions it writes those in,
   * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
@@ -22,6 +22,7 @@ import grit.core.visibility.Compartment
 final case class EdgeStores(
     inbox: Inbox,
     administration: Administration,
+    joins: Joins,
     principals: Principals,
     deliveries: Deliveries,
     acknowledgements: Acknowledgements,

@@ -338,9 +338,13 @@ final class FakeSlack extends Slack {
       else Right(channelNames.get(channel))
     }
 
+  /** When set, `channels` fails so, and nothing else does. */
+  @caps.unsafe.untrackedCaptures
+  var unlisted: Option[SlackError] = None
+
   /** The named channels grit's bot is in, by id, each read as [[kind]] reads it. */
   def channels(): Either[SlackError, Vector[(ChannelId, ChannelKind)]] =
-    patient(SocketSlack.Retries).map { _ =>
+    patient(SocketSlack.Retries).flatMap(_ => unlisted.toLeft(())).map { _ =>
       channelNames.keys.toVector
         .sortBy(ChannelId.value)
         .map(c => c -> kindOf(c))

@@ -65,7 +65,7 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             Map.empty,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Set.empty)),
+            Vector(SlackEdge.serving(Grit)),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -89,29 +89,19 @@ object ServeChoiceTests extends TestSuite {
       )
     }
 
-    test("a listened channel that is not a channel id is refused, naming it") {
-      Main.listening(Map("GRIT_SLACK_LISTEN" -> "C123ABC456, #general")) ==>
-        Left(
-          "GRIT_SLACK_LISTEN: #general is not a channel id (C… or G…, as Slack's channel details show it)"
-        )
-    }
-
     test(
-      "the days backfill reads are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero, or when no channel is listened in"
+      "the days backfill reads are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero"
     ) {
-      val listen = Map("GRIT_SLACK_LISTEN" -> "C123ABC456")
       (
-        Main.backfillDays(listen),
-        Main.backfillDays(listen + ("GRIT_BACKFILL_DAYS" -> " 7 ")),
-        Main.backfillDays(listen + ("GRIT_BACKFILL_DAYS" -> "0")),
-        Main.backfillDays(listen + ("GRIT_BACKFILL_DAYS" -> "1.5")),
-        Main.backfillDays(Map.empty)
+        Main.backfillDays(Map.empty),
+        Main.backfillDays(Map("GRIT_BACKFILL_DAYS" -> " 7 ")),
+        Main.backfillDays(Map("GRIT_BACKFILL_DAYS" -> "0")),
+        Main.backfillDays(Map("GRIT_BACKFILL_DAYS" -> "1.5"))
       ) ==> (
         Right(2),
         Right(7),
         Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '0'"),
-        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '1.5'"),
-        Left("GRIT_SLACK_LISTEN names no channel: there is nothing to backfill")
+        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '1.5'")
       )
     }
 

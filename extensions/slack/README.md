@@ -17,7 +17,7 @@ In dependency order:
 - **`event`** — what Slack says, as grit reads it: the opaque ids (`TeamId`, `ChannelId`,
   `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names, by a user of their own team: its `user_team`, else its `team`, else the installing workspace, so a user of a workspace sharing a channel is never spelled as one of grit's), a
   person's direct message to grit `Told` (a group direct message is `Ignored`), a
-  reaction to a message added or removed (`Reacted`), or `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
+  reaction to a message added or removed (`Reacted`), grit's bot joining a channel, with who added it (`Joined`), or leaving or removed from one (`Left`), each at when it happened, or `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
   message of a channel's history by `Events.listed`, under the same rules; `Commanded`, a slash
   command read from its payload by `Events.command`, its answers going to its `ResponseUrl`; and
   `MessageLink`, the channel and thread a message's link names. Imports nothing in slack.
@@ -35,39 +35,47 @@ In dependency order:
   when its user confirmed it and the app may read emails (`users:read.email`), whatever its
   domain; outside otherwise, and when Slack knows no such user. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
-  the accounts it names, the replies it awaits) and a `Slack`: a person's message in a public
-  channel, or in a private one it listens in, becomes a turn of its thread's conversation when it is addressed to grit (it
+  the joins it records its bot's memberships through, the accounts it names, the replies it
+  awaits) and a `Slack`. It hears every channel its bot is a member of (ADR 0033): which, it
+  holds in `Members` (`private[slack]`), changed only by what `grit.core.edge.Joins` returns.
+  At open it reads Slack's list (`Slack.channels`) and records each listed channel a member,
+  each recorded member no longer listed gone, and forgets rooms left over a day ago
+  (`reconcile`); `Event.Joined` and `Event.Left` are recorded as they happen, ordered by when
+  they happened, a join with the access Slack reports and its inviter's account, checked first,
+  so a join whose inviter is no full member skips its backfill, which is logged. A message from
+  a channel not recorded a member (one racing its join) asks Slack once whether the bot is in it
+  (`Slack.kind`): the join is recorded first when it is, the message ignored when not, and left
+  for Slack to send again when Slack cannot be asked. The review's channel is never recorded a
+  member, and nothing said there is heard. A person's message in a member channel becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
   in its thread, once, found again by its tag after a crash. A message is marked `:eyes:`
   while grit works on it: one addressed to grit from when it is recorded, and one heard that
   triage answers as put to grit by name from that turn's acknowledgement
   (`grit.core.edge.Acknowledgements`, wanted by triage beside its awaited reply;
   `acknowledge`, run first in each delivery), each until its reply is posted or its turn ends
-  with nothing to post. In the
-  channels it listens in
-  (`listening`, the channels a deployment declares), a message not addressed to grit is heard:
+  with nothing to post. A message not addressed to grit is heard:
   an entry of its thread's conversation with no turn, never answered, dated when it was said.
   A thread under a post grit made with `slack_post` begins with that post: when the first
   message recorded or heard there arrives, the edge reads the root from Slack (`Slack.root`)
   and records it as the conversation's opening, made by the call its tag names, so the
   thread's windows show the turn that asked for it.
-  `unheard` and `backfill` are `grit backfill`'s: a listened channel's history since an
+  `unheard` and `backfill` are `grit backfill`'s: a member channel's history since an
   instant (`Slack.history`, read by the rules a live message is, `Events.listed`), less what
   the inbox has recorded, then each of those heard at its own time, a past mention of grit
   included, since a past message is never answered. At start it logs the name grit's bot goes by in Slack
   (`displayName`); the assistant's name is the deployment's persona (ADR 0026), not Slack's.
-  `SlackEdge.serving(command, channels)` is the module's entry: the edge as a deployment
+  `SlackEdge.serving(command)` is the module's entry: the edge as a deployment
   serves it (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN`
   and `SLACK_APP_TOKEN` as it opens, answering the slash command the deployment registered
-  (`SlackCommand`, below); `SlackEdge.serving(command, channels, posts)` also serves
+  (`SlackCommand`, below); `SlackEdge.serving(command, posts)` also serves
   `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
   `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
   there (`grit.core.place.Reaches`). It is a writing tool (`grit.core.tool.Writing`, ADR
   0031): each channel is offered under its name, with and without `#`, at the place
   `slack:{team}/{id}`, so a turn is offered only the channels its room may write to, and the
   edge posts in the channel its request was checked to write to. `SlackEdge.serving(command,
-  channels, posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
-  `slack:{team}/{channel id}` grit does not listen in, refused otherwise, and in the bot's own
+  posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
+  `slack:{team}/{channel id}`, refused otherwise, never heard, and in the bot's own
   team, or the edge does not open; `ServedEdge.reviewsAt`): each delivery posts the prompts
   the kit picked that its place may receive (`grit.core.review.Reviews.unposted`) whose
   messages were heard in
@@ -76,8 +84,9 @@ In dependency order:
   crash between the post and keeping it posts the prompt again. A reaction the rater adds to a
   prompt, or removes, is kept or withdrawn as its verdict (`grit.core.review.Reviews`);
   anyone else's, and any other emoji, is ignored.
-  `SlackEdge.backfill(channels, days)` is `grit backfill`'s
-  (`CatchUp`), what each channel said over those days that grit has not recorded.
+  `SlackEdge.backfill(days)` is `grit backfill`'s
+  (`CatchUp`), what each channel its bot is a member of said over those days that grit has not
+  recorded, its memberships first recorded as the served edge's open records them.
   The edge is its workspace's attester (`SlackAccounts.Attester`, ADR 0032), and both say
   so: before a message is recorded or heard, live or caught up, its author's account goes
   through core's `Attesting.before`, which asks the edge's source, a private
@@ -100,7 +109,7 @@ In dependency order:
   ← `client`, `text`, `event`
 
 **Direct messages.** A person's message in their direct message with grit's bot is recorded
-as a mention is, whatever the edge listens in, as a turn of its thread's conversation in their
+as a mention is, as a turn of its thread's conversation in their
 direct room (`Origin.Direct`), which is labelled at their clearance and read only there (ADR
 0032); a message in a thread begun when they were cleared for more is answered once with
 `InboxError.SealedReply` and not recorded. Group direct messages are not heard, and direct
@@ -115,7 +124,9 @@ edge calls or is sent:
   sent (events `app_mention`, `message.channels`, `message.groups`, `message.im`), and a
   thread's replies and a channel's history read back (a thread's root, its own post found
   again by its tag, a backfill);
-- `channels:read`, `groups:read`, `im:read`: what a conversation is, and its name;
+- `channels:read`, `groups:read`, `im:read`: what a conversation is, and its name, and which
+  channels the bot is in (`users.conversations`), and its joins and leaves (events
+  `member_joined_channel`, `member_left_channel`, `channel_left`, `group_left`);
 - `chat:write`: its replies, refusals, `slack_post`'s posts and a review's prompts;
 - `reactions:read`, `reactions:write`: a rater's reactions (events `reaction_added`,
   `reaction_removed`), and the `:eyes:` mark and a prompt's reactions it adds and removes;

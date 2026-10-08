@@ -63,7 +63,7 @@ In dependency order:
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings into the reference `Deployment`
   (`Main.deployment`), and serves it (`grit serve`: the Slack edge, `SlackEdge.serving`,
-  in the channels `GRIT_SLACK_LISTEN` names, answering the slash command
+  in every channel its bot is invited to, answering the slash command
   `GRIT_SLACK_COMMAND` names (`/grit` when unset), and with `GITHUB_MCP_TOKEN` set, GitHub's
   read-only MCP tools at `service:github` for every Slack conversation, `McpEdge.serving`
   (`Main.github`), through `Kit.serve`), catches it up (`grit

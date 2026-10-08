@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.Clock
+import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
   Desk,
@@ -79,6 +80,7 @@ object McpEdgeTests extends TestSuite {
     val stores = EdgeStores(
       inbox,
       InMemoryAdministration.none(),
+      InMemoryJoins.none(),
       inbox.principals,
       new InMemoryDeliveries,
       new InMemoryAcknowledgements,

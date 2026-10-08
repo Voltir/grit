@@ -92,3 +92,11 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
       Right(gone.size)
     }
 }
+
+object InMemoryJoins {
+
+  /** Joins whose voucher vouches no one: every join named an inviter skips its backfill. For a
+    * suite whose edge records no joins, or does not care whose they are.
+    */
+  def none(): InMemoryJoins = new InMemoryJoins(InMemoryVoucher.none())
+}

@@ -100,6 +100,7 @@ object McpEdgeLiveTests extends TestSuite {
           EdgeStores(
             engine.inbox,
             engine.administration,
+            engine.joins,
             engine.principals,
             engine.deliveries,
             engine.acknowledgements,

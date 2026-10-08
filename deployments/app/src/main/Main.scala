@@ -36,7 +36,7 @@ import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.remind.Reminders
 import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
-import grit.slack.event.{ChannelId, TeamId}
+import grit.slack.event.TeamId
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
@@ -92,9 +92,8 @@ import grit.turn.{Turn, TurnLoop}
   *     directory), never to the screen.
   *   - **`serve` alone: `grit serve`**, the engine of the database and the Slack edge in its
   *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
-  *     `SLACK_APP_TOKEN`, until stopped. In the channels, public or private, `GRIT_SLACK_LISTEN` names (ids,
-  *     comma-separated; none by default) it also hears what is not said to it, and a private
-  *     channel is served at all only when named there. It answers the slash command
+  *     `SLACK_APP_TOKEN`, until stopped. It hears every channel, public or private, its bot is
+  *     invited to, what is not said to it included, until the bot is removed. It answers the slash command
   *     `GRIT_SLACK_COMMAND` names (default `/grit`, as registered for the Slack app) to its
   *     asker alone ([[SlackEdge.command]]). Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
@@ -106,7 +105,7 @@ import grit.turn.{Turn, TurnLoop}
   *     names (comma-separated; default [[GithubTools]]). It refuses to start when that server
   *     cannot be reached, refuses the token, or offers none of those tools.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
-  *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel in `GRIT_SLACK_LISTEN` said over
+  *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel its bot is in said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
   *     it was said, and closed as it would have closed. It prints each channel's estimate and the
   *     label it is heard at, and asks before hearing anything (`--yes` does not ask); nothing caps what it spends. It
@@ -145,14 +144,12 @@ object Main {
     if (slack) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
 
     val offered = exitOnLeft(toolChoice(env, chat = tui))
-    // `grit serve` and `grit backfill` serve Slack, in the channels GRIT_SLACK_LISTEN names.
-    val listen = if (slack) exitOnLeft(listening(env)) else Set.empty[ChannelId]
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
-      (if (slack) Vector(SlackEdge.serving(exitOnLeft(slackCommand(env)), listen))
+      (if (slack) Vector(SlackEdge.serving(exitOnLeft(slackCommand(env))))
        else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
@@ -224,7 +221,7 @@ object Main {
             Kit
               .catchUp(
                 deployment,
-                SlackEdge.backfill(listen, days),
+                SlackEdge.backfill(days),
                 env,
                 question =>
                   args.contains("--yes") || {
@@ -613,30 +610,6 @@ object Main {
   private[main] def slackCommand(env: Map[String, String]): Either[String, SlackCommand] =
     SlackCommand.of(env.getOrElse(CommandVar, "/grit")).left.map(why => s"$CommandVar: $why")
 
-  /** The variable naming the channels grit listens in: their ids, comma-separated. Unset, it
-    * listens in none.
-    */
-  private val ListenVar = "GRIT_SLACK_LISTEN"
-
-  /** The channels `env` says grit listens in ([[ListenVar]]); why not, naming the first entry
-    * that is not a channel id.
-    */
-  private[main] def listening(env: Map[String, String]): Either[String, Set[ChannelId]] =
-    env
-      .get(ListenVar)
-      .toVector
-      .flatMap(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
-      .foldLeft[Either[String, Set[ChannelId]]](Right(Set.empty)) { (acc, raw) =>
-        acc.flatMap(ids =>
-          ChannelId
-            .read(raw)
-            .map(ids + _)
-            .toRight(
-              s"$ListenVar: $raw is not a channel id (C… or G…, as Slack's channel details show it)"
-            )
-        )
-      }
-
   /** The variable whose token `grit serve` sends GitHub's MCP server; unset, it serves no
     * GitHub edge.
     */
@@ -714,25 +687,16 @@ object Main {
   private[main] val DefaultDays: Int = 2
 
   /** The days `grit backfill` reads ([[DaysVar]]); why not, naming the variable, when it is
-    * not a whole number above zero, or when [[ListenVar]] names no channel, so there is
-    * nothing to backfill.
+    * not a whole number above zero.
     */
   private[main] def backfillDays(env: Map[String, String]): Either[String, Int] =
-    for {
-      listen <- listening(env)
-      _ <- Either.cond(
-        listen.nonEmpty,
-        (),
-        s"$ListenVar names no channel: there is nothing to backfill"
-      )
-      days <- env.get(DaysVar) match {
-        case None => Right(DefaultDays)
-        case Some(raw) =>
-          raw.trim.toIntOption
-            .filter(_ > 0)
-            .toRight(s"$DaysVar is a whole number of days above zero, not '$raw'")
-      }
-    } yield days
+    env.get(DaysVar) match {
+      case None => Right(DefaultDays)
+      case Some(raw) =>
+        raw.trim.toIntOption
+          .filter(_ > 0)
+          .toRight(s"$DaysVar is a whole number of days above zero, not '$raw'")
+    }
 
   private val ThemeVar = "GRIT_THEME"
 

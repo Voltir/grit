@@ -10,6 +10,8 @@ import grit.core.edge.{
   InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
+  InMemoryJoins,
+  Membership,
   Part
 }
 import grit.core.id.{
@@ -23,7 +25,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.{Account, Realm, TestAccounts}
+import grit.core.identity.{Account, Realm, Standing, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, InboxError}
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -35,6 +37,7 @@ import grit.core.visibility.{
   Compartments,
   Grant,
   Group,
+  RoomAccess,
   RoomLabels,
   Subject,
   TestLabels,
@@ -94,8 +97,9 @@ object SlackEdgeTests extends TestSuite {
     */
   private final class World(
       budget: Budget = Budget(ZoneOffset.UTC, None),
-      listening: Set[ChannelId] = Set.empty,
-      staff: Boolean = false
+      staff: Boolean = false,
+      review: Option[SlackReview] = None,
+      reconciled: Boolean = true
   ) {
     val slack = new FakeSlack
     private val voucher =
@@ -118,6 +122,9 @@ object SlackEdgeTests extends TestSuite {
       )(using TestTx.fake)
     }
     val deliveries = new InMemoryDeliveries
+
+    /** The joins the edge records its bot's memberships through, vouching as the inbox does. */
+    val joins = new InMemoryJoins(voucher)
     val acknowledgements = new InMemoryAcknowledgements
 
     /** What the edges said, in order. */
@@ -131,6 +138,7 @@ object SlackEdgeTests extends TestSuite {
         EdgeStores(
           inbox,
           InMemoryAdministration.none(),
+          joins,
           inbox.principals,
           deliveries,
           acknowledgements,
@@ -139,8 +147,7 @@ object SlackEdgeTests extends TestSuite {
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())
         ),
-        listening,
-        None,
+        review,
         Stopped,
         s => logged = logged :+ s
       )
@@ -168,6 +175,12 @@ object SlackEdgeTests extends TestSuite {
       }
     val first: SlackEdge^{this} = edge()
     val _ = slack.listen(first.receive, _ => ())
+    // As serving opens: which channels grit's bot is in read from Slack first, unless a test
+    // starts from none recorded.
+    if (reconciled) {
+      first.reconcile() ==> Right(())
+      logged = Vector.empty
+    }
 
     def origin(thread: String): Origin = Origin.Slack(Team, "C123ABC456", thread)
 
@@ -284,6 +297,21 @@ object SlackEdgeTests extends TestSuite {
   private def tag(turn: TurnRef, part: Int): Tag =
     Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
 
+  /** [[C]]'s room, and the team's rooms it is within. */
+  private val Room: grit.core.place.Place = Origin.channel(Team, "C123ABC456")
+  private val Workspace: grit.core.place.Place =
+    grit.core.place.Place.under(grit.core.place.Namespace.Slack, Vector(Payloads.Team))
+
+  /** When [[Payloads.joined]] says grit's bot joined, and when message 2.0 was said. */
+  private val JoinedAt = java.time.Instant.parse("2018-01-08T22:13:20.000100Z")
+  private val Said2 = java.time.Instant.ofEpochSecond(2)
+
+  /** A review in a channel of its own, [[C]]. */
+  private val Review: SlackReview =
+    SlackReview
+      .of(Room, UserId("U0NICK001"))
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** A workspace that shares channel [[C]] with grit's. */
   private val Theirs = "T0THEIRS"
 
@@ -291,7 +319,7 @@ object SlackEdgeTests extends TestSuite {
     test(
       "a message in a shared channel is written through its author's account in their own team, addressed or heard, live or listed"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.deliver(
         message("3.0", s"<@$Bot> hi from next door", extra = Seq("user_team" -> Theirs))
       ) ==> true
@@ -310,7 +338,7 @@ object SlackEdgeTests extends TestSuite {
     test(
       "unheard lists what a listened channel said since, as live messages are read, leaving out what is recorded"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.histories = Map(
         C -> Vector(
           Listed(Ts("1.0"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "is the freeze on?"),
@@ -328,7 +356,7 @@ object SlackEdgeTests extends TestSuite {
     test(
       "backfill hears a past mention at the time it was said, and never takes it as a turn or answers it"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.histories = Map(
         C -> Vector(Listed(Ts("2.0"), None, Some(UserId(Ana)), false, None, s"<@$Bot> lunch?"))
       )
@@ -346,7 +374,7 @@ object SlackEdgeTests extends TestSuite {
     test(
       "a message heard live keeps its thread as where a reply would go, and whom it names besides grit"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
       w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
       w.reached("2.0") ==> Vector(
@@ -358,7 +386,7 @@ object SlackEdgeTests extends TestSuite {
     test("an unprompted reply to a top-level message is posted in a thread under it") {
       // Kept beside the mention's reply below: here the address is the heard reach's, awaited
       // as record-speech awaits a posted draft, not one the edge awaited itself.
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.deliver(message("2.0", "what did we decide about the refi page?")) ==> true
       val heard = w.inbox.conversations.all
         .find(_.origin == w.origin("2.0"))
@@ -374,7 +402,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a heard message a turn put to grit answers wears :eyes: while it runs, put up once") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       (w.first.acknowledge(), w.first.acknowledge()) ==> (Right(1), Right(0))
       (w.slack.reactions, w.standing) ==> (
@@ -384,7 +412,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a turn that ends with nothing to post has its mark taken down, and cleared") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       w.first.acknowledge() ==> Right(1)
       w.inbox.finish(t, None, "passed")
@@ -393,7 +421,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a mark stays until its reply is posted, and the delivery takes it down and clears it") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       w.first.acknowledge() ==> Right(1)
       w.deliveries.await(t, w.to("2.0"))(using TestTx.fake) ==> Right(())
@@ -405,7 +433,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a turn that ended before its mark was put up is cleared, and never marks") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       w.inbox.finish(t, None, "passed")
       w.first.acknowledge() ==> Right(1)
@@ -413,7 +441,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a mark on a message Slack no longer has is cleared") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val gone = TurnRef(ConversationId("elsewhere"), grit.core.id.TurnSeq.First)
       w.acknowledgements.want(gone, "C123ABC456/9.0/9.0", Start)(using TestTx.fake) ==> Right(())
       w.first.acknowledge() ==> Right(1)
@@ -421,7 +449,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a mark Slack will not put up is tried again on the next pass") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       w.slack.down = true
       w.first.acknowledge() ==> Right(0)
@@ -432,7 +460,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("each pass starts again every turn whose mark is not yet up, and no other") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val t = w.named("2.0")
       w.slack.down = true
       w.first.acknowledge() ==> Right(0)
@@ -480,7 +508,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("heard replies under grit's post record the post once, before the first") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val root = w.post(Asking)
       w.slack.deliver(message("9.1", "why this?", Some(root))) ==> true
       w.slack.deliver(message("9.2", "no idea", Some(root))) ==> true
@@ -492,7 +520,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("a reply under a person's message, or under grit's reply, records nothing before it") {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.histories = Map(
         C -> Vector(Listed(Ts("5.0"), None, Some(UserId(Ana)), false, None, "a person's"))
       )
@@ -521,7 +549,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("backfill hears a past reply under grit's post after recording the post") {
-      val w = new World(listening = Set(C))
+      val w = new World
       val root = w.post(Asking)
       w.slack.histories = Map(
         C -> Vector(Listed(Ts("9.1"), Some(Ts(root)), Some(UserId(Ana)), false, None, "why?"))
@@ -576,9 +604,9 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "in a channel grit listens in, a message not addressed to it is heard under the person's name, with no turn, mark or delivery; in one it does not, it is ignored"
+      "in a channel grit's bot is a member of, a message not addressed to it is heard under the person's name, with no turn, mark or delivery; in one it is not, it is ignored"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World(reconciled = false)
       w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
       w.slack.deliver(message("2.1", "fine by me", Some("2.0"))) ==> true
       w.heard("2.0") ==> Vector(
@@ -587,32 +615,118 @@ object SlackEdgeTests extends TestSuite {
       )
       (w.turnOf("2.0", "2.0"), w.inbox.started, w.pending, w.slack.reactions) ==>
         (None, Vector.empty, Vector.empty, Set.empty)
-      val deaf = new World
+      val deaf = new World(reconciled = false)
+      deaf.slack.notIn = Set(C)
       deaf.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
-      (deaf.heard("2.0"), deaf.inbox.conversations.all) ==> (Vector.empty, Vector.empty)
+      deaf.slack.deliver(mention("3.0")) ==> true
+      (deaf.heard("2.0"), deaf.inbox.conversations.all, deaf.joins.members(Workspace)) ==>
+        (Vector.empty, Vector.empty, Right(Vector.empty))
     }
 
     test(
-      "listened names each channel as Slack shows it, and says which will hear nothing and why"
+      "a message racing its channel's join records the join first, as of the message, then is heard; with Slack unreachable it is left for Slack to send again"
     ) {
-      val (secret, direct, gone) =
-        (ChannelId("C0SECRET1"), ChannelId("D0DIRECT1"), ChannelId("C0GONE123"))
-      val w = new World(listening = Set(C, secret, direct, gone))
-      w.slack.channelNames = w.slack.channelNames ++ Map(secret -> "secret", direct -> "ana")
-      w.slack.directs = Set(direct)
-      w.slack.unreachable = Set(gone)
-      w.first.listened().sorted ==> Vector(
-        "#secret (C0SECRET1)",
-        "#standup (C123ABC456)",
-        "C0GONE123 (Slack not asked: Unreachable(gone))",
-        "D0DIRECT1 (not a channel grit can see: nothing there is heard)"
+      val w = new World(reconciled = false)
+      w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      (w.joins.members(Workspace), w.joins.access(Room), w.heard("2.0").size) ==> (
+        Right(Vector(Room -> Membership.Member(Said2, Some(Said2)))),
+        Some(RoomAccess.Open),
+        1
+      )
+      val cut = new World(reconciled = false)
+      cut.slack.unreachable = Set(C)
+      (cut.slack.deliver(message("2.0", "standup moves to 10:00")), cut.heard("2.0")) ==>
+        (false, Vector.empty)
+    }
+
+    test(
+      "grit's bot joining a channel records it a member, its access as Slack reports it, and its messages are heard without asking Slack again"
+    ) {
+      val w = new World(reconciled = false)
+      w.slack.privateChannels = Set(C)
+      w.slack.deliver(joined(inviter = "")) ==> true
+      // Slack can no longer be asked: a member's message needs no asking.
+      w.slack.unreachable = Set(C)
+      w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      (w.joins.members(Workspace), w.joins.access(Room), w.heard("2.0").size) ==> (
+        Right(Vector(Room -> Membership.Member(JoinedAt, Some(JoinedAt)))),
+        Some(RoomAccess.Invited),
+        1
       )
     }
 
     test(
-      "in a private channel grit listens in, a message is heard and a mention is a turn, as in a public one"
+      "a join invited by someone no trusted realm vouches a full member skips its backfill, and says why; by a full member it does not"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World(reconciled = false, staff = true)
+      w.slack.standings = Map(UserId(Ana) -> Standing.Outside)
+      w.slack.deliver(joined()) ==> true
+      val v = new World(reconciled = false, staff = true)
+      v.slack.deliver(joined()) ==> true
+      (
+        w.joins.members(Workspace),
+        w.logged.filter(_.contains("joined")),
+        v.joins.members(Workspace)
+      ) ==> (
+        Right(Vector(Room -> Membership.Member(JoinedAt, None))),
+        Vector(
+          s"slack: grit's bot joined #standup (C123ABC456); what was said before is not heard: slack:$Team/$Ana invited it, whom no trusted realm vouches a full member"
+        ),
+        Right(Vector(Room -> Membership.Member(JoinedAt, Some(JoinedAt))))
+      )
+    }
+
+    test("a leave stops the next message in its channel from being heard") {
+      val w = new World(reconciled = false)
+      w.slack.deliver(joined()) ==> true
+      w.slack.deliver(message("2.0", "before")) ==> true
+      w.slack.deliver(memberLeft()) ==> true
+      // Slack would deliver no more; were it to, it no longer says the bot is in the channel.
+      w.slack.notIn = Set(C)
+      w.slack.deliver(message("3.0", "after")) ==> true
+      (w.heard("2.0").size, w.heard("3.0"), w.joins.members(Workspace)) ==>
+        (1, Vector.empty, Right(Vector.empty))
+    }
+
+    test(
+      "a join reported after a leave it was made before changes nothing: the channel stays unheard"
+    ) {
+      val w = new World(reconciled = false)
+      w.slack.deliver(botLeft()) ==> true
+      w.slack.deliver(joined(eventTs = Some("1515449500.000000"))) ==> true
+      w.slack.notIn = Set(C)
+      w.slack.deliver(message("2.0", "hello")) ==> true
+      (w.joins.members(Workspace), w.heard("2.0")) ==> (Right(Vector.empty), Vector.empty)
+    }
+
+    test(
+      "the review's channel is never heard nor recorded a member, its mentions not taken either"
+    ) {
+      val w = new World(reconciled = false, review = Some(Review))
+      w.slack.deliver(joined()) ==> true
+      w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      w.slack.deliver(mention("3.0")) ==> true
+      (w.heard("2.0"), w.inbox.conversations.all, w.joins.members(Workspace)) ==>
+        (Vector.empty, Vector.empty, Right(Vector.empty))
+    }
+
+    test(
+      "a message heard in a quiet room keeps no reply address, and a mention there is answered"
+    ) {
+      val w = new World
+      w.inbox.quiet(Room)
+      w.slack.deliver(message("2.0", s"ask <@$Ben>")) ==> true
+      w.slack.deliver(mention("3.0")) ==> true
+      (w.reached("2.0"), w.turnOf("3.0", "3.0").toVector == w.inbox.started) ==> (
+        Vector(Some(Reach(None, Set(TestAccounts.account(s"slack:$Team/$Ben"))))),
+        true
+      )
+    }
+
+    test(
+      "in a private channel grit's bot is a member of, a message is heard and a mention is a turn, as in a public one"
+    ) {
+      val w = new World
       w.slack.privateChannels = Set(C)
       val inPrivate = Seq("channel_type" -> ujson.Str("group"))
       w.slack.deliver(message("2.0", "standup moves to 10:00", extra = inPrivate)) ==> true
@@ -622,21 +736,9 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a mention is recorded in any public channel, and in a private one only when grit listens there"
-    ) {
-      val (open, closed) = (new World, new World)
-      closed.slack.privateChannels = Set(C)
-      open.slack.deliver(mention("1.0")) ==> true
-      closed.slack.deliver(mention("1.0")) ==> true
-      (open.turnOf("1.0", "1.0").nonEmpty, open.inbox.started.size) ==> (true, 1)
-      (closed.turnOf("1.0", "1.0"), closed.inbox.started, closed.inbox.conversations.all) ==>
-        (None, Vector.empty, Vector.empty)
-    }
-
-    test(
       "a mention in a heard thread is one turn, and the replies after it without a mention are still heard"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World
       w.slack.deliver(message("3.0", "is the freeze on Thursday?")) ==> true
       w.slack.deliver(mentionIn("3.0", "3.1")) ==> true
       w.slack.deliver(message("3.2", "it is", Some("3.0"))) ==> true
@@ -645,9 +747,9 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a message in a conversation that is not a channel, or a bot's, is ignored and acknowledged, in one grit listens in too"
+      "a message in a conversation that is not a channel, or a bot's, is ignored and acknowledged"
     ) {
-      val w = new World(listening = Set(C))
+      val w = new World(reconciled = false)
       w.slack.directs = Set(C)
       w.slack.deliver(mention("1.0")) ==> true
       w.slack.deliver(message("6.0", "overheard in private")) ==> true
@@ -658,7 +760,7 @@ object SlackEdgeTests extends TestSuite {
       )
       // A public channel's bot, in a world of its own: a cached answer that C is not a channel
       // would drop the bot's messages for the wrong reason.
-      val b = new World(listening = Set(C))
+      val b = new World
       b.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true
       b.slack.deliver(message("5.1", "a bot's aside", user = Bot)) ==> true
       // As Slack sends grit's own post that names grit: an app_mention from its bot.

@@ -3,6 +3,7 @@ package grit.slack.edge
 import java.time.Instant
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
   EdgeStores,
@@ -116,6 +117,7 @@ object ReviewingTests extends TestSuite {
       EdgeStores(
         inbox,
         InMemoryAdministration.none(),
+        InMemoryJoins.none(),
         inbox.principals,
         new InMemoryDeliveries,
         new InMemoryAcknowledgements,
@@ -124,7 +126,6 @@ object ReviewingTests extends TestSuite {
         new InMemoryEdges,
         new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
       ),
-      Set.empty,
       Some(Review),
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
@@ -292,18 +293,6 @@ object ReviewingTests extends TestSuite {
         Vector(true, true, true, true, true),
         None,
         Some(Verdict.CutIn)
-      )
-    }
-
-    test("a review is refused a place grit listens in, and served anywhere else") {
-      (
-        SlackEdge.serving(Grit, Set(C, Place), None, Review),
-        SlackEdge.serving(Grit, Set(C), None, Review).map(_.name)
-      ) ==> (
-        Left(
-          "review prompts are not posted in C0REVIEW1: grit listens there, so they would be heard"
-        ),
-        Right(EdgeName("slack"))
       )
     }
   }

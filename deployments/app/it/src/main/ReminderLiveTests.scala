@@ -176,6 +176,7 @@ object ReminderLiveTests extends TestSuite {
       EdgeStores(
         engine.inbox,
         engine.administration,
+        engine.joins,
         engine.principals,
         engine.deliveries,
         engine.acknowledgements,
@@ -184,7 +185,6 @@ object ReminderLiveTests extends TestSuite {
         engine,
         new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
       ),
-      Set.empty,
       None,
       grit.core.clock.Clock.system(),
       _ => ()

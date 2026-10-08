@@ -348,6 +348,7 @@ object Kit {
     EdgeStores(
       link.inbox,
       link.administration,
+      link.joins,
       link.principals,
       link.deliveries,
       link.acknowledgements,

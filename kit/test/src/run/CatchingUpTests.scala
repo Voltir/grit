@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
+import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
   CatchUp,
@@ -78,6 +79,7 @@ object CatchingUpTests extends TestSuite {
     EdgeStores(
       inbox,
       InMemoryAdministration.none(),
+      InMemoryJoins.none(),
       inbox.principals,
       new InMemoryDeliveries,
       new InMemoryAcknowledgements,

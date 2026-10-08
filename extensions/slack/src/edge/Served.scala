@@ -60,7 +60,6 @@ private[slack] object Served {
 
   def serving(
       command: SlackCommand,
-      channels: Set[ChannelId],
       posts: Option[Posts],
       review: Option[SlackReview],
       connect: Connect^
@@ -93,46 +92,48 @@ private[slack] object Served {
                 )
               )
             case Right(self) =>
-              val edge = new SlackEdge(slack, self, stores, channels, review, clock, log)
-              log(edge.listened() match {
-                case Vector() => "slack: listening in no channel"
-                case listened => s"slack: listening in ${listened.sorted.mkString(", ")}"
-              })
-              // The deployment's persona is the assistant's name (ADR 0026); Slack's, logged,
-              // is what people see and may type.
-              edge.displayName() match {
-                case Right(name) => log(s"slack: grit's bot is named $name in Slack")
-                case Left(why) => log(s"slack: grit's bot's name is unread: $why")
-              }
-              slack.listen(edge.receive, edge.command(command)) match {
-                case Left(e) =>
+              val edge = new SlackEdge(slack, self, stores, review, clock, log)
+              edge.reconcile() match {
+                case Left(why) =>
                   slack.close()
-                  Left(EdgeRefusal.Refused(s"Socket Mode would not open: $e"))
+                  Left(EdgeRefusal.Refused(why))
                 case Right(()) =>
-                  log(
-                    s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}, answering ${command.name}"
-                  )
-                  val stopPosting = posts match {
-                    case Some(p) => posting(slack, self.team, p, stores, clock, log)
-                    case None => None
+                  // The deployment's persona is the assistant's name (ADR 0026); Slack's, logged,
+                  // is what people see and may type.
+                  edge.displayName() match {
+                    case Right(name) => log(s"slack: grit's bot is named $name in Slack")
+                    case Left(why) => log(s"slack: grit's bot's name is unread: $why")
                   }
-                  Right(new ServedEdge.Open {
-                    def deliver(): Either[StoreError, Int] = {
-                      // First, so a slow post never holds back a mark.
-                      edge
-                        .acknowledge()
-                        .left
-                        .foreach(e => log(s"slack: acknowledgements unread: $e"))
-                      val delivered = edge.deliver()
-                      edge.prompt().left.foreach(e => log(s"slack: review prompts unread: $e"))
-                      delivered
-                    }
-                    override def attest(): Either[StoreError, Int] = edge.attest()
-                    def close(): Unit = {
-                      stopPosting.foreach(_())
+                  slack.listen(edge.receive, edge.command(command)) match {
+                    case Left(e) =>
                       slack.close()
-                    }
-                  })
+                      Left(EdgeRefusal.Refused(s"Socket Mode would not open: $e"))
+                    case Right(()) =>
+                      log(
+                        s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}, answering ${command.name}"
+                      )
+                      val stopPosting = posts match {
+                        case Some(p) => posting(slack, self.team, p, stores, clock, log)
+                        case None => None
+                      }
+                      Right(new ServedEdge.Open {
+                        def deliver(): Either[StoreError, Int] = {
+                          // First, so a slow post never holds back a mark.
+                          edge
+                            .acknowledge()
+                            .left
+                            .foreach(e => log(s"slack: acknowledgements unread: $e"))
+                          val delivered = edge.deliver()
+                          edge.prompt().left.foreach(e => log(s"slack: review prompts unread: $e"))
+                          delivered
+                        }
+                        override def attest(): Either[StoreError, Int] = edge.attest()
+                        def close(): Unit = {
+                          stopPosting.foreach(_())
+                          slack.close()
+                        }
+                      })
+                  }
               }
           }
       }
@@ -195,7 +196,7 @@ private[slack] object Served {
     }
   }
 
-  def backfill(channels: Set[ChannelId], days: Int, connect: Connect^): CatchUp^{connect} =
+  def backfill(days: Int, connect: Connect^): CatchUp^{connect} =
     new CatchUp {
       def name: EdgeName = Name
       def needs: Vector[Variable] = Needs
@@ -206,23 +207,30 @@ private[slack] object Served {
           clock: Clock^,
           log: String => Unit
       ): Either[EdgeRefusal, CatchUp.Open^{stores, clock, log, caps.any}] =
-        if (channels.isEmpty)
-          Left(EdgeRefusal.Refused("Slack listens in no channel: there is nothing to backfill"))
-        else
-          tokens(env) match {
-            case Left(refused) => Left(refused)
-            case Right((bot, app)) =>
-              val slack = connect(bot, app)
-              slack.self() match {
-                case Left(e) =>
-                  slack.close()
-                  Left(refusedToken(e))
-                case Right(self) =>
-                  val edge = new SlackEdge(slack, self, stores, channels, None, clock, log)
-                  val from = clock.now().minus(Duration.ofDays(days.toLong))
-                  val sorted = channels.toVector.sortBy(ChannelId.value)
-                  val read =
-                    sorted.foldLeft[Either[EdgeRefusal, Vector[(ChannelId, Vector[Event.Said])]]](
+        tokens(env) match {
+          case Left(refused) => Left(refused)
+          case Right((bot, app)) =>
+            val slack = connect(bot, app)
+            slack.self() match {
+              case Left(e) =>
+                slack.close()
+                Left(refusedToken(e))
+              case Right(self) =>
+                val edge = new SlackEdge(slack, self, stores, None, clock, log)
+                val from = clock.now().minus(Duration.ofDays(days.toLong))
+                val sorted = edge.reconcile() match {
+                  case Left(why) => Left(EdgeRefusal.Refused(why))
+                  case Right(()) if edge.channels.isEmpty =>
+                    Left(
+                      EdgeRefusal.Refused(
+                        "grit's bot is a member of no channel: there is nothing to backfill"
+                      )
+                    )
+                  case Right(()) => Right(edge.channels)
+                }
+                val read =
+                  sorted.flatMap(
+                    _.foldLeft[Either[EdgeRefusal, Vector[(ChannelId, Vector[Event.Said])]]](
                       Right(Vector.empty)
                     ) { (acc, channel) =>
                       acc.flatMap(done =>
@@ -235,31 +243,32 @@ private[slack] object Served {
                           .map(said => done :+ (channel, said))
                       )
                     }
-                  read match {
-                    case Left(refused) =>
-                      slack.close()
-                      Left(refused)
-                    case Right(each) =>
-                      val found = each.map { (channel, said) =>
-                        val id = ChannelId.value(channel)
-                        val name = slack.channelName(channel).toOption.flatten
-                        Unheard(
-                          name.fold(id)(n => s"#$n ($id)"),
-                          Origin.channel(TeamId.value(self.team), id),
-                          threads(said)
-                        )
-                      }
-                      val all = each.flatMap(_._2)
-                      Right(new CatchUp.Open {
-                        def since: Instant = from
-                        def unheard: Vector[Unheard] = found
-                        def hear(): Either[EdgeRefusal, Unit] =
-                          edge.backfill(all).left.map(EdgeRefusal.Failed(_))
-                        def close(): Unit = slack.close()
-                      })
-                  }
-              }
-          }
+                  )
+                read match {
+                  case Left(refused) =>
+                    slack.close()
+                    Left(refused)
+                  case Right(each) =>
+                    val found = each.map { (channel, said) =>
+                      val id = ChannelId.value(channel)
+                      val name = slack.channelName(channel).toOption.flatten
+                      Unheard(
+                        name.fold(id)(n => s"#$n ($id)"),
+                        Origin.channel(TeamId.value(self.team), id),
+                        threads(said)
+                      )
+                    }
+                    val all = each.flatMap(_._2)
+                    Right(new CatchUp.Open {
+                      def since: Instant = from
+                      def unheard: Vector[Unheard] = found
+                      def hear(): Either[EdgeRefusal, Unit] =
+                        edge.backfill(all).left.map(EdgeRefusal.Failed(_))
+                      def close(): Unit = slack.close()
+                    })
+                }
+            }
+        }
     }
 
   /** `said`'s threads, each its messages' lengths in the order they were said, the threads

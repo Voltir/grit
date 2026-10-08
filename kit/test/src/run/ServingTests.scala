@@ -2,6 +2,7 @@ package grit.kit.run
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
+import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
   EdgeRefusal,
@@ -42,6 +43,7 @@ object ServingTests extends TestSuite {
     EdgeStores(
       inbox,
       InMemoryAdministration.none(),
+      InMemoryJoins.none(),
       inbox.principals,
       new InMemoryDeliveries,
       new InMemoryAcknowledgements,
