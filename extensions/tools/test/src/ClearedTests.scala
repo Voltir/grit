@@ -11,8 +11,8 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** [[Cleared]]: the asker's clearance in plain words in a direct message, and the room's label
-  * with one fixed line anywhere else.
+/** [[Cleared]]: the asker's clearance in plain words in a direct message, and anywhere else the
+  * room's label with one fixed line for the model.
   */
 object ClearedTests extends TestSuite {
 
@@ -37,12 +37,20 @@ object ClearedTests extends TestSuite {
       label: Label,
       asker: Label,
       down: Boolean = false
+  ): Outcome =
+    calledUnder(visibility, Clearance.inRoom(room, label, asker), down)
+
+  /** As [[called]], for a read opened under `clearance`. */
+  private def calledUnder(
+      visibility: Visibility,
+      clearance: Clearance,
+      down: Boolean = false
   ): Outcome = {
     val at = TestCallSlots.First
     val store: Db^ = new Db {
       def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
         if (down || subject != Subject.Turn(at.turn)) Left(StoreError.DatabaseError(s"$subject"))
-        else body(using TestTx.fake(Clearance.inRoom(room, label, asker), visibility))
+        else body(using TestTx.fake(clearance, visibility))
     }
     Toolbox
       .of(Cleared.tool(danaAsks, visibility, store))
@@ -80,21 +88,22 @@ object ClearedTests extends TestSuite {
     }
 
     test(
-      "outside a direct message it answers the room's label and then one fixed line, whatever the visibility and whoever asks"
+      "outside a direct message it tells the model the room's label and then one fixed line, whatever the visibility and whoever asks"
     ) {
-      val internal = Label.at(Level.Internal)
+      val told =
+        "This room is labelled [level: confidential, in: {trial}]. A person's own clearance is " +
+          "told only in a direct message with them; say so only if they asked about their own " +
+          "clearance."
       (
-        called(Before, channel, internal, Before.cleared(Dana)),
-        called(Visibility.Shipped, channel, internal, Label.Public)
-      ) ==> (
-        Outcome.Done(
-          "This conversation is labelled [level: internal]. I tell people their own clearance " +
-            "only in a direct message to me. Write to me there and ask again."
-        ),
-        Outcome.Done(
-          "This conversation is labelled [level: internal]. I tell people their own clearance " +
-            "only in a direct message to me. Write to me there and ask again."
-        )
+        called(Before, channel, confidentialTrial, Before.cleared(Dana)),
+        called(Visibility.Shipped, channel, confidentialTrial, confidentialTrial)
+      ) ==> (Outcome.Done(told), Outcome.Done(told))
+    }
+
+    test("a turn with no room of its own tells the model the fixed line alone") {
+      calledUnder(After, Clearance.of(confidentialTrial)) ==> Outcome.Done(
+        "A person's own clearance is told only in a direct message with them; say so only if " +
+          "they asked about their own clearance."
       )
     }
 
