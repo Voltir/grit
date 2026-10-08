@@ -36,7 +36,10 @@ object FakeSlackContractTests extends SlackContract {
       new Hooks {
         def live: ResponseUrl = asked
         def expired: ResponseUrl = late
-        // The fake shows an answer only to its asker, in the words it was given.
+        // The fake keeps no response type: it records an answer's url and words alone, and
+        // every answer is taken to be its asker's alone, so `ephemeral` here is assumed, not
+        // read. That an answer is ephemeral is pinned only by the Socket side's run of the
+        // contract, which reads the response_type SocketSlack posts.
         def answered(): Vector[Answered] =
           slack.responses.map((url, text) => Answered(url, ephemeral = true, text))
       }
