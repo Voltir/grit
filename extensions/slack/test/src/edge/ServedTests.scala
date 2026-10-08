@@ -500,10 +500,10 @@ object ServedTests extends TestSuite {
       w.slack.histories =
         Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hi")))
       w.slack.channelNames = w.slack.channelNames + (First -> "general")
-      w.slack.notIn = Set(First)
+      w.slack.unreachable = Set(First)
       refusal(
         Served.backfill(Set(C, First), 3, w.connect).open(w.stores, Env, w.clock, _ => ())
-      ) ==> Some(EdgeRefusal.Refused("C0AAAAAAAA1 not read: Refused(not_in_channel)"))
+      ) ==> Some(EdgeRefusal.Refused("C0AAAAAAAA1 not read: Unreachable(gone)"))
       w.slack.closed ==> true
     }
 

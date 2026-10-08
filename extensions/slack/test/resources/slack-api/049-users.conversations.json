@@ -1,0 +1,26 @@
+{
+  "method": "users.conversations",
+  "params": {},
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "channels": [
+      {
+        "id": "C0000000001",
+        "is_channel": true,
+        "is_group": false,
+        "is_private": false,
+        "is_im": false,
+        "is_mpim": false,
+        "name": "grit-contract"
+      }
+    ],
+    "response_metadata": {
+      "next_cursor": "Y2hhbm5lbDpDMDAwMDAwMDAwMg=="
+    }
+  },
+  "source": "hand-written from Slack's users.conversations docs (one channel a page, its cursor naming the next), not yet captured"
+}

@@ -18,9 +18,13 @@ import com.slack.api.methods.request.conversations.{
   ConversationsRepliesRequest
 }
 import com.slack.api.methods.request.reactions.{ReactionsAddRequest, ReactionsRemoveRequest}
-import com.slack.api.methods.request.users.{UsersInfoRequest, UsersListRequest}
+import com.slack.api.methods.request.users.{
+  UsersConversationsRequest,
+  UsersInfoRequest,
+  UsersListRequest
+}
 import com.slack.api.methods.{MethodsClient, SlackApiException, SlackApiTextResponse}
-import com.slack.api.model.{Message, ResponseMetadata, User}
+import com.slack.api.model.{Conversation, ConversationType, Message, ResponseMetadata, User}
 import com.slack.api.socket_mode.SocketModeClient
 import com.slack.api.socket_mode.request.{EventsApiEnvelope, SlashCommandsEnvelope}
 import com.slack.api.socket_mode.response.AckResponse
@@ -217,14 +221,7 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
         ConversationsInfoRequest.builder().channel(ChannelId.value(channel)).build()
       )
     )
-      // A private channel made before March 2021 is a group, not a channel, to Slack.
-      .map(r =>
-        Option(r.getChannel)
-          .filter(c => (c.isChannel || c.isGroup) && !c.isIm && !c.isMpim)
-          .fold(ChannelKind.Unseen)(c =>
-            if (c.isPrivate || c.isGroup) ChannelKind.Private else ChannelKind.Public
-          )
-      )
+      .map(r => Option(r.getChannel).fold(ChannelKind.Unseen)(c => kindOf(c, c.isMember)))
       .left
       .flatMap {
         // One grit may not look at: unseen, never a failure.
@@ -232,6 +229,37 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
           Right(ChannelKind.Unseen)
         case other => Left(other)
       }
+
+  def channels(): Either[SlackError, Vector[(ChannelId, ChannelKind)]] = {
+    // Slack lists public channels alone unless asked for both.
+    val types = java.util.List.of(ConversationType.PUBLIC_CHANNEL, ConversationType.PRIVATE_CHANNEL)
+    @scala.annotation.tailrec
+    def from(
+        cursor: Option[String],
+        found: Vector[Conversation]
+    ): Either[SlackError, Vector[Conversation]] = {
+      val req = UsersConversationsRequest.builder().types(types).excludeArchived(true).limit(200)
+      cursor.foreach(c => req.cursor(c))
+      patient(() => methods.usersConversations(req.build())) match {
+        case Left(e) => Left(e)
+        case Right(r) =>
+          val here =
+            found ++ Option(r.getChannels).fold(Vector.empty[Conversation])(_.asScala.toVector)
+          Option(r.getResponseMetadata)
+            .flatMap(m => Option(m.getNextCursor))
+            .filter(_.nonEmpty) match {
+            case Some(next) => from(Some(next), here)
+            case None => Right(here)
+          }
+      }
+    }
+    // Listed as memberships, so a channel here is one grit's bot is in (the listing omits
+    // is_member).
+    from(None, Vector.empty).map(
+      _.flatMap(c => Option(c.getId).map(id => ChannelId(id) -> kindOf(c, member = true)))
+        .filter(_._2 != ChannelKind.Unseen)
+    )
+  }
 
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] = {
     val from = oldest(since)
@@ -449,6 +477,14 @@ object SocketSlack {
       else profile.flatMap(p => Option(p.getEmail)).flatMap(Email.of(_).toOption)
     Member(name, if (full) Standing.Full(email) else Standing.Outside)
   }
+
+  /** What `c` is to grit's bot, a `member` of it or not: a channel's kind, else unseen. A
+    * private channel made before March 2021 is a group, not a channel, to Slack.
+    */
+  private def kindOf(c: Conversation, member: Boolean): ChannelKind =
+    if (!member || !(c.isChannel || c.isGroup) || c.isIm || c.isMpim) ChannelKind.Unseen
+    else if (c.isPrivate || c.isGroup) ChannelKind.Private
+    else ChannelKind.Public
 
   /** How many times a rate-limited call is waited out and made again. */
   val Retries = 5

@@ -423,6 +423,24 @@ rules:
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
 
+  - id: only-slack-imports-users-conversations-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.users.UsersConversationsRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-conversation
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.model.Conversation"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-conversation-type
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.model.ConversationType"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
   - id: only-slack-imports-user
     forbid_name: outside-slack
     pattern: "* -> com.slack.api.model.User"

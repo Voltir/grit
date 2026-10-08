@@ -14,8 +14,9 @@
       "is_private": true,
       "is_im": false,
       "is_mpim": false,
-      "name": "grit-private"
+      "name": "grit-private",
+      "is_member": true
     }
   },
-  "source": "recorded"
+  "source": "recorded; is_member added by hand from Slack's conversations.info docs, not yet captured"
 }

@@ -58,7 +58,7 @@ def call(token, method, params):
 
 # What SocketSlack reads of an answer; every other field is dropped.
 MESSAGE_FIELDS = ["ts", "thread_ts", "user", "bot_id", "subtype", "text", "reply_count", "metadata"]
-CHANNEL_FIELDS = ["is_channel", "is_private", "is_im", "is_mpim", "name"]
+CHANNEL_FIELDS = ["id", "is_channel", "is_group", "is_private", "is_im", "is_mpim", "is_member", "name"]
 USER_FLAGS = ["is_restricted", "is_ultra_restricted", "is_stranger", "is_bot", "is_app_user",
               "is_invited_user", "deleted", "is_email_confirmed"]
 
@@ -84,6 +84,8 @@ def kept(body):
         out["response_metadata"] = {"next_cursor": cursor}
     if isinstance(body.get("channel"), dict):
         out["channel"] = {k: body["channel"][k] for k in CHANNEL_FIELDS if k in body["channel"]}
+    if isinstance(body.get("channels"), list):
+        out["channels"] = [{k: c[k] for k in CHANNEL_FIELDS if k in c} for c in body["channels"]]
     if isinstance(body.get("user"), dict):
         out["user"] = user_kept(body["user"])
     if "members" in body:
@@ -191,6 +193,14 @@ def main():
 
         for channel in [a.public, a.private, a.outside, "C0000000000"]:
             record("conversations.info", {"channel": channel})
+        cursor = None
+        while True:
+            body = record("users.conversations", {"types": "public_channel,private_channel",
+                                                  "exclude_archived": "true", "limit": str(PAGE),
+                                                  **({"cursor": cursor} if cursor else {})})
+            cursor = (body.get("response_metadata") or {}).get("next_cursor")
+            if not cursor:
+                break
         for user in [a.user, auth["user_id"], "U0000000000"]:
             record("users.info", {"user": user})
         cursor = None
@@ -235,6 +245,12 @@ def main():
             # The workspace's domain names it: SlackContract.Domain stands in.
             r["body"]["permalink"] = re.sub(r"^https://[^/]+/", "https://grit-contract.slack.com/",
                                             r["body"]["permalink"])
+        # The bot's memberships beyond the test channels name the workspace: left out.
+        if r["method"] == "users.conversations":
+            r["body"]["channels"] = [c for c in r["body"].get("channels", [])
+                                     if c.get("id") in (a.public, a.private)]
+            for c in r["body"]["channels"]:
+                c["name"] = "grit-contract" if c["id"] == a.public else "grit-private"
         c = r["body"].get("channel")
         if r["method"] == "conversations.info" and c and "name" in c:
             c["name"] = {a.public: "grit-contract", a.private: "grit-private",

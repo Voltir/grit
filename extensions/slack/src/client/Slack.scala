@@ -140,10 +140,17 @@ trait Slack extends caps.SharedCapability {
     */
   def members(team: TeamId): Either[SlackError, Map[UserId, Member]]
 
-  /** What `channel` is to grit ([[ChannelKind]]); Slack being unreachable is still
-    * `Unreachable`.
+  /** What `channel` is to grit ([[ChannelKind]]), grit's bot a member of it or not
+    * (`conversations.info`); Slack being unreachable is still `Unreachable`.
     */
   def kind(channel: ChannelId): Either[SlackError, ChannelKind]
+
+  /** Every channel, public or private and not archived, grit's bot is a member of, with its
+    * [[kind]] (`users.conversations`), every page read, in the order Slack lists them; a rate
+    * limit is waited out, up to 5 times a page, as in [[history]]. `Left` when any page could
+    * not be read, never part of the listing.
+    */
+  def channels(): Either[SlackError, Vector[(ChannelId, ChannelKind)]]
 
   /** Every message in `channel` at or after `since`, to the microsecond, with every reply in a
     * thread rooted in that span, oldest first, each once; a reply in a thread rooted earlier
@@ -171,14 +178,14 @@ trait Slack extends caps.SharedCapability {
 /** What a conversation is, as Slack reports it to grit's bot. */
 enum ChannelKind {
 
-  /** A public channel. */
+  /** A public channel grit's bot is a member of. */
   case Public
 
-  /** A private channel grit's bot is in. */
+  /** A private channel grit's bot is a member of. */
   case Private
 
-  /** No channel grit can see: a direct message or a group one, a private channel grit's bot
-    * is not in, or no conversation at all.
+  /** No channel grit's bot is a member of: a channel it is not in, a direct message or a group
+    * one, or no conversation at all.
     */
   case Unseen
 }

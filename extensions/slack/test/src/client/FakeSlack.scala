@@ -338,14 +338,27 @@ final class FakeSlack extends Slack {
       else Right(channelNames.get(channel))
     }
 
+  /** The named channels grit's bot is in, by id, each read as [[kind]] reads it. */
+  def channels(): Either[SlackError, Vector[(ChannelId, ChannelKind)]] =
+    patient(SocketSlack.Retries).map { _ =>
+      channelNames.keys.toVector
+        .sortBy(ChannelId.value)
+        .map(c => c -> kindOf(c))
+        .filter(_._2 != ChannelKind.Unseen)
+    }
+
   def kind(channel: ChannelId): Either[SlackError, ChannelKind] =
     request {
       if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-      else if (!channelNames.contains(channel) || directs.contains(channel))
-        Right(ChannelKind.Unseen)
-      else if (privateChannels.contains(channel)) Right(ChannelKind.Private)
-      else Right(ChannelKind.Public)
+      else Right(kindOf(channel))
     }
+
+  /** What `channel` is to grit's bot: unseen unless named, a channel and not in [[notIn]]. */
+  private def kindOf(channel: ChannelId): ChannelKind =
+    if (!channelNames.contains(channel) || directs.contains(channel) || notIn.contains(channel))
+      ChannelKind.Unseen
+    else if (privateChannels.contains(channel)) ChannelKind.Private
+    else ChannelKind.Public
 }
 
 object FakeSlack {

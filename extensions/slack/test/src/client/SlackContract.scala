@@ -218,7 +218,7 @@ abstract class SlackContract extends TestSuite {
     }
 
     test(
-      "kind and channelName: a public channel, a private one, one grit's bot is not in, and one that does not exist"
+      "kind and channelName: a public channel grit's bot is in, a private one, a public one it is not in (unseen, still named), and one that does not exist"
     ) {
       withSlack() { slack =>
         Vector(Public, Private, Outside, Missing).map(c =>
@@ -227,9 +227,25 @@ abstract class SlackContract extends TestSuite {
           Vector(
             (Right(ChannelKind.Public), Right(Some("grit-contract"))),
             (Right(ChannelKind.Private), Right(Some("grit-private"))),
-            (Right(ChannelKind.Public), Right(Some("grit-outside"))),
+            (Right(ChannelKind.Unseen), Right(Some("grit-outside"))),
             (Right(ChannelKind.Unseen), Right(None))
           )
+      }
+    }
+
+    test("channels are every channel grit's bot is a member of, with its kind, every page read") {
+      withSlack() { slack =>
+        slack.channels() ==>
+          Right(Vector(Public -> ChannelKind.Public, Private -> ChannelKind.Private))
+      }
+    }
+
+    test("channels waits out 5 rate limits in a row, and is Limited by a 6th") {
+      withSlack(limited = 5) { slack =>
+        slack.channels().map(_.map(_._1)) ==> Right(Vector(Public, Private))
+      }
+      withSlack(limited = 6) { slack =>
+        slack.channels() ==> Left(SlackError.Limited(Duration.Zero))
       }
     }
 
@@ -276,6 +292,7 @@ abstract class SlackContract extends TestSuite {
           "member" -> kind(slack.member(Team, Ana)),
           "members" -> kind(slack.members(Team)),
           "kind" -> kind(slack.kind(Public)),
+          "channels" -> kind(slack.channels()),
           "history" -> kind(slack.history(Public, beforeAll)),
           "channelName" -> kind(slack.channelName(Public))
         ).filter(_._2 != "Unreachable") ==> Vector.empty
