@@ -25,6 +25,13 @@ final case class Group(name: GroupName, accounts: Set[Account], realms: Set[Real
 /** `group`'s members are cleared for `label`. */
 final case class Grant(group: GroupName, label: Label)
 
+/** The declared members of `group` (never people added through grit) steward `compartment`:
+  * they may clear and remove people for it, and remove it from a private room's label.
+  * `Steward(c, c)`, `c`'s own group named, makes the compartment's own declared members its
+  * stewards.
+  */
+final case class Steward(compartment: Compartment, group: GroupName)
+
 /** Which groups an account is in, as one source knows it: the declared groups are one; an
   * edge's (a workspace's user groups) another.
   */

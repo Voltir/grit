@@ -200,6 +200,52 @@ object VisibilityTests extends TestSuite {
         .map(_.administrators) ==> Right(Some(group("admins")))
     }
 
+    test("stewards") {
+      /* `trial` and `acme` with their own groups, and a stewards group no compartment is named for. */
+      val owned = groups ++ Vector(
+        Group(group("trial"), Set(ana)),
+        Group(group("acme"), Set(bo)),
+        Group(group("stewards"), Set(bo))
+      )
+      def stewarded(stewards: Steward*): Either[VisibilityRefusal, Vector[Steward]] =
+        Visibility
+          .of(compartments, RoomLabels.Public, owned, grants, stewards = stewards.toVector)
+          .map(_.stewards)
+
+      test(
+        "a compartment stewarded through its own group, or a group no compartment is named for, is kept"
+      ) {
+        stewarded(Steward(trial, group("trial")), Steward(acme, group("stewards"))) ==>
+          Right(Vector(Steward(trial, group("trial")), Steward(acme, group("stewards"))))
+      }
+
+      test("a compartment stewarded through another compartment's own group is refused") {
+        stewarded(Steward(trial, group("acme"))) ==>
+          Left(VisibilityRefusal.StewardsThroughCompartment(trial, group("acme")))
+      }
+
+      test("a steward of unmapped is refused") {
+        stewarded(Steward(Compartment.Unmapped, group("stewards"))) ==>
+          Left(VisibilityRefusal.StewardsUnmapped)
+      }
+
+      test("a steward of a compartment not declared is refused, saying it is stewarded") {
+        val finance = compartment("finance")
+        stewarded(Steward(finance, group("stewards"))) ==>
+          Left(VisibilityRefusal.Undeclared(Namer.Stewarded(finance), finance))
+      }
+
+      test("a steward through a group not declared is refused") {
+        stewarded(Steward(trial, group("nobody"))) ==>
+          Left(VisibilityRefusal.NoSuchGroup(group("nobody")))
+      }
+
+      test("a compartment stewarded twice is refused") {
+        stewarded(Steward(trial, group("trial")), Steward(trial, group("stewards"))) ==>
+          Left(VisibilityRefusal.StewardedTwice(trial))
+      }
+    }
+
     test("a service is trusted with its declared label, and with public when none is declared") {
       val trusted = Visibility
         .of(

@@ -13,7 +13,8 @@ final case class Visibility private (
     groups: Vector[Group],
     grants: Vector[Grant],
     trusts: Vector[Trust],
-    administrators: Option[GroupName]
+    administrators: Option[GroupName],
+    stewards: Vector[Steward]
 ) {
 
   /** `principal`'s clearance: grit's is [[Compartments.top]]; a person's, the join of the
@@ -91,7 +92,8 @@ object Visibility {
       Vector.empty,
       Vector.empty,
       Vector.empty,
-      None
+      None,
+      Vector.empty
     )
 
   /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
@@ -100,7 +102,11 @@ object Visibility {
     * a grant to a group not declared; a service trusted twice; or `administrators` naming no
     * declared group (`NoSuchGroup`), or a compartment's own group, the one named as it
     * (`AdministersCompartment`), which people cleared for it through grit join. `administrators`' declared
-    * members alone may make the changes reserved to administrators; with none, no one may.
+    * members alone may make the changes reserved to administrators; with none, no one may. A
+    * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
+    * [[Compartment.Unmapped]] (`StewardsUnmapped`), through a group not declared
+    * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),
+    * or one compartment stewarded twice (`StewardedTwice`), is refused too.
     */
   def of(
       compartments: Compartments,
@@ -108,7 +114,8 @@ object Visibility {
       groups: Vector[Group],
       grants: Vector[Grant],
       trusts: Vector[Trust] = Vector.empty,
-      administrators: Option[GroupName] = None
+      administrators: Option[GroupName] = None,
+      stewards: Vector[Steward] = Vector.empty
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -150,7 +157,24 @@ object Visibility {
           if (!names.contains(g)) Some(VisibilityRefusal.NoSuchGroup(g))
           else ownGroupOf(compartments, g).map(_ => VisibilityRefusal.AdministersCompartment(g))
         })
-    refusal.toLeft(new Visibility(compartments, rooms, groups, grants, trusts, administrators))
+        .orElse(stewards.flatMap { st =>
+          val c = st.compartment
+          if (c == Compartment.Unmapped) Some(VisibilityRefusal.StewardsUnmapped)
+          else if (!compartments.declared.contains(c))
+            Some(VisibilityRefusal.Undeclared(Namer.Stewarded(c), c))
+          else if (!names.contains(st.group)) Some(VisibilityRefusal.NoSuchGroup(st.group))
+          else
+            ownGroupOf(compartments, st.group)
+              .filter(_ != c)
+              .map(_ => VisibilityRefusal.StewardsThroughCompartment(c, st.group))
+        }.headOption)
+        .orElse {
+          val stewarded = stewards.map(_.compartment)
+          stewarded.diff(stewarded.distinct).headOption.map(VisibilityRefusal.StewardedTwice(_))
+        }
+    refusal.toLeft(
+      new Visibility(compartments, rooms, groups, grants, trusts, administrators, stewards)
+    )
   }
 }
 
@@ -174,6 +198,9 @@ enum Namer {
 
   /** The trust of `service`. */
   case Trusted(service: Service)
+
+  /** A [[Steward]] of `compartment`. */
+  case Stewarded(compartment: Compartment)
 }
 
 /** Why a deployment's [[Visibility]] is refused. */
@@ -192,6 +219,17 @@ enum VisibilityRefusal {
     * compartment through grit would administer.
     */
   case AdministersCompartment(group: GroupName)
+
+  /** `compartment` is stewarded through `group`, the own group of another compartment. Name the
+    * compartment's own group, or a group no compartment is named for.
+    */
+  case StewardsThroughCompartment(compartment: Compartment, group: GroupName)
+
+  /** [[Compartment.Unmapped]] is grit's, and no one stewards it. */
+  case StewardsUnmapped
+
+  /** Two stewards are declared for `compartment`. */
+  case StewardedTwice(compartment: Compartment)
 
   /** Two trusts name `service`. */
   case TrustedTwice(service: Service)
