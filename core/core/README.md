@@ -250,7 +250,8 @@ In dependency order:
   a person asks by command, read from the words after its name; `Change`, what one changes
   (relabel, quiet, clear, remove), with what it replaces, and `ChangeJson`, its audit row's
   form; `Authority`, the one rule over what a change lowers and removes, whose `Allowed` is
-  what applying a change takes, or a `Refusal`. ← `place`, `identity`, `visibility`
+  what applying a change takes, or a `Refusal`; and `Answer`, what a command did, in the
+  words its asker reads. ← `place`, `identity`, `visibility`
 
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an

@@ -126,8 +126,13 @@ object Command {
   /** A level's name, as a label's written form spells it. */
   private def name(level: Level): String = Label.written(Label.at(level))
 
-  private def levels: String =
-    Level.values.toVector.map(name) match {
+  private def levels: String = and(Level.values.toVector.map(name))
+
+  /** `words` as a person lists them: `a`, `a and b`, `a, b and c`. Here, not in [[Answer]],
+    * whose `Help` reads [[Usage]] as it is initialised.
+    */
+  private[admin] def and(words: Vector[String]): String =
+    words match {
       case most :+ last if most.nonEmpty => s"${most.mkString(", ")} and $last"
       case one => one.mkString
     }
