@@ -37,6 +37,13 @@ object IdentitiesTests extends TestSuite {
         Left("both chat and directory are trusted to attest slack:T1/")
     }
 
+    test("one attester named twice for one realm is no conflict: it answers for that realm") {
+      Identities
+        .of(Vector(Vouching(chat, t1), Vouching(chat, t1)), Set.empty)
+        .map(_.realmsOf(chat)) ==>
+        Right(Set(t1))
+    }
+
     test("an attester answers for the realms it is named for, and an attester not named for none") {
       val declared = trusting(Vouching(chat, t1), Vouching(directory, t3), Vouching(chat, t2))
       (
