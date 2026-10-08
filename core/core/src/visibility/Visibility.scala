@@ -51,8 +51,8 @@ object Visibility {
     * a grant to a group not declared; a service trusted twice; or `administrators` naming no
     * declared group (`NoSuchGroup`), or a compartment's own group, the one named as it
     * (`AdministersCompartment`), which people cleared for it through grit join.
-    * `administrators`' declared members alone may make the changes reserved to administrators;
-    * with none, no one may. A
+    * `administrators`' declared members alone may make the changes
+    * [[grit.core.admin.Authority]] reserves to administrators; with none, no one may. A
     * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
     * [[Compartment.Unmapped]] (`StewardsUnmapped`), through a group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),

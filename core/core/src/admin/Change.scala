@@ -4,8 +4,8 @@ import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.visibility.{Compartment, Label}
 
-/** What a command changes, with what it replaces: the unit of authority and of the audit row
-  * ([[ChangeJson]]). [[kind]] names its sort as stored; a new sort is a new case and a new
+/** What a command changes, with what it replaces: the unit of authority ([[Authority.decide]])
+  * and of the audit row ([[ChangeJson]]). [[kind]] names its sort as stored; a new sort is a new case and a new
   * kind, never a reuse.
   */
 enum Change {
