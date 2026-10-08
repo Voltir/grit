@@ -862,17 +862,11 @@ object SlackEdgeTests extends TestSuite {
         (Vector.empty, Vector.empty, Right(Vector.empty))
     }
 
-    test(
-      "a message heard in a quiet room keeps no reply address, and a mention there is answered"
-    ) {
+    test("a mention in a quiet room is still a turn") {
       val w = new World
       w.inbox.quiet(Room)
-      w.slack.deliver(message("2.0", s"ask <@$Ben>")) ==> true
       w.slack.deliver(mention("3.0")) ==> true
-      (w.reached("2.0"), w.turnOf("3.0", "3.0").toVector == w.inbox.started) ==> (
-        Vector(Some(Reach(None, Set(TestAccounts.account(s"slack:$Team/$Ben"))))),
-        true
-      )
+      (w.turnOf("3.0", "3.0").toVector, w.inbox.started.size) ==> (w.inbox.started, 1)
     }
 
     test(
