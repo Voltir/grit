@@ -194,6 +194,47 @@ object Payloads {
       )
     )
 
+  /** `user` joining `channel`, as Slack's docs give `member_joined_channel`: added by
+    * `inviter` (blank when they joined by themselves), at `eventTs` when given (the docs name
+    * none; Slack's events carry one), else at the callback's `event_time` alone.
+    */
+  def joined(
+      user: String = Bot,
+      channel: String = "C123ABC456",
+      inviter: String = Ana,
+      eventTs: Option[String] = Some("1515449600.000100")
+  ): String = {
+    val event = ujson.Obj(
+      "type" -> "member_joined_channel",
+      "user" -> user,
+      "channel" -> channel,
+      "channel_type" -> "C",
+      "team" -> Team,
+      "inviter" -> inviter
+    )
+    eventTs.foreach(ts => event("event_ts") = ts)
+    callback(event)
+  }
+
+  /** `user` leaving `channel`, as Slack's docs give `member_left_channel`. */
+  def memberLeft(user: String = Bot, channel: String = "C123ABC456"): String =
+    callback(
+      ujson.Obj(
+        "type" -> "member_left_channel",
+        "user" -> user,
+        "channel" -> channel,
+        "channel_type" -> "C",
+        "team" -> Team,
+        "event_ts" -> "1515449700.000200"
+      )
+    )
+
+  /** grit's bot leaving, or removed from, `channel`, as Slack's docs give `kind`
+    * (`channel_left`, `group_left`): the channel alone, at the callback's `event_time`.
+    */
+  def botLeft(kind: String = "channel_left", channel: String = "C123ABC456"): String =
+    callback(ujson.Obj("type" -> kind, "channel" -> channel))
+
   /** Slack telling grit that `user` changed, as its docs give `user_change`: the user object,
     * here deactivated, with their team's id when `team` is given.
     */

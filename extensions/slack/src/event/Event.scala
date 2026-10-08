@@ -59,6 +59,14 @@ enum Event {
     */
   case UserChanged(team: TeamId, user: UserId)
 
+  /** grit's bot joined `channel` of `team` at `at`, added by `inviter` (`None` when Slack names
+    * none: it joined by itself, was added by default, or the channel was made private).
+    */
+  case Joined(team: TeamId, channel: ChannelId, inviter: Option[UserId], at: Instant)
+
+  /** grit's bot left `channel` of `team`, or was removed from it, at `at`. */
+  case Left(team: TeamId, channel: ChannelId, at: Instant)
+
   /** Something grit does not act on, and why: a bot's message (grit's own included), an
     * edit or another change to a message, a message outside a channel or a direct message with
     * grit (a group direct message included), a reaction to anything but a message, an event of
@@ -111,9 +119,11 @@ object Events {
     * a person's `message` in a direct message with grit (`im`) as [[Event.Told]], one in a group
     * direct message (`mpim`) [[Event.Ignored]],
     * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], `user_change`
-    * as [[Event.UserChanged]], everything else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
+    * as [[Event.UserChanged]], grit's bot joining or leaving a channel as [[Event.Joined]] or
+    * [[Event.Left]] (another member's [[Event.Ignored]]), everything else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
     * `team`, else the callback's `team_id`, the workspace grit's app is installed in. Why not, when it is not an event callback, or an event
-    * grit reads lacks a field it needs or has a ts or event_ts that names no time.
+    * grit reads lacks a field it needs, has a ts or event_ts that names no time, or is a join or
+    * leave with neither an event_ts nor the callback's event_time.
     */
   def read(payload: String, bot: UserId): Either[String, Event] =
     scala.util
@@ -127,7 +137,8 @@ object Events {
             for {
               team <- str(outer, "team_id").toRight("an event callback without team_id")
               event <- outer.obj.get("event").toRight("an event callback without an event")
-              read <- said(event, TeamId(team), bot)
+              read <- membership(event, outer, TeamId(team), bot)
+                .getOrElse(said(event, TeamId(team), bot))
             } yield read
           case other => Left(s"not an event callback: ${other.getOrElse("no type")}")
         }
@@ -223,6 +234,60 @@ object Events {
           mention || text.contains(s"<@${UserId.value(bot)}>"),
           at
         )
+  }
+
+  /** A change to who is in a channel, `event` of the callback `outer`, read when it is one:
+    * grit's bot's `member_joined_channel` as [[Event.Joined]] (its `inviter`, blank as none),
+    * its `member_left_channel`, and `channel_left` and `group_left` (sent for the bot alone),
+    * as [[Event.Left]], each at its `event_ts`, else the callback's `event_time`; another
+    * member's join or leave [[Event.Ignored]]. `None` for any other event.
+    */
+  private def membership(
+      event: ujson.Value,
+      outer: ujson.Value,
+      team: TeamId,
+      bot: UserId
+  ): Option[Either[String, Event]] = {
+    def at(kind: String): Either[String, Instant] =
+      str(event, "event_ts")
+        .flatMap(time)
+        .orElse(
+          outer.objOpt
+            .flatMap(_.get("event_time"))
+            .flatMap(_.numOpt)
+            .map(s => Instant.ofEpochSecond(s.toLong))
+        )
+        .toRight(s"a $kind event with no time")
+    def channel(kind: String): Either[String, ChannelId] =
+      str(event, "channel").map(ChannelId(_)).toRight(s"a $kind event without channel")
+    def ours(kind: String): Either[String, Boolean] =
+      str(event, "user").map(u => UserId(u) == bot).toRight(s"a $kind event without user")
+    def joined(kind: String): Either[String, Event] =
+      ours(kind).flatMap { mine =>
+        if (!mine) Right(Event.Ignored("another member joined a channel"))
+        else
+          for {
+            c <- channel(kind)
+            when <- at(kind)
+          } yield Event.Joined(
+            team,
+            c,
+            str(event, "inviter").filter(_.nonEmpty).map(UserId(_)),
+            when
+          )
+      }
+    def left(kind: String, mine: Either[String, Boolean]): Either[String, Event] =
+      mine.flatMap { ours =>
+        if (!ours) Right(Event.Ignored("another member left a channel"))
+        else channel(kind).flatMap(c => at(kind).map(when => Event.Left(team, c, when)))
+      }
+    str(event, "type") match {
+      case Some(kind @ "member_joined_channel") => Some(joined(kind))
+      case Some(kind @ "member_left_channel") => Some(left(kind, ours(kind)))
+      // Sent for grit's bot alone, naming no user.
+      case Some(kind @ ("channel_left" | "group_left")) => Some(left(kind, Right(true)))
+      case _ => None
+    }
   }
 
   /** A `reaction_added` or `reaction_removed` event, `kind`, as [[Event.Reacted]] when its item

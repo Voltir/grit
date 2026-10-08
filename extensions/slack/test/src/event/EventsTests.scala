@@ -40,7 +40,7 @@ object EventsTests extends TestSuite {
       Events.read(message("1515449522.000016", "hi"), bot).map {
         case m: Event.Said => Some(m.at)
         case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
-            Event.Told(_, _, _, _, _, _, _, _) =>
+            Event.Told(_, _, _, _, _, _, _, _) | Event.Joined(_, _, _, _) | Event.Left(_, _, _) =>
           None
       } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
     }
@@ -52,7 +52,7 @@ object EventsTests extends TestSuite {
         Events.read(message("2.0", "hi", extra = extra), bot).map {
           case m: Event.Said => Some(m.author)
           case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
-              Event.Told(_, _, _, _, _, _, _, _) =>
+              Event.Told(_, _, _, _, _, _, _, _) | Event.Joined(_, _, _, _) | Event.Left(_, _, _) =>
             None
         }
       (
@@ -216,7 +216,7 @@ object EventsTests extends TestSuite {
         .map {
           case m: Event.Said => Some((m.team, m.author))
           case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) |
-              Event.Told(_, _, _, _, _, _, _, _) =>
+              Event.Told(_, _, _, _, _, _, _, _) | Event.Joined(_, _, _, _) | Event.Left(_, _, _) =>
             None
         } ==> Right(Some((TeamId(Team), TeamId("T0THEIRS"))))
     }
@@ -270,6 +270,49 @@ object EventsTests extends TestSuite {
           .render(),
         bot
       ) ==> Left("a reaction_removed event without reaction")
+    }
+
+    test(
+      "grit's bot joining a channel is a join, with its inviter, at its event_ts, else the callback's event_time"
+    ) {
+      val c = ChannelId("C123ABC456")
+      (
+        Events.read(joined(), bot),
+        Events.read(joined(inviter = "", eventTs = None), bot)
+      ) ==> (
+        Right(
+          Event.Joined(
+            TeamId(Team),
+            c,
+            Some(UserId(Ana)),
+            Instant.parse("2018-01-08T22:13:20.000100Z")
+          )
+        ),
+        Right(Event.Joined(TeamId(Team), c, None, Instant.ofEpochSecond(1515449522)))
+      )
+    }
+
+    test(
+      "grit's bot leaving a channel, as member_left_channel, channel_left or group_left, is a leave"
+    ) {
+      val c = ChannelId("C123ABC456")
+      val g = ChannelId("G02ELGNBH")
+      (
+        Events.read(memberLeft(), bot),
+        Events.read(botLeft(), bot),
+        Events.read(botLeft("group_left", "G02ELGNBH"), bot)
+      ) ==> (
+        Right(Event.Left(TeamId(Team), c, Instant.parse("2018-01-08T22:15:00.000200Z"))),
+        Right(Event.Left(TeamId(Team), c, Instant.ofEpochSecond(1515449522))),
+        Right(Event.Left(TeamId(Team), g, Instant.ofEpochSecond(1515449522)))
+      )
+    }
+
+    test("another member joining or leaving a channel is ignored") {
+      (Events.read(joined(user = Ana), bot), Events.read(memberLeft(user = Ana), bot)) ==> (
+        Right(Event.Ignored("another member joined a channel")),
+        Right(Event.Ignored("another member left a channel"))
+      )
     }
 
     test(

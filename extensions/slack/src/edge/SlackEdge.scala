@@ -146,6 +146,7 @@ final class SlackEdge(
         said(s"slack: an event grit cannot read, acknowledged: $why")
         true
       case Right(Event.Ignored(_)) => true
+      case Right(Event.Joined(_, _, _, _) | Event.Left(_, _, _)) => true
       case Right(r: Event.Reacted) => reacted(r)
       case Right(c: Event.UserChanged) => changed(c)
       case Right(t: Event.Told) =>
@@ -335,7 +336,8 @@ final class SlackEdge(
               case Right(m: Event.Said) => Some(m)
               case Right(
                     Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) |
-                    Event.UserChanged(_, _) | Event.Told(_, _, _, _, _, _, _, _)
+                    Event.UserChanged(_, _) | Event.Told(_, _, _, _, _, _, _, _) |
+                    Event.Joined(_, _, _, _) | Event.Left(_, _, _)
                   ) =>
                 None
               case Left(why) =>
