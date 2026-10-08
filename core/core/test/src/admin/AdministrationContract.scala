@@ -170,6 +170,32 @@ abstract class AdministrationContract extends TestSuite {
       )
     }
 
+    test(
+      "a label set by an administrator for a room never heard is kept with one audit row, and shown as set"
+    ) {
+      val a = arranged()
+      val set = new Change.Relabel(newRoom, Label.Public, Change.To.Set(confidential))
+      (
+        run(a, ada, newRoom, Command.SetLabel(confidential), 1),
+        run(a, mia, newRoom, Command.ShowLabel),
+        kept(a)
+      ) ==> (
+        Answer.relabelled(set),
+        Answer.label(confidential, Answer.Source.Set, None),
+        Vector(Kept(ada, t(1), set))
+      )
+    }
+
+    test("unlabel of a room nothing is recorded of is answered as a change, and keeps no row") {
+      val a = arranged()
+      (run(a, ada, newRoom, Command.Unlabel, 1), kept(a)) ==> (
+        Answer.relabelled(
+          new Change.Relabel(newRoom, Label.Public, Change.To.Default(Label.Public))
+        ),
+        Vector()
+      )
+    }
+
     test("quiet and speak are free to any member, and repeating either keeps nothing") {
       val a = arranged()
       val on = new Change.Quiet(publicRoom, true)
