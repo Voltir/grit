@@ -11,7 +11,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges
 }
-import grit.core.id.{EdgeName, EntryId}
+import grit.core.id.EntryId
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
@@ -38,9 +38,6 @@ object ReviewingTests extends TestSuite {
   }
 
   private val C = ChannelId("C123ABC456")
-
-  private val Grit: SlackCommand =
-    SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** The review's place: a private channel grit's bot is in. */
   private val Place = ChannelId("C0REVIEW1")
