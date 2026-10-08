@@ -68,8 +68,8 @@ final class SlackEdge(
     */
   def displayName(): Either[String, String] =
     for {
-      named <- slack.name(self.bot).left.map(_.toString)
-      name <- named.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
+      named <- slack.member(self.team, self.bot).left.map(_.toString)
+      name <- named.name.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
     } yield name
 
   /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
@@ -407,7 +407,7 @@ final class SlackEdge(
     */
   private def nameOf(user: UserId): Option[String] =
     Option(names.get(user)).orElse {
-      slack.name(user) match {
+      slack.member(self.team, user).map(_.name) match {
         case Right(Some(n)) =>
           val _ = names.put(user, n)
           Some(n)

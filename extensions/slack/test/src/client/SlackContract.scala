@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
+import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
 import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.{Post, RichText}
@@ -155,11 +156,47 @@ abstract class SlackContract extends TestSuite {
     }
 
     test(
-      "name is the display name, else the real name, and Refused(user_not_found) for no such user"
+      "member: a full member with a confirmed address has it, grit's bot is outside, and no such user is outside with no name"
     ) {
       withSlack() { slack =>
-        (slack.name(Ana), slack.name(Bot), slack.name(Nobody)) ==>
-          (Right(Some("Ana")), Right(Some("grit")), Left(SlackError.Refused("user_not_found")))
+        (slack.member(Team, Ana), slack.member(Team, Bot), slack.member(Team, Nobody)) ==> (
+          Right(Member(Some("Ana"), AnaStanding)),
+          Right(Member(Some("grit"), Standing.Outside)),
+          Right(Member(None, Standing.Outside))
+        )
+      }
+    }
+
+    test("member rate-limited is that failure, never outside") {
+      withSlack(limited = 1) { slack =>
+        slack.member(Team, Ana) ==> Left(SlackError.Limited(Duration.Zero))
+      }
+    }
+
+    test("member of another team than the user's is outside, under the same name") {
+      withSlack() { slack =>
+        slack.member(OtherTeam, Ana) ==> Right(Member(Some("Ana"), Standing.Outside))
+      }
+    }
+
+    test("members is every page of the workspace's users, each as member reads them") {
+      withSlack() { slack =>
+        slack.members(Team) ==> Right(
+          Map(
+            Ana -> Member(Some("Ana"), AnaStanding),
+            Bot -> Member(Some("grit"), Standing.Outside),
+            Gia -> Member(Some("Gia"), Standing.Outside)
+          )
+        )
+      }
+    }
+
+    test("members waits out 5 rate limits in a row, and is Limited by a 6th") {
+      withSlack(limited = 5) { slack =>
+        slack.members(Team).map(_.keySet) ==> Right(Set(Ana, Bot, Gia))
+      }
+      withSlack(limited = 6) { slack =>
+        slack.members(Team) ==> Left(SlackError.Limited(Duration.Zero))
       }
     }
 
@@ -206,7 +243,8 @@ abstract class SlackContract extends TestSuite {
           "permalink" -> kind(slack.permalink(Public, m1)),
           "react" -> kind(slack.react(Public, m1, "eyes")),
           "unreact" -> kind(slack.unreact(Public, m1, "eyes")),
-          "name" -> kind(slack.name(Ana)),
+          "member" -> kind(slack.member(Team, Ana)),
+          "members" -> kind(slack.members(Team)),
           "kind" -> kind(slack.kind(Public)),
           "history" -> kind(slack.history(Public, beforeAll)),
           "channelName" -> kind(slack.channelName(Public))
@@ -226,6 +264,16 @@ object SlackContract {
   val Ana = UserId("U0000000001")
   val Bot = UserId("U0000000002")
   val Nobody = UserId("U0000000000")
+
+  /** A guest of the workspace, listed but not a full member. */
+  val Gia = UserId("U0000000003")
+
+  /** A team none of the workspace's users is of. */
+  val OtherTeam = TeamId("T0000000009")
+
+  /** What Slack says of [[Ana]] in [[Team]]: a full member, her address confirmed. */
+  val AnaStanding: Standing =
+    Standing.Full(Email.of("ana@grit-contract.example").toOption)
 
   /** A public channel grit's bot is in: every seeded message is posted here. */
   val Public = ChannelId("C0000000001")

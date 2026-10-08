@@ -10,11 +10,15 @@
   "body": {
     "ok": true,
     "user": {
+      "id": "U0000000001",
+      "team_id": "T0000000001",
       "real_name": "Ana Lima",
+      "is_email_confirmed": true,
       "profile": {
-        "display_name": "Ana"
+        "display_name": "Ana",
+        "email": "ana@grit-contract.example"
       }
     }
   },
-  "source": "recorded"
+  "source": "recorded; its id, team and standing fields hand-written from Slack's users.info docs, not yet captured"
 }

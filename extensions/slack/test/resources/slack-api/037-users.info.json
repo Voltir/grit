@@ -10,11 +10,14 @@
   "body": {
     "ok": true,
     "user": {
+      "id": "U0000000002",
+      "team_id": "T0000000001",
       "real_name": "grit",
+      "is_bot": true,
       "profile": {
         "display_name": ""
       }
     }
   },
-  "source": "recorded"
+  "source": "recorded; its id, team and standing fields hand-written from Slack's users.info docs, not yet captured"
 }

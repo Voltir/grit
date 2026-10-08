@@ -1,0 +1,36 @@
+{
+  "method": "users.list",
+  "params": {},
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "members": [
+      {
+        "id": "U0000000001",
+        "team_id": "T0000000001",
+        "real_name": "Ana Lima",
+        "is_email_confirmed": true,
+        "profile": {
+          "display_name": "Ana",
+          "email": "ana@grit-contract.example"
+        }
+      },
+      {
+        "id": "U0000000002",
+        "team_id": "T0000000001",
+        "real_name": "grit",
+        "is_bot": true,
+        "profile": {
+          "display_name": ""
+        }
+      }
+    ],
+    "response_metadata": {
+      "next_cursor": "dXNlcjpVMDAwMDAwMDAz"
+    }
+  },
+  "source": "hand-written from Slack's users.list docs (a first page, its cursor naming the next), not yet captured"
+}

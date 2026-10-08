@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
+import grit.core.identity.Standing
 import grit.slack.event.{ChannelId, Event, Events, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
@@ -37,6 +38,24 @@ final class FakeSlack extends Slack {
     */
   @caps.unsafe.untrackedCaptures
   var names: Map[UserId, Option[String]] = Map(UserId(Payloads.Ana) -> Some("Ana Lima"))
+
+  /** What Slack says of each person in [[names]] in grit's team, a full member with no address
+    * when unsaid; in any other team each is outside.
+    */
+  @caps.unsafe.untrackedCaptures
+  var standings: Map[UserId, Standing] = Map.empty
+
+  /** When set, `member` and `members` fail so, and nothing else does. */
+  @caps.unsafe.untrackedCaptures
+  var unasked: Option[SlackError] = None
+
+  /** Whom `member` was asked about, in order. */
+  @caps.unsafe.untrackedCaptures
+  var asked = Vector.empty[UserId]
+
+  /** How many times `members` was called. */
+  @caps.unsafe.untrackedCaptures
+  var listings = 0
 
   /** The channels there are, each with the name it shows in Slack; any other does not exist. */
   @caps.unsafe.untrackedCaptures
@@ -208,15 +227,41 @@ final class FakeSlack extends Slack {
       Right(())
     }
 
-  def name(user: UserId): Either[SlackError, Option[String]] =
-    request(names.get(user).toRight(SlackError.Refused("user_not_found")))
+  def member(team: TeamId, user: UserId): Either[SlackError, Member] =
+    request {
+      unasked.toLeft {
+        asked = asked :+ user
+        known(team, user)
+      }
+    }
+
+  def members(team: TeamId): Either[SlackError, Map[UserId, Member]] =
+    patient(SocketSlack.Retries).flatMap { _ =>
+      unasked.toLeft {
+        listings += 1
+        names.map((u, _) => u -> known(team, u))
+      }
+    }
+
+  /** `user` as [[member]] reads them in `team`. */
+  private def known(team: TeamId, user: UserId): Member =
+    names.get(user).fold(Member(None, Standing.Outside)) { name =>
+      Member(
+        name,
+        if (team == me.team) standings.getOrElse(user, Standing.Full(None)) else Standing.Outside
+      )
+    }
+
+  /** One request, a rate limit waited out up to `left` times in a row, as [[SocketSlack]]
+    * waits out a listing's.
+    */
+  @scala.annotation.tailrec
+  private def patient(left: Int): Either[SlackError, Unit] = request(Right(())) match {
+    case Left(SlackError.Limited(_)) if left > 0 => patient(left - 1)
+    case other => other
+  }
 
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] = {
-    @scala.annotation.tailrec
-    def patient(left: Int): Either[SlackError, Unit] = request(Right(())) match {
-      case Left(SlackError.Limited(_)) if left > 0 => patient(left - 1)
-      case other => other
-    }
     val from = BigDecimal(SocketSlack.oldest(since))
     def at(ts: Ts): BigDecimal = BigDecimal(Ts.value(ts))
     patient(SocketSlack.Retries).flatMap { _ =>

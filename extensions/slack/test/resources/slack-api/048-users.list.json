@@ -1,0 +1,30 @@
+{
+  "method": "users.list",
+  "params": {
+    "cursor": "dXNlcjpVMDAwMDAwMDAz"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "members": [
+      {
+        "id": "U0000000003",
+        "team_id": "T0000000001",
+        "real_name": "Gia",
+        "is_restricted": true,
+        "is_email_confirmed": true,
+        "profile": {
+          "display_name": "",
+          "email": "gia@grit-contract.example"
+        }
+      }
+    ],
+    "response_metadata": {
+      "next_cursor": ""
+    }
+  },
+  "source": "hand-written from Slack's users.list docs (the last page: an empty cursor), not yet captured"
+}

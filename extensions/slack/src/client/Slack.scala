@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.core.identity.Standing
 import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
@@ -62,6 +63,11 @@ enum Tag {
   case Prompt(entry: String)
 }
 
+/** A Slack user as [[Slack.member]] and [[Slack.members]] read them: the name they show, if
+  * any, and their standing in the team asked about, as [[Slack.member]] decides it.
+  */
+final case class Member(name: Option[String], standing: Standing)
+
 /** The message a thread begins with, as [[Slack.root]] reads it: who wrote it (`None` for one
   * with no user), the [[Tag]] grit posted it with, if any, and its text as Slack gives it,
   * escaped as Slack escapes it.
@@ -113,10 +119,21 @@ trait Slack extends caps.SharedCapability {
   /** Removes grit's `emoji` reaction from message `ts`; one already gone is not an error. */
   def unreact(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit]
 
-  /** The name `user` shows in Slack: their display name, else their real name; `None` when
-    * they have neither. `Refused("user_not_found")` when there is no such user.
+  /** `user` as a [[Member]] of `team` (`users.info`): the name they show, their display name
+    * else their real name; and [[Standing.Full]] when they are a full member of `team` (of that
+    * team, and not a guest, a member of another organisation, a bot or an app, invited or
+    * deactivated), with the email Slack verified for them when the address is confirmed and the
+    * app may read emails (`users:read.email`), whatever its domain; [[Standing.Outside]]
+    * otherwise, and when Slack knows no such user (`user_not_found`). `Left` only when Slack
+    * could not be asked: a rate limit, a scope or token it refuses, the network.
     */
-  def name(user: UserId): Either[SlackError, Option[String]]
+  def member(team: TeamId, user: UserId): Either[SlackError, Member]
+
+  /** Every user Slack lists in grit's workspace (`users.list`), each as [[member]] reads one in
+    * `team`, read whole, every page; a rate limit is waited out, up to 5 times a page, as in
+    * [[history]]. `Left` when any page could not be read, never part of the listing.
+    */
+  def members(team: TeamId): Either[SlackError, Map[UserId, Member]]
 
   /** What `channel` is to grit ([[ChannelKind]]); Slack being unreachable is still
     * `Unreachable`.

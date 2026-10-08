@@ -13,10 +13,11 @@ import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
   * same when its method and [[SlackStub.Keyed]] params are. The nth such request gets the nth
   * recording, the last repeating. One no recording answers is refused with an error naming it,
   * `unrecorded: <method> <params>`, which [[SocketSlack]] reads as `Refused`. The first
-  * `limited` requests are answered with the hand-written rate limit (`rate-limited.json`).
-  * Listens on a free port of 127.0.0.1 until closed.
+  * `limited` requests are answered with the hand-written rate limit (`rate-limited.json`), and
+  * each request whose key (its method, then its keyed params as `name=value`, space-separated)
+  * is in `failing` with Slack's `fatal_error`. Listens on a free port of 127.0.0.1 until closed.
   */
-final class SlackStub(limited: Int) extends AutoCloseable {
+final class SlackStub(limited: Int, failing: Set[String] = Set.empty) extends AutoCloseable {
   import SlackStub.*
 
   // Touched only by the server's one dispatcher thread, while the test waits on its call.
@@ -43,7 +44,8 @@ final class SlackStub(limited: Int) extends AutoCloseable {
         if (left > 0) {
           left -= 1
           RateLimited
-        } else {
+        } else if (failing.contains(keyOf(method, params))) Fatal
+        else {
           val key = keyOf(method, params)
           val all = recordings.getOrElse(key, Vector.empty)
           val n = served.getOrElse(key, 0)
@@ -108,6 +110,14 @@ object SlackStub {
       json("status").num.toInt,
       json("headers").obj.map((k, v) => (k, v.str)).toMap,
       ujson.write(json("body"))
+    )
+
+  /** Slack's answer to a request it failed on its side. */
+  private val Fatal: Answer =
+    Answer(
+      200,
+      Map("content-type" -> "application/json; charset=utf-8"),
+      ujson.write(ujson.Obj("ok" -> false, "error" -> "fatal_error"))
     )
 
   private def unrecorded(key: String): Answer =

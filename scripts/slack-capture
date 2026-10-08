@@ -17,7 +17,7 @@ Slack gave each post). Run it from a checkout; review the diff before committing
     scripts/slack-capture --delete C... TS [TS ...]   deletes posts a failed run left
 
 The bot needs chat:write, reactions:write, channels:history, groups:history,
-channels:read, groups:read and users:read. The token is read from the environment and
+channels:read, groups:read, users:read and users:read.email. The token is read from the environment and
 written nowhere.
 """
 
@@ -59,6 +59,19 @@ def call(token, method, params):
 # What SocketSlack reads of an answer; every other field is dropped.
 MESSAGE_FIELDS = ["ts", "thread_ts", "user", "bot_id", "subtype", "text", "reply_count", "metadata"]
 CHANNEL_FIELDS = ["is_channel", "is_private", "is_im", "is_mpim", "name"]
+USER_FLAGS = ["is_restricted", "is_ultra_restricted", "is_stranger", "is_bot", "is_app_user",
+              "is_invited_user", "deleted", "is_email_confirmed"]
+
+
+def user_kept(u):
+    """What SocketSlack.member reads of a user; its address only by whether it has one."""
+    out = {k: u[k] for k in ["id", "team_id"] + USER_FLAGS if k in u}
+    out["real_name"] = u.get("real_name", "")
+    profile = u.get("profile") or {}
+    out["profile"] = {"display_name": profile.get("display_name", "")}
+    if profile.get("email"):
+        out["profile"]["email"] = "email"
+    return out
 
 
 def kept(body):
@@ -72,9 +85,9 @@ def kept(body):
     if isinstance(body.get("channel"), dict):
         out["channel"] = {k: body["channel"][k] for k in CHANNEL_FIELDS if k in body["channel"]}
     if isinstance(body.get("user"), dict):
-        u = body["user"]
-        out["user"] = {"real_name": u.get("real_name", ""),
-                       "profile": {"display_name": (u.get("profile") or {}).get("display_name", "")}}
+        out["user"] = user_kept(body["user"])
+    if "members" in body:
+        out["members"] = [user_kept(u) for u in body["members"]]
     return out
 
 
@@ -180,6 +193,12 @@ def main():
             record("conversations.info", {"channel": channel})
         for user in [a.user, auth["user_id"], "U0000000000"]:
             record("users.info", {"user": user})
+        cursor = None
+        while True:
+            body = record("users.list", {"limit": str(PAGE), **({"cursor": cursor} if cursor else {})})
+            cursor = (body.get("response_metadata") or {}).get("next_cursor")
+            if not cursor:
+                break
     finally:
         if ts and not a.keep:
             for name in reversed([s[0] for s in seeds if s[0] in ts]):
@@ -190,12 +209,28 @@ def main():
 
     # Names set by the capture, so the recordings name no one: the person shows "Ana"
     # (display) over "Ana Lima" (real); the bot has no display name and is "grit".
+    # Every address is the placeholder's: none is real.
+    others = {}
     for r in recorded:
         u = r["body"].get("user")
         if r["method"] == "users.info" and u:
             me = r["params"]["user"] == a.user
             u["real_name"] = "Ana Lima" if me else "grit"
             u["profile"]["display_name"] = "Ana" if me else ""
+        for u in ([u] if u else []) + r["body"].get("members", []):
+            if "email" in u.get("profile", {}):
+                u["profile"]["email"] = "ana@grit-contract.example" if u.get("id") == a.user \
+                    else f"{u.get('id', 'someone').lower()}@grit-contract.example"
+        # A listing names everyone in the workspace: each other user gets a placeholder name.
+        for u in r["body"].get("members", []):
+            if u.get("id") not in (a.user, auth["user_id"]):
+                others.setdefault(u.get("id"), f"U{len(others) + 3:010d}")
+                u["real_name"] = f"user {others[u.get('id')]}"
+                u["profile"]["display_name"] = ""
+            else:
+                me = u.get("id") == a.user
+                u["real_name"] = "Ana Lima" if me else "grit"
+                u["profile"]["display_name"] = "Ana" if me else ""
         if r["method"] == "chat.getPermalink" and "permalink" in r["body"]:
             # The workspace's domain names it: SlackContract.Domain stands in.
             r["body"]["permalink"] = re.sub(r"^https://[^/]+/", "https://grit-contract.slack.com/",
@@ -209,6 +244,7 @@ def main():
            a.public: "C0000000001", a.private: "C0000000002", a.outside: "C0000000003"}
     if auth.get("bot_id"):
         ids[auth["bot_id"]] = "B0000000001"
+    ids.update(others)
 
     def redact(text):
         for real, placeholder in ids.items():

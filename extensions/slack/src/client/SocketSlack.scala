@@ -6,6 +6,7 @@ import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
+import grit.core.identity.{Email, Standing}
 import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
@@ -17,9 +18,9 @@ import com.slack.api.methods.request.conversations.{
   ConversationsRepliesRequest
 }
 import com.slack.api.methods.request.reactions.{ReactionsAddRequest, ReactionsRemoveRequest}
-import com.slack.api.methods.request.users.UsersInfoRequest
+import com.slack.api.methods.request.users.{UsersInfoRequest, UsersListRequest}
 import com.slack.api.methods.{MethodsClient, SlackApiException, SlackApiTextResponse}
-import com.slack.api.model.{Message, ResponseMetadata}
+import com.slack.api.model.{Message, ResponseMetadata, User}
 import com.slack.api.socket_mode.SocketModeClient
 import com.slack.api.socket_mode.request.EventsApiEnvelope
 import com.slack.api.socket_mode.response.AckResponse
@@ -165,13 +166,35 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
       )
     ).map(_ => ()).left.flatMap(settled("no_reaction"))
 
-  def name(user: UserId): Either[SlackError, Option[String]] =
-    call(methods.usersInfo(UsersInfoRequest.builder().user(UserId.value(user)).build())).map { r =>
-      val u = Option(r.getUser)
-      val display = u.flatMap(x => Option(x.getProfile)).flatMap(p => Option(p.getDisplayName))
-      val real = u.flatMap(x => Option(x.getRealName))
-      display.filter(_.trim.nonEmpty).orElse(real.filter(_.trim.nonEmpty))
+  def member(team: TeamId, user: UserId): Either[SlackError, Member] =
+    call(methods.usersInfo(UsersInfoRequest.builder().user(UserId.value(user)).build()))
+      .map(r => Option(r.getUser).fold(Member(None, Standing.Outside))(SocketSlack.member(team, _)))
+      .left
+      .flatMap {
+        // Slack's word that there is no such user: outside, never a failure to ask.
+        case SlackError.Refused("user_not_found") => Right(Member(None, Standing.Outside))
+        case other => Left(other)
+      }
+
+  def members(team: TeamId): Either[SlackError, Map[UserId, Member]] = {
+    @scala.annotation.tailrec
+    def from(cursor: Option[String], found: Vector[User]): Either[SlackError, Vector[User]] = {
+      val req = UsersListRequest.builder().limit(200)
+      cursor.foreach(c => req.cursor(c))
+      patient(() => methods.usersList(req.build())) match {
+        case Left(e) => Left(e)
+        case Right(r) =>
+          val here = found ++ Option(r.getMembers).fold(Vector.empty[User])(_.asScala.toVector)
+          Option(r.getResponseMetadata).flatMap(m => Option(m.getNextCursor)).filter(_.nonEmpty) match {
+            case Some(next) => from(Some(next), here)
+            case None => Right(here)
+          }
+      }
     }
+    from(None, Vector.empty).map(
+      _.flatMap(u => Option(u.getId).map(id => UserId(id) -> SocketSlack.member(team, u))).toMap
+    )
+  }
 
   def kind(channel: ChannelId): Either[SlackError, ChannelKind] =
     call(
@@ -343,6 +366,23 @@ object SocketSlack {
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
     case Tag.Sent(request) => Map("request" -> request)
     case Tag.Prompt(entry) => Map("entry" -> entry)
+  }
+
+  /** `user` as a [[Member]] of `team`, as [[Slack.member]] says: the one reading of Slack's
+    * user, for `users.info` and `users.list` alike.
+    */
+  def member(team: TeamId, user: User): Member = {
+    val profile = Option(user.getProfile)
+    val display = profile.flatMap(p => Option(p.getDisplayName)).filter(_.trim.nonEmpty)
+    val name = display.orElse(Option(user.getRealName).filter(_.trim.nonEmpty))
+    val full = Option(user.getTeamId).contains(TeamId.value(team)) &&
+      !(user.isRestricted || user.isUltraRestricted || user.isStranger || user.isBot ||
+        user.isAppUser || user.isInvitedUser || user.isDeleted)
+    // Confirmed by its user: an address an admin changed stays unconfirmed until then.
+    val email =
+      if (!user.isEmailConfirmed) None
+      else profile.flatMap(p => Option(p.getEmail)).flatMap(Email.of(_).toOption)
+    Member(name, if (full) Standing.Full(email) else Standing.Outside)
   }
 
   /** How many times a rate-limited call is waited out and made again. */

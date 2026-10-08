@@ -2,11 +2,12 @@ package grit.slack.client
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
-import grit.slack.event.{ChannelId, Listed, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.RichText
 
-import com.slack.api.model.Message
+import com.slack.api.model.{Message, User}
 import utest.*
 
 /** What [[SocketSlack]] builds and reads without Slack: the post's request, the tag it carries,
@@ -29,7 +30,77 @@ object SocketSlackTests extends TestSuite {
     m
   }
 
+  private val Ours = TeamId("T1")
+
+  /** A full member of [[Ours]] with a confirmed address at an unclaimed domain, as `users.info`
+    * gives one, changed by `change`.
+    */
+  private def user(change: User -> Unit = _ => ()): User = {
+    val u = new User()
+    u.setId("U1")
+    u.setTeamId("T1")
+    u.setRealName("Ana Lima")
+    val p = new User.Profile()
+    p.setDisplayName("Ana")
+    p.setEmail("Ana@Elsewhere.example")
+    u.setProfile(p)
+    u.setEmailConfirmed(true)
+    change(u)
+    u
+  }
+
   val tests = Tests {
+    test(
+      "a user is a full member with their confirmed address, whatever its domain, only of their own team and when none of guest, stranger, bot, app, invited or deactivated"
+    ) {
+      def standing(change: User -> Unit): Standing = SocketSlack.member(Ours, user(change)).standing
+      val outside = Vector[(String, User -> Unit)](
+        "a guest" -> (_.setRestricted(true)),
+        "a single-channel guest" -> (_.setUltraRestricted(true)),
+        "a stranger" -> (_.setStranger(true)),
+        "another team's user" -> (_.setTeamId("T2")),
+        "a user of no team" -> (_.setTeamId(null)),
+        "a bot" -> (_.setBot(true)),
+        "an app's user" -> (_.setAppUser(true)),
+        "an invited user" -> (_.setInvitedUser(true)),
+        "a deactivated user" -> (_.setDeleted(true))
+      ).map((who, change) => who -> standing(change))
+      outside.filter(_._2 != Standing.Outside) ==> Vector.empty
+      (
+        standing(_ => ()),
+        standing(_.setEmailConfirmed(false)),
+        standing(_.getProfile.setEmail(null)),
+        standing(_.getProfile.setEmail("not an address")),
+        standing(_.setProfile(null))
+      ) ==> (
+        Standing.Full(Email.of("ana@elsewhere.example").toOption),
+        Standing.Full(None),
+        Standing.Full(None),
+        Standing.Full(None),
+        Standing.Full(None)
+      )
+    }
+
+    test("members whose later page fails is that failure, never the pages before it") {
+      val bot = BotToken.of("xoxb-contract").fold(e => throw new java.lang.AssertionError(e), identity)
+      val app = AppToken.of("xapp-contract").fold(e => throw new java.lang.AssertionError(e), identity)
+      val stub = new SlackStub(0, failing = Set("users.list cursor=dXNlcjpVMDAwMDAwMDAz"))
+      val slack = new SocketSlack(bot, app, stub.api)
+      try slack.members(SlackContract.Team) ==> Left(SlackError.Refused("fatal_error"))
+      finally {
+        slack.close()
+        stub.close()
+      }
+    }
+
+    test("a user's name is their display name, else their real name, else none") {
+      (
+        SocketSlack.member(Ours, user()).name,
+        SocketSlack.member(Ours, user(_.getProfile.setDisplayName(" "))).name,
+        SocketSlack.member(Ours, user(u => { u.setProfile(null); u.setRealName("") })).name
+      ) ==> (Some("Ana"), Some("Ana Lima"), None)
+    }
+
     test(
       "a listed message keeps its ts, thread, user, subtype and text, and whether a bot sent it"
     ) {

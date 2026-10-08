@@ -22,9 +22,14 @@ In dependency order:
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
   ← `event`
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, a channel's history, post in a thread or at a channel's top level, find a post by its
-  `Tag`, the message a thread begins with, a message's permalink, react, a person's name, whether a conversation is a channel, and its name), `SlackError`, the tokens, and
+  `Tag`, the message a thread begins with, a message's permalink, react, a user as a `Member` of a team, one or every one, whether a conversation is a channel, and its name), `SlackError`, the tokens, and
   `SocketSlack`, the SDK over Socket Mode behind it; and `Root`, the message a thread begins
-  with, its author and its tag. ← `event`, `text`
+  with, its author and its tag. A `Member` is the name a user shows and their standing as
+  Slack states it, read from Slack's user by one function for `users.info` and `users.list`
+  alike: a full member of the team asked about (not a guest, a member of another
+  organisation, a bot or an app, invited or deactivated), with the address Slack verified
+  when its user confirmed it and the app may read emails (`users:read.email`), whatever its
+  domain; outside otherwise, and when Slack knows no such user. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
   the accounts it names, the replies it awaits) and a `Slack`: a person's message in a public
   channel, or in a private one it listens in, becomes a turn of its thread's conversation when it is addressed to grit (it
