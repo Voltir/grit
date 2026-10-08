@@ -1,10 +1,19 @@
 package grit.core.admin
 
-import grit.core.visibility.{Compartment, Compartments, GroupName, Label, Level, RoomAccess}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Explanation,
+  GroupName,
+  Label,
+  Level,
+  RoomAccess
+}
 
 /** What a command did; [[text]] is what its asker is shown. The words for each are its
   * companion's: a label shown says where it comes from, a label changed that conversations
-  * begun before keep theirs, a `clear` or `remove` the person's clearance after it.
+  * begun before keep theirs, a `clear` or `remove` the person's clearance after it, a
+  * clearance asked the asker's own in full or another's label alone.
   */
 enum Answer {
 
@@ -124,6 +133,22 @@ object Answer {
       Shown(clearedFor + steward)
     }
   }
+
+  /** A direct message's label, shown to its person: their `clearance`, which no command
+    * changes.
+    */
+  def direct(clearance: Label): Answer =
+    Shown(
+      s"This is a direct message: its label is your clearance, ${Label.shown(clearance)}, and " +
+        "it cannot be changed."
+    )
+
+  /** Another person's clearance, `clearance`, shown to an administrator. */
+  def theirs(clearance: Label): Answer =
+    Shown(s"Their clearance is ${Label.shown(clearance)}.")
+
+  /** The asker's own clearance, as `e` explains it, in [[Explanation.cleared]]'s words. */
+  def clearance(e: Explanation): Answer = Shown(Explanation.cleared(e))
 
   /** [[Command.Usage]]. */
   val Help: Answer = Shown(Command.Usage)

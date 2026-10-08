@@ -26,14 +26,22 @@ object Explanation {
     * nothing `e` does not hold.
     */
   def text(e: Explanation): String =
-    Vector(
+    (Vector(
       s"This conversation is labelled ${Label.shown(e.room)}.",
-      s"From anywhere else, I read for you up to ${Label.shown(e.beyond)}.",
-      who(e.asker),
-      groups(e.groups),
-      Rules,
-      Hidden
-    ).mkString("\n\n")
+      s"From anywhere else, I read for you up to ${Label.shown(e.beyond)}."
+    ) ++ after(e)).mkString("\n\n")
+
+  /** Who the asker is taken to be, their groups, the rules and the hidden-content line. */
+  private def after(e: Explanation): Vector[String] =
+    Vector(who(e.asker), groups(e.groups), Rules, Hidden)
+
+  /** `e` in plain words for a person asking by a command only they see, wherever they ask:
+    * what they read from anywhere, `e.beyond` (their clearance in full when `e` was explained
+    * at it), then as [[text]] from who they are taken to be.
+    */
+  def cleared(e: Explanation): String =
+    (s"You are cleared for up to ${Label.shown(e.beyond)}, wherever you ask." +: after(e))
+      .mkString("\n\n")
 
   /** How a room's speech and everything else is read, and how a label is written. */
   private val Rules: String =

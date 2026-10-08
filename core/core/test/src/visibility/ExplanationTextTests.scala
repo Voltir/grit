@@ -23,6 +23,24 @@ object ExplanationTextTests extends TestSuite {
       ) ==> (Vector(), Vector(), Vector())
     }
 
+    test(
+      "asked by a command, it opens with what the asker reads from anywhere, then says what the room's text says from who they are on"
+    ) {
+      val e = Explained.fullClearance
+      val told = Explanation.cleared(e)
+      (
+        told.linesIterator.toVector.headOption,
+        told.split("\n\n").toVector.drop(1) == Explanation.text(e).split("\n\n").toVector.drop(2),
+        names(told, Named*)
+      ) ==> (
+        Some(
+          "You are cleared for up to [level: confidential, in: {finance, trial}], wherever you ask."
+        ),
+        true,
+        Vector()
+      )
+    }
+
     test("the rendered text shows each account by kind and how it is the person's") {
       Explanation.text(Explained.fullClearance) ==>
         """This conversation is labelled [level: confidential, in: {finance, trial}].

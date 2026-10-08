@@ -2,7 +2,15 @@ package grit.core.admin
 
 import grit.core.identity.TestAccounts
 import grit.core.visibility.TestLabels.{compartment, group, place}
-import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomAccess}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Explained,
+  Explanation,
+  Label,
+  Level,
+  RoomAccess
+}
 
 import utest.*
 
@@ -43,6 +51,20 @@ object AnswerTests extends TestSuite {
           "room.",
         "This room is labelled [level: internal], the deployment's default. Its access is not " +
           "yet known."
+      )
+    }
+
+    test(
+      "a direct message's label is shown as its person's clearance, another's clearance as its label, and one's own in its explanation's words"
+    ) {
+      val e = Explained.fullClearance
+      (Answer.direct(internal), Answer.theirs(confidential), Answer.clearance(e)) ==> (
+        Answer.Shown(
+          "This is a direct message: its label is your clearance, [level: internal], and it " +
+            "cannot be changed."
+        ),
+        Answer.Shown("Their clearance is [level: confidential, in: {trial}]."),
+        Answer.Shown(Explanation.cleared(e))
       )
     }
 
