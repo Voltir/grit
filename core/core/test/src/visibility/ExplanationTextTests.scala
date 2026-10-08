@@ -30,13 +30,13 @@ object ExplanationTextTests extends TestSuite {
       val told = Explanation.cleared(e)
       (
         told.linesIterator.toVector.headOption,
-        told.split("\n\n").toVector.drop(1) == Explanation.text(e).split("\n\n").toVector.drop(2),
+        told.split("\n\n").toVector.drop(1),
         names(told, Named*)
       ) ==> (
         Some(
           "You are cleared for up to [level: confidential, in: {finance, trial}], wherever you ask."
         ),
-        true,
+        Explanation.text(e).split("\n\n").toVector.drop(2),
         Vector()
       )
     }
