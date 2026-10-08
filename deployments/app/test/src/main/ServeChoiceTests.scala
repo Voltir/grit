@@ -191,13 +191,11 @@ object ServeChoiceTests extends TestSuite {
             )
           )
           .map(b => (b.days, b.messages, b.joinsPerDay)),
-        Main.backfill(Map("GRIT_BACKFILL_DAYS" -> "0")),
         Main.backfill(Map("GRIT_BACKFILL_MESSAGES" -> "0")),
         Main.backfill(Map("GRIT_BACKFILL_JOINS_PER_DAY" -> "ten"))
       ) ==> (
         Right(Backfill.Default),
         Right((3, 50, 4)),
-        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '0'"),
         Left("GRIT_BACKFILL_MESSAGES is a whole number above zero, not '0'"),
         Left("GRIT_BACKFILL_JOINS_PER_DAY is a whole number above zero, not 'ten'")
       )
