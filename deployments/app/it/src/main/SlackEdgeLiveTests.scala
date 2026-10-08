@@ -167,6 +167,7 @@ object SlackEdgeLiveTests extends TestSuite {
         by: Account
     ): Either[InboxError, Boolean] = inner.posted(origin, source, text, at, request, by)
     def begun(origin: Origin): Either[InboxError, Boolean] = inner.begun(origin)
+    def overCap(): Either[InboxError, Option[InboxError.OverCap]] = inner.overCap()
     def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
       inner.ingested(origin, source)
     def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]] =

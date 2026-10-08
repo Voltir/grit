@@ -36,6 +36,11 @@ trait Inbox extends caps.SharedCapability {
       by: Account
   ): Either[InboxError, TurnRef]
 
+  /** The refusal a new message would get now over the day's cap ([[InboxError.OverCap]]), by
+    * the rule [[ingest]] applies; `None` under it, or with no cap.
+    */
+  def overCap(): Either[InboxError, Option[InboxError.OverCap]]
+
   /** Records `text` from `origin`'s conversation, written through `by`, as heard: said where grit
     * listens, not to it ([[grit.core.store.Payload.Heard]]), as the first entry of a turn of
     * its own; an account not seen before is, unnamed, a new person's one account. The

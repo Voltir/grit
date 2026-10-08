@@ -221,7 +221,9 @@ final class InMemoryInbox(
             entries.get(InboundId.of(c.id, source))
           )
           refused <- before.fold(
-            sealedOf(origin, known).fold(if (capped) overCap else Right(None))(w => Right(Some(w)))
+            sealedOf(origin, known).fold[Either[StoreError, Option[InboxError]]](
+              if (capped) overCapNow else Right(None)
+            )(w => Right(Some(w)))
           )(_ => Right(None))
           turn <- (before, refused) match {
             case (Some(e), _) => Right(Right(TurnRef(e.conversationId, e.turnSeq)))
@@ -264,10 +266,13 @@ final class InMemoryInbox(
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => None
   }
 
+  def overCap(): Either[InboxError, Option[InboxError.OverCap]] =
+    if (down) unavailable else inTx(overCapNow.left.map(InboxError.stored))
+
   /** Why the spend on the day `ledger.now` falls on refuses a new message; `None` when it
     * does not.
     */
-  private def overCap(using Tx^): Either[StoreError, Option[InboxError]] =
+  private def overCapNow(using Tx^): Either[StoreError, Option[InboxError.OverCap]] =
     budget.cap match {
       case None => Right(None)
       case Some(cap) =>

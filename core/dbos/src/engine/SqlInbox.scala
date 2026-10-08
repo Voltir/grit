@@ -90,7 +90,7 @@ final class SqlInbox(
           // No conversation yet: the message is new, and is refused over the cap before its
           // conversation is created.
           case None =>
-            overCap(now).flatMap {
+            overCapAt(now).flatMap {
               case Some(refused) => Right(Left(refused))
               case None =>
                 roomOf(origin).flatMap(label =>
@@ -195,8 +195,13 @@ final class SqlInbox(
       all <- entries.list(turn.conversationId)
     } yield conversation.flatMap(Opening.of(_, all, turn))
 
+  def overCap(): Either[InboxError, Option[InboxError.OverCap]] = {
+    val now = clock.now()
+    inTransaction(overCapAt(now))
+  }
+
   /** Why the day's spend at `now` refuses a new message; `None` when it does not. */
-  private def overCap(now: Instant)(using Tx^): Either[StoreError, Option[InboxError]] =
+  private def overCapAt(now: Instant)(using Tx^): Either[StoreError, Option[InboxError.OverCap]] =
     budget.cap match {
       case None => Right(None)
       case Some(cap) =>
@@ -248,7 +253,9 @@ final class SqlInbox(
       existing <- entries.get(id)
       refused <- existing.fold(
         sealedOf(origin, conversation.label).flatMap(
-          _.fold(if (capped) overCap(at) else Right(None))(why => Right(Some(why)))
+          _.fold[Either[StoreError, Option[InboxError]]](
+            if (capped) overCapAt(at) else Right(None)
+          )(why => Right(Some(why)))
         )
       )(_ => Right(None))
       turn <- (existing, refused) match {

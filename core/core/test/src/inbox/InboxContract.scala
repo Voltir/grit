@@ -674,20 +674,23 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
-      "once the day's spend reaches the cap a new message is refused, recording nothing, not even its conversation; one already recorded is still its turn; a heard one and a post are still recorded"
+      "once the day's spend reaches the cap a new message is refused, recording nothing, not even its conversation, as overCap says beforehand; one already recorded is still its turn; a heard one and a post are still recorded; with no cap, overCap names none"
     ) {
       val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
       withInbox(Budget(ZoneOffset.UTC, Some(cap))) { (inbox, store) =>
         val here = Origin.Task("inbox", "capped")
         val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
         store.spend(BigDecimal("0.4"))
+        val under = inbox.overCap()
         store.spend(BigDecimal("0.6"))
+        val over = inbox.overCap()
         inbox.ingest(here, SourceId("m1"), said("one"), Account.Local) ==> first
         val refused = inbox.ingest(here, SourceId("m2"), said("two"), Account.Local)
         refused.left.map {
           case InboxError.OverCap(spent, c, _) => (spent.calls, spent.cost, c)
           case other => other
         } ==> Left((2, Cost.Exact(BigDecimal("1.0")), cap))
+        (under, over.map(_.toLeft(()))) ==> (Right(None), Right(refused.map(_ => ())))
         inbox.ingested(here, SourceId("m2")) ==> Right(None)
         val fresh = Origin.Task("inbox", "capped-first")
         inbox.ingest(fresh, SourceId("m1"), said("one"), Account.Local).left.map {
@@ -710,6 +713,10 @@ abstract class InboxContract extends TestSuite {
           Right(true)
         store.written(posted).map(_._1) ==> Vector(Payload.Posted("posted"))
       }
+      withInbox(Uncapped) { (inbox, store) =>
+        store.spend(BigDecimal("2"))
+        inbox.overCap()
+      } ==> Right(None)
     }
   }
 }
