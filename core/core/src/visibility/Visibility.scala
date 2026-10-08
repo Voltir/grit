@@ -29,7 +29,7 @@ object Visibility {
 
   /** The declared compartment `group` is named for: the one whose own group it is. */
   private def ownGroupOf(compartments: Compartments, group: GroupName): Option[Compartment] =
-    compartments.declared.find(c => Compartment.name(c) == GroupName.value(group))
+    compartments.declared.find(c => GroupName.own(c) == group)
 
   /** No compartment but unmapped, every room public, no group, no service trusted above
     * public: every label is public, so every reader reads what it read before labels existed.

@@ -53,6 +53,9 @@ object Tx {
   /** The clearance it was opened at: what stores filter and floor by. */
   def clearance(tx: Tx^): Clearance = tx.clearance
 
+  /** The deployment's declaration it was opened under. */
+  def visibility(tx: Tx^): Visibility = tx.visibility
+
   /** What it reads of documents and plugins' data: every label this dominates. For choosing
     * which variant of derived data to serve, never for enforcing: a read of a variant above it
     * returns nothing, so a wrong choice cannot read up. Under posting and a job's run it is

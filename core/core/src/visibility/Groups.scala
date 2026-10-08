@@ -14,6 +14,11 @@ object GroupName {
   }
 
   def value(name: GroupName): String = name
+
+  /** `compartment`'s own group's name, its name: the group people cleared for it through grit
+    * are added to.
+    */
+  def own(compartment: Compartment): GroupName = Compartment.name(compartment)
 }
 
 /** People a deployment groups together: the `accounts` sources know them by, and the `realms`
