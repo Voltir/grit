@@ -36,53 +36,38 @@ final class SqlConversationStore extends ConversationStore {
         } yield conversation
     }
 
-  /** `origin`'s conversation inserted, with its place and its room, unless there already. Every
-    * insert is `ON CONFLICT DO NOTHING`, never `DO UPDATE`: an update would lock the existing
-    * row, and a transaction writing a second entry to another conversation in the room holds a
-    * key-share lock on that room's row (and on the conversation's, when it is this one) until it
-    * commits, so making or finding a conversation would wait on whatever else that transaction
-    * does. A concurrent insert of the same row is waited for, and its row kept. Paths go as JSON,
-    * so no Java array crosses JDBC.
+  /** `origin`'s conversation inserted, with its place and its room ([[SqlPlaces.id]]), unless
+    * there already. The insert is `ON CONFLICT DO NOTHING`, never `DO UPDATE`: an update would
+    * lock the existing row, and a transaction writing a second entry to another conversation in
+    * the room holds a key-share lock on that room's row (and on the conversation's, when it is
+    * this one) until it commits, so making or finding a conversation would wait on whatever else
+    * that transaction does. A concurrent insert of the same row is waited for, and its row kept.
     */
   private def created(origin: Origin, by: Account, label: Int)(using
       tx: Tx^
   ): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    def path(place: grit.core.place.Place): String =
-      ujson.Arr.from(place.segments.map(ujson.Str(_))).render()
-    attempt {
-      Using.resource(
-        conn.prepareStatement(
-          """INSERT INTO grit.places (path)
-            |SELECT DISTINCT path
-            |  FROM (VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb))),
-            |               (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))) AS wanted (path)
-            |ON CONFLICT (path) DO NOTHING""".stripMargin
-        )
-      ) { ps =>
-        ps.setString(1, path(origin.place))
-        ps.setString(2, path(origin.room))
-        ps.executeUpdate()
+    for {
+      place <- SqlPlaces.id(origin.place)
+      room <- SqlPlaces.id(origin.room)
+      _ <- attempt {
+        Using.resource(
+          conn.prepareStatement(
+            """INSERT INTO grit.conversations (origin, place_id, room_id, created_by, label_id)
+              |VALUES (?::jsonb, ?::uuid, ?::uuid, ?, ?)
+              |ON CONFLICT (origin) DO NOTHING""".stripMargin
+          )
+        ) { ps =>
+          ps.setString(1, SqlConversationStore.originJson(origin).render())
+          ps.setString(2, place)
+          ps.setString(3, room)
+          ps.setString(4, SqlIdentities.written(by))
+          ps.setInt(5, label)
+          ps.executeUpdate()
+          ()
+        }
       }
-      Using.resource(
-        conn.prepareStatement(
-          """INSERT INTO grit.conversations (origin, place_id, room_id, created_by, label_id)
-            |SELECT ?::jsonb, p.id, r.id, ?, ?
-            |  FROM grit.places p, grit.places r
-            | WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
-            |   AND r.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
-            |ON CONFLICT (origin) DO NOTHING""".stripMargin
-        )
-      ) { ps =>
-        ps.setString(1, SqlConversationStore.originJson(origin).render())
-        ps.setString(2, SqlIdentities.written(by))
-        ps.setInt(3, label)
-        ps.setString(4, path(origin.place))
-        ps.setString(5, path(origin.room))
-        ps.executeUpdate()
-        ()
-      }
-    }
+    } yield ()
   }
 
   def find(origin: Origin)(using tx: Tx^): Either[StoreError, Option[Conversation]] = {
