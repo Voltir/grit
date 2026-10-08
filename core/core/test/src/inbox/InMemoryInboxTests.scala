@@ -145,7 +145,8 @@ object InMemoryInboxTests extends InboxContract {
             .foreach(c => inbox.conversations.unreadable += c.id),
         v => {
           val _ = voucher.vouch(v)(using TestTx.fake)
-        }
+        },
+        room => inbox.quiet(room)
       )
     )
   }

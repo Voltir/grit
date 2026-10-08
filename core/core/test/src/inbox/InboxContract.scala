@@ -18,6 +18,7 @@ import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
 import grit.core.message.{Cost, Message}
 import grit.core.period.{Period, PeriodState}
+import grit.core.place.Place
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
@@ -361,6 +362,24 @@ abstract class InboxContract extends TestSuite {
           Right(())
         inbox.ingest(here, SourceId("m2"), said("hi"), Account.Local).map(_ => ()) ==> Right(())
         store.reached(here) ==> Vector(Some(first), None)
+      }
+    }
+
+    test("a message heard in a quiet room keeps no reply address, and still whom it names") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "quiet")
+        val ben = TestAccounts.account("task:ben")
+        store.quiet(here.room)
+        inbox.hear(
+          here,
+          SourceId("m1"),
+          "ask Ben",
+          Account.Local,
+          Said,
+          Reach(Some("C/1"), Set(ben))
+        ) ==>
+          Right(())
+        store.reached(here) ==> Vector(Some(Reach(None, Set(ben))))
       }
     }
 
@@ -723,7 +742,8 @@ object InboxContract {
     * time, as the run's reply does; `labelled`, the label an origin's conversation was created
     * at; `unreadable` leaves an origin's conversation, which exists, holding what its store
     * reads as `Invalid`; `vouch` records what an account's realm says of it now, by a voucher of
-    * [[T1]] and [[T2]] claiming [[Claimed]], as an edge attesting it would.
+    * [[T1]] and [[T2]] claiming [[Claimed]], as an edge attesting it would; `quiet` makes a
+    * room quiet, as a person's command would.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -742,6 +762,7 @@ object InboxContract {
       replied: (Slot, Int, Instant) => Unit,
       labelled: Origin => Option[Label],
       unreadable: Origin => Unit,
-      vouch: Vouched => Unit
+      vouch: Vouched => Unit,
+      quiet: Place => Unit
   )
 }

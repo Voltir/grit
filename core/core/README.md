@@ -154,7 +154,7 @@ In dependency order:
   `place`, `period`, `store`, `spend`, `classify`
 - **`speech`** — whether grit speaks where it was not addressed (ADR 0022): `Speaking` (off,
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
-  (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
+  (`Heard`, its `Reach`, which keeps no address in a quiet room: `Reach.heardIn`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
   `Stage`), `Speech.decide` (drafted; answered as said to grit, at its reply address, when
   triage read it as put to grit by name; or held for a `Silence`), and `Speech.post` (what
   becomes of an unprompted draft the judge scored, `Judged`, as an `Outcome`;

@@ -7,6 +7,7 @@ import grit.core.id.{CallSlot, JobName, ScheduleId, SourceId, ToolCallId, TurnRe
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
+import grit.core.place.Place
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{
@@ -22,7 +23,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{Label, Visibility}
+import grit.core.visibility.{Label, Recorded, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
@@ -57,6 +58,20 @@ final class InMemoryInbox(
     * deployment: everything recorded is kept.
     */
   def reopen(now: Visibility): Unit = visibility = now
+
+  // An immutable value, written and read only on the test's own thread, as `visibility` is.
+  @caps.unsafe.untrackedCaptures
+  private var recorded = Recorded.Empty
+
+  /** Has `room` made quiet, as a person's command would. */
+  def quiet(room: Place): Unit =
+    recorded = Recorded(
+      recorded.rooms.updated(
+        room,
+        recorded.rooms.getOrElse(room, Recorded.Kept(None, None, quiet = false)).copy(quiet = true)
+      ),
+      recorded.added
+    )
 
   /** The conversations' periods, over [[entries]]. */
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
@@ -150,9 +165,9 @@ final class InMemoryInbox(
     */
   private def labelOf(origin: Origin): Label = origin match {
     case Origin.Direct(account, _) =>
-      Tx.clearanceOf(person(account))(using TestTx.inForce(visibility))
+      Tx.clearanceOf(person(account))(using TestTx.inForce(visibility, recorded))
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
-      Tx.roomLabel(origin.room)(using TestTx.inForce(visibility))
+      Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded))
   }
 
   def hear(
@@ -171,12 +186,13 @@ final class InMemoryInbox(
           source,
           Payload.Heard(text),
           by,
-          Tx.roomLabel(origin.room)(using TestTx.inForce(visibility)),
+          Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded)),
           at,
           capped = false
         )
     }).flatMap { turn =>
-      inTx(speech.heard(turn, reach)) match {
+      val kept = Reach.heardIn(origin.room, reach)(using TestTx.inForce(visibility, recorded))
+      inTx(speech.heard(turn, kept)) match {
         // A message recorded as a turn before is not heard, and keeps no reach.
         case Left(StoreError.Invalid(_)) | Right(()) => Right(())
         case Left(other) => Left(InboxError.stored(other))
@@ -280,7 +296,7 @@ final class InMemoryInbox(
               conversation <- conversations.findOrCreate(
                 origin,
                 by,
-                Tx.roomLabel(origin.room)(using TestTx.inForce(visibility))
+                Tx.roomLabel(origin.room)(using TestTx.inForce(visibility, recorded))
               )
               next <- entries.lockNext(conversation.id)
               _ <- periods.openFor(conversation.id, next.turnSeq, at)

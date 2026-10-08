@@ -10,7 +10,7 @@ import grit.core.message.{Cost, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
-import grit.core.store.Entry
+import grit.core.store.{Entry, Tx}
 import grit.core.triage.{Gate, Reading, Tags}
 
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
@@ -22,6 +22,12 @@ object Reach {
 
   /** No address and nobody named: what a message heard before reach was kept has. */
   val Nowhere: Reach = Reach(None, Set.empty)
+
+  /** `reach` as a message heard in `room` keeps it: without its address when `room` is quiet
+    * ([[Tx.quiet]]), so nothing is posted there unasked; whom it names, either way.
+    */
+  def heardIn(room: Place, reach: Reach)(using Tx^): Reach =
+    if (Tx.quiet(room)) reach.copy(replyTo = None) else reach
 }
 
 /** A heard message as [[Speech.decide]] weighs it: its `turn`, its position `seq` in its

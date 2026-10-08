@@ -43,7 +43,8 @@ trait Inbox extends caps.SharedCapability {
     * said `at`: its entry
     * is dated `at`, and a period it opens opens `at`, so a message heard late is as quiet as
     * it was. `reach` is where a reply to it could go and whom it names
-    * ([[grit.core.speech.Reach]]). A message whose `source` was already recorded for
+    * ([[grit.core.speech.Reach]]); in a room quiet when it is recorded it keeps no address
+    * ([[grit.core.speech.Reach.heardIn]]), so grit never replies there unasked. A message whose `source` was already recorded for
     * `origin`, heard or ingested, is not recorded again, and its first reach stands. Once
     * recorded, it is triaged, once ([[grit.core.triage.Tags]]); hearing it again triages it
     * if that was lost. Its turn runs only when grit drafts a reply to it

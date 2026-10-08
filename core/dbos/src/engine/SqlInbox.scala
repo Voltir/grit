@@ -165,7 +165,7 @@ final class SqlInbox(
                 // A message recorded as a turn before is not heard, and not triaged.
                 case Some(Payload.Heard(_)) =>
                   speech
-                    .heard(turn, reach)
+                    .heard(turn, Reach.heardIn(origin.room, reach))
                     .map(_ => period.map(p => TriageRef(p.ref, turn.turnSeq)))
                 case _ => Right(None)
               }

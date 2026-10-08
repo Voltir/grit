@@ -10,6 +10,7 @@ import grit.core.identity.Account
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
+import grit.core.place.Place
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
@@ -43,6 +44,25 @@ object SqlInboxContractTests extends InboxContract {
       ).foreach(sql => Using.resource(conn.prepareStatement(sql))(ps => ps.executeUpdate()))
     }
   }
+
+  /** `room`, in the database `config` names, made quiet, as a person's command would. */
+  private def quieted(config: DbConfig, room: Place): Unit =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      val path = ujson.Arr.from(room.segments.map(ujson.Str(_))).render()
+      Vector(
+        """INSERT INTO grit.places (path) VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))
+          |ON CONFLICT (path) DO NOTHING""".stripMargin,
+        """INSERT INTO grit.rooms (place_id, quiet)
+          |SELECT id, true FROM grit.places WHERE path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+          |ON CONFLICT (place_id) DO UPDATE SET quiet = true""".stripMargin
+      ).foreach(sql =>
+        Using.resource(conn.prepareStatement(sql)) { ps =>
+          ps.setString(1, path)
+          ps.executeUpdate()
+        }
+      )
+    }
 
   /** Over the suite's shared database under the shipped visibility, and over a database of its
     * own under any other: an engine refuses to start under compartments that drop one its
@@ -235,7 +255,8 @@ object SqlInboxContractTests extends InboxContract {
                   .voucher(Set(InboxContract.T1, InboxContract.T2), InboxContract.Claimed)
                   .vouch(vouched)
               )
-              .fold(e => sys.error(e.toString), _ => ())
+              .fold(e => sys.error(e.toString), _ => ()),
+          room => quieted(db, room)
         )
       )
     } finally engine.close()
