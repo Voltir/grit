@@ -6,7 +6,9 @@ import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, ServedEdge, Unheard, Variable}
 import grit.core.id.{AttesterName, EdgeName, PrincipalId}
 import grit.core.place.Place
+import grit.core.speech.Rate
 import grit.core.store.{Origin, StoreError}
+import grit.core.tool.ToolSet
 import grit.edge.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
 import grit.slack.event.{ChannelId, Event, TeamId, UserId}
@@ -61,7 +63,7 @@ private[slack] object Served {
   def serving(
       command: SlackCommand,
       backfill: Backfill,
-      posts: Option[Posts],
+      posting: Option[Rate],
       review: Option[SlackReview],
       connect: Connect^,
       start: Backfilling.Start
@@ -114,8 +116,8 @@ private[slack] object Served {
                       log(
                         s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}, answering ${command.name}"
                       )
-                      val stopPosting = posts match {
-                        case Some(p) => posting(slack, self.team, p, stores, clock, log)
+                      val posts = posting match {
+                        case Some(rate) => served(slack, self.team, rate, stores, clock, log, edge)
                         case None => None
                       }
                       val backfilling = new Backfilling(
@@ -138,6 +140,7 @@ private[slack] object Served {
                       Right(new ServedEdge.Open {
                         def deliver(): Either[StoreError, Int] = {
                           backfilling.wake()
+                          posts.foreach(_.reoffer())
                           // First, so a slow post never holds back a mark.
                           edge
                             .acknowledge()
@@ -149,7 +152,7 @@ private[slack] object Served {
                         }
                         override def attest(): Either[StoreError, Int] = edge.attest()
                         def close(): Unit = {
-                          stopPosting.foreach(_())
+                          posts.foreach(_.stop())
                           backfilling.close(Backfill.StopWithin)
                           slack.close()
                         }
@@ -160,61 +163,69 @@ private[slack] object Served {
       }
   }
 
-  /** `slack_post` served at [[SlackEdge.PostsAt]] as `posts` allows, over the channels of
-    * `posts` Slack gives a name, each left out logged, each written to at its place in `team`;
-    * `None`, logged, when none has one or the desk would not register or advertise, so the edge
-    * serves its replies without it. Its rate is counted on `clock`. What stops serving it.
+  /** `slack_post` as served: offered again over the channels it may post in now, when they
+    * may have changed ([[SlackEdge.reoffer]]), and stopped.
     */
-  private def posting(
+  private trait PostingServed {
+    def reoffer(): Unit
+    def stop(): Unit
+  }
+
+  /** `slack_post` served at [[SlackEdge.PostsAt]] through `slack`, at most `rate` posts,
+    * counted on `clock`, over the channels of `team` that `edge` says it may post in, offered
+    * at once and again on each [[PostingServed.reoffer]]; each change of them logged. `None`, logged,
+    * when the desk would not register, so the edge serves its replies without it.
+    */
+  private def served(
       slack: Slack^,
       team: TeamId,
-      posts: Posts,
+      rate: Rate,
       stores: EdgeStores^,
       clock: Clock^,
-      log: String => Unit
-  ): Option[() ->{slack, stores, clock, log, caps.any} Unit] = {
-    val named = posts.to.toVector.sortBy(ChannelId.value).flatMap { id =>
-      val shown = ChannelId.value(id)
-      slack.channelName(id) match {
-        case Right(Some(name)) => Vector((name, id))
-        case Right(None) =>
-          log(s"slack: not posting to $shown: Slack gives grit no name for it")
-          Vector.empty
-        case Left(e) =>
-          log(s"slack: not posting to $shown: Slack not asked: $e")
-          Vector.empty
-      }
-    }
+      log: String => Unit,
+      edge: SlackEdge^{slack, stores, clock, log}
+  ): Option[PostingServed^{slack, stores, clock, log, caps.any}] = {
     val place = SlackEdge.PostsAt.place
-    def nowhere(why: String): None.type = {
-      log(s"slack: posts nowhere: $why")
-      None
-    }
-    val tool = new Posting(slack, clock, posts.rate, team)
-    (if (named.isEmpty) Left("no channel it may post to has a name grit can read")
-     else tool.offer(named)) match {
-      case Left(why) => nowhere(why)
-      case Right(_) =>
-        stores.desks.register(PrincipalId.Grit, Set(place)) match {
-          case Left(e) => nowhere(s"${place.written} not registered: ${e.why}")
-          case Right(desk) =>
-            desk.advertise(place, tool.offered, Vector.empty) match {
-              case Left(e) => nowhere(s"${place.written} not advertised: ${e.why}")
-              case Right(()) =>
-                val server = new Server(
-                  desk,
-                  tool,
-                  run => { val _ = Thread.ofVirtual().start(() => run()) },
-                  said => log(s"${place.written}: $said")
-                )
-                log(
-                  s"slack: posts to ${named.map((n, id) => s"#$n (${ChannelId.value(id)})").mkString(", ")}, " +
-                    s"at most ${posts.rate.count} per ${posts.rate.per}"
-                )
-                server.serve()
-                Some(() => server.close())
-            }
-        }
+    stores.desks.register(PrincipalId.Grit, Set(place)) match {
+      case Left(e) =>
+        log(s"slack: posts nowhere: ${place.written} not registered: ${e.why}")
+        None
+      case Right(desk) =>
+        val tool = new Posting(slack, clock, rate, team)
+        // The tool set last advertised, so only a change is logged; written and read only by
+        // offer, run by the open and then by the kit's delivery rounds, one after another.
+        @caps.unsafe.untrackedCaptures
+        var last: Option[ToolSet] = None
+        def offer(named: Vector[(String, ChannelId)]): Either[String, Unit] =
+          for {
+            offered <- tool.offer(named)
+            _ <- desk
+              .advertise(place, offered, Vector.empty)
+              .left
+              .map(e => s"${place.written} not advertised: ${e.why}")
+          } yield {
+            if (!last.contains(offered))
+              log(named match {
+                case Vector() =>
+                  "slack: slack_post posts in no channel now"
+                case _ =>
+                  s"slack: slack_post posts in ${named.map((n, id) => s"#$n (${ChannelId.value(id)})").mkString(", ")}, " +
+                    s"at most ${rate.count} per ${rate.per}"
+              })
+            last = Some(offered)
+          }
+        val server = new Server(
+          desk,
+          tool,
+          run => { val _ = Thread.ofVirtual().start(() => run()) },
+          said => log(s"${place.written}: $said")
+        )
+        edge.reoffer(offer)
+        server.serve()
+        Some(new PostingServed {
+          def reoffer(): Unit = edge.reoffer(offer)
+          def stop(): Unit = server.close()
+        })
     }
   }
 

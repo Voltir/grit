@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.admin.{Answer, InMemoryAdministration}
+import grit.core.admin.{Answer, Command, InMemoryAdministration}
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{
   Acknowledgement,
@@ -30,7 +30,7 @@ import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
 import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
-import grit.core.tool.Outcome
+import grit.core.tool.{Outcome, ToolSet, ToolSetId}
 import grit.core.visibility.{RoomAccess, Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack, SlackError}
@@ -43,13 +43,6 @@ import utest.*
   */
 object ServedTests extends TestSuite {
   import Payloads.*
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
 
   private val C = ChannelId("C123ABC456")
 
@@ -112,18 +105,29 @@ object ServedTests extends TestSuite {
 
     /** Where its edges record their bot's memberships. */
     val joins: InMemoryJoins = InMemoryJoins.none()
+
+    /** Where people's commands are run, and what they record kept: as the labels in force
+      * of every transaction [[jot]] opens.
+      */
+    val admin = new InMemoryAdministration(Visibility.Shipped, voucher)
+
+    /** Transactions reading the labels in force as [[admin]] has recorded them. */
+    val jot: Jot = new Jot {
+      def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+        body(using admin.inForce)
+    }
     val stores =
       EdgeStores(
         inbox,
-        InMemoryAdministration.none(),
+        admin,
         joins,
         inbox.principals,
         new InMemoryDeliveries,
         acknowledgements,
         picks.reviews,
-        FakeJot,
+        jot,
         edges,
-        new Attesting(voucher, FakeJot, _ => ())
+        new Attesting(voucher, jot, _ => ())
       )
 
     /** What opening logged, in order. */
@@ -139,14 +143,42 @@ object ServedTests extends TestSuite {
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
 
-    /** The edge as `serving` makes it, posting as `posts` allows, opened; logged in [[logged]]. */
-    def openPosting(posts: Posts): ServedEdge.Open^{this} =
+    /** The edge as `serving` makes it, posting at most [[TwoAnHour]], opened; logged in
+      * [[logged]].
+      */
+    def openPosting(): ServedEdge.Open^{this} =
       Served
-        .serving(Grit, Backfill.Default, Some(posts), None, connect, Inline)
+        .serving(Grit, Backfill.Default, Some(TwoAnHour), None, connect, Inline)
         .open(stores, Env, clock, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
+
+    /** `channel`'s room made quiet by a full member of grit's team, as a command makes it; in
+      * a world that attests.
+      */
+    def quiet(channel: ChannelId): Unit = {
+      val by = TestAccounts.account(s"slack:$Team/U0ADA0001")
+      admin.member(by)
+      admin.run(by, roomOf(channel), Command.Quiet(true), Instant.EPOCH) match {
+        case Right(Answer.Refused(why)) => throw new java.lang.AssertionError(why.toString)
+        case Right(_) => ()
+        case Left(e) => throw new java.lang.AssertionError(e.toString)
+      }
+    }
+
+    /** What is advertised at service:slack, by tool set id. */
+    def advertised: Vector[ToolSetId] =
+      edges.adverts.toVector.collect {
+        case ((_, at), advert) if at == SlackEdge.PostsAt.place => advert.tools
+      }
+
+    /** The id of `slack_post` offered over `named`, at most [[TwoAnHour]]. */
+    def offering(named: (String, ChannelId)*): ToolSetId =
+      new Posting(slack, Clock.system(), TwoAnHour, TeamId(Team))
+        .offer(named.toVector)
+        .fold(why => throw new java.lang.AssertionError(why), _.id)
+
     val connect: Served.Connect^{slack} = new Served.Connect {
       def apply(bot: BotToken, app: AppToken): Slack^ = slack
     }
@@ -305,7 +337,7 @@ object ServedTests extends TestSuite {
           .serving(
             Grit,
             Backfill.Default,
-            Some(Posts(TwoAnHour, Skynet)),
+            Some(TwoAnHour),
             None,
             new World().connect,
             Inline
@@ -495,22 +527,24 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "serving with posts registers service:slack, advertises slack_post over the channels Slack names, and runs a request sent there"
+      "serving with posting advertises slack_post at service:slack over every channel grit's bot is a member of and Slack names, but a quiet one, and runs a request sent there"
     ) {
-      val w = new World
-      w.slack.channelNames = w.slack.channelNames.updated(Skynet, "probably-not-skynet")
-      val open = w.openPosting(Posts(TwoAnHour, Skynet, Unnamed))
+      val w = new World(attests = true)
+      w.slack.channelNames = w.slack.channelNames ++ Map(
+        Skynet -> "probably-not-skynet",
+        First -> "general",
+        Unnamed -> "unnamed"
+      )
+      w.slack.unreachable = Set(Unnamed)
+      w.quiet(First)
+      val open = w.openPosting()
       try {
-        val expected =
-          new Posting(w.slack, Clock.system(), TwoAnHour, TeamId(Team))
-            .offer(Vector(("probably-not-skynet", Skynet)))
-            .toOption
-            .map(_.id)
-        w.edges.adverts.toVector.map((at, advert) => (at._2, Some(advert.tools))) ==>
-          Vector((SlackEdge.PostsAt.place, expected))
+        w.advertised ==> Vector(
+          w.offering(("probably-not-skynet", Skynet), ("standup", C))
+        )
         w.logged.filter(_.contains("post")) ==> Vector(
-          "slack: not posting to C0UNNAMED1: Slack gives grit no name for it",
-          "slack: posts to #probably-not-skynet (C0C5U2FPAL8), at most 2 per 1 hour"
+          "slack: slack_post posts in #probably-not-skynet (C0C5U2FPAL8), #standup (C123ABC456), " +
+            "at most 2 per 1 hour"
         )
         val q = PostingTests.request(ujson.Obj("text" -> "the build is green"), 0)
         val _ = w.edges.dispatch(Vector(q))(using TestTx.fake)
@@ -524,18 +558,33 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "serving with posts none of whose channels Slack names serves nothing there, and says so"
+      "serving with posting re-advertises slack_post at the delivery after a join, a quiet command or a leave, and advertises nothing in no channel"
     ) {
-      val w = new World
-      val open = w.openPosting(Posts(TwoAnHour, Unnamed))
+      val w = new World(attests = true)
+      w.slack.channelNames = w.slack.channelNames.updated(Skynet, "probably-not-skynet")
+      w.slack.notIn = Set(Skynet)
+      val open = w.openPosting()
       try {
-        (w.edges.adverts, w.logged.filter(_.contains("post"))) ==> (
-          Map.empty,
-          Vector(
-            "slack: not posting to C0UNNAMED1: Slack gives grit no name for it",
-            "slack: posts nowhere: no channel it may post to has a name grit can read"
-          )
+        val opened = w.advertised
+        w.slack.notIn = Set.empty
+        w.slack.deliver(joined(channel = ChannelId.value(Skynet))) ==> true
+        val beforeDelivery = w.advertised
+        open.deliver()
+        val afterJoin = w.advertised
+        w.slack.command(command("quiet")) ==> true
+        open.deliver()
+        val afterQuiet = w.advertised
+        w.slack.deliver(memberLeft(channel = ChannelId.value(Skynet))) ==> true
+        open.deliver()
+        (opened, beforeDelivery, afterJoin, afterQuiet, w.advertised) ==> (
+          Vector(w.offering(("standup", C))),
+          Vector(w.offering(("standup", C))),
+          Vector(w.offering(("probably-not-skynet", Skynet), ("standup", C))),
+          Vector(w.offering(("probably-not-skynet", Skynet))),
+          Vector(ToolSet.Empty.id)
         )
+        w.logged.filter(_.contains("slack_post")).last ==>
+          "slack: slack_post posts in no channel now"
       } finally open.close()
     }
 

@@ -644,6 +644,30 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
+      "reoffer runs its offer over the member channels, again only once a membership changes, a channel found by a message included; one that fails is said and runs at the next call"
+    ) {
+      val w = new World(reconciled = false)
+      // Appended to by the offers below, each run on this thread.
+      @caps.unsafe.untrackedCaptures
+      var offered = Vector.empty[Vector[(String, ChannelId)]]
+      def offer(answer: Either[String, Unit]): Vector[(String, ChannelId)] -> Either[String, Unit] =
+        named => {
+          offered :+= named
+          answer
+        }
+      w.first.reoffer(offer(Left("desk gone")))
+      w.first.reoffer(offer(Right(())))
+      w.first.reoffer(offer(Right(())))
+      w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      w.first.reoffer(offer(Right(())))
+      w.first.reoffer(offer(Right(())))
+      (offered, w.logged.filter(_.contains("slack_post"))) ==> (
+        Vector(Vector.empty, Vector.empty, Vector(("standup", C))),
+        Vector("slack: slack_post not offered again, tried at the next delivery: desk gone")
+      )
+    }
+
+    test(
       "a message racing its channel's join records the join first, as of the message, then is heard; with Slack unreachable it is left for Slack to send again"
     ) {
       val w = new World(reconciled = false)

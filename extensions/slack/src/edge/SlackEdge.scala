@@ -25,7 +25,7 @@ import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.review.Prompt
-import grit.core.speech.Reach
+import grit.core.speech.{Rate, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -102,6 +102,37 @@ final class SlackEdge(
 
   /** Every channel grit's bot is a member of, by id, as last recorded. */
   def channels: Vector[ChannelId] = members.all
+
+  // Set when a room is made quiet or not through a command, or a re-offer failed, and taken by
+  // reoffer, each atomically. A set racing a take is seen by this take or the next; which rooms
+  // are quiet is read from the store, never from it.
+  @caps.unsafe.untrackedCaptures
+  private val requiet = new AtomicBoolean(false)
+
+  /** When the channels `slack_post` may post in may have changed since this last ran (the
+    * first time; a join or leave recorded since; a room made quiet, or not, through
+    * [[command]]), runs `offer` over them: each channel grit's bot is a member of that is not
+    * quiet ([[Tx.quiet]]) and that Slack gives a name, by name and id, in the order of their
+    * ids; one Slack gives no name is left out. A room made quiet elsewhere is seen at the next
+    * such change. When the database cannot be read, or `offer` fails, that is said, and it
+    * runs at the next call.
+    */
+  def reoffer[C^](offer: Vector[(String, ChannelId)] ->{C} Either[String, Unit]): Unit =
+    // Both taken, whichever is set.
+    if (members.changed() | requiet.getAndSet(false)) {
+      val all = members.all
+      val offered = for {
+        loud <- stores.jot
+          .write(Subject.Public)(Right(all.filterNot(c => Tx.quiet(members.room(c)))))
+          .left
+          .map(e => s"which rooms are quiet is unread: $e")
+        _ <- offer(loud.flatMap(c => channelNameOf(c).map(_ -> c).toVector))
+      } yield ()
+      offered.left.foreach { why =>
+        requiet.set(true)
+        said(s"slack: slack_post not offered again, tried at the next delivery: $why")
+      }
+    }
 
   /** `channel` as a person reads it: `#{name} ({id})`, its id alone when Slack gives no name. */
   private def shown(channel: ChannelId): String = {
@@ -238,7 +269,12 @@ final class SlackEdge(
                   case Left(why) => why
                   case Right(command) =>
                     stores.administration.run(asker, room, command, clock.now()) match {
-                      case Right(answered) => answered.text
+                      case Right(answered) =>
+                        command match {
+                          case Command.Quiet(_) => requiet.set(true)
+                          case _ => ()
+                        }
+                        answered.text
                       case Left(e) =>
                         said(s"slack: ${c.command} not run: $e")
                         NotRun
@@ -1075,33 +1111,30 @@ object SlackEdge {
     * the workspace's users once when any account is due.
     */
   def serving(command: SlackCommand, backfill: Backfill): ServedEdge =
-    Served.serving(command, backfill, None, None, Socket, Backfilling.Virtual)
+    serving(command, backfill, None, None)
 
-  /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
-    * place, offering the channels of `posts` whose names Slack gives at open; one without is
-    * left out and logged, and with none left nothing is served there. Each channel is offered
-    * under its name, with and without `#`, at the place `slack:{team}/{id}`; a turn is offered
-    * only those its room may write to. A post is a top-level
-    * message, or a reply in a thread its message link names, rendered as a reply is (nothing
-    * in it becomes a mention), and one Slack message at most; it never asks first and is never
-    * run again after a crash.
-    */
-  def serving(command: SlackCommand, backfill: Backfill, posts: Posts): ServedEdge =
-    Served.serving(command, backfill, Some(posts), None, Socket, Backfilling.Virtual)
-
-  /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
-    * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
-    * gives a prompt there is kept as the prompt's verdict ([[SlackEdge.prompt]],
-    * [[SlackEdge.receive]]); nothing said in the review's channel is heard. It does not open
-    * when `review`'s team is not the bot's.
+  /** As [[serving]], posting when `posting` is given, and answering `review` when given.
+    * With `posting`, it serves `slack_post` at [[PostsAt]]'s place, in every channel its bot is
+    * a member of that is not quiet ([[grit.core.store.Tx.quiet]]) and that Slack gives a name,
+    * at most `posting` posts across them, offered again at the next delivery after a join, a
+    * leave, or a room made quiet or not through its slash command (one made quiet elsewhere is
+    * seen at the next such change). Each channel is offered under its name, with and without
+    * `#`, at the place `slack:{team}/{id}`; a turn is offered only those its room may write to.
+    * A post is a top-level message, or a reply in a thread its message link names, rendered as
+    * a reply is (nothing in it becomes a mention), and one Slack message at most; it never asks
+    * first and is never run again after a crash. With `review`, each delivery posts the
+    * review's prompts not yet posted in its place, and a reaction its rater gives a prompt
+    * there is kept as the prompt's verdict ([[SlackEdge.prompt]], [[SlackEdge.receive]]);
+    * nothing said in the review's channel is heard, and it does not open when `review`'s team
+    * is not the bot's.
     */
   def serving(
       command: SlackCommand,
       backfill: Backfill,
-      posts: Option[Posts],
-      review: SlackReview
+      posting: Option[Rate],
+      review: Option[SlackReview]
   ): ServedEdge =
-    Served.serving(command, backfill, posts, Some(review), Socket, Backfilling.Virtual)
+    Served.serving(command, backfill, posting, review, Socket, Backfilling.Virtual)
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].

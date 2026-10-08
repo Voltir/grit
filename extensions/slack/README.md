@@ -79,14 +79,17 @@ In dependency order:
   serves it (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN`
   and `SLACK_APP_TOKEN` as it opens, answering the slash command the deployment registered
   (`SlackCommand`, below), and bounding each join's backfill by `backfill`;
-  `SlackEdge.serving(command, backfill, posts)` also serves
-  `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
-  `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
-  there (`grit.core.place.Reaches`). It is a writing tool (`grit.core.tool.Writing`, ADR
-  0031): each channel is offered under its name, with and without `#`, at the place
-  `slack:{team}/{id}`, so a turn is offered only the channels its room may write to, and the
-  edge posts in the channel its request was checked to write to. `SlackEdge.serving(command,
-  backfill, posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
+  `SlackEdge.serving(command, backfill, posting, review)`, given a rate as `posting`, also
+  serves `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in any channel
+  the bot is a member of that is not quiet, within that rate across them all (`Posting`), for
+  the conversations a deployment links there (`grit.core.place.Reaches`). Its channels follow
+  membership: the edge advertises them again at the delivery after a join, a leave, or a
+  room made quiet or not through its slash command (`SlackEdge.reoffer`), and the rate's count
+  carries across. It is a writing tool (`grit.core.tool.Writing`, ADR 0031): each channel is
+  offered under its name, with and without `#`, at the place `slack:{team}/{id}`, so a turn is
+  offered only the channels its room may write to (a quiet room is written to by no one), and
+  the edge posts in the channel its request was checked to write to. Given `review`, it also
+  answers a deployment's review (`SlackReview.of(place, rater)`: a place
   `slack:{team}/{channel id}`, refused otherwise, never heard, and in the bot's own
   team, or the edge does not open; `ServedEdge.reviewsAt`): each delivery posts the prompts
   the kit picked that its place may receive (`grit.core.review.Reviews.unposted`) whose

@@ -2,6 +2,7 @@ package grit.slack.edge
 
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.jdk.CollectionConverters.*
 
@@ -24,6 +25,17 @@ private[slack] final class Members(joins: Joins, team: TeamId) {
   // own delivery bounds; `joins` is the truth, and the next open rebuilds this from it.
   @caps.unsafe.untrackedCaptures
   private val in = new ConcurrentHashMap[ChannelId, RoomAccess]()
+
+  // Set whenever `in` gains or loses a channel, and taken by changed, each atomically. A set
+  // racing a take is seen by this take or the next; what it stands for is read from `in`, never
+  // from it, so a lost set only delays a re-offer to the next change.
+  @caps.unsafe.untrackedCaptures
+  private val moved = new AtomicBoolean(true)
+
+  /** Whether a channel has been added or removed since this was last asked; `true` the first
+    * time.
+    */
+  def changed(): Boolean = moved.getAndSet(false)
 
   /** Every room of `team`, `slack:{team}`. */
   private val under: Place = Place.under(Namespace.Slack, Vector(TeamId.value(team)))
@@ -50,7 +62,7 @@ private[slack] final class Members(joins: Joins, team: TeamId) {
     joins.left(room(channel), at).map { m =>
       m match {
         case Membership.Member(_, _) => ()
-        case Membership.Gone => val _ = in.remove(channel)
+        case Membership.Gone => if (in.remove(channel) != null) moved.set(true)
       }
       m
     }
@@ -95,7 +107,7 @@ private[slack] final class Members(joins: Joins, team: TeamId) {
     joins.backfilledSince(under, since)
 
   /** `channel`'s room, `slack:{team}/{channel}`. */
-  private def room(channel: ChannelId): Place =
+  def room(channel: ChannelId): Place =
     Origin.channel(TeamId.value(team), ChannelId.value(channel))
 
   /** The channel `place` is the room of, when it is one of `team`'s. */
@@ -108,8 +120,8 @@ private[slack] final class Members(joins: Joins, team: TeamId) {
   /** `m`, held as `channel`'s membership with `access`. */
   private def kept(channel: ChannelId, access: RoomAccess, m: Membership): Membership = {
     m match {
-      case Membership.Member(_, _) => val _ = in.put(channel, access)
-      case Membership.Gone => val _ = in.remove(channel)
+      case Membership.Member(_, _) => if (in.put(channel, access) == null) moved.set(true)
+      case Membership.Gone => if (in.remove(channel) != null) moved.set(true)
     }
     m
   }

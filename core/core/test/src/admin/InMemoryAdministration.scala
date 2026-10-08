@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.identity.{Account, Principal, Standing, Vouched}
 import grit.core.place.Place
-import grit.core.store.{InMemoryVoucher, StoreError}
+import grit.core.store.{InMemoryVoucher, StoreError, Tx}
 import grit.core.visibility.{GroupName, Recorded, RoomAccess, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -29,6 +29,11 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
   def member(account: Account): Unit = {
     val _ = voucher.vouch(Vouched(account, Standing.Full(None)))(using TestTx.fake)
   }
+
+  /** A transaction whose labels in force are what this has recorded now, as one opened now
+    * would read them.
+    */
+  def inForce: Tx = TestTx.inForce(visibility, recorded)
 
   /** Has `room`'s access reported as `access`, as its edge would. */
   def reported(room: Place, access: RoomAccess): Unit =
