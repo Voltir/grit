@@ -126,6 +126,17 @@ object SlackCommandingTests extends TestSuite {
       def run(by: Account, room: Place, command: Command, at: Instant) =
         Left(StoreError.DatabaseError("gone"))
     }
+    /** The room each command was handed to the administration in, in order. */
+    @caps.unsafe.untrackedCaptures
+    var rooms = Vector.empty[Place]
+
+    private val recording: Administration = new Administration {
+      def run(by: Account, room: Place, command: Command, at: Instant) = {
+        rooms = rooms :+ room
+        admin.run(by, room, command, at)
+      }
+    }
+
     private val inbox: InMemoryInbox =
       InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None), Declared, voucher.principal, voucher.records)
 
@@ -139,7 +150,7 @@ object SlackCommandingTests extends TestSuite {
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(
           inbox,
-          if (failing) down else admin,
+          if (failing) down else recording,
           new InMemoryJoins(voucher),
           inbox.principals,
           new InMemoryDeliveries,
@@ -187,8 +198,12 @@ object SlackCommandingTests extends TestSuite {
 
     test("asked in a direct message, a command runs in its asker's own direct room") {
       val w = World()
+      w.edge.command(Grit)(command("label", channel = AnasDm))
       w.edge.command(Grit)(command("quiet", channel = AnasDm))
-      w.answers ==> Vector(Answer.Refused(Refusal.InDirectMessage).text)
+      (w.rooms, w.answers.drop(1)) ==> (
+        Vector.fill(2)(Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ana"), "").room),
+        Vector(Answer.Refused(Refusal.InDirectMessage).text)
+      )
     }
 
     test("words read wrong are answered with why and the commands, and nothing is run") {
