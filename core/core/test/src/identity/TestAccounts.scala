@@ -13,6 +13,16 @@ object TestAccounts {
   def account(text: String): Account =
     Account.read(text).fold(e => throw new java.lang.AssertionError(e), identity)
 
+  /** `text` as an account a source names ([[Account.Sourced]]), failing the test when it is
+    * none.
+    */
+  def sourced(text: String): Account.Sourced =
+    Account
+      .read(text)
+      .toOption
+      .flatMap(Account.Sourced.of)
+      .getOrElse(throw new java.lang.AssertionError(s"no source's account: $text"))
+
   /** The principal whose one account is `account`: its id is the account's spelling. */
   def principalId(account: Account): PrincipalId =
     TestPrincipalIds.stored(Account.written(account))

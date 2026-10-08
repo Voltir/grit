@@ -200,6 +200,8 @@ private[dbos] object SqlConversationStore {
       ujson.Obj("kind" -> "slack", "team" -> team, "channel" -> channel, "threadTs" -> threadTs)
     case Origin.Task(name, run) =>
       ujson.Obj("kind" -> "task", "name" -> name, "run" -> run)
+    case Origin.Direct(account, thread) =>
+      ujson.Obj("kind" -> "direct", "account" -> Account.written(account), "thread" -> thread)
   }
 
   /** The origin stored as `v` ([[originJson]]'s form), or why it is none. */
@@ -223,6 +225,15 @@ private[dbos] object SqlConversationStore {
             threadTs <- str(o, "threadTs")
           } yield Origin.Slack(team, channel, threadTs)
         case "task" => str(o, "name").flatMap(n => str(o, "run").map(Origin.Task(n, _)))
+        case "direct" =>
+          for {
+            written <- str(o, "account")
+            read <- Account.read(written)
+            account <- Account.Sourced
+              .of(read)
+              .toRight(s"a direct message is with an account a source names: $written")
+            thread <- str(o, "thread")
+          } yield Origin.Direct(account, thread)
         case other => Left(s"unknown origin kind: $other")
       }
     } yield origin

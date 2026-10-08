@@ -605,6 +605,26 @@ object TurnOfferTests extends TestSuite {
       ).mkString("\n\n")
     }
 
+    test(
+      "a direct message's turn is told one person alone reads it, that its reply is posted there alone, and its name"
+    ) {
+      val dm = Origin.Direct(
+        Account.of("slack", "T1/U1").fold(e => throw new java.lang.AssertionError(e), identity),
+        "1.0"
+      )
+      offered(dm) ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
+        "You are in a direct message with one person, who alone reads it. Your replies are " +
+          "rendered from Markdown; keep them short.",
+        "Your reply is posted in this direct message and nowhere else. You can post anywhere " +
+          "else only by calling a tool that does it, and only if one is offered to you.",
+        "In this workspace you are called grit.",
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
+      ).mkString("\n\n")
+    }
+
     test("a Slack turn's prompt says the name its deployment's persona declares, after its edge") {
       val pip = Persona.of("Pip").fold(e => throw new java.lang.AssertionError(e), identity)
       val (prompt, _) =

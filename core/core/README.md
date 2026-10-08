@@ -23,13 +23,15 @@ In dependency order:
   nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
-  `task`, `service`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
+  `task`, `service`, `direct`), and `within` (a prefix, defined once) and `direct` (a direct
+  message's room or thread); `Directory`, an absolute normalized
   path; `Service`, an outside service's place, and `WorksIn`, a deployment's link from
   conversations with no directory to the service they work in; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
 - **`identity`** — who someone is across sources (ADR 0032): `Account` (how one source names
-  someone, `{namespace}:{name}`, or `local` or `grit`; never an email address), `Email` (an
+  someone, `{namespace}:{name}` (an `Account.Sourced`), or `local` or `grit`; never an email
+  address), `Email` (an
   address, which a realm attests of an account) and its `Domain`, `Realm` (the accounts one
   source names, as one Slack workspace's); `Vouching` and `Identities`, the attester a
   deployment trusts for each realm and the email domains it claims, refused as an

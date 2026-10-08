@@ -16,6 +16,11 @@ enum Namespace(val key: String) {
 
   /** Outside services, each hosting tools an edge serves there: `service:github`. */
   case Service extends Namespace("service")
+
+  /** Direct messages to grit: each a room of one person, spelled by the account they write
+    * through (`direct:slack/T0123/U0456`), with its threads below it.
+    */
+  case Direct extends Namespace("direct")
 }
 
 object Namespace {
@@ -42,6 +47,9 @@ final case class Place private (segments: Vector[String]) extends caps.Pure {
     case Vector(ns, name) if ns == Namespace.Service.key => Service.of(name).toOption
     case _ => None
   }
+
+  /** Whether it is a direct message's room, or a thread in one: a place under `direct`. */
+  def direct: Boolean = segments.headOption.contains(Namespace.Direct.key)
 
   /** Whether this place is `other` or lies under it. Everywhere holds every place. */
   def within(other: Place): Boolean = segments.startsWith(other.segments)

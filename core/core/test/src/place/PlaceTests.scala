@@ -42,6 +42,17 @@ object PlaceTests extends TestSuite {
       place("fs:home/nick") ==> place("fs:/home/nick")
     }
 
+    test("a direct message's thread reads back to itself and is direct; a channel is not") {
+      val thread = place("direct:slack/T/U/1712.3")
+      (
+        thread.written,
+        thread.direct,
+        place("direct:slack/T/U").direct,
+        place("slack:T/C").direct
+      ) ==>
+        ("direct:slack/T/U/1712.3", true, true, false)
+    }
+
     test("a place is within its ancestors and itself, never within a sibling sharing a prefix") {
       val grit = place("fs:/home/nick/Projects/grit")
       assert(
@@ -65,7 +76,7 @@ object PlaceTests extends TestSuite {
     test("a place that does not read names why") {
       Place.read("home/nick") ==>
         Left("no namespace in home/nick: write it as fs:/a/path, slack:team/channel or task:name")
-      Place.read("git:grit") ==> Left("no namespace git: fs, slack, task, service")
+      Place.read("git:grit") ==> Left("no namespace git: fs, slack, task, service, direct")
     }
 
     test("each origin's place, a field holding / split like the rest") {

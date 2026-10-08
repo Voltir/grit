@@ -90,6 +90,22 @@ object TxTests extends TestSuite {
       Tx.writable(unplaced)(using at(Clearance.of(unmapped))) ==> None
     }
 
+    test("a direct message's room is never written to, though the labeller maps every place") {
+      val mapsAll = Visibility
+        .of(
+          Compartments.of(Vector.empty).fold(c => throw new java.lang.AssertionError(c), identity),
+          RoomLabels
+            .of(Vector.empty, Labelled.Mapped(internal))
+            .fold(p => throw new java.lang.AssertionError(p.written), identity),
+          Vector.empty,
+          Vector.empty
+        )
+        .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+      given Tx = TestTx.fake(Clearance.of(Label.Public), mapsAll)
+      (Tx.writable(place("direct:slack/T/U")), Tx.writable(place("slack:T/C"))) ==>
+        (None, Some(internal))
+    }
+
     test("a place labelled with a compartment the deployment does not declare is not writable") {
       given Tx = at(Clearance.of(Label.Public))
       (Tx.writable(undeclared), Tx.writable(public)) ==> (None, Some(Label.Public))

@@ -35,9 +35,12 @@ final case class Visibility private (
 
   /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the
     * one [[rooms]] gives it, a compartment not declared kept at [[Compartment.Unmapped]]
-    * instead ([[Compartments.admit]]).
+    * instead ([[Compartments.admit]]). A direct message's room ([[Place.direct]]) is
+    * [[Compartments.top]]: its label is its person's clearance, which only a transaction can
+    * resolve (ADR 0032), so anything labelling it without one fails high.
     */
-  def roomLabel(room: Place): Label = compartments.admit(rooms.label(room).label)
+  def roomLabel(room: Place): Label =
+    if (room.direct) compartments.top else compartments.admit(rooms.label(room).label)
 
   /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
     * declared.
@@ -60,9 +63,10 @@ object Visibility {
       Vector.empty
     )
 
-  /** These, or the first mistake: a compartment `compartments` does not declare, named by a
-    * declared room label, `rooms.requires`, a grant or a trust (`Undeclared`, saying where);
-    * two groups of one name; a grant to a group not declared; or a service trusted twice.
+  /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
+    * compartment `compartments` does not declare, named by a declared room label,
+    * `rooms.requires`, a grant or a trust (`Undeclared`, saying where); two groups of one name;
+    * a grant to a group not declared; or a service trusted twice.
     */
   def of(
       compartments: Compartments,
@@ -80,10 +84,16 @@ object Visibility {
       case _ => Vector.empty
     }
     val names = groups.map(_.name)
+    val direct = rooms match {
+      case r: RoomLabels =>
+        r.declared.collectFirst {
+          case (place, _) if place.direct => VisibilityRefusal.DirectDeclared(place)
+        }
+      case _ => None
+    }
     val refusal =
-      declaredRooms
-        .flatMap(undeclared(_, _))
-        .headOption
+      direct
+        .orElse(declaredRooms.flatMap(undeclared(_, _)).headOption)
         .orElse(
           rooms.requires
             .find(c => !compartments.declared.contains(c))
@@ -138,6 +148,11 @@ enum VisibilityRefusal {
 
   /** Two trusts name `service`. */
   case TrustedTwice(service: Service)
+
+  /** `place`, a room the deployment's [[RoomLabels]] declares, is within `direct`: a direct
+    * message's room is labelled at its person's clearance, never by the labeller.
+    */
+  case DirectDeclared(place: Place)
 }
 
 /** The deployment trusts `service` with `label`: what a turn may send it as a call's arguments

@@ -102,8 +102,9 @@ object TurnPrompt {
     )
 
   /** Where a reply from `origin`'s edge goes, when a person might expect more: a Slack
-    * thread's is posted there alone, and anything else only through an offered tool. `None`
-    * for a terminal or a task, whose reply has one reader. An edge-layer fragment of its own.
+    * thread's, or a direct message's, is posted there alone, and anything else only through an
+    * offered tool. `None` for a terminal or a task, whose reply has one reader. An edge-layer
+    * fragment of its own.
     */
   def destination(origin: Origin): Option[Fragment] = origin match {
     case _: Origin.Slack =>
@@ -115,11 +116,21 @@ object TurnPrompt {
             "only by calling a tool that does it, and only if one is offered to you."
         )
       )
+    case _: Origin.Direct =>
+      Some(
+        Fragment(
+          Layer.Edge,
+          Fragment.Grit,
+          "Your reply is posted in this direct message and nowhere else. You can post " +
+            "anywhere else only by calling a tool that does it, and only if one is offered to you."
+        )
+      )
     case _: Origin.Tui | _: Origin.Task => None
   }
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
-    * several people in a Slack thread, or nobody until a task's run ends.
+    * several people in a Slack thread, one person in a direct message, or nobody until a task's
+    * run ends.
     */
   def edge(origin: Origin): Fragment = {
     val text = origin match {
@@ -135,6 +146,9 @@ object TurnPrompt {
       case _: Origin.Task =>
         "This is a triggered task's run: nobody reads your reply until the run ends, and " +
           "nobody can answer a question, so do not ask one."
+      case _: Origin.Direct =>
+        "You are in a direct message with one person, who alone reads it. Your replies are " +
+          "rendered from Markdown; keep them short."
     }
     Fragment(Layer.Edge, Fragment.Grit, text)
   }
@@ -159,13 +173,13 @@ object TurnPrompt {
     )
 
   /** What a turn at `origin` is told it is called, `persona`'s name, as an edge-layer fragment
-    * of its own: "In this workspace you are called {name}." in a Slack thread; `None` for a
-    * terminal or a task, whose one reader started grit.
+    * of its own: "In this workspace you are called {name}." in a Slack thread or a direct
+    * message; `None` for a terminal or a task, whose one reader started grit.
     */
   // Its own fragment (not a sentence in `edge`'s Slack text) so that measured text stays
   // byte-identical; checked for gross regression on the forgery check, 2026-09-28.
   def called(persona: Persona, origin: Origin): Option[Fragment] = origin match {
-    case _: Origin.Slack =>
+    case _: Origin.Slack | _: Origin.Direct =>
       Some(
         Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called ${persona.name}.")
       )

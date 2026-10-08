@@ -57,7 +57,7 @@ object TurnCapture {
   }
 
   /** `turn`'s case, from `all` of its conversation's entries; `None` when its first message
-    * is gone, or is a Slack message with no case id.
+    * is gone, is a Slack message with no case id, or is a direct message's.
     */
   private def one(
       reader: Reader^,
@@ -78,6 +78,8 @@ object TurnCapture {
         case Origin.Slack(_, _, _) => CaseId.of(origin, first.id).map(id => first -> Said.Slack(id))
         case Origin.Tui(_, _) => Some(first -> Said.Tui(first.id))
         case Origin.Task(_, _) => Some(first -> Said.Task(first.id))
+        // A direct message is its one person's: no case is made of it.
+        case Origin.Direct(_, _) => None
       }
     }
     said match {

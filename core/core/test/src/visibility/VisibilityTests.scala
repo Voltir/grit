@@ -86,6 +86,32 @@ object VisibilityTests extends TestSuite {
       ) ==> (Label.Public, Label.Public)
     }
 
+    test(
+      "a direct message's room is labelled top, whatever the rooms' labeller says of everywhere else"
+    ) {
+      val internal = Visibility
+        .of(
+          compartments,
+          RoomLabels
+            .of(Vector.empty, Labelled.Mapped(Label.at(Level.Internal)))
+            .fold(p => throw new java.lang.AssertionError(p.written), identity),
+          groups,
+          grants
+        )
+        .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+      (internal.roomLabel(place("direct:slack/T/U")), internal.roomLabel(place("slack:T/C"))) ==>
+        (compartments.top, Label.at(Level.Internal))
+    }
+
+    test("a declared room within direct is refused: a direct message is labelled by its person") {
+      val at = place("direct:slack/T")
+      val declaring = RoomLabels
+        .of(Vector(at -> Label.at(Level.Internal)), Labelled.Mapped(Label.Public))
+        .fold(p => throw new java.lang.AssertionError(p.written), identity)
+      Visibility.of(compartments, declaring, groups, grants) ==>
+        Left(VisibilityRefusal.DirectDeclared(at))
+    }
+
     test("a compartment not declared is refused, saying what names it") {
       val ops = compartment("ops")
       val opsRooms = new Labeller[grit.core.place.Place] {

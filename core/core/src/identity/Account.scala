@@ -19,7 +19,7 @@ object Account {
     * starting with a letter, and is not `email`; the name is not blank and holds no
     * whitespace.
     */
-  def of(namespace: String, name: String): Either[String, Account] =
+  def of(namespace: String, name: String): Either[String, Sourced] =
     for {
       ns <- Account.namespace(namespace)
       n <- Either.cond(
@@ -41,6 +41,22 @@ object Account {
     }
 
   def written(a: Account): String = a
+
+  /** An account a source names, `{namespace}:{name}`: any but [[Local]] and [[Grit]]. */
+  opaque type Sourced <: Account = String
+
+  object Sourced {
+
+    /** `account`, when a source names it; `None` for [[Local]] and [[Grit]]. */
+    def of(account: Account): Option[Sourced] =
+      Option.when(account != Local && account != Grit && account.contains(':'))(account)
+
+    /** The source's namespace: `slack` of `slack:T0123/U0456`. */
+    def namespace(account: Sourced): String = account.takeWhile(_ != ':')
+
+    /** Its name in that namespace: `T0123/U0456` of `slack:T0123/U0456`. */
+    def name(account: Sourced): String = account.dropWhile(_ != ':').drop(1)
+  }
 
   given CanEqual[Account, Account] = CanEqual.derived
 

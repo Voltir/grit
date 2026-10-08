@@ -194,6 +194,7 @@ object Digest {
     case Origin.Tui(_, session) => s"tui $session"
     case Origin.Slack(_, channel, _) => s"slack #$channel"
     case Origin.Task(name, _) => s"task $name"
+    case Origin.Direct(_, _) => "a direct message"
   }
 
   /** `recent_activity`: the newest lines of the digest it is bound to that the calling turn

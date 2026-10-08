@@ -49,13 +49,16 @@ object Tx {
 
   /** The label `to` is written at outside grit: the label the deployment's rooms' labeller maps
     * it to, when it maps it explicitly with only declared compartments; `None` otherwise, and
-    * then nothing writes to it.
+    * then nothing writes to it. `None` for a direct message's room ([[Place.direct]]): only its
+    * own turns write there.
     */
   def writable(to: Place)(using tx: Tx^): Option[Label] =
-    tx.visibility.rooms.label(to) match {
-      case Labelled.Mapped(l) if tx.visibility.compartments.admit(l) == l => Some(l)
-      case _ => None
-    }
+    if (to.direct) None
+    else
+      tx.visibility.rooms.label(to) match {
+        case Labelled.Mapped(l) if tx.visibility.compartments.admit(l) == l => Some(l)
+        case _ => None
+      }
 
   /** Whether what this transaction knows may be written to `to` outside grit: `to` is
     * [[writable]] and its label dominates [[floor]] (ADR 0030, no write down).

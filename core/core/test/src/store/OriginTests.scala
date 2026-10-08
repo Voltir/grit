@@ -1,5 +1,7 @@
 package grit.core.store
 
+import grit.core.id.EdgeName
+import grit.core.identity.TestAccounts
 import grit.core.place.Directory
 
 import utest.*
@@ -20,6 +22,29 @@ object OriginTests extends TestSuite {
         (Focus.Focused, Focus.Focused)
       )
       origins.map(_.stitchable) ==> Vector(true, false, false)
+    }
+
+    test(
+      "a direct message's room is its account's under direct, its thread below it; its edge is its account's namespace's, its audience one person, and it is never stitched"
+    ) {
+      val dm = Origin.Direct(TestAccounts.sourced("slack:T/U"), "1712.3")
+      (
+        dm.room.written,
+        dm.place.written,
+        dm.edge,
+        dm.audience,
+        dm.audience.operator,
+        dm.focus(Position.Opening),
+        dm.stitchable
+      ) ==> (
+        "direct:slack/T/U",
+        "direct:slack/T/U/1712.3",
+        EdgeName.Slack,
+        Audience.Person,
+        false,
+        Focus.Focused,
+        false
+      )
     }
 
     test("only a TUI session is held with the operator") {

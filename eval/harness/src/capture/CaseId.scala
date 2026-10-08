@@ -29,7 +29,7 @@ object CaseId {
   def of(origin: Origin, entry: EntryId): Option[CaseId] = origin match {
     case Origin.Slack(_, channel, _) =>
       InboundId.source(entry).flatMap((_, source) => make(channel, SourceId.value(source)))
-    case Origin.Tui(_, _) | Origin.Task(_, _) => None
+    case Origin.Tui(_, _) | Origin.Task(_, _) | Origin.Direct(_, _) => None
   }
 
   /** The case of the message that began `origin`'s thread, the thread's root, whose ts names
@@ -37,7 +37,7 @@ object CaseId {
     */
   def opening(origin: Origin): Option[CaseId] = origin match {
     case Origin.Slack(_, channel, threadTs) => make(channel, threadTs)
-    case Origin.Tui(_, _) | Origin.Task(_, _) => None
+    case Origin.Tui(_, _) | Origin.Task(_, _) | Origin.Direct(_, _) => None
   }
 
   /** By their written forms. */
