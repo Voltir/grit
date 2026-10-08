@@ -23,6 +23,7 @@ object About {
     case Markers extends Subject("markers")
     case Periods extends Subject("periods")
     case Places extends Subject("places")
+    case Security extends Subject("security")
   }
 
   /** `about` over the docs this module ships (`about/{key}.md` among its resources), read
@@ -57,9 +58,9 @@ object About {
         Name,
         "Who you are, and what grit, the harness you run on, is and how it works: the name " +
           "you are called by, grit's memory (no transcript), the [record], [afar] and [gap] " +
-          "labels, periods and how they close, and places and edges. Call it when the person " +
-          "asks who you are or about grit. `topic` picks one part of grit; without it, who " +
-          "you are and the overview.",
+          "labels, periods and how they close, places and edges, and who may see what. Call " +
+          "it when the person asks who you are or about grit. `topic` picks one part of grit; " +
+          "without it, who you are and the overview.",
         Args
           .of(
             (topic =

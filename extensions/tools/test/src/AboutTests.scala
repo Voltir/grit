@@ -55,9 +55,27 @@ object AboutTests extends TestSuite {
       about.entry.does ==>
         "Who you are, and what grit, the harness you run on, is and how it works: the name you " +
         "are called by, grit's memory (no transcript), the [record], [afar] and [gap] labels, " +
-        "periods and how they close, and places and edges. Call it when the person asks who " +
-        "you are or about grit. `topic` picks one part of grit; without it, who you are and " +
-        "the overview."
+        "periods and how they close, places and edges, and who may see what. Call it when the " +
+        "person asks who you are or about grit. `topic` picks one part of grit; without it, who " +
+        "you are and the overview."
+    }
+
+    test(
+      "the security topic names Bell–LaPadula, reads it in plain words, and says where grit departs from it"
+    ) {
+      val security = asked(ujson.Obj("topic" -> "security"))
+      (
+        security == Outcome.Done(shipped("security")),
+        Vector(
+          "grit follows Bell–LaPadula: no read up, no write down.",
+          "No read up: a person sees only what they are cleared for.",
+          "No write down: what is read in a room is never written somewhere less protected",
+          "Compartments are Bell–LaPadula's categories.",
+          "a room's members read everything said in it up to the room's label, whatever their " +
+            "own clearance",
+          "Writes out of grit."
+        ).filterNot(shipped("security").replaceAll("\\s+", " ").contains)
+      ) ==> (true, Vector())
     }
 
     test("the markers doc names every label grit writes") {
@@ -73,7 +91,9 @@ object AboutTests extends TestSuite {
         .flatMap(_.parameters.obj.get("properties"))
         .map(
           _.obj.get("topic").flatMap(_.obj.get("enum"))
-        ) ==> Vector(Some(ujson.Arr("grit", "memory", "markers", "periods", "places")))
+        ) ==> Vector(
+        Some(ujson.Arr("grit", "memory", "markers", "periods", "places", "security"))
+      )
       about.entry.asks ==> false
     }
   }
