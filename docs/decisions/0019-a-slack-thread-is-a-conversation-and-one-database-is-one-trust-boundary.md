@@ -2,7 +2,8 @@
 
 Status: accepted (2026-09-27), revised (2026-09-28), amended (2026-10-01): posting beyond
 a thread; amended (2026-10-01): a post's thread; revised (2026-10-07): private channels;
-amended (2026-10-08) by ADR 0033: every channel grit's bot is a member of is heard, and
+amended (2026-10-07) by ADR 0032: a person's direct messages are served, in a room of their
+own; amended (2026-10-08) by ADR 0033: every channel grit's bot is a member of is heard, and
 `slack_post` posts in any of them not quiet
 
 Context: grit's first edge for several people is Slack. Two choices shape every later
@@ -35,8 +36,9 @@ Decision:
   bot is a member of, public or private, is served: inviting grit is its members' deliberate
   act, and its room's label is the one in force there (ADR 0033). Served, it is inside the
   same boundary: its threads reach the others through `[afar]`
-  and `recent_activity` unless that label is above public. Direct messages, and more than
-  one team on one database, are not served.
+  and `recent_activity` unless that label is above public. More than one team on one
+  database is not served. (Amended by ADR 0032.) A person's direct messages to grit are
+  served, each in a room whose one member is that person; a group direct message is not.
 
 Consequences:
 
