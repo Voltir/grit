@@ -102,10 +102,25 @@ part is declared data or a pure function:
 
 - `compartments`: the named areas (a team, a client, a project) its labels may hold, beside
   core's fixed levels; `unmapped` is always among them.
-- `rooms`: a `Labeller[Place]`, the label each room takes. `RoomLabels` is the declared
-  table (the longest declared place a room is within, else `otherwise`); a deployment may
-  write its own pure function. A label it returns holding a compartment not declared is kept
-  at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
+- `rooms`: a `Labeller[Room]`, the label each room takes when none is set for it through
+  grit ([ADR 0033](decisions/0033-an-edge-hears-where-its-bot-is-a-member-and-a-rooms-label-is-set-through-grit-by-one-rule-in-core.md)).
+  A `Room` is its place and the access its edge reports: `Open` (a public channel) or
+  `Invited` (a private one). `RoomLabels.of(declared, otherwise, open)` is the declared
+  table: the label declared at the room's own place; else, for a reported access, `open` for
+  an open room and `unmapped` for an invited one, which fails high until its members label
+  it; else the longest declared place it is within, else `otherwise`. A deployment may write
+  its own pure function. A label it returns holding a compartment not declared is kept at
+  `unmapped` instead, so what a mapping invents is read by fewer people, never more.
+- `administrators`: the declared group whose declared members may make the changes only an
+  administrator may (`grit.core.admin.Authority.decide` lists them; relabelling a public
+  room and lowering a level among them), and read another person's clearance. With none, no
+  one may. `Visibility.of` refuses a compartment's own group here, since people cleared for
+  it through grit join it.
+- `stewards`: per compartment, a `Steward(compartment, group)` whose declared members may
+  remove the compartment from a private room's label, give a private room a first label whose
+  compartments they all steward, and clear people for it or remove them from it. The group
+  is the compartment's own or one with no compartment of its own. People added through grit
+  are never administrators or stewards.
 - `groups` and `grants`: people grouped by the accounts sources know them by
   (`slack:{team}/{user}`), and by the realms whose full members a group takes in (a
   `Realm`, such as every `slack:{team}/` account, as the attester `identities` trusts for it
@@ -121,11 +136,18 @@ Every other part of a deployment that names a compartment declares it, and `Depl
 refuses one the visibility does not declare: a plugin's `compartments`, an edge's
 `compartments`, and a declared schedule's `clearance`.
 
-What leaves grit is written to a place, and a turn writes only to a place `rooms` maps
-explicitly, at a label dominating its room's ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md)):
+A deployment names no room an edge hears: an edge hears where its bot is a member, and the
+room's members label it by command, under one rule in core (`grit.core.admin.Authority`),
+each change kept with an audit row. Who may label what, and the setup tiers a deployment
+chooses among: [`deployments/app/README.md`](../deployments/app/README.md).
+
+What leaves grit is written to a place, and a turn writes only to a place whose label is set
+through grit or that `rooms` maps explicitly, never a quiet one, at a label dominating its
+room's ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md)):
 a writing tool's destinations, such as Slack's channels for `slack_post`
 (`slack:{team}/{channel id}`), and a review's place, where only messages whose room's label
-it dominates are picked and prompted. So label each place a deployment posts to; an
+it dominates are picked and prompted. So a place a deployment posts to that its members do
+not label and its access does not map, such as a review's, needs a declared label; an
 unmapped one is written to by no one.
 
 A conversation takes its room's label when it is created and keeps it, whatever the
