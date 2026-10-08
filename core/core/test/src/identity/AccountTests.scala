@@ -39,7 +39,7 @@ object AccountTests extends TestSuite {
     }
 
     test("a tripwire: Account has no email, so no account can be made from an address") {
-      // Pins a deletion, not a rule: it fails only if the method comes back.
+      // Pins a deletion, not a rule: it fails only if `Account.email` comes back.
       val error = assertCompileError("""Email.of("a@b.c").map(Account.email)""")
       assert(error.msg.contains("email"))
     }

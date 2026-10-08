@@ -16,7 +16,7 @@ object AttestingTests extends TestSuite {
   private val account = TestAccounts.account("slack:T1/U1")
 
   val tests = Tests {
-    test("a change says its linking's line, which names the account and never an address") {
+    test("a change's line is its linking's own") {
       Attesting.Report
         .Changed(Linking.Standing(account, member = true, Label.Public, TestLabels.Trial))
         .message ==> "slack:T1/U1 is a full member of its realm: public -> public+trial"

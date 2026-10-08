@@ -42,15 +42,18 @@ object PlaceTests extends TestSuite {
       place("fs:home/nick") ==> place("fs:/home/nick")
     }
 
-    test("a direct message's thread reads back to itself and is direct; a channel is not") {
+    test(
+      "a direct message's thread reads back to itself and is direct; a channel is not, nor a place holding direct below its head"
+    ) {
       val thread = place("direct:slack/T/U/1712.3")
       (
         thread.written,
         thread.direct,
         place("direct:slack/T/U").direct,
-        place("slack:T/C").direct
+        place("slack:T/C").direct,
+        place("slack:T/direct/1712.3").direct
       ) ==>
-        ("direct:slack/T/U/1712.3", true, true, false)
+        ("direct:slack/T/U/1712.3", true, true, false, false)
     }
 
     test("a place is within its ancestors and itself, never within a sibling sharing a prefix") {

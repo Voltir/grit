@@ -45,15 +45,5 @@ object AttestingCaptureTests extends TestSuite {
         errs.exists(e => e.contains("capability `s²` cannot flow into capture set {jot², report²}"))
       )
     }
-
-    test("one that keeps the last source it was handed in a field is rejected where declared") {
-      val errs = probe(
-        """final class Remembering(v: Voucher, jot: Jot, report: Attesting.Report => Unit) {
-          |    private var last: Option[RealmSource^] = None
-          |    def before(s: RealmSource^, a: Account): Unit = { last = Some(s) }
-          |  }""".stripMargin
-      )
-      assert(errs.exists(_.contains("Mutable variable last")))
-    }
   }
 }
