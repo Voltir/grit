@@ -2,6 +2,7 @@ package grit.kit.run
 
 import java.time.{Duration, Instant, LocalDate}
 
+import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeStores}
 import grit.core.spend.Budget
 import grit.core.visibility.{Label, Visibility}
@@ -32,8 +33,8 @@ private[run] object CatchingUp {
     "$" + amount.bigDecimal.setScale(4, java.math.RoundingMode.UP).stripTrailingZeros.toPlainString
 
   /** [[Kit.catchUp]]'s flow, over `stores`, each source shown at the label `visibility` gives
-    * its room, reading today's spend with `spent`, sweeping with `sweep` and counting what is
-    * left with `unfinished`.
+    * its room and opened at `clock`'s time, reading today's spend with `spent`, sweeping with
+    * `sweep` and counting what is left with `unfinished`.
     */
   def run(
       catchUp: CatchUp,
@@ -41,6 +42,7 @@ private[run] object CatchingUp {
       env: Map[String, String],
       budget: Budget,
       visibility: Visibility,
+      clock: Clock^,
       spent: () => Either[String, BigDecimal],
       sweep: () => Either[String, Swept],
       unfinished: () => Either[String, Int],
@@ -48,7 +50,7 @@ private[run] object CatchingUp {
       say: String => Unit
   ): Either[KitFailure, Unit] = {
     val name = catchUp.name
-    catchUp.open(stores, env, Instant.now(), say) match {
+    catchUp.open(stores, env, clock.now(), say) match {
       case Left(refusal) => Left(KitFailure.Edge(name, refusal))
       case Right(open) =>
         try {

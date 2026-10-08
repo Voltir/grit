@@ -3,6 +3,9 @@ package grit.kit.run
 import java.time.{Instant, LocalDate}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
+import scala.concurrent.duration.FiniteDuration
+
+import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Identities, Realm}
@@ -77,12 +80,14 @@ object Kit {
     * open and every [[Attesting.Every]] after; what it reports is logged as [[reported]] says.
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
+    // The process's own time, read here at the serving loop's root and passed down.
+    val clock: Clock^ = Clock.system() // clock-check: the composition root of a serving process
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
     val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
     preflight(deployment, env, deployment.edges.toList.map(e => (e.name, e.needs))) match {
       case Left(failure) => Left(failure)
       case Right(secrets) =>
-        open(deployment, secrets) match {
+        open(deployment, secrets, clock) match {
           case Left(failure) => Left(failure)
           case Right(engine) =>
             val stopped = new CountDownLatch(1)
@@ -97,7 +102,7 @@ object Kit {
                 said => turns.info(said)
               )
               val link: Link^{engine} = engine
-              metered(link, deployment.budget, Instant.now()).foreach(log.info)
+              metered(link, deployment.budget, clock.now()).foreach(log.info)
               val report: Attesting.Report => Unit =
                 reported(_, said => log.info(said), said => log.warn(said), said => log.error(said))
               Serving.open(
@@ -122,25 +127,17 @@ object Kit {
                     stopped.countDown()
                     val _ = closed.await(ClosedWithin.toMillis, TimeUnit.MILLISECONDS)
                   })
-                  // The next pick round is due at `pickAt`, and the next look at `lookAt`, each
-                  // run between deliveries.
-                  var pickAt = Instant.EPOCH
-                  var lookAt = Instant.EPOCH
+                  // Looks and pick rounds, each run between deliveries when due.
+                  val looking = cadence(Attesting.Every, clock)
+                  val picking = cadence(PickEvery, clock)
                   try
                     Serving.deliver(
                       opened,
                       () => stopped.getCount == 0,
-                      () => {
-                        val now = Instant.now()
-                        val due = !now.isBefore(lookAt)
-                        if (due) lookAt = now.plusMillis(Attesting.Every.toMillis)
-                        due
-                      },
+                      () => looking().nonEmpty,
                       () => {
                         deployment.review.foreach { review =>
-                          val now = Instant.now()
-                          if (!now.isBefore(pickAt)) {
-                            pickAt = now.plusMillis(PickEvery.toMillis)
+                          picking().foreach { now =>
                             Picking.round(
                               review,
                               engine.reviews,
@@ -189,7 +186,9 @@ object Kit {
     preflight(deployment, env, List((catchUp.name, catchUp.needs))) match {
       case Left(failure) => Left(failure)
       case Right(secrets) =>
-        open(deployment, secrets) match {
+        // The process's own time, read here at the catch-up's root and passed down.
+        val clock: Clock^ = Clock.system() // clock-check: the composition root of a catch-up
+        open(deployment, secrets, clock) match {
           case Left(failure) => Left(failure)
           case Right(engine) =>
             val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
@@ -222,8 +221,9 @@ object Kit {
                 env,
                 deployment.budget,
                 deployment.visibility,
-                () => spentToday(link, deployment.budget, Instant.now()),
-                () => engine.sweep(Instant.now()).left.map(_.toString),
+                clock,
+                () => spentToday(link, deployment.budget, clock.now()),
+                () => engine.sweep(clock.now()).left.map(_.toString),
                 () => engine.unfinished().left.map(_.toString),
                 agree,
                 say
@@ -231,6 +231,20 @@ object Kit {
             } finally engine.close()
         }
     }
+
+  /** A round asked for between deliveries, by `clock`: the time now when one is due (the first
+    * at once, then each once `every` has passed since the last), `None` otherwise.
+    */
+  private[run] def cadence(every: FiniteDuration, clock: Clock^): () => Option[Instant] = {
+    var next = Instant.EPOCH
+    () => {
+      val now = clock.now()
+      Option.when(!now.isBefore(next)) {
+        next = now.plusMillis(every.toMillis)
+        now
+      }
+    }
+  }
 
   /** Ends what `deployment`'s identities no longer support ([[Engine.untrust]]), logging each
     * change at info in the `grit.serve` log; and warns there when realms are trusted and no email
@@ -302,7 +316,14 @@ object Kit {
     }
   }
 
-  private def open(deployment: Deployment, secrets: Secrets): Either[KitFailure, Engine^] =
+  /** `deployment`'s engine, opened, with what its identities no longer trust ended; a refusal
+    * says when, by `clock`, the database's engine was last seen held.
+    */
+  private def open(
+      deployment: Deployment,
+      secrets: Secrets,
+      clock: Clock^
+  ): Either[KitFailure, Engine^] =
     Engine.open(
       secrets.database,
       Turn.Epoch,
@@ -310,7 +331,7 @@ object Kit {
       deployment.budget,
       deployment.visibility
     ) match {
-      case Left(refused) => Left(KitFailure.Engine(refused.message(Instant.now())))
+      case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
       case Right(engine) =>
         trusting(engine, deployment) match {
           case Left(failure) =>

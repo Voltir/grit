@@ -4,6 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.clock.SetClock
 import grit.core.edge.{
   Attesting,
   CatchUp,
@@ -104,8 +105,18 @@ object CatchingUpTests extends TestSuite {
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** What a catch-up of `unheard`, read since the epoch, says under `visibility`, declined. */
-  private def said(visibility: Visibility): Vector[String] = {
+  private def said(visibility: Visibility): Vector[String] =
+    declined(visibility, new SetClock(Instant.EPOCH))._1
+
+  /** What a catch-up of `unheard`, read since the epoch, says under `visibility`, declined, its
+    * clock `clock`; and the time its source was opened at.
+    */
+  private def declined(
+      visibility: Visibility,
+      clock: SetClock
+  ): (Vector[String], Vector[Instant]) = {
     val lines = Vector.newBuilder[String]
+    val opened = Vector.newBuilder[Instant]
     val catchUp = new CatchUp {
       def name: EdgeName = EdgeName("test")
       def needs: Vector[Variable] = Vector.empty
@@ -114,13 +125,15 @@ object CatchingUpTests extends TestSuite {
           env: Map[String, String],
           now: Instant,
           log: String => Unit
-      ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}] =
+      ): Either[EdgeRefusal, CatchUp.Open^{stores, log, caps.any}] = {
+        opened += now
         Right(new CatchUp.Open {
           def since: Instant = Instant.EPOCH
           def unheard: Vector[Unheard] = Vector(trial, general)
           def hear(): Either[EdgeRefusal, Unit] = Right(())
           def close(): Unit = ()
         })
+      }
     }
     val _ = CatchingUp.run(
       catchUp,
@@ -128,13 +141,14 @@ object CatchingUpTests extends TestSuite {
       Map.empty,
       budget,
       visibility,
+      clock,
       () => Right(BigDecimal(0)),
       () => Right(Swept.nothing),
       () => Right(0),
       _ => false,
       lines += _
     )
-    lines.result()
+    (lines.result(), opened.result())
   }
 
   private val epoch = LocalDate.parse("1970-01-01")
@@ -149,6 +163,11 @@ object CatchingUpTests extends TestSuite {
         CatchingUp.Relabel,
         "backfill: nothing heard"
       )
+    }
+
+    test("a catch-up's source is opened at its clock's time") {
+      val at = Instant.parse("2031-02-03T04:05:06Z")
+      declined(Visibility.Shipped, new SetClock(at))._2 ==> Vector(at)
     }
 
     test("under the shipped visibility every source is heard at public") {
