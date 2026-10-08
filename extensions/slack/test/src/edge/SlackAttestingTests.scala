@@ -52,7 +52,14 @@ object SlackAttestingTests extends TestSuite {
   private val Ben = "U0BEN0001"
   private val Cy = "U0CY00001"
 
-  private final class World {
+  /** Another workspace, which shares a channel with grit's. */
+  private val Theirs: Realm =
+    SlackAccounts
+      .realm(TeamId("T0THEIRS"))
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The edge over a fake Slack, its voucher recording the realms in `trusted`. */
+  private final class World(trusted: Set[Realm] = Set(Ours)) {
     val slack = new FakeSlack
     slack.names = Map(
       UserId(Ana) -> Some("Ana Lima"),
@@ -60,7 +67,7 @@ object SlackAttestingTests extends TestSuite {
       UserId(Cy) -> Some("Cy")
     )
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
-    val voucher = new InMemoryVoucher(Set(Ours), Set.empty, Visibility.Shipped)
+    val voucher = new InMemoryVoucher(trusted, Set.empty, Visibility.Shipped)
 
     /** What the checks reported, in order. */
     @caps.unsafe.untrackedCaptures
@@ -194,6 +201,25 @@ object SlackAttestingTests extends TestSuite {
       (w.slack.asked, w.voucher.vouched) ==> (
         Vector(UserId(Ana), UserId(Ana)),
         Vector(Vouched(ana, Standing.Full(None)), Vouched(ana, Standing.Outside))
+      )
+    }
+
+    test(
+      "trusted for another workspace too, the edge still answers for its own team alone: a shared channel's author is outside, Slack never asked who they are, and a look never lists that workspace"
+    ) {
+      val w = new World(Set(Ours, Theirs))
+      val theirs = of(Ana, "T0THEIRS")
+      w.slack.deliver(
+        message("1.0", "hi from next door", extra = Seq("user_team" -> "T0THEIRS"))
+      ) ==> true
+      val heard = w.voucher.vouched
+      w.voucher.aged(theirs, Attesting.Due)
+      (heard, w.kept("1.0"), w.edge.attest(), w.slack.listings, w.voucher.vouched) ==> (
+        Vector(Vouched(theirs, Standing.Outside)),
+        true,
+        Right(1),
+        0,
+        Vector(Vouched(theirs, Standing.Outside), Vouched(theirs, Standing.Outside))
       )
     }
 
