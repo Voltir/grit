@@ -9,7 +9,7 @@ import grit.core.edge.{Edges, Permit, Registration, Route, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Namespace, Place}
 import grit.core.speech.Rate
-import grit.core.tool.{Outcome, Retry, ToolName}
+import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.slack.client.{FakeSlack, Tag}
 import grit.slack.event.{ChannelId, Payloads, TeamId, Ts}
 
@@ -41,16 +41,10 @@ object PostingTests extends TestSuite {
     val slack: FakeSlack^ = new FakeSlack
     slack.channelNames = Map(Skynet -> "probably-not-skynet", General -> "general")
     val clock: SetClock^ = new SetClock(Instant.parse("2026-10-01T12:00:00Z"))
-    val posting: Posting^{slack, clock} =
-      Posting
-        .of(
-          slack,
-          clock,
-          TwoAnHour,
-          TeamId(Team),
-          Vector(("probably-not-skynet", Skynet), ("general", General))
-        )
-        .fold(why => throw new java.lang.AssertionError(why), identity)
+    val posting: Posting^{slack, clock} = new Posting(slack, clock, TwoAnHour, TeamId(Team))
+    posting
+      .offer(Vector(("probably-not-skynet", Skynet), ("general", General)))
+      .fold(why => throw new java.lang.AssertionError(why), _ => ())
 
     // Counted by the test's thread alone.
     @caps.unsafe.untrackedCaptures
@@ -77,6 +71,10 @@ object PostingTests extends TestSuite {
 
   /** Where [[Skynet]] is written to: `slack:{team}/{id}`. */
   val SkynetAt: Place = Place.under(Namespace.Slack, Vector(Team, ChannelId.value(Skynet)))
+
+  /** Where [[General]] is written to. */
+  private val GeneralAt: Place =
+    Place.under(Namespace.Slack, Vector(Team, ChannelId.value(General)))
 
   /** `slack_post` called with `arguments` as call `index` of a turn's first round, sent to
     * `service:slack` writing to `destination` as the turn sends it; also the request the other
@@ -125,10 +123,9 @@ object PostingTests extends TestSuite {
 
     test("it posts to the channel its request was checked to write to, whatever `to` held") {
       val w = new World
-      val generalAt = Place.under(Namespace.Slack, Vector(Team, ChannelId.value(General)))
       Vector(
         w.call(ujson.Obj("to" -> "general", "text" -> "one")),
-        w.call(post("two"), Some(generalAt))
+        w.call(post("two"), Some(GeneralAt))
       ) ==> Vector(
         Outcome.Done("Posted in #probably-not-skynet."),
         Outcome.Done("Posted in #general.")
@@ -188,6 +185,38 @@ object PostingTests extends TestSuite {
       w.clock.at = w.clock.at.plusSeconds(1)
       w.call(post("four")) ==> Outcome.Done("Posted in #probably-not-skynet.")
       w.posted.map(_._3) ==> Vector("one", "two", "four")
+    }
+
+    test(
+      "its rate is counted across a change of the channels it offers: posts made before count after"
+    ) {
+      val w = new World
+      w.call(post("one"))
+      w.call(post("two"))
+      w.posting.offer(Vector(("general", General))).map(_ => ()) ==> Right(())
+      w.call(post("three"), Some(GeneralAt)) ==> Outcome.Failed(
+        "grit has made 2 posts in the last 1 hour, as many as it may. Nothing was posted."
+      )
+      w.posted.map(_._3) ==> Vector("one", "two")
+    }
+
+    test(
+      "offered other channels, it refuses a request to one no longer offered; offered none, it advertises nothing and refuses every request, posting nothing"
+    ) {
+      val w = new World
+      w.posting.offer(Vector(("general", General))).map(_.tools.size) ==> Right(1)
+      val toSkynet = w.call(post("one"))
+      w.posting.offer(Vector.empty) ==> Right(ToolSet.Empty)
+      (toSkynet, w.posting.offered, w.call(post("two"), Some(GeneralAt)), w.posted) ==> (
+        Outcome.Failed(
+          s"slack_post does not write to slack:$Team/${ChannelId.value(Skynet)} here; it did not run."
+        ),
+        ToolSet.Empty,
+        Outcome.Failed(
+          "grit's bot is in no channel slack_post may post in now. Nothing was posted."
+        ),
+        Vector.empty
+      )
     }
 
     test("a post Slack refuses is told as Slack's refusal, and does not count against the rate") {

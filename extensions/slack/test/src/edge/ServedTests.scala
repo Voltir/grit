@@ -502,16 +502,10 @@ object ServedTests extends TestSuite {
       val open = w.openPosting(Posts(TwoAnHour, Skynet, Unnamed))
       try {
         val expected =
-          Posting.of(
-            w.slack,
-            Clock.system(),
-            TwoAnHour,
-            TeamId(Team),
-            Vector(("probably-not-skynet", Skynet))
-          ) match {
-            case Right(p) => Some(p.offered.id)
-            case Left(_) => None
-          }
+          new Posting(w.slack, Clock.system(), TwoAnHour, TeamId(Team))
+            .offer(Vector(("probably-not-skynet", Skynet)))
+            .toOption
+            .map(_.id)
         w.edges.adverts.toVector.map((at, advert) => (at._2, Some(advert.tools))) ==>
           Vector((SlackEdge.PostsAt.place, expected))
         w.logged.filter(_.contains("post")) ==> Vector(

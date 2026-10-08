@@ -190,10 +190,11 @@ private[slack] object Served {
       log(s"slack: posts nowhere: $why")
       None
     }
-    Posting.of(slack, clock, posts.rate, team, named) match {
-      case Left(_) if named.isEmpty => nowhere("no channel it may post to has a name grit can read")
+    val tool = new Posting(slack, clock, posts.rate, team)
+    (if (named.isEmpty) Left("no channel it may post to has a name grit can read")
+     else tool.offer(named)) match {
       case Left(why) => nowhere(why)
-      case Right(tool) =>
+      case Right(_) =>
         stores.desks.register(PrincipalId.Grit, Set(place)) match {
           case Left(e) => nowhere(s"${place.written} not registered: ${e.why}")
           case Right(desk) =>

@@ -1,6 +1,7 @@
 package grit.slack.edge
 
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 
 import scala.collection.immutable.VectorMap
@@ -32,20 +33,37 @@ import grit.slack.text.RichText
 
 /** `slack_post`, run by the Slack edge wherever a request to it was routed: a post in the
   * channel its request was checked to write to, at its top level or in the thread a message
-  * link names, through `slack`, at most `rate` across its channels, the posts counted by
-  * `clock`'s time. Built by [[Posting.of]].
+  * link names, through `slack`, at most `rate` across every channel it offers, before and after
+  * a change of them ([[offer]]), the posts counted by `clock`'s time. The channels it offers
+  * are `team`'s; it offers none until [[offer]] names some.
   */
-private[slack] final class Posting private (
-    slack: Slack,
-    clock: Clock,
-    rate: Rate,
-    /** The tool as the edge advertises it and reads a call of it. */
-    val hosted: Writing[Posting.PostArgs, Channel]
-) extends Tools {
+private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team: TeamId)
+    extends Tools {
   import Posting.*
 
-  /** What the edge advertises: [[hosted]] alone. */
-  def offered: ToolSet = ToolSet.of(Vector(hosted.entry)).getOrElse(ToolSet.Empty)
+  // The tool as last offered, replaced whole by offer; read once by each call and each advert,
+  // so a call runs over one offer or the next, never a mix. What it decides is only what the
+  // edge advertises and which channel a request may name: a request was checked to write to
+  // its channel when recorded, and Slack refuses a post where grit's bot is not.
+  @caps.unsafe.untrackedCaptures
+  private val current = new AtomicReference[Option[Writing[PostArgs, Channel]]](None)
+
+  /** What the edge advertises: `slack_post` over the channels last offered; nothing over none. */
+  def offered: ToolSet = advert(current.get())
+
+  /** Offers `slack_post` over `named` from now on, each channel's name and id: under its name,
+    * with and without `#`, at the place `slack:{team}/{id}`; over none, nothing. What the edge
+    * advertises then ([[offered]]); why not, when a name is blank, and then what was offered
+    * stays.
+    */
+  def offer(named: Vector[(String, ChannelId)]): Either[String, ToolSet] = {
+    val next =
+      if (named.isEmpty) Right(None) else writing(rate, team, named).map(Some(_))
+    next.map { hosted =>
+      current.set(hosted)
+      advert(hosted)
+    }
+  }
 
   // The instants of the posts made, the latest last; read and written only under `lock`,
   // held across a post so two calls never both take the last place in the rate.
@@ -57,10 +75,18 @@ private[slack] final class Posting private (
   private val lock = new ReentrantLock()
 
   def run(route: Route, request: ToolRequest): Outcome =
-    Toolbox.of(hosted.over((a, to) => post(request.slot.key, a, to))) match {
-      case Right(box) => Run.request(request, box)
-      // One tool cannot repeat its own name.
-      case Left(_) => Outcome.Failed(s"${ToolName.value(Name)} is offered twice; nothing ran.")
+    current.get() match {
+      case None =>
+        Outcome.Failed(
+          s"grit's bot is in no channel ${ToolName.value(Name)} may post in now. $Unposted"
+        )
+      case Some(hosted) =>
+        Toolbox.of(hosted.over((a, to) => post(request.slot.key, a, to))) match {
+          case Right(box) => Run.request(request, box)
+          // One tool cannot repeat its own name.
+          case Left(_) =>
+            Outcome.Failed(s"${ToolName.value(Name)} is offered twice; nothing ran.")
+        }
     }
 
   /** `a` posted in `to` for the request keyed `request`, as the tool's text says. */
@@ -134,17 +160,14 @@ private[slack] object Posting {
   /** Said after every refusal. */
   private val Unposted = "Nothing was posted."
 
-  /** `slack_post` over `named`, each channel's name and id in `team`: offered under its name,
-    * with and without `#`, at the place `slack:{team}/{id}`; why not, when `named` is empty or
-    * a name is blank.
+  /** `slack_post` over `named`, each channel's name and id in `team`, at most `rate` posts
+    * across them; why not, when `named` is empty or a name is blank.
     */
-  def of(
-      slack: Slack,
-      clock: Clock,
+  private def writing(
       rate: Rate,
       team: TeamId,
       named: Vector[(String, ChannelId)]
-  ): Either[String, Posting^{slack, clock}] = {
+  ): Either[String, Writing[PostArgs, Channel]] = {
     val channels = named.map((name, id) => Channel(name, id))
     val placed: Channel -> Place =
       c => Origin.channel(TeamId.value(team), ChannelId.value(c.id))
@@ -186,8 +209,12 @@ private[slack] object Posting {
         a => a.thread.fold("at the top level")(_ => "in a thread"),
         writes
       )
-    } yield new Posting(slack, clock, rate, hosted)
+    } yield hosted
   }
+
+  /** What the edge advertises of `hosted`: it alone, or nothing. */
+  private def advert(hosted: Option[Writing[PostArgs, Channel]]): ToolSet =
+    hosted.flatMap(h => ToolSet.of(Vector(h.entry)).toOption).getOrElse(ToolSet.Empty)
 
   /** Why Slack's `e` left a post to #`name` unmade, or possibly made. */
   private def failed(e: SlackError, name: String): String = e match {
