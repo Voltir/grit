@@ -117,6 +117,49 @@ object TurnReplayTests extends TestSuite {
       failures ==> Vector.empty
     }
 
+    test(
+      "every recorded dispatch, expire, abandon and call-model output is written back byte for byte"
+    ) {
+      // A hosted call's and a model call's steps are recorded data, written by the phases a
+      // turn shares with jobs: today's codecs read each and write the same text back, a
+      // failure's kind among them.
+      import Turn.Step
+      def again[A](j: grit.core.durable.Journaled[A], text: String): Boolean =
+        j.decode(text).map(j.encode) == Right(text)
+      def kind(name: String): Option[String] =
+        if (
+          Set(Step.CallModel, Step.CallModelAgain, Step.CallModelPlain)(name) ||
+          name.startsWith(s"${Step.CallModel}:")
+        )
+          Some(Step.CallModel)
+        else if (name.startsWith(s"${Step.Dispatch}:") || name.startsWith(s"${Step.Reach}:"))
+          Some(Step.Dispatch)
+        else if (name.startsWith(s"${Step.Expire}:")) Some(Step.Expire)
+        else if (name.startsWith(s"${Step.Abandon}:")) Some(Step.Abandon)
+        else None
+      def roundTrips(kind: String, text: String): Boolean =
+        if (kind == Step.CallModel) again(TurnJournal.reply, text)
+        else if (kind == Step.Dispatch) again(TurnJournal.yesNo, text)
+        else again(TurnJournal.requestState, text)
+      val outputs = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector.flatMap(
+          _.steps.flatMap(s => kind(s.name).map((path.last, _, s.outcome)))
+        )
+      }
+      outputs.map(_._2).toSet ==> Set(Step.CallModel, Step.Dispatch, Step.Expire, Step.Abandon)
+      assert(outputs.exists {
+        case (_, _, InMemoryDurable.Outcome.Output(text)) => TurnJournal.failure(text).nonEmpty
+        case _ => false
+      })
+      val failures = outputs.collect {
+        case (file, k, InMemoryDurable.Outcome.Output(text)) if !roundTrips(k, text) =>
+          s"$file: $k"
+        case (file, k, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) =>
+          s"$file: $k"
+      }
+      failures ==> Vector.empty
+    }
+
     test("every recorded classification is written back byte for byte") {
       // Topic events are recorded data: today's codec must read them and write the same text.
       val j = TurnJournal.classification
