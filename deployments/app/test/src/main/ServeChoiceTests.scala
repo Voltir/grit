@@ -3,6 +3,7 @@ package grit.app.main
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
+import grit.core.identity.Domain
 import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
 import grit.kit.deployment.Offered
@@ -42,6 +43,15 @@ object ServeChoiceTests extends TestSuite {
         Right((PlaceScope.Room, DailyCap.of("1.00").toOption)),
         Right((grit.core.period.LifecycleSettings.Default.locality.scope, None))
       )
+    }
+
+    test("the domains GRIT_CLAIMED_DOMAINS lists are the deployment's own; unset, it claims none") {
+      def claimed(env: Map[String, String]) =
+        Main
+          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
+          .map(_.identities.domains.map(Domain.value))
+      (claimed(Map("GRIT_CLAIMED_DOMAINS" -> "example.com,other.org")), claimed(Map.empty)) ==>
+        (Right(Set("example.com", "other.org")), Right(Set()))
     }
 
     test(
