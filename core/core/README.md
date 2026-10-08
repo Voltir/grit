@@ -264,6 +264,9 @@ In dependency order:
   within `Fresh`, on the source's word of a change, and in a look every `Every` at accounts
   answered `Due` ago, an unreachable source keeping the last word, each answer recorded in a
   transaction of its own;
+  `Joins`, the rooms an edge's bot is a member of (`Membership`), each join and leave ordered by
+  when it happened, a join's backfill skipped when its inviter is no full member a trusted realm
+  vouches, and rooms left a day (`KeptLeft`) forgotten unless a person labelled or quieted them;
   `Deliveries` (the replies an edge has yet
   to post outside grit, each part `Posting` or `Posted`), `Acknowledgements` (the messages an
   edge marks as being answered while their turns run, each `Acknowledgement` shown or not),

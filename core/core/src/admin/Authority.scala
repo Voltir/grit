@@ -44,7 +44,7 @@ object Authority {
     def declared(c: Compartment): Option[Refusal] =
       Option.unless(compartments.declared.contains(c))(Refusal.Undeclared(c))
     val refusal: Option[Refusal] =
-      if (!vouched(by)) Some(Refusal.NotVouched)
+      if (!by.vouched) Some(Refusal.NotVouched)
       else
         change match {
           case Change.Quiet(room, _) => Option.when(room.direct)(Refusal.InDirectMessage)
@@ -77,12 +77,6 @@ object Authority {
           case Change.Remove(_, c) => declared(c).orElse(steward(c))
         }
     refusal.toLeft(new Allowed(change))
-  }
-
-  /** Whether `by` is a person a trusted realm vouches a full member through any account. */
-  private def vouched(by: Principal): Boolean = by match {
-    case Principal.Grit => false
-    case Principal.Person(_, accounts) => accounts.exists(_.member)
   }
 
   /* A label is opaque outside its package: what a change lowers and removes is read by

@@ -25,4 +25,10 @@ enum Principal {
 
   /** A person, and their accounts, as the store resolved them. */
   case Person(id: PrincipalId, accounts: Set[Held])
+
+  /** Whether this is a person a trusted realm vouches a full member, through any account. */
+  def vouched: Boolean = this match {
+    case Grit => false
+    case Person(_, accounts) => accounts.exists(_.member)
+  }
 }
