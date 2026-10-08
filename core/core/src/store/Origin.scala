@@ -66,10 +66,19 @@ enum Origin {
     */
   def room: Place = this match {
     case Tui(directory, _) => Place.of(directory)
-    case Slack(team, channel, _) => Place.under(Namespace.Slack, Vector(team, channel))
+    case Slack(team, channel, _) => Origin.channel(team, channel)
     case Task(name, _) => Place.under(Namespace.Task, Vector(name))
   }
 
+}
+
+object Origin {
+
+  /** The Slack channel `channel` of team `team` as a place, `slack:{team}/{channel}`: the room
+    * of every thread in it ([[Origin.room]]).
+    */
+  def channel(team: String, channel: String): Place =
+    Place.under(Namespace.Slack, Vector(team, channel))
 }
 
 /** Who a conversation's messages are for, and what that decides. */

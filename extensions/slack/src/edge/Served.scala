@@ -5,8 +5,8 @@ import java.time.{Duration, Instant}
 import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, ServedEdge, Unheard, Variable}
 import grit.core.id.{AttesterName, EdgeName, PrincipalId}
-import grit.core.place.{Namespace, Place}
-import grit.core.store.StoreError
+import grit.core.place.Place
+import grit.core.store.{Origin, StoreError}
 import grit.edge.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
 import grit.slack.event.{ChannelId, Event, TeamId, UserId}
@@ -242,7 +242,7 @@ private[slack] object Served {
                         val name = slack.channelName(channel).toOption.flatten
                         Unheard(
                           name.fold(id)(n => s"#$n ($id)"),
-                          Place.under(Namespace.Slack, Vector(TeamId.value(self.team), id)),
+                          Origin.channel(TeamId.value(self.team), id),
                           threads(said)
                         )
                       }

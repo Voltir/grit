@@ -1,6 +1,7 @@
 package grit.slack.edge
 
-import grit.core.place.{Namespace, Place}
+import grit.core.place.Place
+import grit.core.store.Origin
 import grit.slack.event.{ChannelId, TeamId, UserId}
 
 /** A deployment's review as its Slack edge answers it: prompts posted at the top of `place`, a
@@ -15,8 +16,8 @@ object SlackReview {
   def of(place: Place, rater: UserId): Either[String, SlackReview] =
     place.segments match {
       // A channel's id (C…, G…) or a direct message's (D…).
-      case Vector(ns, team, channel)
-          if ns == Namespace.Slack.key && channel.matches("[CDG][A-Z0-9]+") =>
+      case Vector(_, team, channel)
+          if place == Origin.channel(team, channel) && channel.matches("[CDG][A-Z0-9]+") =>
         Right(new SlackReview(place, TeamId(team), ChannelId(channel), rater))
       case _ => Left(s"a review's place is slack:{team}/{channel id}, not ${place.written}")
     }

@@ -7,8 +7,9 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.place.{Namespace, Place}
+import grit.core.place.Place
 import grit.core.speech.Rate
+import grit.core.store.Origin
 import grit.core.tool.{
   Args,
   Field,
@@ -146,7 +147,7 @@ private[slack] object Posting {
   ): Either[String, Posting^{slack, clock}] = {
     val channels = named.map((name, id) => Channel(name, id))
     val placed: Channel -> Place =
-      c => Place.under(Namespace.Slack, Vector(TeamId.value(team), ChannelId.value(c.id)))
+      c => Origin.channel(TeamId.value(team), ChannelId.value(c.id))
     for {
       writes <- Writes.of(
         VectorMap.from(
