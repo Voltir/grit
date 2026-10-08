@@ -257,9 +257,9 @@ final class Engine private (
   val schedules: ScheduleStore = sqlSchedules
 
   /** `plugin`'s desk (ADR 0029): the schedules its tools write, of the jobs named `jobs`, each
-    * in a transaction of its own, dated by `clock`.
+    * in a transaction of its own, dated by the clock the engine was opened with.
     */
-  def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ =
+  def desk(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
     sqlSchedules.desk(plugin, jobs, jot, clock)
 
   /** Each plugin's cursor. */
@@ -496,12 +496,13 @@ final class Engine private (
       thread.start()
     }
 
-  /** Sweeps at `clock`'s time every `period` ([[every]], as `grit.sweeper`); a sweep that fails
+  /** Sweeps every `period` ([[every]], as `grit.sweeper`), at the time by the clock the engine
+    * was opened with; a sweep that fails
     * is logged, and the next one tries again, each workflow a sweep finds stuck is logged once,
     * and so is each plugin it newly marks as not enabled. Once, after [[launch]]; later calls
     * do nothing.
     */
-  def sweepEvery(period: FiniteDuration, clock: Clock^): Unit =
+  def sweepEvery(period: FiniteDuration): Unit =
     if (sweeping.compareAndSet(false, true)) {
       val log = LoggerFactory.getLogger("grit.sweeper")
       // Read and written only by the sweeping thread.

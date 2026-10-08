@@ -131,7 +131,7 @@ object RunRetentionLiveTests extends TestSuite {
   private def launched[A](config: DbConfig, d: Deployment, clock: SetClock^, slack: FakeSlack^)(
       body: (Engine^, SlackEdge^) => A
   ): A = {
-    val engine = LiveEngine.open(config, Turn.Epoch)
+    val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
     val model = new ReminderLiveTests.Scripted
     val classifier = new ReminderLiveTests.Counting
     try {

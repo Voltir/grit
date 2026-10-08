@@ -6,7 +6,7 @@ import java.time.{DayOfWeek, Instant, LocalTime, ZoneOffset}
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.clock.SetClock
+import grit.core.clock.{Clock, SetClock}
 import grit.core.id.{
   ConversationId,
   Declarer,
@@ -145,8 +145,10 @@ object DeclaredLiveTests extends TestSuite {
   /** `body` over an engine on `config` with nothing launched: what it enqueues stays queued
     * until a later engine launches. Closed after.
     */
-  private def unlaunched[A](config: DbConfig)(body: Engine^ => A): A = {
-    val engine = LiveEngine.open(config, Turn.Epoch)
+  private def unlaunched[A](config: DbConfig, clock: Clock^)(
+      body: Engine^ => A
+  ): A = {
+    val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
     try body(engine)
     finally engine.close()
   }
@@ -306,7 +308,7 @@ object DeclaredLiveTests extends TestSuite {
         deployment(Vector(v2), Vector(declared("once", v2, rule)))
       )
       // Started at v1 by an engine that stops before running it.
-      val stale = unlaunched(config) { engine =>
+      val stale = unlaunched(config, Clock.system()) { engine =>
         right(Launch.reconcile(engine.schedules, engine.jot, d1, Instant.now()))
         started(only(tick(engine, d1, at.plus(1, ChronoUnit.MINUTES))))
       }
@@ -340,7 +342,7 @@ object DeclaredLiveTests extends TestSuite {
       )
       val first = Daily.after(Instant.now()).getOrElse(sys.error("no slot"))
       val next = first.plus(1, ChronoUnit.DAYS)
-      val stale = unlaunched(config) { engine =>
+      val stale = unlaunched(config, Clock.system()) { engine =>
         right(Launch.reconcile(engine.schedules, engine.jot, d1, Instant.now()))
         started(only(tick(engine, d1, first.plus(1, ChronoUnit.MINUTES))))
       }
@@ -430,16 +432,12 @@ object DeclaredLiveTests extends TestSuite {
       val ping = new Ping("ping", 1)
       val (with_, without) = (deployment(Vector(ping)), deployment(Vector()))
       val now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
-      val (asked, stale) = unlaunched(config) { engine =>
+      val (asked, stale) = unlaunched(config, new SetClock(now)) { engine =>
         // The asking thread's turn, recorded once the engine has applied the schema.
         val asking =
           TurnRef(LiveDb.conversation(config, Origin.Slack("T1", "C1", "1.0")).id, TurnSeq.First)
         LiveDb.asking(config, asking, TestAccounts.account("slack:T1/U1"), Some("C1/1.0"))
-        val desk = engine.desk(
-          PluginName.of("pings").fold(sys.error, identity),
-          Vector(ping.name),
-          new SetClock(now)
-        )
+        val desk = engine.desk(PluginName.of("pings").fold(sys.error, identity), Vector(ping.name))
         val asked = desk
           .ask(
             TestCallSlots.at(asking),

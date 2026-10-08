@@ -323,16 +323,16 @@ private[grit] object Launch {
         )
       )
       if (sweeping) {
-        engine.sweepEvery(d.sweep, clock)
+        engine.sweepEvery(d.sweep)
         ticking(engine, new ClockEdge(engine.inbox, engine.schedules, engine.db, clock, d.allJobs))
       }
     }
     val store: Db^ = engine.db
     // Each plugin's desk, of its own jobs: built per call, since it keeps nothing but the
-    // engine's transactions and the clock.
-    val desks: Desks^{engine, clock} = new Desks {
+    // engine's transactions and its clock.
+    val desks: Desks^{engine} = new Desks {
       def of(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
-        engine.desk(plugin, jobs, clock)
+        engine.desk(plugin, jobs)
     }
     // Every plugin's tools, each bound over its own documents and its needs' services.
     val plugged = PluginBinding

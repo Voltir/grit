@@ -146,7 +146,7 @@ object ReminderLiveTests extends TestSuite {
       clock: SetClock^,
       slack: FakeSlack^
   )(body: (Engine^, SlackEdge^) => A): A = {
-    val engine = LiveEngine.open(config, Turn.Epoch)
+    val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
     try {
       Launch.asking(
         engine,
