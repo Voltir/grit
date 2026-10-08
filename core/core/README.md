@@ -235,7 +235,7 @@ In dependency order:
   `due` and those `inFlight`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
   book them (a `Booking`, or `NotOwn`); and `ScheduleDesk`, one plugin's capability to write,
   list and cancel a person's once slots from a tool call, asked for `When` (an `Asked`, their
-  `Pending`, or a `DeskRefusal`). ← `id`, `message`, `store`
+  `Pending`, or a `DeskRefusal`). ← `id`, `clock`, `visibility`, `message`, `store`
 - **`inbox`** — the seam the engine takes messages through: `Inbox` (which also
   records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, takes a direct message only from its own person and labels it at their clearance, refusing a new message in a direct thread begun when they were cleared for more (`InboxError.Sealed`), answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
   `InboundId`'s). ← `id`, `identity`, `message`, `store`, `spend`, `triage`, `speech`,
