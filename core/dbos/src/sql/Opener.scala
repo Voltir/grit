@@ -24,6 +24,22 @@ private[dbos] object Opener {
         .left
         .map(why => StoreError.Invalid(s"the recorded compartments: $why"))
     )
+
+  /** Whom a turn of `origin`'s conversation answers, as [[Subject.Turn]] says, `first` being
+    * its first entry, if it has one, as whom its account is linked to now (`None` when grit's
+    * own): in a direct message, the person its account is linked to now, whoever wrote that
+    * entry (`None` for an account never seen); in a task's run, grit; otherwise whoever wrote
+    * that entry, grit for grit's own, and no one when it has none. The one asker rule: the
+    * opener and the label a conversation is created at ([[SqlRooms.label]]) both call it.
+    */
+  def asker(origin: Origin, first: Option[Option[Principal]])(using
+      Tx^
+  ): Either[StoreError, Option[Principal]] =
+    origin match {
+      case Origin.Direct(account, _) => SqlIdentities.person(account)
+      case Origin.Task(_, _) => Right(Some(Principal.Grit))
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) => Right(first.map(_.getOrElse(Principal.Grit)))
+    }
 }
 
 /** How every transaction this module opens gets its clearance (ADR 0030): a [[Subject]]
@@ -55,23 +71,43 @@ private[dbos] final class Opener(visibility: Visibility) {
 
   /** The clearance `subject` reads at, as [[Subject]]'s cases say: one read of its
     * conversation, its label, and its turn's first entry and the principal its account is
-    * linked to now.
+    * linked to now; in a direct message, its own label is its stored one met with its person's
+    * clearance now, so nothing kept above a fallen clearance is read again.
     */
   def clearance(subject: Subject)(using tx: Tx^): Either[StoreError, Clearance] =
     subject match {
       case Subject.Public => Right(Clearance.of(Label.Public))
       case Subject.Conversation(id) =>
-        named(id, None).map(_.fold(Clearance.of(Label.Public)) { n =>
-          Clearance.inRoom(n.origin.room, n.label, n.label)
+        named(id, None).flatMap(_.fold(Right(Clearance.of(Label.Public))) { n =>
+          n.origin match {
+            case Origin.Direct(_, _) => direct(n)
+            case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+              Right(Clearance.inRoom(n.origin.room, n.label, n.label))
+          }
         })
       case Subject.Turn(turn) =>
-        named(turn.conversationId, Some(turn.turnSeq)).map(_.fold(Clearance.of(Label.Public)) { n =>
-          val asker = n.origin match {
-            case Origin.Task(_, _) => Some(Principal.Grit)
-            case _ => n.first.map(_.getOrElse(Principal.Grit))
-          }
-          Clearance.inRoom(n.origin.room, n.label, asker.fold(Label.Public)(visibility.cleared))
-        })
+        named(turn.conversationId, Some(turn.turnSeq))
+          .flatMap(_.fold(Right(Clearance.of(Label.Public))) { n =>
+            n.origin match {
+              case Origin.Direct(_, _) => direct(n)
+              case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+                Opener
+                  .asker(n.origin, n.first)
+                  .map(asker =>
+                    Clearance
+                      .inRoom(n.origin.room, n.label, asker.fold(Label.Public)(visibility.cleared))
+                  )
+            }
+          })
+    }
+
+  /** A direct message's conversation `n` as any of its subjects reads it: its person's
+    * clearance now ([[Opener.asker]]), and its own room up to its stored label met with that.
+    */
+  private def direct(n: Named)(using Tx^): Either[StoreError, Clearance] =
+    Opener.asker(n.origin, n.first).map { asker =>
+      val cleared = asker.fold(Label.Public)(visibility.cleared)
+      Clearance.inRoom(n.origin.room, n.label.meet(cleared), cleared)
     }
 
   /** A conversation as a subject names it: where it is, its label, and, when a turn was named,

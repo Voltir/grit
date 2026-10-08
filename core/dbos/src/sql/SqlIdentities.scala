@@ -76,6 +76,39 @@ private[dbos] object SqlIdentities {
     }
   }
 
+  /** Whom `account` is linked to now, holding every account linked to them now ([[principal]]);
+    * `None` for an account never seen.
+    */
+  def person(account: Account)(using tx: Tx^): Either[StoreError, Option[Principal]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT l.principal_id, p.kind,
+            |       (SELECT jsonb_agg(jsonb_build_array(n.account, n.vouched, n.member))
+            |          FROM grit.links n WHERE n.principal_id = l.principal_id)::text AS held
+            |  FROM grit.links l
+            |  JOIN grit.principals p ON p.id = l.principal_id
+            | WHERE l.account = ?""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, written(account))
+        Using.resource(ps.executeQuery()) { rs =>
+          Option.when(rs.next())(
+            (
+              rs.getString("principal_id"),
+              rs.getString("kind"),
+              Option(rs.getString("held")).getOrElse("[]")
+            )
+          )
+        }
+      }
+    }.flatMap {
+      case None => Right(None)
+      case Some((id, kind, held)) => principal(id, kind, held).map(Some(_))
+    }
+  }
+
   /** The principal `id`, of `kind` (`grit.principals.kind`), holding `held`, a JSON array of
     * `[account, vouched, member]` triples as `grit.links` gives them; `Invalid` when a stored
     * value is none of its kind's.

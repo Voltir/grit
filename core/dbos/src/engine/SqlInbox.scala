@@ -37,7 +37,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.visibility.{Label, Visibility}
-import grit.dbos.sql.{SqlEntryStore, SqlIdentities, SqlSchedules}
+import grit.dbos.sql.{SqlEntryStore, SqlIdentities, SqlRooms, SqlSchedules}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -82,25 +82,29 @@ final class SqlInbox(
             overCap(Instant.now()).flatMap {
               case Some(refused) => Right(Left(refused))
               case None =>
-                recorded(
-                  origin,
-                  source,
-                  Payload.Message(message),
-                  by,
-                  roomOf(origin),
-                  Instant.now(),
-                  capped = true
+                roomOf(origin).flatMap(label =>
+                  recorded(
+                    origin,
+                    source,
+                    Payload.Message(message),
+                    by,
+                    label,
+                    Instant.now(),
+                    capped = true
+                  )
                 )
             }
           case Some(_) =>
-            recorded(
-              origin,
-              source,
-              Payload.Message(message),
-              by,
-              roomOf(origin),
-              Instant.now(),
-              capped = true
+            roomOf(origin).flatMap(label =>
+              recorded(
+                origin,
+                source,
+                Payload.Message(message),
+                by,
+                label,
+                Instant.now(),
+                capped = true
+              )
             )
         }
         .flatMap {
@@ -123,7 +127,10 @@ final class SqlInbox(
       reach: Reach
   ): Either[InboxError, Unit] =
     inTransaction(
-      recorded(origin, source, Payload.Heard(text), by, roomOf(origin), at, capped = false)
+      roomOf(origin)
+        .flatMap(label =>
+          recorded(origin, source, Payload.Heard(text), by, label, at, capped = false)
+        )
         .flatMap {
           case Left(_) => Right(Heard(None, None))
           case Right(turn) =>
@@ -176,7 +183,8 @@ final class SqlInbox(
     }
 
   /** The label a conversation an edge's message begins from `origin` is created at. */
-  private def roomOf(origin: Origin): Label = visibility.roomLabel(origin.room)
+  private def roomOf(origin: Origin)(using Tx^): Either[StoreError, Label] =
+    SqlRooms.label(visibility, origin)
 
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
     * as the period it opens is, its conversation created at `label` if it is new: its existing
@@ -236,7 +244,8 @@ final class SqlInbox(
         case Some(_) => Right(false)
         case None =>
           for {
-            conversation <- conversations.findOrCreate(origin, by, roomOf(origin))
+            label <- roomOf(origin)
+            conversation <- conversations.findOrCreate(origin, by, label)
             // Serialises with any other writer to the conversation; past the lock, what it
             // holds is settled.
             next <- entries.lockNext(conversation.id)

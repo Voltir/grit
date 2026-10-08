@@ -285,7 +285,10 @@ private[engine] final class Attached(
 
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
     Link.transaction(dataSource, opener)(
-      conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
+      grit.dbos.sql.SqlRooms
+        .label(visibility, origin)
+        .flatMap(conversations.findOrCreate(origin, by, _))
+        .map(_.id)
     )
 
   def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
