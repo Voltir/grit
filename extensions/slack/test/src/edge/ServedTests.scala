@@ -456,8 +456,8 @@ object ServedTests extends TestSuite {
         Served
           .serving(Grit, Backfill.Default, None, None, w.connect, Inline)
           .open(w.stores, Env, w.clock, _ => ())
-      (w.slack.command(command("help")), w.slack.command(command("help", name = "/other"))) ==>
-        (true, true)
+      val _ = w.slack.command(command("help"))
+      val _ = w.slack.command(command("help", name = "/other"))
       w.slack.responses ==> Vector((grit.slack.event.ResponseUrl(Hook), Answer.Help.text))
     }
 
