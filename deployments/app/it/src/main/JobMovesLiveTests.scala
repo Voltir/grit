@@ -305,13 +305,32 @@ object JobMovesLiveTests extends TestSuite {
   /** Waits up to 30 s for `turn`'s request to be written. */
   private def requested(config: DbConfig, turn: TurnRef): Boolean = {
     val id = WorkflowId.value(turn.workflowId)
-    val until = System.nanoTime() + 30.seconds.toNanos
-    def written =
+    within(30.seconds)(
       rows(config, "SELECT key FROM grit.tool_requests WHERE workflow_id = ?", id).nonEmpty
-    var held = written
+    )
+  }
+
+  /** `turn`'s output once its workflow has ended, waiting up to 60 s; fails naming what it had
+    * left when it has not ended by then, so a run that never comes back fails the suite rather
+    * than hanging it.
+    */
+  private def awaited(config: DbConfig, engine: Engine^, turn: TurnRef): String = {
+    val id = WorkflowId.value(turn.workflowId)
+    def ended =
+      rows(config, "SELECT status FROM dbos.workflow_status WHERE workflow_uuid = ?", id).exists(
+        _.exists(s => s != "PENDING" && s != "ENQUEUED")
+      )
+    if (within(60.seconds)(ended)) engine.awaitTurn(turn)
+    else sys.error(s"$id has not ended in 60 s; it left ${left(config, engine, turn)}")
+  }
+
+  /** Whether `done` holds within `limit`, polled every 20 ms. */
+  private def within(limit: FiniteDuration)(done: => Boolean): Boolean = {
+    val until = System.nanoTime() + limit.toNanos
+    var held = done
     while (!held && System.nanoTime() < until) {
       Thread.sleep(20)
-      held = written
+      held = done
     }
     held
   }
@@ -330,7 +349,7 @@ object JobMovesLiveTests extends TestSuite {
       val server = serving(desk(engine))
       try {
         val turn = started(engine, d, at)
-        val said = engine.awaitTurn(turn)
+        val said = awaited(config, engine, turn)
         (said.replace(replyOf(turn), "{reply}"), left(config, engine, turn))
       } finally server.close()
     } finally engine.close()
@@ -342,6 +361,9 @@ object JobMovesLiveTests extends TestSuite {
     test(
       "a run's call is made for its schedule's principal with the advertised retry, rung, and its ask recorded once"
     ) {
+      // A deployment's schedule acts for grit, who also registered the desk, so the request's
+      // principal cannot tell the schedule's from a hard-coded grit; CallingTests' gone schedule,
+      // made for no one, does.
       val (said, rows) = uninterrupted("job_moves")
       (said, rows) ==> (
         "replied: {reply}",
@@ -391,7 +413,7 @@ object JobMovesLiveTests extends TestSuite {
       try {
         launch(engine, config, d)
         val turn = started(engine, d, at, ScheduleId.declared(Declarer.Plugin(tallies.name), key))
-        val _ = engine.awaitTurn(turn)
+        val _ = awaited(config, engine, turn)
         val id = WorkflowId.value(turn.workflowId)
         (
           replied(engine, turn),
@@ -436,7 +458,7 @@ object JobMovesLiveTests extends TestSuite {
         val server = serving(desk(after))
         try {
           launch(after, config, d)
-          val said = after.awaitTurn(turn).replace(replyOf(turn), "{reply}")
+          val said = awaited(config, after, turn).replace(replyOf(turn), "{reply}")
           (said, left(config, after, turn)) ==> expected
         } finally server.close()
       } finally after.close()
