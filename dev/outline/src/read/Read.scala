@@ -134,6 +134,14 @@ object Read {
         /** The 1-based line holding offset `i`. */
         def lineOf(src: String, i: Int): Int = src.take(i).count(_ == '\n') + 1
 
+        /** The index of the last non-space character at or before `i`, or 0 when there is none. */
+        def lastNonSpace(src: String, i: Int): Int =
+          if (i > 0 && src(i).isWhitespace) lastNonSpace(src, i - 1) else math.max(i, 0)
+
+        /** The whole lines `from` to `to`, 1-based and both included, as the file has them: joined by newlines, nothing trimmed. */
+        def wholeLines(src: String, from: Int, to: Int): String =
+          src.split("\n", -1).slice(from - 1, to).mkString("\n")
+
         // The offset of the doc comment opening that ends just before `start`, and the offset after its close.
         def docOf(src: String, start: Int): Option[(Int, Int)] = {
           def skipBack(i: Int): Int = if (i >= 0 && src(i).isWhitespace) skipBack(i - 1) else i
@@ -308,16 +316,27 @@ object Read {
           val docText = doc.map { case (open, closeEnd) =>
             slice(src, lineStart(src, open), closeEnd)
           }
-          val body = if (hasBody && inSpan) Some(slice(src, cut, p.end)) else None
+          val firstLine = lineOf(src, docStart)
+          val lastLine = lineOf(src, p.end - 1)
+          // The head ends on the line of the signature's last character, before the cut; the body is the whole lines after it.
+          val headEnd =
+            if (inSpan) lineOf(src, math.max(p.start, lastNonSpace(src, cut - 1)))
+            else lineOf(src, p.start)
+          val head = wholeLines(src, firstLine, headEnd)
+          val body =
+            if (hasBody && inSpan && headEnd < lastLine)
+              Some(wholeLines(src, headEnd + 1, lastLine))
+            else None
           val flags = sym.flags
           Defn(
             kind = kindOf(tree, sym),
             name = nameOf(sym),
             fullName = fullNameOf(sym),
             file = slice(p.sourceFile.path, prefix.length, p.sourceFile.path.length),
-            lines = Lines(lineOf(src, docStart), lineOf(src, p.end - 1)),
+            lines = Lines(firstLine, lastLine),
             doc = docText,
             signature = signature,
+            head = head,
             body = body,
             members = members,
             refs = refs,

@@ -93,6 +93,17 @@ object ServerTests extends TestSuite {
       )
     }
 
+    test("initialize's instructions state which text is the file's own") {
+      val line = request(
+        1,
+        "initialize",
+        ujson.Obj("protocolVersion" -> "2025-06-18", "capabilities" -> ujson.Obj())
+      )
+      val (r, _) = reply(line, empty)
+      val instructions = resultOf(r).flatMap(field(_, "instructions")).flatMap(_.strOpt)
+      assert(instructions.exists(_.contains(Help.fileText)))
+    }
+
     test("initialize answers 2025-11-25 to a version the server does not offer") {
       val line = request(2, "initialize", ujson.Obj("protocolVersion" -> "1999-01-01"))
       val (r, _) = reply(line, empty)
@@ -126,13 +137,20 @@ object ServerTests extends TestSuite {
       assert(show.flatMap(field(_, "description")).flatMap(_.strOpt).exists(_.contains("one call")))
     }
 
-    test("each tool's description is its Help purpose, then its examples as the CLI writes them") {
+    test(
+      "each tool's description is its Help purpose, then its examples as the CLI writes them, and ends with fileText only for the tools that print file text"
+    ) {
       val (r, _) = reply(request(4, "tools/list", ujson.Obj()), empty)
       val tools =
         resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
       Help.entries.foreach { e =>
         val tool = tools.find(t => field(t, "name").flatMap(_.strOpt).contains(e.query))
-        assert(tool.flatMap(field(_, "description")).flatMap(_.strOpt) == Some(Help.description(e)))
+        val described = tool.flatMap(field(_, "description")).flatMap(_.strOpt)
+        assert(described == Some(Help.description(e)))
+        assert(
+          described.exists(_.endsWith(Help.fileText)) ==
+            Vector("show", "family", "tests").contains(e.query)
+        )
       }
     }
 

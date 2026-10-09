@@ -198,10 +198,13 @@ object Server {
   private def initialize(params: ujson.Value): ujson.Value = {
     val requested =
       field(params, "protocolVersion").flatMap(_.strOpt).filter(versions.contains).getOrElse(latest)
+    val instructions =
+      s"Outline answers questions about a Scala project's structure from its compiled TASTy, through the tools ${Help.entries.map(_.query).mkString(", ")}.\n\n${Help.fileText}"
     ujson.Obj(
       "protocolVersion" -> requested,
       "capabilities" -> ujson.Obj("tools" -> ujson.Obj("listChanged" -> false)),
-      "serverInfo" -> ujson.Obj("name" -> "outline", "version" -> "0.1.0")
+      "serverInfo" -> ujson.Obj("name" -> "outline", "version" -> "0.1.0"),
+      "instructions" -> instructions
     )
   }
 

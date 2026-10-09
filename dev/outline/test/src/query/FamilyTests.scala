@@ -60,6 +60,17 @@ object FamilyTests extends TestSuite {
       assert(answer.text.linesIterator.count(_.endsWith(" put")) == 2)
     }
 
+    test("with member put, the trait's put prints its doc and signature as the file's own lines") {
+      val (answer, _) = family("Store", Some("put"), false)
+      val lines = answer.text.linesIterator.toVector
+      val at = lines.indexWhere(_.startsWith("9-10 def Store.put"))
+      val file = os.read
+        .lines(root.dir / "dev" / "outline" / "fixture" / "src" / "store" / "Store.scala")
+        .toVector
+      assert(at >= 0)
+      assert(lines.slice(at + 1, at + 3) == file.slice(8, 10))
+    }
+
     test("with member put and body, MemStore's put shows its body") {
       val (answer, _) = family("Store", Some("put"), true)
       assert(answer.text.contains("MemStore(values + (key -> value))"))

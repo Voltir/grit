@@ -58,5 +58,30 @@ object TestsTests extends TestSuite {
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val posed.*""")))
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val companion.*""")))
     }
+
+    test("tests --test prints the test's own lines") {
+      val name =
+        "a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc"
+      val lines =
+        answer("grit.outline.render.OneLineTests", Some("a trait's one-liner lists each")).text
+          .split("\n", -1)
+          .toVector
+      val header = lines.find(l => l.startsWith("    ") && l.endsWith(s" $name")).getOrElse("")
+      val Span = raw"    (\d+)-(\d+) .*".r
+      val (from, to) = header match {
+        case Span(a, b) => (a.toInt, b.toInt)
+        case _ => (0, 0)
+      }
+      val printed = lines
+        .dropWhile(_ != header)
+        .drop(1)
+        .takeWhile(l => !(l.startsWith("    ") && l.trim.headOption.exists(_.isDigit)))
+        .takeWhile(!_.startsWith("["))
+      val file = os.read
+        .lines(root.dir / "dev" / "outline" / "test" / "src" / "render" / "OneLineTests.scala")
+        .toVector
+      assert(from > 0)
+      assert(printed == file.slice(from - 1, to))
+    }
   }
 }

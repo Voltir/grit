@@ -44,9 +44,7 @@ object Render {
     val files = everything.map(_.file).distinct
 
     def entry(d: Defn): Vector[String] =
-      Vector(s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}") ++
-        d.doc.toVector ++
-        Vector(d.signature) ++
+      Vector(s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}", d.head) ++
         (if (bodies.contains(d.name)) d.body.toVector else Vector.empty)
 
     def namedEntry(d: Defn): Vector[String] = {
@@ -117,8 +115,7 @@ object Render {
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
 
     def block(d: Defn, body: Boolean): Vector[String] =
-      Vector(headerOf(d)) ++ d.doc.toVector ++ Vector(d.signature) ++
-        (if (body) d.body.toVector else Vector.empty)
+      Vector(headerOf(d), d.head) ++ (if (body) d.body.toVector else Vector.empty)
 
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
@@ -126,7 +123,7 @@ object Render {
       case None =>
         block(f.trait0, false) ++ f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
       case Some(m) =>
-        Vector(headerOf(f.trait0), f.trait0.signature) ++
+        Vector(headerOf(f.trait0), f.trait0.head) ++
           f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
     }
 
@@ -137,7 +134,7 @@ object Render {
         case Some(m) =>
           val overloads = d.members.filter(_.name == m)
           if (f.withBody)
-            Vector(head) ++ overloads.flatMap(o => Vector(o.signature) ++ o.body.toVector)
+            Vector(head) ++ overloads.flatMap(o => Vector(o.head) ++ o.body.toVector)
           else Vector(head) ++ overloads.map(o => s"  ${o.lines.start}-${o.lines.end} $m")
       }
     }

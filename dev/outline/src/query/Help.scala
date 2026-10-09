@@ -172,6 +172,13 @@ object Help {
   /** Every query, in the order the summary lists them. */
   val entries: Vector[Entry] = Vector(show, family, uses, area, tests)
 
+  /** Which text show, family and tests print is the file's own, for an Edit to match; in the help and descriptions of those three and in the server's instructions. */
+  val fileText: String =
+    "File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only."
+
+  /** The queries whose output is file text, and so carry `fileText` in their help and descriptions. */
+  private val readsFiles: Set[String] = Set("show", "family", "tests")
+
   /** The entry for `query`, none when no query is named so. */
   def entry(query: String): Option[Entry] = entries.find(_.query == query)
 
@@ -188,10 +195,14 @@ object Help {
       ""
     )
 
-  /** The MCP tool description of `e`: its purpose, then its examples as the CLI writes them. */
+  /** The MCP tool description of `e`: its purpose, then its examples as the CLI writes them, then `fileText` when `e` prints file text. */
   def description(e: Entry): String =
     (Vector(e.purpose, "", "Examples, as the CLI writes them:") ++
-      e.examples.map(x => s"  scripts/outline ${x.args}  # ${x.task}")).mkString("\n")
+      e.examples.map(x => s"  scripts/outline ${x.args}  # ${x.task}")).mkString("\n") + fileTail(e)
+
+  /** The text `fileText` adds after an entry's own help, none for a query that prints no file text. */
+  private def fileTail(e: Entry): String =
+    if (readsFiles.contains(e.query)) s"\n\n$fileText" else ""
 
   /** The full help of `e`, which `scripts/outline <query> --help` prints. */
   def help(e: Entry): String =
@@ -200,7 +211,7 @@ object Help {
       Vector("", "arguments and flags:") ++
       Vector(s"  ${e.operand.form}", s"      ${e.operand.sentence}") ++
       e.flags.flatMap(f => Vector(s"  ${flagForm(f, bracketed = false)}", s"      ${f.sentence}")))
-      .mkString("\n")
+      .mkString("\n") + fileTail(e)
 
   /** One line per query with its purpose, which `scripts/outline --help` prints. */
   def summary: String =

@@ -107,5 +107,36 @@ object RenderTests extends TestSuite {
           .contains(s"== $sample  grit.outline.fixture  [stale: source newer than .tasty]")
       )
     }
+
+    // The lines printed under the entry whose header starts with `header`, up to the next header or the KB line.
+    def under(out: String, header: String): Vector[String] = {
+      val lines = out.split("\n", -1).toVector
+      lines.dropWhile(!_.startsWith(header)).drop(1).takeWhile(!_.startsWith("["))
+    }
+
+    test("show prints a member's head and body as the file's own lines") {
+      val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
+      val out = Render.show(of3, noTraced, read, Set.empty, Set("of"), false, 80000)
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(of3.map(_.lines) == Vector(grit.outline.model.Lines(30, 33)))
+      assert(under(out, "30-33 ") == file.slice(29, 33))
+    }
+
+    test("a member nested four spaces deep prints its head and body as the file's own lines") {
+      val deep = named(read, "grit.outline.fixture.Outer.Inner.deep")
+      val out = Render.show(deep, noTraced, read, Set.empty, Set("deep"), false, 80000)
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(deep.map(_.lines) == Vector(grit.outline.model.Lines(69, 73)))
+      assert(under(out, "69-73 ") == file.slice(68, 73))
+    }
+
+    test(
+      "a definition's head without --body is the file's lines from its doc to its signature's end"
+    ) {
+      val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
+      val out = Render.show(of3, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(under(out, "30-33 ") == file.slice(29, 31))
+    }
   }
 }

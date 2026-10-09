@@ -62,3 +62,14 @@ object Defaulted {
   /** The companion, which holds the synthetic default-argument method beside its own member. */
   def zero: Defaulted = Defaulted()
 }
+
+object Outer {
+  object Inner {
+
+    /** Four spaces in: its lines keep their indentation. */
+    def deep(x: Int): Int = {
+      val doubled = x * 2
+      doubled + 1
+    }
+  }
+}

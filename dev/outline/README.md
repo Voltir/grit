@@ -38,6 +38,8 @@ line per package, at level 1 (the default) each definition with its doc's first 
 
 MCP tool names: `show`, `family`, `uses`, `area`, `tests`.
 
+File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
+
 ## Running it
 
 - `scripts/outline <query> …` runs a query from the current checkout.

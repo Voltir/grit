@@ -69,7 +69,10 @@ object ReadTests extends TestSuite {
       assert(ofs.size == 2)
       val first = only(ofs.filter(_.lines == Lines(27, 28)), "Limits.of at lines 27-28")
       val second = only(ofs.filter(_.lines == Lines(30, 33)), "Limits.of at lines 30-33")
-      assert(first.body == Some("of(asks, calls, 0)"))
+      assert(
+        first.head == "  /** Two limits, or why not. */\n  def of(asks: Int, calls: Int): Either[String, Limits] = of(asks, calls, 0)"
+      )
+      assert(first.body.isEmpty)
       assert(
         second.signature == "  def of(asks: Int, calls: Int, extra: Int): Either[String, Limits]"
       )

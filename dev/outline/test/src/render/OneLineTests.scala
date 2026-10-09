@@ -25,6 +25,7 @@ object OneLineTests extends TestSuite {
       lines = lines,
       doc = None,
       signature = signature,
+      head = signature,
       body = None,
       members = members,
       refs = Vector.empty,

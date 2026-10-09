@@ -11,7 +11,10 @@ final case class Lines(start: Int, end: Int)
 /** A type a signature names; `topLevel` names the `.tasty` file it lives in. */
 final case class Ref(fullName: String, topLevel: String, inRepo: Boolean)
 
-/** One definition read from the TASTy: `file` is repo-relative, `body` and `doc` are verbatim source text. */
+/** One definition read from the TASTy: `file` is repo-relative. `head` is the whole source lines from its doc (or its first line)
+  * through its signature's, and `body` the whole lines after them, both verbatim; `doc` and `signature` are the same text cut to
+  * their own spans, for one-line outlines.
+  */
 final case class Defn(
     kind: Kind,
     name: String,
@@ -20,6 +23,7 @@ final case class Defn(
     lines: Lines,
     doc: Option[String],
     signature: String,
+    head: String,
     body: Option[String],
     members: Vector[Defn],
     refs: Vector[Ref],
