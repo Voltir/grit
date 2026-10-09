@@ -1,7 +1,8 @@
 # 0021. grit owns six semantics over two guarantees, and a deployment is a value built against its kit
 
 Status: accepted (2026-09-30); amended (2026-10-06): a run's workflow is distinct per slot
-and version, and a version's change supersedes pending runs inside their own body
+and version, and a version's change supersedes pending runs inside their own body; amended
+(2026-10-08): named moves are built (ADR 0034), without reuse across versions
 
 Context: grit is to run more than one deployment, each with several personas, scheduled
 work and code of its own. Turned down: grit as the deployment, configured by environment
@@ -42,7 +43,10 @@ Decision:
   job's moves are kept in memory under names the plan gives them, each with a digest of what
   it does; a new version's run reuses a kept outcome, or a kept answer to an ask, only where
   the digest matches, and a move whose request was claimed and never answered is
-  interrupted, never run again (ADR 0009). Jobs are never patched.
+  interrupted, never run again (ADR 0009). Jobs are never patched. (Amended 2026-10-08.) Named
+  moves are built (ADR 0034), each ask's and call's digest recorded; reuse across versions is
+  not yet: a run resumed under another version after its moves ends in error and is
+  superseded.
 - A principal has a kind (person, org, assistant, agent) asserted by its edge, never a trust
   bit; an assistant or agent has a sponsor, and every chain ends at a person or an org. Only
   a person's word grounds as a colleague's; a gate names who may answer; budgets attach to

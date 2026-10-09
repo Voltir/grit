@@ -2,7 +2,8 @@
 
 Status: accepted (2026-09-27); amended (2026-09-30): service places; amended (2026-10-01): a
 service place's reach; amended (2026-10-01): services an addressed turn reaches; amended
-(2026-10-02): the turn is rung, and reads the answer from the row. Extends
+(2026-10-02): the turn is rung, and reads the answer from the row; amended (2026-10-08): a
+request records whom its actor acts for. Extends
 0002 and 0010; supersedes 0009's in-step run for the tools an edge hosts.
 
 Context: the engine ran every tool call in its own step, over the directory the engine's
@@ -28,8 +29,10 @@ Decision:
 - **Routing is one decision, `Edges.authorize`**, run when an edge claims: an edge serves
   only the places it registered, and only a directory place has a root to run tools over.
   The permission model will plug in there. Every request records its conversation, its
-  workspace, the principal it acts for (a placeholder, `local`), how it was let through (its
-  permit), and the claiming edge.
+  workspace, the principal it acts for, how it was let through (its permit), and the claiming
+  edge. (Amended 2026-10-08; ADR 0034.) The principal is whom its actor acts for, read in the
+  transaction that writes it: a turn's asker, a job's run's schedule's principal; when none can
+  be read, the request is not sent. The placeholder `local` is gone.
 - **The claim is the attempt marker.** A claimed request whose edge died is an orphan,
   settled by the retry its tool declares (`ToolSpec.retry`), never by its gate: `Rerun`
   claims it again for the edge that finds it, in one statement; `Interrupt` answers it

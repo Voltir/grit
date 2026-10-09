@@ -3,7 +3,7 @@
 Status: accepted (2026-10-05); amended (2026-10-06): a run is a turn of its slot's own
 conversation; asked schedules are once-only and report at the asking turn's destination; a
 run's period closes mechanically; a run ended without its reply is superseded or failed by its
-version
+version; amended (2026-10-08): a run's moves
 
 Context: ADR 0021 decides that a job is a turn with a Scala planner and a version, and that a
 trigger is an edge starting one run per slot at a task place; it does not say where slots
@@ -44,6 +44,11 @@ Decision:
   progress on both due slots and runs in flight.
 - **A job is contributed by a plugin (ADR 0027) or declared by the deployment**, and runs
   under grit's epoch (ADR 0021).
+- (Amended 2026-10-08.) A run makes its moves as ADR 0034 says. Its spend is recorded under the
+  run's conversation, so its schedule's principal's (grit's, for a declared schedule); the
+  daily cap refuses an ask, never a start; an ask sends what its job gives it to the catalog's
+  summary model. A run resumed under another version after its moves ends in error at its
+  reply, and is superseded.
 
 Consequences:
 
