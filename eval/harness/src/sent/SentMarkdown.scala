@@ -459,6 +459,9 @@ object SentMarkdown {
     case Answer.Choice(choice, weights, confidence) =>
       f"$choice (confidence $confidence%.2f; " +
         weights.map(w => f"${w.key} ${w.probability}%.2f").mkString(", ") + ")"
+    case Answer.Score(score, ps, confidence) =>
+      f"$score%.2f (confidence $confidence%.2f; " +
+        ps.zipWithIndex.map((p, i) => f"$i $p%.2f").mkString(", ") + ")"
   }
 
   private def names(ns: Vector[QuestionName]): String =

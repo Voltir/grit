@@ -1,7 +1,8 @@
 package grit.core.classify
 
 /** One question as a classifier receives it, in plain text as it reaches the model. Built
-  * through [[Ask]], or as itself ([[Question.choice]], `YesNo`) for [[Ask.answer]].
+  * through [[Ask]], or as itself ([[Question.choice]], [[Question.score]], `YesNo`) for
+  * [[Ask.answer]].
   */
 sealed trait Question
 
@@ -34,6 +35,39 @@ object Question {
     def keys: Vector[Key] = first +: second +: rest
   }
 
+  /** Where the state falls among the levels `first`, `second`, `rest`, in that order, from
+    * the least to the most; at most [[MaxLevels]] in all, as Jev accepts.
+    */
+  def score(
+      instructions: String,
+      first: String,
+      second: String,
+      rest: String*
+  ): Either[Question.TooManyLevels, Question.Score] = {
+    val count = 2 + rest.size
+    Either.cond(
+      count <= MaxLevels,
+      Score(instructions, first, second, rest.toVector),
+      TooManyLevels(count)
+    )
+  }
+
+  /** 10. */
+  val MaxLevels: Int = 10
+
+  /** More than [[MaxLevels]] levels: `count`. */
+  final case class TooManyLevels(count: Int)
+
+  /** A score among the levels, the first the least. */
+  final case class Score private[classify] (
+      instructions: String,
+      first: String,
+      second: String,
+      rest: Vector[String]
+  ) extends Question {
+    def levels: Vector[String] = first +: second +: rest
+  }
+
   /** Yes or no, answered as the probability of yes. `yes` and `no` say what each means. */
   final case class YesNo(instructions: String, yes: Option[String], no: Option[String])
       extends Question
@@ -53,6 +87,13 @@ enum Answer {
     * probability of `choice`.
     */
   case Choice(choice: String, probabilities: Vector[Answer.Weight], confidence: Double)
+
+  /** As the classifier reported it, unchecked: `score` should be a position along the
+    * levels (0 the first, n−1 the last, between two when its weight spreads), and
+    * `probabilities` should hold one weight per level, in order; [[Ask.score]] reads it into
+    * a [[Scored]]. `confidence` is [[Answer.scoreConfidence]] of the weights.
+    */
+  case Score(score: Double, probabilities: Vector[Double], confidence: Double)
 
   /** The probability that the answer is yes. */
   case YesNo(yes: Double)

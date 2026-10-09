@@ -26,6 +26,9 @@ object StubClassifier {
     *   - A choice: the key that follows `~back:` (to the next `~back:` or the end of the
     *     message) at 0.9, the rest sharing 0.1; with several markers, the first naming one of
     *     its keys; without one naming a key, the last key.
+    *   - A score: the level whose number (0 the first) follows the first `~level:` at 0.9,
+    *     the rest sharing 0.1, its position the weights' mean; without one naming a level,
+    *     the last level.
     */
   def answers(state: ujson.Value, questions: Vector[Question]): Answers = {
     val message = state.objOpt.flatMap(_.get("new_message")).flatMap(_.strOpt).getOrElse("")
@@ -40,11 +43,23 @@ object StubClassifier {
           val rest = 0.1 / (keys.size - 1)
           val ps = keys.map(k => Answer.Weight(k, if (k == pick) 0.9 else rest))
           Answer.Choice(pick, ps, Answer.confidence(ps.map(_.probability)))
+        case s: Question.Score =>
+          val n = s.levels.size
+          val pick = Level
+            .findFirstMatchIn(message)
+            .flatMap(_.group(1).toIntOption)
+            .filter(_ < n)
+            .getOrElse(n - 1)
+          val ps = Vector.tabulate(n)(i => if (i == pick) 0.9 else 0.1 / (n - 1))
+          val position = ps.zipWithIndex.map((p, i) => p * i).sum
+          Answer.Score(position, ps, Answer.scoreConfidence(ps))
       },
       Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
       Model
     )
   }
+
+  private val Level = """~level:(\d+)""".r
 
   private val Marked = """~(0(?:\.\d+)?|1(?:\.0+)?)(?![\d.])""".r
 

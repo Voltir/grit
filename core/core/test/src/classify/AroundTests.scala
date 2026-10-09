@@ -69,6 +69,15 @@ object AroundTests extends TestSuite {
       inner.sent.size ==> 2
     }
 
+    test("a score is hashed as its kind, its words and its levels, in order") {
+      val frustration = Question
+        .score("How frustrated is `ticket`?", "calm", "angry")
+        .getOrElse(throw new java.lang.AssertionError("levels"))
+      // A pin of the hashed form: a new kind beside the others, so their digests stay.
+      Request.json(Request.of(Ticket("x"), Ask.answer[Ticket](frustration))).render() ==>
+        """{"state":{"ticket":"x"},"questions":[{"kind":"score","instructions":"How frustrated is `ticket`?","levels":["calm","angry"]}]}"""
+    }
+
     test("equal requests have equal digests; one changed word changes it") {
       val a = Request.of(Ticket("the site is down"), urgent())
       val b = Request.of(Ticket("the site is down"), urgent())

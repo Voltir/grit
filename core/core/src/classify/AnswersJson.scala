@@ -5,10 +5,11 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.QuestionName
 
 /** How a classifier's answers are stored: a choice as `{"choice", "weights": [{"key", "p"}]}`,
-  * a yes/no as `{"yes"}`, a choice's confidence not kept (it is computed from its weights);
-  * an answer kept under its question's name as the same object with `"name"` first. A
-  * workflow's journal and a row read back what an earlier build wrote (ADR 0004), so a form
-  * once written is read by every later build.
+  * a yes/no as `{"yes"}`, a score as `{"score", "levels": [p…]}`, a choice's or a score's
+  * confidence not kept (it is computed from its weights); an answer kept under its
+  * question's name as the same object with `"name"` first. A workflow's journal and a row
+  * read back what an earlier build wrote (ADR 0004), so a form once written is read by every
+  * later build.
   */
 object AnswersJson {
 
@@ -21,14 +22,32 @@ object AnswersJson {
         )
       )
     case Answer.YesNo(yes) => ujson.Obj("yes" -> yes)
+    case Answer.Score(score, probabilities, _) =>
+      ujson.Obj("score" -> score, "levels" -> ujson.Arr.from(probabilities.map(ujson.Num(_))))
   }
 
   /** What [[write]] wrote, a `"name"` beside it not read; `Left` when it is neither form. */
   def read(v: ujson.Value): Either[String, Answer] =
     v.objOpt.toRight("answer: expected an object").flatMap { o =>
-      (o.get("yes").flatMap(_.numOpt), o.get("choice").flatMap(_.strOpt)) match {
-        case (Some(yes), None) => Right(Answer.YesNo(yes))
-        case (None, Some(choice)) =>
+      (
+        o.get("yes").flatMap(_.numOpt),
+        o.get("choice").flatMap(_.strOpt),
+        o.get("score").flatMap(_.numOpt)
+      ) match {
+        case (Some(yes), None, None) => Right(Answer.YesNo(yes))
+        case (None, None, Some(score)) =>
+          o.get("levels")
+            .flatMap(_.arrOpt)
+            .toRight("answer: missing levels")
+            .flatMap(levels =>
+              levels.toVector
+                .foldLeft[Option[Vector[Double]]](Some(Vector.empty))((acc, p) =>
+                  acc.flatMap(done => p.numOpt.map(done :+ _))
+                )
+                .toRight("answer: a level's weight is not a number")
+            )
+            .map(ps => Answer.Score(score, ps, Answer.scoreConfidence(ps)))
+        case (None, Some(choice), None) =>
           o.get("weights")
             .flatMap(_.arrOpt)
             .toRight("answer: missing weights")
@@ -46,7 +65,7 @@ object AnswersJson {
               }
             )
             .map(ws => Answer.Choice(choice, ws, Answer.confidence(ws.map(_.probability))))
-        case _ => Left("answer: expected {yes} or {choice, weights}")
+        case _ => Left("answer: expected {yes}, {choice, weights} or {score, levels}")
       }
     }
 

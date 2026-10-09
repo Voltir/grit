@@ -97,6 +97,7 @@ object TriageFixtures {
           case q: Question.Choice =>
             Answer.choice(q.keys.map(_.name).zip(kinds).map(Answer.Weight(_, _)))
           case Question.YesNo(_, _, _) => yeses.nextOption().map(Answer.YesNo(_))
+          case Question.Score(_, _, _, _) => None
         }
         Right(Answers(answers, Spent, "jev-1.13.0"))
       }

@@ -137,6 +137,7 @@ object ClassifyTests extends TestSuite {
       val sent = canned.asked.map {
         case Question.Choice(instructions, _, _, _) => s"choice: $instructions"
         case Question.YesNo(instructions, _, _) => s"yes/no: $instructions"
+        case Question.Score(instructions, _, _, _) => s"score: $instructions"
       }
       sent ==> Vector("choice: Which team should handle `ticket`?", "yes/no: Is `ticket` urgent?")
     }
@@ -178,6 +179,42 @@ object ClassifyTests extends TestSuite {
       Question.choice("?", key("a"), key("b"), key("c")).map(_.keys.map(_.name)) ==>
         Right(Vector("a", "b", "c"))
       Question.choice("?", key("a"), key("b"), key("a")) ==> Left(Ask.DuplicateKey("a"))
+    }
+
+    test("Question.score keeps its levels in order, and is not built with more than ten") {
+      Question.score("?", "calm", "frustrated", "very angry").map(_.levels) ==>
+        Right(Vector("calm", "frustrated", "very angry"))
+      val ten = (3 to 10).map(_.toString)
+      Question.score("?", "1", "2", ten*).map(_.levels.size) ==> Right(Question.MaxLevels)
+      Question.score("?", "1", "2", (ten :+ "11")*) ==> Left(Question.TooManyLevels(11))
+    }
+
+    test("Ask.answer keeps a score as given, Unreadable for another weight count or kind") {
+      val frustration = Question
+        .score("How frustrated is `ticket`?", "calm", "frustrated", "very angry")
+        .getOrElse(throw new java.lang.AssertionError("levels"))
+      def asked(answer: Answer) =
+        new Canned(answer).ask(Ticket("x"), Ask.answer[Ticket](frustration)).map(_.value)
+      // As given: a position beyond the levels, and weights not summing to 1, are kept.
+      val raw = Answer.Score(2.5, Vector(0.2, 0.2, 0.9), 0.1)
+      asked(raw) ==> Right(raw)
+      val toScore = "\"How frustrated is `ticket`?\": "
+      asked(Answer.Score(1.0, Vector(0.0, 1.0), 1.0)) ==>
+        Left(ClassifierError.Unreadable(toScore + "weighs 2 levels of 3"))
+      asked(Answer.YesNo(0.5)) ==>
+        Left(ClassifierError.Unreadable(toScore + "answered yes/no to a score"))
+      asked(Answer.Choice("calm", Vector(w("calm", 1.0)), 1.0)) ==>
+        Left(ClassifierError.Unreadable(toScore + "answered a choice to a score"))
+      new Canned(raw).ask(Ticket("x"), urgent) ==>
+        Left(ClassifierError.Unreadable("\"Is `ticket` urgent?\": answered a score to a yes/no"))
+      department().map(q => new Canned(raw).ask(Ticket("x"), q).map(_ => ())) ==>
+        Right(
+          Left(
+            ClassifierError.Unreadable(
+              "\"Which team should handle `ticket`?\": answered a score to a choice"
+            )
+          )
+        )
     }
 
     test("Ask.answer keeps an answer as given, Unreadable for a key not asked or the other kind") {

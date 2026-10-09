@@ -4,7 +4,8 @@ import grit.core.classify.{Answer, Answers, ClassifierError, Question}
 import grit.core.message.{Tokens, Usage}
 
 /** Jev's `POST /v1/systemone` wire format, both ways. Pure. Checked against the TypeSafe
-  * docs (API reference, Choice, Noul, Confidence) as published on 2026-09-24.
+  * docs (API reference, Choice, Noul, Confidence) as published on 2026-09-24, and the Score
+  * as the API reference shows it.
   */
 object JevJson {
 
@@ -37,6 +38,12 @@ object JevJson {
           c.keys.map(k => k.name -> k.description.fold(ujson.Null)(ujson.Str(_)))
         )
       )
+    case s: Question.Score =>
+      ujson.Obj(
+        "type" -> "score",
+        "instructions" -> s.instructions,
+        "criteria" -> ujson.Arr.from(s.levels.map(ujson.Str(_)))
+      )
     case Question.YesNo(instructions, yes, no) =>
       val criteria =
         yes.map("true" -> ujson.Str(_)).toVector ++ no.map("false" -> ujson.Str(_)).toVector
@@ -47,7 +54,8 @@ object JevJson {
   }
 
   /** The answers in a 200 response to [[request]]'s `questions`, in their order, choice
-    * probabilities in each question's own key order, priced at
+    * probabilities in each question's own key order and a score's in its levels' order (a key
+    * or level missing weighing 0, a score's `legend` not read), priced at
     * [[JevConfig.UsdPerMillionInput]]; or why they are unusable.
     */
   def response(
@@ -108,6 +116,24 @@ object JevJson {
           choice,
           c.keys.map(k =>
             Answer.Weight(k.name, probabilities.get(k.name).flatMap(_.numOpt).getOrElse(0.0))
+          ),
+          confidence
+        )
+      case s: Question.Score =>
+        for {
+          score <- raw.get("score").flatMap(_.numOpt).toRight(unreadable(s"$name: no score"))
+          probabilities <- raw
+            .get("probabilities")
+            .flatMap(_.objOpt)
+            .toRight(unreadable(s"$name: no probabilities"))
+          confidence <- raw
+            .get("confidence")
+            .flatMap(_.numOpt)
+            .toRight(unreadable(s"$name: no confidence"))
+        } yield Answer.Score(
+          score,
+          s.levels.indices.toVector.map(i =>
+            probabilities.get(i.toString).flatMap(_.numOpt).getOrElse(0.0)
           ),
           confidence
         )

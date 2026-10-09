@@ -39,8 +39,8 @@ final case class TriageQuestions private (
 
   /** What `classifier` answered for `state`, each answer under its question's name, in the
     * order of [[questions]], with the model and what the call consumed; `Unavailable`, or
-    * `Unreadable` when an answer is not of its question's kind or a choice names no key of
-    * its question's.
+    * `Unreadable` when an answer is not of its question's kind, a choice names no key of its
+    * question's, or a score weighs other than one weight per level.
     */
   def ask(
       classifier: Classifier^,
@@ -59,6 +59,7 @@ final case class TriageQuestions private (
       declared.get(name).exists {
         case c: Question.Choice => choice(c)
         case Question.YesNo(_, _, _) => yesNo
+        case Question.Score(_, _, _, _) => false
       }
     gate.reads.find {
       case Reading.Yes(name) => !asks(name, _ => false, yesNo = true)

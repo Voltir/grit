@@ -110,6 +110,8 @@ object Ask {
                   .toRight(unreadable(instructions, "no option has probability"))
               } yield decision
             case Answer.YesNo(_) => Left(unreadable(instructions, "answered yes/no to a choice"))
+            case Answer.Score(_, _, _) =>
+              Left(unreadable(instructions, "answered a score to a choice"))
           }
       )
     }
@@ -126,11 +128,14 @@ object Ask {
           case Answer.YesNo(p) => Right(p)
           case Answer.Choice(_, _, _) =>
             Left(unreadable(instructions, "answered a choice to a yes/no"))
+          case Answer.Score(_, _, _) =>
+            Left(unreadable(instructions, "answered a score to a yes/no"))
         }
     )
 
   /** `question`'s answer as the classifier gave it; `Unreadable` when it is not of the
-    * question's kind, or a choice names no key of the question's.
+    * question's kind, a choice names no key of the question's, or a score weighs other than
+    * one weight per level.
     */
   def answer[S](question: Question): Ask[S, Answer] =
     question match {
@@ -147,6 +152,8 @@ object Ask {
                 )
               case Answer.YesNo(_) =>
                 Left(unreadable(c.instructions, "answered yes/no to a choice"))
+              case Answer.Score(_, _, _) =>
+                Left(unreadable(c.instructions, "answered a score to a choice"))
             }
         )
       case y: Question.YesNo =>
@@ -157,9 +164,30 @@ object Ask {
               case a @ Answer.YesNo(_) => Right(a)
               case Answer.Choice(_, _, _) =>
                 Left(unreadable(y.instructions, "answered a choice to a yes/no"))
+              case Answer.Score(_, _, _) =>
+                Left(unreadable(y.instructions, "answered a score to a yes/no"))
+            }
+        )
+      case s: Question.Score =>
+        new Ask(
+          Vector(s),
+          answers =>
+            one(s.instructions, answers).flatMap {
+              case a @ Answer.Score(_, probabilities, _) =>
+                Either.cond(
+                  probabilities.size == s.levels.size,
+                  a,
+                  unreadable(s.instructions, weighs(probabilities.size, s.levels.size))
+                )
+              case Answer.Choice(_, _, _) =>
+                Left(unreadable(s.instructions, "answered a choice to a score"))
+              case Answer.YesNo(_) =>
+                Left(unreadable(s.instructions, "answered yes/no to a score"))
             }
         )
     }
+
+  private def weighs(weights: Int, levels: Int): String = s"weighs $weights levels of $levels"
 
   private def one(instructions: String, answers: Vector[Answer]): Either[ClassifierError, Answer] =
     answers.headOption.toRight(unreadable(instructions, "no answer"))

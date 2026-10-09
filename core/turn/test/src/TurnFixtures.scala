@@ -1423,6 +1423,8 @@ object TurnFixtures {
             0.8
           )
         case Question.YesNo(_, _, _) => Answer.YesNo(0.9)
+        case s: Question.Score =>
+          Answer.Score(0.0, s.levels.indices.toVector.map(i => if (i == 0) 0.9 else 0.1), 0.8)
       }
       Right(Answers(answers, Usage(Tokens(900), Tokens.Zero, Tokens.Zero, None), "jev"))
     }

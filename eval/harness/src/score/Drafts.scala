@@ -123,6 +123,7 @@ object Drafts {
       a match {
         case Answer.YesNo(p) => Vector(n -> p)
         case Answer.Choice(_, weights, _) => weights.map(w => s"$n.${w.key}" -> w.probability)
+        case Answer.Score(_, ps, _) => ps.zipWithIndex.map((p, i) => s"$n.$i" -> p)
       }
     })
     val names = each.flatten.map(_._1).distinct

@@ -9,8 +9,8 @@ import java.security.MessageDigest
 final case class Request private[classify] (state: ujson.Value, questions: Vector[Question]) {
 
   /** SHA-256, lower-case hex, of the request as JSON (`{"state", "questions"}`, fields in the
-    * order built): any change to the state, or to a question's kind, words, keys or order,
-    * changes it. The model is not part of it.
+    * order built): any change to the state, or to a question's kind, words, keys, levels or
+    * order, changes it. The model is not part of it.
     */
   def digest: String =
     MessageDigest
@@ -27,7 +27,8 @@ object Request {
     new Request(StateJson[S].json(state), questions.questions)
 
   /** `r` as JSON, `{"state", "questions"}`, the state as the classifier receives it and each
-    * question's kind, words and keys: what [[Request.digest]] hashes, rendered compactly.
+    * question's kind, words, and keys or levels: what [[Request.digest]] hashes, rendered
+    * compactly.
     */
   def json(r: Request): ujson.Value =
     ujson.Obj("state" -> r.state, "questions" -> ujson.Arr.from(r.questions.map(question)))
@@ -40,6 +41,12 @@ object Request {
         "keys" -> ujson.Arr.from(c.keys.map { k =>
           ujson.Obj("name" -> k.name, "description" -> optional(k.description))
         })
+      )
+    case s: Question.Score =>
+      ujson.Obj(
+        "kind" -> "score",
+        "instructions" -> s.instructions,
+        "levels" -> ujson.Arr.from(s.levels.map(ujson.Str(_)))
       )
     case Question.YesNo(instructions, yes, no) =>
       ujson.Obj(

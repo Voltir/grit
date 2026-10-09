@@ -131,6 +131,7 @@ object TriageTests extends TestSuite {
         case q: Question.Choice => q.keys.map(_.name).mkString("|")
         case Question.YesNo(words, _, _) if words.contains(Github.line) => "github"
         case _: Question.YesNo => "yes/no"
+        case _: Question.Score => "score"
       } ==> Vector(
         "asks|owes|closes|nothing",
         "yes/no",

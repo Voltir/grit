@@ -72,7 +72,7 @@ object SettleFixtures {
           val answers = questions.flatMap {
             case q: Question.Choice =>
               Answer.choice(q.keys.map(_.name).zip(ws).map(Answer.Weight(_, _)))
-            case Question.YesNo(_, _, _) => None
+            case Question.YesNo(_, _, _) | Question.Score(_, _, _, _) => None
           }
           Right(Answers(answers, Usage(Tokens(1), Tokens(1), Tokens.Zero, None), "jev"))
       }

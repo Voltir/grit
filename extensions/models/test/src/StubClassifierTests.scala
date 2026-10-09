@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.classify.{Answered, Ask, Criterion, StateJson}
+import grit.core.classify.{Answer, Answered, Ask, Criterion, Question, StateJson}
 
 import utest.*
 
@@ -23,7 +23,26 @@ object StubClassifierTests extends TestSuite {
     )
     .fold(d => throw new java.lang.AssertionError(s"keys repeat: $d"), identity)
 
+  private val frustration = Question
+    .score("?", "calm", "frustrated", "very angry")
+    .fold(t => throw new java.lang.AssertionError(s"levels: $t"), identity)
+
   val tests = Tests {
+    test("a score weighs the ~level: marker's level 0.9, or the last; the rest share 0.1") {
+      def scored(message: String) =
+        StubClassifier.answers(ujson.Obj("new_message" -> message), Vector(frustration)).answers
+      scored("~level:1 now") ==>
+        Vector(
+          Answer.Score(1.0, Vector(0.05, 0.9, 0.05), Answer.scoreConfidence(Vector(0.05, 0.9, 0.05)))
+        )
+      scored("anything").map {
+        case Answer.Score(score, ps, _) => Some((math.round(score * 100), ps))
+        case _ => None
+      } ==> Vector(Some((185L, Vector(0.05, 0.05, 0.9))))
+      // A level past the last is no marker.
+      scored("~level:3") ==> scored("anything")
+    }
+
     test("p(same) is the ~ marker's, or 0.9") {
       val c = new StubClassifier
       Vector("hello", "hi ~0.1", "hm ~0.5 there", "~1", "x~0.25").map(m =>

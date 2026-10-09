@@ -38,7 +38,7 @@ object Earning {
             case Tags.Weighed(answers, _, _) =>
               answers.get(Durable).exists {
                 case Answer.YesNo(yes) => !(Probability.clamped(yes) >= DurableAt)
-                case Answer.Choice(_, _, _) => false
+                case Answer.Choice(_, _, _) | Answer.Score(_, _, _) => false
               }
             case Tags.Unanswered(_) => false
           }

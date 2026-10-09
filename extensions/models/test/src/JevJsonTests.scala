@@ -22,7 +22,53 @@ object JevJsonTests extends TestSuite {
     Some("No urgency expressed")
   )
 
+  private val frustration = Question
+    .score("How frustrated is the customer?", "Calm", "Frustrated", "Very angry")
+    .fold(t => throw new java.lang.AssertionError(s"levels: $t"), identity)
+
   val tests = Tests {
+    test("request: the docs' score body, its levels an array in order") {
+      JevJson.body(
+        "jev-latest",
+        ujson.Str("Help! My payouts have been failing for 3 days."),
+        Vector(frustration)
+      ) ==>
+        """{"model":"jev-latest","state":"Help! My payouts have been failing for 3 days.","questions":{"q1":{"type":"score","instructions":"How frustrated is the customer?","criteria":["Calm","Frustrated","Very angry"]}}}"""
+    }
+
+    test("response: the docs' score answer, its weights in level order, the legend not read") {
+      val body = ujson.read("""{
+        "model": "jev-1.13.0",
+        "answers": {
+          "q1": {
+            "type": "score",
+            "score": 1.05,
+            "legend": { "0": "Calm", "1": "Frustrated", "2": "Very angry" },
+            "probabilities": { "2": 0.05, "0": 0.0, "1": 0.95 },
+            "confidence": 0.92
+          }
+        },
+        "usage": { "input_tokens": 304, "output_tokens": 18 }
+      }""")
+      JevJson.response(Vector(frustration), body).map(_.answers) ==>
+        Right(Vector(Answer.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92)))
+    }
+
+    test("response: a score's missing level weighs 0; a missing score or weights is Unreadable") {
+      def answer(raw: String) = JevJson.response(
+        Vector(frustration),
+        ujson.read(s"""{"model": "m", "answers": {"q1": $raw}}""")
+      )
+      answer("""{"type": "score", "score": 1.0, "probabilities": {"1": 1.0}, "confidence": 1.0}""")
+        .map(_.answers) ==> Right(Vector(Answer.Score(1.0, Vector(0.0, 1.0, 0.0), 1.0)))
+      answer("""{"type": "score", "probabilities": {"1": 1.0}, "confidence": 1.0}""") ==>
+        Left(ClassifierError.Unreadable("unreadable response: q1: no score"))
+      answer("""{"type": "score", "score": 1.0, "confidence": 1.0}""") ==>
+        Left(ClassifierError.Unreadable("unreadable response: q1: no probabilities"))
+      answer("""{"type": "score", "score": 1.0, "probabilities": {"1": 1.0}}""") ==>
+        Left(ClassifierError.Unreadable("unreadable response: q1: no confidence"))
+    }
+
     test("request: the docs' example body, ids by position, a null criterion with no description") {
       val body = JevJson.request(
         "jev-latest",

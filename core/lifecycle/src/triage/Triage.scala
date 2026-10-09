@@ -198,7 +198,7 @@ object Triage {
   }
 
   /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's
-    * choice and its weight.
+    * choice and its weight, a score's position.
     */
   private def shown(tags: Tags): String = tags match {
     case Tags.Weighed(answers, model, _) =>
@@ -208,6 +208,7 @@ object Triage {
             case Answer.YesNo(yes) => s"$yes"
             case Answer.Choice(choice, weights, _) =>
               s"$choice ${weights.find(_.key == choice).fold(0.0)(_.probability)}"
+            case Answer.Score(score, _, _) => s"score $score"
           }
           s"${QuestionName.value(name)} $read"
         }
