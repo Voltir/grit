@@ -286,22 +286,20 @@ object RunTests extends TestSuite {
     }
 
     test(
-      "a name made again is Repeated, also after its store failed, and a move past its limit OverLimit"
+      "a name made again is Repeated, also after its store failed"
     ) {
       val w = new World(failRecord = true)
       val turn = w.started(w.declared("standup"))
       val job = new Moving(
         1,
-        limits(1, 0),
+        limits(2, 0),
         (n, m) =>
-          Vector(
-            m.ask(move("a"), request(n.n)),
-            m.ask(move("a"), request(n.n)),
-            m.ask(move("b"), request(n.n))
-          ).map(said).mkString("\n")
+          Vector(m.ask(move("a"), request(n.n)), m.ask(move("a"), request(n.n)))
+            .map(said)
+            .mkString("\n")
       )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
-      w.reply(turn) ==> Some("Store(the ledger is down)\nRepeated(a)\nOverLimit(Ask,1)")
+      w.reply(turn) ==> Some("Store(the ledger is down)\nRepeated(a)")
     }
 
     test(

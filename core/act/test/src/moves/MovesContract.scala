@@ -56,14 +56,24 @@ abstract class MovesContract extends TestSuite {
     }
 
     test("past its kind's limit a move is OverLimit; a refused move counts against no limit") {
-      val got = within(limits(1, 1)) { m =>
-        Seen(Vector(asked(m, "a"), asked(m, "a"), asked(m, "b"), called(m, "c"), called(m, "d")))
+      val got = within(limits(2, 1)) { m =>
+        Seen(
+          Vector(
+            asked(m, "a"),
+            asked(m, "a"),
+            asked(m, "b"),
+            asked(m, "c"),
+            called(m, "d"),
+            called(m, "e")
+          )
+        )
       }
       got ==> Seen(
         Vector(
           Right(Answer),
           Left(MoveError.Repeated(name("a"))),
-          Left(MoveError.OverLimit(MoveKind.Ask, 1)),
+          Right(Answer),
+          Left(MoveError.OverLimit(MoveKind.Ask, 2)),
           Right(Called.Done(Read, Floor).toString),
           Left(MoveError.OverLimit(MoveKind.Call, 1))
         )
