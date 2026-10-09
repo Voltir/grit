@@ -22,6 +22,7 @@ object ActCaptureTests extends TestSuite {
       |import java.time.Instant
       |import scala.concurrent.duration.*
       |import grit.core.act.*
+      |import grit.core.classify.{Ask, Classifier, Level, StateJson}
       |import grit.core.document.*
       |import grit.core.durable.*
       |import grit.core.id.*
@@ -44,6 +45,9 @@ object ActCaptureTests extends TestSuite {
       |}
       |abstract class Counted extends PlainJob[Count], Counts
       |abstract class Tallied extends KeepingJob[Count], Counts
+      |object Text {
+      |  given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+      |}
       |object Names {
       |  def of(text: String): MoveName = MoveName.of(text).fold(sys.error, identity)
       |  val request: ModelRequest = ModelRequest("", Vector.empty)
@@ -113,11 +117,40 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** 7. A judgment's reader that asks a classifier: an `Ask` mapped through a function that
+    * calls one.
+    */
+  private val judgmentReaderClassifies =
+    """final class Maps(classifier: Classifier^) {
+      |  import Text.given
+      |  def asked: Ask[String, Double] =
+      |    Ask.yesNo[String]("Is `text` urgent?", None, None).map { p =>
+      |      val _ = classifier.ask("x", Ask.yesNo[String]("Is `text` late?", None, None))
+      |      p
+      |    }
+      |}
+      |""".stripMargin
+
+  /** 8. A job holding a classifier it was built with. */
+  private val jobHoldsClassifier =
+    """final class Judges(classifier: Classifier^) extends Counted {
+      |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = classifier; "judged" }
+      |}
+      |""".stripMargin
+
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
   private val breaches: Vector[String] =
-    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider, readerAsks)
+    Vector(
+      jobKeepsMoves,
+      jobStashesMoves,
+      keepAsks,
+      jobHoldsProvider,
+      readerAsks,
+      judgmentReaderClassifies,
+      jobHoldsClassifier
+    )
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -156,6 +189,33 @@ object ActCaptureTests extends TestSuite {
           |""".stripMargin
       )
       assert(errs.isEmpty)
+    }
+
+    test("a job judging with its pure reader, beside a JSON ask, compiles") {
+      val errs = errors(
+        """final class Weighs(schema: grit.core.schema.JsonSchema) extends Counted {
+          |  import Text.given
+          |  def run(run: JobRun[Count], moves: Moves^): String = {
+          |    val judged = Ask.score[String, Int]("How urgent is `text`?", Level(0, "not"), Level(1, "very"))
+          |      .fold(_.toString, ask =>
+          |        moves.ask(Names.of("urgency"), Posed.judge("the build is red", ask)).fold(_.toString, _.reply.likeliest.toString)
+          |      )
+          |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
+          |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+          |    s"$judged $shaped"
+          |  }
+          |}
+          |""".stripMargin
+      )
+      assert(errs.isEmpty)
+    }
+
+    test("a judgment whose reader asks a classifier is rejected") {
+      assert(flowsInto("{}")(errors(judgmentReaderClassifies)))
+    }
+
+    test("a job holding a classifier is rejected") {
+      assert(heldImpure(errors(jobHoldsClassifier)))
     }
 
     test("a job whose reply's reader makes a move is rejected") {
