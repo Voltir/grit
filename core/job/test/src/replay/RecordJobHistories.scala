@@ -117,6 +117,12 @@ object RecordJobHistories {
         d.run(turn.workflowId)(Run.body(w.env(), jobsOf(probing(2))))
         turn.workflowId
       },
+      // A plugin's keeping job's keep, at an internal floor.
+      record("run-kept", floor = Label.at(Level.Internal)) { (w, d) =>
+        val turn = w.started(w.declared("tally", 2))
+        d.run(turn.workflowId)(Run.body(w.env(), keepingJobs(new Noting(1))))
+        turn.workflowId
+      },
       // The process died recording the ask's cost: its model call is recorded, its record not.
       // Coming back at another version, the run's reply step meets that move.
       record("run-moved-then-redeployed", crashRecord = true) { (w, d) =>

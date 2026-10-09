@@ -27,6 +27,11 @@ object JobReplayTests extends TestSuite {
   /** Whether `history` made a move: a step of `grit.act.moves.MoveSteps`'. */
   private def moved(history: History): Boolean = history.steps.exists(_.name.startsWith("move:"))
 
+  /** Whether `history` kept: it holds [[Noting]]'s keep, by the name it was recorded under,
+    * which a step renamed since must still replay.
+    */
+  private def kept(history: History): Boolean = history.steps.exists(_.name == "move:note")
+
   /** Each history `pick` takes that does not replay under `jobs`, and why. */
   private def failing(pick: History => Boolean, jobs: grit.core.job.Jobs): Vector[String] =
     histories.flatMap { case (path, parsed) =>
@@ -56,7 +61,8 @@ object JobReplayTests extends TestSuite {
         "run-call-refused",
         "run-capped",
         "run-redeployed-before-moves",
-        "run-moved-then-redeployed"
+        "run-moved-then-redeployed",
+        "run-kept"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
     }
@@ -67,8 +73,12 @@ object JobReplayTests extends TestSuite {
       failing(h => !moved(h), jobs(2)) ==> Vector()
     }
 
-    test("every run history that made moves replays under today's body, at its own version") {
-      failing(moved, jobsOf(probing(1))) ==> Vector()
+    test("every run history that asked or called replays under today's body, at its own version") {
+      failing(h => moved(h) && !kept(h), jobsOf(probing(1))) ==> Vector()
+    }
+
+    test("every run history that kept replays under today's body, its keeping job at its version") {
+      failing(kept, keepingJobs(new Noting(1))) ==> Vector()
     }
 
     test("a run that recorded no move, resumed at another version, recorded superseded") {
