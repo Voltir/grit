@@ -12,7 +12,8 @@ import utest.*
 /** The rules every [[Moves]] keeps, run against [[DurableMoves]] and against the fake jobs'
   * tests use, `grit.core.act.ScriptedMoves`: a move's result as its world gives it; a name made
   * once, by either kind, is `Repeated` after, whatever the move came to; past its kind's limit a
-  * move is `OverLimit`; a refused move is not made and counts against no limit.
+  * move is `OverLimit`; a refused move is not made and counts against no limit; an ask whose
+  * store failed was made, and counts.
   */
 abstract class MovesContract extends TestSuite {
   import MovesContract.*
@@ -78,6 +79,13 @@ abstract class MovesContract extends TestSuite {
           Left(MoveError.OverLimit(MoveKind.Call, 1))
         )
       )
+    }
+
+    test("an ask whose store failed counts against its kind's limit") {
+      val got = within(limits(1, 0), broken = true) { m =>
+        Seen(Vector(asked(m, "a"), asked(m, "b")))
+      }
+      got.moves.map(_.left.map(kind)) ==> Vector(Left("Store"), Left("OverLimit(Ask,1)"))
     }
 
     test("under zero limits no move is made") {
