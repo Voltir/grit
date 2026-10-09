@@ -190,6 +190,43 @@ object ShapingTests extends TestSuite {
         (Some(("{\"count\":3}", 3, Vector(text, right))), Vector(asked, asked :+ text :+ told))
     }
 
+    test("a reply of several calls is read from its first call of the tool") {
+      val answer: Message.Assistant = Message.Assistant(
+        Vector(
+          AssistantBlock.ToolCall(ToolCallId("a"), "other", ujson.Obj("count" -> 1)),
+          AssistantBlock.ToolCall(ToolCallId("b"), "reply", ujson.Obj("count" -> 2)),
+          AssistantBlock.ToolCall(ToolCallId("c"), "reply", ujson.Obj("count" -> 3))
+        ),
+        StopReason.ToolUse,
+        usage,
+        "m"
+      )
+      val (got, _) = shape(Vector(Right(answer)), retries = 0)
+      read(got) ==> Some(("{\"count\":2}", 2, Vector(answer)))
+    }
+
+    test("a reply of several calls that does not read is told so in a result for each call") {
+      val wrong: Message.Assistant = Message.Assistant(
+        Vector(
+          AssistantBlock.ToolCall(ToolCallId("a"), "reply", ujson.Obj("count" -> 9)),
+          AssistantBlock.ToolCall(ToolCallId("b"), "other", ujson.Obj())
+        ),
+        StopReason.ToolUse,
+        usage,
+        "m"
+      )
+      val right = called("c", "reply", ujson.Obj("count" -> 2))
+      val (_, requests) = shape(Vector(Right(wrong), Right(right)), retries = 1)
+      val why =
+        "Your reply does not match its schema: count: expected at most 5, got 9. " +
+          "Call `reply` again."
+      requests.map(_.messages) ==> Vector(
+        asked,
+        asked :+ wrong :+ Message.ToolResult(ToolCallId("a"), why, isError = true) :+
+          Message.ToolResult(ToolCallId("b"), why, isError = true)
+      )
+    }
+
     test("a call named with harmony's tokens is the tool's under HarmonyCut") {
       val answer = called("a", "reply<|channel|>commentary", ujson.Obj("count" -> 4))
       val (got, _) = shape(Vector(Right(answer)), retries = 0, NameRepair.HarmonyCut)

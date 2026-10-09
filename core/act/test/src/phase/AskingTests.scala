@@ -115,33 +115,27 @@ object AskingTests extends TestSuite {
         Left(StoreError.DatabaseError("x"))
     }
 
-    test("an ask's cost is recorded once, as its reply's beside the estimate; again, DuplicateId") {
-      val ledger = new InMemoryUsageLedger
-      given Tx = TestTx.fake
-      val reply = answer("hi")
-      val first = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
-      val second = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
-      (first, second, ledger.of(turn.workflowId)) ==>
-        (
-          Right(()),
-          Left(StoreError.DuplicateId(EntryId("e"))),
-          Right(Vector(UsageLedger.Row(EntryId("e"), "m", reply.usage, Tokens(7))))
-        )
-    }
-
     test(
-      "a call's cost is recorded once, as its model's and usage beside the estimate; again, DuplicateId"
+      "a cost is recorded once, an ask's as its reply's and a call's as its model's and usage, each beside its estimate; again, DuplicateId"
     ) {
       val ledger = new InMemoryUsageLedger
       given Tx = TestTx.fake
+      val reply = answer("hi")
       val usage = Usage(Tokens(30), Tokens(4), Tokens(10), Some(BigDecimal("0.002")))
-      val first = Asking.cost(ledger, EntryId("e"), turn, "judge", usage, Tokens(28))
-      val second = Asking.cost(ledger, EntryId("e"), turn, "judge", usage, Tokens(28))
-      (first, second, ledger.of(turn.workflowId)) ==>
+      val first = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
+      val second = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
+      val call = Asking.cost(ledger, EntryId("f"), turn, "judge", usage, Tokens(28))
+      (first, second, call, ledger.of(turn.workflowId)) ==>
         (
           Right(()),
           Left(StoreError.DuplicateId(EntryId("e"))),
-          Right(Vector(UsageLedger.Row(EntryId("e"), "judge", usage, Tokens(28))))
+          Right(()),
+          Right(
+            Vector(
+              UsageLedger.Row(EntryId("e"), "m", reply.usage, Tokens(7)),
+              UsageLedger.Row(EntryId("f"), "judge", usage, Tokens(28))
+            )
+          )
         )
     }
   }

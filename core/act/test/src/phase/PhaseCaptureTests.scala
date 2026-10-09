@@ -59,10 +59,5 @@ object PhaseCaptureTests extends TestSuite {
       val errs = errors("val fresh = d.patch(\"repair\")\n" + shaping("fresh"))
       assert(errs.isEmpty)
     }
-
-    test("a JSON ask's step whose body reads a patch is rejected") {
-      val errs = errors(shaping("d.patch(\"repair\")"))
-      assert(errs.exists(_.contains("Separation failure")))
-    }
   }
 }

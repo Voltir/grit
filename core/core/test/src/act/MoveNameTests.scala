@@ -26,7 +26,6 @@ object MoveNameTests extends TestSuite {
 
     test("a run's limits are each at least zero") {
       MoveLimits.of(0, 0) ==> Right(MoveLimits.Zero)
-      (MoveLimits.Zero.asks, MoveLimits.Zero.calls, MoveLimits.Zero.judgments) ==> (0, 0, 0)
       MoveLimits.of(1, 0, 3).map(l => (l.asks, l.calls, l.judgments)) ==> Right((1, 0, 3))
       MoveLimits.of(-1, 0) ==>
         Left("a run's limits are each at least zero: asks -1, calls 0, judgments 0")

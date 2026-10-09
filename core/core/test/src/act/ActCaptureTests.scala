@@ -87,7 +87,7 @@ object ActCaptureTests extends TestSuite {
 
   /** 4. A job holding a provider it was built with. */
   private val jobHoldsProvider =
-    """final class Calls(provider: Provider^) extends Counted {
+    """final class Calls(provider: Provider) extends Counted {
       |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = provider; "called" }
       |}
       |""".stripMargin
@@ -121,7 +121,7 @@ object ActCaptureTests extends TestSuite {
     * calls one.
     */
   private val judgmentReaderClassifies =
-    """final class Maps(classifier: Classifier^) {
+    """final class Maps(classifier: Classifier) {
       |  import Text.given
       |  def asked: Ask[String, Double] =
       |    Ask.yesNo[String]("Is `text` urgent?", None, None).map { p =>
@@ -133,7 +133,7 @@ object ActCaptureTests extends TestSuite {
 
   /** 8. A job holding a classifier it was built with. */
   private val jobHoldsClassifier =
-    """final class Judges(classifier: Classifier^) extends Counted {
+    """final class Judges(classifier: Classifier) extends Counted {
       |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = classifier; "judged" }
       |}
       |""".stripMargin

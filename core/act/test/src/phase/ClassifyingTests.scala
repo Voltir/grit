@@ -2,16 +2,8 @@ package grit.act.phase
 
 import java.time.Instant
 
-import grit.core.classify.{
-  Answer,
-  Answers,
-  Ask,
-  Classifier,
-  ClassifierError,
-  Question,
-  Request,
-  StateJson
-}
+import grit.core.act.MovesFixtures.Judging
+import grit.core.classify.{Answer, Answers, Ask, ClassifierError, Request, StateJson}
 import grit.core.clock.SetClock
 import grit.core.message.{Tokens, Usage}
 
@@ -31,29 +23,11 @@ object ClassifyingTests extends TestSuite {
 
   private val down = Left(ClassifierError.Unavailable("upstream down"))
 
-  /** A classifier that answers each call with the next of `script`, the last again after. */
-  private final class Scripted(script: Vector[Either[ClassifierError, Answers]])
-      extends Classifier {
-    @caps.unsafe.untrackedCaptures
-    var calls = 0
-    protected def answer(
-        state: ujson.Value,
-        questions: Vector[Question]
-    ): Either[ClassifierError, Answers] = {
-      val i = calls
-      calls += 1
-      script
-        .lift(i)
-        .orElse(script.lastOption)
-        .getOrElse(Left(ClassifierError.Unavailable("none")))
-    }
-  }
-
   val tests = Tests {
     test(
       "an unavailable classifier is asked again after 2 s and 6 s, then fails naming its tries"
     ) {
-      val classifier = new Scripted(Vector(down))
+      val classifier = new Judging(Vector(down))
       val clock = new SetClock(start)
       val got = Classifying.answers(classifier, request, clock)
       (got, classifier.calls, clock.at) ==>
@@ -65,21 +39,21 @@ object ClassifyingTests extends TestSuite {
     }
 
     test("a classifier back on its second try answers, after the clock slept 2 s") {
-      val classifier = new Scripted(Vector(down, Right(yes)))
+      val classifier = new Judging(Vector(down, Right(yes)))
       val clock = new SetClock(start)
       val got = Classifying.answers(classifier, request, clock)
       (got, classifier.calls, clock.at) ==> (Right(yes), 2, start.plusSeconds(2))
     }
 
     test("an unreadable reply is not asked again, and names no tries") {
-      val classifier = new Scripted(Vector(Left(ClassifierError.Unreadable("garbled")), Right(yes)))
+      val classifier = new Judging(Vector(Left(ClassifierError.Unreadable("garbled")), Right(yes)))
       val clock = new SetClock(start)
       val got = Classifying.answers(classifier, request, clock)
       (got, classifier.calls, clock.at) ==> (Left(ClassifierError.Unreadable("garbled")), 1, start)
     }
 
     test("unreadable after an unavailable try is the last failure, naming both tries") {
-      val classifier = new Scripted(Vector(down, Left(ClassifierError.Unreadable("garbled"))))
+      val classifier = new Judging(Vector(down, Left(ClassifierError.Unreadable("garbled"))))
       val clock = new SetClock(start)
       val got = Classifying.answers(classifier, request, clock)
       (got, classifier.calls, clock.at) ==>
