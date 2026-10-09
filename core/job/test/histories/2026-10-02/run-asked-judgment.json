@@ -1,0 +1,24 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:probe@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":5,\"report\":{\"kind\":\"kept\"}}"
+    },
+    {
+      "name": "move:j",
+      "output": "{\"judged\":{\"digest\":\"v1:ec78a75054f06e424a1aa44a87256fc4a47ccc73dcf8dddc059f32c0bbd72ddb\",\"answers\":[{\"yes\":0.75},{\"choice\":\"build\",\"weights\":[{\"key\":\"build\",\"p\":1},{\"key\":\"docs\",\"p\":0}]}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":264,\"at\":\"public\"}}"
+    },
+    {
+      "name": "move:j:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"0.75 build\"}"
+    }
+  ]
+}

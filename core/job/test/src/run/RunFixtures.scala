@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar}
 import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
-import grit.core.classify.{Answers, ClassifierError}
+import grit.core.classify.{Answers, Ask, ClassifierError, Criterion, Decision, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -448,9 +448,25 @@ object RunFixtures {
       )
       .fold(e => sys.error(e.message), identity)
 
+  /** Whether a text is urgent, and which team owns it, asked together. */
+  val Weighed: Ask[String, (Double, Decision[String])] = {
+    val owner = Ask
+      .choice[String, String](
+        "Which team owns `text`?",
+        Criterion("build", "build", None),
+        Criterion("docs", "docs", None)
+      )
+      .fold(d => sys.error(d.toString), identity)
+    Ask.yesNo[String]("Is `text` urgent?", None, None).zip(owner)
+  }
+
+  /** How a judgment's state, a text, is sent: `{"text"}`. */
+  given texts: StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+
   /** The moves the recorded run histories make: with the count 1 it asks; with 2 it calls
     * [[Read]] at [[Probe]]; with 3 it calls, then asks about the answer; with 4 it asks for
-    * [[Answered]]. Its reply is each move's result, a line each.
+    * [[Answered]]; with 5 it judges [[Weighed]] of a text. Its reply is each move's result, a
+    * line each.
     */
   val probes: (Count, Moves^) -> String =
     (n, m) => {
@@ -463,6 +479,9 @@ object RunFixtures {
         case 4 =>
           m.ask(move("a"), Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
             .fold(_.toString, _.reply)
+        case 5 =>
+          m.ask(move("j"), Posed.judge("the build is red", Weighed))
+            .fold(_.toString, a => s"${a.reply._1} ${a.reply._2.choice}")
         case _ =>
           val called = call().fold(_.toString, _.toString)
           s"$called\n${ask(called)}"

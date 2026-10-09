@@ -104,6 +104,8 @@ object RecordJobHistories {
       ) { (w, d) =>
         probed(w, d, 4)
       },
+      // A judgment, its classifier answering each question of its kind.
+      record("run-asked-judgment")((w, d) => probed(w, d, 5)),
       record("run-called") { (w, d) => w.serve(); probed(w, d, 2) },
       record("run-called-then-asked") { (w, d) => w.serve(); probed(w, d, 3) },
       record("run-call-unserved")((w, d) => probed(w, d, 2)),

@@ -84,6 +84,7 @@ object JobReplayTests extends TestSuite {
         "run-replied-then-redeployed",
         "run-asked",
         "run-asked-json",
+        "run-asked-judgment",
         "run-called",
         "run-called-then-asked",
         "run-call-unserved",
