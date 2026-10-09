@@ -1,6 +1,7 @@
 package grit.act.moves
 
 import grit.core.act.Called
+import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.id.ToolCallId
@@ -49,6 +50,24 @@ object MovesJournalTests extends TestSuite {
         )
       )
       .fold(e => throw new java.lang.AssertionError(e.message), identity)
+  }
+
+  /** A choice with a described key and a bare one, a yes/no saying what yes means, and a score
+    * of two levels, asked about `state` in one request.
+    */
+  private def judged(state: ujson.Value): Request = {
+    given StateJson[ujson.Value] = StateJson.instance(v => v)
+    val asked = for {
+      choice <- Ask
+        .choice[ujson.Value, Int]("Pick.", Criterion(1, "k1", Some("one")), Criterion(2, "k2", None))
+        .left
+        .map(_.toString)
+      score <- Ask
+        .score[ujson.Value, Int]("How?", Rung(0, "low"), Rung(1, "high"))
+        .left
+        .map(_.toString)
+    } yield choice.zip(Ask.yesNo[ujson.Value]("Yes?", Some("y"), None)).zip(score)
+    asked.map(Request.of(state, _)).fold(e => throw new java.lang.AssertionError(e), identity)
   }
 
   private val probe: Service =
@@ -103,6 +122,28 @@ object MovesJournalTests extends TestSuite {
       pinned[AskMade](
         AskMade.Unshaped("v1:ab", "no call of `reply`", calls),
         s"""{"unshaped":{"digest":"v1:ab","why":"no call of `reply`","calls":$written}}"""
+      )
+    }
+
+    test(
+      "a judgment's move step is written judged with its digest, answers as written, call and label, or unjudged saying why"
+    ) {
+      val call = AskMade.Call(
+        "jev",
+        Usage(Tokens(300), Tokens(0), Tokens.Zero, Some(BigDecimal("0.000013"))),
+        Tokens(250)
+      )
+      val answers =
+        """[{"choice":"k1","weights":[{"key":"k1","p":0.75},{"key":"k2","p":0.25}]},{"yes":0.5}]"""
+      val cost =
+        """"model":"jev","usage":{"input":300,"output":0,"cachedInput":0,"costUsd":"0.000013"},"estimate":250"""
+      pinned[AskMade](
+        AskMade.Judged("v1:ab", answers, Label.at(Level.Internal), call),
+        s"""{"judged":{"digest":"v1:ab","answers":$answers,$cost,"at":"internal"}}"""
+      )
+      pinned[AskMade](
+        AskMade.Unjudged("v1:ab", "chose k9, not an option", call),
+        s"""{"unjudged":{"digest":"v1:ab","why":"chose k9, not an option",$cost}}"""
       )
     }
 
@@ -215,6 +256,20 @@ object MovesJournalTests extends TestSuite {
       )
     }
 
+    test(
+      "a judgment's v1 digest is of its state, its keys in order, and each question's kind, words, and keys, levels or meanings"
+    ) {
+      // judgeo2;1:bd1:11:as1:x3;c5:Pick.2;2:k1s3:one2:k2ny4:Yes?s1:yns4:How?2;3:low4:high
+      // and the same with the state's a before b.
+      (
+        MovesJournal.judgment(judged(ujson.Obj("b" -> 1, "a" -> "x"))),
+        MovesJournal.judgment(judged(ujson.Obj("a" -> "x", "b" -> 1)))
+      ) ==> (
+        "v1:fe412c8e2e684e93d4c008f8ea2a09f1a0cd827174fb7bca724eb8f1c5010991",
+        "v1:d6b59dee7b0a3d0a65058b41912ef4937241a3bfaa7d0c8c00f3777561b78cb6"
+      )
+    }
+
     test("a call's v1 digest is of its place, tool and arguments, their keys sorted") {
       // call13:service:probe10:probe_reado2;1:nd1:14:paths1:a
       val digest = "v1:0319dd8777604bcd34fab2f4971030dd5956196539cf7b3a73f93a6a6c92899c"
@@ -255,8 +310,16 @@ object MovesJournalTests extends TestSuite {
           "Say hello.",
           request.messages,
           schema("a")
+        ),
+        MovesJournal.sameJudgment(
+          MovesJournal.judgment(judged(ujson.Obj("a" -> 1))),
+          judged(ujson.Obj("a" -> 1))
+        ),
+        MovesJournal.sameJudgment(
+          MovesJournal.judgment(judged(ujson.Obj("a" -> 1))),
+          judged(ujson.Obj("a" -> 2))
         )
-      ) ==> (true, false, true, false, true, false)
+      ) ==> (true, false, true, false, true, false, true, false)
     }
   }
 }

@@ -2,6 +2,7 @@ package grit.act.moves
 
 import grit.act.phase.Faults
 import grit.core.act.Called
+import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
@@ -33,6 +34,15 @@ private[moves] enum AskMade {
   /** A JSON ask's reply did not read, `why`, after `calls`, its model calls in order. */
   case Unshaped(digest: String, why: String, calls: Vector[AskMade.Call])
 
+  /** A judgment's answers read: `answers`, the classifier's answers as
+    * [[grit.core.classify.AnswersJson]] writes them, in a JSON array written compactly; what it
+    * was asked held nothing above `at`; `call`, the classifier's call.
+    */
+  case Judged(digest: String, answers: String, at: Label, call: AskMade.Call)
+
+  /** A judgment's answers did not read, `why`, after `call`, the classifier's call. */
+  case Unjudged(digest: String, why: String, call: AskMade.Call)
+
   def digest: String
 
   /** Each model call this record holds, in order: what its record step records. */
@@ -42,6 +52,8 @@ private[moves] enum AskMade {
     case Refused(_, _, _) => Vector()
     case Shaped(_, _, _, calls) => calls
     case Unshaped(_, _, calls) => calls
+    case Judged(_, _, _, call) => Vector(call)
+    case Unjudged(_, _, call) => Vector(call)
   }
 }
 
@@ -52,7 +64,9 @@ private[moves] object AskMade {
     case Store extends Kind("store")
   }
 
-  /** One model call's cost: `usage` of `model`, its request estimated at `estimate`. */
+  /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at
+    * `estimate`.
+    */
   final case class Call(model: String, usage: Usage, estimate: Tokens)
 }
 
@@ -97,6 +111,11 @@ private[moves] object CallMade {
   *     its conforming JSON, or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
   *     it ([[grit.core.store.PayloadJson.writeUsage]]);
+  *   - a judgment's `move:{n}`:
+  *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}`, each `a`
+  *     an answer as [[grit.core.classify.AnswersJson]] writes it, or
+  *     `{"unjudged":{"digest":d,"why":w,"model":m,"usage":u,"estimate":e}}`, or refused as
+  *     above;
   *   - `move:{n}:record`, whatever the ask's shape: `{"recorded":true}` or `{"store":w}`;
   *   - a call's `move:{n}`: `{"sent":{"digest":d}}`, or
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
@@ -111,7 +130,7 @@ private[moves] object CallMade {
   * that this object owns, never an engine codec's, so a change to those between builds cannot
   * make a run in flight diverge. A form is never changed: a new one is added under the next
   * version, and a recorded digest is compared under its own ([[sameAsk]], [[sameJson]],
-  * [[sameCall]]). Each kind's form starts with its own word, so two kinds never share a digest.
+  * [[sameJudgment]], [[sameCall]]). Each kind's form starts with its own word, so two kinds never share a digest.
   */
 object MovesJournal {
 
@@ -130,6 +149,12 @@ object MovesJournal {
     */
   def json(system: String, messages: Vector[Message], schema: JsonSchema): String =
     v1(jsonForm(system, messages, schema))
+
+  /** The digest of a judgment of `request`, v1: its state, each object's keys in the order
+    * written; then each question in order, its kind, instructions, and its keys with their
+    * descriptions, its levels, or what yes and no mean: everything the classifier is sent.
+    */
+  def judgment(request: Request): String = v1(judgmentForm(request))
 
   /** The digest of a call of `tool` at `service`'s place with `arguments`, v1: the place's
     * written form, the tool's name, and the arguments with each object's keys sorted.
@@ -153,6 +178,12 @@ object MovesJournal {
       schema: JsonSchema
   ): Boolean = recorded match {
     case s"v1:$_" => recorded == json(system, messages, schema)
+    case _ => false
+  }
+
+  /** As [[sameAsk]], for a judgment. */
+  def sameJudgment(recorded: String, request: Request): Boolean = recorded match {
+    case s"v1:$_" => recorded == judgment(request)
     case _ => false
   }
 
@@ -184,6 +215,11 @@ object MovesJournal {
     "json" + text(system) + count(messages.size) + messages.map(message).mkString +
       text(ujson.write(schema.json))
 
+  /** v1's canonical form of a judgment, which [[judgment]] hashes. */
+  private[moves] def judgmentForm(request: Request): String =
+    "judge" + written(request.state, sorted = false) + count(request.questions.size) +
+      request.questions.map(question).mkString
+
   /** v1's canonical form of a call, which [[call]] hashes. */
   private[moves] def callForm(service: Service, tool: ToolName, arguments: ujson.Obj): String =
     "call" + text(service.place.written) + text(ToolName.value(tool)) + canonical(arguments)
@@ -210,8 +246,23 @@ object MovesJournal {
       "x" + text(grit.core.id.ToolCallId.value(id)) + text(content) + (if (isError) "1" else "0")
   }
 
+  private def question(q: Question): String = q match {
+    case c: Question.Choice =>
+      "c" + text(c.instructions) + count(c.keys.size) +
+        c.keys.map(k => text(k.name) + optional(k.description)).mkString
+    case Question.YesNo(instructions, yes, no) =>
+      "y" + text(instructions) + optional(yes) + optional(no)
+    case s: Question.Score =>
+      "s" + text(s.instructions) + count(s.levels.size) + s.levels.map(text).mkString
+  }
+
+  private def optional(s: Option[String]): String = s.fold("n")(t => "s" + text(t))
+
   /** `v`, each object's keys sorted. */
-  private def canonical(v: ujson.Value): String = v match {
+  private def canonical(v: ujson.Value): String = written(v, sorted = true)
+
+  /** `v`, each object's keys sorted when `sorted`, else in the order written. */
+  private def written(v: ujson.Value, sorted: Boolean): String = v match {
     case ujson.Null => "n"
     case ujson.True => "t"
     case ujson.False => "f"
@@ -221,10 +272,10 @@ object MovesJournal {
         else java.lang.Double.toString(d)
       "d" + text(written)
     case ujson.Str(s) => "s" + text(s)
-    case ujson.Arr(items) => "a" + count(items.size) + items.map(canonical).mkString
+    case ujson.Arr(items) => "a" + count(items.size) + items.map(written(_, sorted)).mkString
     case ujson.Obj(fields) =>
-      "o" + count(fields.size) +
-        fields.toVector.sortBy(_._1).map((k, value) => text(k) + canonical(value)).mkString
+      val keyed = if (sorted) fields.toVector.sortBy(_._1) else fields.toVector
+      "o" + count(fields.size) + keyed.map((k, value) => text(k) + written(value, sorted)).mkString
   }
 
   given askMade: Journaled[AskMade] = Journaled.json(writeAsk, readAsk)
@@ -351,11 +402,27 @@ object MovesJournal {
           "calls" -> ujson.Arr.from(calls.map(writeCost))
         )
       )
+    case AskMade.Judged(digest, answers, at, call) =>
+      ujson.Obj(
+        "judged" -> ujson.Obj.from(
+          Vector("digest" -> ujson.Str(digest), "answers" -> ujson.read(answers)) ++
+            costFields(call) :+ ("at" -> Label.written(at))
+        )
+      )
+    case AskMade.Unjudged(digest, why, call) =>
+      ujson.Obj(
+        "unjudged" -> ujson.Obj.from(
+          Vector("digest" -> ujson.Str(digest), "why" -> ujson.Str(why)) ++ costFields(call)
+        )
+      )
   }
 
-  private def writeCost(c: AskMade.Call): ujson.Value =
-    ujson.Obj(
-      "model" -> c.model,
+  private def writeCost(c: AskMade.Call): ujson.Value = ujson.Obj.from(costFields(c))
+
+  /** `c`'s fields, in the order every form writes them. */
+  private def costFields(c: AskMade.Call): Vector[(String, ujson.Value)] =
+    Vector(
+      "model" -> ujson.Str(c.model),
       "usage" -> PayloadJson.writeUsage(c.usage),
       "estimate" -> ujson.Num(Tokens.value(c.estimate).toDouble)
     )
@@ -363,6 +430,21 @@ object MovesJournal {
   private def readAsk(v: ujson.Value): Either[String, AskMade] =
     fields(v, "ask").flatMap { o =>
       (o.get("ok"), o.get("refused").flatMap(_.strOpt), o.get("shaped"), o.get("unshaped")) match {
+        case _ if o.contains("judged") =>
+          for {
+            f <- fields(o("judged"), "ask.judged")
+            digest <- str(f, "digest")
+            answers <- f.get("answers").toRight("ask: no answers").map(ujson.write(_))
+            at <- str(f, "at").flatMap(Label.read)
+            call <- cost(f)
+          } yield AskMade.Judged(digest, answers, at, call)
+        case _ if o.contains("unjudged") =>
+          for {
+            f <- fields(o("unjudged"), "ask.unjudged")
+            digest <- str(f, "digest")
+            why <- str(f, "why")
+            call <- cost(f)
+          } yield AskMade.Unjudged(digest, why, call)
         case (_, _, Some(shaped), _) =>
           for {
             f <- fields(shaped, "ask.shaped")
@@ -403,7 +485,7 @@ object MovesJournal {
             why <- str(o, "why")
             digest <- str(o, "digest")
           } yield AskMade.Refused(kind, why, digest)
-        case _ => Left("ask: expected ok, refused, shaped or unshaped")
+        case _ => Left("ask: expected ok, refused, shaped, unshaped, judged or unjudged")
       }
     }
 
@@ -413,15 +495,16 @@ object MovesJournal {
       .flatMap(_.arrOpt)
       .toRight("ask: no calls")
       .flatMap(_.toVector.foldLeft[Either[String, Vector[AskMade.Call]]](Right(Vector())) {
-        (acc, c) =>
-          for {
-            done <- acc
-            o <- fields(c, "ask.calls")
-            model <- str(o, "model")
-            usage <- o.get("usage").toRight("ask: no usage").flatMap(PayloadJson.readUsage)
-            estimate <- whole(o, "estimate")
-          } yield done :+ AskMade.Call(model, usage, Tokens(estimate))
+        (acc, c) => acc.flatMap(done => fields(c, "ask.calls").flatMap(cost).map(done :+ _))
       })
+
+  /** One recorded call, from its fields `model`, `usage` and `estimate` in `o`. */
+  private def cost(o: collection.Map[String, ujson.Value]): Either[String, AskMade.Call] =
+    for {
+      model <- str(o, "model")
+      usage <- o.get("usage").toRight("ask: no usage").flatMap(PayloadJson.readUsage)
+      estimate <- whole(o, "estimate")
+    } yield AskMade.Call(model, usage, Tokens(estimate))
 
   /** A count of tokens under `key`. */
   private def whole(o: collection.Map[String, ujson.Value], key: String): Either[String, Long] =
