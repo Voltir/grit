@@ -77,17 +77,16 @@ object Query {
         .distinct
         .flatMap(simple => Locate.mentioning(root, simple))
         .distinct
-      val inPackage = candidates.map(file => file -> Locate.inPackageOf(root, layout, file))
+      val inPackage = candidates.map(file => file -> Locate.inPackageIn(root, classes, file))
       val tasty = inPackage.flatMap(_._2).distinct
       val unsearched = inPackage.collect {
         case (file, found)
             if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
           file
       }
-      // The candidates' reference index is read here and kept in the root's cache; a broader set is read uncached.
+      // The candidates' reference index is read here and kept in the root's cache.
       val read: Either[String, Vector[Use]] =
         if (failure.nonEmpty || names.isEmpty || tasty.isEmpty) Right(Vector.empty)
-        else if (tasty.size > Loaded.maxIndexed) Read.uses(root, layout, tasty, names)
         else
           Loaded.uses(root, layout, tasty, state).map { case (refs, next, _) =>
             state = next

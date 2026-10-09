@@ -3,7 +3,7 @@ package grit.outline.query
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 
-import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.locate.{Layout, Locate, MillLayout, Root}
 import grit.outline.model.Use
 import grit.outline.read.Read
 
@@ -160,6 +160,33 @@ object UsesTests extends TestSuite {
       assert(changed._3 == 1)
       val unchanged = loadedUses(Vector(copy), changed._2)
       assert(unchanged._3 == 0)
+    }
+
+    test("a uses call looks up the classes dirs fewer times than it has candidate files") {
+      var lookups = 0
+      val counting = new Layout {
+        def classesDirs(root: Root): Vector[os.Path] = {
+          lookups += 1
+          MillLayout.classesDirs(root)
+        }
+        def libraryJars(root: Root): Vector[os.Path] = MillLayout.libraryJars(root)
+        def notCompiled(root: Root): String = MillLayout.notCompiled(root)
+        def isTest(classesDir: os.Path): Boolean = MillLayout.isTest(classesDir)
+      }
+      val candidates = Locate.mentioning(root, "get").size
+      val (answer, _) =
+        Query.uses(
+          root,
+          counting,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Store.get"),
+          None,
+          None,
+          80000
+        )
+      assert(answer.status == Status.Found)
+      assert(lookups < candidates)
     }
   }
 }

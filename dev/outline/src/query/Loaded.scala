@@ -25,8 +25,8 @@ final case class Loaded(
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
 
-  /** The most `.tasty` files one `uses` query indexes: a broader candidate set (a common simple name in most packages) is read uncached, so its references never all sit in memory at once. */
-  val maxIndexed: Int = 500
+  /** The `.tasty` files one inspector run reads for `uses`. One run over a wide candidate set (1573 files for `Limits.of`) exhausted the 512 MB heap in the inspector's tree walk; runs of 200 complete it. */
+  val readBatch: Int = 200
 
   /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
   def defns(
@@ -51,7 +51,7 @@ object Loaded {
     }
   }
 
-  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in one inspector run) only files absent from the index or changed since they were indexed; the new cache; how many files were read. A query over more than `maxIndexed` files is for the caller to read uncached. */
+  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in runs of `readBatch` files) only files absent from the index or changed since they were indexed; the new cache; how many files were read. */
   def uses(
       root: Root,
       layout: Layout,
@@ -60,8 +60,11 @@ object Loaded {
   ): Either[String, (Vector[Use], Loaded, Int)] = {
     val stale = tasty.filter(p => !indexedAt(in, p))
     val read: Either[String, Map[os.Path, Vector[Use]]] =
-      if (stale.isEmpty) Right(Map.empty)
-      else Read.references(root, layout, stale, _ => true)
+      stale
+        .grouped(readBatch)
+        .foldLeft[Either[String, Map[os.Path, Vector[Use]]]](Right(Map.empty)) { (acc, batch) =>
+          acc.flatMap(byFile => Read.references(root, layout, batch, _ => true).map(byFile ++ _))
+        }
     read.map { byFile =>
       val updated = stale.foldLeft(in.refs) { (index, p) =>
         index.updated(p, Indexed(os.mtime(p), byFile.getOrElse(p, Vector.empty)))

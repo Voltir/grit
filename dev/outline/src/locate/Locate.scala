@@ -75,7 +75,11 @@ object Locate {
   }
 
   /** The `.tasty` files directly in the source file's package dir across all classes dirs; empty when the file is missing or has no package line. */
-  def inPackageOf(root: Root, layout: Layout, file: os.RelPath): Vector[os.Path] = {
+  def inPackageOf(root: Root, layout: Layout, file: os.RelPath): Vector[os.Path] =
+    inPackageIn(root, layout.classesDirs(root), file)
+
+  /** `inPackageOf` over the classes dirs the caller already found, so a query finds them once. */
+  def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] = {
     val source = root.dir / file
     val segments =
       if (!os.isFile(source)) Vector.empty
@@ -83,8 +87,7 @@ object Locate {
     if (segments.isEmpty) Vector.empty
     else {
       val rel = os.RelPath(segments.mkString("/"))
-      layout
-        .classesDirs(root)
+      classes
         .map(c => c / rel)
         .filter(os.isDir)
         .flatMap(d => os.list(d).filter(p => os.isFile(p) && p.ext == "tasty"))
