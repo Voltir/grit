@@ -63,6 +63,28 @@ object Server {
     )
   )
 
+  private val areaTool: ujson.Value = ujson.Obj(
+    "name" -> "area",
+    "description" -> "The named areas of this project (declared in its `.outline.conf`) at level 0, one line per package with its symbols, or level 1, each type or member with its doc's first sentence, grouped by file. Start a task here instead of listing directories or reading READMEs.",
+    "inputSchema" -> ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "names" -> ujson.Obj(
+          "type" -> "array",
+          "items" -> ujson.Obj("type" -> "string"),
+          "description" -> "Declared area names."
+        ),
+        "level" -> ujson.Obj(
+          "type" -> "integer",
+          "description" -> "0 for one line per package, 1 (the default) for each definition with its doc's first sentence."
+        ),
+        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
+      ),
+      "required" -> ujson.Arr("names"),
+      "additionalProperties" -> false
+    )
+  )
+
   private val usesTool: ujson.Value = ujson.Obj(
     "name" -> "uses",
     "description" -> "Direct references to the named symbols, resolved by the compiler (a same-named method elsewhere never matches), one line per site with its enclosing definition, grouped by file; `in`/`outside` filter by path prefix. Replaces a repository-wide grep for call sites.",
@@ -146,7 +168,7 @@ object Server {
             case Some("tools/list") =>
               answered(
                 id,
-                Right(ujson.Obj("tools" -> ujson.Arr(showTool, familyTool, usesTool))),
+                Right(ujson.Obj("tools" -> ujson.Arr(showTool, familyTool, usesTool, areaTool))),
                 state,
                 None
               )
@@ -205,6 +227,9 @@ object Server {
             (Right(result), next, Some(name))
           case "uses" =>
             val (result, next) = uses(args, state)
+            (Right(result), next, Some(name))
+          case "area" =>
+            val (result, next) = area(args, state)
             (Right(result), next, Some(name))
           case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
         }
@@ -324,6 +349,47 @@ object Server {
       withBody <- flag(args, "body")
       root <- rootArg(args)
     } yield FamilyArgs(name, member, withBody, root)
+
+  private final case class AreaArgs(
+      names: Vector[String],
+      level: Int,
+      root: Option[Root]
+  )
+
+  private def area(args: ujson.Value, state: State): (ujson.Value, State) =
+    parseArea(args) match {
+      case Left(problem) => (toolResult(s"bad arguments for area: $problem", isError = true), state)
+      case Right(a) =>
+        configured(a.root.getOrElse(state.defaultRoot), state) { config =>
+          val (answer, roots) = Query.area(
+            a.root.getOrElse(state.defaultRoot),
+            MillLayout,
+            config,
+            state.roots,
+            a.names,
+            a.level,
+            cap
+          )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
+    }
+
+  private def parseArea(args: ujson.Value): Either[String, AreaArgs] =
+    for {
+      names <- stringList(args, "names", required = true)
+      level <- levelArg(args)
+      root <- rootArg(args)
+    } yield AreaArgs(names, level, root)
+
+  private def levelArg(args: ujson.Value): Either[String, Int] =
+    field(args, "level") match {
+      case None => Right(1)
+      case Some(v) =>
+        v.numOpt
+          .filter(n => n == n.floor)
+          .map(_.toInt)
+          .toRight("level must be an integer")
+    }
 
   private def stringList(
       args: ujson.Value,

@@ -111,6 +111,103 @@ object Query {
     }
   }
 
+  /** The `area` answer for the named areas `names`, declared in `config`: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `NoMatch` for a name no area declares, `Failed` for a level outside 0..1; cut at `cap` bytes. */
+  def area(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      roots: Roots,
+      names: Vector[String],
+      level: Int,
+      cap: Int
+  ): (Answer, Roots) =
+    if (level < 0 || level > 1)
+      (Answer(s"level must be 0 or 1\n$areaUsage", Status.Failed), roots)
+    else {
+      val declared = config.areas.map(_.name)
+      names.find(n => !declared.contains(n)) match {
+        case Some(n) =>
+          (Answer(s"no area $n; declared: ${declared.mkString(", ")}", Status.NoMatch), roots)
+        case None if layout.classesDirs(root).isEmpty =>
+          (Answer(layout.notCompiled(root), Status.Failed), roots)
+        case None =>
+          val selected = names.distinct.flatMap(n => config.areas.find(_.name == n))
+          // The cache read in this query, threaded through a scoped local, as `showIn` does.
+          var state = Roots.of(roots, root)
+          val listed = mutable.ListBuffer.empty[Render.Listed]
+          val notes = mutable.ListBuffer.empty[String]
+          var failure: Option[String] = None
+
+          selected.foreach { a =>
+            a.symbols.foreach { sym =>
+              if (failure.isEmpty)
+                Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
+                  case Left(message) => failure = Some(message)
+                  case Right(resolved) =>
+                    state = resolved.loaded
+                    notes ++= resolved.notes
+                    listed ++= resolved.defns.map(d => Render.Listed(d, ""))
+                }
+            }
+            a.families.foreach { name =>
+              if (failure.isEmpty)
+                areaFamily(root, layout, config, state, name) match {
+                  case Left(message) => failure = Some(message)
+                  case Right((members, familyNotes, next)) =>
+                    state = next
+                    notes ++= familyNotes
+                    listed ++= members
+                }
+            }
+          }
+
+          val head = (header(root) +: notes.toVector).mkString("\n")
+          val nextRoots = Roots.put(roots, root, state)
+          failure match {
+            case Some(message) => (Answer(s"$head\n$message", Status.Failed), nextRoots)
+            case None =>
+              val entries = listed.toVector.distinctBy(l =>
+                (l.defn.fullName, l.defn.file, l.defn.lines.start, l.prefix)
+              )
+              val status = if (entries.isEmpty) Status.NoMatch else Status.Found
+              (Answer(Render.area(entries, level, head, cap), status), nextRoots)
+          }
+      }
+    }
+
+  private val areaUsage = "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
+
+  /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */
+  private def areaFamily(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      in: Loaded,
+      name: String
+  ): Either[String, (Vector[Render.Listed], Vector[String], Loaded)] =
+    Resolve.resolve(root, layout, config, Scope.WithTests, name, in).flatMap { resolved =>
+      val exact = resolved.defns.exists(_.fullName == name)
+      val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
+      val files = Locate
+        .mentioning(root, name.split('.').last)
+        .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
+      val inPackage = files.map(file => file -> Locate.inPackageOf(root, layout, file))
+      val tasty = inPackage.flatMap(_._2).distinct
+      val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
+      val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
+      val notes = resolved.notes ++
+        (if (missing.isEmpty) Vector.empty
+         else Vector(s"-- not loaded: ${missing.mkString(", ")}")) ++
+        notSearched(unsearched)
+      familyOf(defns, traitName, None, false).map { f =>
+        val members =
+          Vector(Render.Listed(f.trait0, "")) ++
+            f.impls.map(d => Render.Listed(d, "impl ")) ++
+            f.contracts.map { case (c, _) => Render.Listed(c, "contract ") }
+        (members, notes, next)
+      }
+    }
+
   /** The `family` answer for `name` (a trait, or an abstract class), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. `member` narrows the trait's and each implementation's text to that member, with its body under `withBody`. Every answer starts with `root`'s `## root` line. */
   def family(
       root: Root,

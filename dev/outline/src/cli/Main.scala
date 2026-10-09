@@ -14,6 +14,9 @@ object Main {
   private val usesUsage =
     "usage: uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]"
 
+  private val areaUsage =
+    "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
+
   private val familyUsage =
     "usage: family Trait [--member m] [--body] [--cap BYTES] [--root DIR]"
 
@@ -132,6 +135,8 @@ object Main {
         family(name, rest, cwd, leadingRoot)
       case "uses" :: syms :: rest if !syms.startsWith("--") =>
         uses(syms, rest, cwd, leadingRoot)
+      case "area" :: names :: rest if !names.startsWith("--") =>
+        area(names, rest, cwd, leadingRoot)
       case _ => (2, usage)
     }
 
@@ -211,6 +216,59 @@ object Main {
                     syms.split(',').toVector.filter(_.nonEmpty),
                     o.in,
                     o.outside,
+                    o.cap
+                  )
+                (exitCode(answer.status), answer.text)
+            }
+        }
+    }
+
+  private final case class AreaOptions(
+      level: Int,
+      cap: Int,
+      root: Option[String]
+  )
+
+  private def parseArea(rest: List[String], o: AreaOptions): Either[String, AreaOptions] =
+    rest match {
+      case Nil => Right(o)
+      case "--level" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseArea(tail, o.copy(level = n))
+          case None => Left(s"--level takes 0 or 1, not $value")
+        }
+      case "--cap" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseArea(tail, o.copy(cap = n))
+          case None => Left(s"--cap takes a number of bytes, not $value")
+        }
+      case "--root" :: value :: tail => parseArea(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
+  private def area(
+      names: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseArea(rest, AreaOptions(1, 80000, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n$areaUsage")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$areaUsage")
+          case Some(d) =>
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) =
+                  Query.area(
+                    Root(d),
+                    MillLayout,
+                    config,
+                    Roots.empty(6000),
+                    names.split(',').toVector.filter(_.nonEmpty),
+                    o.level,
                     o.cap
                   )
                 (exitCode(answer.status), answer.text)

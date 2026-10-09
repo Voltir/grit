@@ -59,7 +59,7 @@ object ResolveTests extends TestSuite {
     }
 
     test("a hidden source is found by its full name only, never by a short name") {
-      val hidden = Config(Vector("dev/outline/fixture"))
+      val hidden = Config(Vector("dev/outline/fixture"), Vector.empty)
       assert(resolve("A.keep", hidden).defns.forall(d => !d.file.startsWith("dev/outline/fixture")))
       assert(
         resolve("grit.outline.fixture.A.keep", hidden).defns.map(_.fullName) == Vector(
@@ -76,7 +76,7 @@ object ResolveTests extends TestSuite {
       assert(Config.read(Root(bad)).left.toOption.exists(_.contains("line 3")))
       val good = os.temp.dir()
       os.write(good / ".outline.conf", "hide a/b\n# a comment\n")
-      assert(Config.read(Root(good)) == Right(Config(Vector("a/b"))))
+      assert(Config.read(Root(good)) == Right(Config(Vector("a/b"), Vector.empty)))
     }
   }
 }

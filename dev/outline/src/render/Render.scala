@@ -192,6 +192,58 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
+  /** A definition of an area, with the role its family gives it: `prefix` is "" for a symbol or a trait, "impl " for an implementation, "contract " for a contract. */
+  final case class Listed(defn: Defn, prefix: String)
+
+  /** The `area` answer under `header`: at level 0 one line per package, `<package>  <short names>`; at level 1 each definition as `<lines> <prefix><kind> <owner>`, then ` — ` and its doc's first sentence when it has one, grouped by file; cut at `cap` bytes. */
+  def area(listed: Vector[Listed], level: Int, header: String, cap: Int): String = {
+    val sorted = listed.sortBy(l => (l.defn.file, l.defn.lines.start))
+
+    def entryLine(l: Listed): String = {
+      val head =
+        s"${l.defn.lines.start}-${l.defn.lines.end} ${l.prefix}${kindWord(l.defn.kind)} ${ownerRelative(l.defn)}"
+      firstSentence(l.defn.doc).fold(head)(s => s"$head — $s")
+    }
+
+    val chunks: Vector[Vector[String]] =
+      if (level == 0)
+        sorted
+          .groupBy(l => pkgOf(l.defn.fullName))
+          .toVector
+          .sortBy(_._1)
+          .map { case (pkg, ls) => Vector(s"$pkg  ${ls.map(_.defn.name).distinct.mkString(", ")}") }
+      else
+        sorted.map(_.defn.file).distinct.map { file =>
+          val here = sorted.filter(_.defn.file == file)
+          val pkg = here.map(l => pkgOf(l.defn.fullName)).distinct.mkString(", ")
+          s"== $file  $pkg" +: here.map(entryLine)
+        }
+
+    val total = if (level == 0) chunks.size else listed.size
+    val (kept, truncated) = fit(chunks, total, cap)
+    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
+  /** The doc's first sentence: its text without the comment delimiters, whitespace collapsed, cut after the first `. ` and at 160 characters; none when the doc has no text. */
+  private def firstSentence(doc: Option[String]): Option[String] =
+    doc
+      .map { d =>
+        val text = collapse(
+          d.replace("/**", " ")
+            .replace("*/", " ")
+            .linesIterator
+            .map(_.trim.stripPrefix("*"))
+            .mkString(" ")
+        )
+        val sentence = text.indexOf(". ") match {
+          case -1 => text
+          case i => text.take(i + 1)
+        }
+        sentence.take(160)
+      }
+      .filter(_.nonEmpty)
+
   private def fit(
       chunks: Vector[Vector[String]],
       total: Int,
