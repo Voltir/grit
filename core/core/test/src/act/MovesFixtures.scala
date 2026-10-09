@@ -1,9 +1,10 @@
 package grit.core.act
 
 import grit.core.durable.InMemoryDurable
+import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator, ToolUse}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject, Visibility}
 import grit.dbos.sql.TestTx
@@ -13,23 +14,50 @@ import grit.dbos.sql.TestTx
   */
 object MovesFixtures {
 
-  /** Models whose every provider answers `answer`, at a priced cost, counting its calls; with
-    * `crash`, the process dies inside the first.
+  /** Models whose every provider answers `answer`, at a priced cost, counting its calls and
+    * keeping each request in [[requests]]; required to call a tool, it calls the request's first
+    * tool, its arguments the next of `shapes` (the last again once they run out;
+    * `{"answer": answer}` when there are none), the call's id `call-{n}` for the `n`th call.
+    * With `crash`, the process dies inside the first call.
     */
-  final class Answering(answer: String, crash: Boolean = false) extends Models {
+  final class Answering(
+      answer: String,
+      crash: Boolean = false,
+      shapes: Vector[ujson.Value] = Vector()
+  ) extends Models {
     @caps.unsafe.untrackedCaptures
     var calls = 0
     @caps.unsafe.untrackedCaptures
+    var requests: Vector[ModelRequest] = Vector()
+    @caps.unsafe.untrackedCaptures
     private var armed = crash
+    @caps.unsafe.untrackedCaptures
+    private var shaped = 0
     def catalog(): Either[String, Catalog] = Right(TestCatalog)
     def provider(pinned: Pinned): Provider^ = new Provider {
       def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
         calls += 1
+        requests = requests :+ r
         if (armed) { armed = false; throw new InMemoryDurable.Crash }
+        val (blocks, stop) = r.use match {
+          case ToolUse.Required =>
+            val args =
+              shapes.lift(shaped).orElse(shapes.lastOption).getOrElse(ujson.Obj("answer" -> answer))
+            shaped += 1
+            val tool = r.tools.headOption.fold("none")(_.name)
+            (
+              Vector(
+                AssistantBlock.ToolCall(ToolCallId(s"call-$calls"), tool, ujson.read(args.render()))
+              ),
+              StopReason.ToolUse
+            )
+          case ToolUse.Auto | ToolUse.Off =>
+            (Vector(AssistantBlock.Text(answer)), StopReason.EndTurn)
+        }
         Right(
           Message.Assistant(
-            Vector(AssistantBlock.Text(answer)),
-            StopReason.EndTurn,
+            blocks,
+            stop,
             Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
             "test/summary"
           )

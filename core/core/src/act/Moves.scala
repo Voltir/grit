@@ -7,6 +7,7 @@ import grit.core.durable.Journaled
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
+import grit.core.schema.{Conforming, JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
@@ -20,6 +21,30 @@ object Posed {
 
   /** `request`, answered by the model in its own words. */
   final case class Text(request: ModelRequest) extends Posed[Message.Assistant]
+
+  /** `system` then `messages`, answered as JSON that `reply`'s schema accepts and `reply`
+    * reads. The model is offered one tool, [[ReplyTool]], whose parameters are the schema, and
+    * must call it; the call's arguments are the reply. A reply that does not read (no such
+    * call, a refusal by the schema, or by `reply`) is shown to the model with why and asked
+    * again, up to [[Json.Repairs]] times. Every call is recorded, and all are admitted once,
+    * before the first. A message holding a tool call may be refused by the provider, since no
+    * other tool is offered.
+    */
+  final case class Json[T](system: String, messages: Vector[Message], reply: Typed[T])
+      extends Posed[T]
+
+  object Json {
+
+    /** 1: how many times a reply that does not read is asked again, so up to two model calls. */
+    val Repairs: Int = 1
+  }
+
+  /** `system` then `messages`, answered as JSON `schema` accepts. */
+  def json(system: String, messages: Vector[Message], schema: JsonSchema): Posed[Conforming] =
+    Json(system, messages, Typed.json(schema))
+
+  /** `reply`: the one tool a [[Json]] ask offers. */
+  val ReplyTool: String = "reply"
 }
 
 /** An ask's reply, and the most what it holds can be: what the ask was made from was read at
@@ -60,13 +85,15 @@ enum Called {
   */
 trait Moves {
 
-  /** One reply to `posed`, from the model its shape names: for [[Posed.Text]], the model the
-    * catalog in force assigns to summaries (`grit.core.model.Policy.summary`), within its output
-    * budget. Each model call's cost is recorded once, under the run's conversation. The request
-    * goes to that model's provider, a third party the deployment trusts with everything sent to
-    * it: nothing checks what goes there. [[MoveError.Capped]] when the allowance does not admit
-    * it, and no model is called; [[MoveError.Model]] when no catalog reads or the provider fails
-    * after its retries.
+  /** One reply to `posed`, from the model its shape names: for [[Posed.Text]] and
+    * [[Posed.Json]], the model the catalog in force assigns to summaries
+    * (`grit.core.model.Policy.summary`), within its output budget. Each model call's cost is
+    * recorded once, under the run's conversation. The request goes to that model's provider, a
+    * third party the deployment trusts with everything sent to it: nothing checks what goes
+    * there. Admitted once, before its first call (a [[Posed.Json]] repair is not admitted
+    * again). [[MoveError.Capped]] when the allowance does not admit it, and no model is called;
+    * [[MoveError.Model]] when no catalog reads, the provider fails after its retries, or the
+    * reply does not read ([[Posed.Json]]: after its repairs).
     */
   def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]]
 

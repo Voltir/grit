@@ -43,6 +43,7 @@ import grit.core.job.{Declared, JobRun, Jobs, KeepingJob, Owned, PlainJob, Sched
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
+import grit.core.schema.{JsonSchema, Typed}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
   Askers,
@@ -162,7 +163,8 @@ object RunFixtures {
     * transactions, like every read, are opened at `floor`, with [[Probe]] trusted with `trust`. With `crashRecord`, the process dies once inside the
     * first ask's record; with `failRecord`, every record fails; with `crashServing`, the process
     * dies once inside the first call's step, after it read whom the call is for; with
-    * `crashModel`, inside the first model call.
+    * `crashModel`, inside the first model call. Required to call a tool, the model calls it with
+    * the next of `shapes` ([[Answering]]).
     */
   final class World(
       cap: Option[String] = None,
@@ -171,7 +173,8 @@ object RunFixtures {
       crashRecord: Boolean = false,
       failRecord: Boolean = false,
       crashServing: Boolean = false,
-      crashModel: Boolean = false
+      crashModel: Boolean = false,
+      shapes: Vector[ujson.Value] = Vector()
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
@@ -197,7 +200,7 @@ object RunFixtures {
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
-    val models: Answering = new Answering(Answer, crashModel)
+    val models: Answering = new Answering(Answer, crashModel, shapes)
 
     private val switches = new Switches(crashRecord, crashServing)
     private val requests = new AnsweringEdges(edges, durable, switches)
@@ -421,9 +424,28 @@ object RunFixtures {
   /** `remind` at `version`, within an ask and a call, its plan [[probes]]. */
   def probing(version: Int): Moving = new Moving(version, limits(1, 1), probes)
 
+  /** `{"answer": string}`, read as the answer. */
+  val Answered: Typed[String] = Typed(
+    schema(ujson.Obj("answer" -> ujson.Obj("type" -> "string"))),
+    c => c.json.objOpt.flatMap(_.get("answer")).flatMap(_.strOpt).toRight("no answer")
+  )
+
+  /** A schema of `properties`, each required. */
+  def schema(properties: ujson.Obj): JsonSchema =
+    JsonSchema
+      .read(
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> properties,
+          "required" -> ujson.Arr.from(properties.value.keys.map(ujson.Str(_))),
+          "additionalProperties" -> false
+        )
+      )
+      .fold(e => sys.error(e.message), identity)
+
   /** The moves the recorded run histories make: with the count 1 it asks; with 2 it calls
-    * [[Read]] at [[Probe]]; with 3 it calls, then asks about the answer. Its reply is each
-    * move's result, a line each.
+    * [[Read]] at [[Probe]]; with 3 it calls, then asks about the answer; with 4 it asks for
+    * [[Answered]]. Its reply is each move's result, a line each.
     */
   val probes: (Count, Moves^) -> String =
     (n, m) => {
@@ -433,6 +455,9 @@ object RunFixtures {
       n.n match {
         case 1 => ask("to 1")
         case 2 => call().fold(_.toString, _.toString)
+        case 4 =>
+          m.ask(move("a"), Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
+            .fold(_.toString, _.reply)
         case _ =>
           val called = call().fold(_.toString, _.toString)
           s"$called\n${ask(called)}"

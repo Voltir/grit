@@ -15,7 +15,10 @@ object ScriptedMovesTests extends MovesContract {
       _ => if (broken) Left(MoveError.Store("down")) else Right(Asked(answer, Floor)),
       (service, tool, _) =>
         if (service == Probe && tool == Tool) Right(Called.Done(Read, Floor))
-        else Right(Called.Failed("unadvertised"))
+        else Right(Called.Failed("unadvertised")),
+      (_, _) =>
+        if (broken) Left(MoveError.Store("down"))
+        else Right(Asked(ujson.Obj("answer" -> Answer), Floor))
     )
     use(moves)
   }

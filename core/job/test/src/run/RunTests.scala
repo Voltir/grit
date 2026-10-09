@@ -9,6 +9,7 @@ import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
 import grit.core.identity.Account
 import grit.core.job.Ending
 import grit.core.message.{Message, Tokens, Usage}
+import grit.core.schema.Typed
 import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolName}
 import grit.core.visibility.{Label, Level}
@@ -366,6 +367,160 @@ object RunTests extends TestSuite {
       )
     }
 
+    test(
+      "a JSON ask's reply is read as its type on the first run, and on replay with the model not called again"
+    ) {
+      val w = new World(shapes = Vector(ujson.Obj("count" -> "3")))
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      val first = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+      val read = seen.reply
+      val replayed = new InMemoryDurable()
+        .replay(turn.workflowId, w.durable.history(turn.workflowId))(
+          Run.body(w.env(), jobsOf(counting(seen)))
+        )
+      (first, read, replayed, seen.reply, w.reply(turn), w.models.calls) ==> (
+        s"replied: reply:${turn.conversationId}:0",
+        Some("6"),
+        Right(s"replied: reply:${turn.conversationId}:0"),
+        Some("6"),
+        Some("6"),
+        1
+      )
+    }
+
+    test(
+      "a repaired JSON reply records two ledger rows, the repair's estimated from the request that carried its error, once each across a crash between its model calls and its record"
+    ) {
+      val w = new World(
+        crashRecord = true,
+        shapes = Vector(ujson.Obj("count" -> "many"), ujson.Obj("count" -> 3))
+      )
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      val first =
+        try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      val again = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+      val base = s"move:${WorkflowId.value(turn.workflowId)}:a"
+      (
+        first,
+        again,
+        w.reply(turn),
+        w.models.requests.map(_.messages.lastOption.collect {
+          case Message.ToolResult(_, _, isError) => isError
+        }),
+        w.ledger.rows.map(r => (EntryId.value(r._1), r._5))
+      ) ==> (
+        "crashed",
+        s"replied: reply:${turn.conversationId}:0",
+        Some("6"),
+        Vector(None, Some(true)),
+        Vector(base, s"$base:repair").zip(w.models.requests.map(PerChar.request))
+      )
+      w.durable.recordedSteps(turn.workflowId) ==>
+        Vector(
+          Run.Step.ReadSlot,
+          MoveSteps.ask(move("a")),
+          MoveSteps.record(move("a")),
+          Run.Step.Reply
+        )
+    }
+
+    test("a JSON reply that does not read after its repair is Model, both calls' costs recorded") {
+      val w = new World(shapes = Vector(ujson.Obj("count" -> "many")))
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+      val base = s"move:${WorkflowId.value(turn.workflowId)}:a"
+      (w.reply(turn), w.models.calls, w.ledger.rows.map(r => EntryId.value(r._1))) ==> (
+        Some(
+          "Model(its arguments do not match its schema: count: expected an integer, got \"many\")"
+        ),
+        2,
+        Vector(base, s"$base:repair")
+      )
+    }
+
+    test(
+      "a JSON ask whose schema changed on a rerun is Diverged, its recorded call's cost recorded"
+    ) {
+      val w = new World(crashRecord = true, shapes = Vector(ujson.Obj("count" -> 3)))
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      val first =
+        try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      val bounded = Typed(
+        schema(ujson.Obj("count" -> ujson.Obj("type" -> "integer", "maximum" -> 9))),
+        Counted.read
+      )
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen, bounded))))
+      (first, w.reply(turn), w.models.calls, w.ledger.rows.size) ==>
+        ("crashed", Some("Diverged(a)"), 1, 1)
+    }
+
+    test(
+      "a run that recorded a text ask and its record, resumed posing JSON under its name, replays the record step and is Diverged, recording no second row"
+    ) {
+      val w = new World
+      val turn = w.started(w.declared("standup", 3))
+      val text =
+        new Moving(1, limits(1, 0), (n, m) => said(m.ask(move("a"), Posed.Text(request(n.n)))))
+      val crashed =
+        try
+          w.durable.run(turn.workflowId)(
+            Run.body(w.env(new FakeJot(crashAfter = true)), jobsOf(text))
+          )
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      val recorded = w.durable.recordedSteps(turn.workflowId)
+      val seen = new Seen
+      val resumed = w.durable.replay(turn.workflowId, w.durable.history(turn.workflowId))(
+        Run.body(w.env(), jobsOf(counting(seen)))
+      )
+      (crashed, recorded, resumed, seen.reply, w.models.calls, w.ledger.rows.size) ==> (
+        "crashed",
+        Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), MoveSteps.record(move("a"))),
+        Right(s"replied: reply:${turn.conversationId}:0"),
+        Some("Diverged(a)"),
+        1,
+        1
+      )
+    }
+
+    test(
+      "a run that recorded a repaired JSON ask and its record, resumed posing text under its name, replays the record step and is Diverged, recording no more rows"
+    ) {
+      val w = new World(shapes = Vector(ujson.Obj("count" -> "many"), ujson.Obj("count" -> 3)))
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      val crashed =
+        try
+          w.durable.run(turn.workflowId)(
+            Run.body(w.env(new FakeJot(crashAfter = true)), jobsOf(counting(seen)))
+          )
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      val text = new Moving(
+        1,
+        limits(1, 0),
+        (n, m) => {
+          val r = said(m.ask(move("a"), Posed.Text(request(n.n))))
+          seen.reply = Some(r)
+          r
+        }
+      )
+      val resumed = w.durable.replay(turn.workflowId, w.durable.history(turn.workflowId))(
+        Run.body(w.env(), jobsOf(text))
+      )
+      (crashed, resumed, seen.reply, w.models.calls, w.ledger.rows.size) ==> (
+        "crashed",
+        Right(s"replied: reply:${turn.conversationId}:0"),
+        Some("Diverged(a)"),
+        2,
+        2
+      )
+    }
+
     test("a run superseded before its job runs makes no move") {
       val w = new World
       w.serve()
@@ -389,5 +544,37 @@ object RunTests extends TestSuite {
         Vector(Run.Step.ReadSlot, Run.Step.Reply)
       )
     }
+  }
+
+  /** `{"count": integer}`, read as the count. */
+  private object Counted {
+    val read: grit.core.schema.Conforming -> Either[String, Int] =
+      c => c.json.objOpt.flatMap(_.get("count")).flatMap(_.numOpt).map(_.toInt).toRight("no count")
+    val typed: Typed[Int] =
+      Typed(schema(ujson.Obj("count" -> ujson.Obj("type" -> "integer"))), read)
+  }
+
+  /** `remind` at version 1, within an ask: it asks `a` for `reply` as JSON and replies twice
+    * the count, or the error, telling `seen` what it replied.
+    */
+  private def counting(seen: Seen, reply: Typed[Int] = Counted.typed): Moving =
+    new Moving(
+      1,
+      limits(1, 0),
+      (n, m) => {
+        val r = m
+          .ask(move("a"), Posed.Json("Count.", Vector(Message.User(s"to ${n.n}")), reply))
+          .fold(_.toString, a => (a.reply * 2).toString)
+        seen.reply = Some(r)
+        r
+      }
+    )
+
+  /** What a job replied, each time it ran. */
+  private final class Seen {
+    // caps.unsafe: it holds an immutable value; each is one test's own, written by its job on
+    // the run's one thread and read only after the run has returned.
+    @caps.unsafe.untrackedCaptures
+    var reply: Option[String] = None
   }
 }

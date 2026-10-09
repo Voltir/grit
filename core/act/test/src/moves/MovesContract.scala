@@ -4,6 +4,7 @@ import grit.core.act.{Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, 
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
+import grit.core.schema.JsonSchema
 import grit.core.tool.ToolName
 import grit.core.visibility.{Label, Level}
 
@@ -18,8 +19,8 @@ import utest.*
 abstract class MovesContract extends TestSuite {
   import MovesContract.*
 
-  /** What `use` returns, given moves within `limits` in a world where an ask is answered
-    * [[Answer]] and a call of [[Tool]] at [[Probe]] is done with [[Read]] at [[Floor]]; when
+  /** What `use` returns, given moves within `limits` in a world where a text ask is answered
+    * [[Answer]], a JSON ask `{"answer": Answer}` ([[Shaped]]), and a call of [[Tool]] at [[Probe]] is done with [[Read]] at [[Floor]]; when
     * `broken`, every ask's store fails instead.
     */
   def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean = false)(use: Moves^ -> A): A
@@ -86,6 +87,23 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test(
+      "a JSON ask is answered as its world answers, counts against asks, and shares its names with text asks"
+    ) {
+      val got = within(limits(2, 0)) { m =>
+        Seen(Vector(shaped(m, "a"), asked(m, "a"), asked(m, "b"), shaped(m, "b"), shaped(m, "c")))
+      }
+      got ==> Seen(
+        Vector(
+          Right(Shaped),
+          Left(MoveError.Repeated(name("a"))),
+          Right(Answer),
+          Left(MoveError.Repeated(name("b"))),
+          Left(MoveError.OverLimit(MoveKind.Ask, 2))
+        )
+      )
+    }
+
     test("a text ask counts against asks, whatever the run's judgments") {
       val limited =
         MoveLimits.of(1, 0, 5).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -121,12 +139,33 @@ object MovesContract {
   def asked(m: Moves^, n: String): Either[MoveError, String] =
     m.ask(name(n), Posed.Text(Request)).map(text)
 
+  /** The JSON ask `n` of [[Request]]'s system text and messages, held to [[AnswerSchema]],
+    * through `m`: its conforming JSON's text.
+    */
+  def shaped(m: Moves^, n: String): Either[MoveError, String] =
+    m.ask(name(n), Posed.json(Request.system, Request.messages, AnswerSchema)).map(_.reply.text)
+
   /** The call `n` of [[Tool]] at [[Probe]] through `m`: its result. */
   def called(m: Moves^, n: String): Either[MoveError, String] =
     m.call(name(n), Probe, Tool, Args).map(_.toString)
 
   /** What an ask is answered. */
   val Answer = "hello"
+
+  /** What a JSON ask is answered, as its conforming JSON's text. */
+  val Shaped = """{"answer":"hello"}"""
+
+  /** `{"answer": string}`. */
+  val AnswerSchema: JsonSchema = JsonSchema
+    .read(
+      ujson.Obj(
+        "type" -> "object",
+        "properties" -> ujson.Obj("answer" -> ujson.Obj("type" -> "string")),
+        "required" -> ujson.Arr("answer"),
+        "additionalProperties" -> false
+      )
+    )
+    .fold(e => throw new java.lang.AssertionError(e.message), identity)
 
   /** What a call of [[Tool]] at [[Probe]] is answered. */
   val Read = "read"

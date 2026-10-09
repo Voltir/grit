@@ -1,7 +1,8 @@
 package grit.core.act
 
 /** How many moves of each limited kind one run may make; a move past its kind's count is
-  * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers;
+  * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers (a JSON ask's
+  * repairs within it);
   * `judgments`, asks the deployment's classifier judges; `calls`, calls. Keeps are not limited:
   * they spend nothing.
   */

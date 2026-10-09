@@ -2,9 +2,10 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Awaited, Calling, Hearing, WaitSteps}
+import grit.act.phase.{Asking, Awaited, Calling, Hearing, Shaped, Shaping, WaitSteps}
 import grit.core.act.{
   Acting,
+  Allowance,
   Asked,
   Called,
   Keeping,
@@ -15,23 +16,27 @@ import grit.core.act.{
   Moves,
   Posed
 }
+import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.id.{CallSlot, EntryId, ToolCallId, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.NameRepair
+import grit.core.model.{NameRepair, Pinned}
 import grit.core.place.Service
-import grit.core.provider.ModelRequest
-import grit.core.store.{StoreError, Tx}
+import grit.core.provider.{ModelRequest, Models}
+import grit.core.schema.Typed
+import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
+import grit.core.visibility.{Label, Subject}
 
 /** A planner's moves as durable steps ([[MoveSteps]]), over [[Asking]] and [[Calling]]. */
 object DurableMoves {
 
   /** What `body` returns, given the moves of `acting` within `limits`, made as the steps
     * [[MoveSteps]] names, after which none of them may be made. A run's call `i` (from 0) is its
-    * turn's call slot `(0, i)`. An ask's cost is recorded under `move:{workflow}:{name}`.
+    * turn's call slot `(0, i)`. An ask's cost is recorded under `move:{workflow}:{name}`, and a JSON ask's repair's under
+    * `move:{workflow}:{name}:repair`.
     */
   def plain[A <: caps.Pure](acting: Acting, limits: MoveLimits, env: MovesEnv^)(
       body: Moves^ => A
@@ -124,6 +129,7 @@ object DurableMoves {
 
     def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
       case Posed.Text(request) => text(name, request)
+      case Posed.Json(system, messages, reply) => json(name, system, messages, reply)
     }
 
     /** The text ask `name` of `request`: its step, recorded form and digest are the ones every
@@ -137,52 +143,103 @@ object DurableMoves {
         import MovesJournal.given
         val digest = MovesJournal.ask(request)
         val (records, models, db, clock) = (env.records, env.models, env.db, env.clock)
-        val (allowance, subject) = (acting.allowance, this.subject)
+        val allowance = acting.allowance
+        val subject = this.subject
         val made = d.step(MoveSteps.ask(name)) { () =>
-          db.read(subject)((tx: Tx^) ?=>
-            Asking.admits(allowance, records.spending, clock.now()).map(_ -> Tx.floor(tx))
-          ) match {
-            case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), digest)
-            case Right((false, _)) => AskMade.Refused(AskMade.Kind.Capped, Capped, digest)
-            case Right((true, at)) =>
-              models.catalog() match {
-                case Left(why) =>
-                  AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest)
-                case Right(catalog) =>
-                  val provider = models.provider(catalog.pin.summary)
-                  Asking.reply(provider, request, Hearing.silent(), clock) match {
-                    case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, digest)
-                    case Right(message) =>
-                      AskMade.Made(digest, message, at, records.estimator.request(request))
-                  }
+          admitted(records, models, db, clock, allowance, subject, digest) match {
+            case Left(refusal) => refusal
+            case Right((at, pin)) =>
+              Asking.reply(models.provider(pin), request, Hearing.silent(), clock) match {
+                case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, digest)
+                case Right(message) =>
+                  AskMade.Made(digest, message, at, records.estimator.request(request))
               }
           }
         }
-        val same = MovesJournal.sameAsk(made.digest, request)
-        made match {
-          case AskMade.Refused(_, _, _) if !same => Left(diverge(name))
-          case AskMade.Shaped(_, _, _, _) | AskMade.Unshaped(_, _, _) => Left(diverge(name))
-          case AskMade.Refused(AskMade.Kind.Capped, _, _) => Left(MoveError.Capped)
-          case AskMade.Refused(AskMade.Kind.Model, why, _) => Left(MoveError.Model(why))
-          case AskMade.Refused(AskMade.Kind.Store, why, _) => Left(MoveError.Store(why))
-          case AskMade.Made(_, message, at, estimate) =>
-            // Recorded even when the input diverged: the model was called, and its cost spent,
-            // estimated from the request it was sent, the recorded one.
-            val entry =
-              EntryId(s"move:${WorkflowId.value(turn.workflowId)}:${MoveName.value(name)}")
-            val ledger = records.ledger
-            val turnRef = turn
-            val kept = d.transact(MoveSteps.record(name), subject)(
-              Asking.spent(ledger, entry, turnRef, message, estimate) match {
-                // Its id is this move's alone: a duplicate is its own earlier record.
-                case Left(StoreError.DuplicateId(_)) => Right(())
-                case other => other.left.map(describe)
-              }
-            )
-            if (!same) Left(diverge(name))
-            else kept.left.map(MoveError.Store(_)).map(_ => Asked(message, at))
+        settled(name, made, MovesJournal.sameAsk(made.digest, request)) {
+          case AskMade.Made(_, message, at, _) => Some(Right(Asked(message, at)))
+          case _ => None
         }
       }
+
+    /** The JSON ask `name` of `system` then `messages`, its reply read by `reply`. */
+    private def json[T](
+        name: MoveName,
+        system: String,
+        messages: Vector[Message],
+        reply: Typed[T]
+    ): Either[MoveError, Asked[T]] =
+      refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
+        import MovesJournal.given
+        val digest = MovesJournal.json(system, messages, reply.schema)
+        val (records, models, db, clock) = (env.records, env.models, env.db, env.clock)
+        val allowance = acting.allowance
+        val subject = this.subject
+        val made = d.step(MoveSteps.ask(name)) { () =>
+          admitted(records, models, db, clock, allowance, subject, digest) match {
+            case Left(refusal) => refusal
+            case Right((at, pin)) =>
+              val settings = pin.settings
+              val request =
+                Shaping.request(system, messages, Posed.ReplyTool, reply.schema, settings.strict)
+              def costs(calls: Vector[Shaped.Call]): Vector[AskMade.Call] =
+                calls.map(c =>
+                  AskMade.Call(c.answer.model, c.answer.usage, records.estimator.request(c.sent))
+                )
+              Shaping.shaped(
+                models.provider(pin),
+                request,
+                Posed.ReplyTool,
+                reply,
+                settings.names,
+                settings.repairs,
+                Posed.Json.Repairs,
+                clock
+              ) match {
+                case Shaped.Read(conforming, _, calls) =>
+                  AskMade.Shaped(digest, conforming.text, at, costs(calls))
+                case Shaped.Unread(why, calls) => AskMade.Unshaped(digest, why, costs(calls))
+                case Shaped.Failed(why, Vector()) =>
+                  AskMade.Refused(AskMade.Kind.Model, why, digest)
+                case Shaped.Failed(why, calls) => AskMade.Unshaped(digest, why, costs(calls))
+              }
+          }
+        }
+        settled(name, made, MovesJournal.sameJson(made.digest, system, messages, reply.schema)) {
+          case AskMade.Shaped(_, written, at, _) => Some(readBack(reply, written).map(Asked(_, at)))
+          case _ => None
+        }
+      }
+
+    /** What an ask comes to once its step recorded `made`. The costs of the model calls `made`
+      * holds are recorded first, in the ask's record step, whatever shape recorded them: a run
+      * replays its steps by place, so a record step the first run took is taken again. Then it
+      * is [[MoveError.Diverged]] unless `same`; else `made`'s refusal, the record step's
+      * failure, an unread reply's [[MoveError.Model]], or `read` of `made` (`None`: a record
+      * of another shape, which diverges).
+      */
+    private def settled[R](name: MoveName, made: AskMade, same: Boolean)(
+        read: AskMade -> Option[Either[MoveError, Asked[R]]]
+    ): Either[MoveError, Asked[R]] = {
+      import MovesJournal.given
+      val kept: Either[String, Unit] = made.spent match {
+        case Vector() => Right(())
+        case calls =>
+          val base = s"move:${WorkflowId.value(turn.workflowId)}:${MoveName.value(name)}"
+          val (ledger, turnRef) = (env.records.ledger, turn)
+          d.transact(MoveSteps.record(name), subject)(costed(ledger, turnRef, base, calls))
+      }
+      if (!same) Left(diverge(name))
+      else
+        (made, kept) match {
+          case (AskMade.Refused(AskMade.Kind.Capped, _, _), _) => Left(MoveError.Capped)
+          case (AskMade.Refused(AskMade.Kind.Model, why, _), _) => Left(MoveError.Model(why))
+          case (AskMade.Refused(AskMade.Kind.Store, why, _), _) => Left(MoveError.Store(why))
+          case (_, Left(why)) => Left(MoveError.Store(why))
+          case (AskMade.Unshaped(_, why, _), _) => Left(MoveError.Model(why))
+          case (other, Right(())) => read(other).getOrElse(Left(diverge(name)))
+        }
+    }
 
     def call(
         name: MoveName,
@@ -239,6 +296,73 @@ object DurableMoves {
       }
     }
   }
+
+  /** Whether an ask may be made, read in one transaction for `subject`: the label what it is
+    * made from may hold, and the catalog's pin for summaries; or its refusal, under `digest`,
+    * when the store fails, the allowance does not admit it, or no catalog reads.
+    */
+  private def admitted(
+      records: MoveRecords,
+      models: Models^,
+      db: Db^,
+      clock: Clock^,
+      allowance: Allowance,
+      subject: Subject,
+      digest: String
+  ): Either[AskMade, (Label, Pinned)] =
+    db.read(subject)((tx: Tx^) ?=>
+      Asking.admits(allowance, records.spending, clock.now()).map(_ -> Tx.floor(tx))
+    ) match {
+      case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, describe(e), digest))
+      case Right((false, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
+      case Right((true, at)) =>
+        models.catalog() match {
+          case Left(why) =>
+            Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
+          case Right(catalog) => Right((at, catalog.pin.summary))
+        }
+    }
+
+  /** `calls`' costs recorded for `turn`: the first under `base`, the first repair's under
+    * `{base}:repair`, a later one's under `{base}:repair{i}`. Each id is this move's alone, so
+    * one recorded already is its own earlier record.
+    */
+  private def costed(
+      ledger: UsageLedger,
+      turn: TurnRef,
+      base: String,
+      calls: Vector[AskMade.Call]
+  )(using Tx^): Either[String, Unit] =
+    calls.zipWithIndex
+      .foldLeft[Either[StoreError, Unit]](Right(())) { case (done, (c, i)) =>
+        done.flatMap { _ =>
+          val entry = EntryId(i match {
+            case 0 => base
+            case 1 => s"$base:repair"
+            case _ => s"$base:repair$i"
+          })
+          Asking.cost(ledger, entry, turn, c.model, c.usage, c.estimate) match {
+            case Left(StoreError.DuplicateId(_)) => Right(())
+            case other => other
+          }
+        }
+      }
+      .left
+      .map(describe)
+
+  /** `written`, a recorded reply, read by `reply` again: checked by its schema, with no repair
+    * (they were made before it was recorded), and read.
+    */
+  private def readBack[T](reply: Typed[T], written: String): Either[MoveError, T] =
+    scala.util
+      .Try(ujson.read(written))
+      .toEither
+      .left
+      .map(e => s"its recorded reply is not JSON: ${e.getMessage}")
+      .flatMap(v => reply.schema.check(v, Set.empty).left.map(_.message))
+      .flatMap(reply.read)
+      .left
+      .map(MoveError.Model(_))
 
   /** A `move:{n}` call step's body: whom the call is made for, the advert at `service`'s place,
     * its entry for `tool`, `arguments` bound to it, and its request written for the edge
@@ -311,7 +435,7 @@ object DurableMoves {
     }
 
   /** What an outcome is to a planner, its answer holding nothing above `at`. */
-  private def called(o: Outcome, at: grit.core.visibility.Label): Called = o match {
+  private def called(o: Outcome, at: Label): Called = o match {
     case Outcome.Done(text) => Called.Done(text, at)
     case Outcome.Interrupted => Called.Interrupted
     case other => Called.Failed(failed(other))

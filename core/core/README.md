@@ -226,9 +226,10 @@ In dependency order:
   whom its requests record, `ActsFor`, what its asks may spend, `Allowance`, and what becomes
   of a call whose tool asks a person first, `Gates`), pure data; `Moves`, a planner's ask and
   call, each made once under its `MoveName` within its run's `MoveLimits` per `MoveKind`, and
-  `Keeping`, those and a keep over its plugin's own documents; what an ask poses (`Posed`);
+  `Keeping`, those and a keep over its plugin's own documents; what an ask poses (`Posed`: a request answered in words, or
+  JSON held to a schema);
   what they come to (`Asked`, `Called`) or why one was not made (`MoveError`). ← `id`, `place`, `visibility`, `message`,
-  `store`, `document`, `spend`, `durable`, `provider`, `tool`
+  `store`, `document`, `spend`, `durable`, `provider`, `tool`, `schema`
 - **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
   or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
   schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one

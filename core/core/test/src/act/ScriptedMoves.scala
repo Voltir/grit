@@ -5,8 +5,9 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolName
 
-/** [[Moves]] for a job's tests: each text ask answered by `asks`, each call by `calls`, under the
-  * rules every [[Moves]] keeps, which `grit.act.moves.MovesContract` holds it to beside the
+/** [[Moves]] for a job's tests: each text ask answered by `asks`, each JSON ask by `jsons`
+  * (of its system text and messages), the reply then checked by its schema and read, with no
+  * repair, a refusal [[MoveError.Model]]; each call by `calls`; under the rules every [[Moves]] keeps, which `grit.act.moves.MovesContract` holds it to beside the
   * durable moves: a name made once, by either kind, is [[MoveError.Repeated]] after, whatever
   * the move came to; past `limits`, a move is [[MoveError.OverLimit]]; a refused move is not
   * made. It never diverges: it is one run, never rerun. [[made]] is each move made, in order.
@@ -14,7 +15,9 @@ import grit.core.tool.ToolName
 final class ScriptedMoves(
     limits: MoveLimits,
     asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
-    calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called]
+    calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called],
+    jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] = (_, _) =>
+      Left(MoveError.Model("no JSON reply scripted"))
 ) extends Moves {
 
   // Holds immutable values; the fake is one test's, read on its one thread.
@@ -23,6 +26,17 @@ final class ScriptedMoves(
 
   def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
     case Posed.Text(request) => making(name, MoveKind.Ask, limits.asks)(asks(request))
+    case Posed.Json(system, messages, reply) =>
+      making(name, MoveKind.Ask, limits.asks)(jsons(system, messages).flatMap { a =>
+        reply.schema
+          .check(a.reply, Set.empty)
+          .left
+          .map(_.message)
+          .flatMap(reply.read)
+          .left
+          .map(MoveError.Model(_))
+          .map(Asked(_, a.at))
+      })
   }
 
   def call(
