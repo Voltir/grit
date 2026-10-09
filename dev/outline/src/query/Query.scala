@@ -283,7 +283,7 @@ object Query {
       in: Loaded
   ): (Vector[Defn], Loaded, Vector[String]) = {
     val (defns, next, failed) = bisect(root, layout, tasty, in)
-    val remembered = Loaded.remembered(tasty, in)
+    val remembered = Loaded.remembered(tasty, next)
     val named = tasty.filter(p => remembered.contains(p) || failed.exists(_._1 == p))
     val notes =
       if (named.isEmpty) Vector.empty
@@ -292,7 +292,12 @@ object Query {
           val line = captured(complaint)
           if (line.isEmpty) "" else s" ($line)"
         }
-        val files = named.map(relativePath(root, layout, _))
+        val files = named.map { p =>
+          val name = relativePath(root, layout, p)
+          next.unreadable.get(p).fold(name) { message =>
+            s"$name (${message.takeWhile(_ != '\n').take(160)})"
+          }
+        }
         Vector(s"-- not loaded: ${files.mkString(", ")}$cause")
       }
     (defns, next, notes)

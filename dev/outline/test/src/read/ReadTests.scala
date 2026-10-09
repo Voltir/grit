@@ -172,6 +172,27 @@ object ReadTests extends TestSuite {
       assert(out.isEmpty)
       assert(err.isEmpty)
     }
+
+    test("a pattern-bound val reads as its source line, with no body") {
+      val left = only(named(read, "grit.outline.fixture.store.Pairs.left"), "left")
+      val right = only(named(read, "grit.outline.fixture.store.Pairs.right"), "right")
+      assert(left.signature == "  val (left, right) = (1, 2)")
+      assert(right.signature == "  val (left, right) = (1, 2)")
+      assert(left.body.isEmpty)
+      assert(right.body.isEmpty)
+    }
+
+    test("a unit whose traversal throws is named and skipped, and the other units are kept") {
+      val units = Vector(os.Path("/x/a.tasty"), os.Path("/x/b.tasty"), os.Path("/x/c.tasty"))
+      val (kept, unreadable) = Read.traverseUnits[os.Path, String](
+        units,
+        p =>
+          if (p.last == "b.tasty") throw new Exception("boom")
+          else Vector(p.last)
+      )
+      assert(kept == Vector(units(0) -> Vector("a.tasty"), units(2) -> Vector("c.tasty")))
+      assert(unreadable == Vector(units(1) -> "boom"))
+    }
   }
 
   /** A checkout holding q.A and q.B, each compiled into its own classes directory; B's is returned. */

@@ -7,8 +7,12 @@ import grit.outline.read.Read
 /** One `.tasty` file's definitions as of its mtime. */
 final case class Cached(mtime: Long, defns: Vector[Defn])
 
-/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. */
-final case class Loaded(byTasty: Map[os.Path, Cached], failed: Map[os.Path, Long] = Map.empty)
+/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. `unreadable` holds the message of each file in `failed` whose traversal threw. */
+final case class Loaded(
+    byTasty: Map[os.Path, Cached],
+    failed: Map[os.Path, Long] = Map.empty,
+    unreadable: Map[os.Path, String] = Map.empty
+)
 
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
@@ -21,14 +25,18 @@ object Loaded {
       in: Loaded
   ): Either[String, (Vector[Defn], Loaded, Int)] = {
     val stale = tasty.filter(p => !(cachedAt(in, p) || failedAt(in, p)))
-    val read: Either[String, Map[os.Path, Vector[Defn]]] =
-      if (stale.isEmpty) Right(Map.empty) else Read.defnsByTasty(root, layout, stale)
-    read.map { fresh =>
+    val read: Either[String, Read.Batch] =
+      if (stale.isEmpty) Right(Read.Batch(Map.empty, Vector.empty))
+      else Read.defnsByTasty(root, layout, stale)
+    read.map { batch =>
       val updated = stale.foldLeft(in.byTasty) { (cache, p) =>
-        cache.updated(p, Cached(os.mtime(p), fresh.getOrElse(p, Vector.empty)))
+        cache.updated(p, Cached(os.mtime(p), batch.byTasty.getOrElse(p, Vector.empty)))
       }
       val all = tasty.flatMap(p => updated.get(p).map(_.defns).getOrElse(Vector.empty))
-      (all, Loaded(updated, in.failed -- stale), stale.size)
+      val failedNow = batch.unreadable.map { case (p, _) => p -> os.mtime(p) }.toMap
+      val failed = (in.failed -- stale) ++ failedNow
+      val unreadable = (in.unreadable -- stale) ++ batch.unreadable.toMap
+      (all, Loaded(updated, failed, unreadable), stale.size)
     }
   }
 

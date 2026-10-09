@@ -52,3 +52,8 @@ object Caller {
 
 /** A second Tx, so a short name is ambiguous. */
 trait Tx
+
+/** Vals bound by one pattern. */
+object Pairs {
+  val (left, right) = (1, 2)
+}

@@ -19,6 +19,30 @@ object Read {
   def classpath(root: Root, layout: Layout): Vector[os.Path] =
     layout.classesDirs(root) ++ layout.libraryJars(root)
 
+  /** The definitions read from a set of `.tasty` files: each file's, keyed by path, and each file the inspector could not read, with the exception's message. */
+  final case class Batch(byTasty: Map[os.Path, Vector[Defn]], unreadable: Vector[(os.Path, String)])
+
+  /** `s` from `from` to `to`, each end clamped into `0..s.length`; empty when `to <= from`. */
+  private def slice(s: String, from: Int, to: Int): String = {
+    val lo = from.max(0).min(s.length)
+    val hi = to.max(0).min(s.length)
+    if (hi <= lo) "" else s.substring(lo, hi)
+  }
+
+  /** Each unit's results in input order, and each unit whose `each` threw, with its exception's message. */
+  private[read] def traverseUnits[U, A](
+      units: Vector[U],
+      each: U => Vector[A]
+  ): (Vector[(U, Vector[A])], Vector[(U, String)]) = {
+    val kept = Vector.newBuilder[(U, Vector[A])]
+    val failed = Vector.newBuilder[(U, String)]
+    units.foreach { u =>
+      try kept.addOne(u -> each(u))
+      catch { case NonFatal(e) => failed.addOne(u -> Option(e.getMessage).getOrElse(e.toString)) }
+    }
+    (kept.result(), failed.result())
+  }
+
   /** The top-level definitions in `tasty`, each with its public and private members nested under it, in input order.
     *
     * Only definitions whose source lies under `root.dir` are kept; each `file` is relative to it.
@@ -26,20 +50,25 @@ object Read {
     * message when it throws.
     */
   def defns(root: Root, layout: Layout, tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
-    defnsByTasty(root, layout, tasty).map(byFile =>
-      tasty.flatMap(p => byFile.getOrElse(p, Vector.empty))
+    defnsByTasty(root, layout, tasty).map(batch =>
+      tasty.flatMap(p => batch.byTasty.getOrElse(p, Vector.empty))
     )
 
-  /** The same definitions as `defns`, keyed by the `.tasty` file each came from; every input path is a key, empty when it holds none. */
+  /** The same definitions as `defns`, keyed by the `.tasty` file each came from; every input path is a key, empty when it holds none.
+    *
+    * A file whose traversal throws is listed in `unreadable` and contributes no definitions. `Left` is only for an inspector run that
+    * fails as a whole, or a file outside `root`'s checkout.
+    */
   def defnsByTasty(
       root: Root,
       layout: Layout,
       tasty: Vector[os.Path]
-  ): Either[String, Map[os.Path, Vector[Defn]]] = {
+  ): Either[String, Batch] = {
     val byPath = mutable.Map[os.Path, Vector[Defn]]()
     val sources = mutable.Map[String, String]()
     val inRepoByTop = mutable.Map[String, Boolean]()
     val foreign = mutable.ListBuffer.empty[String]
+    val unreadable = mutable.ListBuffer.empty[(os.Path, String)]
     val prefix = root.dir.toString + "/"
     def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
     val inspector = new Inspector {
@@ -196,7 +225,7 @@ object Read {
             .quote(c.name)
             .r
             .unanchored
-            .findFirstMatchIn(src.substring(p.start, p.end))
+            .findFirstMatchIn(slice(src, p.start, p.end))
             .fold(p.start)(m => p.start + m.end)
           val base = if (ends.isEmpty) nameEnd else ends.max
           val brace = src.indexOf('{', base)
@@ -248,31 +277,35 @@ object Read {
             parents: Vector[String]
         ): Defn = {
           val src = source(p.sourceFile.path)
+          // A cut outside the definition's own span (a pattern-bound val's right-hand side starts before it) leaves its
+          // whole source line as the signature, and no body.
+          val inSpan = p.start <= cut && cut <= p.end
+          val lineBegin = src.lastIndexOf('\n', p.start - 1) + 1
+          val lineEnd = src.indexOf('\n', p.start) match {
+            case -1 => src.length
+            case i => i
+          }
           // A parameterless enum case has its right-hand side at `p.start` itself, so the slice is only indentation.
-          val sliced = trimTrailing(src.substring(lineStart(src, p.start), cut))
+          val sliced = if (inSpan) trimTrailing(slice(src, lineStart(src, p.start), cut)) else ""
           val rawSignature =
-            if (sliced.isEmpty) {
-              val eol = src.indexOf('\n', p.start) match {
-                case -1 => src.length
-                case i => i
-              }
-              trimTrailing(src.substring(lineStart(src, p.start), eol))
-            } else sliced
+            if (!inSpan) trimTrailing(slice(src, lineBegin, lineEnd))
+            else if (sliced.isEmpty) trimTrailing(slice(src, lineStart(src, p.start), lineEnd))
+            else sliced
           val unassigned =
             if (rawSignature.endsWith("=")) rawSignature.dropRight(1) else rawSignature
           val signature = trimTrailing(unassigned)
           val doc = docOf(src, p.start)
           val docStart = doc.map(_._1).getOrElse(p.start)
           val docText = doc.map { case (open, closeEnd) =>
-            src.substring(lineStart(src, open), closeEnd)
+            slice(src, lineStart(src, open), closeEnd)
           }
-          val body = if (hasBody) Some(src.substring(cut, p.end)) else None
+          val body = if (hasBody && inSpan) Some(slice(src, cut, p.end)) else None
           val flags = sym.flags
           Defn(
             kind = kindOf(tree, sym),
             name = nameOf(sym),
             fullName = fullNameOf(sym),
-            file = p.sourceFile.path.substring(prefix.length),
+            file = slice(p.sourceFile.path, prefix.length, p.sourceFile.path.length),
             lines = Lines(lineOf(src, docStart), lineOf(src, p.end - 1)),
             doc = docText,
             signature = signature,
@@ -359,7 +392,8 @@ object Read {
 
         def members(stats: List[Tree]): Vector[Defn] = withCases(stats)
 
-        for (tasty <- tastys) {
+        // One unit's definitions: none unless the unit is a package's TASTy.
+        def unit(tasty: Tasty[q.type]): Vector[Defn] = {
           if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
             foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
           tasty.ast match {
@@ -368,15 +402,19 @@ object Read {
                 case holder: ClassDef => holder.name.stripSuffix("$").endsWith("$package")
                 case _ => false
               }
-              val defs = withCases(others) ++ holders.toVector.flatMap {
+              withCases(others) ++ holders.toVector.flatMap {
                 case holder: ClassDef => members(holder.body)
                 case _ => Vector.empty
               }
-              val path = os.Path(tasty.path)
-              byPath.update(path, byPath.getOrElse(path, Vector.empty) ++ defs)
-            case _ => ()
+            case _ => Vector.empty
           }
         }
+        val (kept, failed) = traverseUnits(tastys.toVector, unit)
+        for ((tasty, defs) <- kept) {
+          val path = os.Path(tasty.path)
+          byPath.update(path, byPath.getOrElse(path, Vector.empty) ++ defs)
+        }
+        unreadable ++= failed.map { case (tasty, message) => os.Path(tasty.path) -> message }
       }
     }
     val captured = new ByteArrayOutputStream()
@@ -395,7 +433,10 @@ object Read {
       case Left(message) => Left(message)
       case Right(ok) =>
         if (foreign.nonEmpty) Left(foreign.mkString("\n"))
-        else if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
+        else if (ok)
+          Right(
+            Batch(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap, unreadable.toVector)
+          )
         else Left(complaint(captured, tasty.size))
     }
   }
@@ -481,7 +522,9 @@ object Read {
         for (tasty <- tastys) {
           if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
             foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
-          walk.traverseTree(tasty.ast)(Symbol.noSymbol)
+          // A unit whose traversal throws contributes the uses it found before the throw, and no more.
+          try walk.traverseTree(tasty.ast)(Symbol.noSymbol)
+          catch { case NonFatal(_) => () }
         }
       }
     }
