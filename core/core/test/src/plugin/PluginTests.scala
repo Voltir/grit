@@ -32,10 +32,24 @@ object PluginTests extends TestSuite {
       Right(())
   }
 
+  /** A plugin with a cache posting and no documents, or with neither when `cached` is false. */
+  private final class Caches(val name: PluginName, cached: Boolean) extends Plugin {
+    val version: Int = 1
+    override val cache: Option[CachePosting] = Option.when(cached)(new CachePosting {
+      def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+        Right(())
+    })
+  }
+
   val tests = Tests {
     test("a plugin whose documents have no posting is posted nothing; one whose documents do is") {
       Vector(new Keeps(name("cards"), None), new Keeps(name("notes"), Some(Noting)))
         .map(_.posts) ==> Vector(false, true)
+    }
+
+    test("a plugin with a cache and no documents is posted closed periods; one with neither is not") {
+      Vector(new Caches(name("lines"), cached = true), new Caches(name("plain"), cached = false))
+        .map(_.posts) ==> Vector(true, false)
     }
 
     test("a plugin's name is lowercase letters, digits and dashes, from a letter") {
