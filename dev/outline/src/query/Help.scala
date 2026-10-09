@@ -49,7 +49,7 @@ object Help {
       "symbols to show, each Name, Name.member or fully qualified; comma-separated on the CLI."
     ),
     purpose =
-      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call.",
+      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call. After them, a Tests section lists the tests in test sources that exercise the symbols: a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper. Those lines are not file text.",
     examples = Vector(
       Example("read one move's signature and doc", "show Moves.ask"),
       Example(
@@ -75,6 +75,12 @@ object Help {
         "",
         Some("private"),
         "include the private members of the named types; takes no value."
+      ),
+      Flag(
+        "--no-tests",
+        "",
+        Some("tests"),
+        "whether the Tests section lists the tests in test sources that exercise the named symbols; true by default, and --no-tests (MCP tests: false) drops it."
       )
     ) ++ common
   )

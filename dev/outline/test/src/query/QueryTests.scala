@@ -221,5 +221,65 @@ object QueryTests extends TestSuite {
         )
       )
     }
+
+    test("show lists the tests that exercise a definition, by suite, name and lines") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Render.oneLine"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(answer.text.contains("\n## tests exercising Render.oneLine\n"))
+      assert(
+        answer.text.contains(
+          "\n== dev/outline/test/src/render/OneLineTests.scala  grit.outline.render\n"
+        )
+      )
+      assert(
+        answer.text.contains(
+          "\n  67-76 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
+        )
+      )
+    }
+
+    test("show --no-tests prints no tests section") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Render.oneLine"),
+          1,
+          Set.empty,
+          false,
+          80000,
+          withTests = false
+        )
+      assert(answer.status == Status.Found)
+      assert(!answer.text.contains("## tests exercising"))
+    }
+
+    test("a site in a suite's helper is listed as that helper") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("grit.outline.model.Defn"),
+          0,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(answer.text.contains("\n  10-35 OneLineTests: helper defn\n"))
+    }
   }
 }

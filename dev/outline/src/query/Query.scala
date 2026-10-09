@@ -3,6 +3,7 @@ package grit.outline.query
 import scala.collection.mutable
 
 import grit.outline.locate.{Layout, Locate, Root}
+import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, Staleness, Use}
 import grit.outline.read.Read
 import grit.outline.render.{Family, Render}
@@ -26,10 +27,22 @@ object Query {
       depth: Int,
       bodies: Set[String],
       withPrivate: Boolean,
-      cap: Int
+      cap: Int,
+      withTests: Boolean = true
   ): (Answer, Roots) = {
     val (answer, loaded) =
-      showIn(root, layout, config, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
+      showIn(
+        root,
+        layout,
+        config,
+        Roots.of(roots, root),
+        syms,
+        depth,
+        bodies,
+        withPrivate,
+        cap,
+        withTests
+      )
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
@@ -68,27 +81,16 @@ object Query {
       }
 
       val names = targets.toVector.map(_.fullName).distinct.toSet
-      // A name's references are read in the packages of the files that mention its last segment as a word.
-      val candidates = syms
-        .map(_.split('.').last)
-        .distinct
-        .flatMap(simple => Locate.mentioning(root, simple))
-        .distinct
-      val inPackage = candidates.map(file => file -> Locate.inPackageIn(root, classes, file))
-      val tasty = inPackage.flatMap(_._2).distinct
-      val unsearched = inPackage.collect {
-        case (file, found)
-            if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
-          file
-      }
-      // The candidates' reference index is read here and kept in the root's cache.
-      val read: Either[String, Vector[Use]] =
-        if (failure.nonEmpty || names.isEmpty || tasty.isEmpty) Right(Vector.empty)
-        else
-          Loaded.uses(root, layout, tasty, state).map { case (refs, next, _) =>
-            state = next
-            Read.targeting(refs, names)
-          }
+      val (read, unsearched, next) = referencesIn(
+        root,
+        layout,
+        config,
+        classes,
+        if (failure.nonEmpty) Set.empty else names,
+        syms.map(_.split('.').last),
+        state
+      )
+      state = next
       val nextRoots = Roots.put(roots, root, state)
       val answer = failure match {
         case Some(message) => Answer(message, Status.Failed)
@@ -437,6 +439,102 @@ object Query {
     s"## root ${root.dir} (${revision.branch.getOrElse("detached")} @ ${revision.head})"
   }
 
+  /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the source files that mention one of `simples` as a word; with them, the mentioning files whose package has no `.tasty` in `classes`, and the cache after. The references are `Left` when their index cannot be read. */
+  private def referencesIn(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      classes: Vector[os.Path],
+      names: Set[String],
+      simples: Vector[String],
+      in: Loaded
+  ): (Either[String, Vector[Use]], Vector[os.RelPath], Loaded) = {
+    val candidates = simples.distinct.flatMap(simple => Locate.mentioning(root, simple)).distinct
+    val inPackage = candidates.map(file => file -> Locate.inPackageIn(root, classes, file))
+    val tasty = inPackage.flatMap(_._2).distinct
+    val unsearched = inPackage.collect {
+      case (file, found)
+          if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
+        file
+    }
+    if (names.isEmpty || tasty.isEmpty) (Right(Vector.empty), unsearched, in)
+    else
+      Loaded.uses(root, layout, tasty, in) match {
+        case Left(message) => (Left(message), unsearched, in)
+        case Right((refs, next, _)) => (Right(Read.targeting(refs, names)), unsearched, next)
+      }
+  }
+
+  /** The tests in test sources that hold a reference to `tops` or to one of their members, by file: each test by its line range, or a suite's helper where a reference lies outside every test. Notes name a tasty that could not be read; the cache after. */
+  private def exercisedBy(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      tops: Vector[Defn],
+      in: Loaded
+  ): (Vector[Render.Exercised], Vector[String], Loaded) = {
+    val testClasses = layout.classesDirs(root).filter(layout.isTest)
+    val names = tops.flatMap(d => d.fullName +: d.members.map(_.fullName)).toSet
+    val simples = tops.flatMap(d => d.name +: d.members.map(_.name))
+    if (testClasses.isEmpty || names.isEmpty) (Vector.empty, Vector.empty, in)
+    else {
+      val (refs, _, found) = referencesIn(root, layout, config, testClasses, names, simples, in)
+      refs match {
+        case Left(message) => (Vector.empty, Vector(message), found)
+        case Right(sites) =>
+          var state = found
+          val notes = mutable.ListBuffer.empty[String]
+          val files = sites.map(_.file).distinct.flatMap { file =>
+            val tasty = Locate.inPackageIn(root, testClasses, os.RelPath(file))
+            Loaded.defns(root, layout, tasty, state) match {
+              case Left(message) =>
+                notes += message
+                None
+              case Right((defns, next, _)) =>
+                state = next
+                Some(exercisedIn(root, config, file, defns, sites.filter(_.file == file)))
+            }
+          }
+          (files.filter(_.entries.nonEmpty), notes.toVector, state)
+      }
+    }
+  }
+
+  /** One file's entries for the sites in it: each site's test by line range, else the suite's helper it lies in, sorted and named once. Reads the file's source; `defns` are its tasty's definitions. */
+  private def exercisedIn(
+      root: Root,
+      config: Config,
+      file: String,
+      defns: Vector[Defn],
+      sites: Vector[Use]
+  ): Render.Exercised = {
+    val src = os.read(root.dir / os.RelPath(file))
+    val suites =
+      defns.filter(d => d.file == file && (d.kind == Kind.Class || d.kind == Kind.Object))
+    val entries = sites.flatMap { u =>
+      suites.find(s => s.lines.start <= u.line && u.line <= s.lines.end).map { suite =>
+        val (from, to) = TestCalls.within(src, suite.lines)
+        TestCalls
+          .find(src, from, to, config.testCall)
+          .find(t => t.lines.start <= u.line && u.line <= t.lines.end) match {
+          case Some(t) => Render.Exercise(t.lines, s"${suite.name}: ${t.name}")
+          case None =>
+            suite.members.find(m => m.lines.start <= u.line && u.line <= m.lines.end) match {
+              case Some(m) => Render.Exercise(m.lines, s"${suite.name}: helper ${m.name}")
+              case None =>
+                val enclosing = u.enclosing.split('.').last
+                Render.Exercise(Lines(u.line, u.line), s"${suite.name}: helper $enclosing")
+            }
+        }
+      }
+    }
+    Render.Exercised(
+      file,
+      suites.map(_.fullName).distinct,
+      entries.distinct.sortBy(e => (e.lines.start, e.lines.end, e.label))
+    )
+  }
+
   /** The note for each `--body` name that no shown definition has: `tops` and their members (those withPrivate
     * or public), whose simple names it lists, sorted.
     */
@@ -461,7 +559,8 @@ object Query {
       depth: Int,
       bodies: Set[String],
       withPrivate: Boolean,
-      cap: Int
+      cap: Int,
+      withTests: Boolean
   ): (Answer, Loaded) = {
     val classes = layout.classesDirs(root)
     if (depth < 0 || depth > 2)
@@ -533,6 +632,10 @@ object Query {
           (Answer(noteText.stripSuffix("\n"), Status.NoMatch), state)
         case None =>
           val tops = matches.toVector.distinct
+          val (exercised, testNotes, afterTests) =
+            if (withTests) exercisedBy(root, layout, config, tops, state)
+            else (Vector.empty, Vector.empty, state)
+          state = afterTests
           val traced = Trace.trace(
             tops,
             depth,
@@ -564,9 +667,11 @@ object Query {
             stale = stale,
             bodies = bodies,
             withPrivate = withPrivate,
-            cap = cap
+            cap = cap,
+            exercising = Render.exercising(syms.mkString(","), exercised)
           )
-          val bodyNotes = bodyMisses(bodies, tops, withPrivate).map(_ + "\n").mkString
+          val bodyNotes =
+            (bodyMisses(bodies, tops, withPrivate) ++ testNotes).map(_ + "\n").mkString
           val text = noteText + bodyNotes + rendered
           (Answer(text, Status.Found), state)
       }

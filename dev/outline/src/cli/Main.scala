@@ -34,12 +34,14 @@ object Main {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      root: Option[String]
+      root: Option[String],
+      withTests: Boolean
   )
 
   private def parse(rest: List[String], o: Options): Either[String, Options] = rest match {
     case Nil => Right(o)
     case "--private" :: tail => parse(tail, o.copy(withPrivate = true))
+    case "--no-tests" :: tail => parse(tail, o.copy(withTests = false))
     case "--depth" :: value :: tail =>
       value.toIntOption match {
         case Some(n) => parse(tail, o.copy(depth = n))
@@ -100,7 +102,8 @@ object Main {
           bodies = Set.empty,
           withPrivate = false,
           cap = 80000,
-          root = leadingRoot
+          root = leadingRoot,
+          withTests = true
         )
         parse(rest, defaults) match {
           case Left(message) => (2, s"$message\n${Help.usage(Help.show)}")
@@ -123,7 +126,8 @@ object Main {
                         o.depth,
                         o.bodies,
                         o.withPrivate,
-                        o.cap
+                        o.cap,
+                        o.withTests
                       )
                     (exitCode(answer.status), answer.text)
                 }

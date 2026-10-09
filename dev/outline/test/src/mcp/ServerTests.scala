@@ -78,6 +78,18 @@ object ServerTests extends TestSuite {
 
   private val empty: State = State(Roots.empty(6000), Root(os.pwd))
 
+  /** The worktree root: the nearest directory at or above the test's working directory that holds `build.mill`. */
+  private def repoRoot: String = {
+    def up(dir: os.Path): os.Path =
+      if (os.exists(dir / "build.mill")) dir
+      else {
+        val parent = dir / os.up
+        if (parent == dir) throw new Exception("no build.mill above the test's working directory")
+        else up(parent)
+      }
+    up(os.pwd).toString
+  }
+
   def tests = Tests {
 
     test("initialize echoes a supported client version and answers the request's id") {
@@ -217,6 +229,28 @@ object ServerTests extends TestSuite {
         bad.flatMap(field(_, "error")).flatMap(field(_, "code")).flatMap(_.numOpt) == Some(-32700.0)
       )
       assert(bad.flatMap(field(_, "id")) == Some(ujson.Null))
+    }
+
+    test("show with tests false prints no tests section") {
+      val (on, _) = reply(
+        call(6, "show", ujson.Obj("symbols" -> ujson.Arr("Render.oneLine"), "root" -> repoRoot)),
+        empty
+      )
+      assert(textOf(on).exists(_.contains("## tests exercising Render.oneLine")))
+      val (off, _) = reply(
+        call(
+          7,
+          "show",
+          ujson.Obj(
+            "symbols" -> ujson.Arr("Render.oneLine"),
+            "tests" -> ujson.Bool(false),
+            "root" -> repoRoot
+          )
+        ),
+        empty
+      )
+      assert(textOf(off).exists(_.contains("def Render.oneLine")))
+      assert(textOf(off).exists(!_.contains("## tests exercising")))
     }
   }
 }

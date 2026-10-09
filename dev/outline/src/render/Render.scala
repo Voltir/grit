@@ -2,6 +2,7 @@ package grit.outline.render
 
 import java.nio.charset.StandardCharsets
 
+import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, TestCase, Use}
 import grit.outline.trace.Traced
 
@@ -38,7 +39,8 @@ object Render {
       stale: Set[String],
       bodies: Set[String],
       withPrivate: Boolean,
-      cap: Int
+      cap: Int,
+      exercising: Vector[Vector[String]] = Vector.empty
   ): String = {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
@@ -82,7 +84,12 @@ object Render {
       (if (library.nonEmpty) Vector(s"-- library: ${library.mkString(", ")}") else Vector.empty) ++
         (if (notLoaded.nonEmpty) Vector(s"-- not loaded: ${notLoaded.mkString(", ")}")
          else Vector.empty)
-    val body = (kept ++ trailer ++ truncated).map(_ + "\n").mkString
+    val before = kept ++ trailer ++ truncated
+    val budget = cap - bytesOf(before.map(_ + "\n").mkString)
+    val (exShown, exTruncated) =
+      if (exercising.isEmpty) (Vector.empty, Vector.empty)
+      else fit(exercising, exercising.size, budget)
+    val body = (before ++ exShown ++ exTruncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
@@ -272,6 +279,23 @@ object Render {
         sentence.take(160)
       }
       .filter(_.nonEmpty)
+
+  /** One file of `show`'s tests section: the full names of its suites, and its entries in line order. */
+  final case class Exercised(file: String, suites: Vector[String], entries: Vector[Exercise])
+
+  /** One test or helper that holds a reference to a shown name, at `lines`; `label` is `Suite: test name` or `Suite: helper name`. */
+  final case class Exercise(lines: Lines, label: String)
+
+  /** The tests section of `show`, one chunk per file: the `## tests exercising <syms>` line leads the first, then each file's `== file  package` line and its entries as `NN-MM` then their label. Empty when no file has an entry. */
+  def exercising(syms: String, files: Vector[Exercised]): Vector[Vector[String]] = {
+    val header = s"## tests exercising $syms"
+    files.zipWithIndex.map { case (f, i) =>
+      val lines =
+        Vector(s"== ${f.file}  ${f.suites.map(pkgOf).distinct.mkString(", ")}") ++
+          f.entries.map(e => s"  ${e.lines.start}-${e.lines.end} ${e.label}")
+      if (i == 0) header +: lines else lines
+    }
+  }
 
   private def fit(
       chunks: Vector[Vector[String]],

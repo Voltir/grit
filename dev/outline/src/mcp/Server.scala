@@ -50,6 +50,7 @@ object Server {
       prop(Help.show, "depth", "type" -> "integer", "minimum" -> 0, "maximum" -> 2, "default" -> 1),
       prop(Help.show, "body", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
       prop(Help.show, "private", "type" -> "boolean"),
+      prop(Help.show, "tests", "type" -> "boolean", "default" -> true),
       prop(Help.show, "root", "type" -> "string")
     ),
     Vector("symbols")
@@ -241,7 +242,8 @@ object Server {
       depth: Int,
       body: Set[String],
       withPrivate: Boolean,
-      root: Option[Root]
+      root: Option[Root],
+      withTests: Boolean
   )
 
   private final case class FamilyArgs(
@@ -274,7 +276,8 @@ object Server {
             a.depth,
             a.body,
             a.withPrivate,
-            cap
+            cap,
+            a.withTests
           )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
@@ -340,8 +343,9 @@ object Server {
       depth <- depthArg(args)
       body <- stringList(args, "body", required = false)
       withPrivate <- flag(args, "private")
+      withTests <- flagOr(args, "tests", default = true)
       root <- rootArg(args)
-    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root)
+    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root, withTests)
 
   private def parseFamily(args: ujson.Value): Either[String, FamilyArgs] =
     for {
@@ -455,8 +459,12 @@ object Server {
     }
 
   private def flag(args: ujson.Value, key: String): Either[String, Boolean] =
+    flagOr(args, key, default = false)
+
+  /** The boolean `key` of the arguments, `default` when absent. */
+  private def flagOr(args: ujson.Value, key: String, default: Boolean): Either[String, Boolean] =
     field(args, key) match {
-      case None => Right(false)
+      case None => Right(default)
       case Some(v) => v.boolOpt.toRight(s"$key must be a boolean")
     }
 

@@ -12,9 +12,13 @@ Each query has a CLI form and an MCP tool of the same name, taking the same argu
 `scripts/outline <query> --help` prints that query's full help: its examples and every flag.
 
 **show**: To read or call a definition: its signature and Scaladoc, with one-line outlines of the
-project types it names. Bodies only for members named with `--body`.
+project types it names. Bodies only for members named with `--body`. After the definitions, a
+Tests section lists the tests in test sources that exercise the symbols (`--no-tests` drops it):
+a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries
+`NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper.
+Those lines are not file text.
 
-    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]
+    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--no-tests] [--cap BYTES] [--root DIR]
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
 `--member` narrows each to one member.
