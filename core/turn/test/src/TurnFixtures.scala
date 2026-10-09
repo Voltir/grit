@@ -160,6 +160,19 @@ object TurnFixtures {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(asker)
   }
 
+  /** Askers answering each read with the next of `reads`, then failing every read after with
+    * a database error, "down".
+    */
+  def readsAskers(reads: Vector[Either[StoreError, Option[Principal]]]): Askers = new Askers {
+    @caps.unsafe.untrackedCaptures
+    private var left = reads
+    def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = {
+      val next = left.headOption.getOrElse(Left(StoreError.DatabaseError("down")))
+      left = left.drop(1)
+      next
+    }
+  }
+
   /** The fixture's asker for every turn: the local person, as a terminal session's turns are
     * asked.
     */

@@ -210,6 +210,36 @@ object TurnHostedTests extends TestSuite {
         Vector(("This turn has no asker to make this call for, so it did not run.", true))
     }
 
+    test("a turn whose asker cannot be read sends no request and fails, naming the store") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
+      val provider = model(("t1", "fetch", "a.txt"))
+      val unread = readsAskers(Vector.empty)
+      val out = durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = unread))
+      (out, edge.sent) ==> ("failed: Store(DatabaseError(down))", Vector.empty)
+    }
+
+    test("a call unsent for want of an asker whose asker cannot be read again says why is unknown") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
+      val provider = model(("t1", "fetch", "a.txt"))
+      val once = readsAskers(Vector(Right(None)))
+      durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = once)) ==> Done
+      (edge.sent, results(provider).map(r => (r.content, r.isError))) ==> (
+        Vector.empty,
+        Vector(
+          (
+            "This call did not run, and why could not be read: Store(DatabaseError(down))",
+            true
+          )
+        )
+      )
+    }
+
     test(
       "a request no edge claims in time is answered that no edge is serving, and cannot be claimed after"
     ) {
