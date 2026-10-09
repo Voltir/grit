@@ -74,7 +74,7 @@ object ActCaptureTests extends TestSuite {
     """final class Asks extends Tallied {
       |  def run(run: JobRun[Count], moves: Keeping^): String =
       |    moves.keep(Names.of("count")) { (keeper, at) =>
-      |      val _ = moves.ask(Names.of("inner"), Names.request)
+      |      val _ = moves.ask(Names.of("inner"), Posed.Text(Names.request))
       |      Right(Count(1))
       |    }.fold(_.toString, _.toString)
       |}
@@ -117,7 +117,7 @@ object ActCaptureTests extends TestSuite {
       val errs = errors(
         """object Counter extends Counted {
           |  def run(run: JobRun[Count], moves: Moves^): String =
-          |    moves.ask(Names.of("count"), Names.request).fold(_.toString, _.message.toString)
+          |    moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
           |}
           |final class Tally(key: DocKey, label: Label) extends Tallied {
           |  def run(run: JobRun[Count], moves: Keeping^): String =

@@ -1,6 +1,6 @@
 package grit.act.moves
 
-import grit.core.act.{Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, Moves}
+import grit.core.act.{Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, Moves, Posed}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -29,7 +29,12 @@ abstract class MovesContract extends TestSuite {
       "an ask is answered as its world answers, and a call done with its edge's answer, each at the world's floor"
     ) {
       val got = within(limits(1, 1)) { m =>
-        Seen(Vector(m.ask(name("a"), Request).map(a => s"${text(a)} at ${a.at}"), called(m, "c")))
+        Seen(
+          Vector(
+            m.ask(name("a"), Posed.Text(Request)).map(a => s"${text(a)} at ${a.at}"),
+            called(m, "c")
+          )
+        )
       }
       got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(Called.Done(Read, Floor).toString)))
     }
@@ -81,6 +86,13 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test("a text ask counts against asks, whatever the run's judgments") {
+      val limited =
+        MoveLimits.of(1, 0, 5).fold(e => throw new java.lang.AssertionError(e), identity)
+      val got = within(limited) { m => Seen(Vector(asked(m, "a"), asked(m, "b"))) }
+      got ==> Seen(Vector(Right(Answer), Left(MoveError.OverLimit(MoveKind.Ask, 1))))
+    }
+
     test("an ask whose store failed counts against its kind's limit") {
       val got = within(limits(1, 0), broken = true) { m =>
         Seen(Vector(asked(m, "a"), asked(m, "b")))
@@ -106,7 +118,8 @@ object MovesContract {
   final case class Seen(moves: Vector[Either[MoveError, String]]) extends caps.Pure
 
   /** The ask `n` of [[Request]] through `m`: its text. */
-  def asked(m: Moves^, n: String): Either[MoveError, String] = m.ask(name(n), Request).map(text)
+  def asked(m: Moves^, n: String): Either[MoveError, String] =
+    m.ask(name(n), Posed.Text(Request)).map(text)
 
   /** The call `n` of [[Tool]] at [[Probe]] through `m`: its result. */
   def called(m: Moves^, n: String): Either[MoveError, String] =
@@ -138,8 +151,8 @@ object MovesContract {
   def limits(asks: Int, calls: Int): MoveLimits =
     MoveLimits.of(asks, calls).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  def text(a: Asked): String =
-    a.message.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+  def text(a: Asked[Message.Assistant]): String =
+    a.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
 
   /** A move error's case name, and its name when it is `Repeated`. */
   def kind(e: MoveError): String = e match {

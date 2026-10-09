@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
-import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves}
+import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -401,8 +401,8 @@ object RunFixtures {
   /** What a move came to, as a job's reply says it: an ask's text, a call's result, or the
     * error.
     */
-  def said(asked: Either[MoveError, Asked]): String =
-    asked.fold(_.toString, _.message.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
+  def said(asked: Either[MoveError, Asked[Message.Assistant]]): String =
+    asked.fold(_.toString, _.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
 
   /** `remind` at `version`, its parameters a count, replying what `plan` makes of its count and
     * moves, within `limits`.
@@ -418,27 +418,26 @@ object RunFixtures {
     def run(run: JobRun[Count], moves: Moves^): String = plan(run.params, moves)
   }
 
-  /** `remind` at `version` as the recorded run histories make their moves: with the count 1 it
-    * asks; with 2 it calls [[Read]] at [[Probe]]; with 3 it calls, then asks about the answer.
-    * Its reply is each move's result, a line each.
+  /** `remind` at `version`, within an ask and a call, its plan [[probes]]. */
+  def probing(version: Int): Moving = new Moving(version, limits(1, 1), probes)
+
+  /** The moves the recorded run histories make: with the count 1 it asks; with 2 it calls
+    * [[Read]] at [[Probe]]; with 3 it calls, then asks about the answer. Its reply is each
+    * move's result, a line each.
     */
-  def probing(version: Int): Moving =
-    new Moving(
-      version,
-      limits(1, 1),
-      (n, m) => {
-        def call() = m.call(move("c"), Probe, Read, ujson.Obj("path" -> "a"))
-        def ask(about: String) =
-          said(m.ask(move("a"), ModelRequest("Count.", Vector(Message.User(about)))))
-        n.n match {
-          case 1 => ask("to 1")
-          case 2 => call().fold(_.toString, _.toString)
-          case _ =>
-            val called = call().fold(_.toString, _.toString)
-            s"$called\n${ask(called)}"
-        }
+  val probes: (Count, Moves^) -> String =
+    (n, m) => {
+      def call() = m.call(move("c"), Probe, Read, ujson.Obj("path" -> "a"))
+      def ask(about: String) =
+        said(m.ask(move("a"), Posed.Text(ModelRequest("Count.", Vector(Message.User(about))))))
+      n.n match {
+        case 1 => ask("to 1")
+        case 2 => call().fold(_.toString, _.toString)
+        case _ =>
+          val called = call().fold(_.toString, _.toString)
+          s"$called\n${ask(called)}"
       }
-    )
+    }
 
   /** A run has no asker: its calls are made for its schedule's principal. */
   object NoAskers extends Askers {

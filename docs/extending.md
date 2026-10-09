@@ -99,8 +99,8 @@ is superseded, and its slot runs again at the current one when no later slot is 
 **A job's moves** ([ADR 0034](decisions/0034-turns-and-jobs-act-through-three-moves-ask-call-and-keep-made-under-an-acting-value.md)).
 A job is pure: everything its run does outside itself it does through the moves it is handed,
 from `grit.core.act`, each under a `MoveName` used once per run. A `PlainJob`, the deployment's
-or a plugin's, is handed `Moves`: `ask`, one model response from the catalog's summary model,
-admitted against the day's cap and its cost recorded under the run's conversation; and `call`,
+or a plugin's, is handed `Moves`: `ask`, one reply to what it poses (a `Posed.Text` request,
+answered in words by the catalog's summary model), admitted against the day's cap and its cost recorded under the run's conversation; and `call`,
 one tool request to an edge serving a service place, never one that asks a person first, its
 request recording the schedule's principal. A plugin's `KeepingJob` is handed `Keeping`, those
 and `keep`: one transaction over its plugin's own documents (a `DocumentKeeper`, at the run's

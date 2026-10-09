@@ -6,7 +6,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.act.{Keeping, MoveLimits, MoveName, Moves}
+import grit.core.act.{Keeping, MoveLimits, MoveName, Moves, Posed}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
@@ -102,8 +102,11 @@ object JobMovesLiveTests extends TestSuite {
         )
         .fold(_.toString, _.toString)
       val asked = moves
-        .ask(JobMovesLiveTests.name("think"), ModelRequest("Say.", Vector(Message.User(called))))
-        .fold(_.toString, _.message.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
+        .ask(
+          JobMovesLiveTests.name("think"),
+          Posed.Text(ModelRequest("Say.", Vector(Message.User(called))))
+        )
+        .fold(_.toString, _.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
       s"$called\n$asked"
     }
   }

@@ -12,7 +12,9 @@ enum MoveError {
   /** The acting's allowance did not admit an ask: the day's recorded spend reached its cap. */
   case Capped
 
-  /** No catalog could be read, or the provider failed after its retries: `why`. */
+  /** No catalog could be read, the provider or classifier failed after its retries, or the
+    * reply did not read: `why`.
+    */
   case Model(why: String)
 
   /** The store failed, or a keep's body returned `Left`: `why`. Nothing the move wrote is kept,

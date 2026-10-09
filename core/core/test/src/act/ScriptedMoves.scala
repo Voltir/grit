@@ -1,10 +1,11 @@
 package grit.core.act
 
+import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolName
 
-/** [[Moves]] for a job's tests: each ask answered by `asks`, each call by `calls`, under the
+/** [[Moves]] for a job's tests: each text ask answered by `asks`, each call by `calls`, under the
   * rules every [[Moves]] keeps, which `grit.act.moves.MovesContract` holds it to beside the
   * durable moves: a name made once, by either kind, is [[MoveError.Repeated]] after, whatever
   * the move came to; past `limits`, a move is [[MoveError.OverLimit]]; a refused move is not
@@ -12,7 +13,7 @@ import grit.core.tool.ToolName
   */
 final class ScriptedMoves(
     limits: MoveLimits,
-    asks: ModelRequest -> Either[MoveError, Asked],
+    asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
     calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called]
 ) extends Moves {
 
@@ -20,8 +21,9 @@ final class ScriptedMoves(
   @caps.unsafe.untrackedCaptures
   var made: Vector[MoveName] = Vector.empty
 
-  def ask(name: MoveName, request: ModelRequest): Either[MoveError, Asked] =
-    making(name, MoveKind.Ask, limits.asks)(asks(request))
+  def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
+    case Posed.Text(request) => making(name, MoveKind.Ask, limits.asks)(asks(request))
+  }
 
   def call(
       name: MoveName,

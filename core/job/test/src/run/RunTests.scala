@@ -2,6 +2,7 @@ package grit.job.run
 
 import grit.act.moves.MoveSteps
 import grit.core.act.MovesFixtures.PerChar
+import grit.core.act.Posed
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{Pending, RequestState}
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
@@ -107,7 +108,8 @@ object RunTests extends TestSuite {
     ) {
       val w = new World(crashRecord = true)
       val turn = w.started(w.declared("standup", 3))
-      val job = new Moving(1, limits(1, 0), (n, m) => said(m.ask(move("a"), request(n.n))))
+      val job =
+        new Moving(1, limits(1, 0), (n, m) => said(m.ask(move("a"), Posed.Text(request(n.n)))))
       val first =
         try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
         catch { case _: InMemoryDurable.Crash => "crashed" }
@@ -151,7 +153,8 @@ object RunTests extends TestSuite {
         )(using TestTx.fake)
       )
       val turn = w.started(w.declared("standup"))
-      val job = new Moving(1, limits(1, 0), (n, m) => said(m.ask(move("a"), request(n.n))))
+      val job =
+        new Moving(1, limits(1, 0), (n, m) => said(m.ask(move("a"), Posed.Text(request(n.n)))))
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (w.reply(turn), w.models.calls, w.durable.recordedSteps(turn.workflowId)) ==>
         (Some("Capped"), 0, Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), Run.Step.Reply))
@@ -294,7 +297,10 @@ object RunTests extends TestSuite {
         1,
         limits(2, 0),
         (n, m) =>
-          Vector(m.ask(move("a"), request(n.n)), m.ask(move("a"), request(n.n)))
+          Vector(
+            m.ask(move("a"), Posed.Text(request(n.n))),
+            m.ask(move("a"), Posed.Text(request(n.n)))
+          )
             .map(said)
             .mkString("\n")
       )
@@ -311,7 +317,10 @@ object RunTests extends TestSuite {
         1,
         limits(2, 0),
         (_, m) =>
-          Vector(m.ask(move("a"), request(first)), m.ask(move("b"), request(9)))
+          Vector(
+            m.ask(move("a"), Posed.Text(request(first))),
+            m.ask(move("b"), Posed.Text(request(9)))
+          )
             .map(said)
             .mkString("\n")
       )
@@ -328,7 +337,7 @@ object RunTests extends TestSuite {
       val w = new World(crashRecord = true)
       val turn = w.started(w.declared("standup", 3))
       def asking(n: Int) =
-        new Moving(1, limits(1, 0), (_, m) => said(m.ask(move("a"), request(n))))
+        new Moving(1, limits(1, 0), (_, m) => said(m.ask(move("a"), Posed.Text(request(n)))))
       try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1))))
       catch { case _: InMemoryDurable.Crash => "crashed" }
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1000))))
@@ -364,7 +373,13 @@ object RunTests extends TestSuite {
       val job = new Moving(
         2,
         limits(1, 1),
-        (n, m) => said(m.ask(move("a"), request(n.n))) + m.call(move("c"), Probe, Read, ujson.Obj())
+        (n, m) =>
+          said(m.ask(move("a"), Posed.Text(request(n.n)))) + m.call(
+            move("c"),
+            Probe,
+            Read,
+            ujson.Obj()
+          )
       )
       val said2 = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (said2, w.models.calls, w.sent, w.durable.recordedSteps(turn.workflowId)) ==> (

@@ -3,7 +3,7 @@ package grit.act.moves
 import java.time.Instant
 
 import grit.core.act.MovesFixtures.Answering
-import grit.core.act.{Keeping, MoveError, MoveLimits}
+import grit.core.act.{Keeping, MoveError, MoveLimits, Posed}
 import grit.core.document.{DocText, DocumentKeeper, Written}
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.id.DocKey
@@ -112,10 +112,12 @@ object DurableKeepingTests extends TestSuite {
     test("a keep named as an earlier ask is Repeated, and so is an ask or call named as a keep") {
       val w = new MovesWorld(broken = false)
       val got = w.keeping(MovesContract.limits(2, 1)) { m =>
-        val asked = m.ask(name("a"), MovesContract.Request).fold(_.toString, _ => "asked")
+        val asked =
+          m.ask(name("a"), Posed.Text(MovesContract.Request)).fold(_.toString, _ => "asked")
         val keptA = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "a", "a", at))
         val keptB = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", "b", at))
-        val askedB = m.ask(name("b"), MovesContract.Request).fold(_.toString, _ => "asked")
+        val askedB =
+          m.ask(name("b"), Posed.Text(MovesContract.Request)).fold(_.toString, _ => "asked")
         val calledB = m
           .call(name("b"), MovesContract.Probe, MovesContract.Tool, MovesContract.Args)
           .fold(_.toString, _.toString)

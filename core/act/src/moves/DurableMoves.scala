@@ -12,13 +12,14 @@ import grit.core.act.{
   MoveKind,
   MoveLimits,
   MoveName,
-  Moves
+  Moves,
+  Posed
 }
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, WorkflowId}
-import grit.core.message.AssistantBlock
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.NameRepair
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -121,7 +122,17 @@ object DurableMoves {
       MoveError.Diverged(name)
     }
 
-    def ask(name: MoveName, request: ModelRequest): Either[MoveError, Asked] =
+    def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
+      case Posed.Text(request) => text(name, request)
+    }
+
+    /** The text ask `name` of `request`: its step, recorded form and digest are the ones every
+      * job's history holds.
+      */
+    private def text(
+        name: MoveName,
+        request: ModelRequest
+    ): Either[MoveError, Asked[Message.Assistant]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
         import MovesJournal.given
         val digest = MovesJournal.ask(request)

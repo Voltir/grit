@@ -32,6 +32,35 @@ object JobReplayTests extends TestSuite {
     */
   private def kept(history: History): Boolean = history.steps.exists(_.name == "move:note")
 
+  /** What [[probes]] at version 1 replies when `history` is replayed under today's body: a move
+    * whose input's digest no longer matches the one recorded replies `Diverged`, though every
+    * step still replays.
+    */
+  private def replies(history: History): Option[String] = {
+    val said = new Said
+    val job =
+      new Moving(1, limits(1, 1), (n, m) => { val r = probes(n, m); said.reply = Some(r); r })
+    val _ = new InMemoryDurable().replay(history.id, history.steps)(
+      Run.body(new World().env(), jobsOf(job))
+    )
+    said.reply
+  }
+
+  /** What a replayed job replied. */
+  private final class Said {
+    // caps.unsafe: it holds an immutable value; each is one replay's own, written by its job on
+    // the replay's one thread and read only after the replay has returned.
+    @caps.unsafe.untrackedCaptures
+    var reply: Option[String] = None
+  }
+
+  /** The reply `history`'s run recorded. */
+  private def recorded(history: History): Option[String] =
+    history.steps.collectFirst {
+      case InMemoryDurable.Step("reply", InMemoryDurable.Outcome.Output(o)) =>
+        ujson.read(o).objOpt.flatMap(_.get("text")).flatMap(_.strOpt)
+    }.flatten
+
   /** Each history `pick` takes that does not replay under `jobs`, and why. */
   private def failing(pick: History => Boolean, jobs: grit.core.job.Jobs): Vector[String] =
     histories.flatMap { case (path, parsed) =>
@@ -79,6 +108,17 @@ object JobReplayTests extends TestSuite {
 
     test("every run history that kept replays under today's body, its keeping job at its version") {
       failing(kept, keepingJobs(new Noting(1))) ==> Vector()
+    }
+
+    test(
+      "every run history that asked or called, and replied, replies under today's body as it recorded"
+    ) {
+      val differing = histories.collect {
+        case (path, Right(h))
+            if moved(h) && !kept(h) && recorded(h).nonEmpty && replies(h) != recorded(h) =>
+          s"${path.last}: ${replies(h)} != ${recorded(h)}"
+      }
+      differing ==> Vector()
     }
 
     test("a run that recorded no move, resumed at another version, recorded superseded") {

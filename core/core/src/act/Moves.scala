@@ -11,10 +11,21 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
 
-/** A model's response to an ask, and the most what it holds can be: what the request was
-  * built from was read at no more than `at`.
+/** What an ask poses, and what its reply reads as: `R`. Each shape is answered by its own
+  * model and recorded as that model replied; `R` is read from the record on every run.
   */
-final case class Asked(message: Message.Assistant, at: Label)
+sealed trait Posed[R]
+
+object Posed {
+
+  /** `request`, answered by the model in its own words. */
+  final case class Text(request: ModelRequest) extends Posed[Message.Assistant]
+}
+
+/** An ask's reply, and the most what it holds can be: what the ask was made from was read at
+  * no more than `at`.
+  */
+final case class Asked[R](reply: R, at: Label)
 
 /** What a call came to. Never a person's decline or silence: a call whose tool asks first is
   * not sent under [[Gates.Closed]], and a planner's acting is closed.
@@ -49,14 +60,15 @@ enum Called {
   */
 trait Moves {
 
-  /** One response to `request` from the model the catalog in force assigns to summaries
-    * (`grit.core.model.Policy.summary`), within its output budget; its cost recorded once,
-    * under the run's conversation. The request goes to that model's provider, a third party: a
-    * planner sends only what its deployment declared may go there. [[MoveError.Capped]] when the
-    * allowance does not admit it, and no model is called; [[MoveError.Model]] when no catalog
-    * reads or the provider fails after its retries.
+  /** One reply to `posed`, from the model its shape names: for [[Posed.Text]], the model the
+    * catalog in force assigns to summaries (`grit.core.model.Policy.summary`), within its output
+    * budget. Each model call's cost is recorded once, under the run's conversation. The request
+    * goes to that model's provider, a third party the deployment trusts with everything sent to
+    * it: nothing checks what goes there. [[MoveError.Capped]] when the allowance does not admit
+    * it, and no model is called; [[MoveError.Model]] when no catalog reads or the provider fails
+    * after its retries.
     */
-  def ask(name: MoveName, request: ModelRequest): Either[MoveError, Asked]
+  def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]]
 
   /** `tool`, named as a model is offered it (an MCP server's tool under its server's prefix),
     * called with `arguments` at `service`'s place (ADR 0017), for the acting's principal, with
