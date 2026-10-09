@@ -52,10 +52,16 @@ object ResolveTests extends TestSuite {
       )
     }
 
-    test("a wrong qualifier falls back to the last segment, and the note says so") {
+    test(
+      "a qualifier naming no candidate's owner resolves to none, and the note lists the candidate"
+    ) {
       val r = resolve("Wrong.Mix")
-      assert(r.defns.map(_.fullName) == Vector("grit.outline.fixture.Colour.Mix"))
-      assert(r.notes.exists(_.startsWith("-- no Wrong.Mix as written; by last segment:")))
+      assert(r.defns.isEmpty)
+      assert(
+        r.notes == Vector(
+          "-- no Wrong.Mix as written; by last segment, name one fully: grit.outline.fixture.Colour.Mix"
+        )
+      )
     }
 
     test("a wrong qualifier naming one candidate's owner resolves to that candidate alone") {
