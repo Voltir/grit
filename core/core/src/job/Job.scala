@@ -26,7 +26,9 @@ sealed trait Job[P <: caps.Pure] extends caps.Pure {
     */
   def read(params: ujson.Value): Either[String, P]
 
-  /** How many asks and calls one run may make: [[grit.core.act.MoveLimits.Zero]] unless it says. */
+  /** How many moves of each limited kind one run may make: [[grit.core.act.MoveLimits.Zero]]
+    * unless it says.
+    */
   def limits: MoveLimits = MoveLimits.Zero
 }
 

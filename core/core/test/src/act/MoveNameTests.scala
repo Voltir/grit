@@ -26,9 +26,22 @@ object MoveNameTests extends TestSuite {
 
     test("a run's limits are each at least zero") {
       MoveLimits.of(0, 0) ==> Right(MoveLimits.Zero)
-      MoveLimits.of(3, 1).map(l => (l.asks, l.calls)) ==> Right((3, 1))
-      MoveLimits.of(-1, 0) ==> Left("a run's limits are each at least zero: asks -1, calls 0")
-      MoveLimits.of(0, -1) ==> Left("a run's limits are each at least zero: asks 0, calls -1")
+      (MoveLimits.Zero.asks, MoveLimits.Zero.calls, MoveLimits.Zero.judgments) ==> (0, 0, 0)
+      MoveLimits.of(1, 0, 3).map(l => (l.asks, l.calls, l.judgments)) ==> Right((1, 0, 3))
+      MoveLimits.of(-1, 0) ==>
+        Left("a run's limits are each at least zero: asks -1, calls 0, judgments 0")
+      MoveLimits.of(0, -1) ==>
+        Left("a run's limits are each at least zero: asks 0, calls -1, judgments 0")
+      MoveLimits.of(0, 0, -1) ==>
+        Left("a run's limits are each at least zero: asks 0, calls 0, judgments -1")
+    }
+
+    test("a run whose job states only asks and calls may make ten judgments per ask") {
+      MoveLimits.of(2, 1).map(l => (l.asks, l.calls, l.judgments)) ==> Right((2, 1, 20))
+    }
+
+    test("judgments per ask saturate at the largest count") {
+      MoveLimits.of(Int.MaxValue, 0).map(_.judgments) ==> Right(Int.MaxValue)
     }
   }
 }
