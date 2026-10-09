@@ -227,6 +227,19 @@ object ShapingTests extends TestSuite {
       )
     }
 
+    test("a reply calling only another tool is told, in that call's result, to call the tool") {
+      val other = called("a", "other", ujson.Obj("count" -> 2))
+      val right = called("b", "reply", ujson.Obj("count" -> 2))
+      val (got, requests) = shape(Vector(Right(other), Right(right)), retries = 1)
+      val told = Message.ToolResult(
+        ToolCallId("a"),
+        "Your reply did not call `reply`. Call `reply` with your reply.",
+        isError = true
+      )
+      (read(got), requests.map(_.messages)) ==>
+        (Some(("{\"count\":2}", 2, Vector(other, right))), Vector(asked, asked :+ other :+ told))
+    }
+
     test("a call named with harmony's tokens is the tool's under HarmonyCut") {
       val answer = called("a", "reply<|channel|>commentary", ujson.Obj("count" -> 4))
       val (got, _) = shape(Vector(Right(answer)), retries = 0, NameRepair.HarmonyCut)
