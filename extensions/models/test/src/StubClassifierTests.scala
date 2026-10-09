@@ -29,20 +29,18 @@ object StubClassifierTests extends TestSuite {
 
   val tests = Tests {
     test("a score weighs the ~level: marker's level 0.9, or the last; the rest share 0.1") {
+      // Its position and confidence in hundredths, as they are sums of floating weights.
       def scored(message: String) =
-        StubClassifier.answers(ujson.Obj("new_message" -> message), Vector(frustration)).answers
-      scored("~level:1 now") ==>
-        Vector(
-          Answer.Score(
-            1.0,
-            Vector(0.05, 0.9, 0.05),
-            Answer.scoreConfidence(Vector(0.05, 0.9, 0.05))
-          )
-        )
-      scored("anything").map {
-        case Answer.Score(score, ps, _) => Some((math.round(score * 100), ps))
-        case _ => None
-      } ==> Vector(Some((185L, Vector(0.05, 0.05, 0.9))))
+        StubClassifier
+          .answers(ujson.Obj("new_message" -> message), Vector(frustration))
+          .answers
+          .map {
+            case Answer.Score(score, ps, confidence) =>
+              Some((math.round(score * 100), ps, math.round(confidence * 100)))
+            case _ => None
+          }
+      scored("~level:1 now") ==> Vector(Some((100L, Vector(0.05, 0.9, 0.05), 85L)))
+      scored("anything") ==> Vector(Some((185L, Vector(0.05, 0.05, 0.9), 85L)))
       // A level past the last is no marker.
       scored("~level:3") ==> scored("anything")
     }

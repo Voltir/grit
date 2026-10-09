@@ -7,24 +7,7 @@ import utest.*
 
 object JevJsonTests extends TestSuite {
 
-  private val department: Vector[Question] = Ask
-    .choice[Unit, String](
-      "Which team should handle this?",
-      Criterion("billing", "billing", Some("Payments, invoicing, refunds")),
-      Criterion("technical", "technical", Some("Bugs, outages, integrations")),
-      Criterion("sales", "sales", None)
-    )
-    .fold(d => throw new java.lang.AssertionError(s"keys repeat: $d"), _.questions)
-
-  private val urgent = Question.YesNo(
-    "Does this convey urgency?",
-    Some("Explicitly time-sensitive"),
-    Some("No urgency expressed")
-  )
-
-  private val frustration = Question
-    .score("How frustrated is the customer?", "Calm", "Frustrated", "Very angry")
-    .fold(t => throw new java.lang.AssertionError(s"levels: $t"), identity)
+  import JevFixtures.*
 
   val tests = Tests {
     test("request: the docs' score body, its levels an array in order") {
@@ -37,30 +20,23 @@ object JevJsonTests extends TestSuite {
     }
 
     test("response: the docs' score answer, its weights in level order, the legend not read") {
-      val body = ujson.read("""{
-        "model": "jev-1.13.0",
-        "answers": {
-          "q1": {
-            "type": "score",
-            "score": 1.05,
-            "legend": { "0": "Calm", "1": "Frustrated", "2": "Very angry" },
-            "probabilities": { "2": 0.05, "0": 0.0, "1": 0.95 },
-            "confidence": 0.92
-          }
-        },
-        "usage": { "input_tokens": 304, "output_tokens": 18 }
-      }""")
-      JevJson.response(Vector(frustration), body).map(_.answers) ==>
+      JevJson.response(Vector(frustration), ScoreBody).map(_.answers) ==>
         Right(Vector(Answer.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92)))
     }
 
-    test("response: a score's missing level weighs 0; a missing score or weights is Unreadable") {
+    test(
+      "response: a score's missing level weighs 0, one past the last is not read; a missing score or weights is Unreadable"
+    ) {
       def answer(raw: String) = JevJson.response(
         Vector(frustration),
         ujson.read(s"""{"model": "m", "answers": {"q1": $raw}}""")
       )
       answer("""{"type": "score", "score": 1.0, "probabilities": {"1": 1.0}, "confidence": 1.0}""")
         .map(_.answers) ==> Right(Vector(Answer.Score(1.0, Vector(0.0, 1.0, 0.0), 1.0)))
+      // A weight on a level past the last is not read: the weights are the levels asked.
+      answer(
+        """{"type": "score", "score": 1.0, "probabilities": {"1": 0.5, "3": 0.5}, "confidence": 1.0}"""
+      ).map(_.answers) ==> Right(Vector(Answer.Score(1.0, Vector(0.0, 0.5, 0.0), 1.0)))
       answer("""{"type": "score", "probabilities": {"1": 1.0}, "confidence": 1.0}""") ==>
         Left(ClassifierError.Unreadable("unreadable response: q1: no score"))
       answer("""{"type": "score", "score": 1.0, "confidence": 1.0}""") ==>
@@ -107,20 +83,7 @@ object JevJsonTests extends TestSuite {
     }
 
     test("response: the docs' choice and noul answers, in the question's option order, priced") {
-      val body = ujson.read("""{
-        "model": "jev-1.13.0",
-        "answers": {
-          "q1": {
-            "type": "choice",
-            "choice": "billing",
-            "probabilities": { "sales": 0.0, "billing": 0.88, "technical": 0.12 },
-            "confidence": 0.81
-          },
-          "q2": { "type": "noul", "noul": 0.95 }
-        },
-        "usage": { "input_tokens": 318, "output_tokens": 34 }
-      }""")
-      val answers = JevJson.response(department :+ urgent, body)
+      val answers = JevJson.response(department :+ urgent, ChoiceBody)
       assert(answers.map(_.model) == Right("jev-1.13.0"))
       assert(
         answers.map(_.answers) == Right(

@@ -55,7 +55,8 @@ object JevJson {
 
   /** The answers in a 200 response to [[request]]'s `questions`, in their order, choice
     * probabilities in each question's own key order and a score's in its levels' order (a key
-    * or level missing weighing 0, a score's `legend` not read), priced at
+    * or level missing weighing 0, a weight on a level past the last and a score's `legend` not
+    * read), priced at
     * [[JevConfig.UsdPerMillionInput]]; or why they are unusable.
     */
   def response(
