@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{Origin, StoreError, Tombstones, Tx}
+import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
@@ -33,6 +33,9 @@ abstract class DocumentContract extends TestSuite {
 
   /** Where the store marks the versions it leaves for deletion. */
   protected def tombstones: Tombstones
+
+  /** What undoes part of a transaction in the store under test. */
+  protected def savepoints: Savepoints
 
   /** Runs `body` in one transaction opened at `clearance`, committed when it returns. */
   protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A
@@ -260,6 +263,39 @@ abstract class DocumentContract extends TestSuite {
           (two +: withdrawal).map(v => Tombstone(Target.Document(v), at(3)))).toSet
       transaction(ok(tombstones.documentsDue(p, at(3), 10))) ==>
         Vector(Tombstone(Target.Document(one), at(2)))
+    }
+
+    test("a savepoint whose body is Left keeps none of its writes; what follows it commits") {
+      val p = name("doc-savepoint")
+      val k = keeper(p, terms())
+      val one = put(k, "k", "one", 1)
+      val undone = transaction {
+        val inner = savepoints.atomic[Unit] {
+          for {
+            _ <- k.write(key("k"), Label.Public, place("here"), text("two"), Empty, at(2))
+            _ <- k.write(key("new"), Label.Public, place("here"), text("new"), Empty, at(2))
+            _ <- Left(StoreError.Invalid("refused"))
+          } yield ()
+        }
+        ok(k.write(key("after"), Label.Public, place("here"), text("after"), Empty, at(3)))
+        inner
+      }
+      undone ==> Left(StoreError.Invalid("refused"))
+      texts(transaction(ok(shelf(p).newest(10)))).sorted ==> Vector("after", "one")
+      transaction(ok(tombstones.documentsDue(p, at(10), 10))) ==> Vector()
+      texts(transaction(ok(search.read(Vector(one))))) ==> Vector("one")
+    }
+
+    test("a savepoint whose body is Right keeps its writes") {
+      val p = name("doc-savepoint-kept")
+      val k = keeper(p, terms())
+      val kept = transaction {
+        savepoints.atomic[Unit](
+          k.write(key("k"), Label.Public, place("here"), text("kept"), Empty, at(1)).map(_ => ())
+        )
+      }
+      kept ==> Right(())
+      texts(transaction(ok(shelf(p).newest(10)))) ==> Vector("kept")
     }
 
     test("versions are never repeated across plugins") {

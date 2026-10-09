@@ -9,9 +9,16 @@ import grit.core.document.{
   DocumentTerms
 }
 import grit.core.id.PluginName
-import grit.core.store.{Origin, Tombstones, Tx}
+import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
 import grit.core.visibility.Clearance
-import grit.dbos.sql.{LiveDb, SqlDocumentSearch, SqlDocuments, SqlTombstones, TestPostgres}
+import grit.dbos.sql.{
+  LiveDb,
+  SqlDocumentSearch,
+  SqlDocuments,
+  SqlSavepoints,
+  SqlTombstones,
+  TestPostgres
+}
 
 /** The documents contract, kept by the SQL store against a real Postgres. */
 object SqlDocumentsTests extends DocumentContract {
@@ -26,6 +33,8 @@ object SqlDocumentsTests extends DocumentContract {
   protected val tombstones: Tombstones = new SqlTombstones
 
   private val documents = new SqlDocuments(tombstones)
+
+  protected val savepoints: Savepoints = SqlSavepoints
 
   protected val store: DocumentStore = documents
 

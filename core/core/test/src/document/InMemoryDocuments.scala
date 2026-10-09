@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
 import grit.core.retention.Target
-import grit.core.store.{InMemoryTombstones, StoreError, Tx}
+import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
 import grit.core.visibility.{Item, Label}
 
 /** An in-memory [[DocumentStore]], with each plugin's [[DocumentKeeper]], for tests, keeping
@@ -13,7 +13,7 @@ import grit.core.visibility.{Item, Label}
   * versions in `tombstones`, which reads which plugin's a version is from it. Search scores a
   * document by how often the query's words occur in it, not by BM25: the contract's searches
   * order strictly under either. It floors, places and filters by the `Tx`'s clearance, and
-  * otherwise ignores it: nothing is rolled back.
+  * otherwise ignores it: nothing is rolled back but by its [[savepoints]].
   */
 final class InMemoryDocuments extends DocumentStore {
   import InMemoryDocuments.Row
@@ -34,6 +34,19 @@ final class InMemoryDocuments extends DocumentStore {
   /** Where its keepers mark the versions they leave for deletion. */
   val tombstones: InMemoryTombstones =
     new InMemoryTombstones(v => rows.get(DocumentVersion.value(v)).map(_.plugin))
+
+  /** Its part of a transaction undone: what its keepers wrote, and the versions they marked. */
+  val savepoints: Savepoints = new Savepoints {
+    def atomic[A](body: Tx^ ?=> Either[StoreError, A])(using
+        tx: Tx^
+    ): Either[StoreError, A] = {
+      // Its identity column is not rolled back, as a sequence is not: `last` stays.
+      val before = rows
+      val out = tombstones.undoing(body(using tx))
+      if (out.isLeft) rows = before
+      out
+    }
+  }
 
   /** `plugin`'s documents as it writes them, under `under`. */
   def keeper(plugin: PluginName, under: DocumentTerms): DocumentKeeper =

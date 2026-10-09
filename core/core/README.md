@@ -96,7 +96,8 @@ In dependency order:
   deployment's and what is recorded beside them: each room's label and each person's
   clearance, where it may write outside grit, what it may read from a source, and
   which services it may send a call's arguments to, ADR 0031), `Db` (reads), `Reads` (reads fixed to
-  one subject, for code that must not choose), `Jot` (short writes from inside a step), `Entry`,
+  one subject, for code that must not choose), `Jot` (short writes from inside a step),
+  `Savepoints` (part of a transaction kept only when it succeeds), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (a TUI session, a Slack thread, a task's run, or a direct message with one person, `Origin.Direct`, its room spelled by their account; and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran

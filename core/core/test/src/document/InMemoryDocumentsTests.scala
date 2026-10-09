@@ -1,7 +1,7 @@
 package grit.core.document
 
 import grit.core.id.PluginName
-import grit.core.store.{Origin, Tombstones, Tx}
+import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
 import grit.core.visibility.Clearance
 import grit.dbos.sql.TestTx
 
@@ -18,6 +18,8 @@ object InMemoryDocumentsTests extends DocumentContract {
   protected def shelf(plugin: PluginName): DocumentShelf = documents.shelf(plugin)
 
   protected val tombstones: Tombstones = documents.tombstones
+
+  protected val savepoints: Savepoints = documents.savepoints
 
   protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
     body(using TestTx.fake(clearance))

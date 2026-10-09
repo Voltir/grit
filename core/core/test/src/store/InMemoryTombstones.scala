@@ -16,6 +16,16 @@ final class InMemoryTombstones(owner: DocumentVersion -> Option[PluginName] = _ 
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[Target, Row]
 
+  /** What `body` returns; when it is a `Left`, the tombstones it wrote are not kept, as a
+    * savepoint rolled back would leave them.
+    */
+  def undoing[A](body: => Either[StoreError, A]): Either[StoreError, A] = {
+    val before = rows
+    val out = body
+    if (out.isLeft) rows = before
+    out
+  }
+
   /** Every pending tombstone, oldest written first, then in the collector's order of kinds:
     * what a test reads to see what was written.
     */
