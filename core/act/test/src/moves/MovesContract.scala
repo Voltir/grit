@@ -1,7 +1,17 @@
 package grit.act.moves
 
-import grit.core.act.{Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, Moves, Posed}
-import grit.core.classify.{Ask, StateJson}
+import grit.core.act.{
+  Asked,
+  Called,
+  MoveError,
+  MoveKind,
+  MoveLimits,
+  MoveName,
+  Moves,
+  MovesFixtures,
+  Posed
+}
+import grit.core.classify.{Answer as Judged, Ask, StateJson}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -15,17 +25,24 @@ import utest.*
   * tests use, `grit.core.act.ScriptedMoves`: a move's result as its world gives it; a name made
   * once, by either kind, is `Repeated` after, whatever the move came to; past its kind's limit a
   * move is `OverLimit`; a refused move is not made and counts against no limit; an ask whose
-  * store failed was made, and counts.
+  * store failed was made, and counts; a JSON reply its schema refuses is asked for once more,
+  * and a model's failure is `Model` in the same words.
   */
 abstract class MovesContract extends TestSuite {
   import MovesContract.*
 
   /** What `use` returns, given moves within `limits` in a world where a text ask is answered
-    * [[Answer]], a JSON ask `{"answer": Answer}` ([[Shaped]]), a yes/no judgment [[Yes]], and a
-    * call of [[Tool]] at [[Probe]] is done with [[Read]] at [[Floor]]; when
-    * `broken`, every ask's store fails instead.
+    * [[Answer]]; a JSON ask's model replies each of `shapes` in turn, across the run, the last
+    * again once they run out (`{"answer": Answer}`, [[Shaped]], when there are none); a
+    * judgment's classifier answers `judgment`; and a call of [[Tool]] at [[Probe]] is done with
+    * [[Read]] at [[Floor]]; when `broken`, every ask's store fails instead.
     */
-  def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean = false)(use: Moves^ -> A): A
+  def within[A <: caps.Pure](
+      limits: MoveLimits,
+      broken: Boolean = false,
+      shapes: Vector[ujson.Value] = Vector(),
+      judgment: Judged = Judged.YesNo(Yes)
+  )(use: Moves^ -> A): A
 
   val tests = Tests {
     test(
@@ -97,7 +114,7 @@ abstract class MovesContract extends TestSuite {
       }
       got ==> Seen(
         Vector(
-          Right(Shaped),
+          Right(s"$Shaped at $Floor"),
           Left(MoveError.Repeated(name("a"))),
           Right(Answer),
           Left(MoveError.Repeated(name("b"))),
@@ -127,7 +144,7 @@ abstract class MovesContract extends TestSuite {
         Vector(
           Right(s"$Yes at $Floor"),
           Left(MoveError.Repeated(name("a"))),
-          Right(Shaped),
+          Right(s"$Shaped at $Floor"),
           Left(MoveError.Repeated(name("b"))),
           Left(MoveError.OverLimit(MoveKind.Judge, 1)),
           Right(Answer)
@@ -145,11 +162,42 @@ abstract class MovesContract extends TestSuite {
         Vector(Left("Store"), Left("Repeated(a)"), Left("OverLimit(Judge,1)"))
     }
 
-    test("a text ask counts against asks, whatever the run's judgments") {
-      val limited =
-        MoveLimits.of(1, 0, 5).fold(e => throw new java.lang.AssertionError(e), identity)
-      val got = within(limited) { m => Seen(Vector(asked(m, "a"), asked(m, "b"))) }
-      got ==> Seen(Vector(Right(Answer), Left(MoveError.OverLimit(MoveKind.Ask, 1))))
+    test("a JSON reply its schema refuses is asked for once more, and read when that conforms") {
+      val got = within(limits(1, 0), shapes = Vector(Unanswered, Answered)) { m =>
+        Seen(Vector(shaped(m, "a")))
+      }
+      got ==> Seen(Vector(Right(s"$Shaped at $Floor")))
+    }
+
+    test("a JSON reply refused twice is Model, naming the last refusal, and spends its name") {
+      // A third reply would conform: a second repair would read it.
+      val got = within(limits(2, 0), shapes = Vector(Unanswered, Unanswered, Answered)) { m =>
+        Seen(Vector(shaped(m, "a"), shaped(m, "a")))
+      }
+      got ==> Seen(
+        Vector(
+          Left(
+            MoveError.Model(
+              "its arguments do not match its schema: answer: expected a string, got 1"
+            )
+          ),
+          Left(MoveError.Repeated(name("a")))
+        )
+      )
+    }
+
+    test("a judgment whose answers do not read is Model, in the classifier's words") {
+      val choice = Judged.Choice("yes", Vector(Judged.Weight("yes", 1.0)), 1.0)
+      val got = within(limits(1, 0), judgment = choice) { m => Seen(Vector(judged(m, "a"))) }
+      got ==> Seen(
+        Vector(
+          Left(
+            MoveError.Model(
+              "the classifier's answers do not read: \"Is `text` urgent?\": answered a choice to a yes/no"
+            )
+          )
+        )
+      )
     }
 
     test("an ask whose store failed counts against its kind's limit") {
@@ -181,10 +229,11 @@ object MovesContract {
     m.ask(name(n), Posed.Text(Request)).map(text)
 
   /** The JSON ask `n` of [[Request]]'s system text and messages, held to [[AnswerSchema]],
-    * through `m`: its conforming JSON's text.
+    * through `m`: its conforming JSON's text and the label it was read at.
     */
   def shaped(m: Moves^, n: String): Either[MoveError, String] =
-    m.ask(name(n), Posed.json(Request.system, Request.messages, AnswerSchema)).map(_.reply.text)
+    m.ask(name(n), Posed.json(Request.system, Request.messages, AnswerSchema))
+      .map(a => s"${a.reply.text} at ${a.at}")
 
   /** The judgment `n`, whether [[State]] is urgent, through `m`: its probability of yes and the
     * label it was read at.
@@ -199,7 +248,7 @@ object MovesContract {
   val State = "the build is red"
 
   /** What a yes/no judgment is answered: its probability of yes. */
-  val Yes = 0.75
+  val Yes: Double = MovesFixtures.Yes
 
   /** The call `n` of [[Tool]] at [[Probe]] through `m`: its result. */
   def called(m: Moves^, n: String): Either[MoveError, String] =
@@ -210,6 +259,12 @@ object MovesContract {
 
   /** What a JSON ask is answered, as its conforming JSON's text. */
   val Shaped = """{"answer":"hello"}"""
+
+  /** [[Shaped]], as a model replies it. */
+  val Answered: ujson.Value = ujson.Obj("answer" -> Answer)
+
+  /** A reply [[AnswerSchema]] refuses. */
+  val Unanswered: ujson.Value = ujson.Obj("answer" -> 1)
 
   /** `{"answer": string}`. */
   val AnswerSchema: JsonSchema = JsonSchema

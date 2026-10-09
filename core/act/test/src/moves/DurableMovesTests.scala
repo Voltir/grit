@@ -2,9 +2,9 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
-import grit.core.classify.Classifier
+import grit.core.classify.{Answer as Judged, Answers, Classifier}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.InMemoryDurable
@@ -33,9 +33,15 @@ import grit.dbos.sql.TestTx
   */
 object DurableMovesTests extends MovesContract {
 
-  def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean)(use: Moves^ -> A): A = {
+  def within[A <: caps.Pure](
+      limits: MoveLimits,
+      broken: Boolean,
+      shapes: Vector[ujson.Value],
+      judgment: Judged
+  )(use: Moves^ -> A): A = {
     val w = new MovesWorld(broken, MovesContract.Floor)
-    w.run(limits)(use)
+    val classifier = new Judging(Vector(Right(Answers(Vector(judgment), Spent, "test/judge"))))
+    w.run(limits, shapes, classifier)(use)
   }
 }
 
@@ -129,12 +135,19 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
     Gates.Closed
   )
 
-  /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once. */
-  def run[A <: caps.Pure](limits: MoveLimits)(use: Moves^ -> A): A = {
-    val models = new Answering(Answer)
+  /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once, a JSON
+    * ask's model replying each of `shapes` in turn (`Answering`'s), and a judgment asked of
+    * `classifier`.
+    */
+  def run[A <: caps.Pure](
+      limits: MoveLimits,
+      shapes: Vector[ujson.Value] = Vector(),
+      classifier: Classifier^ = new Judging()
+  )(use: Moves^ -> A): A = {
+    val models = new Answering(Answer, shapes = shapes)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(DurableMoves.plain(acting, limits, env(models))(use))
+      out = Some(DurableMoves.plain(acting, limits, env(models, classifier))(use))
       "done"
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))

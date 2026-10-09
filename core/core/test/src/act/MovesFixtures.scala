@@ -70,7 +70,7 @@ object MovesFixtures {
   /** A classifier answering each request with the next of `script` (the last again once they
     * run out), counting its calls and keeping each request's state in [[states]]. With no
     * script, it answers each question of its kind, at [[Judged]]'s cost: a choice its first key,
-    * wholly; a yes/no 0.75; a score its first level, wholly.
+    * wholly; a yes/no [[Yes]]; a score its first level, wholly.
     */
   final class Judging(script: Vector[Either[ClassifierError, Answers]] = Vector())
       extends Classifier {
@@ -92,6 +92,9 @@ object MovesFixtures {
     }
   }
 
+  /** What an unscripted [[Judging]] answers a yes/no: its probability of yes. */
+  val Yes: Double = 0.75
+
   /** What every call of a [[Judging]] costs. */
   val Judged: Usage = Usage(Tokens(300), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.000013")))
 
@@ -100,7 +103,7 @@ object MovesFixtures {
       val weights =
         c.keys.zipWithIndex.map((k, i) => Answer.Weight(k.name, if (i == 0) 1.0 else 0.0))
       Answer.Choice(c.keys.headOption.fold("")(_.name), weights, 1.0)
-    case _: Question.YesNo => Answer.YesNo(0.75)
+    case _: Question.YesNo => Answer.YesNo(Yes)
     case s: Question.Score =>
       Answer.Score(0, s.levels.indices.toVector.map(i => if (i == 0) 1.0 else 0.0), 1.0)
   }
