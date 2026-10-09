@@ -67,9 +67,14 @@ object JobTests extends TestSuite {
         .of("tallies")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
         .getOrElse(throw new java.lang.AssertionError("terms"))
-      assertCompileError("Owned.Deployments(tally)")
-      assertCompileError("Owned.Plugins(p, tally)")
-      Owned.Keeps(p, terms, tally).job.name ==> name("tally")
+      // A plugin's plain job, and its keeping job under its terms, compile.
+      val _ = (Owned.Plugins(p, new Counting("c")), Owned.Keeps(p, terms, tally))
+      val notPlain =
+        "Found:    (tally : grit.core.job.JobTests.Tallying)\nRequired: grit.core.job.PlainJob[?]"
+      (
+        assertCompileError("Owned.Deployments(tally)").msg,
+        assertCompileError("Owned.Plugins(p, tally)").msg
+      ) ==> (notPlain, notPlain)
     }
 
     test("a once slot asked at an instant falls then; asked in a delay, that long after now") {
