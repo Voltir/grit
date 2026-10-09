@@ -108,6 +108,33 @@ object DurableKeepingTests extends TestSuite {
         Vector()
       )
     }
+
+    test("a keep named as an earlier ask is Repeated, and so is an ask or call named as a keep") {
+      val w = new MovesWorld(broken = false)
+      val got = w.keeping(MovesContract.limits(2, 1)) { m =>
+        val asked = m.ask(name("a"), MovesContract.Request).fold(_.toString, _ => "asked")
+        val keptA = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "a", "a", at))
+        val keptB = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", "b", at))
+        val askedB = m.ask(name("b"), MovesContract.Request).fold(_.toString, _ => "asked")
+        val calledB = m
+          .call(name("b"), MovesContract.Probe, MovesContract.Tool, MovesContract.Args)
+          .fold(_.toString, _.toString)
+        Seen(
+          Vector(asked, keptA.fold(_.toString, _.label), keptB.fold(_.toString, _.label), askedB, calledB)
+            .mkString("; ")
+        )
+      }
+      (got.said, kept(w)) ==> (
+        Vector(
+          "asked",
+          MoveError.Repeated(name("a")).toString,
+          Label.written(Label.Public),
+          MoveError.Repeated(name("b")).toString,
+          MoveError.Repeated(name("b")).toString
+        ).mkString("; "),
+        Vector(("b", "b"))
+      )
+    }
   }
 
   /** What a run's keeps came to. */
