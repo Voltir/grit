@@ -18,7 +18,7 @@ import grit.core.id.{
   TurnRef
 }
 import grit.core.inbox.Slotted
-import grit.core.job.{Declared, Ending, Job, SlotRule}
+import grit.core.job.{Declared, Ending, PlainJob, SlotRule}
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.{LifecycleSettings, Windows}
@@ -74,7 +74,7 @@ object RunRetentionLiveTests extends TestSuite {
 
   private def deployment(
       plugins: Vector[Plugin],
-      jobs: Vector[Job[?]],
+      jobs: Vector[PlainJob[?]],
       schedules: Vector[Declared[?]]
   ): Deployment =
     Deployment

@@ -2,6 +2,7 @@ package grit.kit.run
 
 import java.time.Instant
 
+import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -317,7 +318,23 @@ private[grit] object Launch {
             RunRecords(engine.entries, engine.conversations, engine.schedules, engine.deliveries),
             engine.db,
             engine.jot,
-            clock
+            clock,
+            MovesEnv(
+              MoveRecords(
+                engine.ledger,
+                engine.spending,
+                engine.requests,
+                engine.edgeDirectory,
+                engine.toolSets,
+                engine.schedules,
+                engine.askers,
+                CharEstimate
+              ),
+              models,
+              engine.db,
+              clock
+            ),
+            d.budget
           ),
           d.allJobs
         )

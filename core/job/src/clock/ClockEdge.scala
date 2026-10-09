@@ -29,7 +29,7 @@ final class ClockEdge(inbox: Inbox, schedules: ScheduleStore, db: Db, clock: Clo
       } yield flying ++ due
     }.map { waiting =>
       val tried = waiting.map { (id, job) =>
-        id -> inbox.startSlot(id, jobs.named(job).map(_.version), now)
+        id -> inbox.startSlot(id, jobs.named(job).map(_.job.version), now)
       }
       Ticked(
         tried.collect { case (id, Right(slotted)) => id -> slotted },

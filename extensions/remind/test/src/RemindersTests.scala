@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.util.chaining.*
 
+import grit.core.act.{MoveError, MoveLimits, ScriptedMoves}
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
 import grit.core.id.{
@@ -115,9 +116,18 @@ object RemindersTests extends TestSuite {
 
   private val due = Instant.parse("2026-10-07T09:00:00Z")
 
-  /** `remind`'s reply to a run of `text` due at [[due]], started `late` seconds after it. */
+  /** `remind`'s reply to a run of `text` due at [[due]], started `late` seconds after it, with
+    * no move allowed it.
+    */
   private def replied(text: String, late: Long): String =
-    Reminders.Remind.reply(JobRun(reminder(text), due, due.plusSeconds(late)))
+    Reminders.Remind.run(
+      JobRun(reminder(text), due, due.plusSeconds(late)),
+      new ScriptedMoves(
+        MoveLimits.Zero,
+        _ => Left(MoveError.Model("remind asks nothing")),
+        (_, _, _) => Left(MoveError.Model("remind calls nothing"))
+      )
+    )
 
   val tests = Tests {
     test("a reminder's text is refused blank or longer than 500 characters, and kept as given") {

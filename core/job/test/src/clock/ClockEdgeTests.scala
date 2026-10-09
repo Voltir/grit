@@ -7,7 +7,7 @@ import grit.core.id.{Declarer, ScheduleId, ScheduleKey, SourceId}
 import grit.core.inbox.{InMemoryInbox, InboxError, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
-import grit.core.job.{Declared, Jobs, Slot, SlotRule}
+import grit.core.job.{Declared, Jobs, Owned, Slot, SlotRule}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -21,7 +21,9 @@ object ClockEdgeTests extends TestSuite {
   private val remind = new Counting("remind")
 
   private def jobs(job: Counting*): Jobs =
-    Jobs.of(job.toVector).fold(n => sys.error(s"two jobs named $n"), identity)
+    Jobs
+      .of(job.toVector.map(Owned.Deployments(_)))
+      .fold(n => sys.error(s"two jobs named $n"), identity)
 
   private object FakeDb extends Db {
     def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =

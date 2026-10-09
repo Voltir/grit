@@ -64,7 +64,7 @@ object Deployments {
       knowledge: grit.core.triage.Corpora = grit.core.triage.Corpora.Empty,
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       plugins: Vector[grit.core.plugin.Plugin] = Vector.empty,
-      jobs: Vector[grit.core.job.Job[?]] = Vector.empty,
+      jobs: Vector[grit.core.job.PlainJob[?]] = Vector.empty,
       schedules: Vector[grit.core.job.Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
       identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped

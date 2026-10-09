@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.act.Moves
 import grit.core.id.JobName
 
 import utest.*
@@ -12,12 +13,12 @@ import utest.*
 object JobTests extends TestSuite {
 
   /** A job named `name` whose parameters are a count, at `version`. */
-  final class Counting(text: String, val version: Int = 1) extends Job[Count] {
+  final class Counting(text: String, val version: Int = 1) extends PlainJob[Count] {
     val name: JobName = JobName.of(text).getOrElse(throw new java.lang.AssertionError(text))
     def write(params: Count): ujson.Value = ujson.Num(params.n)
     def read(params: ujson.Value): Either[String, Count] =
       params.numOpt.map(n => Count(n.toInt)).toRight(s"not a count: $params")
-    def reply(run: JobRun[Count]): String = s"${run.params.n}"
+    def run(run: JobRun[Count], moves: Moves^): String = s"${run.params.n}"
   }
 
   final case class Count(n: Int) extends caps.Pure
@@ -28,8 +29,10 @@ object JobTests extends TestSuite {
   val tests = Tests {
     test("a deployment's jobs are found by name; a name it lacks finds none") {
       val (remind, standup) = (new Counting("remind", 2), new Counting("standup"))
-      val jobs = Jobs.of(Vector(remind, standup)).getOrElse(throw new java.lang.AssertionError())
-      Vector("remind", "standup", "digest").map(n => jobs.named(name(n)).map(_.version)) ==>
+      val jobs = Jobs
+        .of(Vector(Owned.Deployments(remind), Owned.Deployments(standup)))
+        .getOrElse(throw new java.lang.AssertionError())
+      Vector("remind", "standup", "digest").map(n => jobs.named(name(n)).map(_.job.version)) ==>
         Vector(Some(2), Some(1), None)
     }
 
@@ -41,7 +44,7 @@ object JobTests extends TestSuite {
             new Counting("b"),
             new Counting("b", 2),
             new Counting("a", 3)
-          )
+          ).map(Owned.Deployments(_))
         )
         .fold(shared => Some(JobName.value(shared)), _ => None) ==> Some("b")
     }

@@ -2,6 +2,7 @@ package grit.core.job
 
 import scala.concurrent.duration.*
 
+import grit.core.act.Moves
 import grit.core.clock.SetClock
 import grit.core.id.{CallSlot, EdgeName, JobName, PluginName, ScheduleId, TestCallSlots}
 import grit.core.identity.{Account, TestAccounts}
@@ -274,12 +275,12 @@ abstract class DeskContract extends TestSuite {
   }
 
   /** `remind`, writing its parameters in a form its own reading refuses. */
-  private object Unreadable extends Job[Count] {
+  private object Unreadable extends PlainJob[Count] {
     val name: JobName = remind.name
     val version: Int = 1
     def write(params: Count): ujson.Value = ujson.Str(s"${params.n}")
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
-    def reply(run: JobRun[Count]): String = ""
+    def run(run: JobRun[Count], moves: Moves^): String = ""
   }
 
 }

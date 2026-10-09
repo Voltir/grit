@@ -1,7 +1,8 @@
 package grit.kit.deployment
 
+import grit.core.act.Moves
 import grit.core.id.{CallSlot, JobName, PluginName}
-import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
+import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDesk}
 import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
@@ -71,12 +72,12 @@ object TestPlugins {
   }
 
   /** A job named `called`, with no parameters, replying its name. */
-  final class Named(called: String) extends Job[Named.None.type] {
+  final class Named(called: String) extends PlainJob[Named.None.type] {
     val name: JobName = JobName.of(called).fold(e => sys.error(e), identity)
     val version: Int = 1
     def write(params: Named.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
-    def reply(run: JobRun[Named.None.type]): String = called
+    def run(run: JobRun[Named.None.type], moves: Moves^): String = called
   }
 
   object Named {

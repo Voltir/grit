@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.act.{ActsFor, Gates}
+import grit.core.act.{ActsFor, Gates, Moves}
 import grit.core.approval.Approval
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Permit, RequestState, ToolRequest, ToolRequests}
@@ -23,7 +23,7 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.identity.Principal
-import grit.core.job.{Declared, InMemorySchedules, Job, JobRun, ScheduleContract, SlotRule}
+import grit.core.job.{Declared, InMemorySchedules, JobRun, PlainJob, ScheduleContract, SlotRule}
 import grit.core.message.AssistantBlock
 import grit.core.place.{Directory, Place, Service}
 import grit.core.store.{Askers, StoreError, Tx}
@@ -89,12 +89,12 @@ object CallingTests extends TestSuite {
 
   private final case class NoParams() extends caps.Pure
 
-  private object Nightly extends Job[NoParams] {
+  private object Nightly extends PlainJob[NoParams] {
     def name: JobName = JobName.of("nightly").fold(sys.error, identity)
     def version: Int = 1
     def write(params: NoParams): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams] = Right(NoParams())
-    def reply(run: JobRun[NoParams]): String = "done"
+    def run(run: JobRun[NoParams], moves: Moves^): String = "done"
   }
 
   private val key: ScheduleKey = ScheduleKey.of("nightly").fold(sys.error, identity)

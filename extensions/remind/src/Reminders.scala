@@ -4,9 +4,10 @@ import java.time.{Duration, Instant, OffsetDateTime}
 
 import scala.concurrent.duration.*
 
+import grit.core.act.Moves
 import grit.core.clock.Utc
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
-import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk, When}
+import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDesk, When}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.Reads
 import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
@@ -55,10 +56,10 @@ object Reminders {
   val MaxText: Int = 500
 
   /** The job `remind`, version 1: replies "Reminder: {text}", and, run more than a minute after
-    * its time, a second line "(due {time, UTC to the minute}; sent late)". Parameters it cannot
-    * read (no text, or text no [[Reminder]] holds) are refused.
+    * its time, a second line "(due {time, UTC to the minute}; sent late)", making no move.
+    * Parameters it cannot read (no text, or text no [[Reminder]] holds) are refused.
     */
-  object Remind extends Job[Reminder] {
+  object Remind extends PlainJob[Reminder] {
     val name: JobName =
       // A literal of the job name's grammar: every test of the job throws here if not.
       JobName.of("remind").fold(why => throw new IllegalStateException(why), identity)
@@ -74,7 +75,7 @@ object Reminders {
         .toRight(s"a reminder's parameters hold its text, not ${params.render().take(100)}")
         .flatMap(Reminder.of)
 
-    def reply(run: JobRun[Reminder]): String = {
+    def run(run: JobRun[Reminder], moves: Moves^): String = {
       val said = s"Reminder: ${run.params.text}"
       if (Duration.between(run.nominal, run.started).compareTo(Late) > 0)
         s"$said\n(due ${Utc.toMinute(run.nominal)}; sent late)"

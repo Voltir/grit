@@ -6,6 +6,7 @@ import java.time.{DayOfWeek, Instant, LocalTime, ZoneOffset}
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.act.Moves
 import grit.core.clock.{Clock, SetClock}
 import grit.core.id.{
   ConversationId,
@@ -25,8 +26,8 @@ import grit.core.job.{
   Declared,
   Ending,
   Grace,
-  Job,
   JobRun,
+  PlainJob,
   Report,
   Schedule,
   ScheduleContract,
@@ -60,11 +61,11 @@ object DeclaredLiveTests extends TestSuite {
 
   /** A job named `called` at `version`, with no parameters, whose runs reply as `says` says. */
   final class Ping(called: String, val version: Int, says: Ping.Says = Ping.Says.Reply)
-      extends Job[Ping.None.type] {
+      extends PlainJob[Ping.None.type] {
     val name: JobName = JobName.of(called).fold(sys.error, identity)
     def write(params: Ping.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Ping.None.type] = Right(Ping.None)
-    def reply(run: JobRun[Ping.None.type]): String = says match {
+    def run(run: JobRun[Ping.None.type], moves: Moves^): String = says match {
       case Ping.Says.Reply => s"$called v$version"
       case Ping.Says.Unwritable => s"$called\u0000"
       case Ping.Says.Crash => throw new StackOverflowError(s"$called crashes")
@@ -97,7 +98,7 @@ object DeclaredLiveTests extends TestSuite {
     )
 
   private def deployment(
-      jobs: Vector[Job[?]],
+      jobs: Vector[PlainJob[?]],
       schedules: Vector[Declared[?]] = Vector.empty
   ): Deployment =
     Deployment

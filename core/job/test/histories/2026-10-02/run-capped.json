@@ -1,0 +1,20 @@
+{
+  "workflow": "run",
+  "id": "c2:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:probe@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":1,\"report\":{\"kind\":\"kept\"}}"
+    },
+    {
+      "name": "move:a",
+      "output": "{\"refused\":\"capped\",\"why\":\"The day's spend reached its cap, so no model was asked.\",\"digest\":\"v1:21a8687dffc473a66b0c3315f953dbfa772f18c4ed5d0d7a2c7a159bd5eaa9ab\"}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"Capped\"}"
+    }
+  ]
+}

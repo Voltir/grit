@@ -308,10 +308,10 @@ object grit extends Module {
 
   /* Jobs (ADR 0029): the `run` workflow's body, a job's run written against core's traits and
    * Durable, never DBOS, and the clock edge, which starts each schedule's slots through the
-   * inbox (ADR 0002). Names only core. core/job/README.md. */
+   * inbox (ADR 0002). A run's moves are grit.act's; names no grit.turn. core/job/README.md. */
   object job extends GritPublished with Placed {
     def folder = os.sub / "core" / "job"
-    def moduleDeps = Seq(core)
+    def moduleDeps = Seq(core, act)
 
     /* The run and the clock edge under core's in-memory fakes. Recorded run histories, one
      * directory per epoch (ADR 0004), are replayed by JobReplayTests and written by

@@ -1,0 +1,20 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:probe@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":2,\"report\":{\"kind\":\"kept\"}}"
+    },
+    {
+      "name": "move:c",
+      "output": "{\"unsent\":\"unserved\",\"why\":\"No edge is serving probe right now, so this call did not run.\",\"digest\":\"v1:e5d74280ee852fe36c0dbbcf26d715fe8839966dfa7a3a513d77648689a0c821\"}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"Failed(No edge is serving probe right now, so this call did not run.)\"}"
+    }
+  ]
+}

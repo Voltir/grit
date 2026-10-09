@@ -2,10 +2,12 @@ package grit.job.run
 
 import java.time.Instant
 
+import grit.act.moves.{DurableMoves, MovesEnv}
+import grit.core.act.{Acting, ActsFor, Allowance, Gates}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, JobName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId
-import grit.core.job.{Job, JobRun, Jobs, Report, Slot}
+import grit.core.job.{JobRun, Jobs, Owned, PlainJob, Report, Slot}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.store.{Db, Entry, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -23,13 +25,19 @@ object Run {
 
   /** The workflow of a job's run, the turn whose workflow id is `id`:
     *   1. `read-slot` — which slot it runs, its schedule, and the version it was started at;
-    *   1. `reply` — under its job's current version in `jobs`: the job's reply (or the line
-    *      saying its parameters could not be read) as the turn's reply, awaited where its
-    *      schedule reports, and the slot marked replied, in one transaction. A reply already
-    *      kept is returned first, whatever the version. Under another version, or with its job
-    *      gone, it writes nothing: superseded.
+    *   1. under its job's current version in `jobs`, the job's run: the moves it makes, each as
+    *      the steps `grit.act.moves.MoveSteps` names, for its schedule's principal, each ask
+    *      admitted by `env.budget` against the day's spend, a call whose tool asks a person
+    *      first never sent ([[grit.core.act.Gates.Closed]]), within the job's limits;
+    *   1. `reply` — the job's reply (or the line saying its parameters could not be read) as
+    *      the turn's reply, awaited where its schedule reports, and the slot marked replied, in
+    *      one transaction. A reply already kept is returned first, whatever the version. Under
+    *      another version, or with its job gone, the job does not run and this writes nothing:
+    *      superseded.
     * What it returns says which. A store that fails fails the run (the clock edge then ends the
-    * slot `failed`).
+    * slot `failed`). A run resumed under another version before any move records
+    * `superseded`; one resumed after making moves ends in error at `reply`, whose position its
+    * history holds a move, and the clock edge supersedes it.
     */
   def body(env: RunEnv^, jobs: Jobs)(id: WorkflowId)(using d: Durable^): String =
     TurnRef.fromWorkflowId(id) match {
@@ -40,7 +48,21 @@ object Run {
         d.step(Step.ReadSlot)(() => readSlot(records, db, turn)) match {
           case SlotRead.Unreadable(why) => s"unreadable: $why"
           case read: SlotRead.Read =>
-            d.step(Step.Reply)(() => reply(records, jot, jobs, turn, read, clock.now())) match {
+            val acting = Acting(
+              turn,
+              ActsFor.Scheduled(read.slot.schedule),
+              Allowance.Daily(env.budget),
+              Gates.Closed
+            )
+            val planned: Planned = jobs.named(read.job) match {
+              case None => Planned.Jobless
+              case Some(owned) if owned.job.version != read.version =>
+                Planned.Superseded(owned.job.version)
+              case Some(Owned.Deployments(job)) => Planned.Says(said(job, read, acting, env.moves))
+              case Some(Owned.Plugins(_, job: PlainJob[?])) =>
+                Planned.Says(said(job, read, acting, env.moves))
+            }
+            d.step(Step.Reply)(() => reply(records, jot, turn, read, planned, clock.now())) match {
               case RunEnd.Replied(_) => s"replied: ${EntryId.value(turn.replyId)}"
               case RunEnd.Superseded(current) =>
                 s"superseded: started at v${read.version}, its job at v$current"
@@ -88,9 +110,9 @@ object Run {
   private def reply(
       records: RunRecords,
       jot: Jot^,
-      jobs: Jobs,
       turn: TurnRef,
       read: SlotRead.Read,
+      planned: Planned,
       now: Instant
   ): RunEnd =
     jot
@@ -98,11 +120,10 @@ object Run {
         records.entries.get(turn.replyId).flatMap {
           case Some(kept) => Right(RunEnd.Replied(textOf(kept)))
           case None =>
-            jobs.named(read.job) match {
-              case None => Right(RunEnd.Jobless)
-              case Some(job) if job.version != read.version => Right(RunEnd.Superseded(job.version))
-              case Some(job) =>
-                val text = say(job, read)
+            planned match {
+              case Planned.Jobless => Right(RunEnd.Jobless)
+              case Planned.Superseded(current) => Right(RunEnd.Superseded(current))
+              case Planned.Says(text) =>
                 for {
                   next <- records.entries.lockNext(turn.conversationId)
                   _ <- records.entries.insert(
@@ -112,7 +133,7 @@ object Run {
                       turn.turnSeq,
                       None,
                       next.seq,
-                      Payload.Message(said(text, read)),
+                      Payload.Message(saying(text, read)),
                       now
                     )
                   )
@@ -124,17 +145,42 @@ object Run {
       }
       .fold(e => RunEnd.Failed(describe(e)), identity)
 
-  /** `job`'s reply to the run `read`, or the line saying its parameters could not be read. */
-  private def say[P <: caps.Pure](job: Job[P], read: SlotRead.Read): String =
+  /** What a run's `reply` step does unless its reply is kept already: write the job's reply, or
+    * nothing under another version or with the job gone. Decided before the step, from what
+    * `read-slot` recorded and the deployment's jobs.
+    */
+  private enum Planned {
+    case Says(text: String)
+    case Superseded(current: Int)
+    case Jobless
+  }
+
+  /** A job's reply, as its moves' body returns it. */
+  private final case class Said(text: String) extends caps.Pure
+
+  /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `env`, or
+    * the line saying its parameters could not be read.
+    */
+  private def said[P <: caps.Pure](
+      job: PlainJob[P],
+      read: SlotRead.Read,
+      acting: Acting,
+      env: MovesEnv^
+  )(using d: Durable^): String =
     job
       .read(read.params)
       .fold(
         why => unreadParams(read.job, why),
-        params => job.reply(JobRun(params, read.slot.nominal, read.started))
+        params =>
+          DurableMoves
+            .plain(acting, job.limits, env)(moves =>
+              Said(job.run(JobRun(params, read.slot.nominal, read.started), moves))
+            )
+            .text
       )
 
   /** `text` as the run's reply, written by its job at the run's version, at no cost. */
-  private def said(text: String, read: SlotRead.Read): Message.Assistant =
+  private def saying(text: String, read: SlotRead.Read): Message.Assistant =
     Message.Assistant(
       Vector(AssistantBlock.Text(text)),
       StopReason.EndTurn,

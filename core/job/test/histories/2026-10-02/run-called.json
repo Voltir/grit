@@ -1,0 +1,32 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:probe@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":2,\"report\":{\"kind\":\"kept\"}}"
+    },
+    {
+      "name": "move:c",
+      "output": "{\"sent\":{\"digest\":\"v1:e5d74280ee852fe36c0dbbcf26d715fe8839966dfa7a3a513d77648689a0c821\"}}"
+    },
+    {
+      "name": "DBOS.recv",
+      "output": "rang"
+    },
+    {
+      "name": "DBOS.sleep",
+      "output": "10000"
+    },
+    {
+      "name": "move:c:answer",
+      "output": "{\"done\":{\"text\":\"read\",\"at\":\"public\"}}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"Done(read,public)\"}"
+    }
+  ]
+}

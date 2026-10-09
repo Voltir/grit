@@ -24,28 +24,70 @@ object JobReplayTests extends TestSuite {
         .map(p => p -> History.read(ujson.read(os.read(p))))
   }
 
-  val tests = Tests {
-    test("the current epoch has run histories to replay, a redeployed one's among them") {
-      // Without them the gate below passes vacuously.
-      val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path.last }
-      assert(runs.size >= 6, runs.contains("run-replied-then-redeployed.json"))
+  /** Whether `history` made a move: a step of `grit.act.moves.MoveSteps`'. */
+  private def moved(history: History): Boolean = history.steps.exists(_.name.startsWith("move:"))
+
+  /** Each history `pick` takes that does not replay under `jobs`, and why. */
+  private def failing(pick: History => Boolean, jobs: grit.core.job.Jobs): Vector[String] =
+    histories.flatMap { case (path, parsed) =>
+      val outcome = parsed.flatMap { history =>
+        if (history.epoch != Turn.Epoch) Left(s"recorded under epoch ${history.epoch}")
+        else if (history.workflow != "run") Left(s"a ${history.workflow} history")
+        else if (!pick(history)) Right("not picked")
+        else {
+          val w = new World
+          new InMemoryDurable().replay(history.id, history.steps)(Run.body(w.env(), jobs))
+        }
+      }
+      outcome.left.toOption.map(why => s"${path.last}: $why")
     }
 
-    test("every run history of the current epoch replays under today's body, at a later version") {
+  val tests = Tests {
+    test("the current epoch has run histories to replay, redeployed ones and moves among them") {
+      // Without them the gates below pass vacuously.
+      val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path.last }
+      val expected = Vector(
+        "run-replied-then-redeployed",
+        "run-asked",
+        "run-called",
+        "run-called-then-asked",
+        "run-call-unserved",
+        "run-call-unclaimed",
+        "run-call-refused",
+        "run-capped",
+        "run-redeployed-before-moves",
+        "run-moved-then-redeployed"
+      ).map(_ + ".json")
+      expected.filterNot(runs.contains) ==> Vector()
+    }
+
+    test("every run history that made no move replays under today's body, at a later version") {
       // An empty world: every recorded step reads its output back, and a later deploy's jobs
       // decide nothing a recorded step already did.
-      val failures = histories.flatMap { case (path, parsed) =>
-        val outcome = parsed.flatMap { history =>
-          if (history.epoch != Turn.Epoch) Left(s"recorded under epoch ${history.epoch}")
-          else if (history.workflow != "run") Left(s"a ${history.workflow} history")
-          else {
-            val w = new World
-            new InMemoryDurable().replay(history.id, history.steps)(Run.body(w.env(), jobs(2)))
-          }
-        }
-        outcome.left.toOption.map(why => s"${path.last}: $why")
+      failing(h => !moved(h), jobs(2)) ==> Vector()
+    }
+
+    test("every run history that made moves replays under today's body, at its own version") {
+      failing(moved, jobsOf(probing(1))) ==> Vector()
+    }
+
+    test("a run that recorded no move, resumed at another version, recorded superseded") {
+      val replayed = histories.collect {
+        case (path, Right(h)) if path.last == "run-redeployed-before-moves.json" =>
+          new InMemoryDurable().replay(h.id, h.steps)(Run.body(new World().env(), jobs(2)))
       }
-      assert(failures.isEmpty)
+      replayed ==> Vector(Right("superseded: started at v1, its job at v2"))
+    }
+
+    test(
+      "a run that made a move, resumed at another version, ends in error at its reply, which meets the move"
+    ) {
+      val replayed = histories.collect {
+        case (path, Right(h)) if path.last == "run-moved-then-redeployed.json" =>
+          new InMemoryDurable().replay(h.id, h.steps)(Run.body(new World().env(), jobs(2)))
+      }
+      replayed.map(_.left.map(_.replaceAll("workflow \\S+ ", "workflow "))) ==>
+        Vector(Left("workflow step 1: ran 'reply', recorded 'move:a'"))
     }
   }
 }

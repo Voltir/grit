@@ -10,11 +10,13 @@ final case class Budget(zone: ZoneId, cap: Option[DailyCap]) {
   /** The day `now` falls on. */
   def today(now: Instant): Day = Day.at(now, zone)
 
-  /** Whether a new message may start a turn once `spent` has been recorded today: always,
+  /** Whether a new message may start a turn, or a job's run ask a model, once `spent` has been
+    * recorded today: always,
     * with no cap; otherwise while the priced part of `spent` is below the cap. A call its
     * provider does not price counts as nothing, so under a provider that prices none the
-    * cap is never reached. It is checked only before a message is recorded: the turns
-    * already running each spend up to their own bound (`GRIT_TOOL_ROUNDS` model calls, each
+    * cap is never reached. It is checked before a message is recorded, and before each ask of
+    * an acting whose allowance is `Daily` (a job's run, [[grit.core.act.Allowance.Daily]]): the
+    * turns already running each spend up to their own bound (`GRIT_TOOL_ROUNDS` model calls, each
     * of about `GRIT_WINDOW_TOKENS` in and at most the turn's output budget, `GRIT_MAX_TOKENS`,
     * out) and a closing summary per period they end, so a day can end above its cap by that
     * much.

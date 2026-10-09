@@ -17,7 +17,7 @@ import grit.core.id.{
   ShadowName
 }
 import grit.core.identity.{Identities, Realm}
-import grit.core.job.{Declared, Job, Jobs, NotOwn}
+import grit.core.job.{Declared, Jobs, NotOwn, Owned, PlainJob}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -337,7 +337,7 @@ final case class Deployment private (
     knowledge: Corpora,
     review: Option[ShadowReview],
     recipe: TurnRecipe,
-    jobs: Vector[Job[?]],
+    jobs: Vector[PlainJob[?]],
     schedules: Vector[Declared[?]],
     visibility: Visibility,
     identities: Identities,
@@ -428,7 +428,7 @@ object Deployment {
       knowledge: Corpora = Corpora.Empty,
       review: Option[Reviewing] = None,
       recipe: TurnRecipe = TurnRecipe.Shipped,
-      jobs: Vector[Job[?]] = Vector.empty,
+      jobs: Vector[PlainJob[?]] = Vector.empty,
       schedules: Vector[Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
       identities: Identities = Identities.Shipped
@@ -494,7 +494,13 @@ object Deployment {
           },
           _ => Right(())
         )
-      all <- Jobs.of(plugins.flatMap(_.jobs) ++ jobs).left.map(DeploymentRefusal.JobRepeated(_))
+      all <- Jobs
+        .of(
+          plugins.flatMap(p => p.jobs.map(Owned.Plugins(p.name, _))) ++
+            jobs.map(Owned.Deployments(_))
+        )
+        .left
+        .map(DeploymentRefusal.JobRepeated(_))
       _ <- plugins
         .flatMap(p =>
           p.schedules
@@ -517,7 +523,7 @@ object Deployment {
       // its parameters read by code that did not write them.
       _ <- ids
         .collectFirst {
-          case (id, job) if !all.named(job.name).contains(job) =>
+          case (id, job) if !all.named(job.name).map(_.job).contains(job) =>
             DeploymentRefusal.ScheduleJobless(id, job.name)
         }
         .toLeft(())

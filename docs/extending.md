@@ -29,7 +29,7 @@ A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.e
 
 A shipped extension implements core's traits. A deployment's own code, outside grit, can
 supply these as values in `Deployment.of` today: a `ServedEdge` or `CatchUp` (with, inside an
-edge that attests, the `RealmSource` of the realm it speaks for), a `Plugin`, a `Job` with the
+edge that attests, the `RealmSource` of the realm it speaks for), a `Plugin`, a `PlainJob` with the
 schedules that run it, and the `Labeller` of its rooms; beside them it declares, as data, its
 `Visibility` and its `Identities` (below). The rest it chooses among grit's
 shipped implementations, by the kit's enums.
@@ -38,7 +38,7 @@ shipped implementations, by the kit's enums.
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
-| `Job`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
+| `PlainJob`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
 | `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
 | `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |

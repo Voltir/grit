@@ -17,6 +17,7 @@ object JobCaptureTests extends TestSuite {
   private val prelude =
     """package probe
       |import java.time.Instant
+      |import grit.core.act.*
       |import grit.core.host.*
       |import grit.core.id.*
       |import grit.core.job.*
@@ -26,12 +27,12 @@ object JobCaptureTests extends TestSuite {
       |import grit.core.visibility.Subject
       |
       |final case class Note(text: String) extends caps.Pure
-      |object Remind extends Job[Note] {
+      |object Remind extends PlainJob[Note] {
       |  val name: JobName = JobName.of("remind").fold(sys.error, identity)
       |  val version: Int = 1
       |  def write(params: Note): ujson.Value = ujson.Str(params.text)
       |  def read(params: ujson.Value): Either[String, Note] = params.strOpt.map(Note(_)).toRight("no text")
-      |  def reply(run: JobRun[Note]): String = run.params.text
+      |  def run(run: JobRun[Note], moves: Moves^): String = run.params.text
       |}
       |object Remember extends PluginTool[Int] {
       |  val described: Hosted[Int] =
@@ -59,12 +60,12 @@ object JobCaptureTests extends TestSuite {
 
   /** 1. A job holding a store it was built with. */
   private val jobHoldsDb =
-    """final class Holds(db: Db^) extends Job[Note] {
+    """final class Holds(db: Db^) extends PlainJob[Note] {
       |  val name: JobName = Remind.name
       |  val version: Int = 1
       |  def write(params: Note): ujson.Value = Remind.write(params)
       |  def read(params: ujson.Value): Either[String, Note] = Remind.read(params)
-      |  def reply(run: JobRun[Note]): String = db.read(Subject.Public)(Right("")).fold(_ => "", identity)
+      |  def run(run: JobRun[Note], moves: Moves^): String = db.read(Subject.Public)(Right("")).fold(_ => "", identity)
       |}
       |""".stripMargin
 

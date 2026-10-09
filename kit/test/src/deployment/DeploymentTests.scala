@@ -3,6 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.DurationInt
 
 import grit.core.id.{AttesterName, EdgeName}
+import grit.core.job.Owned
 import grit.core.tool.ToolName
 import grit.core.triage.Gate
 import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomLabels, Visibility}
@@ -810,7 +811,9 @@ object DeploymentTests extends TestSuite {
         .map(_ => ()) ==> Right(())
     }
 
-    test("an accepted deployment runs every job, its plugins' and its own, by name") {
+    test(
+      "an accepted deployment runs every job, its plugins' and its own, by name, knowing whose"
+    ) {
       val (nudge, standup) = (new TestPlugins.Named("nudge"), new TestPlugins.Named("standup"))
       Deployments
         .of(
@@ -823,7 +826,9 @@ object DeploymentTests extends TestSuite {
             d.allJobs.named(job("standup")),
             d.allJobs.named(job("other"))
           )
-        ) ==> Right((Some(nudge), Some(standup), None))
+        ) ==> Right(
+        (Some(Owned.Plugins(name("p"), nudge)), Some(Owned.Deployments(standup)), None)
+      )
     }
 
     test("a deployment declared with every argument but jobs and schedules has none of either") {
