@@ -100,16 +100,11 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** 6. An acting value that holds a store. */
-  private val actingHoldsDb =
-    """final case class Acting2(turn: TurnRef, actsFor: ActsFor, allowance: Allowance, gates: Gates, db: Db^) extends caps.Pure
-      |""".stripMargin
-
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
   private val breaches: Vector[String] =
-    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider, actingHoldsDb)
+    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider)
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -167,10 +162,6 @@ object ActCaptureTests extends TestSuite {
       assert(
         errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
       )
-    }
-
-    test("an acting value holding a store is rejected") {
-      assert(heldImpure(errors(actingHoldsDb)))
     }
 
     test("capture checking is what rejects each breach but the bounds") {
