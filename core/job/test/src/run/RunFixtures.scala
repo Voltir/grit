@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -39,14 +40,12 @@ import grit.core.inbox.{InMemoryInbox, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
 import grit.core.job.{Declared, JobRun, Jobs, KeepingJob, Owned, PlainJob, Schedule, SlotRule, When}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
+import grit.core.provider.ModelRequest
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
   Askers,
-  Db,
   InMemoryToolSets,
   InMemoryUsageLedger,
   Jot,
@@ -145,11 +144,6 @@ object RunFixtures {
 
   final case class Text(text: String) extends caps.Pure
 
-  object FakeDb extends Db {
-    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
-
   /** Writes as its transaction is committed, nothing rolled back; with `crashAfter`, the
     * process dies once just after the first write commits.
     */
@@ -190,7 +184,7 @@ object RunFixtures {
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
-    val models: Answering = new Answering(crashModel)
+    val models: Answering = new Answering(Answer, crashModel)
 
     private val switches = new Switches(crashRecord, crashServing)
     private val requests = new AnsweringEdges(edges, durable, switches)
@@ -218,7 +212,7 @@ object RunFixtures {
     def env(jot: Jot^ = new FakeJot()): RunEnv^ =
       RunEnv(
         RunRecords(inbox.entries, inbox.conversations, inbox.schedules, deliveries),
-        FakeDb,
+        new FakeDb(),
         jot,
         clock,
         MovesEnv(
@@ -234,7 +228,7 @@ object RunFixtures {
             documents.savepoints
           ),
           models,
-          FakeDb,
+          new FakeDb(),
           clock
         ),
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
@@ -433,44 +427,8 @@ object RunFixtures {
       }
     )
 
-  /** Models whose every provider answers [[Answer]], at a priced cost, counting its calls; with
-    * `crash`, the process dies inside the first.
-    */
-  final class Answering(crash: Boolean = false) extends Models {
-    @caps.unsafe.untrackedCaptures
-    var calls = 0
-    @caps.unsafe.untrackedCaptures
-    private var armed = crash
-    def catalog(): Either[String, Catalog] = Right(TestCatalog)
-    def provider(pinned: Pinned): Provider^ = new Provider {
-      def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
-        calls += 1
-        if (armed) { armed = false; throw new InMemoryDurable.Crash }
-        Right(
-          Message.Assistant(
-            Vector(AssistantBlock.Text(Answer)),
-            StopReason.EndTurn,
-            Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
-            "test/summary"
-          )
-        )
-      }
-    }
-  }
-
-  val TestCatalog: Catalog = {
-    def role(name: String) =
-      Assignment(ModelRef(ModelId.of(s"test/$name").getOrElse(sys.error(name)), None), 1024, None)
-    Catalog.of(Policy(role("turn"), role("summary"), role("query"), role("summary")), Vector.empty)
-  }
-
   /** A run has no asker: its calls are made for its schedule's principal. */
   object NoAskers extends Askers {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
-  }
-
-  object PerChar extends TokenEstimator {
-    def message(message: Message): Tokens = Tokens(message.toString.length.toLong)
-    def system(prompt: String): Tokens = Tokens(prompt.length.toLong)
   }
 }

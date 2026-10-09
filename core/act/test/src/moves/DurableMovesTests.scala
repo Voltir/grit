@@ -3,6 +3,7 @@ package grit.act.moves
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.InMemoryDurable
@@ -18,14 +19,12 @@ import grit.core.edge.{
 import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.Pinned
 import grit.core.place.Place
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
+import grit.core.provider.Models
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
-import grit.core.store.{Askers, Db, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
+import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
-import grit.core.visibility.{Clearance, Label, Subject}
+import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against [[DurableMoves]], over [[InMemoryDurable]] and core's in-memory
@@ -101,7 +100,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         documents.savepoints
       ),
       models,
-      FakeDb,
+      new FakeDb(),
       clock
     )
 
@@ -118,7 +117,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
 
   /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once. */
   def run[A <: caps.Pure](limits: MoveLimits)(use: Moves^ -> A): A = {
-    val models = new Answering
+    val models = new Answering(Answer)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(DurableMoves.plain(acting, limits, env(models))(use))
@@ -136,7 +135,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
   def keeping[A <: caps.Pure](limits: MoveLimits, keeper: DocumentKeeper = keeper)(
       use: Keeping^ -> A
   ): A = {
-    val models = new Answering
+    val models = new Answering(Answer)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(DurableMoves.keeping(acting, limits, env(models), keeper)(use))
@@ -170,57 +169,10 @@ object MovesWorld {
       "properties" -> ujson.Obj("path" -> ujson.Obj("type" -> "string"))
     )
 
-  /** Models whose every provider answers [[MovesContract.Answer]], counting its calls. */
-  final class Answering extends Models {
-    @caps.unsafe.untrackedCaptures
-    var calls = 0
-    def catalog(): Either[String, grit.core.model.Catalog] = Right(TestCatalog)
-    def provider(pinned: Pinned): Provider^ = new Provider {
-      def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
-        calls += 1
-        Right(
-          Message.Assistant(
-            Vector(AssistantBlock.Text(MovesContract.Answer)),
-            StopReason.EndTurn,
-            Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
-            "test/summary"
-          )
-        )
-      }
-    }
-  }
-
-  val TestCatalog: grit.core.model.Catalog = {
-    import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
-    def role(name: String) =
-      Assignment(
-        ModelRef(
-          ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)),
-          None
-        ),
-        1024,
-        None
-      )
-    grit.core.model.Catalog.of(
-      Policy(role("turn"), role("summary"), role("query"), role("summary")),
-      Vector.empty
-    )
-  }
-
-  object FakeDb extends Db {
-    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
-
   /** Every turn's asker is grit. */
   object GritAsks extends Askers {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
       Right(Some(Principal.Grit))
-  }
-
-  object PerChar extends TokenEstimator {
-    def message(message: Message): Tokens = Tokens(message.toString.length.toLong)
-    def system(prompt: String): Tokens = Tokens(prompt.length.toLong)
   }
 
   object Unreadable extends Spending {

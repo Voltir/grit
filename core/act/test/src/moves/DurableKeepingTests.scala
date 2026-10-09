@@ -3,6 +3,7 @@ package grit.act.moves
 import java.time.Instant
 
 import grit.core.act.{Keeping, MoveError, MoveLimits}
+import grit.core.act.MovesFixtures.Answering
 import grit.core.document.{DocText, DocumentKeeper, Written}
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.id.DocKey
@@ -73,7 +74,7 @@ object DurableKeepingTests extends TestSuite {
       // Replayed, the keep's body never runs: what it wrote is not written again.
       val again =
         new InMemoryDurable().replay(Turn.workflowId, w.durable.history(Turn.workflowId)) { _ =>
-          val models = new Answering
+          val models = new Answering(MovesContract.Answer)
           DurableMoves
             .keeping(w.acting, MoveLimits.Zero, w.env(models), new Raced(w.keeper))(m =>
               Seen(keep(m).kept.fold(_.toString, _.label))

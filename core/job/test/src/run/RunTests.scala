@@ -1,6 +1,7 @@
 package grit.job.run
 
 import grit.act.moves.MoveSteps
+import grit.core.act.MovesFixtures.PerChar
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{Pending, RequestState}
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
