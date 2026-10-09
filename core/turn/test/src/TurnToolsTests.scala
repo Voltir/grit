@@ -120,16 +120,6 @@ object TurnToolsTests extends TestSuite {
       ws.reads ==> 0
     }
 
-    test("an answer is its approval; none is timed out; one unreadable declines, saying why") {
-      TurnTools.approval(Some(Approval.encode(Approval.Approved))) ==> Approval.Approved
-      TurnTools.approval(Some(Approval.encode(Approval.Declined(Some("no"))))) ==>
-        Approval.Declined(Some("no"))
-      TurnTools.approval(None) ==> Approval.TimedOut
-      TurnTools.approval(Some("yes please")) ==> Approval.Declined(
-        Some("The answer could not be read (not a JSON object), so it did not run.")
-      )
-    }
-
     test("a refused call is answered with its outcome, and nothing runs") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

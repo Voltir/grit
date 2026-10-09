@@ -76,23 +76,6 @@ object TurnTools {
     */
   val AnswerWithin: FiniteDuration = 24.hours
 
-  /** The approval `received` holds, as [[grit.core.durable.Durable.recv]] returned it for a gated call: none is
-    * [[Approval.TimedOut]]; a message that does not decode is [[Approval.Declined]], saying
-    * why, so the call does not run.
-    */
-  def approval(received: Option[String]): Approval =
-    received match {
-      case None => Approval.TimedOut
-      case Some(message) =>
-        Approval
-          .decode(message)
-          .fold(
-            why =>
-              Approval.Declined(Some(s"The answer could not be read ($why), so it did not run.")),
-            identity
-          )
-    }
-
   /** The `ask:n:j` step: an [[Payload.Ask]] entry at [[Slot.askId]], dated `at`, after
     * everything in the conversation, asking a person about `call`, the gated call at `slot`,
     * by showing them `shown`.
