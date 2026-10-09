@@ -26,7 +26,7 @@
     },
     {
       "name": "move:a",
-      "output": "{\"ok\":{\"digest\":\"v1:7436c87b8089403f2441d763d17a607e9c369ec61175d0d4d8f2ed36c5155871\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"public\"}}"
+      "output": "{\"ok\":{\"digest\":\"v1:7436c87b8089403f2441d763d17a607e9c369ec61175d0d4d8f2ed36c5155871\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"public\",\"estimate\":29}}"
     },
     {
       "name": "move:a:record",

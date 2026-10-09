@@ -10,7 +10,7 @@
     },
     {
       "name": "move:a",
-      "output": "{\"ok\":{\"digest\":\"v1:21a8687dffc473a66b0c3315f953dbfa772f18c4ed5d0d7a2c7a159bd5eaa9ab\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"public\"}}"
+      "output": "{\"ok\":{\"digest\":\"v1:21a8687dffc473a66b0c3315f953dbfa772f18c4ed5d0d7a2c7a159bd5eaa9ab\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"public\",\"estimate\":16}}"
     }
   ]
 }

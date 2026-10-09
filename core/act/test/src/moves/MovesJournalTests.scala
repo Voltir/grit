@@ -37,16 +37,19 @@ object MovesJournalTests extends TestSuite {
     Service.of("probe").fold(e => throw new java.lang.AssertionError(e), identity)
 
   val tests = Tests {
-    test("an ask's move step is written as ok with its digest, message and label, or refused") {
+    test(
+      "an ask's move step is written as ok with its digest, message, label and the estimate of the request it sent, or refused"
+    ) {
       val internal = Label.at(Level.Internal)
       pinned[AskMade](
-        AskMade.Made("v1:ab", message, internal),
+        AskMade.Made("v1:ab", message, internal, Tokens(42)),
         ujson.write(
           ujson.Obj(
             "ok" -> ujson.Obj(
               "digest" -> "v1:ab",
               "message" -> PayloadJson.write(Payload.Message(message)),
-              "at" -> "internal"
+              "at" -> "internal",
+              "estimate" -> 42
             )
           )
         )

@@ -141,7 +141,8 @@ object DurableMoves {
                   val provider = models.provider(catalog.pin.summary)
                   Asking.reply(provider, request, Hearing.silent(), clock) match {
                     case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, digest)
-                    case Right(message) => AskMade.Made(digest, message, at)
+                    case Right(message) =>
+                      AskMade.Made(digest, message, at, records.estimator.request(request))
                   }
               }
           }
@@ -152,11 +153,11 @@ object DurableMoves {
           case AskMade.Refused(AskMade.Kind.Capped, _, _) => Left(MoveError.Capped)
           case AskMade.Refused(AskMade.Kind.Model, why, _) => Left(MoveError.Model(why))
           case AskMade.Refused(AskMade.Kind.Store, why, _) => Left(MoveError.Store(why))
-          case AskMade.Made(_, message, at) =>
-            // Recorded even when the input diverged: the model was called, and its cost spent.
+          case AskMade.Made(_, message, at, estimate) =>
+            // Recorded even when the input diverged: the model was called, and its cost spent,
+            // estimated from the request it was sent, the recorded one.
             val entry =
               EntryId(s"move:${WorkflowId.value(turn.workflowId)}:${MoveName.value(name)}")
-            val estimate = records.estimator.request(request)
             val ledger = records.ledger
             val turnRef = turn
             val kept = d.transact(MoveSteps.record(name), subject)(

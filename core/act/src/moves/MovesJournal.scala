@@ -4,7 +4,7 @@ import grit.act.phase.Faults
 import grit.core.act.Called
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.store.{Payload, PayloadJson}
@@ -14,8 +14,10 @@ import grit.core.visibility.Label
 /** What an ask's `move:{n}` step came to. */
 private[moves] enum AskMade {
 
-  /** The model answered `message`; its request held nothing above `at`. */
-  case Made(digest: String, message: Message.Assistant, at: Label)
+  /** The model answered `message`; its request, estimated at `estimate`, held nothing above
+    * `at`.
+    */
+  case Made(digest: String, message: Message.Assistant, at: Label, estimate: Tokens)
 
   /** No answer, `why`: the allowance did not admit it, no catalog read or the provider failed,
     * or the store failed.
@@ -262,12 +264,13 @@ object MovesJournal {
   }
 
   private def writeAsk(made: AskMade): ujson.Value = made match {
-    case AskMade.Made(digest, message, at) =>
+    case AskMade.Made(digest, message, at, estimate) =>
       ujson.Obj(
         "ok" -> ujson.Obj(
           "digest" -> digest,
           "message" -> PayloadJson.write(Payload.Message(message)),
-          "at" -> Label.written(at)
+          "at" -> Label.written(at),
+          "estimate" -> ujson.Num(Tokens.value(estimate).toDouble)
         )
       )
     case AskMade.Refused(kind, why, digest) =>
@@ -290,7 +293,12 @@ object MovesJournal {
                 case _ => Left("ask: expected an assistant message")
               }
             at <- str(f, "at").flatMap(Label.read)
-          } yield AskMade.Made(digest, message, at)
+            estimate <- f
+              .get("estimate")
+              .flatMap(_.numOpt)
+              .filter(n => n.isWhole && n >= 0)
+              .toRight("ask: no estimate")
+          } yield AskMade.Made(digest, message, at, Tokens(estimate.toLong))
         case (_, Some(key)) =>
           for {
             kind <- AskMade.Kind.values.find(_.key == key).toRight(s"ask: no refusal $key")

@@ -323,6 +323,19 @@ object RunTests extends TestSuite {
     }
 
     test(
+      "a diverged ask's cost is estimated from the request the model was sent, not the rerun's"
+    ) {
+      val w = new World(crashRecord = true)
+      val turn = w.started(w.declared("standup", 3))
+      def asking(n: Int) =
+        new Moving(1, limits(1, 0), (_, m) => said(m.ask(move("a"), request(n))))
+      try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1))))
+      catch { case _: InMemoryDurable.Crash => "crashed" }
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1000))))
+      w.ledger.rows.map(_._5) ==> Vector(PerChar.request(request(1)))
+    }
+
+    test(
       "a plugin's keeping job keeps its documents at the run's floor, in its keep's step, then replies"
     ) {
       val w = new World(floor = Label.at(Level.Internal))
