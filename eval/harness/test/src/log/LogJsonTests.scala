@@ -196,6 +196,13 @@ object LogJsonTests extends TestSuite {
       assert(!line.contains("echoed"))
     }
 
+    test("a score's answer is kept as its position, its levels' weights and its confidence") {
+      val score = Vector(Weights.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92))
+      LogJson.weights.write(score).render() ==>
+        """[{"score":1.05,"levels":[0,0.95,0.05],"confidence":0.92}]"""
+      LogJson.weights.read(LogJson.weights.write(score)) ==> Right(score)
+    }
+
     // The line form is what scoring reads from runs/*.jsonl: its keys are pinned.
     test("a row's line keeps its keys in one order, answers by position") {
       LogJson.row(answered) ==>

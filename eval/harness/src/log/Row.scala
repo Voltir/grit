@@ -61,7 +61,7 @@ enum Outcome[+A] {
 
 /** A classifier's answer to one question as a log keeps it: by position, never by key, so no
   * question's words reach the log. The question it answers, which the request's digest pins,
-  * names the keys ([[Weights.answer]]).
+  * names the keys or levels ([[Weights.answer]]).
   */
 enum Weights {
 
@@ -72,14 +72,17 @@ enum Weights {
 
   /** A yes/no question: the probability of yes. */
   case YesNo(yes: Double)
+
+  /** A score: its position along the levels, and each level's probability, in their order. */
+  case Score(position: Double, probabilities: Vector[Double], confidence: Double)
 }
 
 object Weights {
 
   given Codec[Vector[Weights]] = LogJson.weights
 
-  /** `a`, an answer to `q`, by position; `None` when it is not of `q`'s kind, or names a key
-    * `q` does not have.
+  /** `a`, an answer to `q`, by position; `None` when it is not of `q`'s kind, names a key `q`
+    * does not have, or weighs other than `q`'s levels.
     */
   def of(q: Question, a: Answer): Option[Weights] = (q, a) match {
     case (c: Question.Choice, Answer.Choice(choice, probabilities, confidence)) =>
@@ -94,11 +97,13 @@ object Weights {
           )
         )
     case (_: Question.YesNo, Answer.YesNo(yes)) => Some(YesNo(yes))
+    case (s: Question.Score, Answer.Score(position, probabilities, confidence)) =>
+      Option.when(probabilities.size == s.levels.size)(Score(position, probabilities, confidence))
     case _ => None
   }
 
   /** `w` as an answer to `q`, its keys `q`'s; `None` when it is not of `q`'s kind, or its
-    * positions are not `q`'s keys'.
+    * positions are not `q`'s keys' or levels'.
     */
   def answer(q: Question, w: Weights): Option[Answer] = (q, w) match {
     case (c: Question.Choice, Choice(chosen, probabilities, confidence)) =>
@@ -114,6 +119,10 @@ object Weights {
           )
         )
     case (_: Question.YesNo, YesNo(yes)) => Some(Answer.YesNo(yes))
+    case (s: Question.Score, Score(position, probabilities, confidence)) =>
+      Option.when(probabilities.size == s.levels.size)(
+        Answer.Score(position, probabilities, confidence)
+      )
     case _ => None
   }
 }

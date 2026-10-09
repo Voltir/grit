@@ -17,8 +17,8 @@ object Spread {
   val Tolerance = 1e-9
 
   /** Across repeats: for each suite and case, each probability's max − min over the rows that
-    * answered it, a choice's probabilities normalised to sum to 1. Rows not answered are left
-    * out; a question answered once is compared, with no gap.
+    * answered it, a choice's or a score's probabilities normalised to sum to 1. Rows not
+    * answered are left out; a question answered once is compared, with no gap.
     */
   def repeats(rows: Vector[Row[Vector[Weights]]]): Spread = {
     val answers: Vector[Answered] = answered(rows)
@@ -68,7 +68,9 @@ object Spread {
   /** A question of a run: its suite and case. */
   private final case class Question(suite: Suite, id: CaseId)
 
-  /** An answered row, its question, and its probabilities in order, a choice's normalised. */
+  /** An answered row, its question, and its probabilities in order, a choice's and a score's
+    * normalised.
+    */
   private final case class Answered(
       row: Row[Vector[Weights]],
       question: Question,
@@ -78,7 +80,7 @@ object Spread {
   /** A question's largest gap. */
   private final case class Gap(question: Question, gap: Double)
 
-  /** Each answered row with its probabilities in order, a choice's normalised. */
+  /** Each answered row with its probabilities in order, a choice's and a score's normalised. */
   private def answered(rows: Vector[Row[Vector[Weights]]]): Vector[Answered] =
     rows.collect { case r @ Row(_, _, _, _, _, _, _, Outcome.Answered(ws), _, _, _, _) =>
       Answered(
@@ -86,6 +88,7 @@ object Spread {
         Question(r.suite, r.id),
         ws.flatMap {
           case Weights.Choice(_, ps, _) => Answers.normalised(ps)
+          case Weights.Score(_, ps, _) => Answers.normalised(ps)
           case Weights.YesNo(yes) => Vector(yes)
         }
       )

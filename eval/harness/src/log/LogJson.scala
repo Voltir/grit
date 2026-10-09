@@ -85,12 +85,25 @@ object LogJson {
           "confidence" -> confidence
         )
       case Weights.YesNo(yes) => ujson.Obj("yes" -> yes)
+      case Weights.Score(position, probabilities, confidence) =>
+        ujson.Obj(
+          "score" -> position,
+          "levels" -> ujson.Arr.from(probabilities.map(ujson.Num(_))),
+          "confidence" -> confidence
+        )
     })
     def read(v: ujson.Value): Either[String, Vector[Weights]] =
       v.arrOpt.toRight("answers: not an array").flatMap { xs =>
         each(xs.toVector) { x =>
           val f = Fields("answer", x)
           if (x.objOpt.exists(_.contains("yes"))) f.num("yes").map(Weights.YesNo(_))
+          else if (x.objOpt.exists(_.contains("score")))
+            for {
+              position <- f.num("score")
+              ps <- f.arr("levels")
+              probabilities <- each(ps)(_.numOpt.toRight("answer: a probability is not a number"))
+              confidence <- f.num("confidence")
+            } yield Weights.Score(position, probabilities, confidence)
           else
             for {
               chosen <- f.int("chosen")

@@ -19,7 +19,24 @@ object WeightsTests extends TestSuite {
 
   private val yesNo: Question = Ask.yesNo[Unit]("is it", None, None).questions.head
 
+  private val score: Question =
+    Question.score("how much", "low", "mid", "high").fold(e => sys.error(e.toString), identity)
+
   val tests = Tests {
+    test("a score is kept as its position and its levels' weights, and reads back as itself") {
+      val answer = Answer.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92)
+      Weights.of(score, answer) ==> Some(Weights.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92))
+      Weights.of(score, answer).flatMap(Weights.answer(score, _)) ==> Some(answer)
+    }
+
+    test("a score of the other kind, or weighing other than its levels, is not kept") {
+      Weights.of(score, Answer.YesNo(0.5)) ==> None
+      Weights.of(score, Answer.Score(1.0, Vector(0.0, 1.0), 1.0)) ==> None
+      Weights.of(choice, Answer.Score(1.0, Vector(0.0, 1.0, 0.0), 1.0)) ==> None
+      Weights.answer(score, Weights.Score(1.0, Vector(0.0, 1.0), 1.0)) ==> None
+      Weights.answer(yesNo, Weights.Score(1.0, Vector(0.0, 1.0, 0.0), 1.0)) ==> None
+    }
+
     test("a choice is kept in its question's key order and reads back with the keys") {
       // The classifier weighed the keys in another order than the question's.
       val answer = Answer.Choice(
