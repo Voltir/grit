@@ -53,3 +53,12 @@ object Ids {
 
 /** A quiver, so a last segment shared by two owners is found under both. */
 trait Quiver
+
+/** A class whose constructor parameter has a default: the compiler adds a synthetic default-argument method for it. */
+final case class Defaulted(n: Int = 1)
+
+object Defaulted {
+
+  /** The companion, which holds the synthetic default-argument method beside its own member. */
+  def zero: Defaulted = Defaulted()
+}

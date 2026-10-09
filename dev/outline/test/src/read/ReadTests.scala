@@ -193,6 +193,12 @@ object ReadTests extends TestSuite {
       assert(kept == Vector(units(0) -> Vector("a.tasty"), units(2) -> Vector("c.tasty")))
       assert(unreadable == Vector(units(1) -> "boom"))
     }
+
+    test("no definition read is a synthetic default argument") {
+      assert(named(read, "grit.outline.fixture.Defaulted").nonEmpty)
+      def everyDepth(ds: Vector[Defn]): Vector[Defn] = ds ++ ds.flatMap(d => everyDepth(d.members))
+      assert(everyDepth(read).map(_.fullName).filter(_.contains("$default$")) == Vector.empty)
+    }
   }
 
   /** A checkout holding q.A and q.B, each compiled into its own classes directory; B's is returned. */

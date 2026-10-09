@@ -89,7 +89,9 @@ object Read {
             case v: ValDef => v.symbol.flags.is(Flags.Module)
             case _ => false
           }
-          !(flags.is(Flags.Synthetic) || flags.is(Flags.Artifact) || flags.is(
+          !(flags.is(Flags.Synthetic) || flags.is(Flags.Artifact) || sym.name.contains(
+            "$default$"
+          ) || flags.is(
             Flags.ParamAccessor
           ) ||
             flags.is(Flags.Param) || sym.isClassConstructor || isModuleVal ||
