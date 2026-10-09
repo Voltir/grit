@@ -38,9 +38,11 @@ object RecordJobHistories {
         cap: Option[String] = None,
         floor: Label = Label.Public,
         crashRecord: Boolean = false,
-        crashModel: Boolean = false
+        crashModel: Boolean = false,
+        shapes: Vector[ujson.Value] = Vector()
     )(run: (World, InMemoryDurable) => WorkflowId): (String, History) = {
-      val w = new World(cap, floor, crashRecord = crashRecord, crashModel = crashModel)
+      val w =
+        new World(cap, floor, crashRecord = crashRecord, crashModel = crashModel, shapes = shapes)
       val id = run(w, w.durable)
       name -> History("run", id, Turn.Epoch, "recorded", w.durable.history(id))
     }
@@ -95,6 +97,13 @@ object RecordJobHistories {
       },
       // A job's moves (ADR 0034), each a shape its steps can leave.
       record("run-asked")((w, d) => probed(w, d, 1)),
+      // A JSON ask whose first reply its schema refused, repaired once.
+      record(
+        "run-asked-json",
+        shapes = Vector(ujson.Obj("answer" -> 3), ujson.Obj("answer" -> "hello"))
+      ) { (w, d) =>
+        probed(w, d, 4)
+      },
       record("run-called") { (w, d) => w.serve(); probed(w, d, 2) },
       record("run-called-then-asked") { (w, d) => w.serve(); probed(w, d, 3) },
       record("run-call-unserved")((w, d) => probed(w, d, 2)),

@@ -83,6 +83,7 @@ object JobReplayTests extends TestSuite {
       val expected = Vector(
         "run-replied-then-redeployed",
         "run-asked",
+        "run-asked-json",
         "run-called",
         "run-called-then-asked",
         "run-call-unserved",
