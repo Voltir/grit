@@ -155,6 +155,10 @@ object MovesJournalTests extends TestSuite {
           ToolUse.Off
         )
       ) ==> "v1:522fedf1ce2ec8d59b4c9161fac98a23efbd7bcfa20782daeec04f24d7e95075"
+      // ask10:Say hello.1;u2:hi0;8:required
+      MovesJournal.ask(
+        ModelRequest("Say hello.", Vector(Message.User("hi")), use = ToolUse.Required)
+      ) ==> "v1:f5299b53da2561d7621e8442dcbd322ca7b0c9e19bd9dc2972026cf0cd05919f"
     }
 
     test("a call's v1 digest is of its place, tool and arguments, their keys sorted") {

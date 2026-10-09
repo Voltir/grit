@@ -79,6 +79,11 @@ enum ToolUse {
     * messages hold tool calls names the tools they used.
     */
   case Off
+
+  /** It must call one of them: OpenRouter's `tool_choice: "required"`
+    * ([[grit.core.model.StrictSchemas.WhenRequired]] is measured under it).
+    */
+  case Required
 }
 
 /** A model call that produced no response. `cause` says why, on one line or more. */

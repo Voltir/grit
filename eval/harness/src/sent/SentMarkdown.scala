@@ -215,6 +215,7 @@ object SentMarkdown {
       val tools = request.use match {
         case grit.core.provider.ToolUse.Auto => "tools on"
         case grit.core.provider.ToolUse.Off => "tools off"
+        case grit.core.provider.ToolUse.Required => "tools required"
       }
       add(s"- **Call $round** (`${EntryId.value(reply)}`, $tools): $usage$estimate.")
       last.foreach { l =>

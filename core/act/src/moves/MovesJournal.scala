@@ -122,6 +122,7 @@ object MovesJournal {
     val use = request.use match {
       case ToolUse.Auto => "auto"
       case ToolUse.Off => "off"
+      case ToolUse.Required => "required"
     }
     "ask" + text(request.system) + count(request.messages.size) +
       request.messages.map(message).mkString + count(request.tools.size) +

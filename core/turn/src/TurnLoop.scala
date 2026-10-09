@@ -130,14 +130,15 @@ object TurnLoop {
       "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
       "gap with a guess.]"
 
-  /** `request` as `use` says to send it: unchanged when `use` is [[ToolUse.Auto]]; when it is
-    * [[ToolUse.Off]], with [[LastCall]] after its messages, as a user message, or, under
+  /** `request` as `use` says to send it: unchanged when `use` is [[ToolUse.Auto]] or
+    * [[ToolUse.Required]]; when it is [[ToolUse.Off]], with [[LastCall]] after its messages,
+    * as a user message, or, under
     * [[AfterToolResult.InLastResult]] when its last message is a tool result, at the end of
     * that result's content, after a blank line.
     */
   def told(use: ToolUse, request: ModelRequest, after: AfterToolResult): ModelRequest =
     use match {
-      case ToolUse.Auto => request
+      case ToolUse.Auto | ToolUse.Required => request
       case ToolUse.Off =>
         (after, request.messages.lastOption) match {
           case (AfterToolResult.InLastResult, Some(r: Message.ToolResult)) =>

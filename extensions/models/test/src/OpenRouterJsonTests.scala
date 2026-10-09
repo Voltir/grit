@@ -118,6 +118,14 @@ object OpenRouterJsonTests extends TestSuite {
       )
       off("tool_choice") ==> ujson.Str("none")
       off("tools") ==> auto("tools")
+      val required = OpenRouterJson.request(
+        "m",
+        1,
+        None,
+        ModelRequest("s", Vector(Message.User("hi")), Vector(topic), ToolUse.Required)
+      )
+      required("tool_choice") ==> ujson.Str("required")
+      required("tools") ==> auto("tools")
       val strict = OpenRouterJson.request(
         "m",
         1,

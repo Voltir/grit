@@ -6,13 +6,14 @@ import grit.core.model.{Effort, ReasoningReplay, Upstream}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
-  * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23.
+  * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23, and its
+  * parameters reference (`tool_choice` accepts `"required"`) on 2026-10-08.
   */
 object OpenRouterJson {
 
   /** The request body for `request` on `model`, served by `upstream` alone with no fallback,
     * or by whichever upstream OpenRouter picks when `None`. A request with
-    * tools names them in `tools`, with `tool_choice` `auto` or `none` (OpenRouter's
+    * tools names them in `tools`, with `tool_choice` `auto`, `none` or `required` (OpenRouter's
     * tool-calling guide: every request of a tool exchange sends the tools again); one
     * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
@@ -45,6 +46,7 @@ object OpenRouterJson {
       body("tool_choice") = request.use match {
         case ToolUse.Auto => "auto"
         case ToolUse.Off => "none"
+        case ToolUse.Required => "required"
       }
     }
     body

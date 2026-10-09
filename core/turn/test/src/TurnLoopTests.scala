@@ -230,6 +230,7 @@ object TurnLoopTests extends TestSuite {
       told(ToolUse.Off, AfterToolResult.InLastResult, plain) ==>
         Vector(Message.User("hi"), Message.User(TurnLoop.LastCall))
       told(ToolUse.Auto, AfterToolResult.InLastResult) ==> asked.messages
+      told(ToolUse.Required, AfterToolResult.InLastResult) ==> asked.messages
     }
 
     test("tool guidance names each offered tool in the system prompt, for a pair that needs it") {
