@@ -1,7 +1,7 @@
 package grit.outline.cli
 
 import grit.outline.locate.Root
-import grit.outline.query.{Answer, Loaded, Query, Status}
+import grit.outline.query.{Answer, Query, Roots, Status}
 
 object Main {
 
@@ -77,7 +77,15 @@ object Main {
               case Some(d) =>
                 val syms = sym.split(',').toVector.filter(_.nonEmpty)
                 val (answer: Answer, _) =
-                  Query.show(Root(d), Loaded.empty, syms, o.depth, o.bodies, o.withPrivate, o.cap)
+                  Query.show(
+                    Root(d),
+                    Roots.empty(6000),
+                    syms,
+                    o.depth,
+                    o.bodies,
+                    o.withPrivate,
+                    o.cap
+                  )
                 (exitCode(answer.status), answer.text)
             }
         }

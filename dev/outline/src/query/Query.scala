@@ -18,8 +18,28 @@ object Query {
   private val usage =
     "usage: show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]"
 
-  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), and the cache after it. */
+  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. */
   def show(
+      root: Root,
+      roots: Roots,
+      syms: Vector[String],
+      depth: Int,
+      bodies: Set[String],
+      withPrivate: Boolean,
+      cap: Int
+  ): (Answer, Roots) = {
+    val (answer, loaded) =
+      showIn(root, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
+    (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
+  }
+
+  /** `root`'s `## root` line: its directory, then its branch (or "detached") and HEAD. */
+  private def header(root: Root): String = {
+    val revision = Locate.revision(root)
+    s"## root ${root.dir} (${revision.branch.getOrElse("detached")} @ ${revision.head})"
+  }
+
+  private def showIn(
       root: Root,
       in: Loaded,
       syms: Vector[String],
@@ -82,12 +102,12 @@ object Query {
       }
 
       failure match {
-        case Some(message) => (Answer(message, Status.Failed), state)
+        case Some(message) => (Answer(message, Status.Failed), in)
         case None if matches.isEmpty => (Answer(lines.mkString("\n"), Status.NoMatch), state)
         case None =>
-          val roots = matches.toVector.distinct
+          val tops = matches.toVector.distinct
           val traced = Trace.trace(
-            roots,
+            tops,
             depth,
             top => {
               val tasty = Locate.forTopLevel(root, top)
@@ -95,7 +115,7 @@ object Query {
             }
           )
           val rendered = Render.show(
-            named = roots,
+            named = tops,
             traced = traced,
             companions = companions.toVector,
             stale = stale.toSet,

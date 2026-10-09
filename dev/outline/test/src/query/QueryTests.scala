@@ -23,22 +23,26 @@ object QueryTests extends TestSuite {
 
   def tests = Tests {
     test("show A.keep at depth 1 is Found, with its signature and the B it traces to") {
-      val (answer, _) = Query.show(root, Loaded.empty, Vector("A.keep"), 1, Set.empty, false, 80000)
+      val (answer, _) =
+        Query.show(root, Roots.empty(6000), Vector("A.keep"), 1, Set.empty, false, 80000)
       assert(answer.status == Status.Found)
       assert(answer.text.contains("9-10 def A.keep"))
       assert(answer.text.contains("→ 16-17 final case class B(c: C, note: String)"))
     }
 
     test("show of a name nothing defines is NoMatch, saying so and nothing else") {
-      val (answer, _) = Query.show(root, Loaded.empty, Vector("Nope"), 1, Set.empty, false, 80000)
+      val (answer, _) =
+        Query.show(root, Roots.empty(6000), Vector("Nope"), 1, Set.empty, false, 80000)
       assert(answer.status == Status.NoMatch)
-      assert(answer.text == "no match for Nope")
+      assert(answer.text.startsWith(s"## root ${root.dir} ("))
+      assert(answer.text.endsWith("\nno match for Nope"))
     }
 
     test("a second read of unchanged tasty reads no files") {
-      val (_, first) = Query.show(root, Loaded.empty, Vector("A.keep"), 1, Set.empty, false, 80000)
+      val (_, first) =
+        Query.show(root, Roots.empty(6000), Vector("A.keep"), 1, Set.empty, false, 80000)
       val tasty = Locate.forTopLevel(root, "A.keep")
-      Loaded.defns(root, tasty, first) match {
+      Loaded.defns(root, tasty, Roots.of(first, root)) match {
         case Right((_, _, read)) => assert(read == 0)
         case Left(message) => throw new Exception(message)
       }

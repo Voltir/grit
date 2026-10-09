@@ -8,8 +8,11 @@ import scala.util.control.NonFatal
 import grit.outline.locate.{Locate, Root}
 import grit.outline.model.{Defn, Kind, Lines}
 
-/** Reads TASTy files into definitions, each with its source slices. */
+/** Reads TASTy files into definitions, each with its source slices. Each inspector call is a fresh compiler run, so no compiler context is shared between roots. */
 object Read {
+
+  /** The dependency classpath handed to the inspector for `root`: exactly its compiled classes directories. */
+  def classpath(root: Root): Vector[os.Path] = Locate.classesDirs(root)
 
   /** The top-level definitions in `tasty`, each with its public and private members nested under it, in input order.
     *
@@ -28,6 +31,7 @@ object Read {
     val byPath = mutable.Map[os.Path, Vector[Defn]]()
     val sources = mutable.Map[String, String]()
     val inRepoByTop = mutable.Map[String, Boolean]()
+    val foreign = mutable.ListBuffer.empty[String]
     val prefix = root.dir.toString + "/"
     def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
     val inspector = new Inspector {
@@ -72,7 +76,11 @@ object Read {
         def nameOf(sym: Symbol): String = sym.name.stripSuffix("$")
 
         def fullNameOf(sym: Symbol): String =
-          sym.fullName.split('.').filterNot(_ == "$package").map(_.stripSuffix("$")).mkString(".")
+          sym.fullName
+            .split('.')
+            .map(_.stripSuffix("$"))
+            .filterNot(_.endsWith("$package"))
+            .mkString(".")
 
         /** The index of the first character of `i`'s line when only spaces precede `i` on it, else `i`. */
         def lineStart(src: String, i: Int): Int = {
@@ -120,7 +128,7 @@ object Read {
         def topOf(s: Symbol): Symbol = if (s.owner.isPackageDef) s else topOf(s.owner)
 
         def refOf(s: Symbol): grit.outline.model.Ref = {
-          val topLevel = fullNameOf(topOf(s))
+          val topLevel = topOf(s).fullName.split('.').map(_.stripSuffix("$")).mkString(".")
           grit.outline.model.Ref(
             fullName = fullNameOf(s),
             topLevel = topLevel,
@@ -347,10 +355,12 @@ object Read {
         def members(stats: List[Tree]): Vector[Defn] = withCases(stats)
 
         for (tasty <- tastys) {
+          if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
+            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
           tasty.ast match {
             case pkg: PackageClause =>
               val (holders, others) = pkg.stats.partition {
-                case holder: ClassDef => holder.name.endsWith("$package")
+                case holder: ClassDef => holder.name.stripSuffix("$").endsWith("$package")
                 case _ => false
               }
               val defs = withCases(others) ++ holders.toVector.flatMap {
@@ -369,12 +379,13 @@ object Read {
         TastyInspector.inspectAllTastyFiles(
           tasty.map(_.toString).toList,
           Nil,
-          Locate.classesDirs(root).map(_.toString).toList
+          classpath(root).map(_.toString).toList
         )(inspector)
       } catch {
         case NonFatal(e) => return Left(Option(e.getMessage).getOrElse(e.toString))
       }
-    if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
+    if (foreign.nonEmpty) Left(foreign.mkString("\n"))
+    else if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
     else Left("the TASTy inspector reported errors")
   }
 }

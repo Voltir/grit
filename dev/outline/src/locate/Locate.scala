@@ -2,6 +2,8 @@ package grit.outline.locate
 
 import java.time.Instant
 
+import scala.util.Try
+
 import grit.outline.model.Staleness
 
 /** A repository checkout whose build output lives under `dir/out`. */
@@ -25,6 +27,45 @@ object Locate {
       ).filter(p => p.last == "classes" && os.isDir(p) && (p / os.up).last == "compile.dest")
         .sortBy(_.toString)
         .toVector
+  }
+
+  /** The checkout's branch (None when detached) and the first 8 characters of its commit; `head` is "unknown" when git state is unreadable. */
+  def revision(root: Root): Revision = {
+    val unknown = Revision(None, "unknown")
+    val dotGit = root.dir / ".git"
+    val gitDir: Option[os.Path] =
+      if (os.isDir(dotGit)) Some(dotGit)
+      else
+        readText(dotGit).flatMap(s =>
+          Option.when(s.startsWith("gitdir:"))(os.Path(s.stripPrefix("gitdir:").trim, root.dir))
+        )
+    gitDir
+      .flatMap { dir =>
+        readText(dir / "HEAD").flatMap { head =>
+          if (head.startsWith("ref: ")) {
+            val ref = head.stripPrefix("ref: ")
+            refHash(dir, ref).map(hash => Revision(Some(ref.stripPrefix("refs/heads/")), hash))
+          } else Some(Revision(None, head))
+        }
+      }
+      .flatMap(r => Option.when(r.head.length >= 8)(r.copy(head = r.head.take(8))))
+      .getOrElse(unknown)
+  }
+
+  private def readText(p: os.Path): Option[String] = Try(os.read(p).trim).toOption
+
+  /** The commit `ref` names in `gitDir`: its loose file, else its line in the common dir's packed-refs. */
+  private def refHash(gitDir: os.Path, ref: String): Option[String] = {
+    val common = readText(gitDir / "commondir").fold(gitDir)(c => gitDir / os.RelPath(c))
+    readText(gitDir / os.RelPath(ref))
+      .orElse(readText(common / os.RelPath(ref)))
+      .orElse(
+        readText(common / "packed-refs").flatMap(
+          _.linesIterator.map(_.split(' ')).collectFirst {
+            case Array(hash, name) if name == ref => hash
+          }
+        )
+      )
   }
 
   /** The `.tasty` files that can hold `sym`, searched in every classes dir; empty when none match. */

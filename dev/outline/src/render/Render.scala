@@ -9,7 +9,7 @@ object Render {
 
   /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it, each as its collapsed signature and start line. */
   def oneLine(d: Defn, companions: Vector[Defn]): String = {
-    val head = s"→ ${d.lines.start}-${d.lines.end} ${collapse(d.signature)}"
+    val head = s"→ ${d.lines.start}-${d.lines.end} ${collapse(withoutDocs(d.signature))}"
     val items: Vector[Defn] =
       if (d.kind == Kind.Enum) d.members.filter(_.kind == Kind.EnumCase)
       else if (d.kind == Kind.Trait || (d.kind == Kind.Class && d.isAbstract))
@@ -92,7 +92,7 @@ object Render {
     val shown = sizes.takeWhile(_ <= cap).length
     val kept = chunks.take(shown).flatten
 
-    val library = traced.library
+    val library = traced.library.filterNot(_.contains("<"))
     val notLoaded = traced.missing
     val trailer =
       (if (library.nonEmpty) Vector(s"-- library: ${library.mkString(", ")}") else Vector.empty) ++
@@ -108,11 +108,19 @@ object Render {
 
   private def collapse(s: String): String = s.trim.split("\\s+").mkString(" ")
 
+  private def withoutDocs(s: String): String = s.replaceAll("/\\*\\*.*?\\*/", " ")
+
+  /** The words a case or class header carries before its name and constructor, dropped from a one-liner. */
+  private val Modifiers =
+    Set("case", "final", "sealed", "abstract", "open", "implicit", "private", "protected", "class")
+
   private def caseItem(d: Defn): String = {
     // Read leaves a parameterless enum case's signature empty; its name is what the signature would be without `case `.
-    val signature = collapse(d.signature)
+    val signature = collapse(withoutDocs(d.signature))
     val source = if (signature.isEmpty) d.name else signature
-    val bare = if (source.startsWith("case ")) source.drop(5) else source
+    val cut = source.indexOf(" extends ")
+    val header = if (cut >= 0) source.take(cut) else source
+    val bare = header.split(' ').dropWhile(Modifiers.contains).mkString(" ")
     s"$bare :${d.lines.start}"
   }
 
