@@ -56,7 +56,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
-import grit.core.visibility.{Clearance, Label, Subject}
+import grit.core.visibility.{Clearance, Compartments, Label, RoomLabels, Subject, Trust, Visibility}
 import grit.dbos.sql.TestTx
 
 /** A run's world over core's in-memory fakes: an inbox that starts slots as the SQL one does,
@@ -159,7 +159,7 @@ object RunFixtures {
 
   /** A run's world. Its moves: a model whose every answer is [[Answer]], counting its calls; a
     * ledger, recording at [[Due]]; a day's cap of `cap` dollars, if any; and `durable`, whose
-    * transactions are opened at `floor`. With `crashRecord`, the process dies once inside the
+    * transactions, like every read, are opened at `floor`, with [[Probe]] trusted with `trust`. With `crashRecord`, the process dies once inside the
     * first ask's record; with `failRecord`, every record fails; with `crashServing`, the process
     * dies once inside the first call's step, after it read whom the call is for; with
     * `crashModel`, inside the first model call.
@@ -167,6 +167,7 @@ object RunFixtures {
   final class World(
       cap: Option[String] = None,
       floor: Label = Label.Public,
+      trust: Label = Label.Public,
       crashRecord: Boolean = false,
       failRecord: Boolean = false,
       crashServing: Boolean = false,
@@ -175,7 +176,13 @@ object RunFixtures {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
     val clock: SetClock = new SetClock(Due.plusSeconds(30))
-    val durable: InMemoryDurable = new InMemoryDurable(resolve = _ => Clearance.of(floor))
+    private val visibility: Visibility =
+      Visibility
+        .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, Vector(Trust(Probe, trust)))
+        .fold(r => sys.error(r.toString), identity)
+    private val db = new FakeDb(Clearance.of(floor), visibility)
+    val durable: InMemoryDurable =
+      new InMemoryDurable(resolve = _ => Clearance.of(floor), visibility = visibility)
     val ledger: InMemoryUsageLedger = {
       val l = new InMemoryUsageLedger
       l.now = Due
@@ -212,7 +219,7 @@ object RunFixtures {
     def env(jot: Jot^ = new FakeJot()): RunEnv^ =
       RunEnv(
         RunRecords(inbox.entries, inbox.conversations, inbox.schedules, deliveries),
-        new FakeDb(),
+        db,
         jot,
         clock,
         MovesEnv(
@@ -228,7 +235,7 @@ object RunFixtures {
             documents.savepoints
           ),
           models,
-          new FakeDb(),
+          db,
           clock
         ),
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),

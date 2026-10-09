@@ -5,7 +5,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolName
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Level}
 
 import utest.*
 
@@ -24,11 +24,13 @@ abstract class MovesContract extends TestSuite {
   def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean = false)(use: Moves^ -> A): A
 
   val tests = Tests {
-    test("an ask is answered as its world answers, and a call done with its edge's answer") {
+    test(
+      "an ask is answered as its world answers, and a call done with its edge's answer, each at the world's floor"
+    ) {
       val got = within(limits(1, 1)) { m =>
-        Seen(Vector(asked(m, "a"), called(m, "c")))
+        Seen(Vector(m.ask(name("a"), Request).map(a => s"${text(a)} at ${a.at}"), called(m, "c")))
       }
-      got ==> Seen(Vector(Right(Answer), Right(Called.Done(Read, Floor).toString)))
+      got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(Called.Done(Read, Floor).toString)))
     }
 
     test("a name made once, by either kind, is Repeated after, and the move is not made") {
@@ -98,8 +100,10 @@ object MovesContract {
   /** What a call of [[Tool]] at [[Probe]] is answered. */
   val Read = "read"
 
-  /** The least label every transaction of the world is opened at. */
-  val Floor: Label = Label.Public
+  /** The least label every transaction of the world is opened at: above public, so a move that
+    * reports public whatever its floor is seen.
+    */
+  val Floor: Label = Label.at(Level.Internal)
 
   val Probe: Service =
     Service.of("probe").fold(e => throw new java.lang.AssertionError(e), identity)

@@ -24,7 +24,7 @@ import grit.core.provider.Models
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
-import grit.core.visibility.{Clearance, Label}
+import grit.core.visibility.{Clearance, Compartments, Label, RoomLabels, Trust, Visibility}
 import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against [[DurableMoves]], over [[InMemoryDurable]] and core's in-memory
@@ -33,7 +33,7 @@ import grit.dbos.sql.TestTx
 object DurableMovesTests extends MovesContract {
 
   def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean)(use: Moves^ -> A): A = {
-    val w = new MovesWorld(broken)
+    val w = new MovesWorld(broken, MovesContract.Floor)
     w.run(limits)(use)
   }
 }
@@ -41,15 +41,20 @@ object DurableMovesTests extends MovesContract {
 /** A world for [[DurableMoves]]: a turn whose asker is grit, a model answering
   * [[MovesContract.Answer]], an edge at [[MovesContract.Probe]] advertising
   * [[MovesContract.Tool]] that claims, answers [[MovesContract.Read]] and rings each request as
-  * it is written, and the documents of [[MovesWorld.Notes]], whose every transaction is opened
-  * at `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
+  * it is written, and the documents of [[MovesWorld.Notes]]. Its every transaction and read is
+  * opened at `floor`, and [[MovesContract.Probe]] is trusted with `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
   * daily, so every ask's admission fails.
   */
 final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
 
-  val durable: InMemoryDurable = new InMemoryDurable(resolve = _ => Clearance.of(floor))
+  private val visibility: Visibility =
+    Visibility
+      .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, Vector(Trust(Probe, floor)))
+      .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+  val durable: InMemoryDurable =
+    new InMemoryDurable(resolve = _ => Clearance.of(floor), visibility = visibility)
   val documents: InMemoryDocuments = new InMemoryDocuments
   val edges: InMemoryEdges = new InMemoryEdges
   val ledger: InMemoryUsageLedger = new InMemoryUsageLedger
@@ -100,7 +105,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         documents.savepoints
       ),
       models,
-      new FakeDb(),
+      new FakeDb(Clearance.of(floor), visibility),
       clock
     )
 

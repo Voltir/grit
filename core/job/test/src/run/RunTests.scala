@@ -160,7 +160,8 @@ object RunTests extends TestSuite {
     test(
       "a call sends one request to the service's place for the schedule's principal, with the advertised retry, and returns the edge's answer at the run's floor"
     ) {
-      val w = new World
+      val internal = Label.at(Level.Internal)
+      val w = new World(floor = internal, trust = internal)
       w.serve()
       val turn = w.started(w.declared("standup"))
       val job = new Moving(
@@ -175,7 +176,7 @@ object RunTests extends TestSuite {
         w.sent.map(q => (q.workspace, q.principal, q.tool, q.retry, q.arguments)),
         w.durable.recordedSteps(turn.workflowId).filterNot(_.startsWith("DBOS."))
       ) ==> (
-        Some("Done(read,public)"),
+        Some("Done(read,internal)"),
         Vector((Probe.place, PrincipalId.Grit, Read, Retry.Interrupt, ujson.Obj("path" -> "a"))),
         Vector(
           Run.Step.ReadSlot,
