@@ -129,5 +129,12 @@ object LocateTests extends TestSuite {
       )
       assert(Locate.staleness(root, file, Vector.empty) == Staleness.NoTasty)
     }
+
+    test("a source file that is missing is NoSource, not an error") {
+      val root = tree("out/a/compile.dest/classes/grit/core/x/A.tasty")
+      val file = os.RelPath("core/x/src/A.scala")
+      val tastyPath = at(root, "out/a/compile.dest/classes/grit/core/x/A.tasty")
+      assert(Locate.staleness(root, file, Vector(tastyPath)) == Staleness.NoSource)
+    }
   }
 }

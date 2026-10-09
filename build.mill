@@ -522,6 +522,9 @@ object grit extends Module {
       mvn"org.scala-lang::scala3-tasty-inspector:${scalaVersion()}",
       mvn"com.lihaoyi::os-lib:0.11.8"
     )
+    def mainClass = Some("grit.outline.cli.Main")
+    /* One JVM per open session on a 17 GB machine; adjusted from measurement. */
+    def forkArgs = Task { super.forkArgs() ++ Seq("-Xmx512m") }
     /* Sources whose TASTy the tests read: capture syntax, docs, overloads, a type chain. Both checkers on. */
     object fixture extends GritModule with Placed {
       def folder = os.sub / "dev" / "outline" / "fixture"

@@ -80,10 +80,11 @@ object Locate {
       .toVector
   }
 
-  /** Whether `file` is newer than its newest `tasty`; `NoTasty` when `tasty` is empty. Throws if `file` does not exist. */
+  /** Whether `file` is newer than its newest `tasty`; `NoTasty` when `tasty` is empty, `NoSource` when `file` is missing. */
   def staleness(root: Root, file: os.RelPath, tasty: Vector[os.Path]): Staleness =
     tasty.map(p => os.mtime(p)).maxOption match {
       case None => Staleness.NoTasty
+      case Some(_) if !os.exists(root.dir / file) => Staleness.NoSource
       case Some(newest) =>
         val source = os.mtime(root.dir / file)
         if (source > newest)

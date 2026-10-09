@@ -127,6 +127,11 @@ object ReadTests extends TestSuite {
       assert(red.lines == Lines(41, 42))
     }
 
+    test("a parameterless enum case's signature is its source line") {
+      val red = only(named(read, "grit.outline.fixture.Colour.Red"), "Red")
+      assert(red.signature == "  case Red")
+    }
+
     test("A.keep's refs name the types its signature mentions, in the repo and outside it") {
       val keep = only(named(read, "grit.outline.fixture.A.keep"), "A.keep")
       assert(keep.refs.contains(Ref("grit.outline.fixture.B", "grit.outline.fixture.B", true)))

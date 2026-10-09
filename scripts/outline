@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# The outline tool's `show` query, run from the caller's checkout (grit's TASTy query tool, dev/outline).
+# Mill builds a launcher under this checkout's out/ only when it is missing or a source is newer; the
+# launcher's JAVA_HOME is the JDK build.mill pins, cached beside it so a query never waits on Mill.
+#
+#   scripts/outline show Moves.ask
+#   scripts/outline show Ask.score --depth 2
+set -euo pipefail
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$here")
+
+dir="$here/out/grit/outline"
+launcher="$dir/launcher.dest/run"
+java_home_file="$dir/java_home.txt"
+
+# `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
+path_of() { ./mill --no-daemon --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+
+newer=""
+if [ -f "$launcher" ]; then
+  newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
+fi
+if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ] || [ -n "$newer" ]; then
+  (cd "$here" && ./mill --no-daemon --ticker false grit.outline.launcher >&2)
+  mkdir -p "$dir"
+  path_of grit.outline.javaHome > "$java_home_file"
+fi
+
+JAVA_HOME=$(cat "$java_home_file")
+export JAVA_HOME
+
+exec "$launcher" --root "$root" "$@"

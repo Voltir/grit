@@ -11,14 +11,21 @@ import grit.outline.model.{Defn, Kind, Lines}
 /** Reads TASTy files into definitions, each with its source slices. */
 object Read {
 
-  /** The top-level definitions in `tasty`, each with its public and private members nested under it.
+  /** The top-level definitions in `tasty`, each with its public and private members nested under it, in input order.
     *
     * Only definitions whose source lies under `root.dir` are kept; each `file` is relative to it.
     * `Left` carries the complaint when the TASTy inspector reports errors, and the exception's
     * message when it throws.
     */
-  def defns(root: Root, tasty: Vector[os.Path]): Either[String, Vector[Defn]] = {
-    val buffer = mutable.ListBuffer[Defn]()
+  def defns(root: Root, tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
+    defnsByTasty(root, tasty).map(byFile => tasty.flatMap(p => byFile.getOrElse(p, Vector.empty)))
+
+  /** The same definitions as `defns`, keyed by the `.tasty` file each came from; every input path is a key, empty when it holds none. */
+  def defnsByTasty(
+      root: Root,
+      tasty: Vector[os.Path]
+  ): Either[String, Map[os.Path, Vector[Defn]]] = {
+    val byPath = mutable.Map[os.Path, Vector[Defn]]()
     val sources = mutable.Map[String, String]()
     val inRepoByTop = mutable.Map[String, Boolean]()
     val prefix = root.dir.toString + "/"
@@ -228,7 +235,16 @@ object Read {
             parents: Vector[String]
         ): Defn = {
           val src = source(p.sourceFile.path)
-          val rawSignature = trimTrailing(src.substring(lineStart(src, p.start), cut))
+          // A parameterless enum case has its right-hand side at `p.start` itself, so the slice is only indentation.
+          val sliced = trimTrailing(src.substring(lineStart(src, p.start), cut))
+          val rawSignature =
+            if (sliced.isEmpty) {
+              val eol = src.indexOf('\n', p.start) match {
+                case -1 => src.length
+                case i => i
+              }
+              trimTrailing(src.substring(lineStart(src, p.start), eol))
+            } else sliced
           val unassigned =
             if (rawSignature.endsWith("=")) rawSignature.dropRight(1) else rawSignature
           val signature = trimTrailing(unassigned)
@@ -337,10 +353,12 @@ object Read {
                 case holder: ClassDef => holder.name.endsWith("$package")
                 case _ => false
               }
-              buffer ++= withCases(others) ++ holders.toVector.flatMap {
+              val defs = withCases(others) ++ holders.toVector.flatMap {
                 case holder: ClassDef => members(holder.body)
                 case _ => Vector.empty
               }
+              val path = os.Path(tasty.path)
+              byPath.update(path, byPath.getOrElse(path, Vector.empty) ++ defs)
             case _ => ()
           }
         }
@@ -356,6 +374,7 @@ object Read {
       } catch {
         case NonFatal(e) => return Left(Option(e.getMessage).getOrElse(e.toString))
       }
-    if (ok) Right(buffer.toVector) else Left("the TASTy inspector reported errors")
+    if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
+    else Left("the TASTy inspector reported errors")
   }
 }
