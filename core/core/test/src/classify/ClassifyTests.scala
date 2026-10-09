@@ -179,6 +179,51 @@ object ClassifyTests extends TestSuite {
         Left(ClassifierError.Unreadable("2 answers to 1 questions"))
     }
 
+    test("Ask.read is Unreadable for other than one answer per question, reading none") {
+      (
+        urgent.read(Vector.empty),
+        urgent.read(Vector(Answer.YesNo(0.5), Answer.YesNo(0.5))),
+        urgent.zip(urgent).read(Vector(Answer.YesNo(0.1)))
+      ) ==> (
+        Left(ClassifierError.Unreadable("0 answers to 1 questions")),
+        Left(ClassifierError.Unreadable("2 answers to 1 questions")),
+        Left(ClassifierError.Unreadable("1 answers to 2 questions"))
+      )
+    }
+
+    test("Classifier.answers is Unreadable for a reply short, long or of another kind") {
+      def answered(answers: Answer*) =
+        new Canned(answers*).answers(Request.of(Ticket("x"), urgent)).map(_.answers)
+      (
+        answered(),
+        answered(Answer.YesNo(0.5), Answer.YesNo(0.5)),
+        answered(Answer.Choice("billing", Vector(w("billing", 1.0)), 1.0)),
+        answered(Answer.YesNo(0.5))
+      ) ==> (
+        Left(ClassifierError.Unreadable("0 answers to 1 questions")),
+        Left(ClassifierError.Unreadable("2 answers to 1 questions")),
+        Left(ClassifierError.Unreadable("\"Is `ticket` urgent?\": answered a choice to a yes/no")),
+        Right(Vector(Answer.YesNo(0.5)))
+      )
+    }
+
+    test("an answer naming no key comes through Classifier.answers, refused only by Ask.read") {
+      val hr = Answer.Choice("hr", Vector(w("hr", 1.0)), 1.0)
+      department().map { q =>
+        val got = new Canned(hr).answers(Request.of(Ticket("x"), q))
+        (got.map(_.answers), got.flatMap(a => q.read(a.answers)).map(_ => ()))
+      } ==> Right(
+        (
+          Right(Vector(hr)),
+          Left(
+            ClassifierError.Unreadable(
+              "\"Which team should handle `ticket`?\": chose hr, not an option"
+            )
+          )
+        )
+      )
+    }
+
     test("a choice whose keys repeat is not built") {
       department(sales = "billing").map(_ => ()) ==> Left(Ask.DuplicateKey("billing"))
     }

@@ -92,9 +92,12 @@ final class Ask[S, T] private (
     reader: Vector[Answer] -> Either[ClassifierError, T]
 ) {
 
-  /** `answers` holds exactly one answer per question, in order. */
-  private[classify] def read(answers: Vector[Answer]): Either[ClassifierError, T] =
-    reader(answers)
+  /** `T` read from `answers`, as a classifier's reply to these questions is read:
+    * `Unreadable` when there is not exactly one answer per question, in order, or one does
+    * not read.
+    */
+  def read(answers: Vector[Answer]): Either[ClassifierError, T] =
+    Ask.counted(questions, answers).toLeft(answers).flatMap(reader)
 
   def map[U](f: T -> U): Ask[S, U] = new Ask(questions, answers => reader(answers).map(f))
 
@@ -276,6 +279,43 @@ object Ask {
             }
         )
     }
+
+  /** `Unreadable` when `answers` is not one answer per question. */
+  private[classify] def counted(
+      questions: Vector[Question],
+      answers: Vector[Answer]
+  ): Option[ClassifierError] =
+    Option.when(answers.size != questions.size)(
+      ClassifierError.Unreadable(s"${answers.size} answers to ${questions.size} questions")
+    )
+
+  /** `Unreadable` for the first answer not of its question's kind, `answers` paired with
+    * `questions` by position.
+    */
+  private[classify] def kinds(
+      questions: Vector[Question],
+      answers: Vector[Answer]
+  ): Option[ClassifierError] =
+    questions
+      .zip(answers)
+      .flatMap {
+        case (_: Question.Choice, Answer.Choice(_, _, _)) => None
+        case (_: Question.Score, Answer.Score(_, _, _)) => None
+        case (_: Question.YesNo, Answer.YesNo(_)) => None
+        case (c: Question.Choice, a) =>
+          Some(unreadable(c.instructions, s"answered ${kind(a)} to a choice"))
+        case (s: Question.Score, a) =>
+          Some(unreadable(s.instructions, s"answered ${kind(a)} to a score"))
+        case (y: Question.YesNo, a) =>
+          Some(unreadable(y.instructions, s"answered ${kind(a)} to a yes/no"))
+      }
+      .headOption
+
+  private def kind(a: Answer): String = a match {
+    case Answer.Choice(_, _, _) => "a choice"
+    case Answer.Score(_, _, _) => "a score"
+    case Answer.YesNo(_) => "yes/no"
+  }
 
   private def weighs(weights: Int, levels: Int): String = s"weighs $weights levels of $levels"
 

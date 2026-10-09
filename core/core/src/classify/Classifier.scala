@@ -10,26 +10,31 @@ import grit.core.message.Usage
 trait Classifier extends caps.SharedCapability {
 
   /** `questions` about `state`, sent as one request; `Unreadable` when the reply holds other
-    * than one answer per question, or an answer does not read (see [[Ask.choice]]).
+    * than one answer per question, or an answer does not read: [[answers]], then [[Ask.read]].
     */
   final def ask[S: StateJson, T](
       state: S,
       questions: Ask[S, T]
-  ): Either[ClassifierError, Answered[T]] = {
-    val request = Request.of(state, questions)
-    answer(request.state, request.questions).flatMap { a =>
-      if (a.answers.size != questions.questions.size)
-        Left(
-          ClassifierError.Unreadable(
-            s"${a.answers.size} answers to ${questions.questions.size} questions"
-          )
-        )
-      else questions.read(a.answers).map(Answered(_, a.usage, a.model))
+  ): Either[ClassifierError, Answered[T]] =
+    answers(Request.of(state, questions)).flatMap { a =>
+      questions.read(a.answers).map(Answered(_, a.usage, a.model))
     }
-  }
+
+  /** The classifier's answers to `request`, unread into any type, with what the request
+    * consumed and the model that answered. `Unreadable` only when there is not one answer per
+    * question, in the questions' order and of each one's kind; whether a choice names a key,
+    * or a score weighs each level, is [[Ask.read]]'s to say. [[ask]] is the two together.
+    */
+  final def answers(request: Request): Either[ClassifierError, Answers] =
+    answer(request.state, request.questions).flatMap { a =>
+      Ask
+        .counted(request.questions, a.answers)
+        .orElse(Ask.kinds(request.questions, a.answers))
+        .toLeft(a)
+    }
 
   /** One answer per question, in the questions' order and of each one's kind. Called only by
-    * [[ask]], which never sends an empty `questions`.
+    * [[answers]], with a request's questions, never empty.
     */
   protected def answer(
       state: ujson.Value,
