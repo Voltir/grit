@@ -1,6 +1,6 @@
 # 0034. Turns and jobs act through three moves, ask, call and keep, made under an acting value
 
-Status: accepted (2026-10-08)
+Status: accepted (2026-10-08); amended (2026-10-09): what a move is, and one ask in shapes
 
 Context: The turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps, and its requests recorded
@@ -18,7 +18,24 @@ Decision:
   one hosted tool request (ADR 0017), checked as ADR 0031 says where its tool is offered, where
   the call is bound and where its request is written, and gated as its actor's gates say.
   `keep`: one transaction over the acting plugin's own documents. A new kind of effect is a
-  tool an edge hosts, reached by `call`; no plugin is given `Durable`.
+  tool an edge hosts, reached by `call`; no plugin is given `Durable`. An ask's shapes (below)
+  are not moves.
+- (Amended 2026-10-09.) A move is what touches its acting's own accounts, which no edge can do
+  for it: `ask` spends its allowance on a model chosen where its pin is made, where trust can
+  route it; `keep` writes grit's own store in the transaction that records its step; a future
+  `spawn` derives an acting from it. Everything that acts on the world is a `call` of a hosted
+  tool, those grit hosts itself included: reading memory, taking notes, asking a person.
+- (Amended 2026-10-09.) An ask poses one of a closed set of shapes, and its reply's type is its
+  shape's: text from the model; JSON the model must give as one required tool's arguments, held
+  to a schema that is a value (it may be defined at run time), checked by grit in the subset
+  every provider's strict mode accepts, and repaired once; or a judgment, questions about a
+  state answered by the deployment's classifier with a probability per option or level
+  (choices, yes/no, scores). Every shape is named, made at most once, counted against its run's
+  limits (judgments as judgments, the rest as asks), admitted by its allowance, recorded in the
+  usage ledger per model call, labelled, and digested, a diverged rerun refused. What a shape's
+  model or classifier replied is recorded, and the typed reply is read from that record on
+  every run. A judgment is always a classifier's, never a model's structured reply posing as
+  one.
 - Every move is made under an acting value: its turn, for whom every transaction is opened, so
   clearance is resolved as each opens (ADRs 0030, 0032) and never carried; whom its requests
   record, read where each is written; its allowance; its gates. It is data, not a capability. A
@@ -67,3 +84,10 @@ exists only with its plugin's terms; a keep's body captures nothing and returns 
 capture probes, one contract run against the moves and their fake, the moves' recorded forms
 pinned as written, the turn's and jobs' replay tests, and the law (the shared module names core
 alone; jobs name no turn).
+
+Consequences of the 2026-10-09 amendment: a classifier's calls made by a move are in the ledger
+and count against the daily cap; Settle's, the close gate's and triage's still are not. A
+planner's classifier is the deployment's, chosen at launch, not a catalog pin. JSON replies rely
+on `tool_choice: required`; `response_format` waits for a measured setting. The classifier, like the model's provider, is trusted with
+everything the deployment sends it; nothing checks what an ask sends either, until trust routes
+models and classifiers.
