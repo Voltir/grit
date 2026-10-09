@@ -73,6 +73,22 @@ object MovesJournalTests extends TestSuite {
       pinned[Either[String, Unit]](Left("gone"), """{"store":"gone"}""")
     }
 
+    // A keep carries no digest: its input is its code, which a job's version names. Its value is
+    // the keep's own type's journaled string, held as a string, so the moves' form never changes
+    // when a plugin's does.
+    test("a keep's step is written kept with its value's own journaled string, or store") {
+      pinned[Either[String, String]](Right("note"), """{"kept":"note"}""")(using
+        MovesJournal.kept[String]
+      )
+      pinned[Either[String, Either[String, Unit]]](
+        Right(Right(())),
+        """{"kept":"{\"recorded\":true}"}"""
+      )(using MovesJournal.kept[Either[String, Unit]])
+      pinned[Either[String, String]](Left("gone"), """{"store":"gone"}""")(using
+        MovesJournal.kept[String]
+      )
+    }
+
     test("a call's move step is written sent with its digest, or unsent saying why") {
       pinned[CallMade](CallMade.Sent("v1:cd"), """{"sent":{"digest":"v1:cd"}}""")
       CallMade.Kind.values.toVector.map { kind =>
