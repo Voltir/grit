@@ -7,15 +7,12 @@ import utest.*
 
 /** What capture checking rejects about acting (ADR 0034): the acting value is data; a job is
   * handed its moves for one run and keeps none, and makes no model call but through them; a
-  * keep's body reaches its keeper and transaction alone, and returns nothing that holds either;
-  * a run's body makes no step beside its moves, and what it returns cannot carry them out, so
-  * the run's next step may use the `Durable` they were made over. Pinned by compiling probe sources against core with core's own
-  * flags, as `grit.core.job.JobCaptureTests` does; `assertCompileError` cannot see capture
-  * errors (docs/capture-checking.md).
-  *
-  * The jobs are core's own, `PlainJob` and `KeepingJob`, and the keeps `Keeping.keep`; `Run.plain`
-  * stands in for `grit.act.moves.DurableMoves.plain`, which hands a run's job its moves over the
-  * run's `Durable`, with the bounds it keeps.
+  * keep's body reaches its keeper and transaction alone, and returns nothing that holds either.
+  * Pinned by compiling probe sources against core with core's own flags, as
+  * `grit.core.job.JobCaptureTests` does; `assertCompileError` cannot see capture errors
+  * (docs/capture-checking.md). The jobs are core's own, `PlainJob` and `KeepingJob`, and the
+  * keeps `Keeping.keep`. What a run's body may do with the moves `grit.act.moves.DurableMoves`
+  * hands it is `grit.act.moves.MovesCaptureTests`'.
   */
 object ActCaptureTests extends TestSuite {
 
@@ -38,7 +35,6 @@ object ActCaptureTests extends TestSuite {
       |  given Journaled[Count] =
       |    Journaled.json(c => ujson.Num(c.n), v => v.numOpt.map(d => Count(d.toInt)).toRight("no count"))
       |}
-      |final case class Reply(text: String) extends caps.Pure
       |trait Counts {
       |  val name: JobName = JobName.of("count").fold(sys.error, identity)
       |  val version: Int = 1
@@ -47,17 +43,6 @@ object ActCaptureTests extends TestSuite {
       |}
       |abstract class Counted extends PlainJob[Count], Counts
       |abstract class Tallied extends KeepingJob[Count], Counts
-      |object Run {
-      |  def plain[A <: caps.Pure](acting: Acting)(body: Moves^ => A)(using d: Durable^): A = {
-      |    val moves = new Moves {
-      |      def ask(name: MoveName, request: ModelRequest): Either[MoveError, Asked] =
-      |        Left(MoveError.Model(d.step(s"move:${MoveName.value(name)}") { () => "no model" }))
-      |      def call(name: MoveName, service: grit.core.place.Service, tool: grit.core.tool.ToolName, arguments: ujson.Obj): Either[MoveError, Called] =
-      |        Right(Called.Failed(d.step(s"move:${MoveName.value(name)}") { () => "no edge" }))
-      |    }
-      |    body(moves)
-      |  }
-      |}
       |object Names {
       |  def of(text: String): MoveName = MoveName.of(text).fold(sys.error, identity)
       |  val request: ModelRequest = ModelRequest("", Vector.empty)
@@ -115,29 +100,16 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** 6. A run's body that returns the moves it is handed. */
-  private val bodyReturnsMoves =
-    """def f(acting: Acting)(using d: Durable^): Moves^ = Run.plain[Moves^](acting)(moves => moves)
-      |""".stripMargin
-
-  /** 7. An acting value that holds a store. */
+  /** 6. An acting value that holds a store. */
   private val actingHoldsDb =
     """final case class Acting2(turn: TurnRef, actsFor: ActsFor, allowance: Allowance, gates: Gates, db: Db^) extends caps.Pure
       |""".stripMargin
 
-  /** 8b. A run's body that makes a step of its own while its moves, made over the same
-    * `Durable`, are live.
-    */
-  private val bodySteps =
-    """def f(job: PlainJob[Count], acting: Acting, run: JobRun[Count])(using d: Durable^): Reply =
-      |  Run.plain(acting)(moves => { val seen = d.step("peek") { () => "x" }; Reply(job.run(run, moves) + seen) })
-      |""".stripMargin
-
-  /** Every breach capture checking rejects; [[keepReturnsRead]] and [[bodyReturnsMoves]] are
-    * the bound on what a keep and a run's body return, rejected with the checker off too.
+  /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
+    * returns, rejected with the checker off too.
     */
   private val breaches: Vector[String] =
-    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider, actingHoldsDb, bodySteps)
+    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider, actingHoldsDb)
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -145,7 +117,7 @@ object ActCaptureTests extends TestSuite {
     }
 
     test(
-      "a job using its moves within its run, a keeping job's keep over its keeper alone, and a run's body then its next step, compile"
+      "a job using its moves within its run, and a keeping job's keep over its keeper alone, compile"
     ) {
       val errs = errors(
         """object Counter extends Counted {
@@ -156,11 +128,6 @@ object ActCaptureTests extends TestSuite {
           |  def run(run: JobRun[Count], moves: Keeping^): String =
           |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
           |      .fold(_.toString, _.toString)
-          |}
-          |def runBody(job: PlainJob[Count], run: JobRun[Count], turn: TurnRef)(using d: Durable^): String = {
-          |  val acting = Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Closed)
-          |  val reply = Run.plain(acting)(moves => Reply(job.run(run, moves)))
-          |  d.step("reply") { () => reply.text }
           |}
           |""".stripMargin
       )
@@ -200,19 +167,6 @@ object ActCaptureTests extends TestSuite {
       assert(
         errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
       )
-    }
-
-    test("a run's body that returns its moves is rejected by its bound") {
-      val errs = errors(bodyReturnsMoves)
-      assert(
-        errs.contains(
-          "Type argument grit.core.act.Moves^ does not conform to upper bound scala.caps.Pure"
-        )
-      )
-    }
-
-    test("a run's body that makes a step while its moves are live is rejected") {
-      assert(errors(bodySteps).exists(_.startsWith("Separation failure")))
     }
 
     test("an acting value holding a store is rejected") {
