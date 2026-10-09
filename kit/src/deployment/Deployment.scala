@@ -17,7 +17,7 @@ import grit.core.id.{
   ShadowName
 }
 import grit.core.identity.{Identities, Realm}
-import grit.core.job.{Declared, Jobs, NotOwn, Owned, PlainJob}
+import grit.core.job.{Declared, Jobs, KeepingJob, NotOwn, Owned, PlainJob}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -201,6 +201,9 @@ enum DeploymentRefusal {
   /** A tool of `plugin` books `job`, which is not among `plugin`'s jobs. */
   case JobUnowned(plugin: PluginName, job: JobName)
 
+  /** `plugin`'s keeping job `job` would keep documents `plugin` does not have. */
+  case KeepsUnshelved(plugin: PluginName, job: JobName)
+
   /** Two of the jobs, every plugin's and the deployment's own, are named `name`: a run names
     * its job by name alone.
     */
@@ -276,6 +279,8 @@ enum DeploymentRefusal {
       s"a tool of ${PluginName.value(plugin)} asks for ${PluginName.value(dependency)}, which it does not list among its needs"
     case JobUnowned(plugin, job) =>
       s"a tool of ${PluginName.value(plugin)} books ${JobName.value(job)}, which is not among its jobs"
+    case KeepsUnshelved(plugin, job) =>
+      s"${PluginName.value(plugin)}'s job ${JobName.value(job)} keeps its documents, and it has none"
     case JobRepeated(name) => s"two jobs are named ${JobName.value(name)}"
     case ScheduleRepeated(id) => s"two declared schedules are ${ScheduleId.value(id)}"
     case ScheduleJobless(id, job) =>
@@ -394,6 +399,8 @@ object Deployment {
     *   - [[DeploymentRefusal.ToolUnneeded]]: a plugin's tool asks for a plugin its own does not
     *     need;
     *   - [[DeploymentRefusal.JobUnowned]]: a plugin's tool books a job not its plugin's;
+    *   - [[DeploymentRefusal.KeepsUnshelved]]: a plugin's keeping job, and the plugin keeps no
+    *     documents;
     *   - [[DeploymentRefusal.JobRepeated]]: two of the jobs, every plugin's and `jobs`, share a
     *     name;
     *   - [[DeploymentRefusal.ScheduleUnowned]]: a plugin declares a schedule of a job not its
@@ -494,11 +501,22 @@ object Deployment {
           },
           _ => Right(())
         )
-      all <- Jobs
-        .of(
-          plugins.flatMap(p => p.jobs.map(Owned.Plugins(p.name, _))) ++
-            jobs.map(Owned.Deployments(_))
+      // A keeping job keeps under its plugin's terms: with none, it would have nothing to keep.
+      owned <- plugins
+        .flatMap(p =>
+          p.jobs.map {
+            case j: PlainJob[?] => Right(Owned.Plugins(p.name, j))
+            case k: KeepingJob[?] =>
+              p.documents
+                .map(d => Owned.Keeps(p.name, d.terms, k))
+                .toRight(DeploymentRefusal.KeepsUnshelved(p.name, k.name))
+          }
         )
+        .foldLeft[Either[DeploymentRefusal, Vector[Owned]]](Right(Vector.empty))((acc, o) =>
+          acc.flatMap(done => o.map(done :+ _))
+        )
+      all <- Jobs
+        .of(owned ++ jobs.map(Owned.Deployments(_)))
         .left
         .map(DeploymentRefusal.JobRepeated(_))
       _ <- plugins

@@ -831,6 +831,25 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test("a plugin's keeping job is refused unless its plugin keeps documents") {
+      val tally = new TestPlugins.Tallying("tally")
+      Deployments
+        .of(plugins = Vector(new TestPlugins.Declaring(name("p"), Vector(tally), Vector())))
+        .map(_ => ()) ==> Left(DeploymentRefusal.KeepsUnshelved(name("p"), job("tally")))
+    }
+
+    test("an accepted deployment runs a plugin's keeping job under its plugin's terms") {
+      val tally = new TestPlugins.Tallying("tally")
+      Deployments
+        .of(plugins =
+          Vector(
+            new TestPlugins.Declaring(name("p"), Vector(tally), Vector(), Some(TestPlugins.Tallies))
+          )
+        )
+        .map(_.allJobs.named(job("tally"))) ==>
+        Right(Some(Owned.Keeps(name("p"), TestPlugins.Tallies.terms, tally)))
+    }
+
     test("a deployment declared with every argument but jobs and schedules has none of either") {
       val assigned = grit.core.model.Assignment(
         grit.core.model.ModelRef(

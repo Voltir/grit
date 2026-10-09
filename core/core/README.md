@@ -231,8 +231,9 @@ In dependency order:
   conversation, and the opening grit writes there; `Report`, where a schedule's runs report
   beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. A `Job`
   (versioned code a slot's run replies with, from its `JobRun` and the moves it makes within
-  its `MoveLimits`: a `PlainJob`), a deployment's `Jobs` by name, each `Owned` by the
-  deployment or a plugin,
+  its `MoveLimits`: a `PlainJob`, or a plugin's `KeepingJob`, whose moves also keep its
+  plugin's documents), a deployment's `Jobs` by name, each `Owned` by the deployment or a
+  plugin (a keeping job with its plugin's `DocumentTerms`),
   a `Declared` schedule (a job and its typed parameters, under a key), and how a schedule
   `Ending`s; `ScheduleStore`, the stored schedules (declared ones reconciled at start, those
   `due` and those `inFlight`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools

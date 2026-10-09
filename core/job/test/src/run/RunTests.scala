@@ -322,6 +322,28 @@ object RunTests extends TestSuite {
       (first, w.reply(turn), w.models.calls) ==> ("crashed", Some("Diverged(a)\nDiverged(a)"), 1)
     }
 
+    test(
+      "a plugin's keeping job keeps its documents at the run's floor, in its keep's step, then replies"
+    ) {
+      val w = new World(floor = Label.at(Level.Internal))
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), keepingJobs(new Noting(1))))
+      val kept = w.documents
+        .keeper(Notes, NotesTerms)
+        .newest(10)(using
+          TestTx.fake(grit.core.visibility.Clearance.of(Label.at(Level.Restricted)))
+        )
+        .fold(
+          e => sys.error(s"$e"),
+          _.map(d => (grit.core.document.DocText.value(d.text), Label.written(d.label)))
+        )
+      (w.reply(turn), kept, w.durable.recordedSteps(turn.workflowId)) ==> (
+        Some("internal"),
+        Vector(("counted 3", "internal")),
+        Vector(Run.Step.ReadSlot, MoveSteps.keep(move("note")), Run.Step.Reply)
+      )
+    }
+
     test("a run superseded before its job runs makes no move") {
       val w = new World
       w.serve()

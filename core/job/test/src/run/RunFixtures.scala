@@ -2,11 +2,13 @@ package grit.job.run
 
 import java.time.{Instant, ZoneOffset}
 
+import scala.concurrent.duration.*
+
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.core.act.{Asked, MoveError, MoveLimits, MoveName, Moves}
+import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves}
 import grit.core.clock.SetClock
-import grit.core.document.InMemoryDocuments
-import grit.core.durable.InMemoryDurable
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
+import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.edge.{
   Advert,
   EdgeDirectory,
@@ -21,6 +23,7 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   Declarer,
+  DocKey,
   EntryId,
   PluginName,
   PrincipalId,
@@ -35,10 +38,10 @@ import grit.core.identity.{Principal, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
-import grit.core.job.{Declared, JobRun, Jobs, Owned, PlainJob, Schedule, SlotRule, When}
+import grit.core.job.{Declared, JobRun, Jobs, KeepingJob, Owned, PlainJob, Schedule, SlotRule, When}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
-import grit.core.place.{Place, Service}
+import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
@@ -75,6 +78,60 @@ object RunFixtures {
     Jobs
       .of(job.toVector.map(Owned.Deployments(_)))
       .fold(n => sys.error(s"two jobs named $n"), identity)
+
+  /** The plugin whose keeping job [[noting]] is. */
+  val Notes: PluginName = PluginName.of("notes").fold(sys.error, identity)
+
+  val NotesTerms: DocumentTerms =
+    DocLabel
+      .of("notes")
+      .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
+      .fold(sys.error, identity)
+
+  /** The deployment of `job`, [[Notes]]' keeping job. */
+  def keepingJobs(job: KeepingJob[?]): Jobs =
+    Jobs
+      .of(Vector(Owned.Keeps(Notes, NotesTerms, job)))
+      .fold(n => sys.error(s"two jobs named $n"), identity)
+
+  /** `remind` at `version` as [[Notes]]' keeping job: its run keeps `counted {n}` under the key
+    * `count`, publicly, in its keep `note`, and replies the label it was kept at, or the keep's
+    * error.
+    */
+  final class Noting(val version: Int) extends KeepingJob[Count] {
+    val name = remind.name
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+    def run(run: JobRun[Count], moves: Keeping^): String =
+      moves
+        .keep[Noted](move("note")) { (keeper, at) =>
+          (for {
+            key <- DocKey.of("count")
+            text <- DocText.of(s"counted ${run.params.n}")
+          } yield (key, text)) match {
+            case Left(why) => Left(StoreError.Invalid(why))
+            case Right((key, text)) =>
+              keeper
+                .write(
+                  key,
+                  Label.Public,
+                  Place.under(Namespace.Task, Vector("notes")),
+                  text,
+                  ujson.Obj(),
+                  at
+                )
+                .map(w => Noted(Label.written(w.kept)))
+          }
+        }
+        .fold(_.toString, _.label)
+  }
+
+  /** The label a keep was kept at, in its written form. */
+  final case class Noted(label: String) extends caps.Pure
+  object Noted {
+    given Journaled[Noted] =
+      Journaled.json(n => ujson.Str(n.label), v => v.strOpt.map(Noted(_)).toRight("no label"))
+  }
 
   /** A job named `remind` whose parameters are text: it cannot read a count. */
   final class Texting extends PlainJob[Text] {
@@ -180,7 +237,8 @@ object RunFixtures {
           FakeDb,
           clock
         ),
-        Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption))
+        Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
+        (plugin, terms) => documents.keeper(plugin, terms)
       )
 
     /** The requests written, in order. */

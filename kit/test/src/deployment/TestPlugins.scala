@@ -1,9 +1,21 @@
 package grit.kit.deployment
 
-import grit.core.act.Moves
+import scala.concurrent.duration.*
+
+import grit.core.act.{Keeping, Moves}
+import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{CallSlot, JobName, PluginName}
-import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDesk}
-import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
+import grit.core.job.{Declared, Job, JobRun, KeepingJob, NotOwn, OwnJobs, PlainJob, ScheduleDesk}
+import grit.core.plugin.{
+  DocumentPosting,
+  Documents,
+  Exports,
+  Needs,
+  PluginReads,
+  PluginRun,
+  PluginTool,
+  Unneeded
+}
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Compartment
@@ -84,6 +96,25 @@ object TestPlugins {
     case object None extends caps.Pure
   }
 
+  /** A keeping job named `called`, with no parameters, replying its name and keeping nothing. */
+  final class Tallying(called: String) extends KeepingJob[Named.None.type] {
+    val name: JobName = JobName.of(called).fold(e => sys.error(e), identity)
+    val version: Int = 1
+    def write(params: Named.None.type): ujson.Value = ujson.Obj()
+    def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
+    def run(run: JobRun[Named.None.type], moves: Keeping^): String = called
+  }
+
+  /** Documents labelled "tallies", which nothing posts. */
+  object Tallies extends Documents {
+    val terms: DocumentTerms =
+      DocLabel
+        .of("tallies")
+        .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
+        .fold(e => sys.error(e), identity)
+    val posting: Option[DocumentPosting] = None
+  }
+
   /** Offers `called`, which books `job` when bound; its plugin's jobs are `jobs`. */
   final class Booking(
       val name: PluginName,
@@ -125,7 +156,8 @@ object TestPlugins {
   final class Declaring(
       val name: PluginName,
       override val jobs: Vector[Job[?]],
-      override val schedules: Vector[Declared[?]]
+      override val schedules: Vector[Declared[?]],
+      override val documents: Option[Documents] = None
   ) extends grit.core.plugin.Plugin {
     val version: Int = 1
   }

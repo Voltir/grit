@@ -12,7 +12,7 @@ own conversation, but its body is a job's, not the model's.
   opening's source, `grit.core.job.Slot.source`), recorded as a `SlotRead`; then, under the
   job's current version, the job's run, whose moves (`grit.act.moves.DurableMoves`) are made
   for its schedule's principal, each ask admitted against the day's cap, no call asking a
-  person first; then `reply`, which first looks for the turn's reply by its fixed id, so a rerun after a later deploy
+  person first, a keeping job's keeps written by its plugin's keeper; then `reply`, which first looks for the turn's reply by its fixed id, so a rerun after a later deploy
   returns the reply already kept; otherwise, under the job's current version, writes the
   job's reply as the turn's reply, its await where the schedule reports, and the slot marked
   replied, in one transaction, and under another version, or with the job gone, writes

@@ -4,10 +4,11 @@ import java.time.Instant
 
 import grit.act.moves.{DurableMoves, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates}
+import grit.core.document.DocumentKeeper
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, JobName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId
-import grit.core.job.{JobRun, Jobs, Owned, PlainJob, Report, Slot}
+import grit.core.job.{Job, JobRun, Jobs, KeepingJob, Owned, PlainJob, Report, Slot}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.store.{Db, Entry, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -28,7 +29,8 @@ object Run {
     *   1. under its job's current version in `jobs`, the job's run: the moves it makes, each as
     *      the steps `grit.act.moves.MoveSteps` names, for its schedule's principal, each ask
     *      admitted by `env.budget` against the day's spend, a call whose tool asks a person
-    *      first never sent ([[grit.core.act.Gates.Closed]]), within the job's limits;
+    *      first never sent ([[grit.core.act.Gates.Closed]]), within the job's limits, and a
+    *      plugin's keeping job's keeps over its plugin's documents, as `env.keepers` gives them;
     *   1. `reply` — the job's reply (or the line saying its parameters could not be read) as
     *      the turn's reply, awaited where its schedule reports, and the slot marked replied, in
     *      one transaction. A reply already kept is returned first, whatever the version. Under
@@ -58,9 +60,10 @@ object Run {
               case None => Planned.Jobless
               case Some(owned) if owned.job.version != read.version =>
                 Planned.Superseded(owned.job.version)
-              case Some(Owned.Deployments(job)) => Planned.Says(said(job, read, acting, env.moves))
-              case Some(Owned.Plugins(_, job: PlainJob[?])) =>
-                Planned.Says(said(job, read, acting, env.moves))
+              case Some(Owned.Deployments(job)) => Planned.Says(plain(job, read, acting, env.moves))
+              case Some(Owned.Plugins(_, job)) => Planned.Says(plain(job, read, acting, env.moves))
+              case Some(Owned.Keeps(plugin, terms, job)) =>
+                Planned.Says(keeping(job, read, acting, env.moves, env.keepers(plugin, terms)))
             }
             d.step(Step.Reply)(() => reply(records, jot, turn, read, planned, clock.now())) match {
               case RunEnd.Replied(_) => s"replied: ${EntryId.value(turn.replyId)}"
@@ -158,26 +161,43 @@ object Run {
   /** A job's reply, as its moves' body returns it. */
   private final case class Said(text: String) extends caps.Pure
 
-  /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `env`, or
-    * the line saying its parameters could not be read.
+  /** What `run` replies to the run `read` of `job`, given its parameters, or the line saying
+    * they could not be read.
     */
-  private def said[P <: caps.Pure](
+  private def said[P <: caps.Pure](job: Job[P], read: SlotRead.Read)(
+      run: JobRun[P] => String
+  ): String =
+    job
+      .read(read.params)
+      .fold(
+        why => unreadParams(read.job, why),
+        params => run(JobRun(params, read.slot.nominal, read.started))
+      )
+
+  /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `env`. */
+  private def plain[P <: caps.Pure](
       job: PlainJob[P],
       read: SlotRead.Read,
       acting: Acting,
       env: MovesEnv^
   )(using d: Durable^): String =
-    job
-      .read(read.params)
-      .fold(
-        why => unreadParams(read.job, why),
-        params =>
-          DurableMoves
-            .plain(acting, job.limits, env)(moves =>
-              Said(job.run(JobRun(params, read.slot.nominal, read.started), moves))
-            )
-            .text
-      )
+    said(job, read)(run =>
+      DurableMoves.plain(acting, job.limits, env)(moves => Said(job.run(run, moves))).text
+    )
+
+  /** As [[plain]], its moves also keeping `keeper`'s documents. */
+  private def keeping[P <: caps.Pure](
+      job: KeepingJob[P],
+      read: SlotRead.Read,
+      acting: Acting,
+      env: MovesEnv^,
+      keeper: DocumentKeeper
+  )(using d: Durable^): String =
+    said(job, read)(run =>
+      DurableMoves
+        .keeping(acting, job.limits, env, keeper)(moves => Said(job.run(run, moves)))
+        .text
+    )
 
   /** `text` as the run's reply, written by its job at the run's version, at no cost. */
   private def saying(text: String, read: SlotRead.Read): Message.Assistant =

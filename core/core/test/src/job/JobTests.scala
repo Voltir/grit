@@ -4,8 +4,9 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.act.Moves
-import grit.core.id.JobName
+import grit.core.act.{Keeping, Moves}
+import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
+import grit.core.id.{JobName, PluginName}
 
 import utest.*
 
@@ -22,6 +23,16 @@ object JobTests extends TestSuite {
   }
 
   final case class Count(n: Int) extends caps.Pure
+
+  /** A keeping job named `tally` whose parameters are a count. */
+  final class Tallying extends KeepingJob[Count] {
+    val name: JobName = JobName.of("tally").getOrElse(throw new java.lang.AssertionError("tally"))
+    val version: Int = 1
+    def write(params: Count): ujson.Value = ujson.Num(params.n)
+    def read(params: ujson.Value): Either[String, Count] =
+      params.numOpt.map(n => Count(n.toInt)).toRight(s"not a count: $params")
+    def run(run: JobRun[Count], moves: Keeping^): String = s"${run.params.n}"
+  }
 
   private def name(text: String): JobName =
     JobName.of(text).getOrElse(throw new java.lang.AssertionError(text))
@@ -47,6 +58,18 @@ object JobTests extends TestSuite {
           ).map(Owned.Deployments(_))
         )
         .fold(shared => Some(JobName.value(shared)), _ => None) ==> Some("b")
+    }
+
+    test("only a plugin's keeping jobs keep, under its terms: never the deployment's own") {
+      val tally = new Tallying
+      val p = PluginName.of("p").getOrElse(throw new java.lang.AssertionError("p"))
+      val terms = DocLabel
+        .of("tallies")
+        .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
+        .getOrElse(throw new java.lang.AssertionError("terms"))
+      assertCompileError("Owned.Deployments(tally)")
+      assertCompileError("Owned.Plugins(p, tally)")
+      Owned.Keeps(p, terms, tally).job.name ==> name("tally")
     }
 
     test("a once slot asked at an instant falls then; asked in a delay, that long after now") {

@@ -39,6 +39,7 @@ shipped implementations, by the kit's enums.
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
 | `PlainJob`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
+| `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | — | yes: a plugin's `jobs`, its plugin declaring `documents` |
 | `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
 | `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |

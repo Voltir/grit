@@ -335,7 +335,8 @@ private[grit] object Launch {
               engine.db,
               clock
             ),
-            d.budget
+            d.budget,
+            engine.keeper
           ),
           d.allJobs
         )
