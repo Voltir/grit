@@ -105,9 +105,11 @@ object Answer {
 
   final case class Weight(key: String, probability: Double)
 
-  /** Jev's `confidence` for a Choice over `probabilities`: `(n · max − 1) / (n − 1)` for `n`
-    * options, clamped to [0, 1]. Jev documents only the three-option case; this general form
-    * matches every documented example to the docs' two-place rounding (`ClassifyTests`).
+  /** grit's reading of Jev's `confidence` for a Choice over `probabilities`, for a stub's
+    * answer and for a choice stored without its confidence ([[AnswersJson]]):
+    * `(n · max − 1) / (n − 1)` for `n` options, clamped to [0, 1]. Jev documents only the
+    * three-option case; this general form matches every documented example to the docs'
+    * two-place rounding (`ClassifyTests`). An answer Jev gave keeps the confidence it reported.
     */
   def confidence(probabilities: Vector[Double]): Double = {
     val n = probabilities.size

@@ -544,7 +544,7 @@ object RunTests extends TestSuite {
     }
 
     test(
-      "a judgment's answers are read on its first run and on replay from what it recorded, a choice's confidence from its weights, the classifier asked once"
+      "a judgment's answers are read on its first run and on replay from what it recorded, a choice's confidence as its classifier reported it, the classifier asked once"
     ) {
       val w = new World(judged = Triaged.judged("docs"))
       val turn = w.started(w.declared("standup"))
@@ -557,9 +557,9 @@ object RunTests extends TestSuite {
         )
       (first, read, replayed, seen.reply, w.classifier.calls) ==> (
         s"replied: reply:${turn.conversationId}:0",
-        Some("docs 0.5 1"),
+        Some("docs 0.99 1"),
         Right(s"replied: reply:${turn.conversationId}:0"),
-        Some("docs 0.5 1"),
+        Some("docs 0.99 1"),
         1
       )
     }

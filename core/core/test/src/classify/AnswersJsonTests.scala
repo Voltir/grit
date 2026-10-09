@@ -42,6 +42,41 @@ object AnswersJsonTests extends TestSuite {
       AnswersJson.read(AnswersJson.write(reported)) ==> Right(reported)
     }
 
+    test("a choice reads back with the confidence written, not one grit computes") {
+      val weights = Vector(Answer.Weight("asks", 0.75), Answer.Weight("nothing", 0.25))
+      assert(Answer.confidence(weights.map(_.probability)) != 0.4)
+      val reported = Answer.Choice("asks", weights, 0.4)
+      AnswersJson.read(AnswersJson.write(reported)) ==> Right(reported)
+    }
+
+    test("a choice whose confidence is the one grit computes is written without it") {
+      // So every choice recorded before a choice kept its confidence is written back byte for
+      // byte (TurnReplayTests).
+      val weights = Vector(Answer.Weight("asks", 0.75), Answer.Weight("nothing", 0.25))
+      AnswersJson
+        .write(Answer.Choice("asks", weights, Answer.confidence(weights.map(_.probability))))
+        .render() ==>
+        """{"choice":"asks","weights":[{"key":"asks","p":0.75},{"key":"nothing","p":0.25}]}"""
+      AnswersJson.write(Answer.Choice("asks", weights, 0.4)).obj.get("confidence") ==>
+        Some(ujson.Num(0.4))
+    }
+
+    test("a choice written without its confidence reads with the one grit computes") {
+      // The form every build wrote before a choice kept its confidence: recorded journals
+      // and rows hold it.
+      AnswersJson.read(
+        ujson.read(
+          """{"choice":"asks","weights":[{"key":"asks","p":0.75},{"key":"nothing","p":0.25}]}"""
+        )
+      ) ==> Right(
+        Answer.Choice(
+          "asks",
+          Vector(Answer.Weight("asks", 0.75), Answer.Weight("nothing", 0.25)),
+          Answer.confidence(Vector(0.75, 0.25))
+        )
+      )
+    }
+
     test("a score does not read without its levels' weights or its confidence") {
       AnswersJson.read(ujson.read("""{"score":0.5,"levels":[0.5,"half"],"confidence":0.5}""")) ==>
         Left("answer: a level's weight is not a number")
