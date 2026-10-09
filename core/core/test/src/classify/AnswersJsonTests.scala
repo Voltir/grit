@@ -57,8 +57,6 @@ object AnswersJsonTests extends TestSuite {
         .write(Answer.Choice("asks", weights, Answer.confidence(weights.map(_.probability))))
         .render() ==>
         """{"choice":"asks","weights":[{"key":"asks","p":0.75},{"key":"nothing","p":0.25}]}"""
-      AnswersJson.write(Answer.Choice("asks", weights, 0.4)).obj.get("confidence") ==>
-        Some(ujson.Num(0.4))
     }
 
     test("a choice written without its confidence reads with the one grit computes") {

@@ -157,8 +157,9 @@ object ClassifyTests extends TestSuite {
     }
 
     test("an answer outside the options, of the wrong kind, missing or extra is Unreadable") {
-      def asked[T](q: Ask[Ticket, T], answers: Answer*) =
-        new Canned(answers*).ask(Ticket("x"), q).map(_ => ())
+      // Read directly: Classifier.answers refuses another kind first, and a replay reads
+      // recorded answers with no classifier in between.
+      def asked[T](q: Ask[Ticket, T], answers: Answer*) = q.read(answers.toVector).map(_ => ())
       val toChoice = "\"Which team should handle `ticket`?\": "
       department().map(q =>
         Vector(
@@ -247,8 +248,7 @@ object ClassifyTests extends TestSuite {
       val frustration = Question
         .score("How frustrated is `ticket`?", "calm", "frustrated", "very angry")
         .getOrElse(throw new java.lang.AssertionError("levels"))
-      def asked(answer: Answer) =
-        new Canned(answer).ask(Ticket("x"), Ask.answer[Ticket](frustration)).map(_.value)
+      def asked(answer: Answer) = Ask.answer[Ticket](frustration).read(Vector(answer))
       // As given: a position beyond the levels, and weights not summing to 1, are kept.
       val raw = Answer.Score(2.5, Vector(0.2, 0.2, 0.9), 0.1)
       asked(raw) ==> Right(raw)
@@ -259,9 +259,9 @@ object ClassifyTests extends TestSuite {
         Left(ClassifierError.Unreadable(toScore + "answered yes/no to a score"))
       asked(Answer.Choice("calm", Vector(w("calm", 1.0)), 1.0)) ==>
         Left(ClassifierError.Unreadable(toScore + "answered a choice to a score"))
-      new Canned(raw).ask(Ticket("x"), urgent) ==>
+      urgent.read(Vector(raw)) ==>
         Left(ClassifierError.Unreadable("\"Is `ticket` urgent?\": answered a score to a yes/no"))
-      department().map(q => new Canned(raw).ask(Ticket("x"), q).map(_ => ())) ==>
+      department().map(q => q.read(Vector(raw)).map(_ => ())) ==>
         Right(
           Left(
             ClassifierError.Unreadable(
@@ -281,8 +281,7 @@ object ClassifyTests extends TestSuite {
         .getOrElse(throw new java.lang.AssertionError("keys"))
       val choice = Ask.answer[Ticket](team)
       val yesNo = Ask.answer[Ticket](Question.YesNo("Is `ticket` urgent?", None, None))
-      def asked(q: Ask[Ticket, Answer], answer: Answer) =
-        new Canned(answer).ask(Ticket("x"), q).map(_.value)
+      def asked(q: Ask[Ticket, Answer], answer: Answer) = q.read(Vector(answer))
       // As given: weights not summing to 1, and on a key the question lacks, are kept.
       val raw = Answer.Choice("sales", Vector(w("sales", 0.7), w("hr", 0.6)), 0.2)
       asked(choice, raw) ==> Right(raw)
@@ -386,7 +385,7 @@ object ClassifyTests extends TestSuite {
       "a score is Unreadable for another weight count, no weight, or a position off the levels"
     ) {
       def asked(answer: Answer) =
-        frustration.map(q => new Canned(answer).ask(Ticket("x"), q).map(_.value.likeliest))
+        frustration.map(q => q.read(Vector(answer)).map(_.likeliest))
       val toScore = "\"How frustrated is `ticket`?\": "
       def refused(why: String) = Right(Left(ClassifierError.Unreadable(toScore + why)))
       asked(Answer.Score(1.0, Vector(0.0, 1.0), 1.0)) ==> refused("weighs 2 levels of 3")
