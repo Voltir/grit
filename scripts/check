@@ -10,6 +10,8 @@
 #   scripts/check grit.dbos.it                     # an `it` module, through scripts/it
 #   scripts/check grit.dbos.engine.CloseLiveTests  # one `it` suite: its full name, as above, never
 #                                                  # `grit.dbos.it.testOnly <Suite>`
+#   scripts/check --no-unused                      # the gate without the -Wunused:all compile
+#   scripts/check --only-unused grit.outline       # one module's -Wunused:all compile, alone
 #
 # Tiers, with no target:
 #   unit  ./mill __.test.testCached: reruns a module's suites only when their inputs changed;
@@ -23,8 +25,11 @@
 #         `clock-check: <why>`, each named as file:line. --no-lint skips it.
 #   lint  every module compiled with -Wunused:all (build.mill reads GRIT_LINT=1), in its own
 #         output directory, out/lint, so neither cache invalidates the other. Its Mill daemon
-#         is shut down when the tier ends. --no-lint skips it.
-# A target runs just that: no law, no format, no lint; --it with a target is a usage error.
+#         is shut down when the tier ends. --no-lint or --no-unused skips it; --only-unused
+#         runs it alone; with targets, each target's module and its tests and nested modules.
+# A target runs just that: no law, no format, no clock, no lint, unless --only-unused runs
+# lint for its modules. --it with a target is a usage error.
+# --only-unused runs lint alone, so it conflicts with --no-lint, --no-unused and --it.
 #
 # Exits non-zero when any tier had a failed test, a compile error, a warning, a law failure
 # or a timeout. Every tier runs even after an earlier one fails. When Mill fails, the totals
@@ -39,13 +44,15 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 
-timeout=20m it=false lint=true targets=()
+timeout=20m it=false lint=true unused=true only=false targets=()
 while [ $# -gt 0 ]; do
   case $1 in
     --timeout) [ $# -ge 2 ] || usage; timeout=$2; shift 2 ;;
     --timeout=*) timeout=${1#*=}; shift ;;
     --it) it=true; shift ;;
     --no-lint) lint=false; shift ;;
+    --no-unused) unused=false; shift ;;
+    --only-unused) only=true; shift ;;
     -h|--help) usage ;;
     -*) echo "check: unknown option $1" >&2; usage ;;
     *) targets+=("$1"); shift ;;
@@ -53,6 +60,10 @@ while [ $# -gt 0 ]; do
 done
 if [ ${#targets[@]} -gt 0 ] && $it; then
   echo "check: --it runs the whole integration tier; name an it module or suite instead" >&2
+  exit 2
+fi
+if $only && { ! $lint || ! $unused || $it; }; then
+  echo "check: --only-unused runs the lint tier alone; drop --no-lint, --no-unused or --it" >&2
   exit 2
 fi
 
@@ -215,29 +226,37 @@ report_path() { # module tier task
   echo "out/$(tr . / <<<"$1")/$2/$3.dest/test-report.xml"
 }
 
+lint_tier() { # Mill tasks... -> the lint tier, its daemon in out/lint shut down after
+  run_tier lint out/lint "" -- env GRIT_LINT=1 MILL_OUTPUT_DIR=out/lint "${mill[@]}" "$@"
+  MILL_OUTPUT_DIR=out/lint ./mill shutdown >>"$logs/lint.log" 2>&1 || true
+}
+
 if [ ${#targets[@]} -eq 0 ]; then
-  modules_of test | while read -r m; do report_path "$m" test testCached; done >"$logs/unit.reports"
-  run_tier unit out "$logs/unit.reports" -- "${mill[@]}" __.test.testCached
+  if ! $only; then
+    modules_of test | while read -r m; do report_path "$m" test testCached; done >"$logs/unit.reports"
+    run_tier unit out "$logs/unit.reports" -- "${mill[@]}" __.test.testCached
 
-  : >"$logs/law.reports"
-  run_tier law out "" -- bash scripts/enola-law.sh
+    : >"$logs/law.reports"
+    run_tier law out "" -- bash scripts/enola-law.sh
 
-  if $it; then
-    modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
-    run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" __.it.testForked
+    if $it; then
+      modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
+      run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" __.it.testForked
+    fi
+
+    if $lint; then
+      run_tier format out "" -- scripts/format-check "${mill[@]}"
+      run_tier clock out "" -- scripts/clock-check
+    fi
   fi
-
-  if $lint; then
-    run_tier format out "" -- scripts/format-check "${mill[@]}"
-    run_tier clock out "" -- scripts/clock-check
-    run_tier lint out/lint "" -- env GRIT_LINT=1 MILL_OUTPUT_DIR=out/lint "${mill[@]}" __.compile
-    MILL_OUTPUT_DIR=out/lint ./mill shutdown >>"$logs/lint.log" 2>&1 || true
+  if $lint && $unused; then
+    lint_tier __.compile
   fi
 else
   # Each target becomes a Mill task: a module's whole tests, or its named suites in one
   # testOnly. Unit tasks share one Mill call, it tasks one scripts/it call, `+`-joined.
   declare -A suites=()
-  unit_groups=() it_groups=()
+  unit_groups=() it_groups=() lint_mods=()
   : >"$logs/unit.reports"
   : >"$logs/it.reports"
   for t in "${targets[@]}"; do
@@ -251,6 +270,10 @@ else
     else
       echo "check: $t is neither a module with tests nor a suite" >&2
       exit 2
+    fi
+    if $only; then
+      lint_mods+=("$module")
+      continue
     fi
     if [ -n "$suite" ]; then
       suites[$module.$tier]+=" $suite"
@@ -289,6 +312,11 @@ else
   if [ ${#it_groups[@]} -gt 0 ]; then
     mapfile -t args < <(joined "${it_groups[@]}")
     run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" "${args[@]}"
+  fi
+  if $only; then
+    mapfile -t mods < <(printf '%s\n' "${lint_mods[@]}" | sort -u)
+    mapfile -t args < <(joined "${mods[@]/%/.__.compile}")
+    lint_tier "${args[@]}"
   fi
 fi
 
