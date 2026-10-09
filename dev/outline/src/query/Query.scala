@@ -16,7 +16,7 @@ final case class Answer(text: String, status: Status)
 
 object Query {
 
-  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. */
+  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. A name found only in test sources is a `NoMatch` whose note names the `tests` query for its suite. */
   def show(
       root: Root,
       layout: Layout,
@@ -195,7 +195,7 @@ object Query {
       }
     }
 
-  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the non-private members whose range holds no test call) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
+  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
   def tests(
       root: Root,
       layout: Layout,
@@ -226,7 +226,11 @@ object Query {
                 }
                 val (suiteFrom, suiteTo) = TestCalls.within(src, d.lines)
                 val tests = TestCalls.find(src, suiteFrom, suiteTo, config.testCall)
-                val helpers = d.members.filterNot(m => m.isPrivate || holdsTests(m))
+                // Beside the suite, not inside it: a definition in its range is a member's part, not another top-level one.
+                val otherTops = resolved.seen.filter(t =>
+                  t.file == d.file && (t.lines.end < d.lines.start || d.lines.end < t.lines.start)
+                )
+                val helpers = (d.members.filterNot(holdsTests) ++ otherTops).sortBy(_.lines.start)
                 val notes = test
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
@@ -485,9 +489,34 @@ object Query {
         case Right(next) => state = next
       }
       val matches = mutable.ListBuffer.empty[Defn]
+      // One note per distinct suite: the outermost top-level definition of the match's file that holds it.
+      def testSuiteNotes(sym: String, found: Resolved): Vector[String] =
+        found.defns
+          .map(m =>
+            found.seen
+              .find(t =>
+                t.file == m.file && t.lines.start <= m.lines.start && m.lines.end <= t.lines.end
+              )
+              .getOrElse(m)
+              .fullName
+          )
+          .distinct
+          .sorted
+          .map(suite => s"-- $sym is in test sources: tests $suite")
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
           case Left(message) => failure = Some(message)
+          // A miss pays for one more resolve, over the test-only classes dirs; a name found there is named with its suite instead.
+          case Right(resolved) if resolved.defns.isEmpty =>
+            state = resolved.loaded
+            companions ++= resolved.seen
+            Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
+              case Left(message) => failure = Some(message)
+              case Right(tests) =>
+                state = tests.loaded
+                if (tests.defns.isEmpty) notes ++= resolved.notes
+                else notes ++= testSuiteNotes(sym, tests)
+            }
           case Right(resolved) =>
             state = resolved.loaded
             companions ++= resolved.seen

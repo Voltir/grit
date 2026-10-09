@@ -27,7 +27,7 @@ object TestsTests extends TestSuite {
 
   def tests = Tests {
     test(
-      "the suite's helper is fresh with its doc's line, and its two tests are listed with their ranges; run and the private test are not helpers"
+      "the suite's helper is fresh with its doc's line, and its two tests are listed with their ranges; run, which holds tests, is not a helper"
     ) {
       val lines = answer(suite, None).text.linesIterator.toVector
       assert(lines.contains("  65-66 def fresh(): Store"))
@@ -35,7 +35,7 @@ object TestsTests extends TestSuite {
       assert(lines.contains("    69-71 put then get returns the value"))
       assert(lines.contains("    72-74 get of an absent key is None"))
       assert(!lines.exists(_.contains("def run")))
-      assert(!lines.exists(_.contains("def test")))
+      assert(lines.contains("  63-63 private def test(name: String)(body: => Unit): Unit"))
     }
 
     test("a test prefix prints the verbatim body of the tests it starts, and no other") {
@@ -51,6 +51,12 @@ object TestsTests extends TestSuite {
 
     test("a name no class or object declares is NoMatch") {
       assert(answer("grit.outline.fixture.store.Missing", None).status == Status.NoMatch)
+    }
+
+    test("tests lists the suite's private helpers and its file's other top-level definitions") {
+      val lines = answer("grit.outline.render.OneLineTests", None).text.linesIterator.toVector
+      assert(lines.exists(_.trim.matches("""\d+-\d+ private val posed.*""")))
+      assert(lines.exists(_.trim.matches("""\d+-\d+ private val companion.*""")))
     }
   }
 }

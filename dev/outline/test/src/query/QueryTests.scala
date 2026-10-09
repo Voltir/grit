@@ -179,5 +179,47 @@ object QueryTests extends TestSuite {
       assert(next.failed.get(bad) == Some(touched))
       assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
     }
+
+    test("show of a test suite's name names the tests query") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("OneLineTests"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(answer.status == Status.NoMatch)
+      assert(
+        answer.text.endsWith(
+          "\n-- OneLineTests is in test sources: tests grit.outline.render.OneLineTests"
+        )
+      )
+    }
+
+    test("show of a helper inside a suite names its suite") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("OneLineTests.posed"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(answer.status == Status.NoMatch)
+      assert(
+        answer.text.endsWith(
+          "\n-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests"
+        )
+      )
+    }
   }
 }
