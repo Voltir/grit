@@ -128,5 +128,21 @@ object AskingTests extends TestSuite {
           Right(Vector(UsageLedger.Row(EntryId("e"), "m", reply.usage, Tokens(7))))
         )
     }
+
+    test(
+      "a call's cost is recorded once, as its model's and usage beside the estimate; again, DuplicateId"
+    ) {
+      val ledger = new InMemoryUsageLedger
+      given Tx = TestTx.fake
+      val usage = Usage(Tokens(30), Tokens(4), Tokens(10), Some(BigDecimal("0.002")))
+      val first = Asking.cost(ledger, EntryId("e"), turn, "judge", usage, Tokens(28))
+      val second = Asking.cost(ledger, EntryId("e"), turn, "judge", usage, Tokens(28))
+      (first, second, ledger.of(turn.workflowId)) ==>
+        (
+          Right(()),
+          Left(StoreError.DuplicateId(EntryId("e"))),
+          Right(Vector(UsageLedger.Row(EntryId("e"), "judge", usage, Tokens(28))))
+        )
+    }
   }
 }

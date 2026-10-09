@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.act.Allowance
 import grit.core.clock.Clock
 import grit.core.id.{EntryId, TurnRef}
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.spend.Spending
 import grit.core.store.{StoreError, Tx, UsageLedger}
@@ -62,8 +62,8 @@ object Asking {
 
   /** The cost of `reply`, the response held by `entry` (an entry's id, or a move's), recorded
     * for `turn` (under its conversation and workflow) beside `estimate`, the request's
-    * estimated input: the one way an ask's cost reaches the ledger. `DuplicateId` when
-    * `entry`'s is recorded already.
+    * estimated input: as [[cost]], of `reply`'s model and usage. `DuplicateId` when `entry`'s
+    * is recorded already.
     */
   def spent(
       ledger: UsageLedger,
@@ -72,5 +72,19 @@ object Asking {
       reply: Message.Assistant,
       estimate: Tokens
   )(using Tx^): Either[StoreError, Unit] =
-    ledger.record(entry, turn, turn.workflowId, reply.model, reply.usage, estimate)
+    cost(ledger, entry, turn, reply.model, reply.usage, estimate)
+
+  /** As [[spent]], for any model's call: `usage` of the call made by `model`, recorded for
+    * `turn` under `entry` beside `estimate`; the one way an ask's cost reaches the ledger.
+    * `DuplicateId` when `entry`'s is recorded already.
+    */
+  def cost(
+      ledger: UsageLedger,
+      entry: EntryId,
+      turn: TurnRef,
+      model: String,
+      usage: Usage,
+      estimate: Tokens
+  )(using Tx^): Either[StoreError, Unit] =
+    ledger.record(entry, turn, turn.workflowId, model, usage, estimate)
 }
