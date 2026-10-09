@@ -838,6 +838,19 @@ object DeploymentTests extends TestSuite {
         .map(_ => ()) ==> Left(DeploymentRefusal.KeepsUnshelved(name("p"), job("tally")))
     }
 
+    test("of two plugins with keeping jobs, the refusal names the one that keeps no documents") {
+      val (kept, unshelved) =
+        (new TestPlugins.Tallying("kept"), new TestPlugins.Tallying("unshelved"))
+      Deployments
+        .of(plugins =
+          Vector(
+            new TestPlugins.Declaring(name("a"), Vector(kept), Vector(), Some(TestPlugins.Tallies)),
+            new TestPlugins.Declaring(name("b"), Vector(unshelved), Vector())
+          )
+        )
+        .map(_ => ()) ==> Left(DeploymentRefusal.KeepsUnshelved(name("b"), job("unshelved")))
+    }
+
     test("an accepted deployment runs a plugin's keeping job under its plugin's terms") {
       val tally = new TestPlugins.Tallying("tally")
       Deployments
