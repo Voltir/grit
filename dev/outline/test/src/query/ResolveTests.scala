@@ -58,6 +58,24 @@ object ResolveTests extends TestSuite {
       assert(r.notes.exists(_.startsWith("-- no Wrong.Mix as written; by last segment:")))
     }
 
+    test("a wrong qualifier naming one candidate's owner resolves to that candidate alone") {
+      val r = resolve("Wrong.store.Quiver")
+      assert(r.defns.map(_.fullName) == Vector("grit.outline.fixture.store.Quiver"))
+      assert(r.notes.exists(_.startsWith("-- no Wrong.store.Quiver as written; by last segment:")))
+    }
+
+    test(
+      "a qualifier matching no candidate's owner, with several candidates, resolves to none and lists them"
+    ) {
+      val r = resolve("Wrong.Quiver")
+      assert(r.defns.isEmpty)
+      assert(
+        r.notes == Vector(
+          "-- no Wrong.Quiver as written; by last segment, name one fully: grit.outline.fixture.Quiver, grit.outline.fixture.store.Quiver"
+        )
+      )
+    }
+
     test("a hidden source is found by its full name only, never by a short name") {
       val hidden = Config(Vector("dev/outline/fixture"), Vector.empty)
       assert(resolve("A.keep", hidden).defns.forall(d => !d.file.startsWith("dev/outline/fixture")))

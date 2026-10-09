@@ -50,3 +50,6 @@ object Ids {
   /** An id, opaque outside [[Ids]]. */
   opaque type Id = String
 }
+
+/** A quiver, so a last segment shared by two owners is found under both. */
+trait Quiver
