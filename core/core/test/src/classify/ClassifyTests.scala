@@ -337,10 +337,11 @@ object ClassifyTests extends TestSuite {
       scored(0.4, 0.4, 0.2).map(_.likeliest) ==> Right(1)
     }
 
-    test("a score is Unreadable for another weight count, no weight, or a position off the levels") {
-      def asked(answer: Answer) = frustration.map(q =>
-        new Canned(answer).ask(Ticket("x"), q).map(_.value.likeliest)
-      )
+    test(
+      "a score is Unreadable for another weight count, no weight, or a position off the levels"
+    ) {
+      def asked(answer: Answer) =
+        frustration.map(q => new Canned(answer).ask(Ticket("x"), q).map(_.value.likeliest))
       val toScore = "\"How frustrated is `ticket`?\": "
       def refused(why: String) = Right(Left(ClassifierError.Unreadable(toScore + why)))
       asked(Answer.Score(1.0, Vector(0.0, 1.0), 1.0)) ==> refused("weighs 2 levels of 3")

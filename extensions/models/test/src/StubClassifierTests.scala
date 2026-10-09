@@ -33,7 +33,11 @@ object StubClassifierTests extends TestSuite {
         StubClassifier.answers(ujson.Obj("new_message" -> message), Vector(frustration)).answers
       scored("~level:1 now") ==>
         Vector(
-          Answer.Score(1.0, Vector(0.05, 0.9, 0.05), Answer.scoreConfidence(Vector(0.05, 0.9, 0.05)))
+          Answer.Score(
+            1.0,
+            Vector(0.05, 0.9, 0.05),
+            Answer.scoreConfidence(Vector(0.05, 0.9, 0.05))
+          )
         )
       scored("anything").map {
         case Answer.Score(score, ps, _) => Some((math.round(score * 100), ps))
