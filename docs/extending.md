@@ -72,7 +72,8 @@ anything a shipped one can.
 
 **Jobs and schedules** ([ADR 0029](decisions/0029-a-job-is-versioned-code-a-schedule-is-data-and-a-clock-edge-starts-each-due-slot.md)).
 A `Job[P]` is versioned code: its `name`, its `version`, a codec for its parameters `P`
-(`write`, `read`), and `reply`, the text a run of it replies with, pure. A schedule runs a job
+(`write`, `read`), its `limits` (how many asks and calls one run may make, none unless it
+says), and `run`, which makes its moves and returns the text the run replies with. A schedule runs a job
 on a `SlotRule`: `Once` at an instant with a `Grace` (later than that, the slot is missed and
 never run), or `Daily`, `Weekdays` or `Weekly` at a local time in a zone (after downtime only
 the latest missed slot runs). Each slot's run is a turn of that slot's own conversation, at
@@ -91,9 +92,26 @@ the task place of its job, closed without a model call. Schedules come from two 
   replies nobody posts cannot ask (`Unaddressed`). Reconciliation never touches an asked
   schedule. `extensions/remind` is the worked example.
 
-A job's version moves when what its runs reply changes: a run started under another version
+A job's version moves when what its runs do changes: a run started under another version
 is superseded, and its slot runs again at the current one when no later slot is due. What
 `Deployment.of` refuses of jobs and schedules is in its doc, beside every other refusal.
+
+**A job's moves** ([ADR 0034](decisions/0034-turns-and-jobs-act-through-three-moves-ask-call-and-keep-made-under-an-acting-value.md)).
+A job is pure: everything its run does outside itself it does through the moves it is handed,
+from `grit.core.act`, each under a `MoveName` used once per run. A `PlainJob`, the deployment's
+or a plugin's, is handed `Moves`: `ask`, one model response from the catalog's summary model,
+admitted against the day's cap and its cost recorded under the run's conversation; and `call`,
+one tool request to an edge serving a service place, never one that asks a person first, its
+request recording the schedule's principal. A plugin's `KeepingJob` is handed `Keeping`, those
+and `keep`: one transaction over its plugin's own documents (a `DocumentKeeper`, at the run's
+floor), kept whole or not at all, whose pure result is recorded as the step's output in its own
+`Journaled` form. A keeping job needs its plugin to declare `documents` (their `terms`, and a
+`DocumentPosting` only if closed periods should also write them); `Deployment.of` refuses one
+whose plugin declares none (`KeepsUnshelved`). A rerun of a run whose move's input differs from
+what it recorded is refused that move and every later one (`MoveError.Diverged`), so change a
+job's moves under a new `version`. `core/act` (`grit.act`) is grit's own module that makes
+these moves as durable steps, shared with the turn; a job or plugin never names it, only
+`grit.core.act`'s traits.
 
 **Visibility** ([ADR 0030](decisions/0030-visibility-is-a-label-lattice-read-down-write-up-and-a-room-admits-its-members-to-its-own-speech.md)).
 Who may see what is the one value a deployment injects into core about it,
