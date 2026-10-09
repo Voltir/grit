@@ -13,8 +13,9 @@ import utest.*
   * flags, as `grit.core.job.JobCaptureTests` does; `assertCompileError` cannot see capture
   * errors (docs/capture-checking.md).
   *
-  * `PlainJob` and `Run.plain` here stand in for the job a run is made of and the function that
-  * hands it moves over the run's `Durable`, with the bounds those must keep.
+  * The jobs are core's own, `PlainJob` and `KeepingJob`, and the keeps `Keeping.keep`; `Run.plain`
+  * stands in for `grit.act.moves.DurableMoves.plain`, which hands a run's job its moves over the
+  * run's `Durable`, with the bounds it keeps.
   */
 object ActCaptureTests extends TestSuite {
 
@@ -26,6 +27,7 @@ object ActCaptureTests extends TestSuite {
       |import grit.core.document.*
       |import grit.core.durable.*
       |import grit.core.id.*
+      |import grit.core.job.{JobRun, KeepingJob, PlainJob}
       |import grit.core.message.*
       |import grit.core.provider.*
       |import grit.core.store.*
@@ -37,9 +39,14 @@ object ActCaptureTests extends TestSuite {
       |    Journaled.json(c => ujson.Num(c.n), v => v.numOpt.map(d => Count(d.toInt)).toRight("no count"))
       |}
       |final case class Reply(text: String) extends caps.Pure
-      |trait PlainJob extends caps.Pure {
-      |  def run(input: String, moves: Moves^): Reply
+      |trait Counts {
+      |  val name: JobName = JobName.of("count").fold(sys.error, identity)
+      |  val version: Int = 1
+      |  def write(params: Count): ujson.Value = ujson.Num(params.n)
+      |  def read(params: ujson.Value): Either[String, Count] = params.numOpt.map(d => Count(d.toInt)).toRight("no count")
       |}
+      |abstract class Counted extends PlainJob[Count], Counts
+      |abstract class Tallied extends KeepingJob[Count], Counts
       |object Run {
       |  def plain[A <: caps.Pure](acting: Acting)(body: Moves^ => A)(using d: Durable^): A = {
       |    val moves = new Moves {
@@ -63,44 +70,49 @@ object ActCaptureTests extends TestSuite {
 
   /** 1. A job that keeps the moves it is handed in a field. */
   private val jobKeepsMoves =
-    """final class Keeps extends PlainJob {
+    """final class Keeps extends Counted {
       |  var kept: Option[Moves^] = None
-      |  def run(input: String, moves: Moves^): Reply = { kept = Some(moves); Reply(input) }
+      |  def run(run: JobRun[Count], moves: Moves^): String = { kept = Some(moves); "kept" }
       |}
       |""".stripMargin
 
   /** 2. A job that stashes the moves it is handed in a mutable collection. */
   private val jobStashesMoves =
-    """final class Stashes extends PlainJob {
+    """final class Stashes extends Counted {
       |  val kept: scala.collection.mutable.ArrayBuffer[Moves^] = scala.collection.mutable.ArrayBuffer.empty
-      |  def run(input: String, moves: Moves^): Reply = { kept += moves; Reply(input) }
+      |  def run(run: JobRun[Count], moves: Moves^): String = { kept += moves; "stashed" }
       |}
       |""".stripMargin
 
-  /** 3. A keep whose body makes a move. */
+  /** 3. A keeping job whose keep's body makes a move. */
   private val keepAsks =
-    """def f(moves: Keeping^): Either[MoveError, Count] =
-      |  moves.keep(Names.of("count")) { (keeper, at) =>
-      |    val _ = moves.ask(Names.of("inner"), Names.request)
-      |    Right(Count(1))
-      |  }
+    """final class Asks extends Tallied {
+      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |    moves.keep(Names.of("count")) { (keeper, at) =>
+      |      val _ = moves.ask(Names.of("inner"), Names.request)
+      |      Right(Count(1))
+      |    }.fold(_.toString, _.toString)
+      |}
       |""".stripMargin
 
   /** 4. A job holding a provider it was built with. */
   private val jobHoldsProvider =
-    """final class Calls(provider: Provider^) extends PlainJob {
-      |  def run(input: String, moves: Moves^): Reply = { val _ = provider; Reply(input) }
+    """final class Calls(provider: Provider^) extends Counted {
+      |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = provider; "called" }
       |}
       |""".stripMargin
 
-  /** 5. A keep whose body returns a read to run after its transaction is gone. */
+  /** 5. A keeping job whose keep's body returns a read to run after its transaction is gone. */
   private val keepReturnsRead =
     """given anyJournaled[A]: Journaled[A] = new Journaled[A] {
       |  def encode(a: A): String = ""
       |  def decode(s: String): Either[String, A] = Left("never read")
       |}
-      |def f(moves: Keeping^, key: DocKey, label: Label) =
-      |  moves.keep(Names.of("later")) { (keeper, at) => Right(() => keeper.current(key, label)) }
+      |final class Later(key: DocKey, label: Label) extends Tallied {
+      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |    moves.keep(Names.of("later")) { (keeper, at) => Right(() => keeper.current(key, label)) }
+      |      .fold(_.toString, _ => "later")
+      |}
       |""".stripMargin
 
   /** 6. A run's body that returns the moves it is handed. */
@@ -117,8 +129,8 @@ object ActCaptureTests extends TestSuite {
     * `Durable`, are live.
     */
   private val bodySteps =
-    """def f(job: PlainJob, acting: Acting)(using d: Durable^): Reply =
-      |  Run.plain(acting)(moves => { val seen = d.step("peek") { () => "x" }; job.run(seen, moves) })
+    """def f(job: PlainJob[Count], acting: Acting, run: JobRun[Count])(using d: Durable^): Reply =
+      |  Run.plain(acting)(moves => { val seen = d.step("peek") { () => "x" }; Reply(job.run(run, moves) + seen) })
       |""".stripMargin
 
   /** Every breach capture checking rejects; [[keepReturnsRead]] and [[bodyReturnsMoves]] are
@@ -133,18 +145,21 @@ object ActCaptureTests extends TestSuite {
     }
 
     test(
-      "a job using its moves within its run, a keep over its keeper alone, and a run's body then its next step, compile"
+      "a job using its moves within its run, a keeping job's keep over its keeper alone, and a run's body then its next step, compile"
     ) {
       val errs = errors(
-        """object Counter extends PlainJob {
-          |  def run(input: String, moves: Moves^): Reply =
-          |    moves.ask(Names.of("count"), Names.request).fold(e => Reply(e.toString), a => Reply(a.message.toString))
+        """object Counter extends Counted {
+          |  def run(run: JobRun[Count], moves: Moves^): String =
+          |    moves.ask(Names.of("count"), Names.request).fold(_.toString, _.message.toString)
           |}
-          |def kept(moves: Keeping^, key: DocKey, label: Label): Either[MoveError, Count] =
-          |  moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
-          |def runBody(job: PlainJob, turn: TurnRef)(using d: Durable^): String = {
+          |final class Tally(key: DocKey, label: Label) extends Tallied {
+          |  def run(run: JobRun[Count], moves: Keeping^): String =
+          |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
+          |      .fold(_.toString, _.toString)
+          |}
+          |def runBody(job: PlainJob[Count], run: JobRun[Count], turn: TurnRef)(using d: Durable^): String = {
           |  val acting = Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Closed)
-          |  val reply = Run.plain(acting)(moves => job.run("input", moves))
+          |  val reply = Run.plain(acting)(moves => Reply(job.run(run, moves)))
           |  d.step("reply") { () => reply.text }
           |}
           |""".stripMargin
@@ -172,7 +187,7 @@ object ActCaptureTests extends TestSuite {
       assert(flowsInto("{any}")(errors(jobStashesMoves)))
     }
 
-    test("a keep whose body makes a move is rejected") {
+    test("a keeping job whose keep's body makes a move is rejected") {
       assert(flowsInto("{}")(errors(keepAsks)))
     }
 
@@ -180,7 +195,7 @@ object ActCaptureTests extends TestSuite {
       assert(heldImpure(errors(jobHoldsProvider)))
     }
 
-    test("a keep whose body returns a read for later is rejected by its bound") {
+    test("a keeping job whose keep's body returns a read for later is rejected by its bound") {
       val errs = errors(keepReturnsRead)
       assert(
         errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
