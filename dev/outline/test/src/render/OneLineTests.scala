@@ -87,5 +87,49 @@ object OneLineTests extends TestSuite {
       assert(answer.contains("scala.Int"))
       assert(!answer.contains("<repeated>"))
     }
+
+    test("a trait's one-liner lists no implementor from another file") {
+      val elsewhere = text.copy(file = "p/Other.scala")
+      assert(
+        Render.oneLine(
+          posed,
+          Vector(companion.copy(members = Vector(elsewhere)))
+        ) == "→ 1-3 trait Posed"
+      )
+    }
+
+    test("a constructor parameter's multi-line doc is dropped from the one-liner") {
+      val multi = defn(
+        Kind.CaseClass,
+        "Multi",
+        "p.Multi",
+        Lines(23, 23),
+        "final case class Multi(a: Int, /** The first line\n  * and the second. */ request: ModelRequest) extends Posed[Int]",
+        Vector("p.Posed")
+      )
+      assert(
+        Render.oneLine(
+          posed,
+          Vector(companion.copy(members = Vector(multi)))
+        ) == "→ 1-3 trait Posed: Multi(a: Int, request: ModelRequest) :23"
+      )
+    }
+
+    test("an implementor's private constructor shows as its bare parameters") {
+      val impl = defn(
+        Kind.Class,
+        "Impl",
+        "p.Impl",
+        Lines(9, 9),
+        "final class Impl private (a: Int) extends Posed[Int]",
+        Vector("p.Posed")
+      )
+      assert(
+        Render.oneLine(
+          posed,
+          Vector(companion.copy(members = Vector(impl)))
+        ) == "→ 1-3 trait Posed: Impl(a: Int) :9"
+      )
+    }
   }
 }

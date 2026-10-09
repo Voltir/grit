@@ -16,13 +16,15 @@ final case class Family(
 
 object Render {
 
-  /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it, each as its collapsed signature and start line. */
+  /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it in `d`'s own file, each as its collapsed signature and start line. */
   def oneLine(d: Defn, companions: Vector[Defn]): String = {
     val head = s"→ ${d.lines.start}-${d.lines.end} ${collapse(withoutDocs(d.signature))}"
     val items: Vector[Defn] =
       if (d.kind == Kind.Enum) d.members.filter(_.kind == Kind.EnumCase)
       else if (d.kind == Kind.Trait || (d.kind == Kind.Class && d.isAbstract))
-        companions.flatMap(c => c +: c.members).filter(_.parents.contains(d.fullName))
+        companions
+          .flatMap(c => c +: c.members)
+          .filter(i => i.file == d.file && i.parents.contains(d.fullName))
       else Vector.empty
     if (items.isEmpty) head
     else head + ": " + items.map(caseItem).mkString(" | ")
@@ -290,7 +292,7 @@ object Render {
 
   private def collapse(s: String): String = s.trim.split("\\s+").mkString(" ")
 
-  private def withoutDocs(s: String): String = s.replaceAll("/\\*\\*.*?\\*/", " ")
+  private def withoutDocs(s: String): String = s.replaceAll("(?s)/\\*\\*.*?\\*/", " ")
 
   /** The words a case or class header carries before its name and constructor, dropped from a one-liner. */
   private val Modifiers =
@@ -302,7 +304,12 @@ object Render {
     val source = if (signature.isEmpty) d.name else signature
     val cut = source.indexOf(" extends ")
     val header = if (cut >= 0) source.take(cut) else source
-    val bare = header.split(' ').dropWhile(Modifiers.contains).mkString(" ")
+    // An access modifier between the name and the constructor, `Impl private (`, is dropped with the space before the `(`.
+    val bare = header
+      .split(' ')
+      .dropWhile(Modifiers.contains)
+      .mkString(" ")
+      .replaceFirst("\\s+(private|protected)(\\[[^\\]]*\\])?\\s*(?=\\()", "")
     s"$bare :${d.lines.start}"
   }
 
