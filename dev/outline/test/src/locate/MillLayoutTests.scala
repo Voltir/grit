@@ -49,5 +49,14 @@ object MillLayoutTests extends TestSuite {
       os.write(at(root, "out/m/resolvedMvnDeps.json"), ujson.write(deps))
       assert(MillLayout.libraryJars(root) == Vector(jar))
     }
+
+    test("isTest is true for a classes dir under a test or it module, and false under a main one") {
+      val root = tree(
+        "out/x/test/compile.dest/classes/A.tasty",
+        "out/x/compile.dest/classes/A.tasty"
+      )
+      assert(MillLayout.isTest(at(root, "out/x/test/compile.dest/classes")))
+      assert(!MillLayout.isTest(at(root, "out/x/compile.dest/classes")))
+    }
   }
 }

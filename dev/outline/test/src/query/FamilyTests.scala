@@ -24,7 +24,7 @@ object FamilyTests extends TestSuite {
   private val storePackage = "grit.outline.fixture.store"
 
   private def family(name: String, member: Option[String], withBody: Boolean): (Answer, Roots) =
-    Query.family(root, MillLayout, Roots.empty(6000), name, member, withBody, 80000)
+    Query.family(root, MillLayout, Config.empty, Roots.empty(6000), name, member, withBody, 80000)
 
   def tests = Tests {
     test(

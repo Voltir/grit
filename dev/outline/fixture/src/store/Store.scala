@@ -46,3 +46,6 @@ object Unrelated {
 object Caller {
   def all(stores: Vector[Store]): Vector[Option[String]] = stores.map(s => s.get("k"))
 }
+
+/** A second Tx, so a short name is ambiguous. */
+trait Tx

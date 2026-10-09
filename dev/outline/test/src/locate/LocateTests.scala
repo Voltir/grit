@@ -71,6 +71,7 @@ object LocateTests extends TestSuite {
         def classesDirs(root: Root): Vector[os.Path] = Vector(compiled)
         def libraryJars(root: Root): Vector[os.Path] = Vector.empty
         def notCompiled(root: Root): String = "not compiled"
+        def isTest(classesDir: os.Path): Boolean = false
       }
       val root = Root(os.temp.dir())
       assert(

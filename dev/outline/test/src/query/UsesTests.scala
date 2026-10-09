@@ -28,7 +28,7 @@ object UsesTests extends TestSuite {
       in: Option[String] = None,
       outside: Option[String] = None
   ): (Answer, Roots) =
-    Query.uses(root, MillLayout, Roots.empty(6000), Vector(sym), in, outside, 80000)
+    Query.uses(root, MillLayout, Config.empty, Roots.empty(6000), Vector(sym), in, outside, 80000)
 
   def tests = Tests {
     test(

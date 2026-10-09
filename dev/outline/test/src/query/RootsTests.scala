@@ -38,9 +38,21 @@ object RootsTests extends TestSuite {
       val r1 = checkout("one", one)
       val r2 = checkout("two", two)
       val (a1, s1) =
-        Query.show(r1, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
-      val (a2, s2) = Query.show(r2, MillLayout, s1, Vector("S.f"), 1, Set.empty, false, 80000)
-      val (a3, _) = Query.show(r1, MillLayout, s2, Vector("S.f"), 1, Set.empty, false, 80000)
+        Query.show(
+          r1,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("S.f"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
+      val (a2, s2) =
+        Query.show(r2, MillLayout, Config.empty, s1, Vector("S.f"), 1, Set.empty, false, 80000)
+      val (a3, _) =
+        Query.show(r1, MillLayout, Config.empty, s2, Vector("S.f"), 1, Set.empty, false, 80000)
       assert(a1.text.startsWith(s"## root ${r1.dir} ("))
       assert(a1.text.contains("def f(a: Int): Int"))
       assert(a2.text.startsWith(s"## root ${r2.dir} ("))
@@ -78,7 +90,17 @@ object RootsTests extends TestSuite {
       os.copy(r1.dir / "src", r3.dir / "src")
       os.write(r3.dir / "build.mill", "")
       val (answer, _) =
-        Query.show(r3, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
+        Query.show(
+          r3,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("S.f"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
       assert(answer.status == Status.Failed)
       assert(answer.text.contains("outside"))
     }
@@ -89,7 +111,17 @@ object RootsTests extends TestSuite {
         "package p\nopaque type Tag = Int\nobject S { def f(a: Tag): Tag = a }\n"
       )
       val (answer, _) =
-        Query.show(r, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
+        Query.show(
+          r,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("S.f"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
       assert(answer.status == Status.Found)
       assert(answer.text.contains("opaque type Tag"))
       assert(!answer.text.contains("not loaded"))

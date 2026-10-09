@@ -11,6 +11,9 @@ trait Layout {
 
   /** The one line telling a person how to compile `root` when `classesDirs` is empty. */
   def notCompiled(root: Root): String
+
+  /** Whether `classesDir` holds only tests' classes. */
+  def isTest(classesDir: os.Path): Boolean
 }
 
 /** Mill's layout: `out/**/compile.dest/classes`, and each module's `resolvedMvnDeps.json` beside its `compile.dest`. */
@@ -58,6 +61,9 @@ object MillLayout extends Layout {
           .map(os.Path(_))
       case _ => Vector.empty
     }
+
+  def isTest(classesDir: os.Path): Boolean =
+    Set("test", "it").contains((classesDir / os.up / os.up).last)
 
   def notCompiled(root: Root): String =
     s"no compiled classes under ${root.dir / "out"}: run ./mill <module>.compile"

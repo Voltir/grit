@@ -23,6 +23,7 @@ object Query {
   def show(
       root: Root,
       layout: Layout,
+      config: Config,
       roots: Roots,
       syms: Vector[String],
       depth: Int,
@@ -31,7 +32,7 @@ object Query {
       cap: Int
   ): (Answer, Roots) = {
     val (answer, loaded) =
-      showIn(root, layout, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
+      showIn(root, layout, config, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
@@ -39,6 +40,7 @@ object Query {
   def uses(
       root: Root,
       layout: Layout,
+      config: Config,
       roots: Roots,
       syms: Vector[String],
       in: Option[String],
@@ -51,20 +53,17 @@ object Query {
       // The cache read in this query, threaded through a scoped local, as `showIn` does.
       var state = Roots.of(roots, root)
       val targets = mutable.ListBuffer.empty[Defn]
+      val notes = mutable.ListBuffer.empty[String]
       var failure: Option[String] = None
 
-      def everyDefn(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: everyDefn(d.members))
-
       syms.foreach { sym =>
-        val tasty = Locate.forTopLevel(root, layout, sym)
-        if (tasty.nonEmpty)
-          Loaded.defns(root, layout, tasty, state) match {
-            case Left(message) => failure = Some(message)
-            case Right((defns, next, _)) =>
-              state = next
-              targets ++= everyDefn(defns)
-                .filter(d => d.fullName == sym || d.fullName.endsWith("." + sym))
-          }
+        Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
+          case Left(message) => failure = Some(message)
+          case Right(resolved) =>
+            state = resolved.loaded
+            targets ++= resolved.defns
+            notes ++= resolved.notes
+        }
       }
 
       val nextRoots = Roots.put(roots, root, state)
@@ -101,7 +100,8 @@ object Query {
               }
           }
       }
-      (answer.copy(text = s"${header(root)}\n${answer.text}"), nextRoots)
+      val noteText = notes.toVector.map(_ + "\n").mkString
+      (answer.copy(text = s"${header(root)}\n$noteText${answer.text}"), nextRoots)
     }
   }
 
@@ -109,6 +109,7 @@ object Query {
   def family(
       root: Root,
       layout: Layout,
+      config: Config,
       roots: Roots,
       name: String,
       member: Option[String],
@@ -116,7 +117,7 @@ object Query {
       cap: Int
   ): (Answer, Roots) = {
     val (answer, loaded) =
-      familyIn(root, layout, Roots.of(roots, root), name, member, withBody, cap)
+      familyIn(root, layout, config, Roots.of(roots, root), name, member, withBody, cap)
     (answer, Roots.put(roots, root, loaded))
   }
 
@@ -185,6 +186,7 @@ object Query {
   private def familyIn(
       root: Root,
       layout: Layout,
+      config: Config,
       in: Loaded,
       name: String,
       member: Option[String],
@@ -193,29 +195,39 @@ object Query {
   ): (Answer, Loaded) =
     if (layout.classesDirs(root).isEmpty)
       (Answer(s"${header(root)}\n${layout.notCompiled(root)}", Status.Failed), in)
-    else {
-      val files = Locate.mentioning(root, name.split('.').last)
-      val tasty = files.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
-      val (defns, next, missing) = loadAll(root, layout, tasty, in)
-      val head =
-        (Vector(header(root)) ++
-          (if (missing.isEmpty) Vector.empty
-           else Vector(s"-- not loaded: ${missing.mkString(", ")}"))).mkString("\n")
-      familyOf(defns, name, member, withBody) match {
-        case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
-        case Right(f) =>
-          val stale = files
+    else
+      Resolve.resolve(root, layout, config, Scope.WithTests, name, in) match {
+        case Left(message) => (Answer(s"${header(root)}\n$message", Status.Failed), in)
+        case Right(resolved) =>
+          // A name matched exactly keeps its hidden candidate files; a short name does not reach them.
+          val exact = resolved.defns.exists(_.fullName == name)
+          val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
+          val files = Locate
+            .mentioning(root, name.split('.').last)
             .filter(file =>
-              Locate.staleness(root, file, Locate.inPackageOf(root, layout, file)) match {
-                case Staleness.Stale(_, _) => true
-                case _ => false
-              }
+              exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
             )
-            .map(_.toString)
-            .toSet
-          (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
+          val tasty = files.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
+          val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
+          val head =
+            (Vector(header(root)) ++ resolved.notes ++
+              (if (missing.isEmpty) Vector.empty
+               else Vector(s"-- not loaded: ${missing.mkString(", ")}"))).mkString("\n")
+          familyOf(defns, traitName, member, withBody) match {
+            case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
+            case Right(f) =>
+              val stale = files
+                .filter(file =>
+                  Locate.staleness(root, file, Locate.inPackageOf(root, layout, file)) match {
+                    case Staleness.Stale(_, _) => true
+                    case _ => false
+                  }
+                )
+                .map(_.toString)
+                .toSet
+              (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
+          }
       }
-    }
 
   /** `root`'s `## root` line: its directory, then its branch (or "detached") and HEAD. */
   private def header(root: Root): String = {
@@ -226,6 +238,7 @@ object Query {
   private def showIn(
       root: Root,
       layout: Layout,
+      config: Config,
       in: Loaded,
       syms: Vector[String],
       depth: Int,
@@ -237,18 +250,12 @@ object Query {
     if (depth < 0 || depth > 2)
       (Answer(s"depth must be 0, 1 or 2\n$usage", Status.Failed), in)
     else if (classes.isEmpty)
-      (
-        Answer(
-          layout.notCompiled(root),
-          Status.Failed
-        ),
-        in
-      )
+      (Answer(layout.notCompiled(root), Status.Failed), in)
     else {
       // The cache and the definitions read in this query, threaded through a scoped local.
       var state = in
       val companions = mutable.ListBuffer.empty[Defn]
-      val stale = mutable.Set.empty[String]
+      val notes = mutable.ListBuffer.empty[String]
       var failure: Option[String] = None
 
       def loadTop(tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
@@ -257,38 +264,28 @@ object Query {
           case Right((defns, next, _)) =>
             state = next
             companions ++= defns
-            defns.map(_.file).distinct.foreach { file =>
-              Locate.staleness(root, os.RelPath(file), tasty) match {
-                case Staleness.Stale(_, _) => stale += file
-                case _ => ()
-              }
-            }
             Right(defns)
         }
-
-      def everyDefn(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: everyDefn(d.members))
 
       val lines = mutable.ListBuffer.empty[String]
       val matches = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
-        val tasty = Locate.forTopLevel(root, layout, sym)
-        val found: Vector[Defn] =
-          if (tasty.isEmpty) Vector.empty
-          else
-            loadTop(tasty) match {
-              case Left(message) =>
-                failure = Some(message)
-                Vector.empty
-              case Right(defns) =>
-                everyDefn(defns).filter(d => d.fullName == sym || d.fullName.endsWith("." + sym))
-            }
-        if (found.isEmpty) lines += s"no match for $sym"
-        matches ++= found
+        Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
+          case Left(message) => failure = Some(message)
+          case Right(resolved) =>
+            state = resolved.loaded
+            companions ++= resolved.seen
+            notes ++= resolved.notes
+            if (resolved.defns.isEmpty) lines += s"no match for $sym"
+            matches ++= resolved.defns
+        }
       }
 
+      val noteText = notes.toVector.map(_ + "\n").mkString
       failure match {
-        case Some(message) => (Answer(message, Status.Failed), in)
-        case None if matches.isEmpty => (Answer(lines.mkString("\n"), Status.NoMatch), state)
+        case Some(message) => (Answer(message, Status.Failed), state)
+        case None if matches.isEmpty =>
+          (Answer(noteText + lines.mkString("\n"), Status.NoMatch), state)
         case None =>
           val tops = matches.toVector.distinct
           val traced = Trace.trace(
@@ -299,16 +296,32 @@ object Query {
               if (tasty.isEmpty) Left(s"no tasty for $top") else loadTop(tasty)
             }
           )
+          val loadedDefns = companions.toVector
+          // A file is stale when it is newer than the tasty it is read from, as the package's tasty files say.
+          val stale = loadedDefns
+            .map(_.file)
+            .distinct
+            .filter(file =>
+              Locate.staleness(
+                root,
+                os.RelPath(file),
+                Locate.inPackageOf(root, layout, os.RelPath(file))
+              ) match {
+                case Staleness.Stale(_, _) => true
+                case _ => false
+              }
+            )
+            .toSet
           val rendered = Render.show(
             named = tops,
             traced = traced,
-            companions = companions.toVector,
-            stale = stale.toSet,
+            companions = loadedDefns,
+            stale = stale,
             bodies = bodies,
             withPrivate = withPrivate,
             cap = cap
           )
-          val text = (lines.toVector :+ rendered).mkString("\n")
+          val text = noteText + (lines.toVector :+ rendered).mkString("\n")
           (Answer(text, Status.Found), state)
       }
     }

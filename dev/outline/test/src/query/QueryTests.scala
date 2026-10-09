@@ -27,6 +27,7 @@ object QueryTests extends TestSuite {
         Query.show(
           root,
           MillLayout,
+          Config.empty,
           Roots.empty(6000),
           Vector("A.keep"),
           1,
@@ -41,7 +42,17 @@ object QueryTests extends TestSuite {
 
     test("show of a name nothing defines is NoMatch, saying so and nothing else") {
       val (answer, _) =
-        Query.show(root, MillLayout, Roots.empty(6000), Vector("Nope"), 1, Set.empty, false, 80000)
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Nope"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
       assert(answer.status == Status.NoMatch)
       assert(answer.text.startsWith(s"## root ${root.dir} ("))
       assert(answer.text.endsWith("\nno match for Nope"))
@@ -52,6 +63,7 @@ object QueryTests extends TestSuite {
         Query.show(
           root,
           MillLayout,
+          Config.empty,
           Roots.empty(6000),
           Vector("A.keep"),
           1,

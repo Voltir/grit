@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import grit.outline.locate.{MillLayout, Root}
 import grit.outline.mcp.Server
-import grit.outline.query.{Answer, Query, Roots, Status}
+import grit.outline.query.{Answer, Config, Query, Roots, Status}
 
 object Main {
 
@@ -109,18 +109,23 @@ object Main {
               case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usage")
               case Some(d) =>
                 val syms = sym.split(',').toVector.filter(_.nonEmpty)
-                val (answer: Answer, _) =
-                  Query.show(
-                    Root(d),
-                    MillLayout,
-                    Roots.empty(6000),
-                    syms,
-                    o.depth,
-                    o.bodies,
-                    o.withPrivate,
-                    o.cap
-                  )
-                (exitCode(answer.status), answer.text)
+                Config.read(Root(d)) match {
+                  case Left(message) => (2, message)
+                  case Right(config) =>
+                    val (answer: Answer, _) =
+                      Query.show(
+                        Root(d),
+                        MillLayout,
+                        config,
+                        Roots.empty(6000),
+                        syms,
+                        o.depth,
+                        o.bodies,
+                        o.withPrivate,
+                        o.cap
+                      )
+                    (exitCode(answer.status), answer.text)
+                }
             }
         }
       case "family" :: name :: rest if !name.startsWith("--") =>
@@ -142,17 +147,22 @@ object Main {
         rootDir(o.root, cwd) match {
           case None => (2, s"no build.mill above $cwd: pass --root DIR\n$familyUsage")
           case Some(d) =>
-            val (answer, _) =
-              Query.family(
-                Root(d),
-                MillLayout,
-                Roots.empty(6000),
-                name,
-                o.member,
-                o.withBody,
-                o.cap
-              )
-            (exitCode(answer.status), answer.text)
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) =
+                  Query.family(
+                    Root(d),
+                    MillLayout,
+                    config,
+                    Roots.empty(6000),
+                    name,
+                    o.member,
+                    o.withBody,
+                    o.cap
+                  )
+                (exitCode(answer.status), answer.text)
+            }
         }
     }
 
@@ -189,17 +199,22 @@ object Main {
         rootDir(o.root, cwd) match {
           case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usesUsage")
           case Some(d) =>
-            val (answer, _) =
-              Query.uses(
-                Root(d),
-                MillLayout,
-                Roots.empty(6000),
-                syms.split(',').toVector.filter(_.nonEmpty),
-                o.in,
-                o.outside,
-                o.cap
-              )
-            (exitCode(answer.status), answer.text)
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) =
+                  Query.uses(
+                    Root(d),
+                    MillLayout,
+                    config,
+                    Roots.empty(6000),
+                    syms.split(',').toVector.filter(_.nonEmpty),
+                    o.in,
+                    o.outside,
+                    o.cap
+                  )
+                (exitCode(answer.status), answer.text)
+            }
         }
     }
 

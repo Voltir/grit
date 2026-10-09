@@ -3,7 +3,7 @@ package grit.outline.mcp
 import scala.util.Try
 
 import grit.outline.locate.{MillLayout, Root}
-import grit.outline.query.{Query, Roots}
+import grit.outline.query.{Config, Query, Roots}
 
 /** The server between calls: each root's cache, and the root a call without one uses. */
 final case class State(roots: Roots, defaultRoot: Root)
@@ -225,21 +225,33 @@ object Server {
       root: Option[Root]
   )
 
+  /** `run` with `root`'s query settings, or the error result a query answers with when its `.outline.conf` does not read. */
+  private def configured(root: Root, state: State)(
+      run: Config => (ujson.Value, State)
+  ): (ujson.Value, State) =
+    Config.read(root) match {
+      case Left(message) => (toolResult(message, isError = true), state)
+      case Right(config) => run(config)
+    }
+
   private def show(args: ujson.Value, state: State): (ujson.Value, State) =
     parseShow(args) match {
       case Left(problem) => (toolResult(s"bad arguments for show: $problem", isError = true), state)
       case Right(a) =>
-        val (answer, roots) = Query.show(
-          a.root.getOrElse(state.defaultRoot),
-          MillLayout,
-          state.roots,
-          a.symbols,
-          a.depth,
-          a.body,
-          a.withPrivate,
-          cap
-        )
-        (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        configured(a.root.getOrElse(state.defaultRoot), state) { config =>
+          val (answer, roots) = Query.show(
+            a.root.getOrElse(state.defaultRoot),
+            MillLayout,
+            config,
+            state.roots,
+            a.symbols,
+            a.depth,
+            a.body,
+            a.withPrivate,
+            cap
+          )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
     }
 
   private def family(args: ujson.Value, state: State): (ujson.Value, State) =
@@ -247,16 +259,19 @@ object Server {
       case Left(problem) =>
         (toolResult(s"bad arguments for family: $problem", isError = true), state)
       case Right(a) =>
-        val (answer, roots) = Query.family(
-          a.root.getOrElse(state.defaultRoot),
-          MillLayout,
-          state.roots,
-          a.name,
-          a.member,
-          a.withBody,
-          cap
-        )
-        (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        configured(a.root.getOrElse(state.defaultRoot), state) { config =>
+          val (answer, roots) = Query.family(
+            a.root.getOrElse(state.defaultRoot),
+            MillLayout,
+            config,
+            state.roots,
+            a.name,
+            a.member,
+            a.withBody,
+            cap
+          )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
     }
 
   private final case class UsesArgs(
@@ -270,16 +285,19 @@ object Server {
     parseUses(args) match {
       case Left(problem) => (toolResult(s"bad arguments for uses: $problem", isError = true), state)
       case Right(a) =>
-        val (answer, roots) = Query.uses(
-          a.root.getOrElse(state.defaultRoot),
-          MillLayout,
-          state.roots,
-          a.symbols,
-          a.in,
-          a.outside,
-          cap
-        )
-        (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        configured(a.root.getOrElse(state.defaultRoot), state) { config =>
+          val (answer, roots) = Query.uses(
+            a.root.getOrElse(state.defaultRoot),
+            MillLayout,
+            config,
+            state.roots,
+            a.symbols,
+            a.in,
+            a.outside,
+            cap
+          )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
     }
 
   private def parseUses(args: ujson.Value): Either[String, UsesArgs] =

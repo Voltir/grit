@@ -207,6 +207,7 @@ object ReadTests extends TestSuite {
     def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
     def libraryJars(root: Root): Vector[os.Path] = Vector.empty
     def notCompiled(root: Root): String = "not compiled"
+    def isTest(classesDir: os.Path): Boolean = false
   }
 
   /** Runs `body` with this test's stdout and stderr captured, returning its value and what each received. */
