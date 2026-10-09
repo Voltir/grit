@@ -101,14 +101,14 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** 6. A job whose reply's reader makes a move: a `Typed` whose `read` asks. */
+  /** 6. A job whose reply's reader makes a move: a JSON ask whose `Typed`'s `read` asks. */
   private val readerAsks =
     """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
       |  def run(run: JobRun[Count], moves: Moves^): String = {
       |    val typed = grit.core.schema.Typed[String](schema, c =>
       |      moves.ask(Names.of("inner"), Posed.Text(Names.request)).left.map(_.toString).map(_ => "read")
       |    )
-      |    typed.schema.json.render()
+      |    moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
       |  }
       |}
       |""".stripMargin
@@ -142,13 +142,15 @@ object ActCaptureTests extends TestSuite {
       assert(errs.isEmpty)
     }
 
-    test("a job whose reply's reader is pure, beside an ask it makes itself, compiles") {
+    test("a job asking for JSON its pure reader reads, beside asks it makes itself, compiles") {
       val errs = errors(
         """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
           |  def run(run: JobRun[Count], moves: Moves^): String = {
           |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
-          |    val asked = moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
-          |    s"${typed.schema.json.render()} $asked"
+          |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+          |    val json = moves.ask(Names.of("json"), Posed.json("", Vector.empty, schema)).fold(_.toString, _.reply.text)
+          |    val asked = moves.ask(Names.of("text"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+          |    s"$shaped $json $asked"
           |  }
           |}
           |""".stripMargin
