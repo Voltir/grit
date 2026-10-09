@@ -15,9 +15,9 @@ object TestCalls {
     (start, end)
   }
 
-  /** The calls `call("<name>")` in `src` that start at a character offset in `from` until `to`, in source order. Each spans from its own line to the line closing the first `{` on that line, or only its own line when no `{` follows it there; braces inside string literals, character literals and `//` comments do not count. `text` is the verbatim source of those whole lines. */
+  /** The calls `call("<name>")` in `src`, the name's surrounding whitespace, newlines included, allowed, that start at a character offset in `from` until `to`, in source order. Each spans from the line holding `call(` to the line closing the first `{` on the line holding its `)`, or only its first line when no `{` follows the `)` there; braces inside string literals, character literals and `//` comments do not count. `text` is the verbatim source of those whole lines. */
   def find(src: String, from: Int, to: Int, call: String): Vector[TestCase] = {
-    val pattern: Regex = (raw"\b" + Regex.quote(call) + raw"""\("((?:[^"\\]|\\.)*)"\)""").r
+    val pattern: Regex = (raw"\b" + Regex.quote(call) + raw"""\(\s*"((?:[^"\\]|\\.)*)"\s*\)""").r
     val lines = src.split("\n", -1).toVector
     pattern
       .findAllMatchIn(src)
@@ -33,7 +33,7 @@ object TestCalls {
   /** The 1-based line holding character offset `index`. */
   private def lineOf(src: String, index: Int): Int = src.take(index).count(_ == '\n') + 1
 
-  /** The line holding the `}` that closes the first `{` after `after` on the line `first` is on; `first` itself when that line has no `{` past `after`, or when the source ends before the body does. */
+  /** The line holding the `}` that closes the first `{` after `after` on the line `after` is on, where `after` ends the call's `)`; `first` itself when that line has no `{` past `after`, or when the source ends before the body does. */
   private def closingLine(src: String, after: Int, first: Int): Int = {
     val newline = src.indexOf('\n', after)
     val lineEnd = if (newline < 0) src.length else newline

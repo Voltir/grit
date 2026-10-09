@@ -26,5 +26,26 @@ object TestCallsTests extends TestSuite {
         )
       )
     }
+
+    test(
+      "a call wrapped across lines is found from the line of its call, and its body opens on the line of its closing paren"
+    ) {
+      val wrapped = """object S {
+  test(
+    "wrapped form"
+  ) {
+    assert(true)
+  }
+  test("one line") { assert(true) }
+}
+"""
+      val lines = wrapped.split("\n").toVector
+      assert(
+        TestCalls.find(wrapped, 0, wrapped.length, "test") == Vector(
+          TestCase("wrapped form", Lines(2, 6), lines.slice(1, 6).mkString("\n")),
+          TestCase("one line", Lines(7, 7), lines(6))
+        )
+      )
+    }
   }
 }
