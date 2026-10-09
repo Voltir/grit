@@ -15,8 +15,9 @@ import grit.dbos.sql.{LiveDb, SqlDocuments, SqlSavepoints, SqlTombstones, TestPo
 
 import utest.*
 
-/** What a savepoint keeps of a transaction in Postgres when a statement under it fails: two
-  * transactions writing one document's key at once, the second under a savepoint.
+/** What a savepoint keeps of a transaction in Postgres when a statement under it fails (two
+  * transactions writing one document's key at once, the second under a savepoint) or its body
+  * throws.
   */
 object SqlSavepointsTests extends TestSuite {
 
@@ -95,6 +96,26 @@ object SqlSavepointsTests extends TestSuite {
         .join(10000)
       (second.get.map(_.map(_._1)), current("k"), current("after")) ==>
         (Some(scala.util.Success("DatabaseError")), Some("first"), Some("after"))
+    }
+
+    test(
+      "a body that throws under a savepoint is rolled back to it, its exception rethrown, and its transaction goes on"
+    ) {
+      val thrown = LiveDb.transaction(config, Public) {
+        val caught = Try(
+          SqlSavepoints.atomic[Unit] {
+            write("thrown", "thrown").fold(e => sys.error(s"$e"), _ => ())
+            throw new IllegalStateException("the body broke")
+          }
+        )
+        write("went-on", "went on").fold(e => sys.error(s"$e"), _ => ())
+        caught.failed.map(e => (e.getClass.getSimpleName, e.getMessage)).toOption
+      }
+      (thrown, current("thrown"), current("went-on")) ==> (
+        Some(("IllegalStateException", "the body broke")),
+        None,
+        Some("went on")
+      )
     }
   }
 }
