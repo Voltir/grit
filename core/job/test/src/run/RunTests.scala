@@ -408,6 +408,22 @@ object RunTests extends TestSuite {
       (w.reply(turn), w.models.calls) ==> (Some("6"), 1)
     }
 
+    test(
+      "a model required to reply that answers in text, calling nothing, is asked once more, then Model"
+    ) {
+      val w = new World(calling = 0)
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
+      (w.reply(turn), w.models.calls) ==> (Some("Model(no call of `reply`)"), 2)
+    }
+
+    test("a model required to reply that calls it twice is read from its first call") {
+      val w = new World(calling = 2, shapes = Vector(ujson.Obj("count" -> 3), ujson.Obj("count" -> 4)))
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
+      (w.reply(turn), w.models.calls) ==> (Some("6"), 1)
+    }
+
     test("a JSON ask once the day's spend reached its cap is Capped and asks no model") {
       val w = new World(cap = Some("0.5"), shapes = Vector(ujson.Obj("count" -> 3)))
       ok(

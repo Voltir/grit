@@ -164,8 +164,8 @@ object RunFixtures {
     * transactions, like every read, are opened at `floor`, with [[Probe]] trusted with `trust`. With `crashRecord`, the process dies once inside the
     * first ask's record; with `failRecord`, every record fails; with `crashServing`, the process
     * dies once inside the first call's step, after it read whom the call is for; with
-    * `crashModel`, inside the first model call. Required to call a tool, the model calls it with
-    * the next of `shapes` ([[Answering]]). Its classifier answers with the next of `judged`, or
+    * `crashModel`, inside the first model call. Required to call a tool, the model calls it
+    * `calling` times, each with the next of `shapes` ([[Answering]]). Its classifier answers with the next of `judged`, or
     * each question of its kind when there are none ([[Judging]]).
     */
   final class World(
@@ -177,7 +177,8 @@ object RunFixtures {
       crashServing: Boolean = false,
       crashModel: Boolean = false,
       shapes: Vector[ujson.Value] = Vector(),
-      judged: Vector[Either[ClassifierError, Answers]] = Vector()
+      judged: Vector[Either[ClassifierError, Answers]] = Vector(),
+      calling: Int = 1
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
@@ -203,7 +204,7 @@ object RunFixtures {
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
-    val models: Answering = new Answering(Answer, crashModel, shapes)
+    val models: Answering = new Answering(Answer, crashModel, shapes, calling)
     val classifier: Judging = new Judging(judged)
 
     private val switches = new Switches(crashRecord, crashServing)

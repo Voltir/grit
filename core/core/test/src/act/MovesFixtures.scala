@@ -17,14 +17,16 @@ object MovesFixtures {
 
   /** Models whose every provider answers `answer`, at a priced cost, counting its calls and
     * keeping each request in [[requests]]; required to call a tool, it calls the request's first
-    * tool, its arguments the next of `shapes` (the last again once they run out;
-    * `{"answer": answer}` when there are none), the call's id `call-{n}` for the `n`th call.
-    * With `crash`, the process dies inside the first call.
+    * tool `calling` times (answering `answer` in text when that is 0, as a model may), each
+    * call's arguments the next of `shapes` (the last again once they run out;
+    * `{"answer": answer}` when there are none), the `i`th call of its `n`th answer `call-{n}`,
+    * or `call-{n}-{i}` from its second. With `crash`, the process dies inside the first call.
     */
   final class Answering(
       answer: String,
       crash: Boolean = false,
-      shapes: Vector[ujson.Value] = Vector()
+      shapes: Vector[ujson.Value] = Vector(),
+      calling: Int = 1
   ) extends Models {
     @caps.unsafe.untrackedCaptures
     var calls = 0
@@ -41,17 +43,20 @@ object MovesFixtures {
         requests = requests :+ r
         if (armed) { armed = false; throw new InMemoryDurable.Crash }
         val (blocks, stop) = r.use match {
-          case ToolUse.Required =>
-            val args =
-              shapes.lift(shaped).orElse(shapes.lastOption).getOrElse(ujson.Obj("answer" -> answer))
-            shaped += 1
+          case ToolUse.Required if calling > 0 =>
             val tool = r.tools.headOption.fold("none")(_.name)
-            (
-              Vector(
-                AssistantBlock.ToolCall(ToolCallId(s"call-$calls"), tool, ujson.read(args.render()))
-              ),
-              StopReason.ToolUse
-            )
+            val made = (0 until calling).toVector.map { i =>
+              val args = shapes
+                .lift(shaped)
+                .orElse(shapes.lastOption)
+                .getOrElse(ujson.Obj("answer" -> answer))
+              shaped += 1
+              val id = if (i == 0) s"call-$calls" else s"call-$calls-$i"
+              AssistantBlock.ToolCall(ToolCallId(id), tool, ujson.read(args.render()))
+            }
+            (made, StopReason.ToolUse)
+          case ToolUse.Required =>
+            (Vector(AssistantBlock.Text(answer)), StopReason.EndTurn)
           case ToolUse.Auto | ToolUse.Off =>
             (Vector(AssistantBlock.Text(answer)), StopReason.EndTurn)
         }
