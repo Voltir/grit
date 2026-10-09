@@ -35,8 +35,8 @@ object Shaping {
     * answered with an error tool result for each call it made, giving the [[Mismatch]] or
     * `reply`'s refusal, or with a user message to call `tool` when it made none, and asked
     * again with the reply and its answer appended, up to `retries` times; then it is
-    * `Unread`, naming the last failure. Each response is in `calls`, in order, whether or
-    * not it read.
+    * `Unread`, naming the last failure. Each response is in `calls`, in order, beside the
+    * request it answered, whether or not it read.
     */
   def shaped[T](
       provider: Provider^,
@@ -48,11 +48,11 @@ object Shaping {
       retries: Int,
       clock: Clock^
   ): Shaped[T] = {
-    def ask(asked: ModelRequest, left: Int, calls: Vector[Message.Assistant]): Shaped[T] =
+    def ask(asked: ModelRequest, left: Int, calls: Vector[Shaped.Call]): Shaped[T] =
       Asking.reply(provider, asked, Hearing.silent(), clock) match {
         case Left(why) => Shaped.Failed(why, calls)
         case Right(answer) =>
-          val made = calls :+ answer
+          val made = calls :+ Shaped.Call(asked, answer)
           readOf(answer, tool, reply, names, repairs) match {
             case Right((conforming, value)) => Shaped.Read(conforming, value, made)
             case Left(failure) if left > 0 =>
@@ -133,7 +133,13 @@ object Shaping {
   * none read; `Failed` when the provider failed, after the responses before it.
   */
 enum Shaped[T] extends caps.Pure {
-  case Read(reply: Conforming, value: T, calls: Vector[Message.Assistant])
-  case Unread(why: String, calls: Vector[Message.Assistant])
-  case Failed(why: String, calls: Vector[Message.Assistant])
+  case Read(reply: Conforming, value: T, calls: Vector[Shaped.Call])
+  case Unread(why: String, calls: Vector[Shaped.Call])
+  case Failed(why: String, calls: Vector[Shaped.Call])
+}
+
+object Shaped {
+
+  /** One model call of a JSON ask: `answer`, the response to `sent`. */
+  final case class Call(sent: ModelRequest, answer: Message.Assistant)
 }

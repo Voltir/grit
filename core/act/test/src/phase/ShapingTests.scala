@@ -93,11 +93,14 @@ object ShapingTests extends TestSuite {
     (got, provider.requests)
   }
 
-  /** What `shaped` read, as plain values: its conforming text, value and calls. */
+  /** What `shaped` read, as plain values: its conforming text, value and responses. */
   private def read(s: Shaped[Int]): Option[(String, Int, Vector[Message.Assistant])] = s match {
-    case Shaped.Read(c, v, calls) => Some((c.text, v, calls))
+    case Shaped.Read(c, v, calls) => Some((c.text, v, calls.map(_.answer)))
     case _ => None
   }
+
+  /** `answer`, the response to the first request. */
+  private def toFirst(answer: Message.Assistant): Shaped.Call = Shaped.Call(first, answer)
 
   private def sent(strict: StrictSchemas): ModelRequest =
     Shaping.request("system", asked, "reply", schema, strict)
@@ -155,16 +158,24 @@ object ShapingTests extends TestSuite {
         (Some(("{\"count\":2}", 2, Vector(wrong, right))), Vector(asked, asked :+ wrong :+ told))
     }
 
-    test("with one retry, two failures are unread, the last one's why, both calls kept") {
+    test(
+      "with one retry, two failures are unread, the last one's why, each call kept beside the request it answered"
+    ) {
       val high = called("a", "reply", ujson.Obj("count" -> 9))
       val low = called("b", "reply", ujson.Obj("count" -> 0))
       val right = called("c", "reply", ujson.Obj("count" -> 2))
       val (got, requests) = shape(Vector(Right(high), Right(low), Right(right)), retries = 1)
+      val tooHigh = Message.ToolResult(
+        ToolCallId("a"),
+        "Your reply does not match its schema: count: expected at most 5, got 9. " +
+          "Call `reply` again.",
+        isError = true
+      )
       (got, requests.size) ==>
         (
           Shaped.Unread(
             "its arguments do not match its schema: count: expected at least 1, got 0",
-            Vector(high, low)
+            Vector(toFirst(high), Shaped.Call(first.copy(messages = asked :+ high :+ tooHigh), low))
           ),
           2
         )
@@ -188,14 +199,14 @@ object ShapingTests extends TestSuite {
     test("a call named with harmony's tokens is no call of the tool under AsSent") {
       val answer = called("a", "reply<|channel|>commentary", ujson.Obj("count" -> 4))
       val (got, _) = shape(Vector(Right(answer)), retries = 0, NameRepair.AsSent)
-      got ==> Shaped.Unread("no call of `reply`", Vector(answer))
+      got ==> Shaped.Unread("no call of `reply`", Vector(toFirst(answer)))
     }
 
     test("a provider failure on the repair is failed, after the first call") {
       val wrong = called("a", "reply", ujson.Obj("count" -> 9))
       val (got, _) =
         shape(Vector(Right(wrong), Left(ProviderError.Refused("no such model"))), retries = 1)
-      got ==> Shaped.Failed("no such model", Vector(wrong))
+      got ==> Shaped.Failed("no such model", Vector(toFirst(wrong)))
     }
   }
 }
