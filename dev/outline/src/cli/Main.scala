@@ -1,6 +1,9 @@
 package grit.outline.cli
 
+import scala.annotation.tailrec
+
 import grit.outline.locate.{MillLayout, Root}
+import grit.outline.mcp.Server
 import grit.outline.query.{Answer, Query, Roots, Status}
 
 object Main {
@@ -148,9 +151,28 @@ object Main {
         }
     }
 
-  def main(args: Array[String]): Unit = {
-    val (code, text) = run(args.toVector, os.pwd)
-    println(text)
-    sys.exit(code)
-  }
+  /** The leading `--root DIR` pairs (the last one wins) and the words after them. */
+  @tailrec private def leadingRoots(
+      args: List[String],
+      root: Option[String]
+  ): (Option[String], List[String]) =
+    args match {
+      case "--root" :: dir :: rest => leadingRoots(rest, Some(dir))
+      case rest => (root, rest)
+    }
+
+  def main(args: Array[String]): Unit =
+    leadingRoots(args.toList, None) match {
+      case (root, List("mcp")) =>
+        root.map(os.Path(_, os.pwd)).orElse(repoAbove(os.pwd)) match {
+          case Some(dir) => Server.serve(Root(dir))
+          case None =>
+            System.err.println(s"no build.mill above ${os.pwd}: pass --root DIR")
+            sys.exit(2)
+        }
+      case _ =>
+        val (code, text) = run(args.toVector, os.pwd)
+        println(text)
+        sys.exit(code)
+    }
 }
