@@ -9,7 +9,7 @@ final case class Traced(types: Vector[Defn], library: Vector[String], missing: V
 
 object Trace {
 
-  /** The repo types `roots` name within `depth` hops (1: the types `roots`' signatures name; 2: also those types' own), each once and none of `roots`; `load(topLevel)` gives the top-level Defns of the `.tasty` holding `topLevel`. */
+  /** The repo types `roots` name within `depth` hops, each once and none of `roots`. Depth 1 is the types each root's own signature names: a type's constructor fields and parents, and an enum's cases; a type's members' signatures are not traced. `load(topLevel)` gives the top-level Defns of the `.tasty` holding `topLevel`. */
   def trace(
       roots: Vector[Defn],
       depth: Int,
@@ -42,7 +42,7 @@ object Trace {
 
     val seeds: Vector[Ref] =
       if (depth < 1) Vector.empty
-      else roots.flatMap(r => r.refs ++ r.members.flatMap(_.refs))
+      else roots.flatMap(expansion)
 
     (1 to depth).foldLeft(seeds) { (refs, _) =>
       val hopTypes = mutable.ListBuffer.empty[Defn]

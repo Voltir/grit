@@ -68,5 +68,15 @@ object TraceTests extends TestSuite {
       val traced = Trace.trace(named(read, keep), 0, load)
       assert(traced.types.isEmpty)
     }
+    test("depth 1 from trait A traces no type only its members name") {
+      val traced = Trace.trace(named(read, "grit.outline.fixture.A"), 1, load)
+      val tracedNames = traced.types.map(_.fullName).toSet
+      assert(!tracedNames.contains(b))
+      assert(!tracedNames.contains("grit.outline.fixture.Tx"))
+    }
+    test("depth 1 from case class B traces its constructor field's type C") {
+      val traced = Trace.trace(named(read, b), 1, load)
+      assert(traced.types.map(_.fullName).toSet == Set("grit.outline.fixture.C"))
+    }
   }
 }
