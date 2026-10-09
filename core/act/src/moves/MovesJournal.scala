@@ -185,6 +185,24 @@ object MovesJournal {
 
   given callMade: Journaled[CallMade] = Journaled.json(writeCall, readCall)
 
+  /** A keep's step: what its body returned, in `A`'s own journaled form, or why nothing was
+    * kept. Carries no digest: a keep's input is its code.
+    */
+  def kept[A](using a: Journaled[A]): Journaled[Either[String, A]] = Journaled.json(
+    {
+      case Right(value) => ujson.Obj("kept" -> a.encode(value))
+      case Left(why) => ujson.Obj("store" -> why)
+    },
+    v =>
+      fields(v, "keep").flatMap { o =>
+        (o.get("kept").flatMap(_.strOpt), o.get("store").flatMap(_.strOpt)) match {
+          case (Some(value), _) => a.decode(value).map(Right(_))
+          case (_, Some(why)) => Right(Left(why))
+          case _ => Left("keep: expected kept or store")
+        }
+      }
+  )
+
   given standing: Journaled[Either[String, RequestState]] = Journaled.json(
     {
       case Right(RequestState.Expired) => ujson.Obj("state" -> "expired")

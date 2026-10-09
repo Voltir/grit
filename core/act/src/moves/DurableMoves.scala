@@ -1,8 +1,21 @@
 package grit.act.moves
 
+import java.time.Instant
+
 import grit.act.phase.{Asking, Awaited, Calling, Hearing, WaitSteps}
-import grit.core.act.{Acting, Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, Moves}
-import grit.core.durable.Durable
+import grit.core.act.{
+  Acting,
+  Asked,
+  Called,
+  Keeping,
+  MoveError,
+  MoveKind,
+  MoveLimits,
+  MoveName,
+  Moves
+}
+import grit.core.document.DocumentKeeper
+import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, WorkflowId}
 import grit.core.message.AssistantBlock
@@ -24,15 +37,50 @@ object DurableMoves {
   )(using d: Durable^): A =
     body(new Run(acting, limits, env))
 
+  /** As [[plain]], its moves also keeping `keeper`'s documents. */
+  def keeping[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      env: MovesEnv^,
+      keeper: DocumentKeeper
+  )(body: Keeping^ => A)(using d: Durable^): A =
+    body(new Kept(acting, limits, env, keeper))
+
+  /** One run's moves, and its keeps over `keeper`. */
+  private final class Kept(
+      acting: Acting,
+      limits: MoveLimits,
+      env: MovesEnv^,
+      keeper: DocumentKeeper
+  )(using
+      d: Durable^
+  ) extends Run(acting, limits, env),
+        Keeping {
+
+    def keep[A <: caps.Pure: Journaled](name: MoveName)(
+        body: (DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
+    ): Either[MoveError, A] =
+      refused(name, MoveKind.Keep).toLeft(()).flatMap { _ =>
+        given Journaled[Either[String, A]] = MovesJournal.kept[A]
+        val (savepoints, clock, kept) = (env.records.savepoints, env.clock, keeper)
+        d.transact(MoveSteps.keep(name), subject) {
+          val at = clock.now()
+          savepoints.atomic((tx: Tx^) ?=> body(kept, at)(using tx)).left.map(describe)
+        }.left
+          .map(MoveError.Store(_))
+      }
+  }
+
   /** One run's moves. The run state below is read and written only by this object's own
     * methods, between steps.
     */
-  private final class Run(acting: Acting, limits: MoveLimits, env: MovesEnv^)(using d: Durable^)
+  private class Run(acting: Acting, limits: MoveLimits, env: MovesEnv^)(using d: Durable^)
       extends Moves {
 
-    // caps.unsafe: each holds an immutable value. The object is made inside `plain`, per run,
-    // and never leaves its `body` (whose result is pure, so it cannot carry it out); every
-    // update is on the run's one thread, between steps; nothing outside this class reads them.
+    // caps.unsafe: each holds an immutable value. The object is made inside `plain` or
+    // `keeping`, per run, and never leaves its `body` (whose result is pure, so it cannot carry
+    // it out); every update is on the run's one thread, between steps; only this class's own
+    // methods read them.
     @caps.unsafe.untrackedCaptures
     private var used: Set[MoveName] = Set.empty
     @caps.unsafe.untrackedCaptures
@@ -43,12 +91,12 @@ object DurableMoves {
     private var diverged: Option[MoveName] = None
 
     private val turn = acting.turn
-    private val subject = acting.subject
+    protected val subject = acting.subject
 
     /** Why a move `name` of `kind` may not be made now; when it may, its name is spent and its
       * kind counted.
       */
-    private def refused(name: MoveName, kind: MoveKind): Option[MoveError] =
+    protected def refused(name: MoveName, kind: MoveKind): Option[MoveError] =
       diverged
         .map(MoveError.Diverged(_))
         .orElse(Option.when(used.contains(name))(MoveError.Repeated(name)))

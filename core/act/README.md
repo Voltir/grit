@@ -16,7 +16,8 @@ forms. It names core alone (enola-intent.yaml's `act-names-core-alone`).
   `Calling.RunWithin`), a person's approval of a gated call, and the answer read from the
   request once its edge rang.
 
-- **`moves`** — `DurableMoves`: a planner's `Moves` (`grit.core.act`) over the phases, each
+- **`moves`** — `DurableMoves`: a planner's `Moves` (`grit.core.act`) over the phases, and a
+  keeping job's `Keeping`, whose keep is one transaction under a savepoint, each
   move made at most once per run as the steps `MoveSteps` names (`move:{name}`, then
   `move:{name}:{phase}`), refused by name, by its kind's limit, and once a rerun's input
   differed from what the run recorded; `MovesEnv` and `MoveRecords`, what they are made with;

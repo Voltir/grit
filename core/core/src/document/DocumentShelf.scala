@@ -42,8 +42,9 @@ trait DocumentKeeper extends DocumentShelf {
     * and data. Past the bound, counted over every label, the current documents placed least
     * recently (ties by key, then label in its written form, bytewise) are withdrawn as
     * [[withdraw]] does, never the one written: a high variant few readers place tends to go
-    * first. A `DatabaseError` when another transaction wrote `key` at that label meanwhile;
-    * posting never does, as it runs one at a time per plugin.
+    * first. A `DatabaseError` when another transaction wrote `key` at that label meanwhile:
+    * posting never does, as it runs one at a time per plugin, but two runs of a plugin's
+    * keeping jobs can, each keeping in its own transaction.
     */
   def write(key: DocKey, label: Label, place: Place, text: DocText, data: ujson.Value, at: Instant)(
       using Tx^

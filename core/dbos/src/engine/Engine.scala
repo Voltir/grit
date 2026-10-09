@@ -38,6 +38,7 @@ import grit.core.store.{
   PeriodStore,
   Principals,
   PromptStore,
+  Savepoints,
   StoreError,
   Tombstones,
   Tx,
@@ -68,6 +69,7 @@ import grit.dbos.sql.{
   SqlPluginDocs,
   SqlPrincipals,
   SqlPromptStore,
+  SqlSavepoints,
   SqlSchedules,
   SqlSpeechStore,
   SqlTombstones,
@@ -290,6 +292,9 @@ final class Engine private (
   /** Given a plugin and its terms, its documents as its posting writes them. */
   val keeper: (PluginName, DocumentTerms) -> DocumentKeeper =
     (plugin, terms) => sqlDocuments.keeper(plugin, terms)
+
+  /** What undoes part of one of its transactions. */
+  val savepoints: Savepoints = SqlSavepoints
 
   /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
   val cache: (PluginName, ClosedPeriod) -> CacheDocs =

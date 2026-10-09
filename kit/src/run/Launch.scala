@@ -328,7 +328,8 @@ private[grit] object Launch {
                 engine.toolSets,
                 engine.schedules,
                 engine.askers,
-                CharEstimate
+                CharEstimate,
+                engine.savepoints
               ),
               models,
               engine.db,

@@ -27,4 +27,7 @@ object MoveSteps {
 
   /** A call's answer read, once its edge rang. */
   def answer(n: MoveName): String = s"move:${MoveName.value(n)}:answer"
+
+  /** A keep's transaction. */
+  def keep(n: MoveName): String = s"move:${MoveName.value(n)}"
 }

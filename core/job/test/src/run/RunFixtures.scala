@@ -5,6 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.core.act.{Asked, MoveError, MoveLimits, MoveName, Moves}
 import grit.core.clock.SetClock
+import grit.core.document.InMemoryDocuments
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{
   Advert,
@@ -131,6 +132,7 @@ object RunFixtures {
     }
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
+    val documents: InMemoryDocuments = new InMemoryDocuments
     val models: Answering = new Answering(crashModel)
 
     private val switches = new Switches(crashRecord, crashServing)
@@ -171,7 +173,8 @@ object RunFixtures {
             toolSets,
             inbox.schedules,
             NoAskers,
-            PerChar
+            PerChar,
+            documents.savepoints
           ),
           models,
           FakeDb,

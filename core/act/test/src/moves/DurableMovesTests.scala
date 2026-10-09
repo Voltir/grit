@@ -2,8 +2,9 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.{Acting, ActsFor, Allowance, Gates, MoveLimits, Moves}
+import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
 import grit.core.clock.SetClock
+import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Advert
 import grit.core.edge.{
@@ -14,7 +15,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.id.{CallSlot, ConversationId, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -24,7 +25,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenE
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
 import grit.core.store.{Askers, Db, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Clearance, Label, Subject}
 import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against [[DurableMoves]], over [[InMemoryDurable]] and core's in-memory
@@ -39,16 +40,18 @@ object DurableMovesTests extends MovesContract {
 }
 
 /** A world for [[DurableMoves]]: a turn whose asker is grit, a model answering
-  * [[MovesContract.Answer]], and an edge at [[MovesContract.Probe]] advertising
+  * [[MovesContract.Answer]], an edge at [[MovesContract.Probe]] advertising
   * [[MovesContract.Tool]] that claims, answers [[MovesContract.Read]] and rings each request as
-  * it is written. When `broken`, the day's spend cannot be read, and the acting's allowance is
+  * it is written, and the documents of [[MovesWorld.Notes]], whose every transaction is opened
+  * at `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
   * daily, so every ask's admission fails.
   */
-final class MovesWorld(broken: Boolean) extends caps.SharedCapability {
+final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
 
-  val durable: InMemoryDurable = new InMemoryDurable()
+  val durable: InMemoryDurable = new InMemoryDurable(resolve = _ => Clearance.of(floor))
+  val documents: InMemoryDocuments = new InMemoryDocuments
   val edges: InMemoryEdges = new InMemoryEdges
   val ledger: InMemoryUsageLedger = new InMemoryUsageLedger
   val toolSets: InMemoryToolSets = new InMemoryToolSets
@@ -94,7 +97,8 @@ final class MovesWorld(broken: Boolean) extends caps.SharedCapability {
         toolSets,
         new InMemorySchedules(),
         GritAsks,
-        PerChar
+        PerChar,
+        documents.savepoints
       ),
       models,
       FakeDb,
@@ -122,6 +126,24 @@ final class MovesWorld(broken: Boolean) extends caps.SharedCapability {
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
   }
+
+  /** [[Notes]]' documents as it writes them. */
+  val keeper: DocumentKeeper = documents.keeper(Notes, NotesTerms)
+
+  /** What `use` returns over [[Turn]]'s moves within `limits`, keeping [[Notes]]' documents
+    * through `keeper`, its workflow run once.
+    */
+  def keeping[A <: caps.Pure](limits: MoveLimits, keeper: DocumentKeeper = keeper)(
+      use: Keeping^ -> A
+  ): A = {
+    val models = new Answering
+    var out: Option[A] = None
+    durable.run(Turn.workflowId) { _ =>
+      out = Some(DurableMoves.keeping(acting, limits, env(models), keeper)(use))
+      "done"
+    }
+    out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
+  }
 }
 
 object MovesWorld {
@@ -129,6 +151,18 @@ object MovesWorld {
   val Start: Instant = Instant.parse("2026-10-08T12:00:00Z")
 
   val Turn: TurnRef = TurnRef(ConversationId("c"), TurnSeq.First)
+
+  /** The plugin whose documents a keep writes. */
+  val Notes: PluginName =
+    PluginName.of("notes").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  val NotesTerms: DocumentTerms =
+    DocLabel
+      .of("notes")
+      .flatMap(
+        DocumentTerms.of(_, DocWeight.Unscaled, scala.concurrent.duration.Duration(1, "day"), 10)
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
 
   val Schema: ujson.Value =
     ujson.Obj(

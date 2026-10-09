@@ -5,12 +5,12 @@ import grit.core.edge.{EdgeDirectory, ToolRequests}
 import grit.core.job.ScheduleStore
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.spend.Spending
-import grit.core.store.{Askers, Db, UsageLedger}
+import grit.core.store.{Askers, Db, Savepoints, UsageLedger}
 import grit.core.tool.ToolSets
 
 /** The stores a planner's moves read and write: the ledger and the day's spend, edges'
   * requests, who serves where and what they advertise, the schedules and askers (for
-  * `actsFor`), and how a request is priced.
+  * `actsFor`), how a request is priced, and the savepoints a keep's writes are undone by.
   */
 final case class MoveRecords(
     ledger: UsageLedger,
@@ -20,7 +20,8 @@ final case class MoveRecords(
     toolSets: ToolSets,
     schedules: ScheduleStore,
     askers: Askers,
-    estimator: TokenEstimator
+    estimator: TokenEstimator,
+    savepoints: Savepoints
 )
 
 /** What a planner's moves are made with besides its `Durable`: `models`, for the summary
