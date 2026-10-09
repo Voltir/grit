@@ -68,7 +68,8 @@ In dependency order:
 - **`schema`** — the JSON Schemas a reply is held to: `JsonSchema` (a schema in the subset
   every provider's strict mode accepts, read only by `JsonSchema.read`, or refused with a
   `SchemaError`; its `check` of some JSON, repairs made where it directs, gives a
-  `Conforming` or the first `Mismatch`). ← `model`
+  `Conforming` or the first `Mismatch`) and `Typed` (a schema, and a pure reader of what
+  conforms to it). ← `model`
 - **`classify`** — the classifier seam: `Classifier` (closed questions about a state,
   answered with a probability per option; Jev's shape; each call one `Request`, which
   `around` hands to a function before the classifier it wraps, for caching or recording),
@@ -205,7 +206,8 @@ In dependency order:
   numbers a file's lines), `Replace.onto` (an edit's
   matching), and their errors; and `Instructions`, the instruction files (`AGENTS.md`, else
   `CLAUDE.md`) around a directory; `ProcessIdentity`, which machine and process something is. ← `place`
-- **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
+- **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple, or typed as a
+  reply's schema), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
   shown in one line, and what it does, capture-tracked), `Hosted` (a tool's description without its run: offered by the engine, run by an edge),
@@ -219,7 +221,7 @@ In dependency order:
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
   `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
-  `place`, `message`, `model`, `store`, `provider`, `approval`
+  `place`, `message`, `model`, `schema`, `store`, `provider`, `approval`
 - **`act`** — what an actor may do, and under what (ADR 0034): `Acting`, who acts (its turn,
   whom its requests record, `ActsFor`, what its asks may spend, `Allowance`, and what becomes
   of a call whose tool asks a person first, `Gates`), pure data; `Moves`, a planner's ask and

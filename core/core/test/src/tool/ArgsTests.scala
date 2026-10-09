@@ -1,6 +1,7 @@
 package grit.core.tool
 
 import grit.core.model.ArgRepair
+import grit.core.schema.SchemaError
 
 import utest.*
 
@@ -298,6 +299,52 @@ object ArgsTests extends TestSuite {
       val shown = spec.schema(strict = true)
       (shown.name, shown.description, shown.strict) ==> ("pick", "Pick one.", true)
       shown.parameters ==> spec.args.schema(strict = true)
+    }
+
+    test("every field kind's strict schema reads as the schema a typed reply is sent") {
+      val every = Args.of(
+        (
+          about = Field.oneOf("Which.", "current", "new"),
+          maybeAbout = Field.oneOf("Which, if any.", "current", "new").optional,
+          name = Field.text("A name."),
+          maybeName = Field.text("A name, if any.").optional,
+          count = Field.count("How many.", 1, 5),
+          maybeCount = Field.count("How many, if any.", 0, 9).optional,
+          sure = Field.flag("Sure?"),
+          maybeSure = Field.flag("Sure, if asked?").optional,
+          edits = Field.each(
+            "The edits.",
+            Args.of((oldText = Field.text("Old."), note = Field.text("Why.").optional))
+          ),
+          maybeEdits =
+            Field.each("More edits.", Args.of((at = Field.count("At.", 0, 9))), 0).optional
+        )
+      )
+      every.typed.map(_.schema.json) ==> Right(every.schema(strict = true))
+    }
+
+    test("a typed reply reads as the arguments do, its refusal the same words") {
+      val refined = args.refine(a =>
+        if (a.about == "new" && a.name.isEmpty) Left(ArgsError.Missing("name", "text"))
+        else Right(a)
+      )
+      val sent = Vector(
+        ujson.Obj("about" -> "new", "name" -> "x", "count" -> 2, "sure" -> ujson.Null),
+        ujson.Obj("about" -> "new", "name" -> ujson.Null, "count" -> 2, "sure" -> true),
+        ujson.Obj("about" -> "current", "name" -> ujson.Null, "count" -> 5, "sure" -> false)
+      )
+      val read = refined.typed.map(t =>
+        sent.map(v => t.schema.check(v, Set.empty).left.map(_.message).flatMap(t.read))
+      )
+      read ==> Right(sent.map(v => refined.read(v, Set.empty).left.map(_.message)))
+      read.map(_(1)) ==> Right(Left("`name` is missing: it takes text."))
+    }
+
+    test("arguments whose schema the subset refuses are not typed") {
+      Args.raw(ujson.Obj("type" -> "object", "properties" -> ujson.Obj())).typed.map(_ => ()) ==>
+        Left(SchemaError("", "an object must have \"additionalProperties\": false"))
+      Args.of((n = Field.count("N.", 5, 1))).typed.map(_ => ()) ==>
+        Left(SchemaError("properties.n", "`minimum` 5 is above `maximum` 1"))
     }
   }
 }

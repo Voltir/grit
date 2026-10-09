@@ -3,6 +3,7 @@ package grit.core.tool
 import scala.NamedTuple.NamedTuple
 
 import grit.core.model.ArgRepair
+import grit.core.schema.{JsonSchema, SchemaError, Typed}
 
 /** A tool's arguments: a JSON object whose properties are its fields, read into a `T`. Built
   * with [[Args.of]]; `map` and `refine` change what is read, never the schema.
@@ -30,6 +31,18 @@ final class Args[T] private (
   /** As [[read]] with every [[ArgRepair]]. */
   def read(arguments: ujson.Value): Either[ArgsError, T] =
     reader(arguments, ArgRepair.values.toSet)
+
+  /** These arguments as a reply's [[grit.core.schema.Typed]]: their strict schema, and
+    * [[read]] with no repairs (the schema's check made them), its `Left` the refusal's
+    * [[ArgsError.message]]. `Left` when the subset refuses their schema: arguments made by
+    * [[Args.raw]] or [[Writes]] may hold any schema, and those built by [[Args.of]] are
+    * refused only past [[grit.core.schema.JsonSchema]]'s limits or for a [[Field.count]]
+    * whose `min` is above its `max`.
+    */
+  def typed: Either[SchemaError, Typed[T]] =
+    JsonSchema
+      .read(schema(strict = true))
+      .map(s => Typed(s, c => read(c.json, Set.empty).left.map(_.message)))
 
   def map[U](f: T -> U): Args[U] =
     new Args(shape, (arguments, repairs) => reader(arguments, repairs).map(f))

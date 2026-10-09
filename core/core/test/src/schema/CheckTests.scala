@@ -149,6 +149,12 @@ object CheckTests extends TestSuite {
       conforming.map(_.json("label")) ==> Right(ujson.Str("a"))
     }
 
+    test("Typed.json reads what conforms as itself") {
+      val conforming = schema.check(good, Set.empty)
+      conforming.flatMap(c => Typed.json(schema).read(c).left.map(Mismatch("", _))).map(_.text) ==>
+        conforming.map(_.text)
+    }
+
     test("a mismatch's message: its path, then why; why alone at the root") {
       Mismatch("edits[2].oldText", "expected a string, got 3").message ==>
         "edits[2].oldText: expected a string, got 3"
