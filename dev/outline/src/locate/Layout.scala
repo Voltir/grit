@@ -19,9 +19,16 @@ trait Layout {
 /** Mill's layout: `out/**/compile.dest/classes`, and each module's `resolvedMvnDeps.json` beside its `compile.dest`. */
 object MillLayout extends Layout {
 
-  /** The walk of `out` that does not enter a classes directory or another module's `.dest`. */
-  private def prune(p: os.Path): Boolean =
-    (p / os.up).last == "classes" || (p.last.endsWith(".dest") && p.last != "compile.dest")
+  /** The walk of `out` that does not enter a classes directory, another module's `.dest`, or a nested Mill output
+    * directory: one below `out` holding a `mill-out-lock` file or a `mill-daemon` directory, or any directory named
+    * `mill-build`. A nested Mill output directory (another tool's or another pass's) is not this root's build. `out`
+    * itself is never pruned.
+    */
+  private def prune(out: os.Path)(p: os.Path): Boolean =
+    (p / os.up).last == "classes" ||
+      (p.last.endsWith(".dest") && p.last != "compile.dest") ||
+      (p != out && os.isDir(p) && (p.last == "mill-build" || os.isFile(p / "mill-out-lock") || os
+        .isDir(p / "mill-daemon")))
 
   /** A coursier reference as Mill writes it, before the path it names. */
   private val coursierPrefix = raw"^q?ref:v\d+:[0-9a-f]+:".r
@@ -30,7 +37,7 @@ object MillLayout extends Layout {
     val out = root.dir / "out"
     if (!os.isDir(out)) Vector.empty
     else
-      os.walk(out, skip = prune)
+      os.walk(out, skip = prune(out))
         .filter(p => p.last == "classes" && os.isDir(p) && (p / os.up).last == "compile.dest")
         .sortBy(_.toString)
         .toVector
@@ -40,7 +47,7 @@ object MillLayout extends Layout {
     val out = root.dir / "out"
     if (!os.isDir(out)) Vector.empty
     else
-      os.walk(out, skip = prune)
+      os.walk(out, skip = prune(out))
         .filter(p => p.last == "resolvedMvnDeps.json" && os.isFile(p))
         .flatMap(recorded)
         .filter(p => p.ext == "jar" && os.isFile(p))

@@ -70,7 +70,15 @@ object Read {
     val foreign = mutable.ListBuffer.empty[String]
     val unreadable = mutable.ListBuffer.empty[(os.Path, String)]
     val prefix = root.dir.toString + "/"
-    def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
+    def source(path: String): String =
+      sources.getOrElseUpdate(
+        path,
+        if (path.startsWith(prefix)) os.read(os.Path(path))
+        else {
+          foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+          ""
+        }
+      )
     val inspector = new Inspector {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*
@@ -461,7 +469,15 @@ object Read {
     val sources = mutable.Map[String, String]()
     val foreign = mutable.ListBuffer.empty[String]
     val prefix = root.dir.toString + "/"
-    def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
+    def source(path: String): String =
+      sources.getOrElseUpdate(
+        path,
+        if (path.startsWith(prefix)) os.read(os.Path(path))
+        else {
+          foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+          ""
+        }
+      )
     val inspector = new Inspector {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*

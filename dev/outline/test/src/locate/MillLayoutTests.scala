@@ -32,6 +32,37 @@ object MillLayoutTests extends TestSuite {
     }
 
     test(
+      "classesDirs skips a nested Mill output directory (one holding a mill-out-lock) and any mill-build"
+    ) {
+      val root = tree(
+        "out/m/compile.dest/classes/grit/M.tasty",
+        "out/lint/mill-out-lock",
+        "out/lint/m/compile.dest/classes/grit/M.tasty",
+        "out/mill-build/compile.dest/classes/build/B.tasty"
+      )
+      assert(
+        MillLayout.classesDirs(root) == Vector(at(root, "out/m/compile.dest/classes"))
+      )
+    }
+
+    test(
+      "libraryJars skips a jar named only under a nested Mill output directory"
+    ) {
+      val root = tree(
+        "out/m/compile.dest/classes/x/A.tasty",
+        "out/lint/mill-out-lock",
+        "out/lint/m/resolvedMvnDeps.json"
+      )
+      val jar = at(root, "lib/a.jar")
+      os.write(jar, "", createFolders = true)
+      os.write.over(
+        at(root, "out/lint/m/resolvedMvnDeps.json"),
+        ujson.write(ujson.Obj("value" -> ujson.Arr(jar.toString)))
+      )
+      assert(MillLayout.libraryJars(root) == Vector.empty[os.Path])
+    }
+
+    test(
       "libraryJars is the existing .jar files a resolvedMvnDeps.json names, with the coursier prefix stripped"
     ) {
       val root = tree("out/m/compile.dest/classes/x/A.tasty", "lib/b.pom")
