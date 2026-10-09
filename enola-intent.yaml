@@ -78,6 +78,9 @@ components:
   # counted against it.
   - {name: prose-code,     kind: module, match: ["core/prose/src", "core/prose/src/**"]}
 
+  # The outline tool's main sources, kept free of grit's modules so the tool can leave the repository.
+  - {name: outline-code,   kind: module, match: ["dev/outline/src", "dev/outline/src/**"]}
+
   # Core, extension, kit and deployment (ADR 0021; the table is docs/extending.md's), for
   # rule 4 below. Source trees alone, so a test's imports are not counted. Which core module
   # may name which is Mill's moduleDeps' job, not these rules'.
@@ -724,3 +727,14 @@ rules:
     via: imports
     mode: strict
     because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does; the eval's cases are its synthetic reference"
+
+  # -------------------------------------------------------------------------------------
+  # The outline tool reads any Scala 3 project's TASTy, so its main sources name no grit
+  # module: the tool can leave this repository without taking grit's shape with it.
+  # -------------------------------------------------------------------------------------
+  - id: outline-names-no-grit-module
+    allow: outline-code
+    only: [outline-code]
+    via: imports
+    mode: strict
+    because: "the outline tool reads any Scala 3 project's TASTy; naming a grit module would tie it to this repository"
