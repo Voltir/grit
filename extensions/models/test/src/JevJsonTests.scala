@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.classify.{Answer, Ask, ClassifierError, Criterion, Question}
+import grit.core.classify.{Answer, ClassifierError, Question}
 import grit.core.message.Tokens
 
 import utest.*

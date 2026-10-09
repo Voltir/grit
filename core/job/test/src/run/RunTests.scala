@@ -401,7 +401,9 @@ object RunTests extends TestSuite {
       )
     }
 
-    test("a JSON reply's quoted number is read as its number, in one call, its model repairing it") {
+    test(
+      "a JSON reply's quoted number is read as its number, in one call, its model repairing it"
+    ) {
       val w = new World(shapes = Vector(ujson.Obj("count" -> "3")))
       val turn = w.started(w.declared("standup", 3))
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
@@ -418,7 +420,8 @@ object RunTests extends TestSuite {
     }
 
     test("a model required to reply that calls it twice is read from its first call") {
-      val w = new World(calling = 2, shapes = Vector(ujson.Obj("count" -> 3), ujson.Obj("count" -> 4)))
+      val w =
+        new World(calling = 2, shapes = Vector(ujson.Obj("count" -> 3), ujson.Obj("count" -> 4)))
       val turn = w.started(w.declared("standup", 3))
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
       (w.reply(turn), w.models.calls) ==> (Some("6"), 1)
