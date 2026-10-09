@@ -60,7 +60,7 @@ object Pairs {
 
 /** A suite in the shape test frameworks use. */
 object StoreSuite {
-  private def test(name: String)(body: => Unit): Unit = body
+  private def test(name: String)(body: => Unit): Unit = { val _ = name; body }
 
   /** A fresh store for each test. */
   def fresh(): Store = MemStore(Map.empty)

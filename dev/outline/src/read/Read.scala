@@ -75,7 +75,7 @@ object Read {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*
 
-        def keep(tree: Tree, sym: Symbol, p: Position): Boolean = {
+        def keep(tree: Tree, sym: Symbol): Boolean = {
           val flags = sym.flags
           val isModuleVal = tree match {
             case v: ValDef => v.symbol.flags.is(Flags.Module)
@@ -272,7 +272,6 @@ object Read {
             cut: Int,
             hasBody: Boolean,
             members: Vector[Defn],
-            isAbstract: Boolean,
             refs: Vector[grit.outline.model.Ref],
             parents: Vector[String]
         ): Defn = {
@@ -322,7 +321,7 @@ object Read {
         def defn(tree: Tree): Option[Defn] = {
           val sym = tree.symbol
           val p = tree.pos
-          if (!keep(tree, sym, p)) None
+          if (!keep(tree, sym)) None
           else
             tree match {
               case c: ClassDef =>
@@ -335,7 +334,6 @@ object Read {
                     classCut(c, p, src),
                     hasBody = false,
                     members = members(c.body),
-                    isAbstract = false,
                     refs = refsOf(c, sym),
                     parents = parentsOf(sym)
                   )
@@ -351,7 +349,6 @@ object Read {
                     cut,
                     rhs.isDefined,
                     Vector.empty,
-                    isAbstract = false,
                     refsOf(d, sym),
                     Vector.empty
                   )
@@ -367,7 +364,6 @@ object Read {
                     cut,
                     rhs.isDefined,
                     Vector.empty,
-                    isAbstract = false,
                     refsOf(v, sym),
                     Vector.empty
                   )
@@ -381,7 +377,6 @@ object Read {
                     p.end,
                     hasBody = false,
                     Vector.empty,
-                    isAbstract = false,
                     refsOf(t, sym),
                     Vector.empty
                   )

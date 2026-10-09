@@ -146,10 +146,11 @@ object Server {
     )
     val lines = LazyList.continually(Option(in.readLine())).takeWhile(_.isDefined).flatten
     lines.foldLeft(State(Roots.empty(cachedFiles), defaultRoot)) { (state, line) =>
-      val started = System.nanoTime()
       val (reply, next, tool) = process(line, state)
       tool.foreach(name =>
-        System.err.println(s"$name ${(System.nanoTime() - started) / 1000000} ms")
+        System.err.println(
+          s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B"
+        )
       )
       reply.foreach { r =>
         out.print(r + "\n")
