@@ -64,6 +64,26 @@ object ClassifyTests extends TestSuite {
       }
     }
 
+    test("scoreConfidence matches both Score examples in Jev's docs, to their rounding") {
+      // (probabilities, the confidence Jev reported), from api.md and introduction_quickstart.md.
+      val documented = Vector(Vector(0.0, 0.95, 0.05) -> 0.92, Vector(0.0, 1.0, 0.0) -> 1.0)
+      documented.foreach { (ps, reported) =>
+        // Both are printed to two places: 0.925 here, from probabilities that may be 0.005 off.
+        assert(math.abs(Answer.scoreConfidence(ps) - reported) <= 0.01)
+      }
+    }
+
+    test("scoreConfidence falls with the weight's distance from the likeliest level") {
+      // Weight split between neighbours is surer than weight split between the ends, though
+      // the peak is the same: Σ pᵢ·|i − m| over the same sum for even weights.
+      Answer.scoreConfidence(Vector(0.5, 0.5, 0.0)) ==> 0.5
+      Answer.scoreConfidence(Vector(0.5, 0.0, 0.5)) ==> 0.0
+      // The likeliest level at an end has more room to spread: u is 1 there, 2/3 in the middle.
+      Answer.scoreConfidence(Vector(0.8, 0.2, 0.0)) ==> 0.8
+      assert(math.abs(Answer.scoreConfidence(Vector(0.2, 0.8, 0.0)) - 0.7) < 1e-9)
+      Answer.scoreConfidence(Vector(1.0)) ==> 1.0
+    }
+
     test(
       "Answer.choice normalises, picks the most probable (the first on a tie), refuses no mass"
     ) {

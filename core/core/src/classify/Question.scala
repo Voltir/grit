@@ -73,6 +73,19 @@ object Answer {
     }
   }
 
+  /** Jev's confidence for a Score: `max(0, 1 − Σ pᵢ·|i − m| / u)`, where `m` is the likeliest
+    * level (the first, on a tie) and `u` is the same sum for even weights; 1 for one level.
+    * Matches the docs' examples (`ClassifyTests`).
+    */
+  def scoreConfidence(probabilities: Vector[Double]): Double = {
+    val n = probabilities.size
+    val likeliest = probabilities.zipWithIndex.maxByOption(_._1).fold(0)(_._2)
+    def spread(weights: Vector[Double]): Double =
+      weights.zipWithIndex.map((p, i) => p * math.abs(i - likeliest)).sum
+    val even = spread(Vector.fill(n)(1.0 / n))
+    if (n < 2) 1.0 else math.max(0.0, 1 - spread(probabilities) / even)
+  }
+
   /** A Choice over `probabilities` (keys in the question's order), normalised to sum to 1, a
     * NaN, infinite or negative one counted as 0; its choice the most probable key (the first,
     * on a tie). `None` when there is no probability mass.
