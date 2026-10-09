@@ -448,7 +448,11 @@ object Read {
               ref.pos.sourceFile.path.startsWith(prefix)
             ) {
               val path = ref.pos.sourceFile.path
-              val line = ref.pos.startLine + 1
+              // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
+              val line = ref match {
+                case _: Select => ref.pos.endLine + 1
+                case _ => ref.pos.startLine + 1
+              }
               val text =
                 source(path).linesIterator.drop(line - 1).nextOption().map(_.trim).getOrElse("")
               found += Use(

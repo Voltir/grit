@@ -17,7 +17,7 @@ object Server {
 
   private val showTool: ujson.Value = ujson.Obj(
     "name" -> "show",
-    "description" -> "Signatures with their full Scaladoc for named symbols (Name, Name.member or fully qualified), grouped by source file with line ranges that start at the Scaladoc, plus one-line outlines of the project types their signatures name (depth 1, at most 2); bodies only for members named in `body`. Read from compiled TASTy under `root` (a checkout or worktree; default the server's).",
+    "description" -> "Signatures with full Scaladoc for the named symbols (Name, Name.member, or fully qualified when a short name is ambiguous), grouped by file with line ranges from the Scaladoc, plus one-line outlines of the project types they mention; bodies only for members named in `body`. Pass every symbol you need in one call: each extra call costs a turn, and every turn re-reads the whole context. Read from compiled TASTy under `root` (a checkout or worktree; default the server's).",
     "inputSchema" -> ujson.Obj(
       "type" -> "object",
       "properties" -> ujson.Obj(
@@ -48,7 +48,7 @@ object Server {
 
   private val familyTool: ujson.Value = ujson.Obj(
     "name" -> "family",
-    "description" -> "A trait or abstract class, its implementations, the abstract contracts whose members name it, and the suites extending each contract, grouped by file with line ranges; with `member`, only that member in each.",
+    "description" -> "A trait or abstract class with its implementations, the abstract contracts whose members name it, and the suites that run each contract, grouped by file with line ranges; `member` narrows each to one member. Replaces reading the trait, each implementation and the contract file by file.",
     "inputSchema" -> ujson.Obj(
       "type" -> "object",
       "properties" -> ujson.Obj(
@@ -65,7 +65,7 @@ object Server {
 
   private val usesTool: ujson.Value = ujson.Obj(
     "name" -> "uses",
-    "description" -> "Direct references to the named symbols, resolved by the compiler (a different method of the same name never matches), one line per site with its enclosing definition, grouped by file; `in`/`outside` filter by path prefix.",
+    "description" -> "Direct references to the named symbols, resolved by the compiler (a same-named method elsewhere never matches), one line per site with its enclosing definition, grouped by file; `in`/`outside` filter by path prefix. Replaces a repository-wide grep for call sites.",
     "inputSchema" -> ujson.Obj(
       "type" -> "object",
       "properties" -> ujson.Obj(

@@ -45,6 +45,9 @@ object Unrelated {
 /** Calls through a lambda. */
 object Caller {
   def all(stores: Vector[Store]): Vector[Option[String]] = stores.map(s => s.get("k"))
+
+  def split(s: Store): Option[String] = s
+    .get("k")
 }
 
 /** A second Tx, so a short name is ambiguous. */

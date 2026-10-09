@@ -50,6 +50,64 @@ object UsesTests extends TestSuite {
     }
 
     test(
+      "a call split across lines is a site on its name's line: its text is that line, and its enclosing definition is Caller.split"
+    ) {
+      val storeTasty = Locate.inPackageOf(
+        root,
+        MillLayout,
+        os.RelPath("dev/outline/fixture/src/store/Store.scala")
+      )
+      val sites = Read.uses(root, MillLayout, storeTasty, Set(s"$storePackage.Store.get")) match {
+        case Right(us) => us
+        case Left(message) => throw new Exception(message)
+      }
+      assert(
+        sites.exists(u => u.enclosing.endsWith("Caller.split") && u.text == ".get(\"k\")")
+      )
+    }
+
+    test(
+      "a candidate file with no compiled tasty is named as not searched, with its path under src"
+    ) {
+      val dir = os.temp.dir(prefix = "outline-not-compiled-")
+      os.write(dir / "build.mill", "")
+      val src = dir / "src" / "p" / "S.scala"
+      os.write(src, "package p\nobject S { def f(a: Int): Int = a }\n", createFolders = true)
+      val classes = dir / "out" / "m" / "compile.dest" / "classes"
+      os.makeDir.all(classes)
+      val reporter = dotty.tools.dotc.Main.process(
+        Array(
+          "-d",
+          classes.toString,
+          "-classpath",
+          System.getProperty("java.class.path"),
+          src.toString
+        )
+      )
+      assert(!reporter.hasErrors)
+      os.write(
+        dir / "src" / "q" / "T.scala",
+        "package q\nobject T { def g: Int = p.S.f(1) }\n",
+        createFolders = true
+      )
+      val (answer, _) = Query.uses(
+        Root(dir),
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("p.S.f"),
+        None,
+        None,
+        80000
+      )
+      assert(
+        answer.text.linesIterator.exists(line =>
+          line.startsWith("-- not compiled, not searched:") && line.contains("src/q/T.scala")
+        )
+      )
+    }
+
+    test(
       "the uses of Limits.of include the 2-argument overload's call on line 28, which targets the 3-argument of on line 31"
     ) {
       val (answer, _) = uses("grit.outline.fixture.Limits.of")

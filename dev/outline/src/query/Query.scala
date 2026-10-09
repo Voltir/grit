@@ -74,7 +74,13 @@ object Query {
         .distinct
         .flatMap(simple => Locate.mentioning(root, simple))
         .distinct
-      val tasty = candidates.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
+      val inPackage = candidates.map(file => file -> Locate.inPackageOf(root, layout, file))
+      val tasty = inPackage.flatMap(_._2).distinct
+      val unsearched = inPackage.collect {
+        case (file, found)
+            if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
+          file
+      }
       val read: Either[String, Vector[Use]] =
         if (failure.nonEmpty || names.isEmpty || tasty.isEmpty) Right(Vector.empty)
         else Read.uses(root, layout, tasty, names)
@@ -100,7 +106,7 @@ object Query {
               }
           }
       }
-      val noteText = notes.toVector.map(_ + "\n").mkString
+      val noteText = (notes.toVector ++ notSearched(unsearched)).map(_ + "\n").mkString
       (answer.copy(text = s"${header(root)}\n$noteText${answer.text}"), nextRoots)
     }
   }
@@ -177,6 +183,14 @@ object Query {
         }
     }
 
+  /** The `-- not compiled, not searched:` line naming `files` (at most eight, then how many more), or none when `files` is empty. A file with no `.tasty` has no references read from it. */
+  private def notSearched(files: Vector[os.RelPath]): Vector[String] =
+    if (files.isEmpty) Vector.empty
+    else {
+      val more = if (files.size > 8) s" and ${files.size - 8} more" else ""
+      Vector(s"-- not compiled, not searched: ${files.take(8).mkString(", ")}$more")
+    }
+
   private def packageName(layout: Layout, root: Root, dir: os.Path): String =
     layout
       .classesDirs(root)
@@ -207,12 +221,15 @@ object Query {
             .filter(file =>
               exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
             )
-          val tasty = files.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
+          val inPackage = files.map(file => file -> Locate.inPackageOf(root, layout, file))
+          val tasty = inPackage.flatMap(_._2).distinct
+          val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
           val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
           val head =
             (Vector(header(root)) ++ resolved.notes ++
               (if (missing.isEmpty) Vector.empty
-               else Vector(s"-- not loaded: ${missing.mkString(", ")}"))).mkString("\n")
+               else Vector(s"-- not loaded: ${missing.mkString(", ")}")) ++
+              notSearched(unsearched)).mkString("\n")
           familyOf(defns, traitName, member, withBody) match {
             case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
             case Right(f) =>

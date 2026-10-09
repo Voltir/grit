@@ -116,6 +116,14 @@ object ServerTests extends TestSuite {
       assert(!ujson.write(resultOf(r).getOrElse(ujson.Null)).toLowerCase.contains("grit"))
     }
 
+    test("show's description asks for every symbol in one call") {
+      val (r, _) = reply(request(3, "tools/list", ujson.Obj()), empty)
+      val tools =
+        resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
+      val show = tools.find(t => field(t, "name").flatMap(_.strOpt).contains("show"))
+      assert(show.flatMap(field(_, "description")).flatMap(_.strOpt).exists(_.contains("one call")))
+    }
+
     test("tools/call show returns the named signature with its line range, not an error") {
       val fixture = checkout("keep", keepFixture)
       val line = call(
