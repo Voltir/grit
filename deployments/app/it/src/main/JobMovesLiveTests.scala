@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.act.{Keeping, MoveLimits, MoveName, Moves, Posed}
+import grit.core.classify.{Ask, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
@@ -29,6 +30,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.provider.ModelRequest
+import grit.core.schema.{JsonSchema, Typed}
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Payload, StoreError, Tx}
@@ -83,13 +85,33 @@ object JobMovesLiveTests extends TestSuite {
 
   private def name(n: String): MoveName = MoveName.of(n).fold(sys.error, identity)
 
-  /** Calls `probe_read` at `service:probe`, then asks the model about the answer; replies the
-    * call's result and the ask's text, a line each.
+  /** `{"answer": string}`, read as the answer. */
+  private val answered: Typed[String] = Typed(
+    JsonSchema
+      .read(
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj("answer" -> ujson.Obj("type" -> "string")),
+          "required" -> ujson.Arr("answer"),
+          "additionalProperties" -> false
+        )
+      )
+      .fold(e => sys.error(e.message), identity),
+    c => c.json.objOpt.flatMap(_.get("answer")).flatMap(_.strOpt).toRight("no answer")
+  )
+
+  /** A judgment's state: a message, as the stub classifier reads its markers. */
+  private given StateJson[String] = StateJson.instance(s => ujson.Obj("new_message" -> s))
+
+  /** Calls `probe_read` at `service:probe`, then asks the model about the answer, asks it for
+    * `{"answer": string}` (the stub answering what its message marks), and judges whether a
+    * message is urgent (the stub classifier answering the probability it marks); replies each
+    * move's result, a line each.
     */
   private object Probing extends PlainJob[NoParams.type] {
     val name: JobName = JobName.of("probing").fold(sys.error, identity)
     val version: Int = 1
-    override val limits: MoveLimits = MoveLimits.of(1, 1).fold(sys.error, identity)
+    override val limits: MoveLimits = MoveLimits.of(2, 1).fold(sys.error, identity)
     def write(params: NoParams.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
     def run(run: JobRun[NoParams.type], moves: Moves^): String = {
@@ -107,7 +129,19 @@ object JobMovesLiveTests extends TestSuite {
           Posed.Text(ModelRequest("Say.", Vector(Message.User(called))))
         )
         .fold(_.toString, _.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
-      s"$called\n$asked"
+      val shaped = moves
+        .ask(
+          JobMovesLiveTests.name("shape"),
+          Posed.Json("Say.", Vector(Message.User("""#call:{"answer":"yes"}""")), answered)
+        )
+        .fold(_.toString, _.reply)
+      val weighed = moves
+        .ask(
+          JobMovesLiveTests.name("weigh"),
+          Posed.judge("~0.25", Ask.yesNo[String]("Is `new_message` urgent?", None, None))
+        )
+        .fold(_.toString, _.reply.toString)
+      s"$called\n$asked\n$shaped\n$weighed"
     }
   }
 
@@ -183,7 +217,7 @@ object JobMovesLiveTests extends TestSuite {
 
   private val schedule: ScheduleId = ScheduleId.declared(Declarer.Deployment, key)
 
-  /** The deployment of [[Probing]], its once slot at `at`. */
+  /** The deployment of [[Probing]], its once slot at `at`, its classifier the stub. */
   private def deployment(at: Instant): Deployment =
     Deployment
       .of(
@@ -193,7 +227,7 @@ object JobMovesLiveTests extends TestSuite {
         policy = Policy(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(4000)),
-        topics = Topics.Off("no classifier here"),
+        topics = Topics.Stub,
         lifecycle = LifecycleSettings.Default,
         budget = Budget(ZoneOffset.UTC, None),
         speaking = Speaking.Off,
@@ -288,7 +322,11 @@ object JobMovesLiveTests extends TestSuite {
       id
     ) ++
       rows(config, "SELECT message FROM dbos.notifications WHERE destination_uuid = ?", id) ++
-      rows(config, "SELECT replace(entry_id, ?, '{workflow}') FROM grit.usage_ledger", id) ++
+      rows(
+        config,
+        "SELECT replace(entry_id, ?, '{workflow}'), model, cost_usd::text FROM grit.usage_ledger ORDER BY entry_id",
+        id
+      ) ++
       Vector(Vector(replied(engine, turn))) ++
       rows(
         config,
@@ -362,7 +400,7 @@ object JobMovesLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a run's call is made for its schedule's principal with the advertised retry, rung, and its ask recorded once"
+      "a run's call is made for its schedule's principal with the advertised retry, rung, and its text, JSON and judgment asks' costs recorded once each"
     ) {
       // A deployment's schedule acts for grit, who also registered the desk, so the request's
       // principal cannot tell the schedule's from a hard-coded grit; CallingTests' gone schedule,
@@ -380,12 +418,18 @@ object JobMovesLiveTests extends TestSuite {
             """{"kind": "done", "text": "read a"}"""
           ),
           Vector(ujson.write(ujson.Str(Desk.Doorbell))),
-          Vector("move:{workflow}:think"),
-          Vector("Done(read a,public)\nstub reply to: Done(read a,public)"),
+          Vector("move:{workflow}:shape", "grit/stub", "0"),
+          Vector("move:{workflow}:think", "grit/stub", "0"),
+          Vector("move:{workflow}:weigh", "grit/stub-classifier", "0"),
+          Vector("Done(read a,public)\nstub reply to: Done(read a,public)\nyes\n0.25"),
           Vector("move:look"),
           Vector("move:look:answer"),
           Vector("move:think"),
-          Vector("move:think:record")
+          Vector("move:think:record"),
+          Vector("move:shape"),
+          Vector("move:shape:record"),
+          Vector("move:weigh"),
+          Vector("move:weigh:record")
         )
       )
     }
