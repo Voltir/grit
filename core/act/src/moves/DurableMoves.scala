@@ -214,9 +214,10 @@ object DurableMoves {
     /** What an ask comes to once its step recorded `made`. The costs of the model calls `made`
       * holds are recorded first, in the ask's record step, whatever shape recorded them: a run
       * replays its steps by place, so a record step the first run took is taken again. Then it
-      * is [[MoveError.Diverged]] unless `same`; else `made`'s refusal, the record step's
-      * failure, an unread reply's [[MoveError.Model]], or `read` of `made` (`None`: a record
-      * of another shape, which diverges).
+      * is [[MoveError.Diverged]] unless `same`; else the record step's failure (which outranks
+      * a refusal or an unread reply, since calls were paid for and their cost is lost),
+      * `made`'s refusal, an unread reply's [[MoveError.Model]], or `read` of `made` (`None`: a
+      * record of another shape, which diverges).
       */
     private def settled[R](name: MoveName, made: AskMade, same: Boolean)(
         read: AskMade -> Option[Either[MoveError, Asked[R]]]
@@ -232,10 +233,10 @@ object DurableMoves {
       if (!same) Left(diverge(name))
       else
         (made, kept) match {
+          case (_, Left(why)) => Left(MoveError.Store(why))
           case (AskMade.Refused(AskMade.Kind.Capped, _, _), _) => Left(MoveError.Capped)
           case (AskMade.Refused(AskMade.Kind.Model, why, _), _) => Left(MoveError.Model(why))
           case (AskMade.Refused(AskMade.Kind.Store, why, _), _) => Left(MoveError.Store(why))
-          case (_, Left(why)) => Left(MoveError.Store(why))
           case (AskMade.Unshaped(_, why, _), _) => Left(MoveError.Model(why))
           case (other, Right(())) => read(other).getOrElse(Left(diverge(name)))
         }

@@ -443,6 +443,16 @@ object RunTests extends TestSuite {
     }
 
     test(
+      "a JSON reply that does not read, whose calls' record fails, is Store: the record's failure outranks the reply's"
+    ) {
+      val w = new World(failRecord = true, shapes = Vector(ujson.Obj("count" -> "many")))
+      val turn = w.started(w.declared("standup", 3))
+      val seen = new Seen
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
+      (w.reply(turn), w.models.calls) ==> (Some("Store(the ledger is down)"), 2)
+    }
+
+    test(
       "a JSON ask whose schema changed on a rerun is Diverged, its recorded call's cost recorded"
     ) {
       val w = new World(crashRecord = true, shapes = Vector(ujson.Obj("count" -> 3)))
