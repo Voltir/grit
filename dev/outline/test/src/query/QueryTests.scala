@@ -55,7 +55,7 @@ object QueryTests extends TestSuite {
         )
       assert(answer.status == Status.NoMatch)
       assert(answer.text.startsWith(s"## root ${root.dir} ("))
-      assert(answer.text.endsWith("\nno match for Nope"))
+      assert(answer.text.endsWith("\n-- no match for Nope"))
     }
 
     test("a second read of unchanged tasty reads no files") {
@@ -104,6 +104,60 @@ object QueryTests extends TestSuite {
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
       assert(notes.size == 1)
       assert(notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty")
+    }
+
+    test(
+      "a file the inspector failed on is remembered, so a second load reads no files and still names it"
+    ) {
+      val classes = os.temp.dir(prefix = "outline-remember-") / "classes"
+      os.copy(
+        root.dir / "out" / "grit" / "outline" / "fixture" / "compile.dest" / "classes",
+        classes,
+        createFolders = true
+      )
+      val bad = classes / "grit" / "outline" / "fixture" / "Bad.tasty"
+      os.write(bad, "not a tasty file")
+      val layout = new Layout {
+        def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val tasty = os.walk(classes).filter(_.ext == "tasty").toVector
+      val (_, first, firstNotes) = Query.loadAll(root, layout, tasty, Loaded.empty)
+      assert(firstNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
+      assert(first.failed.keySet == Set(bad))
+      val (defns, second, secondNotes) = Query.loadAll(root, layout, tasty, first)
+      assert(Loaded.defns(root, layout, tasty, second).map(_._3) == Right(0))
+      assert(secondNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
+      assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
+    }
+
+    test("a remembered failure is tried again once the file's mtime changes") {
+      val classes = os.temp.dir(prefix = "outline-retry-") / "classes"
+      os.copy(
+        root.dir / "out" / "grit" / "outline" / "fixture" / "compile.dest" / "classes",
+        classes,
+        createFolders = true
+      )
+      val bad = classes / "grit" / "outline" / "fixture" / "Bad.tasty"
+      os.write(bad, "not a tasty file")
+      val layout = new Layout {
+        def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val tasty = os.walk(classes).filter(_.ext == "tasty").toVector
+      val (_, first, _) = Query.loadAll(root, layout, tasty, Loaded.empty)
+      val touched = os.mtime(bad) + 60000L
+      java.nio.file.Files.setLastModifiedTime(
+        bad.toNIO,
+        java.nio.file.attribute.FileTime.fromMillis(touched)
+      )
+      val (_, next, notes) = Query.loadAll(root, layout, tasty, first)
+      assert(next.failed.get(bad) == Some(touched))
+      assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
     }
   }
 }

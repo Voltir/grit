@@ -275,7 +275,7 @@ object Query {
   private def everyDefnOf(ds: Vector[Defn]): Vector[Defn] =
     ds.flatMap(d => d +: everyDefnOf(d.members))
 
-  /** `tasty`'s definitions in one inspector run; when that fails, the files are split in halves until each half loads or is a single file. A file that still fails is skipped and named, relative to its classes directory, in one `-- not loaded:` note, with the first line the inspector captured for the first of them. */
+  /** `tasty`'s definitions in one inspector run; when that fails, the files are split in halves until each half loads or is a single file. A file that still fails is remembered in `Loaded` and skipped, and every answer that would have included it names it, relative to its classes directory, in one `-- not loaded:` note; the cause is the first line the inspector captured for the first file that failed in this run, and none when every named file was remembered. */
   private[query] def loadAll(
       root: Root,
       layout: Layout,
@@ -283,14 +283,18 @@ object Query {
       in: Loaded
   ): (Vector[Defn], Loaded, Vector[String]) = {
     val (defns, next, failed) = bisect(root, layout, tasty, in)
-    val notes = failed.headOption match {
-      case None => Vector.empty
-      case Some((_, complaint)) =>
-        val line = captured(complaint)
-        val cause = if (line.isEmpty) "" else s" ($line)"
-        val files = failed.map { case (file, _) => relativePath(root, layout, file) }
+    val remembered = Loaded.remembered(tasty, in)
+    val named = tasty.filter(p => remembered.contains(p) || failed.exists(_._1 == p))
+    val notes =
+      if (named.isEmpty) Vector.empty
+      else {
+        val cause = failed.headOption.fold("") { case (_, complaint) =>
+          val line = captured(complaint)
+          if (line.isEmpty) "" else s" ($line)"
+        }
+        val files = named.map(relativePath(root, layout, _))
         Vector(s"-- not loaded: ${files.mkString(", ")}$cause")
-    }
+      }
     (defns, next, notes)
   }
 
@@ -303,7 +307,8 @@ object Query {
   ): (Vector[Defn], Loaded, Vector[(os.Path, String)]) =
     Loaded.defns(root, layout, tasty, in) match {
       case Right((ds, next, _)) => (ds, next, Vector.empty)
-      case Left(complaint) if tasty.sizeIs == 1 => (Vector.empty, in, tasty.map(_ -> complaint))
+      case Left(complaint) if tasty.sizeIs == 1 =>
+        (Vector.empty, Loaded.withFailures(tasty, in), tasty.map(_ -> complaint))
       case Left(_) =>
         val (left, right) = tasty.splitAt(tasty.size / 2)
         val (leftDefns, afterLeft, leftFailed) = bisect(root, layout, left, in)
@@ -418,7 +423,6 @@ object Query {
         case Left(message) => failure = Some(message)
         case Right(next) => state = next
       }
-      val lines = mutable.ListBuffer.empty[String]
       val matches = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
@@ -427,7 +431,6 @@ object Query {
             state = resolved.loaded
             companions ++= resolved.seen
             notes ++= resolved.notes
-            if (resolved.defns.isEmpty) lines += s"no match for $sym"
             matches ++= resolved.defns
         }
       }
@@ -436,7 +439,8 @@ object Query {
       failure match {
         case Some(message) => (Answer(message, Status.Failed), state)
         case None if matches.isEmpty =>
-          (Answer(noteText + lines.mkString("\n"), Status.NoMatch), state)
+          // resolve's `-- no match for X` note is the one line naming a miss
+          (Answer(noteText.stripSuffix("\n"), Status.NoMatch), state)
         case None =>
           val tops = matches.toVector.distinct
           val traced = Trace.trace(
@@ -472,7 +476,7 @@ object Query {
             withPrivate = withPrivate,
             cap = cap
           )
-          val text = noteText + (lines.toVector :+ rendered).mkString("\n")
+          val text = noteText + rendered
           (Answer(text, Status.Found), state)
       }
     }

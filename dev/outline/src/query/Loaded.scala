@@ -7,20 +7,20 @@ import grit.outline.read.Read
 /** One `.tasty` file's definitions as of its mtime. */
 final case class Cached(mtime: Long, defns: Vector[Defn])
 
-/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. */
-final case class Loaded(byTasty: Map[os.Path, Cached])
+/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. */
+final case class Loaded(byTasty: Map[os.Path, Cached], failed: Map[os.Path, Long] = Map.empty)
 
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
 
-  /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed; the new cache; how many files were read. */
+  /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
   def defns(
       root: Root,
       layout: Layout,
       tasty: Vector[os.Path],
       in: Loaded
   ): Either[String, (Vector[Defn], Loaded, Int)] = {
-    val stale = tasty.filter(p => in.byTasty.get(p).forall(_.mtime != os.mtime(p)))
+    val stale = tasty.filter(p => !(cachedAt(in, p) || failedAt(in, p)))
     val read: Either[String, Map[os.Path, Vector[Defn]]] =
       if (stale.isEmpty) Right(Map.empty) else Read.defnsByTasty(root, layout, stale)
     read.map { fresh =>
@@ -28,7 +28,21 @@ object Loaded {
         cache.updated(p, Cached(os.mtime(p), fresh.getOrElse(p, Vector.empty)))
       }
       val all = tasty.flatMap(p => updated.get(p).map(_.defns).getOrElse(Vector.empty))
-      (all, Loaded(updated), stale.size)
+      (all, Loaded(updated, in.failed -- stale), stale.size)
     }
   }
+
+  /** The files of `tasty` that failed at their current mtime, so are not read again by `defns`. */
+  def remembered(tasty: Vector[os.Path], in: Loaded): Vector[os.Path] =
+    tasty.filter(p => failedAt(in, p))
+
+  /** `in` with each of `files` remembered as failed at its current mtime. */
+  def withFailures(files: Vector[os.Path], in: Loaded): Loaded =
+    in.copy(failed = files.foldLeft(in.failed)((failed, p) => failed.updated(p, os.mtime(p))))
+
+  private def cachedAt(in: Loaded, p: os.Path): Boolean =
+    in.byTasty.get(p).exists(_.mtime == os.mtime(p))
+
+  private def failedAt(in: Loaded, p: os.Path): Boolean =
+    in.failed.get(p).contains(os.mtime(p))
 }
