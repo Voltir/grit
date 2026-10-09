@@ -3,7 +3,8 @@ package grit.outline.query
 import scala.collection.mutable
 
 import grit.outline.locate.{Layout, Locate, Root}
-import grit.outline.model.{Defn, Kind, Staleness}
+import grit.outline.model.{Defn, Kind, Staleness, Use}
+import grit.outline.read.Read
 import grit.outline.render.{Family, Render}
 import grit.outline.trace.Trace
 
@@ -32,6 +33,76 @@ object Query {
     val (answer, loaded) =
       showIn(root, layout, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
+  }
+
+  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. */
+  def uses(
+      root: Root,
+      layout: Layout,
+      roots: Roots,
+      syms: Vector[String],
+      in: Option[String],
+      outside: Option[String],
+      cap: Int
+  ): (Answer, Roots) = {
+    val classes = layout.classesDirs(root)
+    if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
+    else {
+      // The cache read in this query, threaded through a scoped local, as `showIn` does.
+      var state = Roots.of(roots, root)
+      val targets = mutable.ListBuffer.empty[Defn]
+      var failure: Option[String] = None
+
+      def everyDefn(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: everyDefn(d.members))
+
+      syms.foreach { sym =>
+        val tasty = Locate.forTopLevel(root, layout, sym)
+        if (tasty.nonEmpty)
+          Loaded.defns(root, layout, tasty, state) match {
+            case Left(message) => failure = Some(message)
+            case Right((defns, next, _)) =>
+              state = next
+              targets ++= everyDefn(defns)
+                .filter(d => d.fullName == sym || d.fullName.endsWith("." + sym))
+          }
+      }
+
+      val nextRoots = Roots.put(roots, root, state)
+      val names = targets.toVector.map(_.fullName).distinct.toSet
+      // A name's references are read in the packages of the files that mention its last segment as a word.
+      val candidates = syms
+        .map(_.split('.').last)
+        .distinct
+        .flatMap(simple => Locate.mentioning(root, simple))
+        .distinct
+      val tasty = candidates.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
+      val read: Either[String, Vector[Use]] =
+        if (failure.nonEmpty || names.isEmpty || tasty.isEmpty) Right(Vector.empty)
+        else Read.uses(root, layout, tasty, names)
+      val answer = failure match {
+        case Some(message) => Answer(message, Status.Failed)
+        case None =>
+          read match {
+            case Left(message) => Answer(message, Status.Failed)
+            case Right(all) =>
+              val kept = all.filter(u =>
+                in.forall(prefix => u.file.startsWith(prefix)) &&
+                  outside.forall(prefix => !u.file.startsWith(prefix))
+              )
+              if (kept.isEmpty) Answer(s"no uses of ${syms.mkString(",")}", Status.NoMatch)
+              else {
+                val overloaded = targets
+                  .groupBy(_.fullName)
+                  .collect {
+                    case (name, ds) if ds.size > 1 => name
+                  }
+                  .toSet
+                Answer(Render.uses(kept, overloaded, cap), Status.Found)
+              }
+          }
+      }
+      (answer.copy(text = s"${header(root)}\n${answer.text}"), nextRoots)
+    }
   }
 
   /** The `family` answer for `name` (a trait, or an abstract class), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. `member` narrows the trait's and each implementation's text to that member, with its body under `withBody`. Every answer starts with `root`'s `## root` line. */

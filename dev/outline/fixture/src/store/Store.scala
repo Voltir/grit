@@ -41,3 +41,8 @@ object MemStoreContract extends StoreContract {
 object Unrelated {
   def get(key: String): Option[String] = None
 }
+
+/** Calls through a lambda. */
+object Caller {
+  def all(stores: Vector[Store]): Vector[Option[String]] = stores.map(s => s.get("k"))
+}

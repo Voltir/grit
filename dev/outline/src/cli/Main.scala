@@ -11,6 +11,9 @@ object Main {
   private val usage =
     "usage: show Sym[,Sym…] [--depth N] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]"
 
+  private val usesUsage =
+    "usage: uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]"
+
   private val familyUsage =
     "usage: family Trait [--member m] [--body] [--cap BYTES] [--root DIR]"
 
@@ -122,6 +125,8 @@ object Main {
         }
       case "family" :: name :: rest if !name.startsWith("--") =>
         family(name, rest, cwd, leadingRoot)
+      case "uses" :: syms :: rest if !syms.startsWith("--") =>
+        uses(syms, rest, cwd, leadingRoot)
       case _ => (2, usage)
     }
 
@@ -145,6 +150,53 @@ object Main {
                 name,
                 o.member,
                 o.withBody,
+                o.cap
+              )
+            (exitCode(answer.status), answer.text)
+        }
+    }
+
+  private final case class UsesOptions(
+      in: Option[String],
+      outside: Option[String],
+      cap: Int,
+      root: Option[String]
+  )
+
+  private def parseUses(rest: List[String], o: UsesOptions): Either[String, UsesOptions] =
+    rest match {
+      case Nil => Right(o)
+      case "--in" :: value :: tail => parseUses(tail, o.copy(in = Some(value)))
+      case "--outside" :: value :: tail => parseUses(tail, o.copy(outside = Some(value)))
+      case "--cap" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseUses(tail, o.copy(cap = n))
+          case None => Left(s"--cap takes a number of bytes, not $value")
+        }
+      case "--root" :: value :: tail => parseUses(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
+  private def uses(
+      syms: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseUses(rest, UsesOptions(None, None, 80000, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n$usesUsage")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usesUsage")
+          case Some(d) =>
+            val (answer, _) =
+              Query.uses(
+                Root(d),
+                MillLayout,
+                Roots.empty(6000),
+                syms.split(',').toVector.filter(_.nonEmpty),
+                o.in,
+                o.outside,
                 o.cap
               )
             (exitCode(answer.status), answer.text)

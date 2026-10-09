@@ -8,7 +8,7 @@ import scala.tasty.inspector.{Inspector, Tasty, TastyInspector}
 import scala.util.control.NonFatal
 
 import grit.outline.locate.{Layout, Locate, Root}
-import grit.outline.model.{Defn, Kind, Lines}
+import grit.outline.model.{Defn, Kind, Lines, Use}
 
 /** Reads TASTy files into definitions, each with its source slices. Each inspector call is a fresh compiler run, so no compiler context is shared between roots. */
 object Read {
@@ -83,12 +83,7 @@ object Read {
 
         def nameOf(sym: Symbol): String = sym.name.stripSuffix("$")
 
-        def fullNameOf(sym: Symbol): String =
-          sym.fullName
-            .split('.')
-            .map(_.stripSuffix("$"))
-            .filterNot(_.endsWith("$package"))
-            .mkString(".")
+        def fullNameOf(sym: Symbol): String = cleanFullName(sym.fullName)
 
         /** The index of the first character of `i`'s line when only spaces precede `i` on it, else `i`. */
         def lineStart(src: String, i: Int): Int = {
@@ -401,6 +396,108 @@ object Read {
       case Right(ok) =>
         if (foreign.nonEmpty) Left(foreign.mkString("\n"))
         else if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
+        else Left(complaint(captured, tasty.size))
+    }
+  }
+
+  /** A full name without the `$` suffixes of modules and classes, and without package object segments. */
+  private def cleanFullName(fullName: String): String =
+    fullName
+      .split('.')
+      .map(_.stripSuffix("$"))
+      .filterNot(_.endsWith("$package"))
+      .mkString(".")
+
+  /** The references in `tasty` to any of `targets` (full names), sorted by file and line, each with the definition holding it.
+    *
+    * A reference is the compiler's own resolution, so a different method of the same name never matches. The enclosing definition
+    * is the innermost named `def`, `val` or class around it; lambdas and anonymous classes are passed over. `targetLine` is the line
+    * where the referenced symbol's definition starts, 0 when it has no position. Only references in source under `root.dir` are
+    * kept. `Left` carries the same complaints as `defns`.
+    */
+  def uses(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      targets: Set[String]
+  ): Either[String, Vector[Use]] = {
+    val found = mutable.ListBuffer.empty[Use]
+    val sources = mutable.Map[String, String]()
+    val foreign = mutable.ListBuffer.empty[String]
+    val prefix = root.dir.toString + "/"
+    def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
+    val inspector = new Inspector {
+      def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
+        import q.reflect.*
+
+        def named(sym: Symbol): Boolean =
+          !(sym.flags.is(Flags.Synthetic) || sym.isClassConstructor || sym.name.startsWith("$"))
+
+        val walk = new TreeTraverser {
+          // The named definitions around the tree being walked, innermost first.
+          private var enclosing: List[String] = Nil
+
+          private def record(ref: Tree): Unit = {
+            val sym = ref.symbol
+            val name = cleanFullName(sym.fullName)
+            val ownName = sym.pos.exists(p =>
+              p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
+            )
+            if (
+              targets.contains(name) && ref.pos.startLine >= 0 && !ownName &&
+              ref.pos.sourceFile.path.startsWith(prefix)
+            ) {
+              val path = ref.pos.sourceFile.path
+              val line = ref.pos.startLine + 1
+              val text =
+                source(path).linesIterator.drop(line - 1).nextOption().map(_.trim).getOrElse("")
+              found += Use(
+                target = name,
+                targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
+                file = path.stripPrefix(prefix),
+                line = line,
+                enclosing = enclosing.headOption.getOrElse(""),
+                text = text
+              )
+            }
+          }
+
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match {
+            case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
+              enclosing = cleanFullName(d.symbol.fullName) :: enclosing
+              super.traverseTree(tree)(owner)
+              enclosing = enclosing.tail
+            case ref @ (_: Ident | _: Select) =>
+              record(ref)
+              super.traverseTree(tree)(owner)
+            case _ => super.traverseTree(tree)(owner)
+          }
+        }
+
+        for (tasty <- tastys) {
+          if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
+            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+          walk.traverseTree(tasty.ast)(Symbol.noSymbol)
+        }
+      }
+    }
+    val captured = new ByteArrayOutputStream()
+    val ran: Either[String, Boolean] = redirected(captured) {
+      try
+        Right(
+          TastyInspector.inspectAllTastyFiles(
+            tasty.map(_.toString).toList,
+            Nil,
+            classpath(root, layout).map(_.toString).toList
+          )(inspector)
+        )
+      catch { case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.toString)) }
+    }
+    ran match {
+      case Left(message) => Left(message)
+      case Right(ok) =>
+        if (foreign.nonEmpty) Left(foreign.mkString("\n"))
+        else if (ok) Right(found.toVector.distinct.sortBy(u => (u.file, u.line)))
         else Left(complaint(captured, tasty.size))
     }
   }

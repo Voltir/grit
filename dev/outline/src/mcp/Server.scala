@@ -63,6 +63,28 @@ object Server {
     )
   )
 
+  private val usesTool: ujson.Value = ujson.Obj(
+    "name" -> "uses",
+    "description" -> "Direct references to the named symbols, resolved by the compiler (a different method of the same name never matches), one line per site with its enclosing definition, grouped by file; `in`/`outside` filter by path prefix.",
+    "inputSchema" -> ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "symbols" -> ujson.Obj(
+          "type" -> "array",
+          "items" -> ujson.Obj("type" -> "string"),
+          "description" -> "Symbols whose references to find: Name, Name.member or fully qualified."
+        ),
+        "in" -> ujson
+          .Obj("type" -> "string", "description" -> "Only files whose path starts with this."),
+        "outside" -> ujson
+          .Obj("type" -> "string", "description" -> "Drop files whose path starts with this."),
+        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
+      ),
+      "required" -> ujson.Arr("symbols"),
+      "additionalProperties" -> false
+    )
+  )
+
   /** The reply to one JSON-RPC line (none for a notification), and the state after it. */
   def handle(line: String, state: State): (Option[String], State) = {
     val (reply, next, _) = process(line, state)
@@ -124,7 +146,7 @@ object Server {
             case Some("tools/list") =>
               answered(
                 id,
-                Right(ujson.Obj("tools" -> ujson.Arr(showTool, familyTool))),
+                Right(ujson.Obj("tools" -> ujson.Arr(showTool, familyTool, usesTool))),
                 state,
                 None
               )
@@ -181,6 +203,9 @@ object Server {
           case "family" =>
             val (result, next) = family(args, state)
             (Right(result), next, Some(name))
+          case "uses" =>
+            val (result, next) = uses(args, state)
+            (Right(result), next, Some(name))
           case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
         }
     }
@@ -233,6 +258,37 @@ object Server {
         )
         (toolResult(answer.text, isError = false), state.copy(roots = roots))
     }
+
+  private final case class UsesArgs(
+      symbols: Vector[String],
+      in: Option[String],
+      outside: Option[String],
+      root: Option[Root]
+  )
+
+  private def uses(args: ujson.Value, state: State): (ujson.Value, State) =
+    parseUses(args) match {
+      case Left(problem) => (toolResult(s"bad arguments for uses: $problem", isError = true), state)
+      case Right(a) =>
+        val (answer, roots) = Query.uses(
+          a.root.getOrElse(state.defaultRoot),
+          MillLayout,
+          state.roots,
+          a.symbols,
+          a.in,
+          a.outside,
+          cap
+        )
+        (toolResult(answer.text, isError = false), state.copy(roots = roots))
+    }
+
+  private def parseUses(args: ujson.Value): Either[String, UsesArgs] =
+    for {
+      symbols <- stringList(args, "symbols", required = true)
+      in <- optText(args, "in")
+      outside <- optText(args, "outside")
+      root <- rootArg(args)
+    } yield UsesArgs(symbols, in, outside, root)
 
   private def parseShow(args: ujson.Value): Either[String, ShowArgs] =
     for {

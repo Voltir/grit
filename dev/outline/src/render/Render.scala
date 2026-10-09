@@ -2,7 +2,7 @@ package grit.outline.render
 
 import java.nio.charset.StandardCharsets
 
-import grit.outline.model.{Defn, Kind}
+import grit.outline.model.{Defn, Kind, Use}
 import grit.outline.trace.Traced
 
 /** A trait's family: the trait, its implementations, and each contract with the suites extending it. */
@@ -172,6 +172,26 @@ object Render {
   }
 
   /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
+  /** The `uses` answer: each site as `line  in enclosing   text`, grouped by file under `== file`, then the site and file counts; `overloaded` names the targets whose sites add the `[→ name :line]` marker to their target's definition line; cut at `cap` bytes. */
+  def uses(sites: Vector[Use], overloaded: Set[String], cap: Int): String = {
+    def siteLine(u: Use): String = {
+      val pkg = pkgOf(u.enclosing)
+      val enclosing = if (pkg.isEmpty) u.enclosing else u.enclosing.drop(pkg.length + 1)
+      val marker =
+        if (overloaded.contains(u.target)) s"  [→ ${u.target.split('.').last} :${u.targetLine}]"
+        else ""
+      s"  ${u.line}  in $enclosing$marker   ${u.text}"
+    }
+    val files = sites.map(_.file).distinct
+    val chunks: Vector[Vector[String]] = files.map { f =>
+      s"== $f" +: sites.filter(_.file == f).map(siteLine)
+    }
+    val (kept, truncated) = fit(chunks, sites.size, cap)
+    val summary = s"[${sites.size} sites in ${files.size} files]"
+    val body = (kept ++ truncated :+ summary).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
   private def fit(
       chunks: Vector[Vector[String]],
       total: Int,
