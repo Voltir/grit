@@ -182,6 +182,15 @@ object JsonSchemaTests extends TestSuite {
         s"properties.p${JsonSchema.MaxProperties + 1}",
         s"more than ${JsonSchema.MaxProperties} properties in all"
       )
+      // Counted across the whole schema, not per object: `a` and its 51 are 52, `b` the 53rd,
+      // so b's 48th property is the 101st.
+      val half = JsonSchema.MaxProperties / 2 + 1
+      JsonSchema.read(obj("a" -> many(half), "b" -> many(half))).swap.toOption ==> Some(
+        SchemaError(
+          "properties.b.properties.p48",
+          s"more than ${JsonSchema.MaxProperties} properties in all"
+        )
+      )
 
       val options =
         (n: Int) => nested(plus(text, "enum", ujson.Arr.from((1 to n).map(i => s"o$i"))))
@@ -190,6 +199,23 @@ object JsonSchemaTests extends TestSuite {
         NestedPath,
         s"`enum` holds ${JsonSchema.MaxEnum + 1} values; at most ${JsonSchema.MaxEnum} are allowed"
       )
+    }
+
+    test("arrays nest toward the depth limit as objects do") {
+      def lists(depth: Int): ujson.Obj =
+        obj("a" -> (2 to depth).foldLeft(ujson.Obj("type" -> "array", "items" -> text)) {
+          (inner, _) => ujson.Obj("type" -> "array", "items" -> inner)
+        })
+      JsonSchema.read(lists(JsonSchema.MaxDepth)).map(_.json) ==> Right(lists(JsonSchema.MaxDepth))
+      refusal(lists(JsonSchema.MaxDepth + 1)) ==> SchemaError(
+        "properties.a" + ".items" * JsonSchema.MaxDepth,
+        s"objects and arrays nest more than ${JsonSchema.MaxDepth} deep below the root"
+      )
+    }
+
+    test("a type listing null first reads as the same nullable type") {
+      JsonSchema.read(obj("x" -> ujson.Obj("type" -> ujson.Arr("null", "string")))).map(_.json) ==>
+        Right(obj("x" -> ujson.Obj("type" -> ujson.Arr("string", "null"))))
     }
 
     test("the first refusal in document order: a node before what it holds") {

@@ -1,7 +1,7 @@
 package grit.core.tool
 
 import grit.core.model.ArgRepair
-import grit.core.schema.SchemaError
+import grit.core.schema.{JsonSchema, SchemaError}
 
 import utest.*
 
@@ -338,6 +338,26 @@ object ArgsTests extends TestSuite {
       )
       read ==> Right(sent.map(v => refined.read(v, Set.empty).left.map(_.message)))
       read.map(_(1)) ==> Right(Left("`name` is missing: it takes text."))
+    }
+
+    test("a typed reply is read with no repairs: the schema's check made them") {
+      // A conforming value holding a quoted number, as one could only under another schema:
+      // read again with repairs it would be the number.
+      val loose = JsonSchema.read(
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj("count" -> ujson.Obj("type" -> "string")),
+          "required" -> ujson.Arr("count"),
+          "additionalProperties" -> false
+        )
+      )
+      val read = for {
+        schema <- loose.left.map(_.toString)
+        conforming <- schema.check(ujson.Obj("count" -> "3"), Set.empty).left.map(_.toString)
+        typed <- Args.of((count = Field.count("How many.", 1, 5))).typed.left.map(_.toString)
+        count <- typed.read(conforming)
+      } yield count
+      read ==> Left("`count` takes a whole number from 1 to 5, not \"3\".")
     }
 
     test("arguments whose schema the subset refuses are not typed") {

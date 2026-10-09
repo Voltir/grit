@@ -66,9 +66,10 @@ object CheckTests extends TestSuite {
 
   val tests = Tests {
     test("what conforms is kept as sent, written compactly") {
-      checked(good, Set.empty) ==> Right(good)
-      schema.check(good, Set.empty).map(_.text) ==>
-        Right("""{"about":"new","label":"a","count":2,"ratio":0.5,"edits":[{"oldText":"x"}]}""")
+      // Sent in the reverse of the schema's property order, and kept in the order sent.
+      val reversed = ujson.Obj.from(good.value.toVector.reverse)
+      schema.check(reversed, Set.empty).map(_.text) ==>
+        Right("""{"edits":[{"oldText":"x"}],"ratio":0.5,"count":2,"label":"a","about":"new"}""")
     }
 
     test("each kind of mismatch, at its path") {
@@ -147,12 +148,6 @@ object CheckTests extends TestSuite {
       val conforming = schema.check(good, Set.empty)
       conforming.foreach(c => c.json("label") = "changed")
       conforming.map(_.json("label")) ==> Right(ujson.Str("a"))
-    }
-
-    test("Typed.json reads what conforms as itself") {
-      val conforming = schema.check(good, Set.empty)
-      conforming.flatMap(c => Typed.json(schema).read(c).left.map(Mismatch("", _))).map(_.text) ==>
-        conforming.map(_.text)
     }
 
     test("a mismatch's message: its path, then why; why alone at the root") {
