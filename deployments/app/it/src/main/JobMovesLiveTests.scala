@@ -6,22 +6,34 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.act.{MoveLimits, MoveName, Moves}
+import grit.core.act.{Keeping, MoveLimits, MoveName, Moves}
 import grit.core.clock.SetClock
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
-import grit.core.id.{Declarer, JobName, PrincipalId, ScheduleId, ScheduleKey, TurnRef, WorkflowId}
+import grit.core.id.{
+  Declarer,
+  DocKey,
+  JobName,
+  PluginName,
+  PrincipalId,
+  ScheduleId,
+  ScheduleKey,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.inbox.Slotted
-import grit.core.job.{Declared, Grace, JobRun, PlainJob, SlotRule}
+import grit.core.job.{Declared, Grace, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.place.Service
+import grit.core.place.{Namespace, Place, Service}
+import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Payload, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.edge.{Server, Tools}
@@ -38,7 +50,8 @@ import utest.*
   * the kit launches a deployment. Its request is made for the schedule's principal with the
   * retry the edge advertised, the edge rings the run, the ask's cost is recorded once, and a
   * run whose process stops between its request and the answer comes back to the same reply and
-  * rows.
+  * rows. And a plugin's keeping job, whose keep that refuses leaves nothing in its plugin's
+  * documents, and whose next keep writes there.
   */
 object JobMovesLiveTests extends TestSuite {
 
@@ -101,6 +114,67 @@ object JobMovesLiveTests extends TestSuite {
       100,
       None
     )
+
+  /** The plugin whose documents [[Tallying]] keeps; nothing posts them. */
+  private final class Tallies(at: Instant) extends Plugin {
+    val name: PluginName = PluginName.of("tallies").fold(sys.error, identity)
+    val version: Int = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms =
+        DocLabel
+          .of("tallies")
+          .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
+          .fold(sys.error, identity)
+      val posting: Option[DocumentPosting] = None
+    })
+    override val jobs: Vector[grit.core.job.Job[?]] = Vector(Tallying)
+    override val schedules: Vector[Declared[?]] = Vector(
+      Declared(
+        key,
+        Tallying,
+        SlotRule.Once(at, Grace.of(5.minutes).getOrElse(sys.error("grace"))),
+        NoParams
+      )
+    )
+  }
+
+  /** A keeping job whose run keeps `undone` under `k` and refuses, then keeps `kept` there:
+    * its reply, each keep's result, a line each.
+    */
+  private object Tallying extends KeepingJob[NoParams.type] {
+    val name: JobName = JobName.of("tally").fold(sys.error, identity)
+    val version: Int = 1
+    def write(params: NoParams.type): ujson.Value = ujson.Obj()
+    def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
+    def run(run: JobRun[NoParams.type], moves: Keeping^): String = {
+      def keep(n: String, text: String, refuse: Boolean) =
+        moves
+          .keep[Tallied](JobMovesLiveTests.name(n)) { (keeper, at) =>
+            keeper
+              .write(
+                DocKey.of("k").fold(sys.error, identity),
+                Label.Public,
+                Place.under(Namespace.Task, Vector("tallies")),
+                DocText.of(text).fold(sys.error, identity),
+                ujson.Obj(),
+                at
+              )
+              .flatMap(w =>
+                if (refuse) Left(StoreError.Invalid("refused"))
+                else Right(Tallied(Label.written(w.kept)))
+              )
+          }
+          .fold(_.toString, _.label)
+      s"${keep("undone", "undone", refuse = true)}\n${keep("kept", "kept", refuse = false)}"
+    }
+  }
+
+  /** The label a keep was kept at, in its written form. */
+  private final case class Tallied(label: String) extends caps.Pure
+  private object Tallied {
+    given grit.core.durable.Journaled[Tallied] = grit.core.durable.Journaled
+      .json(t => ujson.Str(t.label), v => v.strOpt.map(Tallied(_)).toRight("no label"))
+  }
 
   private val key: ScheduleKey = ScheduleKey.of("probe").fold(sys.error, identity)
 
@@ -166,14 +240,19 @@ object JobMovesLiveTests extends TestSuite {
     server
   }
 
-  /** The run the clock edge starts on `engine` for `d`'s slot at `at`. */
-  private def started(engine: Engine^, d: Deployment, at: Instant): TurnRef = {
+  /** The run the clock edge starts on `engine` for `d`'s slot of `id` at `at`. */
+  private def started(
+      engine: Engine^,
+      d: Deployment,
+      at: Instant,
+      id: ScheduleId = schedule
+  ): TurnRef = {
     val ticked =
       right(
         new ClockEdge(engine.inbox, engine.schedules, engine.db, new SetClock(at), d.allJobs).tick()
       )
     ticked.slotted
-      .collectFirst { case (`schedule`, Slotted.Started(turn, _)) =>
+      .collectFirst { case (`id`, Slotted.Started(turn, _)) =>
         turn
       }
       .getOrElse(sys.error(s"not started: $ticked"))
@@ -284,6 +363,54 @@ object JobMovesLiveTests extends TestSuite {
           Vector("move:think:record")
         )
       )
+    }
+
+    test(
+      "a keeping job's keep that refuses leaves nothing in its plugin's documents; its next keep writes there"
+    ) {
+      val config = TestPostgres.freshDatabase("job_keeps")
+      val at = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+      val tallies = new Tallies(at)
+      val d = Deployment
+        .of(
+          edges = Vector.empty,
+          worksIn = Vector.empty,
+          plugins = Vector(tallies),
+          policy = Policy(assigned, assigned, assigned, assigned),
+          offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
+          assembly = Assembly.Linear(Tokens(4000)),
+          topics = Topics.Off("no classifier here"),
+          lifecycle = LifecycleSettings.Default,
+          budget = Budget(ZoneOffset.UTC, None),
+          speaking = Speaking.Off,
+          sweep = 30.seconds,
+          persona = grit.core.persona.Persona.Grit
+        )
+        .fold(r => sys.error(r.message), identity)
+      val engine = LiveEngine.open(config, Turn.Epoch)
+      try {
+        launch(engine, config, d)
+        val turn = started(engine, d, at, ScheduleId.declared(Declarer.Plugin(tallies.name), key))
+        val _ = engine.awaitTurn(turn)
+        val id = WorkflowId.value(turn.workflowId)
+        (
+          replied(engine, turn),
+          rows(
+            config,
+            "SELECT key, body FROM grit.documents WHERE plugin = ? ORDER BY version",
+            "tallies"
+          ),
+          rows(
+            config,
+            "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND function_name LIKE 'move:%' ORDER BY function_id",
+            id
+          )
+        ) ==> (
+          s"${grit.core.act.MoveError.Store("refused")}\npublic",
+          Vector(Vector("k", "kept")),
+          Vector(Vector("move:undone"), Vector("move:kept"))
+        )
+      } finally engine.close()
     }
 
     test(
