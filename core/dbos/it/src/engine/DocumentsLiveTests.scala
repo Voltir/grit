@@ -2,11 +2,10 @@ package grit.dbos.engine
 
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms}
+import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.id.{PluginName, WorkflowId}
-import grit.core.plugin.{Documents, Plugin}
-import grit.core.store.{ClosedPeriod, StoreError, Tx}
+import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlDocuments, SqlTombstones, TestPostgres}
 
@@ -33,9 +32,7 @@ object DocumentsLiveTests extends TestSuite {
     override val documents: Option[Documents] = terms.map(t =>
       new Documents {
         val terms: DocumentTerms = t
-        def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
-            Tx^
-        ): Either[StoreError, Unit] = Right(())
+        val posting: Option[DocumentPosting] = None
       }
     )
   }

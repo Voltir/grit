@@ -116,7 +116,7 @@ object Posting {
         )
       _ <- plugin.cache.fold(Right(()))(_.post(closed, env.cache(plugin.name, closed)))
       _ <- plugin.documents.fold(Right(()))(d =>
-        d.post(closed, env.documents(plugin.name, d.terms))
+        d.posting.fold(Right(()))(_.post(closed, env.documents(plugin.name, d.terms)))
       )
       _ <- env.cursors.advance(plugin.name, plugin.version, closed.order)
       _ <- env.tombstones.write(

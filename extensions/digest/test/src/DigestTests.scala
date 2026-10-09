@@ -95,7 +95,7 @@ object DigestTests extends TestSuite {
     val keeper: DocumentKeeper = docs.keeper(name, Digest.Terms)
 
     def post(p: ClosedPeriod): Either[StoreError, Unit] =
-      digest.documents.fold(Right(()))(_.post(p, keeper)(using TestTx.fake))
+      digest.documents.flatMap(_.posting).fold(Right(()))(_.post(p, keeper)(using TestTx.fake))
 
     def newest: Vector[Document] =
       keeper.newest(100)(using TestTx.fake).getOrElse(sys.error("in-memory store"))
@@ -218,9 +218,11 @@ object DigestTests extends TestSuite {
       // Posting opens each closed period's transaction for its conversation: in its room, at
       // the label its conversation was created with.
       def post(p: ClosedPeriod, label: Label): Unit =
-        kept.digest.documents.fold(Right(()))(
-          _.post(p, kept.keeper)(using TestTx.fake(Clearance.inRoom(room, label, label)))
-        ) ==> Right(())
+        kept.digest.documents
+          .flatMap(_.posting)
+          .fold(Right(()))(
+            _.post(p, kept.keeper)(using TestTx.fake(Clearance.inRoom(room, label, label)))
+          ) ==> Right(())
       post(nightly(1), Label.Public)
       post(nightly(2), TestLabels.Trial)
       post(nightly(3), Label.Public)

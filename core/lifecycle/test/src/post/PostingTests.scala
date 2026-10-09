@@ -18,7 +18,15 @@ import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{CacheDocs, CachePosting, Documents, InMemoryPlugins, Plugin, PostRef}
+import grit.core.plugin.{
+  CacheDocs,
+  CachePosting,
+  DocumentPosting,
+  Documents,
+  InMemoryPlugins,
+  Plugin,
+  PostRef
+}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ClosedPeriod,
@@ -87,7 +95,8 @@ object PostingTests extends TestSuite {
             Left(StoreError.Invalid(s"cache refused ${closed.closing.flows.prose}"))
           else docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str("cached"))
       })
-    override val documents: Option[Documents] = Some(new Documents {
+    override val documents: Option[Documents] = Some(new Documents with DocumentPosting {
+      val posting: Option[DocumentPosting] = Some(this)
       val terms: DocumentTerms =
         DocLabel
           .of("prose")

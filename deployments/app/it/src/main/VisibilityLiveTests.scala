@@ -32,7 +32,7 @@ import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{Documents, Needs, Plugin}
+import grit.core.plugin.{DocumentPosting, Documents, Needs, Plugin}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{ClosedPeriod, Db, Entry, Nearby, Origin, Payload, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
@@ -111,7 +111,8 @@ object VisibilityLiveTests extends TestSuite {
   /** Keeps documents the scenario writes itself, and posts nothing. */
   private final class Notes(val name: PluginName) extends Plugin {
     val version = 1
-    override val documents: Option[Documents] = Some(new Documents {
+    override val documents: Option[Documents] = Some(new Documents with DocumentPosting {
+      val posting: Option[DocumentPosting] = Some(this)
       val terms: DocumentTerms = Notes.Terms
       def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
         Right(())

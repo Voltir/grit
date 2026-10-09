@@ -10,7 +10,16 @@ import grit.core.id.{CallSlot, DocKey, PluginName}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.period.{CloseOrdinal, CloseReason}
 import grit.core.place.Place
-import grit.core.plugin.{Documents, Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
+import grit.core.plugin.{
+  DocumentPosting,
+  Documents,
+  Exports,
+  Needs,
+  PluginReads,
+  PluginRun,
+  PluginTool,
+  Unneeded
+}
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 
@@ -61,9 +70,14 @@ object Digest {
       terms <- DocumentTerms.of(label, DocWeight.Unscaled, 30.days, 1000)
     } yield terms).fold(why => throw new IllegalStateException(why), identity)
 
-  /** Each closing's line in its room's document. */
+  /** Its documents, under [[Terms]], each room's posted [[Posted]]. */
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms
+    val posting: Option[DocumentPosting] = Some(Posted)
+  }
+
+  /** Each closing's line in its room's document. */
+  private object Posted extends DocumentPosting {
     def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
         tx: Tx^
     ): Either[StoreError, Unit] =

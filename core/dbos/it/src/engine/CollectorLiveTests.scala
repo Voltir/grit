@@ -41,7 +41,7 @@ import grit.core.period.{
   Windows
 }
 import grit.core.place.{Directory, Locality, Namespace, Place}
-import grit.core.plugin.{CacheDocs, CachePosting, Documents, Plugin, PostRef}
+import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject}
@@ -434,7 +434,8 @@ object CollectorLiveTests extends TestSuite {
   /** A plugin with documents under [[Terms]] that it never posts to. */
   private final class Keeping(val name: PluginName) extends Plugin {
     val version: Int = 1
-    override val documents: Option[Documents] = Some(new Documents {
+    override val documents: Option[Documents] = Some(new Documents with DocumentPosting {
+      val posting: Option[DocumentPosting] = Some(this)
       val terms: DocumentTerms = Terms
       def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
         Right(())

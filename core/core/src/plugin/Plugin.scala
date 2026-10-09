@@ -53,8 +53,8 @@ trait Plugin extends caps.Pure {
     */
   def compartments: Vector[Compartment] = Vector.empty
 
-  /** Whether it is posted closed periods: it has a cache or documents. */
-  final def posts: Boolean = cache.nonEmpty || documents.nonEmpty
+  /** Whether it is posted closed periods: it has a cache or a posting to its documents. */
+  final def posts: Boolean = cache.nonEmpty || documents.exists(_.posting.nonEmpty)
 }
 
 /** A plugin's posting to cache documents. */
@@ -67,9 +67,16 @@ trait CachePosting extends caps.Pure {
   def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit]
 }
 
-/** A plugin's documents: the terms they are kept and drawn on under, and its posting to them. */
+/** A plugin's documents: the terms they are kept and drawn on under, and its posting to them,
+  * if any. With none, only its keeping jobs write them.
+  */
 trait Documents extends caps.Pure {
   def terms: DocumentTerms
+  def posting: Option[DocumentPosting]
+}
+
+/** A plugin's posting to its documents. */
+trait DocumentPosting extends caps.Pure {
 
   /** Keeps what the plugin makes of `closed` in `keeper`, in the transaction that moves its
     * cursor past `closed`, after its cache's post when it has one: all commit, or none. A

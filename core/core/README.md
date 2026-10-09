@@ -246,7 +246,7 @@ In dependency order:
 - **`plugin`** — features a deployment turns on (ADR 0027), each a pure bundle of
   contributions to core's points: `Plugin` (a name, a version, the plugins it `needs`, and
   optionally a `CachePosting`, which keeps what it wants of one `ClosedPeriod`, its
-  `Documents`, the terms they are kept under and its posting to them, and
+  `Documents`, the terms they are kept under and its `DocumentPosting` to them, if any, and
   `PluginTool`s, each a `Hosted` description bound at start to a `PluginRun` over its own
   documents, `PluginReads`, its needs' services, `Needs`, and its own jobs, `OwnJobs`, run told
   its call, handed `Reads` for the turn that made it and a `ScheduleDesk`; and its `Job`s and `Declared` schedules); `Exports`, a plugin another may

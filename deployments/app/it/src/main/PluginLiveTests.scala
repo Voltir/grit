@@ -25,7 +25,15 @@ import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{CacheDocs, CachePosting, Documents, Needs, Plugin, PostRef}
+import grit.core.plugin.{
+  CacheDocs,
+  CachePosting,
+  DocumentPosting,
+  Documents,
+  Needs,
+  Plugin,
+  PostRef
+}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.Subject
@@ -61,7 +69,8 @@ object PluginLiveTests extends TestSuite {
     */
   private final class Noting(val name: PluginName) extends Plugin {
     val version = 1
-    override val documents: Option[Documents] = Some(new Documents {
+    override val documents: Option[Documents] = Some(new Documents with DocumentPosting {
+      val posting: Option[DocumentPosting] = Some(this)
       val terms: DocumentTerms =
         (for {
           label <- DocLabel.of("notes")
