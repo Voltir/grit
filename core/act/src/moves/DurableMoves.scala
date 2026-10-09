@@ -161,6 +161,7 @@ object DurableMoves {
         val same = MovesJournal.sameAsk(made.digest, request)
         made match {
           case AskMade.Refused(_, _, _) if !same => Left(diverge(name))
+          case AskMade.Shaped(_, _, _, _) | AskMade.Unshaped(_, _, _) => Left(diverge(name))
           case AskMade.Refused(AskMade.Kind.Capped, _, _) => Left(MoveError.Capped)
           case AskMade.Refused(AskMade.Kind.Model, why, _) => Left(MoveError.Model(why))
           case AskMade.Refused(AskMade.Kind.Store, why, _) => Left(MoveError.Store(why))

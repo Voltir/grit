@@ -7,6 +7,7 @@ import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.{Label, Level}
@@ -32,6 +33,23 @@ object MovesJournalTests extends TestSuite {
     Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
     "test/summary"
   )
+
+  /** A schema of `a`, a string, and `b`, an integer, its properties in `order`. */
+  private def schema(order: String*): JsonSchema = {
+    val types = Map("a" -> "string", "b" -> "integer")
+    JsonSchema
+      .read(
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj.from(
+            order.map(p => p -> ujson.Obj("type" -> types.getOrElse(p, "string")))
+          ),
+          "required" -> ujson.Arr.from(order.map(ujson.Str(_))),
+          "additionalProperties" -> false
+        )
+      )
+      .fold(e => throw new java.lang.AssertionError(e.message), identity)
+  }
 
   private val probe: Service =
     Service.of("probe").fold(e => throw new java.lang.AssertionError(e), identity)
@@ -65,6 +83,26 @@ object MovesJournalTests extends TestSuite {
       pinned[AskMade](
         AskMade.Refused(AskMade.Kind.Store, "gone", "v1:ab"),
         """{"refused":"store","why":"gone","digest":"v1:ab"}"""
+      )
+    }
+
+    test(
+      "a JSON ask's move step is written shaped with its digest, reply, label and each call's model, usage and estimate, or unshaped saying why"
+    ) {
+      val calls = Vector(
+        AskMade.Call("test/summary", message.usage, Tokens(42)),
+        AskMade.Call("test/summary", Usage(Tokens(3), Tokens(1), Tokens.Zero, None), Tokens(57))
+      )
+      val written =
+        """[{"model":"test/summary","usage":{"input":10,"output":2,"cachedInput":0,"costUsd":"0.001"},"estimate":42},""" +
+          """{"model":"test/summary","usage":{"input":3,"output":1,"cachedInput":0},"estimate":57}]"""
+      pinned[AskMade](
+        AskMade.Shaped("v1:ab", """{"b":2,"a":"x"}""", Label.at(Level.Internal), calls),
+        s"""{"shaped":{"digest":"v1:ab","reply":{"b":2,"a":"x"},"at":"internal","calls":$written}}"""
+      )
+      pinned[AskMade](
+        AskMade.Unshaped("v1:ab", "no call of `reply`", calls),
+        s"""{"unshaped":{"digest":"v1:ab","why":"no call of `reply`","calls":$written}}"""
       )
     }
 
@@ -161,6 +199,22 @@ object MovesJournalTests extends TestSuite {
       ) ==> "v1:f5299b53da2561d7621e8442dcbd322ca7b0c9e19bd9dc2972026cf0cd05919f"
     }
 
+    test(
+      "a JSON ask's v1 digest is of its system text, messages and schema as sent, its properties in order"
+    ) {
+      val asked = Vector(Message.User("hi"))
+      // json10:Say hello.1;u2:hi127:{"type":"object","properties":{"a":{"type":"string"},
+      //   "b":{"type":"integer"}},"required":["a","b"],"additionalProperties":false}
+      // and the same with b before a, in properties and required.
+      (
+        MovesJournal.json("Say hello.", asked, schema("a", "b")),
+        MovesJournal.json("Say hello.", asked, schema("b", "a"))
+      ) ==> (
+        "v1:3e4db55a8bbd765864607dc393e7e4daa04844d32440b7727d1a74fddd3f413e",
+        "v1:ce9b28636014d3a670105b17991e2ea46cde272d44975b8ec0dda8733bd975b3"
+      )
+    }
+
     test("a call's v1 digest is of its place, tool and arguments, their keys sorted") {
       // call13:service:probe10:probe_reado2;1:nd1:14:paths1:a
       val digest = "v1:0319dd8777604bcd34fab2f4971030dd5956196539cf7b3a73f93a6a6c92899c"
@@ -171,7 +225,7 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
-      "a recorded digest is compared under its own version, and one of no known version differs"
+      "a recorded digest is compared under its own version and kind, and one of no known version or another kind differs"
     ) {
       val request = ModelRequest("Say hello.", Vector(Message.User("hi")))
       val args = ujson.Obj("path" -> "a")
@@ -189,8 +243,20 @@ object MovesJournalTests extends TestSuite {
           probe,
           ToolName("other"),
           args
+        ),
+        MovesJournal.sameJson(
+          MovesJournal.json("Say hello.", request.messages, schema("a", "b")),
+          "Say hello.",
+          request.messages,
+          schema("a", "b")
+        ),
+        MovesJournal.sameJson(
+          MovesJournal.ask(request),
+          "Say hello.",
+          request.messages,
+          schema("a")
         )
-      ) ==> (true, false, true, false)
+      ) ==> (true, false, true, false, true, false)
     }
   }
 }
