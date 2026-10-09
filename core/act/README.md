@@ -10,7 +10,8 @@ forms. It names core alone (enola-intent.yaml's `act-names-core-alone`).
 - **`phase`** — `Asking`: a model's reply, retried while its provider is unavailable
   (`Asking.Retries`) and told to a `Hearing` as it is generated, a fresh `Heard` for each
   attempt; whether an acting's `Allowance` admits an ask; and an ask's cost recorded in the
-  ledger, once. `Calling`: what an acting's `Gates` make of a call (`Gated`), whom its request
+  ledger, once. `Classifying`: a classifier's answers to a judgment's request, retried while
+  it is unavailable, on the same waits as a reply. `Calling`: what an acting's `Gates` make of a call (`Gated`), whom its request
   is made for, the request itself, sent to the live edge serving its place, the wait for that
   edge (`Awaited`, its silent steps named by `WaitSteps`, `Calling.ServeWithin` then
   `Calling.RunWithin`), a person's approval of a gated call, and the answer read from the
