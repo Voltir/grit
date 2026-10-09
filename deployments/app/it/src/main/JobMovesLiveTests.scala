@@ -322,9 +322,11 @@ object JobMovesLiveTests extends TestSuite {
       id
     ) ++
       rows(config, "SELECT message FROM dbos.notifications WHERE destination_uuid = ?", id) ++
+      // No cost column: the stub provider and classifier answer at no cost, so it would read 0
+      // whatever a move recorded. The unit tier pins each move's priced cost (RunTests).
       rows(
         config,
-        "SELECT replace(entry_id, ?, '{workflow}'), model, cost_usd::text FROM grit.usage_ledger ORDER BY entry_id",
+        "SELECT replace(entry_id, ?, '{workflow}'), model FROM grit.usage_ledger ORDER BY entry_id",
         id
       ) ++
       Vector(Vector(replied(engine, turn))) ++
@@ -418,9 +420,9 @@ object JobMovesLiveTests extends TestSuite {
             """{"kind": "done", "text": "read a"}"""
           ),
           Vector(ujson.write(ujson.Str(Desk.Doorbell))),
-          Vector("move:{workflow}:shape", "grit/stub", "0"),
-          Vector("move:{workflow}:think", "grit/stub", "0"),
-          Vector("move:{workflow}:weigh", "grit/stub-classifier", "0"),
+          Vector("move:{workflow}:shape", "grit/stub"),
+          Vector("move:{workflow}:think", "grit/stub"),
+          Vector("move:{workflow}:weigh", "grit/stub-classifier"),
           Vector("Done(read a,public)\nstub reply to: Done(read a,public)\nyes\n0.25"),
           Vector("move:look"),
           Vector("move:look:answer"),
