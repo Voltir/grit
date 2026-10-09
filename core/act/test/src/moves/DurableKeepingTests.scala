@@ -14,7 +14,9 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** [[DurableMoves.keeping]]'s keeps, over [[MovesWorld]]'s documents. */
+/** [[DurableMoves.keeping]]'s keeps, over [[MovesWorld]]'s documents, which roll nothing back:
+  * that a keep commits with its record, or not at all, is the live tier's to show.
+  */
 object DurableKeepingTests extends TestSuite {
   import MovesContract.name
   import MovesWorld.*
@@ -50,42 +52,45 @@ object DurableKeepingTests extends TestSuite {
       .map(d => (DocKey.value(d.key), DocText.value(d.text)))
       .sorted
 
-  /** A keeper that writes as `inner` does, then fails as a raced key's write does. */
-  private final class Raced(inner: DocumentKeeper) extends DocumentKeeper {
+  /** A keeper that writes as `inner` does, counting its writes. */
+  private final class Counting(inner: DocumentKeeper) extends DocumentKeeper {
     export inner.{current, newest, withdraw}
+    @caps.unsafe.untrackedCaptures
+    var writes = 0
     def write(k: DocKey, label: Label, place: Place, t: DocText, data: ujson.Value, at: Instant)(
         using Tx^
-    ): Either[StoreError, Written] =
-      inner
-        .write(k, label, place, t, data, at)
-        .flatMap(_ =>
-          Left(StoreError.DatabaseError("duplicate key value violates unique constraint"))
-        )
+    ): Either[StoreError, Written] = {
+      writes += 1
+      inner.write(k, label, place, t, data, at)
+    }
   }
 
   val tests = Tests {
-    test("a keep writes at the run's floor, and commits with its record: a rerun gets it back") {
+    test(
+      "a keep writes at the run's floor; replayed, it returns what it recorded without running its body"
+    ) {
       val floor = Label.at(Level.Internal)
       val w = new MovesWorld(broken = false, floor)
       val keep = (m: Keeping^) =>
         Got(m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", "noted", at)))
       val first = w.keeping(MoveLimits.Zero)(keep)
       val steps = w.durable.recordedSteps(Turn.workflowId)
-      // Replayed, the keep's body never runs: what it wrote is not written again.
+      val counting = new Counting(w.keeper)
       val again =
         new InMemoryDurable().replay(Turn.workflowId, w.durable.history(Turn.workflowId)) { _ =>
           val models = new Answering(MovesContract.Answer)
           DurableMoves
-            .keeping(w.acting, MoveLimits.Zero, w.env(models), new Raced(w.keeper))(m =>
+            .keeping(w.acting, MoveLimits.Zero, w.env(models), counting)(m =>
               Seen(keep(m).kept.fold(_.toString, _.label))
             )
             .said
         }
-      (first, steps, kept(w), again) ==> (
+      (first, steps, kept(w), again, counting.writes) ==> (
         Got(Right(Kept(Label.written(floor)))),
         Vector("move:note"),
         Vector(("k", "noted")),
-        Right(Label.written(floor))
+        Right(Label.written(floor)),
+        0
       )
     }
 
@@ -100,20 +105,6 @@ object DurableKeepingTests extends TestSuite {
       }
       (got.said, kept(w)) ==> (
         s"${MoveError.Store("not today")}; ${MoveError.Repeated(name("note"))}",
-        Vector()
-      )
-    }
-
-    test("a keep whose key another run wrote meanwhile is Store, and keeps nothing") {
-      val w = new MovesWorld(broken = false)
-      val got = w.keeping(MoveLimits.Zero, new Raced(w.keeper)) { m =>
-        Seen(
-          m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", "raced", at))
-            .fold(_.toString, _.label)
-        )
-      }
-      (got.said, kept(w)) ==> (
-        MoveError.Store("duplicate key value violates unique constraint").toString,
         Vector()
       )
     }
