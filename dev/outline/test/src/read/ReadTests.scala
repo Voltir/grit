@@ -1,7 +1,7 @@
 package grit.outline.read
 
 import grit.outline.locate.Root
-import grit.outline.model.{Defn, Kind, Lines}
+import grit.outline.model.{Defn, Kind, Lines, Ref}
 
 import utest.*
 
@@ -93,6 +93,51 @@ object ReadTests extends TestSuite {
       assert(id.kind == Kind.Opaque)
       assert(id.signature == "  opaque type Id = String")
       assert(id.lines == Lines(50, 51))
+    }
+
+    test("a case class's signature is its declaration, with no synthetic members") {
+      val limits =
+        only(named(read, "grit.outline.fixture.Limits").filter(_.kind == Kind.CaseClass), "Limits")
+      assert(limits.kind == Kind.CaseClass)
+      assert(limits.signature == "final case class Limits private (asks: Int, calls: Int)")
+      assert(limits.lines == Lines(22, 23))
+      assert(limits.members.isEmpty)
+    }
+
+    test("a class's signature stops before its body, and a parentless trait is its name") {
+      val a = only(named(read, "grit.outline.fixture.A"), "A")
+      assert(a.kind == Kind.Trait)
+      assert(a.signature == "trait A")
+      assert(a.parents.isEmpty)
+      val b = only(named(read, "grit.outline.fixture.B"), "B")
+      assert(b.signature == "final case class B(c: C, note: String)")
+      assert(b.parents.contains("scala.Product"))
+    }
+
+    test("an enum's cases are its members, and its companion is not a separate definition") {
+      val top = read.filter(_.fullName == "grit.outline.fixture.Colour")
+      assert(top.map(_.kind) == Vector(Kind.Enum))
+      assert(top.map(_.signature) == Vector("enum Colour"))
+      assert(top.map(_.members.map(_.name)) == Vector(Vector("Red", "Mix")))
+      val mix = only(named(read, "grit.outline.fixture.Colour.Mix"), "Mix")
+      assert(mix.kind == Kind.EnumCase)
+      assert(mix.signature == "  case Mix(weight: Double)")
+      val red = only(named(read, "grit.outline.fixture.Colour.Red"), "Red")
+      assert(red.doc == Some("  /** Red. */"))
+      assert(red.lines == Lines(41, 42))
+    }
+
+    test("A.keep's refs name the types its signature mentions, in the repo and outside it") {
+      val keep = only(named(read, "grit.outline.fixture.A.keep"), "A.keep")
+      assert(keep.refs.contains(Ref("grit.outline.fixture.B", "grit.outline.fixture.B", true)))
+      assert(keep.refs.contains(Ref("grit.outline.fixture.Tx", "grit.outline.fixture.Tx", true)))
+      assert(keep.refs.exists(r => r.fullName == "scala.util.Either" && !r.inRepo))
+    }
+
+    test("B's refs name C, and never B itself") {
+      val b = only(named(read, "grit.outline.fixture.B"), "B")
+      assert(b.refs.contains(Ref("grit.outline.fixture.C", "grit.outline.fixture.C", true)))
+      assert(!b.refs.exists(_.fullName == "grit.outline.fixture.B"))
     }
   }
 }

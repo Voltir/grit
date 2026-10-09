@@ -20,6 +20,7 @@ object Read {
   def defns(root: Root, tasty: Vector[os.Path]): Either[String, Vector[Defn]] = {
     val buffer = mutable.ListBuffer[Defn]()
     val sources = mutable.Map[String, String]()
+    val inRepoByTop = mutable.Map[String, Boolean]()
     val prefix = root.dir.toString + "/"
     def source(path: String): String = sources.getOrElseUpdate(path, os.read(os.Path(path)))
     val inspector = new Inspector {
@@ -88,6 +89,133 @@ object Read {
 
         def trimTrailing(s: String): String = s.replaceAll("\\s+$", "")
 
+        def symbolsIn(t: TypeRepr): List[Symbol] = t match {
+          case ref: TypeRef => List(ref.typeSymbol)
+          case ref: TermRef => List(ref.typeSymbol)
+          case AppliedType(tycon, args) => symbolsIn(tycon) ++ args.flatMap(symbolsIn)
+          case AndType(left, right) => symbolsIn(left) ++ symbolsIn(right)
+          case OrType(left, right) => symbolsIn(left) ++ symbolsIn(right)
+          case TypeBounds(lo, hi) => symbolsIn(lo) ++ symbolsIn(hi)
+          case MethodType(_, params, result) => params.flatMap(symbolsIn) ++ symbolsIn(result)
+          case PolyType(_, bounds, result) => bounds.flatMap(symbolsIn) ++ symbolsIn(result)
+          case AnnotatedType(underlying, _) => symbolsIn(underlying)
+          case ByNameType(result) => symbolsIn(result)
+          case Refinement(parent, _, info) => symbolsIn(parent) ++ symbolsIn(info)
+          case _ => Nil
+        }
+
+        def treeSymbols(t: Tree): List[Symbol] = t match {
+          case tt: TypeTree => symbolsIn(tt.tpe)
+          case term: Term => symbolsIn(term.tpe)
+          case _ => Nil
+        }
+
+        def topOf(s: Symbol): Symbol = if (s.owner.isPackageDef) s else topOf(s.owner)
+
+        def refOf(s: Symbol): grit.outline.model.Ref = {
+          val topLevel = fullNameOf(topOf(s))
+          grit.outline.model.Ref(
+            fullName = fullNameOf(s),
+            topLevel = topLevel,
+            inRepo =
+              inRepoByTop.getOrElseUpdate(topLevel, Locate.forTopLevel(root, topLevel).nonEmpty)
+          )
+        }
+
+        def paramTrees(c: ClassDef): List[Tree] = c.constructor.paramss.flatMap {
+          case clause: TermParamClause => clause.params
+          case clause: TypeParamClause => clause.params
+        }
+
+        // The types a definition's signature names: its own symbol and its type parameters are not refs.
+        def refsOf(tree: Tree, sym: Symbol): Vector[grit.outline.model.Ref] = {
+          val named: List[Symbol] = tree match {
+            case c: ClassDef =>
+              paramTrees(c).flatMap {
+                case v: ValDef => symbolsIn(v.tpt.tpe)
+                case _ => Nil
+              } ++ c.parents.flatMap(treeSymbols)
+            case _: DefDef => symbolsIn(sym.info)
+            case _: ValDef => symbolsIn(sym.info)
+            case t: TypeDef =>
+              t.rhs match {
+                case tt: TypeTree => symbolsIn(tt.tpe)
+                case _ => Nil
+              }
+            case _ => Nil
+          }
+          val excluded = Set("scala.Any", "scala.Nothing", "java.lang.Object")
+          named
+            .filter(s =>
+              s != Symbol.noSymbol && s != sym && s.owner != sym && !s.flags.is(Flags.Param) &&
+                !excluded.contains(fullNameOf(s))
+            )
+            .distinct
+            .map(refOf)
+            .distinct
+            .toVector
+        }
+
+        def parentsOf(sym: Symbol): Vector[String] = {
+          val excluded = Set("scala.Any", "java.lang.Object", "scala.Matchable")
+          sym.typeRef.baseClasses
+            .filter(_ != sym)
+            .map(fullNameOf)
+            .filterNot(excluded.contains)
+            .distinct
+            .toVector
+        }
+
+        // A class's signature ends at its body's brace, or where its header does: after its last
+        // constructor, parent or self-type tree, or after its name.
+        def classCut(c: ClassDef, p: Position, src: String): Int = {
+          def within(t: Tree): Boolean =
+            t.pos.start >= p.start && t.pos.end <= p.end && t.pos.start < t.pos.end
+          val ends = (paramTrees(c) ++ c.parents ++ c.self.toList).filter(within).map(_.pos.end)
+          val nameEnd = scala.util.matching.Regex
+            .quote(c.name)
+            .r
+            .unanchored
+            .findFirstMatchIn(src.substring(p.start, p.end))
+            .fold(p.start)(m => p.start + m.end)
+          val base = if (ends.isEmpty) nameEnd else ends.max
+          val brace = src.indexOf('{', base)
+          if (brace >= 0 && brace < p.end) brace else p.end
+        }
+
+        def isEnum(t: Tree): Boolean = t match {
+          case c: ClassDef => c.symbol.flags.is(Flags.Enum) && !c.symbol.flags.is(Flags.Case)
+          case _ => false
+        }
+
+        // An enum's cases sit in its companion object's body, which the compiler marks synthetic: they become
+        // the enum's first members, and the companion is kept only for the members it holds besides the cases.
+        def withCases(stats: List[Tree]): Vector[Defn] = {
+          val enumNames = stats.collect {
+            case e: ClassDef if isEnum(e) => fullNameOf(e.symbol)
+          }.toSet
+          def companionOf(e: ClassDef): Option[ClassDef] = stats.collectFirst {
+            case m: ClassDef
+                if m.symbol.flags
+                  .is(Flags.Module) && fullNameOf(m.symbol) == fullNameOf(e.symbol) =>
+              m
+          }
+          stats.toVector.flatMap {
+            case e: ClassDef if isEnum(e) =>
+              val cases = companionOf(e).toVector
+                .flatMap(c => members(c.body))
+                .filter(_.kind == Kind.EnumCase)
+              defn(e).map(d => d.copy(members = cases ++ d.members)).toVector
+            case m: ClassDef
+                if m.symbol.flags.is(Flags.Module) && enumNames.contains(fullNameOf(m.symbol)) =>
+              defn(m).flatMap { d =>
+                val rest = d.members.filterNot(_.kind == Kind.EnumCase)
+                if (rest.isEmpty && d.members.nonEmpty) None else Some(d.copy(members = rest))
+              }.toVector
+            case other => defn(other).toVector
+          }
+        }
+
         def emit(
             tree: Tree,
             sym: Symbol,
@@ -95,7 +223,9 @@ object Read {
             cut: Int,
             hasBody: Boolean,
             members: Vector[Defn],
-            isAbstract: Boolean
+            isAbstract: Boolean,
+            refs: Vector[grit.outline.model.Ref],
+            parents: Vector[String]
         ): Defn = {
           val src = source(p.sourceFile.path)
           val rawSignature = trimTrailing(src.substring(lineStart(src, p.start), cut))
@@ -119,8 +249,8 @@ object Read {
             signature = signature,
             body = body,
             members = members,
-            refs = Vector.empty,
-            parents = Vector.empty,
+            refs = refs,
+            parents = parents,
             isPrivate = flags.is(Flags.Private) || sym.privateWithin.isDefined,
             isAbstract =
               flags.is(Flags.Deferred) || flags.is(Flags.Abstract) || flags.is(Flags.Trait)
@@ -135,41 +265,81 @@ object Read {
             tree match {
               case c: ClassDef =>
                 val src = source(p.sourceFile.path)
-                val newline = src.indexOf('\n', p.start)
-                val cut = if (newline < 0) src.length else newline
                 Some(
                   emit(
                     c,
                     sym,
                     p,
-                    cut,
+                    classCut(c, p, src),
                     hasBody = false,
                     members = members(c.body),
-                    isAbstract = false
+                    isAbstract = false,
+                    refs = refsOf(c, sym),
+                    parents = parentsOf(sym)
                   )
                 )
               case d: DefDef =>
                 val rhs = d.rhs
                 val cut = rhs.map(_.pos.start).getOrElse(p.end)
-                Some(emit(d, sym, p, cut, rhs.isDefined, Vector.empty, isAbstract = false))
+                Some(
+                  emit(
+                    d,
+                    sym,
+                    p,
+                    cut,
+                    rhs.isDefined,
+                    Vector.empty,
+                    isAbstract = false,
+                    refsOf(d, sym),
+                    Vector.empty
+                  )
+                )
               case v: ValDef =>
                 val rhs = v.rhs
                 val cut = rhs.map(_.pos.start).getOrElse(p.end)
-                Some(emit(v, sym, p, cut, rhs.isDefined, Vector.empty, isAbstract = false))
+                Some(
+                  emit(
+                    v,
+                    sym,
+                    p,
+                    cut,
+                    rhs.isDefined,
+                    Vector.empty,
+                    isAbstract = false,
+                    refsOf(v, sym),
+                    Vector.empty
+                  )
+                )
               case t: TypeDef =>
-                Some(emit(t, sym, p, p.end, hasBody = false, Vector.empty, isAbstract = false))
+                Some(
+                  emit(
+                    t,
+                    sym,
+                    p,
+                    p.end,
+                    hasBody = false,
+                    Vector.empty,
+                    isAbstract = false,
+                    refsOf(t, sym),
+                    Vector.empty
+                  )
+                )
               case _ => None
             }
         }
 
-        def members(stats: List[Tree]): Vector[Defn] = stats.toVector.flatMap(defn)
+        def members(stats: List[Tree]): Vector[Defn] = withCases(stats)
 
         for (tasty <- tastys) {
           tasty.ast match {
             case pkg: PackageClause =>
-              buffer ++= pkg.stats.toVector.flatMap {
-                case holder: ClassDef if holder.name.endsWith("$package") => members(holder.body)
-                case other => defn(other).toVector
+              val (holders, others) = pkg.stats.partition {
+                case holder: ClassDef => holder.name.endsWith("$package")
+                case _ => false
+              }
+              buffer ++= withCases(others) ++ holders.toVector.flatMap {
+                case holder: ClassDef => members(holder.body)
+                case _ => Vector.empty
               }
             case _ => ()
           }
