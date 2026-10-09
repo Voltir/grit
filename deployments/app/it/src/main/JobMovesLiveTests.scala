@@ -1,0 +1,318 @@
+package grit.app.main
+
+import java.time.temporal.ChronoUnit
+import java.time.{Instant, ZoneOffset}
+
+import scala.concurrent.duration.*
+import scala.util.Using
+
+import grit.core.act.{MoveLimits, MoveName, Moves}
+import grit.core.clock.SetClock
+import grit.core.edge.{Desk, Route, ToolRequest}
+import grit.core.id.{Declarer, JobName, PrincipalId, ScheduleId, ScheduleKey, TurnRef, WorkflowId}
+import grit.core.inbox.Slotted
+import grit.core.job.{Declared, Grace, JobRun, PlainJob, SlotRule}
+import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
+import grit.core.period.LifecycleSettings
+import grit.core.place.Service
+import grit.core.provider.ModelRequest
+import grit.core.speech.Speaking
+import grit.core.spend.Budget
+import grit.core.store.{Payload, StoreError, Tx}
+import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.visibility.Subject
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
+import grit.edge.{Server, Tools}
+import grit.job.clock.ClockEdge
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.environment.Secrets
+import grit.kit.run.Launch
+import grit.turn.{Turn, TurnLoop}
+
+import utest.*
+
+/** Against Postgres and DBOS, with the stub model: a declared job whose run calls a tool an
+  * in-process edge serves at `service:probe`, then asks the model about its answer, launched as
+  * the kit launches a deployment. Its request is made for the schedule's principal with the
+  * retry the edge advertised, the edge rings the run, the ask's cost is recorded once, and a
+  * run whose process stops between its request and the answer comes back to the same reply and
+  * rows.
+  */
+object JobMovesLiveTests extends TestSuite {
+
+  private val probe: Service = Service.of("probe").fold(sys.error, identity)
+
+  private val read: ToolName = ToolName("probe_read")
+
+  /** One free tool, `probe_read`, answering "read {path}"; cut short, it is interrupted. */
+  private object Reading extends Tools {
+    val offered: ToolSet = ToolSet
+      .of(
+        Vector(
+          ToolSet.Entry(
+            read,
+            "Reads a path.",
+            ujson.Obj("type" -> "object"),
+            asks = false,
+            Retry.Interrupt
+          )
+        )
+      )
+      .fold(d => sys.error(d.toString), identity)
+
+    def run(route: Route, request: ToolRequest): Outcome =
+      Outcome.Done(s"read ${request.arguments.obj.get("path").flatMap(_.strOpt).getOrElse("")}")
+  }
+
+  private case object NoParams extends caps.Pure
+
+  private def name(n: String): MoveName = MoveName.of(n).fold(sys.error, identity)
+
+  /** Calls `probe_read` at `service:probe`, then asks the model about the answer; replies the
+    * call's result and the ask's text, a line each.
+    */
+  private object Probing extends PlainJob[NoParams.type] {
+    val name: JobName = JobName.of("probing").fold(sys.error, identity)
+    val version: Int = 1
+    override val limits: MoveLimits = MoveLimits.of(1, 1).fold(sys.error, identity)
+    def write(params: NoParams.type): ujson.Value = ujson.Obj()
+    def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
+    def run(run: JobRun[NoParams.type], moves: Moves^): String = {
+      val called = moves
+        .call(
+          JobMovesLiveTests.name("look"),
+          probe,
+          JobMovesLiveTests.read,
+          ujson.Obj("path" -> "a")
+        )
+        .fold(_.toString, _.toString)
+      val asked = moves
+        .ask(JobMovesLiveTests.name("think"), ModelRequest("Say.", Vector(Message.User(called))))
+        .fold(_.toString, _.message.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
+      s"$called\n$asked"
+    }
+  }
+
+  private val assigned =
+    Assignment(
+      ModelRef(ModelId.of("openai/gpt-oss-120b").getOrElse(sys.error("id")), None),
+      100,
+      None
+    )
+
+  private val key: ScheduleKey = ScheduleKey.of("probe").fold(sys.error, identity)
+
+  private val schedule: ScheduleId = ScheduleId.declared(Declarer.Deployment, key)
+
+  /** The deployment of [[Probing]], its once slot at `at`. */
+  private def deployment(at: Instant): Deployment =
+    Deployment
+      .of(
+        edges = Vector.empty,
+        worksIn = Vector.empty,
+        plugins = Vector.empty,
+        policy = Policy(assigned, assigned, assigned, assigned),
+        offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
+        assembly = Assembly.Linear(Tokens(4000)),
+        topics = Topics.Off("no classifier here"),
+        lifecycle = LifecycleSettings.Default,
+        budget = Budget(ZoneOffset.UTC, None),
+        speaking = Speaking.Off,
+        sweep = 30.seconds,
+        persona = grit.core.persona.Persona.Grit,
+        jobs = Vector(Probing),
+        schedules = Vector(
+          Declared(
+            key,
+            Probing,
+            SlotRule.Once(at, Grace.of(5.minutes).getOrElse(sys.error("grace"))),
+            NoParams
+          )
+        )
+      )
+      .fold(r => sys.error(r.message), identity)
+
+  private def secrets(c: DbConfig, d: Deployment): Secrets =
+    Secrets
+      .of(
+        Map(
+          DbConfig.UrlVar -> c.jdbcUrl,
+          DbConfig.UserVar -> c.user,
+          DbConfig.PasswordVar -> c.password
+        ),
+        d
+      )
+      .fold(r => sys.error(r.message), identity)
+
+  private def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
+
+  /** A desk on `engine` serving `service:probe` for grit, advertising [[Reading]]. */
+  private def desk(engine: Engine^): Desk^{engine} = {
+    val d = engine.register(PrincipalId.Grit, Set(probe.place)) match {
+      case Right(d) => d
+      case Left(e) => sys.error(e.why)
+    }
+    d.advertise(probe.place, Reading.offered, Vector.empty).fold(e => sys.error(e.why), identity)
+    d
+  }
+
+  /** An edge serving [[Reading]] through `desk`, until closed. */
+  private def serving(desk: Desk^): Server^{desk} = {
+    val server =
+      new Server(desk, Reading, run => { val _ = Thread.ofVirtual().start(() => run()) }, _ => ())
+    server.serve()
+    server
+  }
+
+  /** The run the clock edge starts on `engine` for `d`'s slot at `at`. */
+  private def started(engine: Engine^, d: Deployment, at: Instant): TurnRef = {
+    val ticked =
+      right(
+        new ClockEdge(engine.inbox, engine.schedules, engine.db, new SetClock(at), d.allJobs).tick()
+      )
+    ticked.slotted
+      .collectFirst { case (`schedule`, Slotted.Started(turn, _)) =>
+        turn
+      }
+      .getOrElse(sys.error(s"not started: $ticked"))
+  }
+
+  /** The rows of `sql`, its one parameter `param`, each column as text. */
+  private def rows(config: DbConfig, sql: String, param: String): Vector[Vector[String]] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        ps.setString(1, param)
+        Using.resource(ps.executeQuery()) { rs =>
+          val n = rs.getMetaData.getColumnCount
+          val out = Vector.newBuilder[Vector[String]]
+          while (rs.next()) out += (1 to n).toVector.map(i => rs.getString(i))
+          out.result()
+        }
+      }
+    }
+
+  /** What `turn` left, by what a run's moves write: its request (principal, tool, retry,
+    * arguments, state, outcome), its ring, its ledger rows (by id, the workflow's own part
+    * dropped), its reply, and its move steps.
+    */
+  private def left(config: DbConfig, engine: Engine^, turn: TurnRef): Vector[Vector[String]] = {
+    val id = WorkflowId.value(turn.workflowId)
+    rows(
+      config,
+      "SELECT principal, tool, retry, arguments::text, state, outcome::text FROM grit.tool_requests WHERE workflow_id = ?",
+      id
+    ) ++
+      rows(config, "SELECT message FROM dbos.notifications WHERE destination_uuid = ?", id) ++
+      rows(config, "SELECT replace(entry_id, ?, '{workflow}') FROM grit.usage_ledger", id) ++
+      Vector(Vector(replied(engine, turn))) ++
+      rows(
+        config,
+        "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND function_name LIKE 'move:%' ORDER BY function_id",
+        id
+      )
+  }
+
+  /** `turn`'s reply's text; "no reply" when it has none. */
+  private def replied(engine: Engine^, turn: TurnRef): String =
+    right(engine.db.read(Subject.Public)(engine.entries.get(turn.replyId))).map(_.payload) match {
+      case Some(Payload.Message(Message.Assistant(blocks, _, _, _, _))) =>
+        blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      case other => s"no reply: $other"
+    }
+
+  /** Waits up to 30 s for `turn`'s request to be written. */
+  private def requested(config: DbConfig, turn: TurnRef): Boolean = {
+    val id = WorkflowId.value(turn.workflowId)
+    val until = System.nanoTime() + 30.seconds.toNanos
+    def written =
+      rows(config, "SELECT key FROM grit.tool_requests WHERE workflow_id = ?", id).nonEmpty
+    var held = written
+    while (!held && System.nanoTime() < until) {
+      Thread.sleep(20)
+      held = written
+    }
+    held
+  }
+
+  private def launch(engine: Engine^, config: DbConfig, d: Deployment): Unit =
+    Launch(engine, d, secrets(config, d), Launch.Run.Served, sweeping = false, _ => ())
+
+  /** What a run of [[Probing]] left in a fresh database `name`, its edge serving throughout. */
+  private def uninterrupted(name: String): (String, Vector[Vector[String]]) = {
+    val config = TestPostgres.freshDatabase(name)
+    val at = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+    val d = deployment(at)
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      launch(engine, config, d)
+      val server = serving(desk(engine))
+      try {
+        val turn = started(engine, d, at)
+        val said = engine.awaitTurn(turn)
+        (said.replace(replyOf(turn), "{reply}"), left(config, engine, turn))
+      } finally server.close()
+    } finally engine.close()
+  }
+
+  private def replyOf(turn: TurnRef): String = grit.core.id.EntryId.value(turn.replyId)
+
+  val tests = Tests {
+    test(
+      "a run's call is made for its schedule's principal with the advertised retry, rung, and its ask recorded once"
+    ) {
+      val (said, rows) = uninterrupted("job_moves")
+      (said, rows) ==> (
+        "replied: {reply}",
+        Vector(
+          Vector(
+            "grit",
+            "probe_read",
+            "interrupt",
+            """{"path": "a"}""",
+            "answered",
+            """{"kind": "done", "text": "read a"}"""
+          ),
+          Vector(ujson.write(ujson.Str(Desk.Doorbell))),
+          Vector("move:{workflow}:think"),
+          Vector("Done(read a,public)\nstub reply to: Done(read a,public)"),
+          Vector("move:look"),
+          Vector("move:look:answer"),
+          Vector("move:think"),
+          Vector("move:think:record")
+        )
+      )
+    }
+
+    test(
+      "a run whose process stops between its request and the answer comes back to the same reply and rows"
+    ) {
+      val expected = uninterrupted("job_moves_whole")
+      val config = TestPostgres.freshDatabase("job_moves_restart")
+      val at = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+      val d = deployment(at)
+      // Its edge advertises and serves nothing: the request waits, unclaimed, when it stops.
+      val before = LiveEngine.open(config, Turn.Epoch)
+      val turn =
+        try {
+          launch(before, config, d)
+          val _ = desk(before)
+          val t = started(before, d, at)
+          assert(requested(config, t))
+          t
+        } finally before.close()
+      val after = LiveEngine.open(config, Turn.Epoch)
+      try {
+        // Served before the run is recovered, so the ring is waiting for its wait.
+        val server = serving(desk(after))
+        try {
+          launch(after, config, d)
+          val said = after.awaitTurn(turn).replace(replyOf(turn), "{reply}")
+          (said, left(config, after, turn)) ==> expected
+        } finally server.close()
+      } finally after.close()
+    }
+  }
+}
