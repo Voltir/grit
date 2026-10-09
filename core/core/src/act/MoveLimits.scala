@@ -1,10 +1,9 @@
 package grit.core.act
 
 /** How many moves of each limited kind one run may make; a move past its kind's count is
-  * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers (a JSON ask's
-  * repairs within it);
-  * `judgments`, asks the deployment's classifier judges; `calls`, calls. Keeps are not limited:
-  * they spend nothing.
+  * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers (a JSON
+  * ask's repairs within it); `judgments`, judgments ([[Posed.Judgment]]); `calls`, calls. Keeps
+  * are not limited: they spend nothing.
   */
 final case class MoveLimits private (asks: Int, calls: Int, judgments: Int)
 
@@ -33,9 +32,9 @@ object MoveLimits {
   val Zero: MoveLimits = new MoveLimits(0, 0, 0)
 }
 
-/** What a move is: an ask, a call or a keep. A run's limits count asks and calls
-  * ([[MoveLimits]]).
+/** What a move is: an ask a model answers (text or JSON), a judgment ([[Posed.Judgment]]), a
+  * call or a keep. A run's limits count each but keeps ([[MoveLimits]]).
   */
 enum MoveKind {
-  case Ask, Call, Keep
+  case Ask, Judge, Call, Keep
 }

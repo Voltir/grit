@@ -2,6 +2,7 @@ package grit.core.act
 
 import java.time.Instant
 
+import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.message.Message
@@ -38,6 +39,20 @@ object Posed {
     /** 1: how many times a reply that does not read is asked again, so up to two model calls. */
     val Repairs: Int = 1
   }
+
+  /** Questions about a state, judged by the deployment's classifier with a probability for
+    * each option or level, and read as `questions` reads them ([[grit.core.classify.Ask.read]]).
+    * `request` is what the classifier is sent: the state as its
+    * [[grit.core.classify.StateJson]] writes it, and `questions`' questions. The classifier is
+    * a third party the deployment trusts with everything sent to it, as it trusts a model's
+    * provider: nothing checks what goes there. Made by [[judge]].
+    */
+  final case class Judgment[T] private[Posed] (request: Request, questions: Ask[?, T])
+      extends Posed[T]
+
+  /** `questions` about `state`. */
+  def judge[S: StateJson, T](state: S, questions: Ask[S, T]): Posed[T] =
+    Judgment(Request.of(state, questions), questions)
 
   /** `system` then `messages`, answered as JSON `schema` accepts. */
   def json(system: String, messages: Vector[Message], schema: JsonSchema): Posed[Conforming] =
@@ -87,13 +102,15 @@ trait Moves {
 
   /** One reply to `posed`, from the model its shape names: for [[Posed.Text]] and
     * [[Posed.Json]], the model the catalog in force assigns to summaries
-    * (`grit.core.model.Policy.summary`), within its output budget. Each model call's cost is
-    * recorded once, under the run's conversation. The request goes to that model's provider, a
-    * third party the deployment trusts with everything sent to it: nothing checks what goes
-    * there. Admitted once, before its first call (a [[Posed.Json]] repair is not admitted
-    * again). [[MoveError.Capped]] when the allowance does not admit it, and no model is called;
-    * [[MoveError.Model]] when no catalog reads, the provider fails after its retries, or the
-    * reply does not read ([[Posed.Json]]: after its repairs).
+    * (`grit.core.model.Policy.summary`), within its output budget; for [[Posed.Judgment]], the
+    * deployment's classifier, asked again while it is unavailable, as a provider is. Each
+    * model's or classifier's call's cost is recorded once, under the run's conversation. The
+    * request goes to that model's provider, or the classifier, a third party the deployment
+    * trusts with everything sent to it: nothing checks what goes there. Admitted once, before
+    * its first call (a [[Posed.Json]] repair is not admitted again). [[MoveError.Capped]] when
+    * the allowance does not admit it, and nothing is called; [[MoveError.Model]] when no
+    * catalog reads (for a text or JSON ask), the provider or classifier fails after its
+    * retries, or the reply does not read ([[Posed.Json]]: after its repairs).
     */
   def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]]
 

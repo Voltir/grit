@@ -2,8 +2,9 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
+import grit.core.classify.Classifier
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.InMemoryDurable
@@ -39,7 +40,8 @@ object DurableMovesTests extends MovesContract {
 }
 
 /** A world for [[DurableMoves]]: a turn whose asker is grit, a model answering
-  * [[MovesContract.Answer]], an edge at [[MovesContract.Probe]] advertising
+  * [[MovesContract.Answer]], a classifier answering each question of its kind
+  * (`grit.core.act.MovesFixtures.Judging`), an edge at [[MovesContract.Probe]] advertising
   * [[MovesContract.Tool]] that claims, answers [[MovesContract.Read]] and rings each request as
   * it is written, and the documents of [[MovesWorld.Notes]]. Its every transaction and read is
   * opened at `floor`, and [[MovesContract.Probe]] is trusted with `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
@@ -97,7 +99,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
 
   private val spending: Spending = if (broken) Unreadable else ledger
 
-  def env(models: Models^): MovesEnv^ =
+  def env(models: Models^, classifier: Classifier^ = new Judging()): MovesEnv^ =
     MovesEnv(
       MoveRecords(
         ledger,
@@ -111,6 +113,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         documents.savepoints
       ),
       models,
+      classifier,
       new FakeDb(Clearance.of(floor), visibility),
       clock
     )

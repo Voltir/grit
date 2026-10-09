@@ -5,8 +5,9 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar}
 import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
+import grit.core.classify.{Answers, ClassifierError}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -164,7 +165,8 @@ object RunFixtures {
     * first ask's record; with `failRecord`, every record fails; with `crashServing`, the process
     * dies once inside the first call's step, after it read whom the call is for; with
     * `crashModel`, inside the first model call. Required to call a tool, the model calls it with
-    * the next of `shapes` ([[Answering]]).
+    * the next of `shapes` ([[Answering]]). Its classifier answers with the next of `judged`, or
+    * each question of its kind when there are none ([[Judging]]).
     */
   final class World(
       cap: Option[String] = None,
@@ -174,7 +176,8 @@ object RunFixtures {
       failRecord: Boolean = false,
       crashServing: Boolean = false,
       crashModel: Boolean = false,
-      shapes: Vector[ujson.Value] = Vector()
+      shapes: Vector[ujson.Value] = Vector(),
+      judged: Vector[Either[ClassifierError, Answers]] = Vector()
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
@@ -201,6 +204,7 @@ object RunFixtures {
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
     val models: Answering = new Answering(Answer, crashModel, shapes)
+    val classifier: Judging = new Judging(judged)
 
     private val switches = new Switches(crashRecord, crashServing)
     private val requests = new AnsweringEdges(edges, durable, switches)
@@ -244,6 +248,7 @@ object RunFixtures {
             documents.savepoints
           ),
           models,
+          classifier,
           db,
           clock
         ),

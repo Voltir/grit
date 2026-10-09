@@ -1,5 +1,6 @@
 package grit.act.moves
 
+import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeDirectory, ToolRequests}
 import grit.core.job.ScheduleStore
@@ -25,7 +26,14 @@ final case class MoveRecords(
 )
 
 /** What a planner's moves are made with besides its `Durable`: `models`, for the summary
-  * assignment's provider; `db`, whose read admits an ask; `clock`, which dates and paces them.
-  * Every write a move makes is in its own step's transaction.
+  * assignment's provider; `classifier`, the deployment's, for judgments; `db`, whose read admits
+  * an ask; `clock`, which dates and paces them. Every write a move makes is in its own step's
+  * transaction.
   */
-final case class MovesEnv(records: MoveRecords, models: Models^, db: Db^, clock: Clock^)
+final case class MovesEnv(
+    records: MoveRecords,
+    models: Models^,
+    classifier: Classifier^,
+    db: Db^,
+    clock: Clock^
+)

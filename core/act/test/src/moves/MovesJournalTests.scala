@@ -59,7 +59,11 @@ object MovesJournalTests extends TestSuite {
     given StateJson[ujson.Value] = StateJson.instance(v => v)
     val asked = for {
       choice <- Ask
-        .choice[ujson.Value, Int]("Pick.", Criterion(1, "k1", Some("one")), Criterion(2, "k2", None))
+        .choice[ujson.Value, Int](
+          "Pick.",
+          Criterion(1, "k1", Some("one")),
+          Criterion(2, "k2", None)
+        )
         .left
         .map(_.toString)
       score <- Ask

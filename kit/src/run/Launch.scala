@@ -98,8 +98,9 @@ private[grit] object Launch {
   }
 
   /** As [[apply]], but every model call is made through `models`, and every question the
-    * topics and the turn's weighing ask goes to `classifier` and `weighing`: a launch whose calls
-    * a test counts, and whose time it sets through the clock it opened `engine` with. A shadow still asks the classifier `s` and `d` name.
+    * topics and a job's judgments ask goes to `classifier`, and the turn's weighing's to
+    * `weighing`: a launch whose calls a test counts, and whose time it sets through the clock it
+    * opened `engine` with. A shadow still asks the classifier `s` and `d` name.
     */
   private[grit] def asking(
       engine: Engine^,
@@ -332,6 +333,7 @@ private[grit] object Launch {
                 engine.savepoints
               ),
               models,
+              classifier,
               engine.db,
               clock
             ),

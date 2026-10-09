@@ -2,7 +2,7 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Awaited, Calling, Hearing, Shaped, Shaping, WaitSteps}
+import grit.act.phase.{Asking, Awaited, Calling, Classifying, Hearing, Shaped, Shaping, WaitSteps}
 import grit.core.act.{
   Acting,
   Allowance,
@@ -16,6 +16,7 @@ import grit.core.act.{
   Moves,
   Posed
 }
+import grit.core.classify.{Answer, AnswersJson, Ask, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
@@ -92,6 +93,8 @@ object DurableMoves {
     @caps.unsafe.untrackedCaptures
     private var asks: Int = 0
     @caps.unsafe.untrackedCaptures
+    private var judgments: Int = 0
+    @caps.unsafe.untrackedCaptures
     private var calls: Int = 0
     @caps.unsafe.untrackedCaptures
     private var diverged: Option[MoveName] = None
@@ -108,6 +111,8 @@ object DurableMoves {
         .orElse(Option.when(used.contains(name))(MoveError.Repeated(name)))
         .orElse(kind match {
           case MoveKind.Ask if asks >= limits.asks => Some(MoveError.OverLimit(kind, limits.asks))
+          case MoveKind.Judge if judgments >= limits.judgments =>
+            Some(MoveError.OverLimit(kind, limits.judgments))
           case MoveKind.Call if calls >= limits.calls =>
             Some(MoveError.OverLimit(kind, limits.calls))
           case _ => None
@@ -116,6 +121,7 @@ object DurableMoves {
           used = used + name
           kind match {
             case MoveKind.Ask => asks += 1
+            case MoveKind.Judge => judgments += 1
             case MoveKind.Call => calls += 1
             case MoveKind.Keep => ()
           }
@@ -130,6 +136,7 @@ object DurableMoves {
     def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
       case Posed.Text(request) => text(name, request)
       case Posed.Json(system, messages, reply) => json(name, system, messages, reply)
+      case Posed.Judgment(request, questions) => judgment(name, request, questions)
     }
 
     /** The text ask `name` of `request`: its step, recorded form and digest are the ones every
@@ -211,6 +218,44 @@ object DurableMoves {
         }
       }
 
+    /** The judgment `name` of `request`, its answers read by `questions`. */
+    private def judgment[T](
+        name: MoveName,
+        request: Request,
+        questions: Ask[?, T]
+    ): Either[MoveError, Asked[T]] =
+      refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
+        import MovesJournal.given
+        val digest = MovesJournal.judgment(request)
+        val (records, classifier, db, clock) = (env.records, env.classifier, env.db, env.clock)
+        val allowance = acting.allowance
+        val subject = this.subject
+        val made = d.step(MoveSteps.ask(name)) { () =>
+          admits(records, db, clock, allowance, subject, digest) match {
+            case Left(refusal) => refusal
+            case Right(at) =>
+              Classifying.answers(classifier, request, clock) match {
+                case Left(error) => AskMade.Refused(AskMade.Kind.Model, unanswered(error), digest)
+                case Right(answers) =>
+                  val estimate = records.estimator.system(Request.json(request).render())
+                  val call = AskMade.Call(answers.model, answers.usage, estimate)
+                  questions.read(answers.answers) match {
+                    case Left(error) => AskMade.Unjudged(digest, unanswered(error), call)
+                    case Right(_) =>
+                      val written =
+                        ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
+                      AskMade.Judged(digest, written, at, call)
+                  }
+              }
+          }
+        }
+        settled(name, made, MovesJournal.sameJudgment(made.digest, request)) {
+          case AskMade.Judged(_, written, at, _) =>
+            Some(judgedBack(questions, written).map(Asked(_, at)))
+          case _ => None
+        }
+      }
+
     /** What an ask comes to once its step recorded `made`. The costs of the model calls `made`
       * holds are recorded first, in the ask's record step, whatever shape recorded them: a run
       * replays its steps by place, so a record step the first run took is taken again. Then it
@@ -238,6 +283,7 @@ object DurableMoves {
           case (AskMade.Refused(AskMade.Kind.Model, why, _), _) => Left(MoveError.Model(why))
           case (AskMade.Refused(AskMade.Kind.Store, why, _), _) => Left(MoveError.Store(why))
           case (AskMade.Unshaped(_, why, _), _) => Left(MoveError.Model(why))
+          case (AskMade.Unjudged(_, why, _), _) => Left(MoveError.Model(why))
           case (other, Right(())) => read(other).getOrElse(Left(diverge(name)))
         }
     }
@@ -300,7 +346,7 @@ object DurableMoves {
 
   /** Whether an ask may be made, read in one transaction for `subject`: the label what it is
     * made from may hold, and the catalog's pin for summaries; or its refusal, under `digest`,
-    * when the store fails, the allowance does not admit it, or no catalog reads.
+    * when [[admits]] refuses it or no catalog reads.
     */
   private def admitted(
       records: MoveRecords,
@@ -311,17 +357,32 @@ object DurableMoves {
       subject: Subject,
       digest: String
   ): Either[AskMade, (Label, Pinned)] =
+    admits(records, db, clock, allowance, subject, digest).flatMap { at =>
+      models.catalog() match {
+        case Left(why) =>
+          Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
+        case Right(catalog) => Right((at, catalog.pin.summary))
+      }
+    }
+
+  /** Whether `allowance` admits an ask, read in one transaction for `subject`: the label what
+    * it is made from may hold; or its refusal, under `digest`, when the store fails or the
+    * allowance does not admit it.
+    */
+  private def admits(
+      records: MoveRecords,
+      db: Db^,
+      clock: Clock^,
+      allowance: Allowance,
+      subject: Subject,
+      digest: String
+  ): Either[AskMade, Label] =
     db.read(subject)((tx: Tx^) ?=>
       Asking.admits(allowance, records.spending, clock.now()).map(_ -> Tx.floor(tx))
     ) match {
       case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, describe(e), digest))
       case Right((false, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
-      case Right((true, at)) =>
-        models.catalog() match {
-          case Left(why) =>
-            Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
-          case Right(catalog) => Right((at, catalog.pin.summary))
-        }
+      case Right((true, at)) => Right(at)
     }
 
   /** `calls`' costs recorded for `turn`: the first under `base`, the first repair's under
@@ -364,6 +425,27 @@ object DurableMoves {
       .flatMap(reply.read)
       .left
       .map(MoveError.Model(_))
+
+  /** `written`, a judgment's recorded answers, read by `questions` again. */
+  private def judgedBack[T](questions: Ask[?, T], written: String): Either[MoveError, T] =
+    scala.util
+      .Try(ujson.read(written))
+      .toEither
+      .left
+      .map(e => s"its recorded answers are not JSON: ${e.getMessage}")
+      .flatMap(_.arrOpt.toRight("its recorded answers are not an array"))
+      .flatMap(_.toVector.foldLeft[Either[String, Vector[Answer]]](Right(Vector())) { (acc, a) =>
+        acc.flatMap(done => AnswersJson.read(a).map(done :+ _))
+      })
+      .flatMap(questions.read(_).left.map(unanswered))
+      .left
+      .map(MoveError.Model(_))
+
+  /** Why a classifier gave no answer that reads. */
+  private def unanswered(error: ClassifierError): String = error match {
+    case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"
+    case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
+  }
 
   /** A `move:{n}` call step's body: whom the call is made for, the advert at `service`'s place,
     * its entry for `tool`, `arguments` bound to it, and its request written for the edge

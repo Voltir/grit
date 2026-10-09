@@ -1,5 +1,6 @@
 package grit.core.act
 
+import grit.core.classify.{Answer, Request}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -7,7 +8,9 @@ import grit.core.tool.ToolName
 
 /** [[Moves]] for a job's tests: each text ask answered by `asks`, each JSON ask by `jsons`
   * (of its system text and messages), the reply then checked by its schema and read, with no
-  * repair, a refusal [[MoveError.Model]]; each call by `calls`; under the rules every [[Moves]] keeps, which `grit.act.moves.MovesContract` holds it to beside the
+  * repair, a refusal [[MoveError.Model]]; each judgment by `judgments` (of what the classifier
+  * would be sent), the answers then read by its questions, a refusal [[MoveError.Model]]; each
+  * call by `calls`; under the rules every [[Moves]] keeps, which `grit.act.moves.MovesContract` holds it to beside the
   * durable moves: a name made once, by either kind, is [[MoveError.Repeated]] after, whatever
   * the move came to; past `limits`, a move is [[MoveError.OverLimit]]; a refused move is not
   * made. It never diverges: it is one run, never rerun. [[made]] is each move made, in order.
@@ -17,7 +20,9 @@ final class ScriptedMoves(
     asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
     calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called],
     jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] = (_, _) =>
-      Left(MoveError.Model("no JSON reply scripted"))
+      Left(MoveError.Model("no JSON reply scripted")),
+    judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = _ =>
+      Left(MoveError.Model("no judgment scripted"))
 ) extends Moves {
 
   // Holds immutable values; the fake is one test's, read on its one thread.
@@ -36,6 +41,10 @@ final class ScriptedMoves(
           .left
           .map(MoveError.Model(_))
           .map(Asked(_, a.at))
+      })
+    case Posed.Judgment(request, questions) =>
+      making(name, MoveKind.Judge, limits.judgments)(judgments(request).flatMap { a =>
+        questions.read(a.reply).left.map(e => MoveError.Model(e.toString)).map(Asked(_, a.at))
       })
   }
 

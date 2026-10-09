@@ -1,5 +1,6 @@
 package grit.core.act
 
+import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -64,6 +65,44 @@ object MovesFixtures {
         )
       }
     }
+  }
+
+  /** A classifier answering each request with the next of `script` (the last again once they
+    * run out), counting its calls and keeping each request's state in [[states]]. With no
+    * script, it answers each question of its kind, at [[Judged]]'s cost: a choice its first key,
+    * wholly; a yes/no 0.75; a score its first level, wholly.
+    */
+  final class Judging(script: Vector[Either[ClassifierError, Answers]] = Vector())
+      extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+    @caps.unsafe.untrackedCaptures
+    var states: Vector[ujson.Value] = Vector()
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] = {
+      val i = calls
+      calls += 1
+      states = states :+ state
+      script
+        .lift(i)
+        .orElse(script.lastOption)
+        .getOrElse(Right(Answers(questions.map(fitting), Judged, "test/judge")))
+    }
+  }
+
+  /** What every call of a [[Judging]] costs. */
+  val Judged: Usage = Usage(Tokens(300), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.000013")))
+
+  private def fitting(q: Question): Answer = q match {
+    case c: Question.Choice =>
+      val weights =
+        c.keys.zipWithIndex.map((k, i) => Answer.Weight(k.name, if (i == 0) 1.0 else 0.0))
+      Answer.Choice(c.keys.headOption.fold("")(_.name), weights, 1.0)
+    case _: Question.YesNo => Answer.YesNo(0.75)
+    case s: Question.Score =>
+      Answer.Score(0, s.levels.indices.toVector.map(i => if (i == 0) 1.0 else 0.0), 1.0)
   }
 
   /** Each role pinned to `test/<role>`, 1024 tokens out. */

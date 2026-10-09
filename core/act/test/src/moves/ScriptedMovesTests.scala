@@ -1,6 +1,7 @@
 package grit.act.moves
 
 import grit.core.act.{Asked, Called, MoveError, MoveLimits, Moves, ScriptedMoves}
+import grit.core.classify.Answer as Judged
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 
 /** [[MovesContract]] against `ScriptedMoves`, scripted with the contract's world. */
@@ -18,7 +19,10 @@ object ScriptedMovesTests extends MovesContract {
         else Right(Called.Failed("unadvertised")),
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(ujson.Obj("answer" -> Answer), Floor))
+        else Right(Asked(ujson.Obj("answer" -> Answer), Floor)),
+      _ =>
+        if (broken) Left(MoveError.Store("down"))
+        else Right(Asked(Vector(Judged.YesNo(Yes)), Floor))
     )
     use(moves)
   }

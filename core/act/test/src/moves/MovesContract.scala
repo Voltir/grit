@@ -1,6 +1,7 @@
 package grit.act.moves
 
 import grit.core.act.{Asked, Called, MoveError, MoveKind, MoveLimits, MoveName, Moves, Posed}
+import grit.core.classify.{Ask, StateJson}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -20,7 +21,8 @@ abstract class MovesContract extends TestSuite {
   import MovesContract.*
 
   /** What `use` returns, given moves within `limits` in a world where a text ask is answered
-    * [[Answer]], a JSON ask `{"answer": Answer}` ([[Shaped]]), and a call of [[Tool]] at [[Probe]] is done with [[Read]] at [[Floor]]; when
+    * [[Answer]], a JSON ask `{"answer": Answer}` ([[Shaped]]), a yes/no judgment [[Yes]], and a
+    * call of [[Tool]] at [[Probe]] is done with [[Read]] at [[Floor]]; when
     * `broken`, every ask's store fails instead.
     */
   def within[A <: caps.Pure](limits: MoveLimits, broken: Boolean = false)(use: Moves^ -> A): A
@@ -104,6 +106,45 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test(
+      "a judgment is judged as its world judges at the world's floor, counts against judgments while asks remain, and shares its names with asks"
+    ) {
+      val limited =
+        MoveLimits.of(2, 0, 1).fold(e => throw new java.lang.AssertionError(e), identity)
+      val got = within(limited) { m =>
+        Seen(
+          Vector(
+            judged(m, "a"),
+            asked(m, "a"),
+            shaped(m, "b"),
+            judged(m, "b"),
+            judged(m, "c"),
+            asked(m, "c")
+          )
+        )
+      }
+      got ==> Seen(
+        Vector(
+          Right(s"$Yes at $Floor"),
+          Left(MoveError.Repeated(name("a"))),
+          Right(Shaped),
+          Left(MoveError.Repeated(name("b"))),
+          Left(MoveError.OverLimit(MoveKind.Judge, 1)),
+          Right(Answer)
+        )
+      )
+    }
+
+    test("a judgment whose store failed spends its name and counts against judgments") {
+      val limited =
+        MoveLimits.of(0, 0, 1).fold(e => throw new java.lang.AssertionError(e), identity)
+      val got = within(limited, broken = true) { m =>
+        Seen(Vector(judged(m, "a"), judged(m, "a"), judged(m, "b")))
+      }
+      got.moves.map(_.left.map(kind)) ==>
+        Vector(Left("Store"), Left("Repeated(a)"), Left("OverLimit(Judge,1)"))
+    }
+
     test("a text ask counts against asks, whatever the run's judgments") {
       val limited =
         MoveLimits.of(1, 0, 5).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -144,6 +185,21 @@ object MovesContract {
     */
   def shaped(m: Moves^, n: String): Either[MoveError, String] =
     m.ask(name(n), Posed.json(Request.system, Request.messages, AnswerSchema)).map(_.reply.text)
+
+  /** The judgment `n`, whether [[State]] is urgent, through `m`: its probability of yes and the
+    * label it was read at.
+    */
+  def judged(m: Moves^, n: String): Either[MoveError, String] = {
+    given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+    m.ask(name(n), Posed.judge(State, Ask.yesNo[String]("Is `text` urgent?", None, None)))
+      .map(a => s"${a.reply} at ${a.at}")
+  }
+
+  /** The state every judgment is about. */
+  val State = "the build is red"
+
+  /** What a yes/no judgment is answered: its probability of yes. */
+  val Yes = 0.75
 
   /** The call `n` of [[Tool]] at [[Probe]] through `m`: its result. */
   def called(m: Moves^, n: String): Either[MoveError, String] =

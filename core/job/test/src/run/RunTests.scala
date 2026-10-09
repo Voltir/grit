@@ -1,8 +1,20 @@
 package grit.job.run
 
 import grit.act.moves.MoveSteps
-import grit.core.act.MovesFixtures.PerChar
+import grit.core.act.MovesFixtures.{Judged, PerChar}
 import grit.core.act.Posed
+import grit.core.classify.{
+  Answer as Judgment,
+  Answers,
+  Ask,
+  ClassifierError,
+  Criterion,
+  Decision,
+  Level as Rung,
+  Request,
+  Scored,
+  StateJson
+}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{Pending, RequestState}
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
@@ -531,6 +543,103 @@ object RunTests extends TestSuite {
       )
     }
 
+    test(
+      "a judgment's answers are read on its first run and on replay from what it recorded, a choice's confidence from its weights, the classifier asked once"
+    ) {
+      val w = new World(judged = Triaged.judged("docs"))
+      val turn = w.started(w.declared("standup"))
+      val seen = new Seen
+      val first = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(seen))))
+      val read = seen.reply
+      val replayed = new InMemoryDurable()
+        .replay(turn.workflowId, w.durable.history(turn.workflowId))(
+          Run.body(w.env(), jobsOf(judging(seen)))
+        )
+      (first, read, replayed, seen.reply, w.classifier.calls) ==> (
+        s"replied: reply:${turn.conversationId}:0",
+        Some("docs 0.5 1"),
+        Right(s"replied: reply:${turn.conversationId}:0"),
+        Some("docs 0.5 1"),
+        1
+      )
+    }
+
+    test(
+      "a judgment's cost is recorded once under the run's conversation, priced as its classifier reported, its estimate the classifier's request's"
+    ) {
+      val w = new World(crashRecord = true)
+      val turn = w.started(w.declared("standup"))
+      val seen = new Seen
+      val first =
+        try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(seen))))
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      val again = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(seen))))
+      (
+        first,
+        again,
+        w.classifier.calls,
+        w.ledger.rows.map(r => (EntryId.value(r._1), r._3, r._4, r._5, r._6.conversationId))
+      ) ==> (
+        "crashed",
+        s"replied: reply:${turn.conversationId}:0",
+        1,
+        Vector(
+          (
+            s"move:${WorkflowId.value(turn.workflowId)}:j",
+            "test/judge",
+            Judged,
+            PerChar.system(Request.json(Triaged.request(Triaged.State)).render()),
+            turn.conversationId
+          )
+        )
+      )
+    }
+
+    test("a judgment once the day's spend reached its cap is Capped and asks no classifier") {
+      val w = new World(cap = Some("0.5"))
+      ok(
+        w.ledger.record(
+          EntryId("earlier"),
+          w.started(w.declared("earlier")),
+          WorkflowId("earlier"),
+          "m",
+          Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("1"))),
+          Tokens(1)
+        )(using TestTx.fake)
+      )
+      val turn = w.started(w.declared("standup"))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(new Seen))))
+      (w.reply(turn), w.classifier.calls) ==> (Some("Capped"), 0)
+    }
+
+    test("a judgment whose answers do not read is Model, the classifier's cost recorded") {
+      val w = new World(judged = Triaged.judged("ops"))
+      val turn = w.started(w.declared("standup"))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(new Seen))))
+      (w.reply(turn), w.ledger.rows.map(r => EntryId.value(r._1))) ==> (
+        Some(
+          "Model(the classifier's answers do not read: \"Which team owns `text`?\": chose ops, not an option)"
+        ),
+        Vector(s"move:${WorkflowId.value(turn.workflowId)}:j")
+      )
+    }
+
+    test(
+      "a judgment whose state changed on a rerun is Diverged, its recorded call's cost recorded once"
+    ) {
+      val w = new World(crashRecord = true)
+      val turn = w.started(w.declared("standup"))
+      val seen = new Seen
+      val first =
+        try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(seen))))
+        catch { case _: InMemoryDurable.Crash => "crashed" }
+      w.durable.run(turn.workflowId)(
+        Run.body(w.env(), jobsOf(judging(seen, "the build is green")))
+      )
+      (first, w.reply(turn), w.classifier.calls, w.ledger.rows.size) ==>
+        ("crashed", Some("Diverged(j)"), 1, 1)
+    }
+
     test("a run superseded before its job runs makes no move") {
       val w = new World
       w.serve()
@@ -575,6 +684,67 @@ object RunTests extends TestSuite {
         val r = m
           .ask(move("a"), Posed.Json("Count.", Vector(Message.User(s"to ${n.n}")), reply))
           .fold(_.toString, a => (a.reply * 2).toString)
+        seen.reply = Some(r)
+        r
+      }
+    )
+
+  /** Which team owns a text, and how urgent it is, asked together. */
+  private object Triaged {
+    given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+
+    val State = "the build is red"
+
+    val questions: Ask[String, (Decision[String], Scored[Int])] = (for {
+      owner <- Ask
+        .choice[String, String](
+          "Which team owns `text`?",
+          Criterion("build", "build", None),
+          Criterion("docs", "docs", None)
+        )
+        .left
+        .map(_.toString)
+      urgency <- Ask
+        .score[String, Int]("How urgent is `text`?", Rung(0, "not"), Rung(1, "very"))
+        .left
+        .map(_.toString)
+    } yield owner.zip(urgency)).fold(sys.error, identity)
+
+    def request(state: String): Request = Request.of(state, questions)
+
+    /** A choice of `owner`, weighing docs 0.75, its confidence reported as 0.99; and a score at
+      * the second level.
+      */
+    def answers(owner: String): Vector[Judgment] = Vector(
+      Judgment.Choice(
+        owner,
+        Vector(Judgment.Weight("build", 0.25), Judgment.Weight("docs", 0.75)),
+        0.99
+      ),
+      Judgment.Score(1, Vector(0.2, 0.8), 0.6)
+    )
+
+    /** A classifier's script: [[answers]] of `owner`, each time. */
+    def judged(owner: String): Vector[Either[ClassifierError, Answers]] =
+      Vector(Right(Answers(answers(owner), Judged, "test/judge")))
+  }
+
+  /** `remind` at version 1, within an ask: it judges `j`, [[Triaged]]'s questions about
+    * `state`, and replies the owner chosen, its confidence and the likeliest urgency, or the
+    * error, telling `seen` what it replied.
+    */
+  private def judging(seen: Seen, state: String = Triaged.State): Moving =
+    new Moving(
+      1,
+      limits(1, 0),
+      (_, m) => {
+        import Triaged.given
+        val r = m
+          .ask(move("j"), Posed.judge(state, Triaged.questions))
+          .fold(
+            _.toString,
+            a => s"${a.reply._1.choice} ${a.reply._1.confidence} ${a.reply._2.likeliest}"
+          )
         seen.reply = Some(r)
         r
       }
