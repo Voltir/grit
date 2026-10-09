@@ -560,6 +560,7 @@ object grit extends Module {
       Seq(
         grit.core,
         grit.dbos,
+        grit.act,
         grit.turn,
         grit.job,
         grit.lifecycle,
