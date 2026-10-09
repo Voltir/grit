@@ -21,7 +21,7 @@ final class ScriptedMoves(
   var made: Vector[MoveName] = Vector.empty
 
   def ask(name: MoveName, request: ModelRequest): Either[MoveError, Asked] =
-    making(name, MoveKind.Ask)(asks(request))
+    making(name, MoveKind.Ask, limits.asks)(asks(request))
 
   def call(
       name: MoveName,
@@ -29,17 +29,12 @@ final class ScriptedMoves(
       tool: ToolName,
       arguments: ujson.Obj
   ): Either[MoveError, Called] =
-    making(name, MoveKind.Call)(calls(service, tool, arguments))
+    making(name, MoveKind.Call, limits.calls)(calls(service, tool, arguments))
 
-  private def making[A](name: MoveName, kind: MoveKind)(
+  private def making[A](name: MoveName, kind: MoveKind, limit: Int)(
       answer: => Either[MoveError, A]
   ): Either[MoveError, A] = {
     val count = made.count(n => kinds.get(n).contains(kind))
-    val limit = kind match {
-      case MoveKind.Ask => limits.asks
-      case MoveKind.Call => limits.calls
-      case MoveKind.Keep => Int.MaxValue
-    }
     if (made.contains(name)) Left(MoveError.Repeated(name))
     else if (count >= limit) Left(MoveError.OverLimit(kind, limit))
     else {
