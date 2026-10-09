@@ -11,7 +11,9 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse
   * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's and
   * holds [[StubProvider.CallMarker]], it calls the first, as a model can, with a line of
   * text beside the call: the arguments are the JSON after the marker, to the end of its
-  * line. Its id is [[StubProvider.CallId]]. Without the marker it answers.
+  * line. Its id is [[StubProvider.CallId]]. Without the marker it answers. Required to call
+  * one ([[ToolUse.Required]]), it always calls the first, with the arguments after the marker
+  * in the last user message, or `{}` without one.
   */
 final class StubProvider(delayMs: Long = 0) extends Provider {
 
@@ -46,6 +48,8 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
       case (ToolUse.Auto, Some(tool), Some(Message.User(text)))
           if text.contains(StubProvider.CallMarker) =>
         Some(tool.name -> StubProvider.arguments(text))
+      case (ToolUse.Required, Some(tool), _) =>
+        Some(tool.name -> StubProvider.arguments(asked.getOrElse("")))
       case _ => None
     }
     val said = call match {

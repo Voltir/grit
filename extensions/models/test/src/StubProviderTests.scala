@@ -58,6 +58,27 @@ object StubProviderTests extends TestSuite {
       StubProvider.arguments("no marker") ==> ujson.Obj()
     }
 
+    test("required to call, the stub calls its first tool with the #call: arguments, or {}") {
+      def required(messages: Message*) =
+        new StubProvider()
+          .complete(ModelRequest("s", messages.toVector, Vector(topic), ToolUse.Required))
+          .map(_.blocks)
+      def calls(arguments: ujson.Value) = Right(
+        Vector(
+          AssistantBlock.Text("stub calls topic"),
+          AssistantBlock.ToolCall(StubProvider.CallId, "topic", arguments)
+        )
+      )
+      required(Message.User("hi")) ==> calls(ujson.Obj())
+      required(Message.User("hi #call:{\"about\":\"new\"}")) ==>
+        calls(ujson.Obj("about" -> "new"))
+      // After a tool's result too: the last user message's marker still names the arguments.
+      required(
+        Message.User("hi #call:{\"about\":\"new\"}"),
+        Message.ToolResult(StubProvider.CallId, "noted", false)
+      ) ==> calls(ujson.Obj("about" -> "new"))
+    }
+
     test("the stub tells its call after its text, as a provider that cannot stream does") {
       val asked = ModelRequest("s", Vector(Message.User("hi #call:{}")), Vector(topic))
       def told(provider: Provider) = {
