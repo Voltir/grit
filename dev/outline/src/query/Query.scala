@@ -2,7 +2,7 @@ package grit.outline.query
 
 import scala.collection.mutable
 
-import grit.outline.locate.{Locate, Root}
+import grit.outline.locate.{Layout, Locate, Root}
 import grit.outline.model.{Defn, Staleness}
 import grit.outline.render.Render
 import grit.outline.trace.Trace
@@ -21,6 +21,7 @@ object Query {
   /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. */
   def show(
       root: Root,
+      layout: Layout,
       roots: Roots,
       syms: Vector[String],
       depth: Int,
@@ -29,7 +30,7 @@ object Query {
       cap: Int
   ): (Answer, Roots) = {
     val (answer, loaded) =
-      showIn(root, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
+      showIn(root, layout, Roots.of(roots, root), syms, depth, bodies, withPrivate, cap)
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
@@ -41,6 +42,7 @@ object Query {
 
   private def showIn(
       root: Root,
+      layout: Layout,
       in: Loaded,
       syms: Vector[String],
       depth: Int,
@@ -48,13 +50,13 @@ object Query {
       withPrivate: Boolean,
       cap: Int
   ): (Answer, Loaded) = {
-    val classes = Locate.classesDirs(root)
+    val classes = layout.classesDirs(root)
     if (depth < 0 || depth > 2)
       (Answer(s"depth must be 0, 1 or 2\n$usage", Status.Failed), in)
     else if (classes.isEmpty)
       (
         Answer(
-          s"no compiled classes under ${root.dir / "out"}: run ./mill grit.<module>.compile",
+          layout.notCompiled(root),
           Status.Failed
         ),
         in
@@ -67,7 +69,7 @@ object Query {
       var failure: Option[String] = None
 
       def loadTop(tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
-        Loaded.defns(root, tasty, state) match {
+        Loaded.defns(root, layout, tasty, state) match {
           case Left(message) => Left(message)
           case Right((defns, next, _)) =>
             state = next
@@ -86,7 +88,7 @@ object Query {
       val lines = mutable.ListBuffer.empty[String]
       val matches = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
-        val tasty = Locate.forTopLevel(root, sym)
+        val tasty = Locate.forTopLevel(root, layout, sym)
         val found: Vector[Defn] =
           if (tasty.isEmpty) Vector.empty
           else
@@ -110,7 +112,7 @@ object Query {
             tops,
             depth,
             top => {
-              val tasty = Locate.forTopLevel(root, top)
+              val tasty = Locate.forTopLevel(root, layout, top)
               if (tasty.isEmpty) Left(s"no tasty for $top") else loadTop(tasty)
             }
           )

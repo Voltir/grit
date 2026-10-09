@@ -1,6 +1,6 @@
 package grit.outline.query
 
-import grit.outline.locate.Root
+import grit.outline.locate.{MillLayout, Root}
 import grit.outline.read.Read
 
 import utest.*
@@ -37,9 +37,10 @@ object RootsTests extends TestSuite {
     ) {
       val r1 = checkout("one", one)
       val r2 = checkout("two", two)
-      val (a1, s1) = Query.show(r1, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
-      val (a2, s2) = Query.show(r2, s1, Vector("S.f"), 1, Set.empty, false, 80000)
-      val (a3, _) = Query.show(r1, s2, Vector("S.f"), 1, Set.empty, false, 80000)
+      val (a1, s1) =
+        Query.show(r1, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
+      val (a2, s2) = Query.show(r2, MillLayout, s1, Vector("S.f"), 1, Set.empty, false, 80000)
+      val (a3, _) = Query.show(r1, MillLayout, s2, Vector("S.f"), 1, Set.empty, false, 80000)
       assert(a1.text.startsWith(s"## root ${r1.dir} ("))
       assert(a1.text.contains("def f(a: Int): Int"))
       assert(a2.text.startsWith(s"## root ${r2.dir} ("))
@@ -49,7 +50,7 @@ object RootsTests extends TestSuite {
 
     test("Read.classpath is the root's own classes directory, every entry under the root") {
       val r1 = checkout("classpath", one)
-      val entries = Read.classpath(r1)
+      val entries = Read.classpath(r1, MillLayout)
       assert(entries.nonEmpty)
       assert(entries.forall(_.toString.startsWith(r1.dir.toString + "/")))
     }
@@ -62,7 +63,8 @@ object RootsTests extends TestSuite {
       os.copy(r1.dir / "out", r3.dir / "out")
       os.copy(r1.dir / "src", r3.dir / "src")
       os.write(r3.dir / "build.mill", "")
-      val (answer, _) = Query.show(r3, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
+      val (answer, _) =
+        Query.show(r3, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
       assert(answer.status == Status.Failed)
       assert(answer.text.contains("outside"))
     }
@@ -72,7 +74,8 @@ object RootsTests extends TestSuite {
         "opaque",
         "package p\nopaque type Tag = Int\nobject S { def f(a: Tag): Tag = a }\n"
       )
-      val (answer, _) = Query.show(r, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
+      val (answer, _) =
+        Query.show(r, MillLayout, Roots.empty(6000), Vector("S.f"), 1, Set.empty, false, 80000)
       assert(answer.status == Status.Found)
       assert(answer.text.contains("opaque type Tag"))
       assert(!answer.text.contains("not loaded"))

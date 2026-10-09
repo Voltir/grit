@@ -5,14 +5,14 @@ import scala.quoted.Quotes
 import scala.tasty.inspector.{Inspector, Tasty, TastyInspector}
 import scala.util.control.NonFatal
 
-import grit.outline.locate.{Locate, Root}
+import grit.outline.locate.{Layout, Locate, Root}
 import grit.outline.model.{Defn, Kind, Lines}
 
 /** Reads TASTy files into definitions, each with its source slices. Each inspector call is a fresh compiler run, so no compiler context is shared between roots. */
 object Read {
 
   /** The dependency classpath handed to the inspector for `root`: exactly its compiled classes directories. */
-  def classpath(root: Root): Vector[os.Path] = Locate.classesDirs(root)
+  def classpath(root: Root, layout: Layout): Vector[os.Path] = layout.classesDirs(root)
 
   /** The top-level definitions in `tasty`, each with its public and private members nested under it, in input order.
     *
@@ -20,12 +20,15 @@ object Read {
     * `Left` carries the complaint when the TASTy inspector reports errors, and the exception's
     * message when it throws.
     */
-  def defns(root: Root, tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
-    defnsByTasty(root, tasty).map(byFile => tasty.flatMap(p => byFile.getOrElse(p, Vector.empty)))
+  def defns(root: Root, layout: Layout, tasty: Vector[os.Path]): Either[String, Vector[Defn]] =
+    defnsByTasty(root, layout, tasty).map(byFile =>
+      tasty.flatMap(p => byFile.getOrElse(p, Vector.empty))
+    )
 
   /** The same definitions as `defns`, keyed by the `.tasty` file each came from; every input path is a key, empty when it holds none. */
   def defnsByTasty(
       root: Root,
+      layout: Layout,
       tasty: Vector[os.Path]
   ): Either[String, Map[os.Path, Vector[Defn]]] = {
     val byPath = mutable.Map[os.Path, Vector[Defn]]()
@@ -132,8 +135,10 @@ object Read {
           grit.outline.model.Ref(
             fullName = fullNameOf(s),
             topLevel = topLevel,
-            inRepo =
-              inRepoByTop.getOrElseUpdate(topLevel, Locate.forTopLevel(root, topLevel).nonEmpty)
+            inRepo = inRepoByTop.getOrElseUpdate(
+              topLevel,
+              Locate.forTopLevel(root, layout, topLevel).nonEmpty
+            )
           )
         }
 
@@ -379,7 +384,7 @@ object Read {
         TastyInspector.inspectAllTastyFiles(
           tasty.map(_.toString).toList,
           Nil,
-          classpath(root).map(_.toString).toList
+          classpath(root, layout).map(_.toString).toList
         )(inspector)
       } catch {
         case NonFatal(e) => return Left(Option(e.getMessage).getOrElse(e.toString))

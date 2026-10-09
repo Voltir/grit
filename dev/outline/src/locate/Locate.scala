@@ -15,20 +15,6 @@ object Locate {
   /** Top-level directories a mentioning search never reads: build output, tooling and VCS state. */
   private val skipped = Set("out", ".git", ".local", ".claude", ".bsp", ".metals", "tools")
 
-  /** Every `classes` directory directly inside a `compile.dest` under the root's `out`, sorted; empty when `out` is missing. */
-  def classesDirs(root: Root): Vector[os.Path] = {
-    val out = root.dir / "out"
-    if (!os.isDir(out)) Vector.empty
-    else
-      os.walk(
-        out,
-        skip = p =>
-          (p / os.up).last == "classes" || (p.last.endsWith(".dest") && p.last != "compile.dest")
-      ).filter(p => p.last == "classes" && os.isDir(p) && (p / os.up).last == "compile.dest")
-        .sortBy(_.toString)
-        .toVector
-  }
-
   /** The checkout's branch (None when detached) and the first 8 characters of its commit; `head` is "unknown" when git state is unreadable. */
   def revision(root: Root): Revision = {
     val unknown = Revision(None, "unknown")
@@ -68,8 +54,8 @@ object Locate {
       )
   }
 
-  /** The `.tasty` files that can hold `sym`, searched in every classes dir; empty when none match. */
-  def forTopLevel(root: Root, sym: String): Vector[os.Path] = {
+  /** The `.tasty` files that can hold `sym`, searched in every classes dir `layout` names under `root`; empty when none match. */
+  def forTopLevel(root: Root, layout: Layout, sym: String): Vector[os.Path] = {
     val segments = sym.split('.').toVector
     val rest = segments.dropWhile(s => !s.take(1).exists(_.isUpper))
     rest.headOption match {
@@ -77,7 +63,7 @@ object Locate {
       case Some(top) =>
         val pkg = segments.take(segments.length - rest.length)
         val names = Set(s"$top.tasty", s"$top$$package.tasty")
-        val dirs = classesDirs(root)
+        val dirs = layout.classesDirs(root)
         val found =
           if (pkg.isEmpty) dirs.flatMap(c => os.walk(c).filter(p => names.contains(p.last)))
           else {
@@ -89,7 +75,7 @@ object Locate {
   }
 
   /** The `.tasty` files directly in the source file's package dir across all classes dirs; empty when the file is missing or has no package line. */
-  def inPackageOf(root: Root, file: os.RelPath): Vector[os.Path] = {
+  def inPackageOf(root: Root, layout: Layout, file: os.RelPath): Vector[os.Path] = {
     val source = root.dir / file
     val segments =
       if (!os.isFile(source)) Vector.empty
@@ -97,7 +83,8 @@ object Locate {
     if (segments.isEmpty) Vector.empty
     else {
       val rel = os.RelPath(segments.mkString("/"))
-      classesDirs(root)
+      layout
+        .classesDirs(root)
         .map(c => c / rel)
         .filter(os.isDir)
         .flatMap(d => os.list(d).filter(p => os.isFile(p) && p.ext == "tasty"))

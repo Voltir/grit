@@ -1,6 +1,6 @@
 package grit.outline.query
 
-import grit.outline.locate.Root
+import grit.outline.locate.{Layout, Root}
 import grit.outline.model.Defn
 import grit.outline.read.Read
 
@@ -16,12 +16,13 @@ object Loaded {
   /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed; the new cache; how many files were read. */
   def defns(
       root: Root,
+      layout: Layout,
       tasty: Vector[os.Path],
       in: Loaded
   ): Either[String, (Vector[Defn], Loaded, Int)] = {
     val stale = tasty.filter(p => in.byTasty.get(p).forall(_.mtime != os.mtime(p)))
     val read: Either[String, Map[os.Path, Vector[Defn]]] =
-      if (stale.isEmpty) Right(Map.empty) else Read.defnsByTasty(root, stale)
+      if (stale.isEmpty) Right(Map.empty) else Read.defnsByTasty(root, layout, stale)
     read.map { fresh =>
       val updated = stale.foldLeft(in.byTasty) { (cache, p) =>
         cache.updated(p, Cached(os.mtime(p), fresh.getOrElse(p, Vector.empty)))

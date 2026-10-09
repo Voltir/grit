@@ -1,6 +1,6 @@
 package grit.outline.read
 
-import grit.outline.locate.Root
+import grit.outline.locate.{MillLayout, Root}
 import grit.outline.model.{Defn, Kind, Lines, Ref}
 
 import utest.*
@@ -28,7 +28,7 @@ object ReadTests extends TestSuite {
       .walk(os.Path(fixtureClasses))
       .filter(p => p.ext == "tasty")
       .toVector
-    Read.defns(Root(repoRoot), tastyFiles) match {
+    Read.defns(Root(repoRoot), MillLayout, tastyFiles) match {
       case Right(defns) => defns
       case Left(message) => throw new Exception(message)
     }

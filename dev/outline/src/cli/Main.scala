@@ -1,6 +1,6 @@
 package grit.outline.cli
 
-import grit.outline.locate.Root
+import grit.outline.locate.{MillLayout, Root}
 import grit.outline.query.{Answer, Query, Roots, Status}
 
 object Main {
@@ -79,6 +79,7 @@ object Main {
                 val (answer: Answer, _) =
                   Query.show(
                     Root(d),
+                    MillLayout,
                     Roots.empty(6000),
                     syms,
                     o.depth,

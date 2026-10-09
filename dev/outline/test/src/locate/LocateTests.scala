@@ -19,23 +19,6 @@ object LocateTests extends TestSuite {
 
   def tests = Tests {
     test(
-      "classesDirs finds each compile.dest/classes and nothing inside a classes dir or another .dest"
-    ) {
-      val root = tree(
-        "out/a/compile.dest/classes/grit/A.tasty",
-        "out/b/test/compile.dest/classes/grit/B.tasty",
-        "out/a/zinc.dest/classes/grit/Z.tasty",
-        "out/a/compile.dest/classes/x/compile.dest/classes/grit/N.tasty"
-      )
-      assert(
-        Locate.classesDirs(root) == Vector(
-          at(root, "out/a/compile.dest/classes"),
-          at(root, "out/b/test/compile.dest/classes")
-        )
-      )
-    }
-
-    test(
       "forTopLevel with a package reads only that package's dir; without one it searches every classes dir"
     ) {
       val pkgRoot = tree(
@@ -43,7 +26,7 @@ object LocateTests extends TestSuite {
         "out/b/test/compile.dest/classes/grit/core/act/Moves.tasty"
       )
       assert(
-        Locate.forTopLevel(pkgRoot, "grit.core.act.Moves") == Vector(
+        Locate.forTopLevel(pkgRoot, MillLayout, "grit.core.act.Moves") == Vector(
           at(pkgRoot, "out/a/compile.dest/classes/grit/core/act/Moves.tasty"),
           at(pkgRoot, "out/b/test/compile.dest/classes/grit/core/act/Moves.tasty")
         )
@@ -54,7 +37,7 @@ object LocateTests extends TestSuite {
         "out/b/test/compile.dest/classes/grit/core/act/Moves.tasty"
       )
       assert(
-        Locate.forTopLevel(noPkgRoot, "Moves.ask") == Vector(
+        Locate.forTopLevel(noPkgRoot, MillLayout, "Moves.ask") == Vector(
           at(noPkgRoot, "out/a/compile.dest/classes/grit/core/act/Moves.tasty"),
           at(noPkgRoot, "out/b/test/compile.dest/classes/grit/core/act/Moves.tasty")
         )
@@ -65,7 +48,7 @@ object LocateTests extends TestSuite {
         "out/a/compile.dest/classes/grit/core/act/Moves.tasty"
       )
       assert(
-        Locate.forTopLevel(otherRoot, "grit.other.Moves") == Vector(
+        Locate.forTopLevel(otherRoot, MillLayout, "grit.other.Moves") == Vector(
           at(otherRoot, "out/a/compile.dest/classes/grit/other/Moves.tasty")
         )
       )
@@ -73,9 +56,24 @@ object LocateTests extends TestSuite {
       val packageObjectRoot =
         tree("out/a/compile.dest/classes/grit/core/act/MoveName$package.tasty")
       assert(
-        Locate.forTopLevel(packageObjectRoot, "MoveName") == Vector(
+        Locate.forTopLevel(packageObjectRoot, MillLayout, "MoveName") == Vector(
           at(packageObjectRoot, "out/a/compile.dest/classes/grit/core/act/MoveName$package.tasty")
         )
+      )
+    }
+
+    test(
+      "forTopLevel finds a top-level's tasty under whatever classes dir a layout other than Mill's names"
+    ) {
+      val compiled = os.temp.dir()
+      os.write(compiled / "p" / "Moves.tasty", "", createFolders = true)
+      val fake = new Layout {
+        def classesDirs(root: Root): Vector[os.Path] = Vector(compiled)
+        def notCompiled(root: Root): String = "not compiled"
+      }
+      val root = Root(os.temp.dir())
+      assert(
+        Locate.forTopLevel(root, fake, "Moves") == Vector(compiled / "p" / "Moves.tasty")
       )
     }
 
@@ -93,7 +91,7 @@ object LocateTests extends TestSuite {
         "package grit.core.act\n\nobject Moves\n"
       )
       assert(
-        Locate.inPackageOf(root, os.RelPath("core/act/src/Moves.scala")) == Vector(
+        Locate.inPackageOf(root, MillLayout, os.RelPath("core/act/src/Moves.scala")) == Vector(
           at(root, "out/a/compile.dest/classes/grit/core/act/X.tasty"),
           at(root, "out/b/x/compile.dest/classes/grit/core/act/Y.tasty")
         )

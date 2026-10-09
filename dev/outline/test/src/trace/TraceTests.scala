@@ -1,6 +1,6 @@
 package grit.outline.trace
 
-import grit.outline.locate.{Locate, Root}
+import grit.outline.locate.{Locate, MillLayout, Root}
 import grit.outline.model.Defn
 import grit.outline.read.Read
 
@@ -31,7 +31,7 @@ object TraceTests extends TestSuite {
       .walk(os.Path(fixtureClasses))
       .filter(p => p.ext == "tasty")
       .toVector
-    Read.defns(root, tastyFiles) match {
+    Read.defns(root, MillLayout, tastyFiles) match {
       case Right(defns) => defns
       case Left(message) => throw new Exception(message)
     }
@@ -44,7 +44,7 @@ object TraceTests extends TestSuite {
     }
 
   private def load(topLevel: String): Either[String, Vector[Defn]] =
-    Read.defns(root, Locate.forTopLevel(root, topLevel))
+    Read.defns(root, MillLayout, Locate.forTopLevel(root, MillLayout, topLevel))
 
   private val keep = "grit.outline.fixture.A.keep"
   private val run = "grit.outline.fixture.A.run"
