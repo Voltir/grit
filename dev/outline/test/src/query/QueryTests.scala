@@ -105,6 +105,37 @@ object QueryTests extends TestSuite {
       assert(!answer.text.contains("--body keep matches"))
     }
 
+    test("a --body name that is a private member is named as private, and says to add --private") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("grit.outline.fixture.Limits"),
+          0,
+          Set("hidden"),
+          false,
+          80000
+        )
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.contains("-- --body hidden is private: add --private"))
+      assert(!answer.text.contains("matches nothing shown"))
+      val (withPrivate, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("grit.outline.fixture.Limits"),
+          0,
+          Set("hidden"),
+          true,
+          80000
+        )
+      assert(!withPrivate.text.contains("--body hidden is private"))
+    }
+
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
       val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
       os.copy(

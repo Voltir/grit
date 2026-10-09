@@ -536,7 +536,7 @@ object Query {
   }
 
   /** The note for each `--body` name that no shown definition has: `tops` and their members (those withPrivate
-    * or public), whose simple names it lists, sorted.
+    * or public), whose simple names it lists, sorted; a name only a private member has is named as private.
     */
   private def bodyMisses(
       bodies: Set[String],
@@ -545,9 +545,13 @@ object Query {
   ): Vector[String] = {
     val shown = tops.flatMap(d => d +: d.members.filter(m => withPrivate || !m.isPrivate))
     val names = shown.map(_.name).distinct.sorted
+    val privateNames = tops.flatMap(_.members.filter(_.isPrivate)).map(_.name).toSet
     bodies.toVector.sorted
       .filterNot(name => names.contains(name))
-      .map(name => s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}")
+      .map { name =>
+        if (privateNames.contains(name)) s"-- --body $name is private: add --private"
+        else s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"
+      }
   }
 
   private def showIn(
