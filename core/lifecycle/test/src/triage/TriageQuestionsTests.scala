@@ -88,11 +88,16 @@ object TriageQuestionsTests extends TestSuite {
     }
 
     test("of refuses a bound reading no One of its kind, or a key its choice lacks") {
+      val mood = Question.score("How?", "calm", "angry").getOrElse(fail("mood"))
       def gated(reading: Reading) =
         TriageQuestions
           .of(
             Item.One(n("gap"), gap),
-            Vector(Item.One(n("open"), yesNo("Open?")), Item.PerSource(n("source"), "", "")),
+            Vector(
+              Item.One(n("open"), yesNo("Open?")),
+              Item.One(n("mood"), mood),
+              Item.PerSource(n("source"), "", "")
+            ),
             Gate.bounds(Bound.AtLeast(reading, half))
           )
           .map(_ => ())
@@ -103,7 +108,11 @@ object TriageQuestionsTests extends TestSuite {
         Reading.Yes(n("source")),
         Reading.Yes(n("missing")),
         Reading.Chosen(n("gap"), "maybe"),
-        Reading.Chosen(n("open"), "asks")
+        Reading.Chosen(n("open"), "asks"),
+        // A score is read by no gate, whatever its levels.
+        Reading.Yes(n("mood")),
+        Reading.Key(n("mood"), "calm"),
+        Reading.Chosen(n("mood"), "calm")
       )
       refused.map(gated) ==> refused.map(r => Left(Refusal.Unbounded(r)))
       Vector(
