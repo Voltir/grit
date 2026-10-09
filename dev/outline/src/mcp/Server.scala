@@ -63,6 +63,27 @@ object Server {
     )
   )
 
+  private val testsTool: ujson.Value = ujson.Obj(
+    "name" -> "tests",
+    "description" -> "A test suite's helpers (signatures with line ranges) and its test names with their line ranges, grouped by file; `test` adds the verbatim body of the tests whose names start with it. Replaces reading a whole suite or grepping it for test names.",
+    "inputSchema" -> ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "suite" -> ujson.Obj(
+          "type" -> "string",
+          "description" -> "The suite's class or object, by name or fully qualified."
+        ),
+        "test" -> ujson.Obj(
+          "type" -> "string",
+          "description" -> "Print the verbatim body of each test whose name starts with this."
+        ),
+        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
+      ),
+      "required" -> ujson.Arr("suite"),
+      "additionalProperties" -> false
+    )
+  )
+
   private val areaTool: ujson.Value = ujson.Obj(
     "name" -> "area",
     "description" -> "The named areas of this project (declared in its `.outline.conf`) at level 0, one line per package with its symbols, or level 1, each type or member with its doc's first sentence, grouped by file. Start a task here instead of listing directories or reading READMEs.",
@@ -168,7 +189,11 @@ object Server {
             case Some("tools/list") =>
               answered(
                 id,
-                Right(ujson.Obj("tools" -> ujson.Arr(showTool, familyTool, usesTool, areaTool))),
+                Right(
+                  ujson.Obj(
+                    "tools" -> ujson.Arr(showTool, familyTool, usesTool, areaTool, testsTool)
+                  )
+                ),
                 state,
                 None
               )
@@ -227,6 +252,9 @@ object Server {
             (Right(result), next, Some(name))
           case "uses" =>
             val (result, next) = uses(args, state)
+            (Right(result), next, Some(name))
+          case "tests" =>
+            val (result, next) = tests(args, state)
             (Right(result), next, Some(name))
           case "area" =>
             val (result, next) = area(args, state)
@@ -349,6 +377,38 @@ object Server {
       withBody <- flag(args, "body")
       root <- rootArg(args)
     } yield FamilyArgs(name, member, withBody, root)
+
+  private final case class TestsArgs(
+      suite: String,
+      test: Option[String],
+      root: Option[Root]
+  )
+
+  private def tests(args: ujson.Value, state: State): (ujson.Value, State) =
+    parseTests(args) match {
+      case Left(problem) =>
+        (toolResult(s"bad arguments for tests: $problem", isError = true), state)
+      case Right(t) =>
+        configured(t.root.getOrElse(state.defaultRoot), state) { config =>
+          val (answer, roots) = Query.tests(
+            t.root.getOrElse(state.defaultRoot),
+            MillLayout,
+            config,
+            state.roots,
+            t.suite,
+            t.test,
+            cap
+          )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
+    }
+
+  private def parseTests(args: ujson.Value): Either[String, TestsArgs] =
+    for {
+      suite <- optText(args, "suite").flatMap(_.toRight("suite is required"))
+      test <- optText(args, "test")
+      root <- rootArg(args)
+    } yield TestsArgs(suite, test, root)
 
   private final case class AreaArgs(
       names: Vector[String],

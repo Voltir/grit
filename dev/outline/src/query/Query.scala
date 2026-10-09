@@ -193,6 +193,47 @@ object Query {
       }
     }
 
+  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the non-private members whose range holds no test call) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
+  def tests(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      roots: Roots,
+      suite: String,
+      test: Option[String],
+      cap: Int
+  ): (Answer, Roots) =
+    if (layout.classesDirs(root).isEmpty)
+      (Answer(layout.notCompiled(root), Status.Failed), roots)
+    else
+      Resolve.resolve(root, layout, config, Scope.WithTests, suite, Roots.of(roots, root)) match {
+        case Left(message) => (Answer(message, Status.Failed), roots)
+        case Right(resolved) =>
+          val nextRoots = Roots.put(roots, root, resolved.loaded)
+          resolved.defns.find(d => d.kind == Kind.Class || d.kind == Kind.Object) match {
+            case None => (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
+            case Some(d) =>
+              val path = root.dir / os.RelPath(d.file)
+              if (!os.isFile(path))
+                (Answer(s"no source for $suite at ${d.file}", Status.Failed), nextRoots)
+              else {
+                val src = os.read(path)
+                def holdsTests(member: Defn): Boolean = {
+                  val (from, to) = TestCalls.within(src, member.lines)
+                  TestCalls.find(src, from, to, config.testCall).nonEmpty
+                }
+                val (suiteFrom, suiteTo) = TestCalls.within(src, d.lines)
+                val tests = TestCalls.find(src, suiteFrom, suiteTo, config.testCall)
+                val helpers = d.members.filterNot(m => m.isPrivate || holdsTests(m))
+                val notes = test
+                  .filterNot(p => tests.exists(_.name.startsWith(p)))
+                  .map(p => "-- no test starting \"" + p + "\"")
+                val head = (Vector(header(root)) ++ notes).mkString("\n")
+                (Answer(Render.tests(d, helpers, tests, test, head, cap), Status.Found), nextRoots)
+              }
+          }
+      }
+
   private val areaUsage = "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
 
   /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */

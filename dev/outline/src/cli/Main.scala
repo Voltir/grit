@@ -17,6 +17,9 @@ object Main {
   private val areaUsage =
     "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
 
+  private val testsUsage =
+    "usage: tests Suite [--test NAME] [--cap BYTES] [--root DIR]"
+
   private val familyUsage =
     "usage: family Trait [--member m] [--body] [--cap BYTES] [--root DIR]"
 
@@ -135,6 +138,8 @@ object Main {
         family(name, rest, cwd, leadingRoot)
       case "uses" :: syms :: rest if !syms.startsWith("--") =>
         uses(syms, rest, cwd, leadingRoot)
+      case "tests" :: suite :: rest if !suite.startsWith("--") =>
+        tests(suite, rest, cwd, leadingRoot)
       case "area" :: names :: rest if !names.startsWith("--") =>
         area(names, rest, cwd, leadingRoot)
       case _ => (2, usage)
@@ -271,6 +276,54 @@ object Main {
                     o.level,
                     o.cap
                   )
+                (exitCode(answer.status), answer.text)
+            }
+        }
+    }
+
+  private final case class TestsOptions(
+      test: Option[String],
+      cap: Int,
+      root: Option[String]
+  )
+
+  private def parseTests(rest: List[String], o: TestsOptions): Either[String, TestsOptions] =
+    rest match {
+      case Nil => Right(o)
+      case "--test" :: value :: tail => parseTests(tail, o.copy(test = Some(value)))
+      case "--cap" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseTests(tail, o.copy(cap = n))
+          case None => Left(s"--cap takes a number of bytes, not $value")
+        }
+      case "--root" :: value :: tail => parseTests(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
+  private def tests(
+      suite: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseTests(rest, TestsOptions(None, 80000, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n$testsUsage")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$testsUsage")
+          case Some(d) =>
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) = Query.tests(
+                  Root(d),
+                  MillLayout,
+                  config,
+                  Roots.empty(6000),
+                  suite,
+                  o.test,
+                  o.cap
+                )
                 (exitCode(answer.status), answer.text)
             }
         }

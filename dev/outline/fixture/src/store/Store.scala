@@ -57,3 +57,20 @@ trait Tx
 object Pairs {
   val (left, right) = (1, 2)
 }
+
+/** A suite in the shape test frameworks use. */
+object StoreSuite {
+  private def test(name: String)(body: => Unit): Unit = body
+
+  /** A fresh store for each test. */
+  def fresh(): Store = MemStore(Map.empty)
+
+  def run(): Unit = {
+    test("put then get returns the value") {
+      assert(fresh().put("k", "v").get("k") == Some("v"))
+    }
+    test("get of an absent key is None") {
+      assert(fresh().get("x").isEmpty)
+    }
+  }
+}

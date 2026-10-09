@@ -2,7 +2,7 @@ package grit.outline.render
 
 import java.nio.charset.StandardCharsets
 
-import grit.outline.model.{Defn, Kind, Use}
+import grit.outline.model.{Defn, Kind, TestCase, Use}
 import grit.outline.trace.Traced
 
 /** A trait's family: the trait, its implementations, and each contract with the suites extending it. */
@@ -221,6 +221,36 @@ object Render {
 
     val total = if (level == 0) chunks.size else listed.size
     val (kept, truncated) = fit(chunks, total, cap)
+    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
+  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line. `header` leads; the answer is cut at `cap` bytes and ends with its KB line. */
+  def tests(
+      suite: Defn,
+      helpers: Vector[Defn],
+      tests: Vector[TestCase],
+      prefix: Option[String],
+      header: String,
+      cap: Int
+  ): String = {
+    def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
+
+    val fileLine = s"== ${suite.file}  ${pkgOf(suite.fullName)}"
+    val suiteLine =
+      s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}"
+    val helperChunks = helpers.sortBy(_.lines.start).map { h =>
+      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}")
+    }
+    val testChunks = tests.map { t =>
+      val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}"
+      if (prefix.exists(t.name.startsWith)) Vector(line, t.text) else Vector(line)
+    }
+    val chunks: Vector[Vector[String]] =
+      Vector(Vector(fileLine, suiteLine)) ++ helperChunks ++
+        Vector(Vector(s"  tests (${tests.size}):")) ++ testChunks
+
+    val (kept, truncated) = fit(chunks, chunks.size, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
