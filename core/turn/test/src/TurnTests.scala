@@ -2,7 +2,8 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.act.phase.Asking
+import scala.concurrent.duration.*
+
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.{
   AssemblyError,
@@ -40,14 +41,14 @@ object TurnTests extends TestSuite {
 
   import TurnFixtures.*
 
-  /** A provider unavailable on its first call, answering as the stub after. */
-  private final class UnavailableOnce extends Provider {
+  /** A provider failing its first call with `error`, answering as the stub after. */
+  private final class FailsOnce(error: ProviderError) extends Provider {
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       calls += 1
-      if (calls == 1) Left(ProviderError.Unavailable("HTTP 504"))
+      if (calls == 1) Left(error)
       else new StubProvider().complete(request)
     }
   }
@@ -330,15 +331,34 @@ object TurnTests extends TestSuite {
     test("a summary whose provider is unavailable once is retried and kept") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
-      val summarizer = new UnavailableOnce
+      val summarizer = new FailsOnce(ProviderError.Unavailable("HTTP 504"))
       val clock = new NoWait
       val turn = say(entries, "hello")
       durable.run(turn.workflowId)(
         turnBody(entries, new RecordingProvider, summarizer = summarizer, clock = clock)
       ) ==> Done
       summarizer.calls ==> 2
-      clock.waited ==> Asking.Retries.take(1).toVector
-      texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
+      durable.recordedSteps(turn.workflowId) ==> Recorded
+      clock.waited ==> Vector(2.seconds)
+      texts(entries) ==> Vector(
+        "user: hello",
+        "assistant: stub reply to: hello",
+        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\nUser: hello\n\n" +
+          "Assistant: stub reply to: hello"
+      )
+    }
+
+    test("a summary whose provider refused is not asked again, and the reply stands") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val summarizer = new FailsOnce(ProviderError.Refused("HTTP 400: too long"))
+      val clock = new NoWait
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBody(entries, new RecordingProvider, summarizer = summarizer, clock = clock)
+      ) ==> "replied: reply:c1:0; no summary: Model(HTTP 400: too long)"
+      (summarizer.calls, clock.waited) ==> (1, Vector.empty)
+      texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
     }
 
     test("a summary with no text is a failed summary") {
@@ -766,35 +786,11 @@ object TurnTests extends TestSuite {
       val turn = say(entries, "hello")
       durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==> Done
       provider.calls ==> 3
-      clock.waited ==> Asking.Retries.toVector
+      clock.waited ==> Vector(2.seconds, 6.seconds)
       val (pieces, told) = heard(durable, turn)
       pieces.map(_.attempt).distinct.size ==> 3
       told.text ==> "stub reply to: hello"
       durable.recordedSteps(turn.workflowId) ==> Recorded
-    }
-
-    test("a provider unavailable on every try fails the call after the last wait") {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val provider = new Flaky(3, ProviderError.Unavailable("HTTP 504"))
-      val clock = new NoWait
-      val turn = say(entries, "hello")
-      durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==>
-        "failed: Model(HTTP 504 (after 3 tries))"
-      provider.calls ==> 3
-      clock.waited ==> Asking.Retries.toVector
-    }
-
-    test("a provider that refused is not asked again") {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val provider = new Flaky(1, ProviderError.Refused("HTTP 400: too long"))
-      val clock = new NoWait
-      val turn = say(entries, "hello")
-      durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==>
-        "failed: Model(HTTP 400: too long)"
-      provider.calls ==> 1
-      clock.waited ==> Vector.empty
     }
 
     test("not a turn id") {
