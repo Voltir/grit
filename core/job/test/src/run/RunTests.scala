@@ -2,7 +2,7 @@ package grit.job.run
 
 import grit.act.moves.MoveSteps
 import grit.core.durable.InMemoryDurable
-import grit.core.edge.{InMemoryEdges, Pending, RequestState}
+import grit.core.edge.{Pending, RequestState}
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
 import grit.core.identity.Account
 import grit.core.job.Ending
