@@ -382,16 +382,16 @@ object RunTests extends TestSuite {
     test(
       "a JSON ask's reply is read as its type on the first run, and on replay with the model not called again"
     ) {
-      val w = new World(shapes = Vector(ujson.Obj("count" -> "3")))
+      val w = new World(shapes = Vector(ujson.Obj("count" -> 3)))
       val turn = w.started(w.declared("standup", 3))
       val seen = new Seen
       val first = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(seen))))
-      val read = seen.reply
+      val again = new Seen
       val replayed = new InMemoryDurable()
         .replay(turn.workflowId, w.durable.history(turn.workflowId))(
-          Run.body(w.env(), jobsOf(counting(seen)))
+          Run.body(w.env(), jobsOf(counting(again)))
         )
-      (first, read, replayed, seen.reply, w.reply(turn), w.models.calls) ==> (
+      (first, seen.reply, replayed, again.reply, w.reply(turn), w.models.calls) ==> (
         s"replied: reply:${turn.conversationId}:0",
         Some("6"),
         Right(s"replied: reply:${turn.conversationId}:0"),
@@ -399,6 +399,30 @@ object RunTests extends TestSuite {
         Some("6"),
         1
       )
+    }
+
+    test("a JSON reply's quoted number is read as its number, in one call, its model repairing it") {
+      val w = new World(shapes = Vector(ujson.Obj("count" -> "3")))
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
+      (w.reply(turn), w.models.calls) ==> (Some("6"), 1)
+    }
+
+    test("a JSON ask once the day's spend reached its cap is Capped and asks no model") {
+      val w = new World(cap = Some("0.5"), shapes = Vector(ujson.Obj("count" -> 3)))
+      ok(
+        w.ledger.record(
+          EntryId("earlier"),
+          w.started(w.declared("earlier")),
+          WorkflowId("earlier"),
+          "m",
+          Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("1"))),
+          Tokens(1)
+        )(using TestTx.fake)
+      )
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(counting(new Seen))))
+      (w.reply(turn), w.models.calls) ==> (Some("Capped"), 0)
     }
 
     test(
@@ -550,12 +574,12 @@ object RunTests extends TestSuite {
       val turn = w.started(w.declared("standup"))
       val seen = new Seen
       val first = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(seen))))
-      val read = seen.reply
+      val again = new Seen
       val replayed = new InMemoryDurable()
         .replay(turn.workflowId, w.durable.history(turn.workflowId))(
-          Run.body(w.env(), jobsOf(judging(seen)))
+          Run.body(w.env(), jobsOf(judging(again)))
         )
-      (first, read, replayed, seen.reply, w.classifier.calls) ==> (
+      (first, seen.reply, replayed, again.reply, w.classifier.calls) ==> (
         s"replied: reply:${turn.conversationId}:0",
         Some("docs 0.99 1"),
         Right(s"replied: reply:${turn.conversationId}:0"),
@@ -749,12 +773,4 @@ object RunTests extends TestSuite {
         r
       }
     )
-
-  /** What a job replied, each time it ran. */
-  private final class Seen {
-    // caps.unsafe: it holds an immutable value; each is one test's own, written by its job on
-    // the run's one thread and read only after the run has returned.
-    @caps.unsafe.untrackedCaptures
-    var reply: Option[String] = None
-  }
 }

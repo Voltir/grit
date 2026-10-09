@@ -97,10 +97,11 @@ object RecordJobHistories {
       },
       // A job's moves (ADR 0034), each a shape its steps can leave.
       record("run-asked")((w, d) => probed(w, d, 1)),
-      // A JSON ask whose first reply its schema refused, repaired once.
+      // A JSON ask whose first reply its schema refused, repaired once to an answer the
+      // world's model gives nothing else, so a replay that asked it again would differ.
       record(
         "run-asked-json",
-        shapes = Vector(ujson.Obj("answer" -> 3), ujson.Obj("answer" -> "hello"))
+        shapes = Vector(ujson.Obj("answer" -> 3), ujson.Obj("answer" -> "repaired"))
       ) { (w, d) =>
         probed(w, d, 4)
       },

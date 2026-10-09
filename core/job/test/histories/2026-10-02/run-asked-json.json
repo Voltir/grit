@@ -10,7 +10,7 @@
     },
     {
       "name": "move:a",
-      "output": "{\"shaped\":{\"digest\":\"v1:296935d3c4d0bfea5d4c1576056989e655216a0a3e444aa61e0e901a1eb983e2\",\"reply\":{\"answer\":\"hello\"},\"at\":\"public\",\"calls\":[{\"model\":\"test/summary\",\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"estimate\":175},{\"model\":\"test/summary\",\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"estimate\":396}]}}"
+      "output": "{\"shaped\":{\"digest\":\"v1:296935d3c4d0bfea5d4c1576056989e655216a0a3e444aa61e0e901a1eb983e2\",\"reply\":{\"answer\":\"repaired\"},\"at\":\"public\",\"calls\":[{\"model\":\"test/summary\",\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"estimate\":175},{\"model\":\"test/summary\",\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"estimate\":396}]}}"
     },
     {
       "name": "move:a:record",
@@ -18,7 +18,7 @@
     },
     {
       "name": "reply",
-      "output": "{\"kind\":\"replied\",\"text\":\"hello\"}"
+      "output": "{\"kind\":\"replied\",\"text\":\"repaired\"}"
     }
   ]
 }

@@ -32,26 +32,15 @@ object JobReplayTests extends TestSuite {
     */
   private def kept(history: History): Boolean = history.steps.exists(_.name == "move:note")
 
-  /** What [[probes]] at version 1 replies when `history` is replayed under today's body: a move
-    * whose input's digest no longer matches the one recorded replies `Diverged`, though every
-    * step still replays.
+  /** What [[probes]] at version 1 replies when `history` is replayed under today's body, or why
+    * the replay failed: a move whose input's digest no longer matches the one recorded replies
+    * `Diverged`, though every step still replays.
     */
-  private def replies(history: History): Option[String] = {
-    val said = new Said
-    val job =
-      new Moving(1, limits(1, 1), (n, m) => { val r = probes(n, m); said.reply = Some(r); r })
-    val _ = new InMemoryDurable().replay(history.id, history.steps)(
-      Run.body(new World().env(), jobsOf(job))
-    )
-    said.reply
-  }
-
-  /** What a replayed job replied. */
-  private final class Said {
-    // caps.unsafe: it holds an immutable value; each is one replay's own, written by its job on
-    // the replay's one thread and read only after the replay has returned.
-    @caps.unsafe.untrackedCaptures
-    var reply: Option[String] = None
+  private def replies(history: History): Either[String, Option[String]] = {
+    val seen = new Seen
+    new InMemoryDurable()
+      .replay(history.id, history.steps)(Run.body(new World().env(), jobsOf(probing(1, seen))))
+      .map(_ => seen.reply)
   }
 
   /** The reply `history`'s run recorded. */
@@ -115,10 +104,25 @@ object JobReplayTests extends TestSuite {
     test(
       "every run history that asked or called, and replied, replies under today's body as it recorded"
     ) {
-      val differing = histories.collect {
-        case (path, Right(h))
-            if moved(h) && !kept(h) && recorded(h).nonEmpty && replies(h) != recorded(h) =>
-          s"${path.last}: ${replies(h)} != ${recorded(h)}"
+      val replied = histories.collect {
+        case (path, Right(h)) if moved(h) && !kept(h) && recorded(h).nonEmpty => (path.last, h)
+      }
+      // Every one that recorded a reply is compared: one whose reply no longer parses would
+      // otherwise drop out of the gate unseen.
+      replied.map(_._1).sorted ==> Vector(
+        "run-asked",
+        "run-asked-json",
+        "run-asked-judgment",
+        "run-call-refused",
+        "run-call-unclaimed",
+        "run-call-unserved",
+        "run-called",
+        "run-called-then-asked",
+        "run-capped"
+      ).map(_ + ".json").sorted
+      val differing = replied.collect {
+        case (name, h) if replies(h) != Right(recorded(h)) =>
+          s"$name: ${replies(h)} != ${recorded(h)}"
       }
       differing ==> Vector()
     }

@@ -426,8 +426,27 @@ object RunFixtures {
     def run(run: JobRun[Count], moves: Moves^): String = plan(run.params, moves)
   }
 
-  /** `remind` at `version`, within an ask and a call, its plan [[probes]]. */
-  def probing(version: Int): Moving = new Moving(version, limits(1, 1), probes)
+  /** `remind` at `version`, within an ask and a call, its plan [[probes]], telling `seen` what
+    * it replied.
+    */
+  def probing(version: Int, seen: Seen = new Seen): Moving =
+    new Moving(
+      version,
+      limits(1, 1),
+      (n, m) => {
+        val r = probes(n, m)
+        seen.reply = Some(r)
+        r
+      }
+    )
+
+  /** What a job replied, each time it ran. */
+  final class Seen {
+    // caps.unsafe: it holds an immutable value; each is one test's own, written by its job on
+    // the run's one thread and read only after the run has returned.
+    @caps.unsafe.untrackedCaptures
+    var reply: Option[String] = None
+  }
 
   /** `{"answer": string}`, read as the answer. */
   val Answered: Typed[String] = Typed(
