@@ -8,6 +8,30 @@ object Main {
   private val usage =
     "usage: show Sym[,Sym…] [--depth N] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]"
 
+  private val familyUsage =
+    "usage: family Trait [--member m] [--body] [--cap BYTES] [--root DIR]"
+
+  private final case class FamilyOptions(
+      member: Option[String],
+      withBody: Boolean,
+      cap: Int,
+      root: Option[String]
+  )
+
+  private def parseFamily(rest: List[String], o: FamilyOptions): Either[String, FamilyOptions] =
+    rest match {
+      case Nil => Right(o)
+      case "--body" :: tail => parseFamily(tail, o.copy(withBody = true))
+      case "--member" :: value :: tail => parseFamily(tail, o.copy(member = Some(value)))
+      case "--cap" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseFamily(tail, o.copy(cap = n))
+          case None => Left(s"--cap takes a number of bytes, not $value")
+        }
+      case "--root" :: value :: tail => parseFamily(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
   private final case class Options(
       depth: Int,
       bodies: Set[String],
@@ -36,6 +60,10 @@ object Main {
   }
 
   /** The nearest directory at or above `dir` holding `build.mill`. */
+  /** The directory `--root` names, else the repository above `cwd`. */
+  private def rootDir(explicit: Option[String], cwd: os.Path): Option[os.Path] =
+    explicit.map(os.Path(_, cwd)).orElse(repoAbove(cwd))
+
   private def repoAbove(dir: os.Path): Option[os.Path] =
     if (os.exists(dir / "build.mill")) Some(dir)
     else {
@@ -71,8 +99,7 @@ object Main {
         parse(rest, defaults) match {
           case Left(message) => (2, s"$message\n$usage")
           case Right(o) =>
-            val dir = o.root.map(os.Path(_, cwd)).orElse(repoAbove(cwd))
-            dir match {
+            rootDir(o.root, cwd) match {
               case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usage")
               case Some(d) =>
                 val syms = sym.split(',').toVector.filter(_.nonEmpty)
@@ -90,7 +117,35 @@ object Main {
                 (exitCode(answer.status), answer.text)
             }
         }
+      case "family" :: name :: rest if !name.startsWith("--") =>
+        family(name, rest, cwd, leadingRoot)
       case _ => (2, usage)
+    }
+
+  private def family(
+      name: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseFamily(rest, FamilyOptions(None, false, 80000, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n$familyUsage")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$familyUsage")
+          case Some(d) =>
+            val (answer, _) =
+              Query.family(
+                Root(d),
+                MillLayout,
+                Roots.empty(6000),
+                name,
+                o.member,
+                o.withBody,
+                o.cap
+              )
+            (exitCode(answer.status), answer.text)
+        }
     }
 
   def main(args: Array[String]): Unit = {

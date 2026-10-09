@@ -5,6 +5,15 @@ import java.nio.charset.StandardCharsets
 import grit.outline.model.{Defn, Kind}
 import grit.outline.trace.Traced
 
+/** A trait's family: the trait, its implementations, and each contract with the suites extending it. */
+final case class Family(
+    trait0: Defn,
+    member: Option[String],
+    impls: Vector[Defn],
+    contracts: Vector[(Defn, Vector[Defn])],
+    withBody: Boolean
+)
+
 object Render {
 
   /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it, each as its collapsed signature and start line. */
@@ -31,29 +40,6 @@ object Render {
   ): String = {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
-
-    def pkgOf(fullName: String): String =
-      fullName.split('.').takeWhile(s => s.nonEmpty && s.charAt(0).isLower).mkString(".")
-
-    def ownerRelative(d: Defn): String = {
-      val pkg = pkgOf(d.fullName)
-      if (pkg.isEmpty) d.fullName else d.fullName.drop(pkg.length + 1)
-    }
-
-    def kindWord(k: Kind): String = k match {
-      case Kind.Class => "class"
-      case Kind.CaseClass => "case class"
-      case Kind.Trait => "trait"
-      case Kind.Object => "object"
-      case Kind.Enum => "enum"
-      case Kind.EnumCase => "case"
-      case Kind.Def => "def"
-      case Kind.Val => "val"
-      case Kind.Var => "var"
-      case Kind.Given => "given"
-      case Kind.TypeAlias => "type"
-      case Kind.Opaque => "opaque type"
-    }
 
     def entry(d: Defn): Vector[String] =
       Vector(s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}") ++
@@ -88,9 +74,7 @@ object Render {
     }
 
     val total = named.size + traced.types.size
-    val sizes = chunks.map(c => bytesOf(c.mkString("\n") + "\n")).scanLeft(0)(_ + _).drop(1)
-    val shown = sizes.takeWhile(_ <= cap).length
-    val kept = chunks.take(shown).flatten
+    val (kept, truncated) = fit(chunks, total, cap)
 
     val library = traced.library.filterNot(_.contains("<"))
     val notLoaded = traced.missing
@@ -98,12 +82,108 @@ object Render {
       (if (library.nonEmpty) Vector(s"-- library: ${library.mkString(", ")}") else Vector.empty) ++
         (if (notLoaded.nonEmpty) Vector(s"-- not loaded: ${notLoaded.mkString(", ")}")
          else Vector.empty)
+    val body = (kept ++ trailer ++ truncated).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
+  private def pkgOf(fullName: String): String =
+    fullName.split('.').takeWhile(s => s.nonEmpty && s.charAt(0).isLower).mkString(".")
+
+  private def ownerRelative(d: Defn): String = {
+    val pkg = pkgOf(d.fullName)
+    if (pkg.isEmpty) d.fullName else d.fullName.drop(pkg.length + 1)
+  }
+
+  private def kindWord(k: Kind): String = k match {
+    case Kind.Class => "class"
+    case Kind.CaseClass => "case class"
+    case Kind.Trait => "trait"
+    case Kind.Object => "object"
+    case Kind.Enum => "enum"
+    case Kind.EnumCase => "case"
+    case Kind.Def => "def"
+    case Kind.Val => "val"
+    case Kind.Var => "var"
+    case Kind.Given => "given"
+    case Kind.TypeAlias => "type"
+    case Kind.Opaque => "opaque type"
+  }
+
+  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, grouped by file under the `header` line; cut at `cap` bytes. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
+  def family(f: Family, all: Vector[Defn], header: String, stale: Set[String], cap: Int): String = {
+    def headerOf(d: Defn): String =
+      s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
+
+    def block(d: Defn, body: Boolean): Vector[String] =
+      Vector(headerOf(d)) ++ d.doc.toVector ++ Vector(d.signature) ++
+        (if (body) d.body.toVector else Vector.empty)
+
+    def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
+
+    val traitLines: Vector[String] = f.member match {
+      case None =>
+        block(f.trait0, false) ++ f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
+      case Some(m) =>
+        Vector(headerOf(f.trait0), f.trait0.signature) ++
+          f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
+    }
+
+    def implLines(d: Defn): Vector[String] = {
+      val head = s"${headerOf(d)}  ${signatureOf(d)}"
+      f.member match {
+        case None => Vector(head)
+        case Some(m) =>
+          val overloads = d.members.filter(_.name == m)
+          if (f.withBody)
+            Vector(head) ++ overloads.flatMap(o => Vector(o.signature) ++ o.body.toVector)
+          else Vector(head) ++ overloads.map(o => s"  ${o.lines.start}-${o.lines.end} $m")
+      }
+    }
+
+    def contractLines(c: Defn, suites: Vector[Defn]): Vector[String] = {
+      val runBy =
+        if (suites.isEmpty) "  run by nothing"
+        else s"  run by ${suites.map(s => s"${s.file}:${s.lines.start}").mkString(", ")}"
+      Vector(s"${c.lines.start}-${c.lines.end} contract ${ownerRelative(c)}  ${signatureOf(c)}") ++
+        c.members
+          .filter(!_.isPrivate)
+          .map(m => s"  ${m.lines.start}-${m.lines.end} ${signatureOf(m)}") ++
+        Vector(runBy)
+    }
+
+    // Each entry is (file, start line, its lines); a file's header rides on its first entry.
+    val pieces: Vector[(String, Int, Vector[String])] =
+      Vector((f.trait0.file, f.trait0.lines.start, traitLines)) ++
+        f.impls.map(d => (d.file, d.lines.start, implLines(d))) ++
+        f.contracts.map { case (c, suites) => (c.file, c.lines.start, contractLines(c, suites)) }
+
+    val files = pieces.map(_._1).distinct
+    val chunks: Vector[Vector[String]] = files.flatMap { file =>
+      val here = pieces.filter(_._1 == file).sortBy(_._2).map(_._3)
+      val pkg = all.find(_.file == file).map(d => pkgOf(d.fullName)).getOrElse("")
+      val staleTag = if (stale.contains(file)) "  [stale: source newer than .tasty]" else ""
+      val fileHeader = s"== $file  $pkg$staleTag"
+      here.zipWithIndex.map { case (lines, i) => if (i == 0) fileHeader +: lines else lines }
+    }
+
+    val (kept, truncated) = fit(chunks, pieces.size, cap)
+    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
+  /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
+  private def fit(
+      chunks: Vector[Vector[String]],
+      total: Int,
+      cap: Int
+  ): (Vector[String], Vector[String]) = {
+    val sizes = chunks.map(c => bytesOf(c.mkString("\n") + "\n")).scanLeft(0)(_ + _).drop(1)
+    val shown = sizes.takeWhile(_ <= cap).length
+    val kept = chunks.take(shown).flatten
     val truncated =
       if (shown < chunks.size) Vector(s"[truncated: $shown of $total entries; narrow the query]")
       else Vector.empty
-
-    val body = (kept ++ trailer ++ truncated).map(_ + "\n").mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    (kept, truncated)
   }
 
   private def collapse(s: String): String = s.trim.split("\\s+").mkString(" ")
