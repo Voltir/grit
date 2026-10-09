@@ -1,5 +1,7 @@
 package grit.outline.read
 
+import java.io.{ByteArrayOutputStream, PrintStream}
+
 import scala.collection.mutable
 import scala.quoted.Quotes
 import scala.tasty.inspector.{Inspector, Tasty, TastyInspector}
@@ -11,8 +13,11 @@ import grit.outline.model.{Defn, Kind, Lines}
 /** Reads TASTy files into definitions, each with its source slices. Each inspector call is a fresh compiler run, so no compiler context is shared between roots. */
 object Read {
 
-  /** The dependency classpath handed to the inspector for `root`: exactly its compiled classes directories. */
-  def classpath(root: Root, layout: Layout): Vector[os.Path] = layout.classesDirs(root)
+  /** The classpath handed to the inspector for `root`: its compiled classes directories, then the library jars its
+    * compiled classes record, so that TASTy referring to a third-party type can be read.
+    */
+  def classpath(root: Root, layout: Layout): Vector[os.Path] =
+    layout.classesDirs(root) ++ layout.libraryJars(root)
 
   /** The top-level definitions in `tasty`, each with its public and private members nested under it, in input order.
     *
@@ -379,18 +384,48 @@ object Read {
         }
       }
     }
-    val ok =
+    val captured = new ByteArrayOutputStream()
+    val ran: Either[String, Boolean] = redirected(captured) {
+      try
+        Right(
+          TastyInspector.inspectAllTastyFiles(
+            tasty.map(_.toString).toList,
+            Nil,
+            classpath(root, layout).map(_.toString).toList
+          )(inspector)
+        )
+      catch { case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.toString)) }
+    }
+    ran match {
+      case Left(message) => Left(message)
+      case Right(ok) =>
+        if (foreign.nonEmpty) Left(foreign.mkString("\n"))
+        else if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
+        else Left(complaint(captured, tasty.size))
+    }
+  }
+
+  /** Runs `body` with stdout and stderr, and the console's, sent to `buffer`; they are restored after, even when `body` throws. */
+  private def redirected[A](buffer: ByteArrayOutputStream)(body: => A): A = {
+    val sink = new PrintStream(buffer, true)
+    // Console is entered before System is swapped: it takes its default streams on first use, and those must be the real ones.
+    Console.withOut(sink)(Console.withErr(sink) {
+      val (oldOut, oldErr) = (System.out, System.err)
       try {
-        TastyInspector.inspectAllTastyFiles(
-          tasty.map(_.toString).toList,
-          Nil,
-          classpath(root, layout).map(_.toString).toList
-        )(inspector)
-      } catch {
-        case NonFatal(e) => return Left(Option(e.getMessage).getOrElse(e.toString))
+        System.setOut(sink)
+        System.setErr(sink)
+        body
+      } finally {
+        System.setOut(oldOut)
+        System.setErr(oldErr)
       }
-    if (foreign.nonEmpty) Left(foreign.mkString("\n"))
-    else if (ok) Right(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap)
-    else Left("the TASTy inspector reported errors")
+    })
+  }
+
+  /** What the inspector printed is never shown: its first three non-blank lines, each cut to 200 characters, name the failure. */
+  private def complaint(captured: ByteArrayOutputStream, files: Int): String = {
+    val lines =
+      captured.toString.linesIterator.filter(_.trim.nonEmpty).take(3).map(_.take(200)).toVector
+    s"the TASTy inspector could not read $files file(s): ${lines.mkString("\n")}"
   }
 }

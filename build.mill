@@ -520,7 +520,8 @@ object grit extends Module {
     }
     def mvnDeps = Seq(
       mvn"org.scala-lang::scala3-tasty-inspector:${scalaVersion()}",
-      mvn"com.lihaoyi::os-lib:0.11.8"
+      mvn"com.lihaoyi::os-lib:0.11.8",
+      mvn"com.lihaoyi::upickle:4.4.3"
     )
     def mainClass = Some("grit.outline.cli.Main")
     /* One JVM per open session on a 17 GB machine; adjusted from measurement. */

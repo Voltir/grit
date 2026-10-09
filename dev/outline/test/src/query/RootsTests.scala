@@ -48,11 +48,25 @@ object RootsTests extends TestSuite {
       assert(a3.text == a1.text)
     }
 
-    test("Read.classpath is the root's own classes directory, every entry under the root") {
+    test(
+      "Read.classpath is the root's classes directories and its recorded library jars: each entry is under the root, or a .jar with no out segment"
+    ) {
       val r1 = checkout("classpath", one)
+      val jar = os.temp(prefix = "outline-lib-", suffix = ".jar")
+      os.write.over(
+        r1.dir / "out" / "m" / "resolvedMvnDeps.json",
+        ujson.write(ujson.Obj("value" -> ujson.Arr(s"qref:v1:abc123:$jar"))),
+        createFolders = true
+      )
       val entries = Read.classpath(r1, MillLayout)
       assert(entries.nonEmpty)
-      assert(entries.forall(_.toString.startsWith(r1.dir.toString + "/")))
+      assert(entries.contains(jar))
+      assert(
+        entries.forall(e =>
+          e.toString.startsWith(r1.dir.toString + "/") ||
+            (e.ext == "jar" && !e.segments.contains("out"))
+        )
+      )
     }
 
     test(

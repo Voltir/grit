@@ -30,5 +30,24 @@ object MillLayoutTests extends TestSuite {
         )
       )
     }
+
+    test(
+      "libraryJars is the existing .jar files a resolvedMvnDeps.json names, with the coursier prefix stripped"
+    ) {
+      val root = tree("out/m/compile.dest/classes/x/A.tasty", "lib/b.pom")
+      val jar = at(root, "lib/a.jar")
+      os.write(jar, "", createFolders = true)
+      val missing = at(root, "lib/missing.jar")
+      val pom = at(root, "lib/b.pom")
+      val deps = ujson.Obj(
+        "value" -> ujson.Arr(
+          s"qref:v1:abc123:$jar",
+          s"ref:v1:abc123:$missing",
+          s"qref:v1:abc123:$pom"
+        )
+      )
+      os.write(at(root, "out/m/resolvedMvnDeps.json"), ujson.write(deps))
+      assert(MillLayout.libraryJars(root) == Vector(jar))
+    }
   }
 }

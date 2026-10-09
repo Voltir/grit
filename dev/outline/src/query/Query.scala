@@ -85,6 +85,32 @@ object Query {
   private def everyDefnOf(ds: Vector[Defn]): Vector[Defn] =
     ds.flatMap(d => d +: everyDefnOf(d.members))
 
+  /** `tasty`'s definitions in one inspector run; when that fails, one run per package directory, and a directory that still fails is named (relative to its classes directory) and skipped. */
+  private def loadAll(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      in: Loaded
+  ): (Vector[Defn], Loaded, Vector[String]) =
+    Loaded.defns(root, layout, tasty, in) match {
+      case Right((ds, next, _)) => (ds, next, Vector.empty)
+      case Left(_) =>
+        val dirs = tasty.map(_ / os.up).distinct
+        dirs.foldLeft((Vector.empty[Defn], in, Vector.empty[String])) {
+          case ((read, state, unread), dir) =>
+            Loaded.defns(root, layout, tasty.filter(_ / os.up == dir), state) match {
+              case Left(_) => (read, state, unread :+ packageName(layout, root, dir))
+              case Right((ds, after, _)) => (read ++ ds, after, unread)
+            }
+        }
+    }
+
+  private def packageName(layout: Layout, root: Root, dir: os.Path): String =
+    layout
+      .classesDirs(root)
+      .find(dir.startsWith)
+      .fold(dir.toString)(c => dir.relativeTo(c).toString)
+
   private def familyIn(
       root: Root,
       layout: Layout,
@@ -99,15 +125,7 @@ object Query {
     else {
       val files = Locate.mentioning(root, name.split('.').last)
       val tasty = files.flatMap(file => Locate.inPackageOf(root, layout, file)).distinct
-      // One file at a time: a file the inspector cannot read (its library is not among the classes directories) is named, not fatal.
-      val (defns, next, missing) =
-        tasty.foldLeft((Vector.empty[Defn], in, Vector.empty[String])) {
-          case ((read, state, unread), path) =>
-            Loaded.defns(root, layout, Vector(path), state) match {
-              case Left(_) => (read, state, unread :+ path.last)
-              case Right((ds, after, _)) => (read ++ ds, after, unread)
-            }
-        }
+      val (defns, next, missing) = loadAll(root, layout, tasty, in)
       val head =
         (Vector(header(root)) ++
           (if (missing.isEmpty) Vector.empty

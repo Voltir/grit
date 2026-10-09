@@ -1,6 +1,8 @@
 package grit.outline.read
 
-import grit.outline.locate.{MillLayout, Root}
+import java.io.{ByteArrayOutputStream, PrintStream}
+
+import grit.outline.locate.{Layout, MillLayout, Root}
 import grit.outline.model.{Defn, Kind, Lines, Ref}
 
 import utest.*
@@ -144,5 +146,84 @@ object ReadTests extends TestSuite {
       assert(b.refs.contains(Ref("grit.outline.fixture.C", "grit.outline.fixture.C", true)))
       assert(!b.refs.exists(_.fullName == "grit.outline.fixture.B"))
     }
+    test(
+      "a tasty whose library is not among the classes directories is read, and the compiler's output reaches neither stdout nor stderr"
+    ) {
+      val (dir, bClasses) = twoCompiled()
+      val layout = quietLayout(bClasses)
+      val (result, out, err) = captured {
+        Read.defnsByTasty(Root(dir), layout, Vector(bClasses / "q" / "B.tasty"))
+      }
+      assert(result.isRight)
+      assert(out.isEmpty)
+      assert(err.isEmpty)
+    }
+
+    test(
+      "a tasty the inspector throws on is Left with the exception's message, and nothing reaches stdout or stderr"
+    ) {
+      val dir = os.temp.dir(prefix = "outline-corrupt-")
+      val corrupt = dir / "classes" / "q" / "C.tasty"
+      os.write(corrupt, "not tasty", createFolders = true)
+      val (result, out, err) = captured {
+        Read.defnsByTasty(Root(dir), quietLayout(dir / "classes"), Vector(corrupt))
+      }
+      assert(result == Left("not a TASTy file"))
+      assert(out.isEmpty)
+      assert(err.isEmpty)
+    }
+  }
+
+  /** A checkout holding q.A and q.B, each compiled into its own classes directory; B's is returned. */
+  private def twoCompiled(): (os.Path, os.Path) = {
+    val dir = os.temp.dir(prefix = "outline-quiet-")
+    val srcA = dir / "src" / "q" / "A.scala"
+    val srcB = dir / "src" / "q" / "B.scala"
+    os.write(srcA, "package q\nclass A\n", createFolders = true)
+    os.write(srcB, "package q\nclass B(a: A)\n", createFolders = true)
+    val aClasses = dir / "a"
+    val bClasses = dir / "b"
+    os.makeDir.all(aClasses)
+    os.makeDir.all(bClasses)
+    val scalaClasspath = System.getProperty("java.class.path")
+    val compiledA =
+      dotty.tools.dotc.Main
+        .process(Array("-d", aClasses.toString, "-classpath", scalaClasspath, srcA.toString))
+    assert(!compiledA.hasErrors)
+    val compiledB = dotty.tools.dotc.Main.process(
+      Array(
+        "-d",
+        bClasses.toString,
+        "-classpath",
+        aClasses.toString + java.io.File.pathSeparator + scalaClasspath,
+        srcB.toString
+      )
+    )
+    assert(!compiledB.hasErrors)
+    (dir, bClasses)
+  }
+
+  private def quietLayout(classes: os.Path): Layout = new Layout {
+    def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+    def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+    def notCompiled(root: Root): String = "not compiled"
+  }
+
+  /** Runs `body` with this test's stdout and stderr captured, returning its value and what each received. */
+  private def captured[A](body: => A): (A, String, String) = {
+    val out = new ByteArrayOutputStream()
+    val err = new ByteArrayOutputStream()
+    val oldOut = System.out
+    val oldErr = System.err
+    val result =
+      try {
+        System.setOut(new PrintStream(out, true))
+        System.setErr(new PrintStream(err, true))
+        body
+      } finally {
+        System.setOut(oldOut)
+        System.setErr(oldErr)
+      }
+    (result, out.toString, err.toString)
   }
 }
