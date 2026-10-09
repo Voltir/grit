@@ -70,12 +70,14 @@ In dependency order:
   `SchemaError`; its `check` of some JSON, repairs made where it directs, gives a
   `Conforming` or the first `Mismatch`) and `Typed` (a schema, and a pure reader of what
   conforms to it). ← `model`
-- **`classify`** — the classifier seam: `Classifier` (closed questions about a state,
-  answered with a probability per option; Jev's shape; each call one `Request`, which
-  `around` hands to a function before the classifier it wraps, for caching or recording),
-  and `ClassifierError` with its `Kind`, a failure without its words; `AnswersJson`, the
-  stored form of its answers, each under its question's name or not. Above the packages that
-  record what a classifier answered. ← `id`, `message`
+- **`classify`** — the classifier trait: `Classifier` (closed questions about a state,
+  answered with a probability per option or level; Jev's shape; each call one `Request`,
+  which `around` hands to a function before the classifier it wraps, for caching or
+  recording); `Ask`, questions (a choice, a score, a yes/no) and the pure reader of their
+  answers into a type (`Decision`, `Scored`); `ClassifierError` with its `Kind`, a failure
+  without its words; `AnswersJson`, the stored form of its answers, each under its
+  question's name or not. Above the packages that record what a classifier answered. ← `id`,
+  `message`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
@@ -226,10 +228,12 @@ In dependency order:
   whom its requests record, `ActsFor`, what its asks may spend, `Allowance`, and what becomes
   of a call whose tool asks a person first, `Gates`), pure data; `Moves`, a planner's ask and
   call, each made once under its `MoveName` within its run's `MoveLimits` per `MoveKind`, and
-  `Keeping`, those and a keep over its plugin's own documents; what an ask poses (`Posed`: a request answered in words, or
-  JSON held to a schema);
-  what they come to (`Asked`, `Called`) or why one was not made (`MoveError`). ← `id`, `place`, `visibility`, `message`,
-  `store`, `document`, `spend`, `durable`, `provider`, `tool`, `schema`
+  `Keeping`, those and a keep over its plugin's own documents; what an ask poses (`Posed`: a
+  request answered in words, JSON held to a schema, or a judgment, questions about a state
+  answered by the deployment's classifier, counted against `MoveKind.Judge`'s limit); what
+  they come to (`Asked`, `Called`) or why one was not made (`MoveError`). ← `id`, `place`,
+  `visibility`, `message`, `classify`, `store`, `document`, `spend`, `durable`, `provider`,
+  `tool`, `schema`
 - **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
   or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
   schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
