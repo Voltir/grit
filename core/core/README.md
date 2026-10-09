@@ -67,7 +67,8 @@ In dependency order:
   `Tokens`, `Usage`, and `Cost` (what calls cost together, and how grit writes it). ← `id`
 - **`schema`** — the JSON Schemas a reply is held to: `JsonSchema` (a schema in the subset
   every provider's strict mode accepts, read only by `JsonSchema.read`, or refused with a
-  `SchemaError`). Imports nothing in core.
+  `SchemaError`; its `check` of some JSON, repairs made where it directs, gives a
+  `Conforming` or the first `Mismatch`). ← `model`
 - **`classify`** — the classifier seam: `Classifier` (closed questions about a state,
   answered with a probability per option; Jev's shape; each call one `Request`, which
   `around` hands to a function before the classifier it wraps, for caching or recording),

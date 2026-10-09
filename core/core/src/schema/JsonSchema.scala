@@ -1,5 +1,7 @@
 package grit.core.schema
 
+import grit.core.model.ArgRepair
+
 /** A JSON Schema in the subset every provider's strict mode accepts, so any upstream can be
   * sent it `strict` and grit's own check means what the provider's does. Read only by
   * [[JsonSchema.read]].
@@ -10,6 +12,15 @@ final class JsonSchema private (root: JsonSchema.Node) extends caps.Pure {
     * order and each object's properties in the order read.
     */
   def json: ujson.Obj = JsonSchema.write(root)
+
+  /** `value`, with `repairs` made where this schema directs them, if it conforms: a string
+    * of decimal digits where a number or integer is asked for under
+    * [[grit.core.model.ArgRepair.QuotedNumber]], a string holding a JSON list where a list is
+    * asked for under [[grit.core.model.ArgRepair.QuotedList]]. Otherwise the first place, in
+    * document order, where it does not ([[Mismatch]]).
+    */
+  def check(value: ujson.Value, repairs: Set[ArgRepair]): Either[Mismatch, Conforming] =
+    JsonSchema.conform(root, value, "", repairs).map(v => new Conforming(v.render()))
 }
 
 object JsonSchema {
@@ -331,6 +342,95 @@ object JsonSchema {
       case _ => None
     }
   }
+
+  /** `value` at `path`, repaired as `node` directs under `repairs`, if it conforms to `node`;
+    * a new value, `value` itself unchanged.
+    */
+  private def conform(
+      node: Node,
+      value: ujson.Value,
+      path: String,
+      repairs: Set[ArgRepair]
+  ): Either[Mismatch, ujson.Value] = {
+    def refuse[A](why: String): Either[Mismatch, A] = Left(Mismatch(path, why))
+    val v = repaired(node.base, value, repairs)
+    if (!node.admits(v)) refuse(s"expected ${node.described}, got ${shown(v)}")
+    else if (!node.options.forall(_.contains(v))) {
+      val options = node.options.fold(Vector.empty)(identity).map(shown).mkString(", ")
+      refuse(s"expected one of $options, got ${shown(v)}")
+    } else if (v.isNull) Right(ujson.Null)
+    else {
+      node.shape match {
+        case Shape.Plain => Right(copy(v))
+        case Shape.Bounded(min, max) =>
+          val n = v.numOpt.fold(0.0)(identity)
+          min.filter(n < _) match {
+            case Some(m) => refuse(s"expected at least ${shown(ujson.Num(m))}, got ${shown(v)}")
+            case None =>
+              max.filter(n > _) match {
+                case Some(m) => refuse(s"expected at most ${shown(ujson.Num(m))}, got ${shown(v)}")
+                case None => Right(copy(v))
+              }
+          }
+        case Shape.Items(item, min, max) =>
+          val sent = v.arrOpt.fold(Vector.empty[ujson.Value])(_.toVector)
+          def items(n: Int): String = if (n == 1) "1 item" else s"$n items"
+          min.filter(sent.size < _) match {
+            case Some(m) => refuse(s"expected at least ${items(m)}, got ${sent.size}")
+            case None =>
+              max.filter(sent.size > _) match {
+                case Some(m) => refuse(s"expected at most ${items(m)}, got ${sent.size}")
+                case None =>
+                  all(
+                    sent.iterator.zipWithIndex.map((s, i) =>
+                      conform(item, s, s"$path[$i]", repairs)
+                    )
+                  )
+                    .map(ujson.Arr.from(_))
+              }
+          }
+        case Shape.Properties(properties) =>
+          val sent = v.objOpt.fold(Vector.empty[(String, ujson.Value)])(_.toVector)
+          val names = properties.map(_._1)
+          def at(name: String): String = if (path.isEmpty) name else s"$path.$name"
+          for {
+            kept <- all(sent.iterator.map { (name, s) =>
+              properties.find(_._1 == name) match {
+                case None =>
+                  val known =
+                    if (names.isEmpty) "this object has none"
+                    else s"the properties are ${names.map(n => s"`$n`").mkString(", ")}"
+                  Left(Mismatch(at(name), s"is not a property here; $known"))
+                case Some((_, p)) => conform(p, s, at(name), repairs).map(name -> _)
+              }
+            })
+            _ <- names.find(n => !sent.exists(_._1 == n)) match {
+              case Some(n) => Left(Mismatch(at(n), "is missing"))
+              case None => Right(())
+            }
+          } yield ujson.Obj.from(kept)
+      }
+    }
+  }
+
+  /** `value` with the repair `base` directs, if `repairs` asks for it: a string of decimal
+    * digits as its number, a string holding a JSON list as that list; otherwise `value`.
+    */
+  private def repaired(base: Base, value: ujson.Value, repairs: Set[ArgRepair]): ujson.Value =
+    value match {
+      case ujson.Str(s)
+          if (base == Base.Number || base == Base.Whole) &&
+            repairs.contains(ArgRepair.QuotedNumber) && Digits.matches(s) =>
+        s.toDoubleOption.fold(value)(ujson.Num(_))
+      case ujson.Str(s) if base == Base.List && repairs.contains(ArgRepair.QuotedList) =>
+        scala.util.Try(ujson.read(s)).toOption match {
+          case Some(list: ujson.Arr) => list
+          case _ => value
+        }
+      case _ => value
+    }
+
+  private val Digits = "-?[0-9]+".r
 
   /** `path` joined with `step`, a schema's path. */
   private def within(path: String, step: String): String =
