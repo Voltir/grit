@@ -464,7 +464,23 @@ object Read {
       layout: Layout,
       tasty: Vector[os.Path],
       targets: Set[String]
-  ): Either[String, Vector[Use]] = {
+  ): Either[String, Vector[Use]] =
+    references(root, layout, tasty, targets.contains).map(byFile =>
+      targeting(byFile.values.flatten.toVector, targets)
+    )
+
+  /** The references among `refs` to any of `targets` (full names), each once, sorted by file and line: what `uses` reports of a read by `references`. */
+  def targeting(refs: Vector[Use], targets: Set[String]): Vector[Use] =
+    refs.filter(u => targets.contains(u.target)).distinct.sortBy(u => (u.file, u.line))
+
+  /** Every reference in each of `tasty` to a member of a class or package defined in source under `root.dir`, each with the definition holding it, when `keep` holds for its target's full name; a file with none maps to none. Only references in source under `root.dir` are kept. `Left` carries the same complaints as `defns`, and a run that complains returns no file's references. */
+  def references(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      keep: String => Boolean
+  ): Either[String, Map[os.Path, Vector[Use]]] = {
+    val byFile = mutable.Map.empty[os.Path, Vector[Use]]
     val found = mutable.ListBuffer.empty[Use]
     val sources = mutable.Map[String, String]()
     val foreign = mutable.ListBuffer.empty[String]
@@ -496,8 +512,10 @@ object Read {
               p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
             )
             if (
-              targets.contains(name) && ref.pos.startLine >= 0 && !ownName &&
-              ref.pos.sourceFile.path.startsWith(prefix)
+              keep(name) && ref.pos.startLine >= 0 && !ownName && ref.pos.sourceFile.path
+                .startsWith(prefix) &&
+              sym.pos.exists(_.sourceFile.path.startsWith(prefix)) &&
+              (sym.maybeOwner.isClassDef || sym.maybeOwner.isPackageDef)
             ) {
               val path = ref.pos.sourceFile.path
               // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
@@ -533,9 +551,11 @@ object Read {
         for (tasty <- tastys) {
           if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
             foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
-          // A unit whose traversal throws contributes the uses it found before the throw, and no more.
+          val start = found.size
+          // A unit whose traversal throws keeps the references it found before the throw, and no more.
           try walk.traverseTree(tasty.ast)(Symbol.noSymbol)
           catch { case NonFatal(_) => () }
+          byFile += os.Path(tasty.path.toString) -> found.drop(start).toVector
         }
       }
     }
@@ -555,7 +575,7 @@ object Read {
       case Left(message) => Left(message)
       case Right(ok) =>
         if (foreign.nonEmpty) Left(foreign.mkString("\n"))
-        else if (ok) Right(found.toVector.distinct.sortBy(u => (u.file, u.line)))
+        else if (ok) Right(byFile.toMap)
         else Left(complaint(captured, tasty.size))
     }
   }

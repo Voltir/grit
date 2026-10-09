@@ -1,6 +1,10 @@
 package grit.outline.query
 
+import java.nio.file.Files
+import java.nio.file.attribute.FileTime
+
 import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.model.Use
 import grit.outline.read.Read
 
 import utest.*
@@ -29,6 +33,13 @@ object UsesTests extends TestSuite {
       outside: Option[String] = None
   ): (Answer, Roots) =
     Query.uses(root, MillLayout, Config.empty, Roots.empty(6000), Vector(sym), in, outside, 80000)
+
+  /** `Loaded.uses` over `tasty` from `in`; a failure throws, so the test shows it. */
+  private def loadedUses(tasty: Vector[os.Path], in: Loaded): (Vector[Use], Loaded, Int) =
+    Loaded.uses(root, MillLayout, tasty, in) match {
+      case Right(read) => read
+      case Left(message) => throw new Exception(message)
+    }
 
   def tests = Tests {
     test(
@@ -118,6 +129,37 @@ object UsesTests extends TestSuite {
     test("the uses of Store.get outside the fixture are no match") {
       val (answer, _) = uses(s"$storePackage.Store.get", outside = Some("dev/outline/fixture"))
       assert(answer.status == Status.NoMatch)
+    }
+
+    test("a second uses call over unchanged tasty reads no file") {
+      val storeTasty = Locate.inPackageOf(
+        root,
+        MillLayout,
+        os.RelPath("dev/outline/fixture/src/store/Store.scala")
+      )
+      val first = loadedUses(storeTasty, Loaded.empty)
+      val second = loadedUses(storeTasty, first._2)
+      assert(first._3 == storeTasty.size)
+      assert(second._3 == 0)
+    }
+
+    test("a uses call after a tasty file's mtime changes reads that file again") {
+      val storeTasty = Locate.inPackageOf(
+        root,
+        MillLayout,
+        os.RelPath("dev/outline/fixture/src/store/Store.scala")
+      )
+      val dir = os.temp.dir(prefix = "outline-uses-mtime-")
+      val copy = dir / storeTasty.head.last
+      os.copy(storeTasty.head, copy)
+      val first = loadedUses(Vector(copy), Loaded.empty)
+      assert(first._3 == 1)
+      val later = os.mtime(copy) + 5000L
+      Files.setLastModifiedTime(copy.toNIO, FileTime.fromMillis(later))
+      val changed = loadedUses(Vector(copy), first._2)
+      assert(changed._3 == 1)
+      val unchanged = loadedUses(Vector(copy), changed._2)
+      assert(unchanged._3 == 0)
     }
   }
 }

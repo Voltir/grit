@@ -1,21 +1,32 @@
 package grit.outline.query
 
 import grit.outline.locate.{Layout, Root}
-import grit.outline.model.Defn
+import grit.outline.model.{Defn, Use}
 import grit.outline.read.Read
 
 /** One `.tasty` file's definitions as of its mtime. */
 final case class Cached(mtime: Long, defns: Vector[Defn])
 
-/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. `unreadable` holds the message of each file in `failed` whose traversal threw. */
+/** One `.tasty` file's references as of its mtime. */
+final case class Indexed(mtime: Long, uses: Vector[Use])
+
+/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. `unreadable` holds the message of each file in `failed` whose traversal threw. `refs` is the reference index `uses` reads from, by `.tasty` path and mtime, kept beside the definitions so that one root's cache bounds both. */
 final case class Loaded(
     byTasty: Map[os.Path, Cached],
     failed: Map[os.Path, Long] = Map.empty,
-    unreadable: Map[os.Path, String] = Map.empty
-)
+    unreadable: Map[os.Path, String] = Map.empty,
+    refs: Map[os.Path, Indexed] = Map.empty
+) {
+
+  /** The cached entries: one per `.tasty` file whose definitions are cached and one per file whose references are indexed. */
+  def entries: Int = byTasty.size + refs.size
+}
 
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
+
+  /** The most `.tasty` files one `uses` query indexes: a broader candidate set (a common simple name in most packages) is read uncached, so its references never all sit in memory at once. */
+  val maxIndexed: Int = 500
 
   /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
   def defns(
@@ -36,7 +47,27 @@ object Loaded {
       val failedNow = batch.unreadable.map { case (p, _) => p -> os.mtime(p) }.toMap
       val failed = (in.failed -- stale) ++ failedNow
       val unreadable = (in.unreadable -- stale) ++ batch.unreadable.toMap
-      (all, Loaded(updated, failed, unreadable), stale.size)
+      (all, in.copy(byTasty = updated, failed = failed, unreadable = unreadable), stale.size)
+    }
+  }
+
+  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in one inspector run) only files absent from the index or changed since they were indexed; the new cache; how many files were read. A query over more than `maxIndexed` files is for the caller to read uncached. */
+  def uses(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      in: Loaded
+  ): Either[String, (Vector[Use], Loaded, Int)] = {
+    val stale = tasty.filter(p => !indexedAt(in, p))
+    val read: Either[String, Map[os.Path, Vector[Use]]] =
+      if (stale.isEmpty) Right(Map.empty)
+      else Read.references(root, layout, stale, _ => true)
+    read.map { byFile =>
+      val updated = stale.foldLeft(in.refs) { (index, p) =>
+        index.updated(p, Indexed(os.mtime(p), byFile.getOrElse(p, Vector.empty)))
+      }
+      val all = tasty.flatMap(p => updated.get(p).map(_.uses).getOrElse(Vector.empty))
+      (all, in.copy(refs = updated), stale.size)
     }
   }
 
@@ -53,4 +84,7 @@ object Loaded {
 
   private def failedAt(in: Loaded, p: os.Path): Boolean =
     in.failed.get(p).contains(os.mtime(p))
+
+  private def indexedAt(in: Loaded, p: os.Path): Boolean =
+    in.refs.get(p).exists(_.mtime == os.mtime(p))
 }

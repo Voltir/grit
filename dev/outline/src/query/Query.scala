@@ -70,7 +70,6 @@ object Query {
         }
       }
 
-      val nextRoots = Roots.put(roots, root, state)
       val names = targets.toVector.map(_.fullName).distinct.toSet
       // A name's references are read in the packages of the files that mention its last segment as a word.
       val candidates = syms
@@ -85,9 +84,16 @@ object Query {
             if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
           file
       }
+      // The candidates' reference index is read here and kept in the root's cache; a broader set is read uncached.
       val read: Either[String, Vector[Use]] =
         if (failure.nonEmpty || names.isEmpty || tasty.isEmpty) Right(Vector.empty)
-        else Read.uses(root, layout, tasty, names)
+        else if (tasty.size > Loaded.maxIndexed) Read.uses(root, layout, tasty, names)
+        else
+          Loaded.uses(root, layout, tasty, state).map { case (refs, next, _) =>
+            state = next
+            Read.targeting(refs, names)
+          }
+      val nextRoots = Roots.put(roots, root, state)
       val answer = failure match {
         case Some(message) => Answer(message, Status.Failed)
         case None =>
