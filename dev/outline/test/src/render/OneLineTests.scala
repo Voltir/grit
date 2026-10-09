@@ -131,5 +131,37 @@ object OneLineTests extends TestSuite {
         ) == "→ 1-3 trait Posed: Impl(a: Int) :9"
       )
     }
+
+    test("a multi-line constructor collapses with no space inside its parentheses") {
+      val v = defn(
+        Kind.CaseClass,
+        "V",
+        "p.V",
+        Lines(5, 8),
+        "final case class V private (\n    a: Int,\n    b: Vector[String]\n)",
+        Vector.empty[String]
+      )
+      assert(
+        Render.oneLine(v, Vector.empty[Defn]) ==
+          "→ 5-8 final case class V private (a: Int, b: Vector[String])"
+      )
+    }
+
+    test("a doc before an implementor's first parameter leaves no space after its parenthesis") {
+      val multiline = defn(
+        Kind.CaseClass,
+        "Multi",
+        "p.Multi",
+        Lines(30, 30),
+        "final case class Multi(\n  /** The first. */\n  request: Int\n) extends Posed[Int]",
+        Vector("p.Posed")
+      )
+      assert(
+        Render.oneLine(
+          posed,
+          Vector(companion.copy(members = Vector(multiline)))
+        ) == "→ 1-3 trait Posed: Multi(request: Int) :30"
+      )
+    }
   }
 }

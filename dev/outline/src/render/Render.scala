@@ -290,7 +290,8 @@ object Render {
     (kept, truncated)
   }
 
-  private def collapse(s: String): String = s.trim.split("\\s+").mkString(" ")
+  private def collapse(s: String): String =
+    s.trim.split("\\s+").mkString(" ").replaceAll("([(\\[]) ", "$1").replaceAll(" ([)\\]])", "$1")
 
   private def withoutDocs(s: String): String = s.replaceAll("(?s)/\\*\\*.*?\\*/", " ")
 
