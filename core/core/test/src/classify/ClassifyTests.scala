@@ -19,6 +19,15 @@ object ClassifyTests extends TestSuite {
     Criterion(Team.Sales, sales, None)
   )
 
+  private enum Mood { case Calm, Frustrated, Angry }
+
+  private val frustration = Ask.score[Ticket, Mood](
+    "How frustrated is `ticket`?",
+    Level(Mood.Calm, "Calm"),
+    Level(Mood.Frustrated, "Frustrated"),
+    Level(Mood.Angry, "Very angry")
+  )
+
   private val urgent = Ask.yesNo[Ticket]("Is `ticket` urgent?", None, None)
 
   private val free = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
@@ -294,6 +303,70 @@ object ClassifyTests extends TestSuite {
           "NaN beside mass" -> Right((Team.Technical, Vector(0.0, 1.0, 0.0))),
           "a tie" -> Right((Team.Billing, Vector(0.4, 0.2, 0.4)))
         )
+      )
+    }
+
+    test("a score is read into its levels' values: Jev's documented answer") {
+      val canned = new Canned(Answer.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92))
+      val read = frustration.flatMap(q => canned.ask(Ticket("x"), q).left.map(_.toString))
+      read.map(a =>
+        (a.value.position, a.value.likeliest, a.value.probability(Mood.Angry), a.value.confidence)
+      ) ==> Right((1.05, Mood.Frustrated, 0.05, 0.92))
+      read.map(_.value.probabilities) ==> Right(
+        Vector(
+          Decision.Weight(Mood.Calm, 0.0),
+          Decision.Weight(Mood.Frustrated, 0.95),
+          Decision.Weight(Mood.Angry, 0.05)
+        )
+      )
+      canned.asked.collect { case q: Question.Score => q.levels } ==>
+        Vector(Vector("Calm", "Frustrated", "Very angry"))
+    }
+
+    test("a score's weights are normalised, its likeliest the first on a tie, summed per value") {
+      def scored(ps: Double*) = Ask
+        .score[Ticket, Int]("?", Level(1, "a"), Level(2, "b"), Level(1, "c"))
+        .flatMap(q =>
+          new Canned(Answer.Score(1.0, ps.toVector, 0.5)).ask(Ticket("x"), q).left.map(_.toString)
+        )
+        .map(_.value)
+      scored(1.0, 3.0, 0.0).map(s => s.probabilities.map(_.probability)) ==>
+        Right(Vector(0.25, 0.75, 0.0))
+      scored(0.25, 0.5, 0.25).map(s => (s.likeliest, s.probability(1), s.probability(3))) ==>
+        Right((2, 0.5, 0.0))
+      scored(0.4, 0.4, 0.2).map(_.likeliest) ==> Right(1)
+    }
+
+    test("a score is Unreadable for another weight count, no weight, or a position off the levels") {
+      def asked(answer: Answer) = frustration.map(q =>
+        new Canned(answer).ask(Ticket("x"), q).map(_.value.likeliest)
+      )
+      val toScore = "\"How frustrated is `ticket`?\": "
+      def refused(why: String) = Right(Left(ClassifierError.Unreadable(toScore + why)))
+      asked(Answer.Score(1.0, Vector(0.0, 1.0), 1.0)) ==> refused("weighs 2 levels of 3")
+      asked(Answer.Score(1.0, Vector(0.0, -1.0, Double.NaN), 1.0)) ==>
+        refused("no level has weight")
+      asked(Answer.Score(2.5, Vector(0.0, 0.0, 1.0), 1.0)) ==> refused("at 2.5, off the levels")
+      asked(Answer.Score(-0.5, Vector(1.0, 0.0, 0.0), 1.0)) ==> refused("at -0.5, off the levels")
+      asked(Answer.Score(Double.NaN, Vector(1.0, 0.0, 0.0), 1.0)) ==>
+        refused("at NaN, off the levels")
+      asked(Answer.YesNo(0.5)) ==> refused("answered yes/no to a score")
+      // The ends themselves are on the levels.
+      asked(Answer.Score(2.0, Vector(0.0, 0.0, 1.0), 1.0)) ==> Right(Right(Mood.Angry))
+    }
+
+    test("Ask.score is not built with more than ten levels") {
+      val more = (3 to 11).map(i => Level(i, s"$i"))
+      Ask.score[Ticket, Int]("?", Level(1, "1"), Level(2, "2"), more*).map(_ => ()) ==>
+        Left(Question.TooManyLevels(11))
+    }
+
+    test("a score is built only by reading an answer") {
+      import scala.compiletime.testing.typeChecks
+      assert(
+        typeChecks("(s: Scored[Int]) => s.likeliest"),
+        !typeChecks("Scored(1.0, Vector(Decision.Weight(1, 5.0)), 0.0)(1)"),
+        !typeChecks("(s: Scored[Int]) => s.copy(position = 9.0)")
       )
     }
 

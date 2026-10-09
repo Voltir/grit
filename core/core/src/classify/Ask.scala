@@ -30,19 +30,62 @@ object Decision {
   private[classify] def of[C](
       weights: Vector[Weight[C]],
       confidence: Double
-  ): Option[Decision[C]] = {
+  ): Option[Decision[C]] =
+    normal(weights).map(n => new Decision(n.top, n.weights, confidence))
+
+  /** Weights summing to 1, and the most probable one's value (the first, on a tie). */
+  private[classify] final case class Normal[C](weights: Vector[Weight[C]], top: C)
+
+  /** `weights` normalised as [[of]] says; `None` when none is left positive. */
+  private[classify] def normal[C](weights: Vector[Weight[C]]): Option[Normal[C]] = {
     val clean = weights.map(w => w.copy(probability = Answer.mass(w.probability)))
     val total = clean.map(_.probability).sum
     val normal = clean.map(w => w.copy(probability = w.probability / total))
     Option
       .when(total > 0)(normal)
       .flatMap(_.maxByOption(_.probability))
-      .map(top => new Decision(top.value, normal, confidence))
+      .map(top => Normal(normal, top.value))
   }
 }
 
+/** One level of a typed score: the value it stands for, and what it means as the model is
+  * told it.
+  */
+final case class Level[L](value: L, description: String)
+
+/** A score's answer: its `position` along the levels as the classifier reported it (0 the
+  * first, between two when its weight spreads); each level's value with its probability, in
+  * the levels' order, summing to 1 (within rounding); and the classifier's `confidence`.
+  */
+final case class Scored[L] private (
+    position: Double,
+    probabilities: Vector[Decision.Weight[L]],
+    confidence: Double
+)(
+    /** The most probable level's value (the first, on a tie). */
+    val likeliest: L
+) {
+
+  /** Summed over the levels that stand for `l`; 0 for none. */
+  def probability(l: L): Double = probabilities.filter(_.value == l).map(_.probability).sum
+}
+
+object Scored {
+
+  /** `weights` normalised to sum to 1, a NaN, infinite or negative one counted as 0; `None`
+    * when none is left positive.
+    */
+  private[classify] def of[L](
+      position: Double,
+      weights: Vector[Decision.Weight[L]],
+      confidence: Double
+  ): Option[Scored[L]] =
+    Decision.normal(weights).map(n => new Scored(position, n.weights, confidence)(n.top))
+}
+
 /** Questions about a state of type `S`, asked together, and how their answers read into a
-  * `T`. Built with [[Ask.choice]] and [[Ask.yesNo]], combined with `zip` and `map`.
+  * `T`. Built with [[Ask.choice]], [[Ask.score]] and [[Ask.yesNo]], combined with `zip` and
+  * `map`.
   */
 final class Ask[S, T] private (
     val questions: Vector[Question],
@@ -115,6 +158,53 @@ object Ask {
           }
       )
     }
+  }
+
+  /** Where the state falls among `first`, `second`, `rest`, read back into their values.
+    * Reading is `Unreadable` when the answer is not a score, it weighs other than one weight
+    * per level, no level has positive weight, or its position is not a number from 0 to the
+    * last level.
+    */
+  def score[S, L](
+      instructions: String,
+      first: Level[L],
+      second: Level[L],
+      rest: Level[L]*
+  ): Either[Question.TooManyLevels, Ask[S, Scored[L]]] = {
+    val levels = first +: second +: rest.toVector
+    Question
+      .score(instructions, first.description, second.description, rest.map(_.description)*)
+      .map { question =>
+        new Ask[S, Scored[L]](
+          Vector(question),
+          answers =>
+            one(instructions, answers).flatMap {
+              case Answer.Score(position, probabilities, confidence) =>
+                for {
+                  _ <- Either.cond(
+                    probabilities.size == levels.size,
+                    (),
+                    unreadable(instructions, weighs(probabilities.size, levels.size))
+                  )
+                  _ <- Either.cond(
+                    position >= 0 && position <= levels.size - 1,
+                    (),
+                    unreadable(instructions, s"at $position, off the levels")
+                  )
+                  scored <- Scored
+                    .of(
+                      position,
+                      levels.zip(probabilities).map((l, p) => Decision.Weight(l.value, p)),
+                      confidence
+                    )
+                    .toRight(unreadable(instructions, "no level has weight"))
+                } yield scored
+              case Answer.Choice(_, _, _) =>
+                Left(unreadable(instructions, "answered a choice to a score"))
+              case Answer.YesNo(_) => Left(unreadable(instructions, "answered yes/no to a score"))
+            }
+        )
+      }
   }
 
   /** The probability that the answer to `instructions` is yes. `yes` and `no` say what each
