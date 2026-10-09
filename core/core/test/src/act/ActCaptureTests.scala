@@ -7,7 +7,8 @@ import utest.*
 
 /** What capture checking rejects about acting (ADR 0034): the acting value is data; a job is
   * handed its moves for one run and keeps none, and makes no model call but through them; a
-  * keep's body reaches its keeper and transaction alone, and returns nothing that holds either.
+  * keep's body reaches its keeper and transaction alone, and returns nothing that holds either;
+  * a reply's reader (`grit.core.schema.Typed`'s `read`) makes no move.
   * Pinned by compiling probe sources against core with core's own flags, as
   * `grit.core.job.JobCaptureTests` does; `assertCompileError` cannot see capture errors
   * (docs/capture-checking.md). The jobs are core's own, `PlainJob` and `KeepingJob`, and the
@@ -100,11 +101,23 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** 6. A job whose reply's reader makes a move: a `Typed` whose `read` asks. */
+  private val readerAsks =
+    """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
+      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |    val typed = grit.core.schema.Typed[String](schema, c =>
+      |      moves.ask(Names.of("inner"), Posed.Text(Names.request)).left.map(_.toString).map(_ => "read")
+      |    )
+      |    typed.schema.json.render()
+      |  }
+      |}
+      |""".stripMargin
+
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
   private val breaches: Vector[String] =
-    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider)
+    Vector(jobKeepsMoves, jobStashesMoves, keepAsks, jobHoldsProvider, readerAsks)
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -127,6 +140,24 @@ object ActCaptureTests extends TestSuite {
           |""".stripMargin
       )
       assert(errs.isEmpty)
+    }
+
+    test("a job whose reply's reader is pure, beside an ask it makes itself, compiles") {
+      val errs = errors(
+        """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
+          |  def run(run: JobRun[Count], moves: Moves^): String = {
+          |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
+          |    val asked = moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+          |    s"${typed.schema.json.render()} $asked"
+          |  }
+          |}
+          |""".stripMargin
+      )
+      assert(errs.isEmpty)
+    }
+
+    test("a job whose reply's reader makes a move is rejected") {
+      assert(flowsInto("{}")(errors(readerAsks)))
     }
 
     test("the acting value is pure data: a bound asking for caps.Pure takes it") {
