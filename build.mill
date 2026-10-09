@@ -507,6 +507,32 @@ object grit extends Module {
     object test extends GritTests
   }
 
+  /* Tooling for working on grit, not a product module: nothing depends on it and it is not
+   * published. Reads the .tasty files Mill writes, with the compiler's TASTy inspector. */
+  object outline extends GritModule with Placed {
+    def folder = os.sub / "dev" / "outline"
+    /* Off here only: it holds no Durable, so nothing ADR 0003 protects is
+     * compiled here, and the compiler's reflection API is Java-shaped and mutable. */
+    def separationChecking = false
+    /* The TASTy inspector's Symbol.info is @experimental; this module alone compiles in experimental mode. */
+    def scalacOptions = Task {
+      super.scalacOptions() ++ Seq("-experimental")
+    }
+    def mvnDeps = Seq(
+      mvn"org.scala-lang::scala3-tasty-inspector:${scalaVersion()}",
+      mvn"com.lihaoyi::os-lib:0.11.8"
+    )
+    /* Sources whose TASTy the tests read: capture syntax, docs, overloads, a type chain. Both checkers on. */
+    object fixture extends GritModule with Placed {
+      def folder = os.sub / "dev" / "outline" / "fixture"
+    }
+    object test extends GritTests {
+      def forkEnv = Task {
+        super.forkEnv() ++ Map("OUTLINE_FIXTURE_CLASSES" -> fixture.compile().classes.path.toString)
+      }
+    }
+  }
+
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
    * the terminal seam is hand-rolled over FFM (extensions/tui/src/wire/term), not JLine. It may
    * render core's types, but only from `components` and `runtime`; see extensions/tui/CLAUDE.md. */
