@@ -2,8 +2,8 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
 import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
+import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.InMemoryDurable
@@ -51,7 +51,13 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
 
   private val visibility: Visibility =
     Visibility
-      .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, Vector(Trust(Probe, floor)))
+      .of(
+        Compartments.Shipped,
+        RoomLabels.Public,
+        Vector.empty,
+        Vector.empty,
+        Vector(Trust(Probe, floor))
+      )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =
     new InMemoryDurable(resolve = _ => Clearance.of(floor), visibility = visibility)

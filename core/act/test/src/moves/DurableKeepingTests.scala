@@ -2,8 +2,8 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.core.act.{Keeping, MoveError, MoveLimits}
 import grit.core.act.MovesFixtures.Answering
+import grit.core.act.{Keeping, MoveError, MoveLimits}
 import grit.core.document.{DocText, DocumentKeeper, Written}
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.id.DocKey
@@ -120,7 +120,13 @@ object DurableKeepingTests extends TestSuite {
           .call(name("b"), MovesContract.Probe, MovesContract.Tool, MovesContract.Args)
           .fold(_.toString, _.toString)
         Seen(
-          Vector(asked, keptA.fold(_.toString, _.label), keptB.fold(_.toString, _.label), askedB, calledB)
+          Vector(
+            asked,
+            keptA.fold(_.toString, _.label),
+            keptB.fold(_.toString, _.label),
+            askedB,
+            calledB
+          )
             .mkString("; ")
         )
       }

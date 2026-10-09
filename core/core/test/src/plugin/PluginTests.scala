@@ -47,7 +47,9 @@ object PluginTests extends TestSuite {
         .map(_.posts) ==> Vector(false, true)
     }
 
-    test("a plugin with a cache and no documents is posted closed periods; one with neither is not") {
+    test(
+      "a plugin with a cache and no documents is posted closed periods; one with neither is not"
+    ) {
       Vector(new Caches(name("lines"), cached = true), new Caches(name("plain"), cached = false))
         .map(_.posts) ==> Vector(true, false)
     }

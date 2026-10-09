@@ -5,8 +5,8 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves}
 import grit.core.act.MovesFixtures.{Answering, FakeDb, PerChar}
+import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -178,7 +178,13 @@ object RunFixtures {
     val clock: SetClock = new SetClock(Due.plusSeconds(30))
     private val visibility: Visibility =
       Visibility
-        .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, Vector(Trust(Probe, trust)))
+        .of(
+          Compartments.Shipped,
+          RoomLabels.Public,
+          Vector.empty,
+          Vector.empty,
+          Vector(Trust(Probe, trust))
+        )
         .fold(r => sys.error(r.toString), identity)
     private val db = new FakeDb(Clearance.of(floor), visibility)
     val durable: InMemoryDurable =

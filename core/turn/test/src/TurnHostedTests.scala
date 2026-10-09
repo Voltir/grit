@@ -221,7 +221,9 @@ object TurnHostedTests extends TestSuite {
       (out, edge.sent) ==> ("failed: Store(DatabaseError(down))", Vector.empty)
     }
 
-    test("a call unsent for want of an asker whose asker cannot be read again says why is unknown") {
+    test(
+      "a call unsent for want of an asker whose asker cannot be read again says why is unknown"
+    ) {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
