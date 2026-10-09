@@ -69,16 +69,18 @@ private[moves] object CallMade {
 /** How a planner's step outputs are recorded, and the digests of its moves' inputs. A run in
   * flight must read back what an earlier build wrote, so a form here is never changed, only
   * added to.
-  *   - an ask's `move:{n}`: `{"ok":{"digest":d,"message":m,"at":l}}`, `m` a message as an entry
-  *     holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form; or
-  *     `{"refused":"capped"|"model"|"store","why":w,"digest":d}`;
+  *   - an ask's `move:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
+  *     as an entry holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form, `e`
+  *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`;
   *   - `move:{n}:record`: `{"recorded":true}` or `{"store":w}`;
   *   - a call's `move:{n}`: `{"sent":{"digest":d}}`, or
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
   *   - `move:{n}:expire` and `move:{n}:abandon`: `{"state":"expired"|"claimed"}`,
   *     `{"answered":o}` (an [[grit.core.edge.OutcomeJson]]), or `{"store":w}`;
   *   - `move:{n}:answer`: `{"done":{"text":t,"at":l}}`, `{"failed":w}`, `{"interrupted":true}`
-  *     or `{"store":w}`.
+  *     or `{"store":w}`;
+  *   - a keep's `move:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
+  *     form as a string, or `{"store":w}` ([[kept]]).
   *
   * A digest is `v1:` and the lowercase hex SHA-256 of a canonical form of the move's input
   * that this object owns, never an engine codec's, so a change to those between builds cannot
