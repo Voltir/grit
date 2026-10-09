@@ -122,7 +122,8 @@ object TurnReplayTests extends TestSuite {
     ) {
       // A hosted call's and a model call's steps are recorded data, written by the phases a
       // turn shares with jobs: today's codecs read each and write the same text back, a
-      // failure's kind among them.
+      // failure's kind among them. It pins the codecs, not the values today's body would
+      // write: a change to what a step records reads and writes back the same here.
       import Turn.Step
       def again[A](j: grit.core.durable.Journaled[A], text: String): Boolean =
         j.decode(text).map(j.encode) == Right(text)
