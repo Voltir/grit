@@ -16,9 +16,6 @@ final case class Answer(text: String, status: Status)
 
 object Query {
 
-  private val usage =
-    "usage: show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]"
-
   /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. */
   def show(
       root: Root,
@@ -131,7 +128,7 @@ object Query {
       cap: Int
   ): (Answer, Roots) =
     if (level < 0 || level > 1)
-      (Answer(s"level must be 0 or 1\n$areaUsage", Status.Failed), roots)
+      (Answer(s"level must be 0 or 1\n${Help.usage(Help.area)}", Status.Failed), roots)
     else {
       val declared = config.areas.map(_.name)
       names.find(n => !declared.contains(n)) match {
@@ -238,8 +235,6 @@ object Query {
               }
           }
       }
-
-  private val areaUsage = "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
 
   /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */
   private def areaFamily(
@@ -438,6 +433,21 @@ object Query {
     s"## root ${root.dir} (${revision.branch.getOrElse("detached")} @ ${revision.head})"
   }
 
+  /** The note for each `--body` name that no shown definition has: `tops` and their members (those withPrivate
+    * or public), whose simple names it lists, sorted.
+    */
+  private def bodyMisses(
+      bodies: Set[String],
+      tops: Vector[Defn],
+      withPrivate: Boolean
+  ): Vector[String] = {
+    val shown = tops.flatMap(d => d +: d.members.filter(m => withPrivate || !m.isPrivate))
+    val names = shown.map(_.name).distinct.sorted
+    bodies.toVector.sorted
+      .filterNot(name => names.contains(name))
+      .map(name => s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}")
+  }
+
   private def showIn(
       root: Root,
       layout: Layout,
@@ -451,7 +461,7 @@ object Query {
   ): (Answer, Loaded) = {
     val classes = layout.classesDirs(root)
     if (depth < 0 || depth > 2)
-      (Answer(s"depth must be 0, 1 or 2\n$usage", Status.Failed), in)
+      (Answer(s"depth must be 0, 1 or 2\n${Help.usage(Help.show)}", Status.Failed), in)
     else if (classes.isEmpty)
       (Answer(layout.notCompiled(root), Status.Failed), in)
     else {
@@ -527,7 +537,8 @@ object Query {
             withPrivate = withPrivate,
             cap = cap
           )
-          val text = noteText + rendered
+          val bodyNotes = bodyMisses(bodies, tops, withPrivate).map(_ + "\n").mkString
+          val text = noteText + bodyNotes + rendered
           (Answer(text, Status.Found), state)
       }
     }

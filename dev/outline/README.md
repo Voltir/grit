@@ -9,29 +9,30 @@ line ranges taken from the Scaladoc.
 ## Queries
 
 Each query has a CLI form and an MCP tool of the same name, taking the same arguments.
+`scripts/outline <query> --help` prints that query's full help: its examples and every flag.
 
-**show**: signatures with full Scaladoc for named symbols, plus one-line outlines of the
-project types they mention. Bodies only for members named with `--body`.
+**show**: To read or call a definition: its signature and Scaladoc, with one-line outlines of the
+project types it names. Bodies only for members named with `--body`.
 
-    scripts/outline show Sym[,Sym…] [--depth N] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]
+    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]
 
-**family**: a trait or abstract class with its implementations, the abstract contracts whose
-members name it, and the suites running each contract. `--member` narrows each to one member.
+**family**: To implement or change a trait: its implementations, contracts and their suites.
+`--member` narrows each to one member.
 
     scripts/outline family Trait [--member m] [--body] [--cap BYTES] [--root DIR]
 
-**uses**: direct references to the named symbols, resolved by the compiler, one line per site
-with its enclosing definition. `--in` and `--outside` filter by path prefix.
+**uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
+filter by path prefix.
 
     scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]
 
-**area**: the areas `.outline.conf` declares, at level 0 one line per package, at level 1
-(the default) each definition with its doc's first sentence.
+**area**: To get a map of a part of the project: the areas `.outline.conf` declares, at level 0 one
+line per package, at level 1 (the default) each definition with its doc's first sentence.
 
     scripts/outline area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]
 
-**tests**: a suite's helpers and its test names with their line ranges. `--test NAME` prints
-the verbatim body of each test whose name starts with NAME.
+**tests**: To add or change a test in a suite: its helpers and its tests' names with line ranges.
+`--test NAME` prints the verbatim body of each test whose name starts with NAME.
 
     scripts/outline tests Suite [--test NAME] [--cap BYTES] [--root DIR]
 

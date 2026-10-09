@@ -3,7 +3,7 @@ package grit.outline.mcp
 import scala.util.Try
 
 import grit.outline.locate.{MillLayout, Root}
-import grit.outline.query.{Config, Query, Roots}
+import grit.outline.query.{Config, Entry, Help, Query, Roots}
 
 /** The server between calls: each root's cache, and the root a call without one uses. */
 final case class State(roots: Roots, defaultRoot: Root)
@@ -15,117 +15,86 @@ object Server {
   private val cap = 80000
   private val cachedFiles = 6000
 
-  private val showTool: ujson.Value = ujson.Obj(
-    "name" -> "show",
-    "description" -> "Signatures with full Scaladoc for the named symbols (Name, Name.member, or fully qualified when a short name is ambiguous), grouped by file with line ranges from the Scaladoc, plus one-line outlines of the project types they mention; bodies only for members named in `body`. Pass every symbol you need in one call: each extra call costs a turn, and every turn re-reads the whole context. Read from compiled TASTy under `root` (a checkout or worktree; default the server's).",
-    "inputSchema" -> ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "symbols" -> ujson.Obj(
-          "type" -> "array",
-          "items" -> ujson.Obj("type" -> "string"),
-          "description" -> "Symbols to show: Name, Name.member or fully qualified."
-        ),
-        "depth" -> ujson.Obj(
-          "type" -> "integer",
-          "minimum" -> 0,
-          "maximum" -> 2,
-          "default" -> 1,
-          "description" -> "How many levels of project types to outline."
-        ),
-        "body" -> ujson.Obj(
-          "type" -> "array",
-          "items" -> ujson.Obj("type" -> "string"),
-          "description" -> "Member names whose bodies to include."
-        ),
-        "private" -> ujson.Obj("type" -> "boolean", "description" -> "Include private members."),
-        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
-      ),
-      "required" -> ujson.Arr("symbols"),
-      "additionalProperties" -> false
+  /** A JSON object holding `items` in order. */
+  private def obj(items: Seq[(String, ujson.Value)]): ujson.Obj = {
+    val out = ujson.Obj()
+    items.foreach { case (key, value) => out(key) = value }
+    out
+  }
+
+  /** A parameter `name` of `e`, typed by `fields` and described by its sentence in Help. */
+  private def prop(e: Entry, name: String, fields: (String, ujson.Value)*): (String, ujson.Value) =
+    name -> obj(fields ++ Help.sentence(e, name).map(s => "description" -> ujson.Str(s)))
+
+  /** The MCP tool for `e`: its description from Help, its parameters `properties`, and those it requires. */
+  private def tool(
+      e: Entry,
+      properties: Vector[(String, ujson.Value)],
+      required: Vector[String]
+  ): ujson.Value =
+    ujson.Obj(
+      "name" -> e.query,
+      "description" -> Help.description(e),
+      "inputSchema" -> ujson.Obj(
+        "type" -> "object",
+        "properties" -> obj(properties),
+        "required" -> ujson.Arr(required.map(ujson.Str(_))*),
+        "additionalProperties" -> false
+      )
     )
+
+  private val showTool: ujson.Value = tool(
+    Help.show,
+    Vector(
+      prop(Help.show, "symbols", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+      prop(Help.show, "depth", "type" -> "integer", "minimum" -> 0, "maximum" -> 2, "default" -> 1),
+      prop(Help.show, "body", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+      prop(Help.show, "private", "type" -> "boolean"),
+      prop(Help.show, "root", "type" -> "string")
+    ),
+    Vector("symbols")
   )
 
-  private val familyTool: ujson.Value = ujson.Obj(
-    "name" -> "family",
-    "description" -> "A trait or abstract class with its implementations, the abstract contracts whose members name it, and the suites that run each contract, grouped by file with line ranges; `member` narrows each to one member. Replaces reading the trait, each implementation and the contract file by file.",
-    "inputSchema" -> ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "trait" -> ujson
-          .Obj("type" -> "string", "description" -> "The trait or abstract class, by name."),
-        "member" -> ujson.Obj("type" -> "string", "description" -> "Only this member in each."),
-        "body" -> ujson.Obj("type" -> "boolean", "description" -> "Include the member's body."),
-        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
-      ),
-      "required" -> ujson.Arr("trait"),
-      "additionalProperties" -> false
-    )
+  private val familyTool: ujson.Value = tool(
+    Help.family,
+    Vector(
+      prop(Help.family, "trait", "type" -> "string"),
+      prop(Help.family, "member", "type" -> "string"),
+      prop(Help.family, "body", "type" -> "boolean"),
+      prop(Help.family, "root", "type" -> "string")
+    ),
+    Vector("trait")
   )
 
-  private val testsTool: ujson.Value = ujson.Obj(
-    "name" -> "tests",
-    "description" -> "A test suite's helpers (signatures with line ranges) and its test names with their line ranges, grouped by file; `test` adds the verbatim body of the tests whose names start with it. Replaces reading a whole suite or grepping it for test names.",
-    "inputSchema" -> ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "suite" -> ujson.Obj(
-          "type" -> "string",
-          "description" -> "The suite's class or object, by name or fully qualified."
-        ),
-        "test" -> ujson.Obj(
-          "type" -> "string",
-          "description" -> "Print the verbatim body of each test whose name starts with this."
-        ),
-        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
-      ),
-      "required" -> ujson.Arr("suite"),
-      "additionalProperties" -> false
-    )
+  private val testsTool: ujson.Value = tool(
+    Help.tests,
+    Vector(
+      prop(Help.tests, "suite", "type" -> "string"),
+      prop(Help.tests, "test", "type" -> "string"),
+      prop(Help.tests, "root", "type" -> "string")
+    ),
+    Vector("suite")
   )
 
-  private val areaTool: ujson.Value = ujson.Obj(
-    "name" -> "area",
-    "description" -> "The named areas of this project (declared in its `.outline.conf`) at level 0, one line per package with its symbols, or level 1, each type or member with its doc's first sentence, grouped by file. Start a task here instead of listing directories or reading READMEs.",
-    "inputSchema" -> ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "names" -> ujson.Obj(
-          "type" -> "array",
-          "items" -> ujson.Obj("type" -> "string"),
-          "description" -> "Declared area names."
-        ),
-        "level" -> ujson.Obj(
-          "type" -> "integer",
-          "description" -> "0 for one line per package, 1 (the default) for each definition with its doc's first sentence."
-        ),
-        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
-      ),
-      "required" -> ujson.Arr("names"),
-      "additionalProperties" -> false
-    )
+  private val areaTool: ujson.Value = tool(
+    Help.area,
+    Vector(
+      prop(Help.area, "names", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+      prop(Help.area, "level", "type" -> "integer"),
+      prop(Help.area, "root", "type" -> "string")
+    ),
+    Vector("names")
   )
 
-  private val usesTool: ujson.Value = ujson.Obj(
-    "name" -> "uses",
-    "description" -> "Direct references to the named symbols, resolved by the compiler (a same-named method elsewhere never matches), one line per site with its enclosing definition, grouped by file; `in`/`outside` filter by path prefix. Replaces a repository-wide grep for call sites.",
-    "inputSchema" -> ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "symbols" -> ujson.Obj(
-          "type" -> "array",
-          "items" -> ujson.Obj("type" -> "string"),
-          "description" -> "Symbols whose references to find: Name, Name.member or fully qualified."
-        ),
-        "in" -> ujson
-          .Obj("type" -> "string", "description" -> "Only files whose path starts with this."),
-        "outside" -> ujson
-          .Obj("type" -> "string", "description" -> "Drop files whose path starts with this."),
-        "root" -> ujson.Obj("type" -> "string", "description" -> "Checkout or worktree to read.")
-      ),
-      "required" -> ujson.Arr("symbols"),
-      "additionalProperties" -> false
-    )
+  private val usesTool: ujson.Value = tool(
+    Help.uses,
+    Vector(
+      prop(Help.uses, "symbols", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+      prop(Help.uses, "in", "type" -> "string"),
+      prop(Help.uses, "outside", "type" -> "string"),
+      prop(Help.uses, "root", "type" -> "string")
+    ),
+    Vector("symbols")
   )
 
   /** The reply to one JSON-RPC line (none for a notification), and the state after it. */

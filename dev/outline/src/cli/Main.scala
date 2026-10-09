@@ -4,24 +4,9 @@ import scala.annotation.tailrec
 
 import grit.outline.locate.{MillLayout, Root}
 import grit.outline.mcp.Server
-import grit.outline.query.{Answer, Config, Query, Roots, Status}
+import grit.outline.query.{Answer, Config, Help, Query, Roots, Status}
 
 object Main {
-
-  private val usage =
-    "usage: show Sym[,Sym…] [--depth N] [--body m[,m…]] [--private] [--cap BYTES] [--root DIR]"
-
-  private val usesUsage =
-    "usage: uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]"
-
-  private val areaUsage =
-    "usage: area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]"
-
-  private val testsUsage =
-    "usage: tests Suite [--test NAME] [--cap BYTES] [--root DIR]"
-
-  private val familyUsage =
-    "usage: family Trait [--member m] [--body] [--cap BYTES] [--root DIR]"
 
   private final case class FamilyOptions(
       member: Option[String],
@@ -98,8 +83,17 @@ object Main {
       case rest => show(rest, cwd, None)
     }
 
+  private def isHelp(arg: String): Boolean = arg == "--help" || arg == "-h"
+
   private def show(args: List[String], cwd: os.Path, leadingRoot: Option[String]): (Int, String) =
     args match {
+      case Nil => (0, Help.summary)
+      case first :: _ if isHelp(first) => (0, Help.summary)
+      case query :: rest if rest.exists(isHelp) =>
+        Help.entry(query) match {
+          case Some(e) => (0, Help.help(e))
+          case None => (2, s"unknown query $query\n${Help.summary}")
+        }
       case "show" :: sym :: rest if !sym.startsWith("--") =>
         val defaults = Options(
           depth = 1,
@@ -109,10 +103,11 @@ object Main {
           root = leadingRoot
         )
         parse(rest, defaults) match {
-          case Left(message) => (2, s"$message\n$usage")
+          case Left(message) => (2, s"$message\n${Help.usage(Help.show)}")
           case Right(o) =>
             rootDir(o.root, cwd) match {
-              case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usage")
+              case None =>
+                (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.show)}")
               case Some(d) =>
                 val syms = sym.split(',').toVector.filter(_.nonEmpty)
                 Config.read(Root(d)) match {
@@ -142,7 +137,8 @@ object Main {
         tests(suite, rest, cwd, leadingRoot)
       case "area" :: names :: rest if !names.startsWith("--") =>
         area(names, rest, cwd, leadingRoot)
-      case _ => (2, usage)
+      case other :: _ =>
+        (2, Help.entry(other).fold(s"unknown query $other\n${Help.summary}")(Help.usage))
     }
 
   private def family(
@@ -152,10 +148,10 @@ object Main {
       leadingRoot: Option[String]
   ): (Int, String) =
     parseFamily(rest, FamilyOptions(None, false, 80000, leadingRoot)) match {
-      case Left(message) => (2, s"$message\n$familyUsage")
+      case Left(message) => (2, s"$message\n${Help.usage(Help.family)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$familyUsage")
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.family)}")
           case Some(d) =>
             Config.read(Root(d)) match {
               case Left(message) => (2, message)
@@ -204,10 +200,10 @@ object Main {
       leadingRoot: Option[String]
   ): (Int, String) =
     parseUses(rest, UsesOptions(None, None, 80000, leadingRoot)) match {
-      case Left(message) => (2, s"$message\n$usesUsage")
+      case Left(message) => (2, s"$message\n${Help.usage(Help.uses)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$usesUsage")
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.uses)}")
           case Some(d) =>
             Config.read(Root(d)) match {
               case Left(message) => (2, message)
@@ -258,10 +254,10 @@ object Main {
       leadingRoot: Option[String]
   ): (Int, String) =
     parseArea(rest, AreaOptions(1, 80000, leadingRoot)) match {
-      case Left(message) => (2, s"$message\n$areaUsage")
+      case Left(message) => (2, s"$message\n${Help.usage(Help.area)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$areaUsage")
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.area)}")
           case Some(d) =>
             Config.read(Root(d)) match {
               case Left(message) => (2, message)
@@ -307,10 +303,10 @@ object Main {
       leadingRoot: Option[String]
   ): (Int, String) =
     parseTests(rest, TestsOptions(None, 80000, leadingRoot)) match {
-      case Left(message) => (2, s"$message\n$testsUsage")
+      case Left(message) => (2, s"$message\n${Help.usage(Help.tests)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n$testsUsage")
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.tests)}")
           case Some(d) =>
             Config.read(Root(d)) match {
               case Left(message) => (2, message)

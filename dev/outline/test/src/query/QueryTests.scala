@@ -85,6 +85,26 @@ object QueryTests extends TestSuite {
       assert(noMatch == 1)
     }
 
+    test("a --body name matching nothing shown is named in a note, with the names shown") {
+      val (answer, _) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("A.keep"),
+          1,
+          Set("nope", "keep"),
+          false,
+          80000
+        )
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator.contains("-- --body nope matches nothing shown; names here: keep")
+      )
+      assert(!answer.text.contains("--body keep matches"))
+    }
+
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
       val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
       os.copy(

@@ -1,7 +1,7 @@
 package grit.outline.mcp
 
 import grit.outline.locate.Root
-import grit.outline.query.Roots
+import grit.outline.query.{Help, Roots}
 
 import utest.*
 
@@ -124,6 +124,30 @@ object ServerTests extends TestSuite {
         resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
       val show = tools.find(t => field(t, "name").flatMap(_.strOpt).contains("show"))
       assert(show.flatMap(field(_, "description")).flatMap(_.strOpt).exists(_.contains("one call")))
+    }
+
+    test("each tool's description is its Help purpose, then its examples as the CLI writes them") {
+      val (r, _) = reply(request(4, "tools/list", ujson.Obj()), empty)
+      val tools =
+        resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
+      Help.entries.foreach { e =>
+        val tool = tools.find(t => field(t, "name").flatMap(_.strOpt).contains(e.query))
+        assert(tool.flatMap(field(_, "description")).flatMap(_.strOpt) == Some(Help.description(e)))
+      }
+    }
+
+    test("a parameter's description is its flag's sentence in Help") {
+      val (r, _) = reply(request(5, "tools/list", ujson.Obj()), empty)
+      val tools =
+        resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
+      val show = tools.find(t => field(t, "name").flatMap(_.strOpt).contains("show"))
+      val body = show
+        .flatMap(field(_, "inputSchema"))
+        .flatMap(field(_, "properties"))
+        .flatMap(field(_, "body"))
+        .flatMap(field(_, "description"))
+        .flatMap(_.strOpt)
+      assert(body == Help.sentence(Help.show, "body"))
     }
 
     test("tools/call show returns the named signature with its line range, not an error") {
