@@ -5,8 +5,9 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.QuestionName
 
 /** How a classifier's answers are stored: a choice as `{"choice", "weights": [{"key", "p"}]}`,
-  * a yes/no as `{"yes"}`, a score as `{"score", "levels": [p…]}`, a choice's or a score's
-  * confidence not kept (it is computed from its weights); an answer kept under its
+  * a yes/no as `{"yes"}`, a score as `{"score", "levels": [p…], "confidence"}` with the
+  * confidence the classifier reported, a choice's confidence not kept (it is computed from
+  * its weights); an answer kept under its
   * question's name as the same object with `"name"` first. A workflow's journal and a row
   * read back what an earlier build wrote (ADR 0004), so a form once written is read by every
   * later build.
@@ -22,8 +23,12 @@ object AnswersJson {
         )
       )
     case Answer.YesNo(yes) => ujson.Obj("yes" -> yes)
-    case Answer.Score(score, probabilities, _) =>
-      ujson.Obj("score" -> score, "levels" -> ujson.Arr.from(probabilities.map(ujson.Num(_))))
+    case Answer.Score(score, probabilities, confidence) =>
+      ujson.Obj(
+        "score" -> score,
+        "levels" -> ujson.Arr.from(probabilities.map(ujson.Num(_))),
+        "confidence" -> confidence
+      )
   }
 
   /** What [[write]] wrote, a `"name"` beside it not read; `Left` when it is neither form. */
@@ -46,7 +51,12 @@ object AnswersJson {
                 )
                 .toRight("answer: a level's weight is not a number")
             )
-            .map(ps => Answer.Score(score, ps, Answer.scoreConfidence(ps)))
+            .flatMap(ps =>
+              o.get("confidence")
+                .flatMap(_.numOpt)
+                .toRight("answer: missing confidence")
+                .map(Answer.Score(score, ps, _))
+            )
         case (None, Some(choice), None) =>
           o.get("weights")
             .flatMap(_.arrOpt)
@@ -65,7 +75,7 @@ object AnswersJson {
               }
             )
             .map(ws => Answer.Choice(choice, ws, Answer.confidence(ws.map(_.probability))))
-        case _ => Left("answer: expected {yes}, {choice, weights} or {score, levels}")
+        case _ => Left("answer: expected {yes}, {choice, weights} or {score, levels, confidence}")
       }
     }
 

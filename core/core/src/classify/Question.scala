@@ -91,7 +91,9 @@ enum Answer {
   /** As the classifier reported it, unchecked: `score` should be a position along the
     * levels (0 the first, n−1 the last, between two when its weight spreads), and
     * `probabilities` should hold one weight per level, in order; [[Ask.score]] reads it into
-    * a [[Scored]]. `confidence` is [[Answer.scoreConfidence]] of the weights.
+    * a [[Scored]]. `confidence` is how concentrated the weights are, as the classifier
+    * reported it: 1 when all on one level, falling as the weight spreads further from the
+    * likeliest.
     */
   case Score(score: Double, probabilities: Vector[Double], confidence: Double)
 
@@ -114,9 +116,12 @@ object Answer {
     }
   }
 
-  /** Jev's confidence for a Score: `max(0, 1 − Σ pᵢ·|i − m| / u)`, where `m` is the likeliest
-    * level (the first, on a tie) and `u` is the same sum for even weights; 1 for one level.
-    * Matches the docs' examples (`ClassifyTests`).
+  /** grit's reading of Jev's confidence for a Score, for an answer no Jev reply gave (a
+    * stub's): `max(0, 1 − Σ pᵢ·|i − m| / u)`, where `m` is the likeliest level (the first,
+    * on a tie) and `u` is the same sum for even weights; 1 for one level. It matches Jev's two
+    * documented Score answers to their rounding (`ClassifyTests`); whether Jev reads the
+    * likeliest level at an end as surer, as this does, is unconfirmed. Not Jev's own figure:
+    * an answer Jev gave keeps the confidence it reported.
     */
   def scoreConfidence(probabilities: Vector[Double]): Double = {
     val n = probabilities.size
