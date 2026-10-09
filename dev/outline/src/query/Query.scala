@@ -56,6 +56,10 @@ object Query {
       val notes = mutable.ListBuffer.empty[String]
       var failure: Option[String] = None
 
+      Resolve.preload(root, layout, Scope.WithTests, syms, state) match {
+        case Left(message) => failure = Some(message)
+        case Right(next) => state = next
+      }
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
           case Left(message) => failure = Some(message)
@@ -138,6 +142,20 @@ object Query {
           val notes = mutable.ListBuffer.empty[String]
           var failure: Option[String] = None
 
+          Resolve.preload(root, layout, Scope.Main, selected.flatMap(_.symbols), state) match {
+            case Left(message) => failure = Some(message)
+            case Right(next) => state = next
+          }
+          Resolve.preload(
+            root,
+            layout,
+            Scope.WithTests,
+            selected.flatMap(_.families),
+            state
+          ) match {
+            case Left(message) => failure = Some(message)
+            case Right(next) => state = next
+          }
           selected.foreach { a =>
             a.symbols.foreach { sym =>
               if (failure.isEmpty)
@@ -195,10 +213,7 @@ object Query {
       val tasty = inPackage.flatMap(_._2).distinct
       val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
       val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
-      val notes = resolved.notes ++
-        (if (missing.isEmpty) Vector.empty
-         else Vector(s"-- not loaded: ${missing.mkString(", ")}")) ++
-        notSearched(unsearched)
+      val notes = resolved.notes ++ missing ++ notSearched(unsearched)
       familyOf(defns, traitName, None, false).map { f =>
         val members =
           Vector(Render.Listed(f.trait0, "")) ++
@@ -260,25 +275,45 @@ object Query {
   private def everyDefnOf(ds: Vector[Defn]): Vector[Defn] =
     ds.flatMap(d => d +: everyDefnOf(d.members))
 
-  /** `tasty`'s definitions in one inspector run; when that fails, one run per package directory, and a directory that still fails is named (relative to its classes directory) and skipped. */
-  private def loadAll(
+  /** `tasty`'s definitions in one inspector run; when that fails, the files are split in halves until each half loads or is a single file. A file that still fails is skipped and named, relative to its classes directory, in one `-- not loaded:` note, with the first line the inspector captured for the first of them. */
+  private[query] def loadAll(
       root: Root,
       layout: Layout,
       tasty: Vector[os.Path],
       in: Loaded
-  ): (Vector[Defn], Loaded, Vector[String]) =
+  ): (Vector[Defn], Loaded, Vector[String]) = {
+    val (defns, next, failed) = bisect(root, layout, tasty, in)
+    val notes = failed.headOption match {
+      case None => Vector.empty
+      case Some((_, complaint)) =>
+        val line = captured(complaint)
+        val cause = if (line.isEmpty) "" else s" ($line)"
+        val files = failed.map { case (file, _) => relativePath(root, layout, file) }
+        Vector(s"-- not loaded: ${files.mkString(", ")}$cause")
+    }
+    (defns, next, notes)
+  }
+
+  /** `tasty`'s definitions, with each file that fails alone paired with the inspector's complaint about it. */
+  private def bisect(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      in: Loaded
+  ): (Vector[Defn], Loaded, Vector[(os.Path, String)]) =
     Loaded.defns(root, layout, tasty, in) match {
       case Right((ds, next, _)) => (ds, next, Vector.empty)
+      case Left(complaint) if tasty.sizeIs == 1 => (Vector.empty, in, tasty.map(_ -> complaint))
       case Left(_) =>
-        val dirs = tasty.map(_ / os.up).distinct
-        dirs.foldLeft((Vector.empty[Defn], in, Vector.empty[String])) {
-          case ((read, state, unread), dir) =>
-            Loaded.defns(root, layout, tasty.filter(_ / os.up == dir), state) match {
-              case Left(_) => (read, state, unread :+ packageName(layout, root, dir))
-              case Right((ds, after, _)) => (read ++ ds, after, unread)
-            }
-        }
+        val (left, right) = tasty.splitAt(tasty.size / 2)
+        val (leftDefns, afterLeft, leftFailed) = bisect(root, layout, left, in)
+        val (rightDefns, afterRight, rightFailed) = bisect(root, layout, right, afterLeft)
+        (leftDefns ++ rightDefns, afterRight, leftFailed ++ rightFailed)
     }
+
+  /** The first line the inspector captured, from a read's complaint, cut at 160 characters; empty when it captured none. */
+  private def captured(complaint: String): String =
+    complaint.takeWhile(_ != '\n').dropWhile(_ != ':').drop(1).trim.take(160)
 
   /** The `-- not compiled, not searched:` line naming `files` (at most eight, then how many more), or none when `files` is empty. A file with no `.tasty` has no references read from it. */
   private def notSearched(files: Vector[os.RelPath]): Vector[String] =
@@ -288,11 +323,11 @@ object Query {
       Vector(s"-- not compiled, not searched: ${files.take(8).mkString(", ")}$more")
     }
 
-  private def packageName(layout: Layout, root: Root, dir: os.Path): String =
+  private def relativePath(root: Root, layout: Layout, file: os.Path): String =
     layout
       .classesDirs(root)
-      .find(dir.startsWith)
-      .fold(dir.toString)(c => dir.relativeTo(c).toString)
+      .find(file.startsWith)
+      .fold(file.toString)(c => file.relativeTo(c).toString)
 
   private def familyIn(
       root: Root,
@@ -323,10 +358,8 @@ object Query {
           val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
           val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
           val head =
-            (Vector(header(root)) ++ resolved.notes ++
-              (if (missing.isEmpty) Vector.empty
-               else Vector(s"-- not loaded: ${missing.mkString(", ")}")) ++
-              notSearched(unsearched)).mkString("\n")
+            (Vector(header(root)) ++ resolved.notes ++ missing ++ notSearched(unsearched))
+              .mkString("\n")
           familyOf(defns, traitName, member, withBody) match {
             case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
             case Right(f) =>
@@ -381,6 +414,10 @@ object Query {
             Right(defns)
         }
 
+      Resolve.preload(root, layout, Scope.Main, syms, state) match {
+        case Left(message) => failure = Some(message)
+        case Right(next) => state = next
+      }
       val lines = mutable.ListBuffer.empty[String]
       val matches = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>

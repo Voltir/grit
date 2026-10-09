@@ -1,7 +1,7 @@
 package grit.outline.query
 
 import grit.outline.cli.Main
-import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.locate.{Layout, Locate, MillLayout, Root}
 
 import utest.*
 
@@ -83,6 +83,27 @@ object QueryTests extends TestSuite {
       assert(tooDeep == 2)
       val (noMatch, _) = Main.run(Vector("show", "Nope"), root.dir)
       assert(noMatch == 1)
+    }
+
+    test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
+      val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
+      os.copy(
+        root.dir / "out" / "grit" / "outline" / "fixture" / "compile.dest" / "classes",
+        classes,
+        createFolders = true
+      )
+      os.write(classes / "grit" / "outline" / "fixture" / "Bad.tasty", "not a tasty file")
+      val layout = new Layout {
+        def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val tasty = os.walk(classes).filter(_.ext == "tasty").toVector
+      val (defns, _, notes) = Query.loadAll(root, layout, tasty, Loaded.empty)
+      assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
+      assert(notes.size == 1)
+      assert(notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty")
     }
   }
 }

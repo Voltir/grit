@@ -18,6 +18,35 @@ final case class Resolved(
 
 object Resolve {
 
+  /** The `.tasty` a `scope` searches among `tasty`: `Scope.Main` drops the classes directories holding only tests' classes. */
+  private def usable(
+      root: Root,
+      layout: Layout,
+      scope: Scope,
+      tasty: Vector[os.Path]
+  ): Vector[os.Path] =
+    scope match {
+      case Scope.Main =>
+        val testDirs = layout.classesDirs(root).filter(layout.isTest)
+        tasty.filterNot(t => testDirs.exists(dir => t.startsWith(dir)))
+      case Scope.WithTests => tasty
+    }
+
+  /** `in` with the top-level definitions of every name in `syms` read, in one inspector run; `in` unchanged when no name has a file to read. Afterwards each of those names resolves with no read. */
+  def preload(
+      root: Root,
+      layout: Layout,
+      scope: Scope,
+      syms: Vector[String],
+      in: Loaded
+  ): Either[String, Loaded] = {
+    val tasty = syms
+      .flatMap(sym => usable(root, layout, scope, Locate.forTopLevel(root, layout, sym)))
+      .distinct
+    if (tasty.isEmpty) Right(in)
+    else Loaded.defns(root, layout, tasty, in).map { case (_, next, _) => next }
+  }
+
   /** `sym`'s definitions under `root`: those whose fullName is exactly `sym`; else those whose fullName ends with `.sym` (when more than one distinct fullName, the note `-- ambiguous <sym>: <full names, comma-separated> (name one fully)`); else, by `sym`'s last segment alone among the packages of files mentioning it, the note `-- no <sym> as written; by last segment: <full names>`. Only an exact match sees `config.hidden` sources; `Scope.Main` skips test-only classes dirs. Empty `defns` when nothing matches. */
   def resolve(
       root: Root,
@@ -27,11 +56,6 @@ object Resolve {
       sym: String,
       in: Loaded
   ): Either[String, Resolved] = {
-    val testDirs = layout.classesDirs(root).filter(layout.isTest)
-    def usable(tasty: Vector[os.Path]): Vector[os.Path] = scope match {
-      case Scope.Main => tasty.filterNot(t => testDirs.exists(dir => t.startsWith(dir)))
-      case Scope.WithTests => tasty
-    }
     def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
     def everyDefn(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: everyDefn(d.members))
     def simple(name: String): String = name.split('.').last
@@ -39,35 +63,39 @@ object Resolve {
       if (tasty.isEmpty) Right((Vector.empty, from))
       else Loaded.defns(root, layout, tasty, from).map { case (ds, next, _) => (ds, next) }
 
-    load(usable(Locate.forTopLevel(root, layout, sym)), in).flatMap { case (tops, loaded) =>
-      val all = everyDefn(tops)
-      val exact = all.filter(_.fullName == sym)
-      val suffix = all.filter(d => d.fullName.endsWith("." + sym) && !hidden(d))
-      if (exact.nonEmpty) Right(Resolved(exact, Vector.empty, loaded, tops))
-      else if (suffix.nonEmpty) {
-        val names = suffix.map(_.fullName).distinct.sorted
-        val notes =
-          if (names.size > 1)
-            Vector(s"-- ambiguous $sym: ${names.mkString(", ")} (name one fully)")
-          else Vector.empty
-        Right(Resolved(suffix, notes, loaded, tops))
-      } else {
-        val last = simple(sym)
-        val tasty = usable(
-          Locate
-            .mentioning(root, last)
-            .flatMap(file => Locate.inPackageOf(root, layout, file))
-            .distinct
-        )
-        load(tasty, loaded).map { case (more, after) =>
-          val byLast = everyDefn(more).filter(d => simple(d.fullName) == last && !hidden(d))
-          val names = byLast.map(_.fullName).distinct.sorted
+    load(usable(root, layout, scope, Locate.forTopLevel(root, layout, sym)), in).flatMap {
+      case (tops, loaded) =>
+        val all = everyDefn(tops)
+        val exact = all.filter(_.fullName == sym)
+        val suffix = all.filter(d => d.fullName.endsWith("." + sym) && !hidden(d))
+        if (exact.nonEmpty) Right(Resolved(exact, Vector.empty, loaded, tops))
+        else if (suffix.nonEmpty) {
+          val names = suffix.map(_.fullName).distinct.sorted
           val notes =
-            if (byLast.isEmpty) Vector.empty
-            else Vector(s"-- no $sym as written; by last segment: ${names.mkString(", ")}")
-          Resolved(byLast, notes, after, (tops ++ more).distinct)
+            if (names.size > 1)
+              Vector(s"-- ambiguous $sym: ${names.mkString(", ")} (name one fully)")
+            else Vector.empty
+          Right(Resolved(suffix, notes, loaded, tops))
+        } else {
+          val last = simple(sym)
+          val tasty = usable(
+            root,
+            layout,
+            scope,
+            Locate
+              .mentioning(root, last)
+              .flatMap(file => Locate.inPackageOf(root, layout, file))
+              .distinct
+          )
+          load(tasty, loaded).map { case (more, after) =>
+            val byLast = everyDefn(more).filter(d => simple(d.fullName) == last && !hidden(d))
+            val names = byLast.map(_.fullName).distinct.sorted
+            val notes =
+              if (byLast.isEmpty) Vector(s"-- no match for $sym")
+              else Vector(s"-- no $sym as written; by last segment: ${names.mkString(", ")}")
+            Resolved(byLast, notes, after, (tops ++ more).distinct)
+          }
         }
-      }
     }
   }
 }

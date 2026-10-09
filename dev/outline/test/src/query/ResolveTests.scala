@@ -1,6 +1,6 @@
 package grit.outline.query
 
-import grit.outline.locate.{MillLayout, Root}
+import grit.outline.locate.{Locate, MillLayout, Root}
 
 import utest.*
 
@@ -77,6 +77,34 @@ object ResolveTests extends TestSuite {
       val good = os.temp.dir()
       os.write(good / ".outline.conf", "hide a/b\n# a comment\n")
       assert(Config.read(Root(good)) == Right(Config(Vector("a/b"), Vector.empty)))
+    }
+
+    test("a name nothing defines resolves to nothing, and the note says there is no match") {
+      val r = resolve("grit.outline.fixture.Nonexistent")
+      assert(r.defns.isEmpty)
+      assert(r.notes == Vector("-- no match for grit.outline.fixture.Nonexistent"))
+    }
+
+    test("preload reads each name's files once, and a resolve after it reads none") {
+      val syms = Vector("grit.outline.fixture.A.keep", "grit.outline.fixture.store.Store")
+      val tasty = syms.flatMap(sym => Locate.forTopLevel(root, MillLayout, sym)).distinct
+      val expected = Loaded.defns(root, MillLayout, tasty, Loaded.empty) match {
+        case Right((_, _, read)) => read
+        case Left(message) => throw new Exception(message)
+      }
+      val preloaded = Resolve.preload(root, MillLayout, Scope.Main, syms, Loaded.empty) match {
+        case Right(in) => in
+        case Left(message) => throw new Exception(message)
+      }
+      assert(expected > 0)
+      assert(preloaded.byTasty.size == expected)
+      assert(Loaded.defns(root, MillLayout, tasty, preloaded).map(_._3) == Right(0))
+      syms.foreach { sym =>
+        Resolve.resolve(root, MillLayout, Config.empty, Scope.Main, sym, preloaded) match {
+          case Right(r) => assert(r.loaded.byTasty.keySet == preloaded.byTasty.keySet)
+          case Left(message) => throw new Exception(message)
+        }
+      }
     }
   }
 }
