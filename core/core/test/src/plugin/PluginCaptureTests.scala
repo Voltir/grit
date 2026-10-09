@@ -42,7 +42,9 @@ object PluginCaptureTests extends TestSuite {
       |object Noted extends Documents {
       |  val terms: DocumentTerms =
       |    DocLabel.of("notes").flatMap(DocumentTerms.of(_, DocWeight.Unscaled, scala.concurrent.duration.FiniteDuration(1, "day"), 10)).fold(sys.error, identity)
-      |  val posting: Option[DocumentPosting] = None
+      |  val posting: Option[DocumentPosting] = Some(new DocumentPosting {
+      |    def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = Right(())
+      |  })
       |}
       |final class Kept(val name: PluginName) extends Exports[Activity] {
       |  val version: Int = 1
@@ -77,7 +79,7 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** A plugin's documents posting through a store it was built with. */
+  /** A plugin's documents' posting, through a store it was built with. */
   private val documentsHoldDb =
     """final class DocsHold(db: Db^) extends DocumentPosting {
       |  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = db.read(Subject.Public)(Right(()))
@@ -151,7 +153,9 @@ object PluginCaptureTests extends TestSuite {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
-    test("a pure plugin with a tool, a cache, documents, needs and an exported service compiles") {
+    test(
+      "a pure plugin with a tool, a cache, documents and their posting, needs and an exported service compiles"
+    ) {
       val errs = errors(
         """object Store {
           |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
@@ -173,7 +177,7 @@ object PluginCaptureTests extends TestSuite {
       assert(heldImpure(errs))
     }
 
-    test("a plugin's documents holding a Db are rejected") {
+    test("a plugin's documents' posting holding a Db is rejected") {
       val errs = errors(documentsHoldDb)
       assert(heldImpure(errs))
     }
