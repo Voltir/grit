@@ -72,14 +72,22 @@ object Calling {
     (hosted.ask, gates) match {
       case (None, _) => Gated.Free
       case (Some(shown), Gates.Asker(within)) => Gated.Ask(shown, within)
-      case (Some(_), Gates.Closed) =>
-        Gated.Refused(
-          Outcome.Failed(
-            s"${ToolName.value(hosted.tool)} asks a person first, and nobody waits on this " +
-              "call to approve it, so it did not run."
-          )
-        )
+      case (Some(_), Gates.Closed) => Gated.Refused(unapproved(hosted.tool))
     }
+
+  /** What a call of `tool` is answered when its tool asks a person first and nobody waits to
+    * approve it: a `Failed` saying so. It is not sent.
+    */
+  def unapproved(tool: ToolName): Outcome =
+    Outcome.Failed(
+      s"${ToolName.value(tool)} asks a person first, and nobody waits on this call to approve " +
+        "it, so it did not run."
+    )
+
+  /** What a call addressed to `service`'s place is answered when no live edge serves it: a
+    * `Failed` naming it. It is not sent.
+    */
+  def unserved(service: Service): Outcome = Outcome.Failed(noService(service))
 
   /** Whom `actsFor` names for the call at `cs`, read in this transaction: its turn's asker
     * ([[asker]]), or its schedule's principal through `schedules`. `None` when there is no asker
