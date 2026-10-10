@@ -27,8 +27,10 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 
 ## Reading and editing code
 
-- Read Scala through the outline tool rather than `cat`, `sed`, `grep` or whole-file Reads:
-  `scripts/outline show|family|uses|tests|area … --root .` from the worktree. Its help
+- Prefer the outline tool for reading Scala: `scripts/outline show|family|uses|tests|area …
+  --root .` from the worktree. It answers with less text than a file read, resolved by the
+  compiler, in a form an Edit can match. Bash reads and searches are allowed when the tool
+  can't answer, or for a quick text search; avoid whole-file reads. Its help
   (`scripts/outline <query> --help`) gives each query's flags and says which printed lines are
   the file's own text. Several symbols go in one `show`, comma-separated.
 - Edit straight from that file text: an Edit's old_string may be copied from `show`,

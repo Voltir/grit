@@ -19,8 +19,10 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   to make a probe or test pass.
 
 ## Reading and editing code
-- Read Scala through the outline tool, not `cat`, `sed`, `grep` or `head` on `.scala` files:
-  `scripts/outline show|family|uses|tests|area … --root .` from the worktree. Run
+- Prefer the outline tool for reading Scala: `scripts/outline show|family|uses|tests|area …
+  --root .` from the worktree. It answers with less text than a file read, resolved by the
+  compiler, in a form an Edit can match. Bash (`grep -n`, `sed -n`) is allowed when the tool
+  can't answer, or for a quick text search; say in your report when you fell back. Run
   `scripts/outline <query> --help` once for its flags; `show --help` says which printed lines are
   the file's own text. Several symbols go in one `show`, comma-separated.
 - Edit straight from that file text: an Edit's old_string may be copied from `show`, `show --body`,
