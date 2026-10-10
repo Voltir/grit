@@ -107,7 +107,7 @@ object Digest {
               .left
               .map(StoreError.Invalid(_))
             newest = lines.headOption.fold(closed.at)(_.at)
-            _ <- keeper.write(key, label, room, text, Line.data(lines), newest)
+            _ <- keeper.write(key, label, room, text, Line.data(lines), None, newest)
           } yield ()
       }
   }

@@ -43,7 +43,15 @@ object SqlSavepointsTests extends TestSuite {
 
   /** Writes `body` under `k`, publicly, in the transaction given. */
   private def write(k: String, body: String)(using grit.core.store.Tx^) =
-    keeper.write(got(DocKey.of(k)), Label.Public, here, got(DocText.of(body)), ujson.Obj(), At)
+    keeper.write(
+      got(DocKey.of(k)),
+      Label.Public,
+      here,
+      got(DocText.of(body)),
+      ujson.Obj(),
+      None,
+      At
+    )
 
   /** The current text under `k`, read in a transaction of its own. */
   private def current(k: String): Option[String] =

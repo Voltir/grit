@@ -261,6 +261,7 @@ object RetrievalAssemblerTests extends TestSuite {
         place,
         got(DocText.of(text)),
         ujson.Obj(),
+        None,
         at
       )(using
         TestTx.fake

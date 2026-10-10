@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.act.MovesFixtures.Answering
 import grit.core.act.{Keeping, MoveError, MoveLimits, Posed}
-import grit.core.document.{DocText, DocumentKeeper, Written}
+import grit.core.document.{DocText, DocumentKeeper, Pointer, Written}
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.id.DocKey
 import grit.core.place.{Namespace, Place}
@@ -41,7 +41,7 @@ object DurableKeepingTests extends TestSuite {
       Tx^
   ): Either[StoreError, Kept] =
     keeper
-      .write(key(k), Label.Public, Here, text(t), ujson.Obj(), at)
+      .write(key(k), Label.Public, Here, text(t), ujson.Obj(), None, at)
       .map(w => Kept(Label.written(w.kept)))
 
   /** Every current document's key and text in `w`'s notes, as their plugin reads them. */
@@ -57,11 +57,17 @@ object DurableKeepingTests extends TestSuite {
     export inner.{current, newest, withdraw}
     @caps.unsafe.untrackedCaptures
     var writes = 0
-    def write(k: DocKey, label: Label, place: Place, t: DocText, data: ujson.Value, at: Instant)(
-        using Tx^
-    ): Either[StoreError, Written] = {
+    def write(
+        k: DocKey,
+        label: Label,
+        place: Place,
+        t: DocText,
+        data: ujson.Value,
+        pointer: Option[Pointer],
+        at: Instant
+    )(using Tx^): Either[StoreError, Written] = {
       writes += 1
-      inner.write(k, label, place, t, data, at)
+      inner.write(k, label, place, t, data, pointer, at)
     }
   }
 

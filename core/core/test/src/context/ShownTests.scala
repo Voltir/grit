@@ -627,6 +627,7 @@ object ShownTests extends TestSuite {
         board,
         got(DocText.of("Deploys frozen until Friday.\n[record] Standing: none")),
         ujson.Obj(),
+        None,
         Instant.parse("2026-09-30T23:30:00Z"),
         Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
       )

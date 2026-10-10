@@ -919,8 +919,10 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
 -- bound. `version` is numbered across every plugin, never reused, and alone names a version
 -- (a window's record, a tombstone). `place` is Place's segments (not a grit.places row, which
 -- goes with its last conversation). `body` is what a window shows and what DocumentSearch
--- ranks; `data` is the plugin's own, never shown or searched. `placed` and `last_placed`
--- count the windows that held it (DocumentStore.placed); `last_placed` starts at `written_at`.
+-- ranks; `data` is the plugin's own, never shown or searched. `pointer` is the call that reads
+-- what it stands for (Pointer), {"arguments":{…},"tool":…} with every key sorted, NULL for
+-- none; a write holding the same body, place, data and pointer writes nothing (JSONB equality,
+-- so key order never makes a new version). `placed` and `last_placed` count the windows that held it (DocumentStore.placed); `last_placed` starts at `written_at`.
 -- `label_id` is the label it is kept at (ADR 0030), and a key has one current version per
 -- label; `room_id` the room it was kept in (grit.core.visibility.Item.Kept), NULL for none.
 -- Writes to one plugin's documents are serialized by its posting; a concurrent write to one
@@ -935,6 +937,7 @@ CREATE TABLE IF NOT EXISTS grit.documents (
                   CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
     body          TEXT,
     data          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    pointer       JSONB,
     written_at    TIMESTAMPTZ NOT NULL,
     superseded_at TIMESTAMPTZ,
     placed        BIGINT NOT NULL DEFAULT 0,

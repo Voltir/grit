@@ -8,6 +8,7 @@ import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
+import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
@@ -67,6 +68,16 @@ abstract class DocumentContract extends TestSuite {
 
   private val Empty: ujson.Value = ujson.Obj()
 
+  /** A pointer at README.md as read at `ref`. */
+  private def readme(ref: String): Pointer =
+    got(
+      Pointer.of(
+        ToolName("github_get_file_contents"),
+        "path" -> ujson.Str("README.md"),
+        "ref" -> ujson.Str(ref)
+      )
+    )
+
   /** Writes `body` under `k` at `where`, written at minute `m`; the version written. */
   private def put(
       k: DocumentKeeper,
@@ -74,9 +85,12 @@ abstract class DocumentContract extends TestSuite {
       body: String,
       m: Int,
       where: Place = place("here"),
-      data: ujson.Value = Empty
+      data: ujson.Value = Empty,
+      pointer: Option[Pointer] = None
   ): DocumentVersion =
-    transaction(ok(k.write(key(name), Label.Public, where, text(body), data, at(m)))) match {
+    transaction(
+      ok(k.write(key(name), Label.Public, where, text(body), data, pointer, at(m)))
+    ) match {
       case Written.Versioned(v, _, _) => v
       case w => throw new java.lang.AssertionError(s"$name: $w")
     }
@@ -139,6 +153,7 @@ abstract class DocumentContract extends TestSuite {
             place("here"),
             text("same words"),
             ujson.Obj("n" -> 1),
+            None,
             at(2)
           )
         )
@@ -149,6 +164,51 @@ abstract class DocumentContract extends TestSuite {
       put(k, "k", "same words", 4, where = place("there"), data = ujson.Obj("n" -> 2))
       transaction(ok(k.withdraw(key("k"), Label.Public, at(5))))
       put(k, "k", "same words", 6, where = place("there"), data = ujson.Obj("n" -> 2))
+    }
+
+    test("a document's pointer is read back as it was written, sorted in its line") {
+      val p = name("doc-pointer")
+      val k = keeper(p, terms())
+      val v = put(k, "k", "pointed words", 1, pointer = Some(readme("main")))
+      transaction(ok(search.read(Vector(v)))).map(_.pointer.map(_.shown)) ==> Vector(
+        Some("""Read it with github_get_file_contents {"path":"README.md","ref":"main"}""")
+      )
+      transaction(ok(shelf(p).current(key("k"), Label.Public))).map(_.pointer) ==>
+        Some(Some(readme("main")))
+    }
+
+    test(
+      "a write changing only the pointer is a new version; the same one in another order is not"
+    ) {
+      val p = name("doc-pointer-unchanged")
+      val k = keeper(p, terms())
+      val first = put(k, "k", "pointed words", 1, pointer = Some(readme("main")))
+      def again(pointer: Option[Pointer], m: Int): Written =
+        transaction(
+          ok(
+            k.write(
+              key("k"),
+              Label.Public,
+              place("here"),
+              text("pointed words"),
+              Empty,
+              pointer,
+              at(m)
+            )
+          )
+        )
+      val reordered = got(
+        Pointer.of(
+          ToolName("github_get_file_contents"),
+          "ref" -> ujson.Str("main"),
+          "path" -> ujson.Str("README.md")
+        )
+      )
+      again(Some(reordered), 2) ==> Written.Unchanged(first, Label.Public)
+      // Each `put` fails unless the write is Versioned.
+      put(k, "k", "pointed words", 3, pointer = Some(readme("dev")))
+      val none = put(k, "k", "pointed words", 4)
+      again(None, 5) ==> Written.Unchanged(none, Label.Public)
     }
 
     test("past the bound a write withdraws the least recently placed, ties by key, never itself") {
@@ -162,7 +222,17 @@ abstract class DocumentContract extends TestSuite {
       /** The keys withdrawn by writing `name` at minute `m`. */
       def withdrew(name: String, m: Int): Vector[String] =
         transaction(
-          ok(k.write(key(name), Label.Public, place("here"), text(s"words $name"), Empty, at(m)))
+          ok(
+            k.write(
+              key(name),
+              Label.Public,
+              place("here"),
+              text(s"words $name"),
+              Empty,
+              None,
+              at(m)
+            )
+          )
         ) match {
           case Written.Versioned(_, _, gone) => gone.map((k, _) => DocKey.value(k))
           case w => throw new java.lang.AssertionError(s"$name: $w")
@@ -272,12 +342,12 @@ abstract class DocumentContract extends TestSuite {
       val undone = transaction {
         val inner = savepoints.atomic[Unit] {
           for {
-            _ <- k.write(key("k"), Label.Public, place("here"), text("two"), Empty, at(2))
-            _ <- k.write(key("new"), Label.Public, place("here"), text("new"), Empty, at(2))
+            _ <- k.write(key("k"), Label.Public, place("here"), text("two"), Empty, None, at(2))
+            _ <- k.write(key("new"), Label.Public, place("here"), text("new"), Empty, None, at(2))
             _ <- Left(StoreError.Invalid("refused"))
           } yield ()
         }
-        ok(k.write(key("after"), Label.Public, place("here"), text("after"), Empty, at(3)))
+        ok(k.write(key("after"), Label.Public, place("here"), text("after"), Empty, None, at(3)))
         inner
       }
       undone ==> Left(StoreError.Invalid("refused"))
@@ -291,7 +361,8 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val kept = transaction {
         savepoints.atomic[Unit](
-          k.write(key("k"), Label.Public, place("here"), text("kept"), Empty, at(1)).map(_ => ())
+          k.write(key("k"), Label.Public, place("here"), text("kept"), Empty, None, at(1))
+            .map(_ => ())
         )
       }
       kept ==> Right(())
@@ -373,7 +444,7 @@ abstract class DocumentContract extends TestSuite {
       put(k, "a", "words a", 1)
       put(k, "B", "words B", 1)
       transaction(
-        ok(k.write(key("c"), Label.Public, place("here"), text("words c"), Empty, at(2)))
+        ok(k.write(key("c"), Label.Public, place("here"), text("words c"), Empty, None, at(2)))
       ) match {
         case Written.Versioned(_, _, gone) => gone.map((k, _) => DocKey.value(k)) ==> Vector("B")
         case w => throw new java.lang.AssertionError(s"c: $w")
@@ -387,7 +458,7 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val floored = Clearance.of(TestLabels.Trial)
       opened(floored)(
-        ok(k.write(key("k"), Label.Public, place("here"), text("floored"), Empty, at(1)))
+        ok(k.write(key("k"), Label.Public, place("here"), text("floored"), Empty, None, at(1)))
       ) match {
         case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
         case w => throw new java.lang.AssertionError(s"$w")
@@ -410,7 +481,9 @@ abstract class DocumentContract extends TestSuite {
       val trialled = Clearance.of(TestLabels.Trial)
       put(k, "k", "public one", 1)
       opened(trialled)(
-        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, at(2)))
+        ok(
+          k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, None, at(2))
+        )
       )
       put(k, "k", "public two", 3)
       opened(trialled)(
@@ -426,7 +499,9 @@ abstract class DocumentContract extends TestSuite {
       val trialled = Clearance.of(TestLabels.Trial)
       put(k, "k", "public one", 1)
       opened(trialled)(
-        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, at(2)))
+        ok(
+          k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, None, at(2))
+        )
       )
       assert(opened(trialled)(ok(k.withdraw(key("k"), TestLabels.Trial, at(3)))).nonEmpty)
       opened(trialled)(
@@ -435,7 +510,9 @@ abstract class DocumentContract extends TestSuite {
         )
       ) ==> Vector(Some("public one"), None)
       opened(trialled)(
-        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial two"), Empty, at(4)))
+        ok(
+          k.write(key("k"), TestLabels.Trial, place("here"), text("trial two"), Empty, None, at(4))
+        )
       ) match {
         case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
         case w => throw new java.lang.AssertionError(s"$w")
@@ -450,7 +527,15 @@ abstract class DocumentContract extends TestSuite {
       put(k, "low", "apple low", 1)
       val high = opened(Clearance.of(TestLabels.Trial))(
         ok(
-          k.write(key("high"), Label.Public, place("here"), text("apple apple high"), Empty, at(1))
+          k.write(
+            key("high"),
+            Label.Public,
+            place("here"),
+            text("apple apple high"),
+            Empty,
+            None,
+            at(1)
+          )
         )
       ) match {
         case Written.Versioned(v, _, _) => v
@@ -482,7 +567,9 @@ abstract class DocumentContract extends TestSuite {
       val origin = Origin.Slack("T1", "D1", "1.0")
       room(origin)
       opened(Clearance.inRoom(origin.room, TestLabels.Trial, TestLabels.Trial))(
-        ok(k.write(key("ours"), Label.Public, place("here"), text("our room's"), Empty, at(1)))
+        ok(
+          k.write(key("ours"), Label.Public, place("here"), text("our room's"), Empty, None, at(1))
+        )
       )
       opened(Clearance.inRoom(origin.room, TestLabels.Trial, Label.Public))(
         (
@@ -500,10 +587,30 @@ abstract class DocumentContract extends TestSuite {
       room(here)
       room(there)
       opened(Clearance.inRoom(there.room, TestLabels.Trial, TestLabels.Trial))(
-        ok(k.write(key("theirs"), Label.Public, place("here"), text("their room's"), Empty, at(1)))
+        ok(
+          k.write(
+            key("theirs"),
+            Label.Public,
+            place("here"),
+            text("their room's"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
       )
       opened(Clearance.of(TestLabels.Trial))(
-        ok(k.write(key("nobody's"), Label.Public, place("here"), text("no room's"), Empty, at(1)))
+        ok(
+          k.write(
+            key("nobody's"),
+            Label.Public,
+            place("here"),
+            text("no room's"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
       )
       opened(Clearance.inRoom(here.room, TestLabels.Trial, Label.Public))(
         (

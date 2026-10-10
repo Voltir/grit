@@ -57,12 +57,15 @@ final class InMemoryDocuments extends DocumentStore {
           place: Place,
           text: DocText,
           data: ujson.Value,
+          pointer: Option[Pointer],
           at: Instant
       )(using tx: Tx^): Either[StoreError, Written] = {
         val clearance = Tx.clearance(tx)
         val kept = label.join(clearance.floor)
         head(plugin, key, kept) match {
-          case Some((v, r)) if r.text.contains(text) && r.place == place && r.data == data =>
+          case Some((v, r))
+              if r.text.contains(text) && r.place == place && r.data == data &&
+                r.pointer == pointer =>
             Right(Written.Unchanged(version(v), kept))
           case before =>
             for {
@@ -76,6 +79,7 @@ final class InMemoryDocuments extends DocumentStore {
                   place,
                   Some(text),
                   data,
+                  pointer,
                   at,
                   None,
                   Placement(0, at)
@@ -107,6 +111,7 @@ final class InMemoryDocuments extends DocumentStore {
                 r.copy(
                   text = None,
                   data = ujson.Obj(),
+                  pointer = None,
                   written = at,
                   superseded = None,
                   placement = Placement(0, at)
@@ -155,7 +160,7 @@ final class InMemoryDocuments extends DocumentStore {
       else
         rows.toVector
           .collect {
-            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _))
+            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _, _))
                 if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
               val found = InMemoryDocuments.words(DocText.value(text))
               val score = words.map(w => found.count(_ == w)).sum.toDouble
@@ -258,7 +263,18 @@ final class InMemoryDocuments extends DocumentStore {
     DocumentVersion.of(v).getOrElse(throw new IllegalStateException(s"version $v"))
 
   private def document(v: Long, r: Row, text: DocText): Document =
-    Document(version(v), r.plugin, r.key, r.label, r.place, text, r.data, r.written, r.placement)
+    Document(
+      version(v),
+      r.plugin,
+      r.key,
+      r.label,
+      r.place,
+      text,
+      r.data,
+      r.pointer,
+      r.written,
+      r.placement
+    )
 }
 
 object InMemoryDocuments {
@@ -272,6 +288,7 @@ object InMemoryDocuments {
       place: Place,
       text: Option[DocText],
       data: ujson.Value,
+      pointer: Option[Pointer],
       written: Instant,
       superseded: Option[Instant],
       placement: Placement

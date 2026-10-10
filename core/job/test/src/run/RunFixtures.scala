@@ -119,6 +119,7 @@ object RunFixtures {
                   Place.under(Namespace.Task, Vector("notes")),
                   text,
                   ujson.Obj(),
+                  None,
                   at
                 )
                 .map(w => Noted(Label.written(w.kept)))

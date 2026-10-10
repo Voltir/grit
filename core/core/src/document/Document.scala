@@ -25,7 +25,8 @@ final case class Placement(count: Long, lastPlaced: Instant)
 
 /** A version holding something, of `plugin`'s document under `key` at `label`, the label it is
   * kept at (ADR 0030): `text`, what a window shows and search ranks; `data`, its plugin's own,
-  * never shown or searched; kept at `place`; current from `written`.
+  * never shown or searched; `pointer`, the call that reads what it stands for, if any; kept at
+  * `place`; current from `written`.
   */
 final case class Document(
     version: DocumentVersion,
@@ -35,6 +36,7 @@ final case class Document(
     place: Place,
     text: DocText,
     data: ujson.Value,
+    pointer: Option[Pointer],
     written: Instant,
     placement: Placement
 )
@@ -44,7 +46,9 @@ final case class Document(
   */
 enum Written {
 
-  /** The current version already held the same place, text and data: nothing was written. */
+  /** The current version already held the same place, text, data and pointer: nothing was
+    * written.
+    */
   case Unchanged(current: DocumentVersion, kept: Label)
 
   /** `version` was written and is current; `withdrew`, each key and label whose document was

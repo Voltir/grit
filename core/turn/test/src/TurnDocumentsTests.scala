@@ -76,6 +76,7 @@ object TurnDocumentsTests extends TestSuite {
           board,
           got(DocText.of(text)),
           ujson.Obj(),
+          None,
           written
         )(using
           TestTx.fake

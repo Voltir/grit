@@ -90,6 +90,7 @@ object PluginLiveTests extends TestSuite {
                 Place.under(Namespace.Task, Vector("notes")),
                 text,
                 ujson.Obj(),
+                None,
                 closed.at
               )
               .map(_ => ())

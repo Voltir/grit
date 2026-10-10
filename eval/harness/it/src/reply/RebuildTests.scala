@@ -316,6 +316,7 @@ object RebuildTests extends TestSuite {
               Origin.Task("rebuild", "d").room,
               right(DocText.of("the Falcon budget is 4200")),
               ujson.Obj(),
+              None,
               now()
             )
         )

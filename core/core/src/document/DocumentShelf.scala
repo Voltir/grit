@@ -29,26 +29,31 @@ trait DocumentShelf {
 /** One plugin's documents as it writes them, under the terms it declared. */
 trait DocumentKeeper extends DocumentShelf {
 
-  /** Makes `text` and `data`, at `place`, the current document under `key` at `label` joined
-    * with its transaction's floor ([[grit.core.visibility.Clearance.floor]]), written `at`:
-    * never below what its writer could read. It is kept in the transaction's own room, or in
-    * none when it has none, never a room the writer names. [[Written.kept]] says which label it
-    * was kept at, and `current(key, kept)` finds it again. Under posting and a job's run the
-    * floor is [[grit.core.store.Tx.cleared]], so that is `label join Tx.cleared(tx)`; a
-    * person's turn may write above what it reads back. The version before under that key and
-    * label, if any, stops being current and is marked for deletion
-    * ([[grit.core.retention.Target.Document]]); a document under the key at another label is
-    * untouched. [[Written.Unchanged]] when the current version there holds the same place, text
-    * and data. Past the bound, counted over every label, the current documents placed least
-    * recently (ties by key, then label in its written form, bytewise) are withdrawn as
-    * [[withdraw]] does, never the one written: a high variant few readers place tends to go
-    * first. A `DatabaseError` when another transaction wrote `key` at that label meanwhile:
-    * posting never does, as it runs one at a time per plugin, but two runs of a plugin's
-    * keeping jobs can, each keeping in its own transaction.
+  /** Makes `text`, `data` and `pointer`, at `place`, the current document under `key` at `label`
+    * joined with its transaction's floor ([[grit.core.visibility.Clearance.floor]]), written `at`:
+    * never below what its writer could read. It is kept in the transaction's own room, or in none
+    * when it has none, never a room the writer names. [[Written.kept]] says which label it was kept
+    * at, and `current(key, kept)` finds it again. Under posting and a job's run the floor is
+    * [[grit.core.store.Tx.cleared]], so that is `label join Tx.cleared(tx)`; a person's turn may
+    * write above what it reads back. The version before under that key and label, if any, stops
+    * being current and is marked for deletion ([[grit.core.retention.Target.Document]]); a document
+    * under the key at another label is untouched. [[Written.Unchanged]] when the current version
+    * there holds the same place, text, data and pointer. Past the bound, counted over every label,
+    * the current documents placed least recently (ties by key, then label in its written form,
+    * bytewise) are withdrawn as [[withdraw]] does, never the one written: a high variant few
+    * readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at
+    * that label meanwhile: posting never does, as it runs one at a time per plugin, but two runs of
+    * a plugin's keeping jobs can, each keeping in its own transaction.
     */
-  def write(key: DocKey, label: Label, place: Place, text: DocText, data: ujson.Value, at: Instant)(
-      using Tx^
-  ): Either[StoreError, Written]
+  def write(
+      key: DocKey,
+      label: Label,
+      place: Place,
+      text: DocText,
+      data: ujson.Value,
+      pointer: Option[Pointer],
+      at: Instant
+  )(using Tx^): Either[StoreError, Written]
 
   /** Withdraws the current document under `key` at exactly `label`, at `at`: a version holding
     * nothing, kept at that label and in that document's room, becomes current there, and both

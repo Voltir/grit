@@ -288,7 +288,7 @@ object ConversationRoomsLiveTests extends TestSuite {
       val writer = Clearance.inRoom(origin.room, trialLabel, trialLabel)
       LiveDb.transaction(config, writer)(
         for {
-          _ <- keeper.write(key, Label.Public, origin.place, text, ujson.Obj(), Instant.EPOCH)
+          _ <- keeper.write(key, Label.Public, origin.place, text, ujson.Obj(), None, Instant.EPOCH)
           gone <- keeper.withdraw(key, trialLabel, Instant.EPOCH.plusSeconds(1))
         } yield gone.nonEmpty
       ) ==> Right(true)

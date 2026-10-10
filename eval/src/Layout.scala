@@ -377,6 +377,7 @@ object Load {
                 d.place,
                 d.text,
                 ujson.Obj(),
+                None,
                 Instant.EPOCH.minusSeconds(60)
               )
             )

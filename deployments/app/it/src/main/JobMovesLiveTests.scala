@@ -194,6 +194,7 @@ object JobMovesLiveTests extends TestSuite {
                 Place.under(Namespace.Task, Vector("tallies")),
                 DocText.of(text).fold(sys.error, identity),
                 ujson.Obj(),
+                None,
                 at
               )
               .flatMap(w =>

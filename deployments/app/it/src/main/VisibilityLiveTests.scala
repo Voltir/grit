@@ -317,6 +317,7 @@ object VisibilityLiveTests extends TestSuite {
               Place.under(Namespace.Task, Vector("notes")),
               t,
               ujson.Obj(),
+              None,
               Instant.parse("2026-09-01T00:00:00Z")
             )
           } yield ()

@@ -457,7 +457,7 @@ object CollectorLiveTests extends TestSuite {
     texts.toVector.map { t =>
       val text = DocText.of(t).getOrElse(sys.error("text"))
       LiveDb.transaction(config, Clearance.of(Label.Public))(
-        keeper.write(key, Label.Public, here, text, ujson.Obj(), at)
+        keeper.write(key, Label.Public, here, text, ujson.Obj(), None, at)
       ) match {
         case Right(Written.Versioned(v, _, _)) => v
         case other => sys.error(s"writing $t: $other")

@@ -47,6 +47,7 @@ object AsOfTests extends TestSuite {
         where,
         got(DocText.of(text)),
         ujson.Obj(),
+        None,
         when
       ) match {
       case Right(Written.Versioned(v, _, _)) => v

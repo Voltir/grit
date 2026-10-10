@@ -293,6 +293,7 @@ object RecordTurnHistories {
             board,
             got(grit.core.document.DocText.of(text)),
             ujson.Obj(),
+            None,
             java.time.Instant.EPOCH
           ) match {
           case Right(grit.core.document.Written.Versioned(v, _, _)) => v

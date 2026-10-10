@@ -16,6 +16,7 @@ import grit.core.document.{
   DocumentStore,
   DocumentTerms,
   Placement,
+  Pointer,
   Shelved,
   Written
 }
@@ -23,6 +24,7 @@ import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
+import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Label}
 
 /** [[DocumentStore]] over `grit.documents` and `grit.document_terms`, reading as
@@ -137,7 +139,7 @@ private[sql] object SqlDocuments {
   /** A version's columns, as [[document]] reads them, from [[Labelled]]. */
   val Columns: String =
     "version, plugin, key, array_to_json(place)::text AS place, body, data::text AS data, " +
-      "written_at, placed, last_placed, label_level, label_compartments"
+      "pointer::text AS pointer, written_at, placed, last_placed, label_level, label_compartments"
 
   /** A label's id: the parameters of [[SqlLabels.Arg]], looked up without interning it. */
   val LabelId: String =
@@ -197,6 +199,28 @@ private[sql] object SqlDocuments {
       case _ => Right(Place.Everywhere)
     }
 
+  /** `pointer` as its column holds it: `{"arguments":{…},"tool":…}`, compact, every key sorted. */
+  def pointerJson(pointer: Pointer): String =
+    ujson.Obj("arguments" -> pointer.arguments, "tool" -> ToolName.value(pointer.tool)).render()
+
+  /** The pointer `json` holds ([[pointerJson]]), or why not; JSONB keeps its keys in its own
+    * order, so its arguments are sorted again.
+    */
+  def pointerOf(json: String): Either[String, Pointer] =
+    for {
+      obj <- ujson.read(json).objOpt.toRight("a document's pointer: not an object")
+      tool <- obj.get("tool").flatMap(_.strOpt).toRight("a document's pointer: no tool")
+      name <- ToolName.of(tool)
+      arguments <- obj
+        .get("arguments")
+        .flatMap(_.objOpt)
+        .toRight("a document's pointer: no arguments")
+      pointer <- arguments.toVector match {
+        case first +: rest => Pointer.of(name, first, rest*)
+        case _ => Left("a document's pointer: no arguments")
+      }
+    } yield pointer
+
   /** The version `rs` holds ([[Columns]]), or why not: one withdrawn holds nothing. */
   def document(rs: ResultSet): Either[String, Document] =
     for {
@@ -205,6 +229,10 @@ private[sql] object SqlDocuments {
       key <- DocKey.of(rs.getString("key"))
       place <- placeOf(rs.getString("place"))
       text <- Option(rs.getString("body")).toRight("a withdrawal").flatMap(DocText.of)
+      pointer <- Option(rs.getString("pointer")) match {
+        case None => Right(None)
+        case Some(json) => pointerOf(json).map(Some(_))
+      }
     } yield Document(
       version,
       plugin,
@@ -213,6 +241,7 @@ private[sql] object SqlDocuments {
       place,
       text,
       ujson.read(rs.getString("data")),
+      pointer,
       instant(rs, "written_at"),
       Placement(rs.getLong("placed"), instant(rs, "last_placed"))
     )
@@ -312,6 +341,7 @@ private[sql] object SqlDocuments {
         place: Place,
         text: DocText,
         data: ujson.Value,
+        pointer: Option[Pointer],
         at: Instant
     )(using tx: Tx^): Either[StoreError, Written] = {
       val clearance: Clearance = Tx.clearance(tx)
@@ -323,7 +353,8 @@ private[sql] object SqlDocuments {
           """SELECT version,
             |       (body IS NOT DISTINCT FROM ?
             |        AND place = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
-            |        AND data = ?::jsonb) AS same
+            |        AND data = ?::jsonb
+            |        AND pointer IS NOT DISTINCT FROM ?::jsonb) AS same
             |  FROM grit.documents
             | WHERE plugin = ? AND key = ? AND label_id = ? AND superseded_at IS NULL
             |   FOR UPDATE""".stripMargin
@@ -331,9 +362,10 @@ private[sql] object SqlDocuments {
           ps.setString(1, DocText.value(text))
           ps.setString(2, path(place).render())
           ps.setString(3, data.render())
-          ps.setString(4, PluginName.value(plugin))
-          ps.setString(5, DocKey.value(key))
-          ps.setInt(6, id)
+          ps.setString(4, pointer.map(pointerJson).orNull)
+          ps.setString(5, PluginName.value(plugin))
+          ps.setString(6, DocKey.value(key))
+          ps.setInt(7, id)
         }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
           // The parameter's type written out: inferred, it is Vector's array-holding refinement.
           (head: Vector[(DocumentVersion, Boolean)]) =>
@@ -346,9 +378,10 @@ private[sql] object SqlDocuments {
                   }
                   written <- rows(
                     s"""INSERT INTO grit.documents
-                      |       (plugin, key, place, body, data, written_at, last_placed, label_id, room_id)
+                      |       (plugin, key, place, body, data, pointer, written_at, last_placed,
+                      |        label_id, room_id)
                       |VALUES (?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?::jsonb,
-                      |        ?, ?, ?, $RoomId)
+                      |        ?::jsonb, ?, ?, ?, $RoomId)
                       |RETURNING version""".stripMargin
                   ) { ps =>
                     ps.setString(1, PluginName.value(plugin))
@@ -356,10 +389,11 @@ private[sql] object SqlDocuments {
                     ps.setString(3, path(place).render())
                     ps.setString(4, DocText.value(text))
                     ps.setString(5, data.render())
-                    ps.setObject(6, utc(at))
+                    ps.setString(6, pointer.map(pointerJson).orNull)
                     ps.setObject(7, utc(at))
-                    ps.setInt(8, id)
-                    ps.setString(9, room)
+                    ps.setObject(8, utc(at))
+                    ps.setInt(9, id)
+                    ps.setString(10, room)
                   }(versionOf)
                   version <- written.headOption.toRight(
                     StoreError.Invalid("a write returned no version")
