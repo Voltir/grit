@@ -68,6 +68,7 @@ object LocateTests extends TestSuite {
       val compiled = os.temp.dir()
       os.write(compiled / "p" / "Moves.tasty", "", createFolders = true)
       val fake = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = Vector(compiled)
         def libraryJars(root: Root): Vector[os.Path] = Vector.empty
         def notCompiled(root: Root): String = "not compiled"

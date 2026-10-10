@@ -14,6 +14,9 @@ trait Layout {
 
   /** Whether `classesDir` holds only tests' classes. */
   def isTest(classesDir: os.Path): Boolean
+
+  /** Whether the source file `file`, a path relative to the checkout, holds only tests' source. */
+  def isTestSource(file: os.RelPath): Boolean
 }
 
 /** Mill's layout: `out/**/compile.dest/classes`, and each module's `resolvedMvnDeps.json` beside its `compile.dest`. */
@@ -71,6 +74,11 @@ object MillLayout extends Layout {
 
   def isTest(classesDir: os.Path): Boolean =
     Set("test", "it").contains((classesDir / os.up / os.up).last)
+
+  def isTestSource(file: os.RelPath): Boolean = {
+    val segments = file.segments.toVector
+    segments.lift(segments.indexOf("src") - 1).exists(Set("test", "it").contains)
+  }
 
   def notCompiled(root: Root): String =
     s"no compiled classes under ${root.dir / "out"}: run ./mill <module>.compile"

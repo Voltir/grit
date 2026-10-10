@@ -81,6 +81,15 @@ object MillLayoutTests extends TestSuite {
       assert(MillLayout.libraryJars(root) == Vector(jar))
     }
 
+    test(
+      "isTestSource is true for a source under a test or it module's src, and false under a main one"
+    ) {
+      assert(MillLayout.isTestSource(os.RelPath("core/core/test/src/inbox/InboxTests.scala")))
+      assert(MillLayout.isTestSource(os.RelPath("core/dbos/it/src/Engine.scala")))
+      assert(!MillLayout.isTestSource(os.RelPath("core/core/src/inbox/Inbox.scala")))
+      assert(!MillLayout.isTestSource(os.RelPath("core/core/src/test/Helper.scala")))
+    }
+
     test("isTest is true for a classes dir under a test or it module, and false under a main one") {
       val root = tree(
         "out/x/test/compile.dest/classes/A.tasty",

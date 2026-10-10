@@ -234,6 +234,7 @@ object ReadTests extends TestSuite {
   }
 
   private def quietLayout(classes: os.Path): Layout = new Layout {
+    def isTestSource(file: os.RelPath): Boolean = false
     def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
     def libraryJars(root: Root): Vector[os.Path] = Vector.empty
     def notCompiled(root: Root): String = "not compiled"

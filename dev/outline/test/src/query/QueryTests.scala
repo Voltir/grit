@@ -145,6 +145,7 @@ object QueryTests extends TestSuite {
       )
       os.write(classes / "grit" / "outline" / "fixture" / "Bad.tasty", "not a tasty file")
       val layout = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
         def libraryJars(root: Root): Vector[os.Path] = Vector.empty
         def notCompiled(root: Root): String = "not compiled"
@@ -169,6 +170,7 @@ object QueryTests extends TestSuite {
       val bad = classes / "grit" / "outline" / "fixture" / "Bad.tasty"
       os.write(bad, "not a tasty file")
       val layout = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
         def libraryJars(root: Root): Vector[os.Path] = Vector.empty
         def notCompiled(root: Root): String = "not compiled"
@@ -194,6 +196,7 @@ object QueryTests extends TestSuite {
       val bad = classes / "grit" / "outline" / "fixture" / "Bad.tasty"
       os.write(bad, "not a tasty file")
       val layout = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
         def libraryJars(root: Root): Vector[os.Path] = Vector.empty
         def notCompiled(root: Root): String = "not compiled"
@@ -277,6 +280,36 @@ object QueryTests extends TestSuite {
           "\n  67-76 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
         )
       )
+    }
+
+    test(
+      "the tests section reads no test tasty of a package whose test sources do not mention the name"
+    ) {
+      val (_, roots) =
+        Query.show(
+          root,
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Moves.ask"),
+          1,
+          Set.empty,
+          false,
+          80000
+        )
+      val testClasses = MillLayout.classesDirs(root).filter(MillLayout.isTest)
+      val allowed =
+        Locate
+          .mentioning(root, "ask")
+          .filter(file => MillLayout.isTestSource(file))
+          .flatMap(file => Locate.inPackageIn(root, testClasses, file))
+          .toSet
+      val read = Roots
+        .of(roots, root)
+        .refs
+        .keySet
+        .filter(tasty => testClasses.exists(classes => tasty.startsWith(classes)))
+      assert(read.subsetOf(allowed))
     }
 
     test("show --no-tests prints no tests section") {

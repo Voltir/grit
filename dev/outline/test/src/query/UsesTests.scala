@@ -165,6 +165,7 @@ object UsesTests extends TestSuite {
     test("a uses call looks up the classes dirs fewer times than it has candidate files") {
       var lookups = 0
       val counting = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = {
           lookups += 1
           MillLayout.classesDirs(root)
