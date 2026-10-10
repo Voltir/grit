@@ -209,7 +209,7 @@ object Query {
     }
 
   /** The files among `files` whose source is newer than their newest `.tasty`, as `show` and `tests` tag them. */
-  private def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] =
+  private[query] def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] =
     files.distinct.filter { file =>
       val rel = os.RelPath(file)
       Locate.staleness(root, rel, Locate.inPackageOf(root, layout, rel)) match {

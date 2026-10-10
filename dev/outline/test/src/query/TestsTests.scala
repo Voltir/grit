@@ -66,36 +66,41 @@ object TestsTests extends TestSuite {
       assert(!found.text.contains("== "))
     }
 
-    test("tests tags a suite's file when its source is newer than its tasty") {
-      // A copy under a temp root cannot be read: its tasty records the checkout's own source path. The
-      // checkout's fixture source is made newer for the query, and its mtime restored after.
-      val source = (root.dir / "dev/outline/fixture/src/store/Store.scala").toNIO
-      val before = java.nio.file.Files.getLastModifiedTime(source)
-      val text =
-        try {
-          java.nio.file.Files.setLastModifiedTime(
-            source,
-            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 3600000L)
-          )
-          Query
-            .tests(
-              root,
-              FixtureLayout,
-              Config.empty,
-              Roots.empty(6000),
-              suite,
-              None,
-              Set.empty,
-              80000
-            )
-            ._1
-            .text
-        } finally java.nio.file.Files.setLastModifiedTime(source, before)
-      assert(
-        text.linesIterator.contains(
-          "== dev/outline/fixture/src/store/Store.scala  grit.outline.fixture.store  [stale: source newer than .tasty]"
+    test("a source newer than its tasty is tagged stale, and its file line says so") {
+      // A temp root holds the source and a tasty file with set mtimes; the checkout is not touched.
+      val tmp = os.temp.dir(prefix = "outline-stale-")
+      try {
+        val rel = "dev/outline/src/Store.scala"
+        val source = tmp / os.RelPath(rel)
+        val tasty =
+          tmp / "out" / "classes" / "grit" / "outline" / "fixture" / "store" / "Store.tasty"
+        os.write(
+          source,
+          "package grit.outline.fixture.store\n\nobject Store\n",
+          createFolders = true
         )
-      )
+        os.write(tasty, "", createFolders = true)
+        val now = System.currentTimeMillis()
+        java.nio.file.Files.setLastModifiedTime(
+          source.toNIO,
+          java.nio.file.attribute.FileTime.fromMillis(now + 3600000L)
+        )
+        java.nio.file.Files
+          .setLastModifiedTime(tasty.toNIO, java.nio.file.attribute.FileTime.fromMillis(now))
+        val layout: Layout = new Layout {
+          def classesDirs(root: Root) = Vector(root.dir / "out" / "classes")
+          def libraryJars(root: Root) = Vector.empty
+          def notCompiled(root: Root) = "not compiled"
+          def isTest(classesDir: os.Path) = false
+          def isTestSource(file: os.RelPath) = false
+        }
+        val stale = Query.staleFiles(Root(tmp), layout, Vector(rel))
+        assert(stale == Set(rel))
+        assert(
+          grit.outline.render.Render.fileLine(rel, "grit.outline.fixture.store", stale = true) ==
+            s"== $rel  grit.outline.fixture.store  [stale: source newer than .tasty]"
+        )
+      } finally os.remove.all(tmp)
     }
 
     test("tests --body prints a helper's own lines, byte-identical to the file") {
