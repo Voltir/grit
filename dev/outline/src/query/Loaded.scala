@@ -25,8 +25,8 @@ final case class Loaded(
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
 
-  /** The `.tasty` files one inspector run reads for `uses`. One run over a wide candidate set (1573 files for `Limits.of`) exhausted the 512 MB heap in the inspector's tree walk; runs of 200 complete it. */
-  val readBatch: Int = 200
+  /** The `.tasty` files one inspector run reads for `uses`. One run over 1600 files exhausted the CLI's 512 MB heap in the inspector's tree walk, and the 1573 candidates of `grit.core.act.MoveLimits.of` complete in runs of 800. */
+  val readBatch: Int = 800
 
   /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
   def defns(
@@ -40,18 +40,26 @@ object Loaded {
       if (stale.isEmpty) Right(Read.Batch(Map.empty, Vector.empty))
       else Read.defnsByTasty(root, layout, stale)
     read.map { batch =>
-      val updated = stale.foldLeft(in.byTasty) { (cache, p) =>
-        cache.updated(p, Cached(os.mtime(p), batch.byTasty.getOrElse(p, Vector.empty)))
-      }
-      val all = tasty.flatMap(p => updated.get(p).map(_.defns).getOrElse(Vector.empty))
-      val failedNow = batch.unreadable.map { case (p, _) => p -> os.mtime(p) }.toMap
-      val failed = (in.failed -- stale) ++ failedNow
-      val unreadable = (in.unreadable -- stale) ++ batch.unreadable.toMap
-      (all, in.copy(byTasty = updated, failed = failed, unreadable = unreadable), stale.size)
+      val next = withDefns(in, stale, batch)
+      val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
+      (all, next, stale.size)
     }
   }
 
-  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in runs of `readBatch` files) only files absent from the index or changed since they were indexed; the new cache; how many files were read. */
+  /** `in` with each of `files` cached at its current mtime as `batch` read it, and each file `batch` could not read remembered as failed. */
+  private def withDefns(in: Loaded, files: Vector[os.Path], batch: Read.Batch): Loaded = {
+    val byTasty = files.foldLeft(in.byTasty) { (cache, p) =>
+      cache.updated(p, Cached(os.mtime(p), batch.byTasty.getOrElse(p, Vector.empty)))
+    }
+    val failedNow = batch.unreadable.map { case (p, _) => p -> os.mtime(p) }.toMap
+    in.copy(
+      byTasty = byTasty,
+      failed = (in.failed -- files) ++ failedNow,
+      unreadable = (in.unreadable -- files) ++ batch.unreadable.toMap
+    )
+  }
+
+  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in runs of `readBatch` files) only files absent from the index or changed since they were indexed; each run reads those files' definitions too, cached as `defns` caches them; the new cache; how many files were read. */
   def uses(
       root: Root,
       layout: Layout,
@@ -59,19 +67,25 @@ object Loaded {
       in: Loaded
   ): Either[String, (Vector[Use], Loaded, Int)] = {
     val stale = tasty.filter(p => !indexedAt(in, p))
-    val read: Either[String, Map[os.Path, Vector[Use]]] =
-      stale
-        .grouped(readBatch)
-        .foldLeft[Either[String, Map[os.Path, Vector[Use]]]](Right(Map.empty)) { (acc, batch) =>
-          acc.flatMap(byFile => Read.references(root, layout, batch, _ => true).map(byFile ++ _))
-        }
-    read.map { byFile =>
-      val updated = stale.foldLeft(in.refs) { (index, p) =>
-        index.updated(p, Indexed(os.mtime(p), byFile.getOrElse(p, Vector.empty)))
+    stale
+      .grouped(readBatch)
+      .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
+        acc.flatMap(state =>
+          Read.definitionsAndReferences(root, layout, batch).map(both => absorb(state, batch, both))
+        )
       }
-      val all = tasty.flatMap(p => updated.get(p).map(_.uses).getOrElse(Vector.empty))
-      (all, in.copy(refs = updated), stale.size)
-    }
+      .map { next =>
+        val all = tasty.flatMap(p => next.refs.get(p).map(_.uses).getOrElse(Vector.empty))
+        (all, next, stale.size)
+      }
+  }
+
+  /** `in` with each of `batch`'s files cached as `both` read them: definitions, references, and any file that could not be read. */
+  private def absorb(in: Loaded, batch: Vector[os.Path], both: Read.Both): Loaded = {
+    val next = withDefns(in, batch, both.batch)
+    next.copy(refs = batch.foldLeft(next.refs) { (index, p) =>
+      index.updated(p, Indexed(os.mtime(p), both.uses.getOrElse(p, Vector.empty)))
+    })
   }
 
   /** The files of `tasty` that failed at their current mtime, so are not read again by `defns`. */

@@ -55,7 +55,11 @@ object Locate {
   }
 
   /** The `.tasty` files that can hold `sym`, searched in every classes dir `layout` names under `root`; empty when none match. */
-  def forTopLevel(root: Root, layout: Layout, sym: String): Vector[os.Path] = {
+  def forTopLevel(root: Root, layout: Layout, sym: String): Vector[os.Path] =
+    forTopLevelIn(layout.classesDirs(root), sym)
+
+  /** `forTopLevel` over the classes dirs the caller already found, so a read finds them once. */
+  def forTopLevelIn(dirs: Vector[os.Path], sym: String): Vector[os.Path] = {
     val segments = sym.split('.').toVector
     val rest = segments.dropWhile(s => !s.take(1).exists(_.isUpper))
     rest.headOption match {
@@ -63,7 +67,6 @@ object Locate {
       case Some(top) =>
         val pkg = segments.take(segments.length - rest.length)
         val names = Set(s"$top.tasty", s"$top$$package.tasty")
-        val dirs = layout.classesDirs(root)
         val found =
           if (pkg.isEmpty) dirs.flatMap(c => os.walk(c).filter(p => names.contains(p.last)))
           else {

@@ -22,6 +22,9 @@ object Read {
   /** The definitions read from a set of `.tasty` files: each file's, keyed by path, and each file the inspector could not read, with the exception's message. */
   final case class Batch(byTasty: Map[os.Path, Vector[Defn]], unreadable: Vector[(os.Path, String)])
 
+  /** What one inspector run reads of a set of `.tasty` files: the definitions `defnsByTasty` gives and the references `references` gives. */
+  final case class Both(batch: Batch, uses: Map[os.Path, Vector[Use]])
+
   /** `s` from `from` to `to`, each end clamped into `0..s.length`; empty when `to <= from`. */
   private def slice(s: String, from: Int, to: Int): String = {
     val lo = from.max(0).min(s.length)
@@ -63,8 +66,30 @@ object Read {
       root: Root,
       layout: Layout,
       tasty: Vector[os.Path]
-  ): Either[String, Batch] = {
+  ): Either[String, Batch] =
+    read(root, layout, tasty, _ => true, wantDefns = true, wantUses = false).map(_.batch)
+
+  /** The definitions and every reference of each of `tasty`, read in one inspector run: what `defnsByTasty` and `references` give, together. */
+  def definitionsAndReferences(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path]
+  ): Either[String, Both] =
+    read(root, layout, tasty, _ => true, wantDefns = true, wantUses = true)
+
+  /** One inspector run over `tasty`: the definitions when `wantDefns`, the references when `wantUses`, the references kept by `keep`. */
+  private def read(
+      root: Root,
+      layout: Layout,
+      tasty: Vector[os.Path],
+      keep: String => Boolean,
+      wantDefns: Boolean,
+      wantUses: Boolean
+  ): Either[String, Both] = {
     val byPath = mutable.Map[os.Path, Vector[Defn]]()
+    val byFile = mutable.Map.empty[os.Path, Vector[Use]]
+    val found = mutable.ListBuffer.empty[Use]
+    val classes = layout.classesDirs(root)
     val sources = mutable.Map[String, String]()
     val inRepoByTop = mutable.Map[String, Boolean]()
     val foreign = mutable.ListBuffer.empty[String]
@@ -83,7 +108,7 @@ object Read {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*
 
-        def keep(tree: Tree, sym: Symbol): Boolean = {
+        def keepTree(tree: Tree, sym: Symbol): Boolean = {
           val flags = sym.flags
           val isModuleVal = tree match {
             case v: ValDef => v.symbol.flags.is(Flags.Module)
@@ -184,7 +209,7 @@ object Read {
             topLevel = topLevel,
             inRepo = inRepoByTop.getOrElseUpdate(
               topLevel,
-              Locate.forTopLevel(root, layout, topLevel).nonEmpty
+              Locate.forTopLevelIn(classes, topLevel).nonEmpty
             )
           )
         }
@@ -350,7 +375,7 @@ object Read {
         def defn(tree: Tree): Option[Defn] = {
           val sym = tree.symbol
           val p = tree.pos
-          if (!keep(tree, sym)) None
+          if (!keepTree(tree, sym)) None
           else
             tree match {
               case c: ClassDef =>
@@ -418,8 +443,6 @@ object Read {
 
         // One unit's definitions: none unless the unit is a package's TASTy.
         def unit(tasty: Tasty[q.type]): Vector[Defn] = {
-          if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
-            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
           tasty.ast match {
             case pkg: PackageClause =>
               val (holders, others) = pkg.stats.partition {
@@ -433,12 +456,77 @@ object Read {
             case _ => Vector.empty
           }
         }
-        val (kept, failed) = traverseUnits(tastys.toVector, unit)
-        for ((tasty, defs) <- kept) {
-          val path = os.Path(tasty.path)
-          byPath.update(path, byPath.getOrElse(path, Vector.empty) ++ defs)
+        for (tasty <- tastys) {
+          if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
+            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
         }
-        unreadable ++= failed.map { case (tasty, message) => os.Path(tasty.path) -> message }
+        if (wantDefns) {
+          val (kept, failed) = traverseUnits(tastys.toVector, unit)
+          for ((tasty, defs) <- kept) {
+            val path = os.Path(tasty.path)
+            byPath.update(path, byPath.getOrElse(path, Vector.empty) ++ defs)
+          }
+          unreadable ++= failed.map { case (tasty, message) => os.Path(tasty.path) -> message }
+        }
+        if (wantUses) {
+          def named(sym: Symbol): Boolean =
+            !(sym.flags.is(Flags.Synthetic) || sym.isClassConstructor || sym.name.startsWith("$"))
+
+          val walk = new TreeTraverser {
+            // The named definitions around the tree being walked, innermost first.
+            private var enclosing: List[String] = Nil
+
+            private def record(ref: Tree): Unit = {
+              val sym = ref.symbol
+              val name = cleanFullName(sym.fullName)
+              val ownName = sym.pos.exists(p =>
+                p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
+              )
+              if (
+                keep(name) && ref.pos.startLine >= 0 && !ownName && ref.pos.sourceFile.path
+                  .startsWith(prefix) &&
+                sym.pos.exists(_.sourceFile.path.startsWith(prefix)) &&
+                (sym.maybeOwner.isClassDef || sym.maybeOwner.isPackageDef)
+              ) {
+                val path = ref.pos.sourceFile.path
+                // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
+                val line = ref match {
+                  case _: Select => ref.pos.endLine + 1
+                  case _ => ref.pos.startLine + 1
+                }
+                val text =
+                  source(path).linesIterator.drop(line - 1).nextOption().map(_.trim).getOrElse("")
+                found += Use(
+                  target = name,
+                  targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
+                  file = path.stripPrefix(prefix),
+                  line = line,
+                  enclosing = enclosing.headOption.getOrElse(""),
+                  text = text
+                )
+              }
+            }
+
+            override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match {
+              case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
+                enclosing = cleanFullName(d.symbol.fullName) :: enclosing
+                super.traverseTree(tree)(owner)
+                enclosing = enclosing.tail
+              case ref @ (_: Ident | _: Select) =>
+                record(ref)
+                super.traverseTree(tree)(owner)
+              case _ => super.traverseTree(tree)(owner)
+            }
+          }
+
+          for (tasty <- tastys) {
+            val start = found.size
+            // A unit whose traversal throws keeps the references it found before the throw, and no more.
+            try walk.traverseTree(tasty.ast)(Symbol.noSymbol)
+            catch { case NonFatal(_) => () }
+            byFile += os.Path(tasty.path.toString) -> found.drop(start).toVector
+          }
+        }
       }
     }
     val captured = new ByteArrayOutputStream()
@@ -459,7 +547,13 @@ object Read {
         if (foreign.nonEmpty) Left(foreign.mkString("\n"))
         else if (ok)
           Right(
-            Batch(tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap, unreadable.toVector)
+            Both(
+              Batch(
+                tasty.map(p => p -> byPath.getOrElse(p, Vector.empty)).toMap,
+                unreadable.toVector
+              ),
+              byFile.toMap
+            )
           )
         else Left(complaint(captured, tasty.size))
     }
@@ -500,106 +594,8 @@ object Read {
       layout: Layout,
       tasty: Vector[os.Path],
       keep: String => Boolean
-  ): Either[String, Map[os.Path, Vector[Use]]] = {
-    val byFile = mutable.Map.empty[os.Path, Vector[Use]]
-    val found = mutable.ListBuffer.empty[Use]
-    val sources = mutable.Map[String, String]()
-    val foreign = mutable.ListBuffer.empty[String]
-    val prefix = root.dir.toString + "/"
-    def source(path: String): String =
-      sources.getOrElseUpdate(
-        path,
-        if (path.startsWith(prefix)) os.read(os.Path(path))
-        else {
-          foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
-          ""
-        }
-      )
-    val inspector = new Inspector {
-      def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
-        import q.reflect.*
-
-        def named(sym: Symbol): Boolean =
-          !(sym.flags.is(Flags.Synthetic) || sym.isClassConstructor || sym.name.startsWith("$"))
-
-        val walk = new TreeTraverser {
-          // The named definitions around the tree being walked, innermost first.
-          private var enclosing: List[String] = Nil
-
-          private def record(ref: Tree): Unit = {
-            val sym = ref.symbol
-            val name = cleanFullName(sym.fullName)
-            val ownName = sym.pos.exists(p =>
-              p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
-            )
-            if (
-              keep(name) && ref.pos.startLine >= 0 && !ownName && ref.pos.sourceFile.path
-                .startsWith(prefix) &&
-              sym.pos.exists(_.sourceFile.path.startsWith(prefix)) &&
-              (sym.maybeOwner.isClassDef || sym.maybeOwner.isPackageDef)
-            ) {
-              val path = ref.pos.sourceFile.path
-              // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
-              val line = ref match {
-                case _: Select => ref.pos.endLine + 1
-                case _ => ref.pos.startLine + 1
-              }
-              val text =
-                source(path).linesIterator.drop(line - 1).nextOption().map(_.trim).getOrElse("")
-              found += Use(
-                target = name,
-                targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
-                file = path.stripPrefix(prefix),
-                line = line,
-                enclosing = enclosing.headOption.getOrElse(""),
-                text = text
-              )
-            }
-          }
-
-          override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match {
-            case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
-              enclosing = cleanFullName(d.symbol.fullName) :: enclosing
-              super.traverseTree(tree)(owner)
-              enclosing = enclosing.tail
-            case ref @ (_: Ident | _: Select) =>
-              record(ref)
-              super.traverseTree(tree)(owner)
-            case _ => super.traverseTree(tree)(owner)
-          }
-        }
-
-        for (tasty <- tastys) {
-          if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
-            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
-          val start = found.size
-          // A unit whose traversal throws keeps the references it found before the throw, and no more.
-          try walk.traverseTree(tasty.ast)(Symbol.noSymbol)
-          catch { case NonFatal(_) => () }
-          byFile += os.Path(tasty.path.toString) -> found.drop(start).toVector
-        }
-      }
-    }
-    val captured = new ByteArrayOutputStream()
-    val ran: Either[String, Boolean] = redirected(captured) {
-      try
-        Right(
-          TastyInspector.inspectAllTastyFiles(
-            tasty.map(_.toString).toList,
-            Nil,
-            classpath(root, layout).map(_.toString).toList
-          )(inspector)
-        )
-      catch { case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.toString)) }
-    }
-    ran match {
-      case Left(message) => Left(message)
-      case Right(ok) =>
-        if (foreign.nonEmpty) Left(foreign.mkString("\n"))
-        else if (ok) Right(byFile.toMap)
-        else Left(complaint(captured, tasty.size))
-    }
-  }
+  ): Either[String, Map[os.Path, Vector[Use]]] =
+    read(root, layout, tasty, keep, wantDefns = false, wantUses = true).map(_.uses)
 
   /** Runs `body` with stdout and stderr, and the console's, sent to `buffer`; they are restored after, even when `body` throws. */
   private def redirected[A](buffer: ByteArrayOutputStream)(body: => A): A = {

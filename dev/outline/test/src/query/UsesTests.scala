@@ -143,6 +143,22 @@ object UsesTests extends TestSuite {
       assert(second._3 == 0)
     }
 
+    test(
+      "a uses read caches the definitions of the files it read, so a defns read after it reads no file"
+    ) {
+      val storeTasty = Locate.inPackageOf(
+        root,
+        MillLayout,
+        os.RelPath("dev/outline/fixture/src/store/Store.scala")
+      )
+      val afterUses = loadedUses(storeTasty, Loaded.empty)
+      val afterDefns = Loaded.defns(root, MillLayout, storeTasty, afterUses._2)
+      val fresh = Loaded.defns(root, MillLayout, storeTasty, Loaded.empty)
+      assert(afterUses._3 == storeTasty.size)
+      assert(afterDefns.map(_._3) == Right(0))
+      assert(afterDefns.map(_._1) == fresh.map(_._1))
+    }
+
     test("a uses call after a tasty file's mtime changes reads that file again") {
       val storeTasty = Locate.inPackageOf(
         root,
