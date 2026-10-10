@@ -13,6 +13,7 @@ import grit.core.document.{
   DocumentTerms,
   InMemoryDocuments,
   Placement,
+  Pointer,
   Written
 }
 import grit.core.durable.{Durable, InMemoryDurable}
@@ -37,6 +38,7 @@ import grit.core.store.{
   Payload,
   StoreError
 }
+import grit.core.tool.{ToolName, Toolbox}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -65,7 +67,8 @@ object TurnDocumentsTests extends TestSuite {
       plugin: PluginName,
       label: String,
       key: String,
-      text: String
+      text: String,
+      pointer: Option[Pointer] = None
   ): DocumentVersion =
     ok(
       documents
@@ -76,7 +79,7 @@ object TurnDocumentsTests extends TestSuite {
           board,
           got(DocText.of(text)),
           ujson.Obj(),
-          None,
+          pointer,
           written
         )(using
           TestTx.fake
@@ -148,6 +151,48 @@ object TurnDocumentsTests extends TestSuite {
       assert(output.startsWith("replied:"))
       windows(entries).lastOption.map(_._2) ==>
         Some(Payload.Window(Vector(EntrySeq(0)), Vector.empty, nearby, held))
+    }
+
+    test(
+      "a document's pointer line is shown only when the turn offers its tool: another name, or one under a prefix, never shows it"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      def at(tool: String) =
+        Some(got(Pointer.of(got(ToolName.of(tool)), "path" -> ujson.Str("README.md"))))
+      val offered = write(documents, digest, "Cards", "peeked", "How to peek.", at("peek"))
+      val other = write(documents, digest, "Cards", "fetched", "How to fetch.", at("fetch"))
+      val prefixed =
+        write(documents, digest, "Cards", "prefixed", "How to peek there.", at("x_peek"))
+      val turn = say(entries, "one")
+      val peeking = Toolbox
+        .of[caps.CapSet^{NoCheckout}](peek(NoCheckout))
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          provider,
+          windowing(
+            Window(Vector.empty, Vector.empty, Vector.empty, Vector(offered, other, prefixed))
+          ),
+          new InMemoryUsageLedger,
+          documents = documents,
+          tools = peeking
+        )
+      )
+      val shown = "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n"
+      provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
+        Vector("peek") -> Vector(
+          Message.User(
+            shown + "How to peek.\n" + """Read it with peek {"path":"README.md"}"""
+          ),
+          Message.User(shown + "How to fetch."),
+          Message.User(shown + "How to peek there."),
+          Message.User("one")
+        )
+      )
     }
 
     test(

@@ -2,7 +2,7 @@ package grit.core.context
 
 import java.time.Instant
 
-import grit.core.document.{DocLabel, DocText, Document, Placement}
+import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
 import grit.core.host.{RelPath, Replace}
 import grit.core.id.{
   ConversationId,
@@ -28,6 +28,7 @@ import grit.core.period.{
 }
 import grit.core.place.Place
 import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
+import grit.core.tool.ToolName
 
 import TestClosings.{balance, line}
 import utest.*
@@ -635,6 +636,35 @@ object ShownTests extends TestSuite {
         "[doc] Weekly digest, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
           "Deploys frozen until Friday.\n" +
           s"${Shown.lead(SectionTag.Record)}\n> record — Standing: none"
+      )
+    }
+
+    test("a document with a pointer shows its read line under its text, as compact JSON") {
+      def got[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val pointer = got(
+        Pointer.of(
+          ToolName("github_get_file_contents"),
+          "ref" -> ujson.Str("main"),
+          "path" -> ujson.Str("docs/a b.md")
+        )
+      )
+      val document = Document(
+        got(DocumentVersion.of(7).toRight("version")),
+        got(PluginName.of("cards")),
+        got(DocKey.of("docs/a b.md")),
+        grit.core.visibility.Label.Public,
+        Place.read("slack:T1/C1").fold(e => sys.error(e), identity),
+        got(DocText.of("How releases are cut.")),
+        ujson.Obj(),
+        Some(pointer),
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+      )
+      Shown.document(document, got(DocLabel.of("Cards"))) ==> Message.User(
+        "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+          "How releases are cut.\n" +
+          """Read it with github_get_file_contents {"path":"docs/a b.md","ref":"main"}"""
       )
     }
 

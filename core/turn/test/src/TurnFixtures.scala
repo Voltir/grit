@@ -979,7 +979,7 @@ object TurnFixtures {
   }
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
-    * and counting `documents`, dated by `clock`.
+    * and counting `documents`, dated by `clock`, the model offered `tools`.
     */
   def turnBodyWith(
       entries: EntryStore,
@@ -993,7 +993,8 @@ object TurnFixtures {
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       weighing: TurnWeighing^ = noTriage(),
       documents: DocumentStore = new InMemoryDocuments,
-      clock: Clock^ = new NoWait
+      clock: Clock^ = new NoWait,
+      tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -1019,7 +1020,7 @@ object TurnFixtures {
         weighing
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
-        noTools,
+        tools,
         Toolbox.Empty,
         Vector.empty,
         new FakeJot,

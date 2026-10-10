@@ -1300,7 +1300,7 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
-      sent <- requestOf(system, showing, turn, window).map(shape)
+      sent <- requestOf(system, showing, turn, window).map(_.shaped(shape))
       _ <- entries
         .insert(
           Entry(
@@ -1351,7 +1351,7 @@ object Turn {
     request(env, offer.system, turn, window).flatMap { req =>
       val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
       Asking
-        .reply(env.models.provider(pins.turn), shape(req), hearing, env.clock)
+        .reply(env.models.provider(pins.turn), req.shaped(shape), hearing, env.clock)
         .left
         .map(TurnFailure.Model(_))
     }
@@ -1408,7 +1408,9 @@ object Turn {
         turn,
         TurnVerdict.verdictId(turn),
         TurnVerdict.events(round.verdict, round.anomaly, c, turn),
-        TurnVerdict.cost(round.spent.map(r => r.reply -> records.estimator.request(r.shape(base)))),
+        TurnVerdict.cost(
+          round.spent.map(r => r.reply -> records.estimator.request(base.shaped(r.shape(_))))
+        ),
         at
       )
     } yield id
@@ -1529,15 +1531,15 @@ object Turn {
   private def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
     all.filter(_.turnSeq == turn.turnSeq)
 
-  /** The window's entries, then the turn's own, as one model request under `system`, read
-    * through `env`'s `db`.
+  /** The window's entries, then the turn's own, as one model request under `system`, to be
+    * shaped, read through `env`'s `db`.
     */
   private def request(
       env: TurnEnv^,
       system: String,
       turn: TurnRef,
       window: Window
-  ): Either[TurnFailure, ModelRequest] =
+  ): Either[TurnFailure, Unshaped] =
     env.db
       .read(Subject.Turn(turn))(shown(env.records, turn, window))
       .left
@@ -1583,24 +1585,23 @@ object Turn {
       documents: Vector[(Document, DocLabel)]
   )
 
-  /** The request [[request]] builds from `showing`: each nearby section as one user message
-    * ([[Shown.section]], a section with none of its entries left dropped), then each
-    * document as one ([[Shown.document]]), then what the
-    * model is shown of the window's entries ([[Shown.own]]: its messages, a closing entry
-    * as one user message, and a gap line wherever turns are left out), then the turn's own, its tool loop's exchange among them in order.
-    * A summary is not shown to the model yet. A window seq with no entry is an `Assembly`
-    * failure naming every such seq.
+  /** The request [[request]] builds from `showing`, to be shaped ([[Unshaped]]): each nearby
+    * section as one user message ([[Shown.section]], a section with none of its entries left
+    * dropped), then each document as one ([[Shown.document]]), then what the model is shown of
+    * the window's entries ([[Shown.own]]: its messages, a closing entry as one user message, and
+    * a gap line wherever turns are left out), then the turn's own, its tool loop's exchange
+    * among them in order. A summary is not shown to the model yet. A window seq with no entry is
+    * an `Assembly` failure naming every such seq.
     */
   private def requestOf(
       system: String,
       showing: Showing,
       turn: TurnRef,
       window: Window
-  ): Either[TurnFailure, ModelRequest] = {
+  ): Either[TurnFailure, Unshaped] = {
     val Showing(at, mine, near, named, documents) = showing
     val bySeq = at.map(e => e.seq -> e).toMap
-    val sections = window.nearby.flatMap(Shown.section(_, near, named)) ++
-      documents.map((document, label) => Shown.document(document, label))
+    val sections = window.nearby.flatMap(Shown.section(_, near, named))
     window.entries.filterNot(bySeq.contains) match {
       case missing if missing.nonEmpty =>
         Left(
@@ -1610,7 +1611,38 @@ object Turn {
         )
       case _ =>
         val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
-        Right(ModelRequest(system, sections ++ shown ++ Shown.turn(mine, named)))
+        Right(Unshaped(system, sections, documents, shown ++ Shown.turn(mine, named)))
+    }
+  }
+
+  /** A request of `system`: `before`, then each of `documents` as one user message, then
+    * `after`.
+    */
+  private final case class Unshaped(
+      system: String,
+      before: Vector[Message],
+      documents: Vector[(Document, DocLabel)],
+      after: Vector[Message]
+  ) {
+
+    /** This request shaped by `shape`, each document's pointer line shown only when the shaped
+      * request offers the tool it names: a model offered no tool of that name could not follow
+      * it. The tools offered are those `shape` gives the request with no pointer line shown.
+      */
+    def shaped(shape: ModelRequest -> ModelRequest): ModelRequest = {
+      def built(offered: Set[String]): ModelRequest =
+        ModelRequest(
+          system,
+          before ++ documents.map((document, label) =>
+            Shown.document(
+              document.copy(pointer =
+                document.pointer.filter(p => offered.contains(ToolName.value(p.tool)))
+              ),
+              label
+            )
+          ) ++ after
+        )
+      shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
     }
   }
 
@@ -1644,7 +1676,7 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
-      sent <- requestOf(offer.system, showing, turn, window).map(shape)
+      sent <- requestOf(offer.system, showing, turn, window).map(_.shaped(shape))
       replySeq <- recorded match {
         case WindowRecord.OwnStep => Right(next.seq)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
@@ -1820,7 +1852,11 @@ object Turn {
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
             requestOf(prompt.render, showing.copy(mine = before), turn, window)
-              .map(loopShape(asking, round, use, schemas, settings.afterResult, settings.guidance))
+              .map(
+                _.shaped(
+                  loopShape(asking, round, use, schemas, settings.afterResult, settings.guidance)
+                )
+              )
               .left
               .map(reason)
         }
