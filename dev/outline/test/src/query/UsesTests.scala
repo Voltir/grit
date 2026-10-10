@@ -126,6 +126,45 @@ object UsesTests extends TestSuite {
       assert(answer.text.contains("[→ of :31]"))
     }
 
+    test(
+      "a member of an object is searched for only in files that name the object: Limits.of's fixture candidates are Sample.scala alone"
+    ) {
+      val searches = Resolve
+        .resolve(
+          root,
+          MillLayout,
+          Config.empty,
+          Scope.WithTests,
+          "grit.outline.fixture.Limits.of",
+          Loaded.empty
+        )
+        .map(r => Query.searchesFor(r.defns, r.seen))
+      assert(searches == Right(Vector(Query.Search("of", Some("Limits")))))
+      val inFixture = Query
+        .candidates(root, Vector(Query.Search("of", Some("Limits"))))
+        .filter(_.startsWith(os.RelPath("dev/outline/fixture")))
+      val mentioningOf =
+        Locate.mentioning(root, "of").filter(_.startsWith(os.RelPath("dev/outline/fixture")))
+      assert(inFixture == Vector(os.RelPath("dev/outline/fixture/src/Sample.scala")))
+      assert(mentioningOf.size > inFixture.size)
+    }
+
+    test(
+      "a member of a trait is searched for in every file naming it, since a call through a value need not name the trait"
+    ) {
+      val searches = Resolve
+        .resolve(
+          root,
+          MillLayout,
+          Config.empty,
+          Scope.WithTests,
+          "grit.outline.fixture.store.Store.get",
+          Loaded.empty
+        )
+        .map(r => Query.searchesFor(r.defns, r.seen))
+      assert(searches == Right(Vector(Query.Search("get", None))))
+    }
+
     test("the uses of Store.get outside the fixture are no match") {
       val (answer, _) = uses(s"$storePackage.Store.get", outside = Some("dev/outline/fixture"))
       assert(answer.status == Status.NoMatch)

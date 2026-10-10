@@ -63,6 +63,7 @@ object Query {
       // The cache read in this query, threaded through a scoped local, as `showIn` does.
       var state = Roots.of(roots, root)
       val targets = mutable.ListBuffer.empty[Defn]
+      val seen = mutable.ListBuffer.empty[Defn]
       val notes = mutable.ListBuffer.empty[String]
       var failure: Option[String] = None
 
@@ -76,6 +77,7 @@ object Query {
           case Right(resolved) =>
             state = resolved.loaded
             targets ++= resolved.defns
+            seen ++= resolved.seen
             notes ++= resolved.notes
         }
       }
@@ -87,7 +89,9 @@ object Query {
         config,
         classes,
         if (failure.nonEmpty) Set.empty else names,
-        syms.map(_.split('.').last),
+        // With no target, the search by each name's last segment still names the files not compiled.
+        if (targets.isEmpty) syms.map(sym => Search(sym.split('.').last, None)).distinct
+        else searchesFor(targets.toVector, seen.toVector),
         _ => true,
         state
       )
@@ -440,20 +444,46 @@ object Query {
     s"## root ${root.dir} (${revision.branch.getOrElse("detached")} @ ${revision.head})"
   }
 
-  /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the source files that mention one of `simples` as a word and satisfy `keep`; with them, the kept mentioning files whose package has no `.tasty` in `classes`, and the cache after. The references are `Left` when their index cannot be read. */
+  /** A word a source file must hold to be searched for references to a target, and the simple name of the object that owns the target, which the file must hold too when there is one. */
+  private[query] final case class Search(name: String, owner: Option[String])
+
+  /** The searches for references to `targets`, whose owners are found among `seen` and their members. A member of an object is searched for only in files that also name the object (its own file does): it is named through the object, or through an import that names it, a renaming import included. Missed: a reference through a value whose type is the object, such as `val o = Obj; o.f`, or through an `export` elsewhere. A member of a class or trait is not narrowed, since a call through a value of its type, such as `ctx.inbox.hear(...)`, need not name the type in its file; nor is a top-level definition. */
+  private[query] def searchesFor(targets: Vector[Defn], seen: Vector[Defn]): Vector[Search] = {
+    def every(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: every(d.members))
+    val objects = every(seen).filter(d => d.kind == Kind.Object && !d.name.endsWith("$package"))
+    targets.map { t =>
+      Search(t.name, objects.find(o => o.members.exists(_.fullName == t.fullName)).map(_.name))
+    }.distinct
+  }
+
+  /** The source files under `root` that hold a search's name as a word and, when it has an owner, the owner's too; sorted, each once. */
+  private[query] def candidates(root: Root, searches: Vector[Search]): Vector[os.RelPath] = {
+    val holding = Locate.mentioningEach(root, searches.flatMap(s => s.name +: s.owner.toVector))
+    def files(word: String): Vector[os.RelPath] = holding.getOrElse(word, Vector.empty)
+    searches
+      .flatMap { s =>
+        s.owner.fold(files(s.name)) { owner =>
+          val naming = files(owner).toSet
+          files(s.name).filter(naming.contains)
+        }
+      }
+      .distinct
+      .sortBy(_.toString)
+  }
+
+  /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the source files `candidates` gives for `searches` that satisfy `keep`; with them, those files whose package has no `.tasty` in `classes`, and the cache after. The references are `Left` when their index cannot be read. */
   private def referencesIn(
       root: Root,
       layout: Layout,
       config: Config,
       classes: Vector[os.Path],
       names: Set[String],
-      simples: Vector[String],
+      searches: Vector[Search],
       keep: os.RelPath => Boolean,
       in: Loaded
   ): (Either[String, Vector[Use]], Vector[os.RelPath], Loaded) = {
-    val candidates =
-      simples.distinct.flatMap(simple => Locate.mentioning(root, simple)).distinct.filter(keep)
-    val inPackage = candidates.map(file => file -> Locate.inPackageIn(root, classes, file))
+    val kept = candidates(root, searches).filter(keep)
+    val inPackage = kept.map(file => file -> Locate.inPackageIn(root, classes, file))
     val tasty = inPackage.flatMap(_._2).distinct
     val unsearched = inPackage.collect {
       case (file, found)
@@ -474,15 +504,16 @@ object Query {
       layout: Layout,
       config: Config,
       tops: Vector[Defn],
+      seen: Vector[Defn],
       in: Loaded
   ): (Vector[Render.Exercised], Vector[String], Loaded) = {
     val testClasses = layout.classesDirs(root).filter(layout.isTest)
     val names = tops.flatMap(d => d.fullName +: d.members.map(_.fullName)).toSet
-    val simples = tops.flatMap(d => d.name +: d.members.map(_.name))
+    val searches = searchesFor(tops.flatMap(d => d +: d.members), seen ++ tops)
     if (testClasses.isEmpty || names.isEmpty) (Vector.empty, Vector.empty, in)
     else {
       val (refs, _, found) =
-        referencesIn(root, layout, config, testClasses, names, simples, layout.isTestSource, in)
+        referencesIn(root, layout, config, testClasses, names, searches, layout.isTestSource, in)
       refs match {
         case Left(message) => (Vector.empty, Vector(message), found)
         case Right(sites) =>
@@ -640,7 +671,7 @@ object Query {
         case None =>
           val tops = matches.toVector.distinct
           val (exercised, testNotes, afterTests) =
-            if (withTests) exercisedBy(root, layout, config, tops, state)
+            if (withTests) exercisedBy(root, layout, config, tops, companions.toVector, state)
             else (Vector.empty, Vector.empty, state)
           state = afterTests
           val traced = Trace.trace(

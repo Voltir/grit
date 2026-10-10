@@ -100,18 +100,32 @@ object Locate {
   }
 
   /** Repo `.scala` files under a `src` directory whose text holds `simpleName` as a whole word, outside the root's build and tool dirs. */
-  def mentioning(root: Root, simpleName: String): Vector[os.RelPath] = {
-    val word = ("\\b" + java.util.regex.Pattern.quote(simpleName) + "\\b").r
-    os.walk(
-      root.dir,
-      skip = p => p.relativeTo(root.dir).segments.headOption.exists(skipped.contains)
-    ).filter { p =>
-      val rel = p.relativeTo(root.dir)
-      p.ext == "scala" && os.isFile(p) && rel.segments
-        .contains("src") && word.findFirstIn(os.read(p)).isDefined
-    }.map(_.relativeTo(root.dir))
+  def mentioning(root: Root, simpleName: String): Vector[os.RelPath] =
+    mentioningEach(root, Vector(simpleName)).getOrElse(simpleName, Vector.empty)
+
+  /** For each of `words`, the files `mentioning` gives for it, each file read once; a word no file holds maps to an empty vector. */
+  def mentioningEach(root: Root, words: Vector[String]): Map[String, Vector[os.RelPath]] = {
+    val patterns =
+      words.distinct.map(w => w -> ("\\b" + java.util.regex.Pattern.quote(w) + "\\b").r)
+    val held = os
+      .walk(
+        root.dir,
+        skip = p => p.relativeTo(root.dir).segments.headOption.exists(skipped.contains)
+      )
+      .filter(p =>
+        p.ext == "scala" && os.isFile(p) && p.relativeTo(root.dir).segments.contains("src")
+      )
       .sortBy(_.toString)
       .toVector
+      .map { p =>
+        val text = os.read(p)
+        p.relativeTo(root.dir) -> patterns.collect {
+          case (w, word) if word.findFirstIn(text).isDefined => w
+        }.toSet
+      }
+    patterns.map { case (w, _) =>
+      w -> held.collect { case (rel, ws) if ws.contains(w) => rel }
+    }.toMap
   }
 
   /** Whether `file` is newer than its newest `tasty`; `NoTasty` when `tasty` is empty, `NoSource` when `file` is missing. */
