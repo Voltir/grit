@@ -66,6 +66,37 @@ object TestsTests extends TestSuite {
       assert(!found.text.contains("== "))
     }
 
+    test("tests tags a suite's file when its source is newer than its tasty") {
+      // A copy under a temp root cannot be read: its tasty records the checkout's own source path. The
+      // checkout's fixture source is made newer for the query, and its mtime restored after.
+      val source = (root.dir / "dev/outline/fixture/src/store/Store.scala").toNIO
+      val before = java.nio.file.Files.getLastModifiedTime(source)
+      val text =
+        try {
+          java.nio.file.Files.setLastModifiedTime(
+            source,
+            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 3600000L)
+          )
+          Query
+            .tests(
+              root,
+              FixtureLayout,
+              Config.empty,
+              Roots.empty(6000),
+              suite,
+              None,
+              80000
+            )
+            ._1
+            .text
+        } finally java.nio.file.Files.setLastModifiedTime(source, before)
+      assert(
+        text.linesIterator.contains(
+          "== dev/outline/fixture/src/store/Store.scala  grit.outline.fixture.store  [stale: source newer than .tasty]"
+        )
+      )
+    }
+
     test("tests lists the suite's private helpers and its file's other top-level definitions") {
       val lines =
         answer("grit.outline.render.OneLineTests", None, MillLayout).text.linesIterator.toVector

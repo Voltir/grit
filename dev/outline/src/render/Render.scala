@@ -31,6 +31,10 @@ object Render {
     else head + ": " + items.map(caseItem).mkString(" | ")
   }
 
+  /** A file's `== file  package` header line, flagged when its source is newer than its tasty. */
+  def fileLine(file: String, pkg: String, stale: Boolean): String =
+    s"== $file  $pkg" + (if (stale) "  [stale: source newer than .tasty]" else "")
+
   /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; `stale` files' headers flagged; cut at `cap` bytes. */
   def show(
       named: Vector[Defn],
@@ -70,8 +74,7 @@ object Render {
 
     val chunks: Vector[Vector[String]] = files.zip(groups).flatMap { case (f, entries) =>
       val pkg = everything.find(_.file == f).map(d => pkgOf(d.fullName)).getOrElse("")
-      val staleTag = if (stale.contains(f)) "  [stale: source newer than .tasty]" else ""
-      val header = s"== $f  $pkg$staleTag"
+      val header = fileLine(f, pkg, stale.contains(f))
       entries.zipWithIndex.map { case (lines, i) => if (i == 0) header +: lines else lines }
     }
 
@@ -231,18 +234,18 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line. `header` leads; the answer is cut at `cap` bytes and ends with its KB line. */
+  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
   def tests(
       suite: Defn,
       helpers: Vector[Defn],
       tests: Vector[TestCase],
       prefix: Option[String],
       header: String,
-      cap: Int
+      cap: Int,
+      stale: Boolean
   ): String = {
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
-    val fileLine = s"== ${suite.file}  ${pkgOf(suite.fullName)}"
     val suiteLine =
       s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}"
     val helperChunks = helpers.sortBy(_.lines.start).map { h =>
@@ -253,7 +256,9 @@ object Render {
       if (prefix.exists(t.name.startsWith)) Vector(line, t.text) else Vector(line)
     }
     val chunks: Vector[Vector[String]] =
-      Vector(Vector(fileLine, suiteLine)) ++ helperChunks ++
+      Vector(
+        Vector(fileLine(suite.file, pkgOf(suite.fullName), stale), suiteLine)
+      ) ++ helperChunks ++
         Vector(Vector(s"  tests (${tests.size}):")) ++ testChunks
 
     val (kept, truncated) = fit(chunks, chunks.size, cap)

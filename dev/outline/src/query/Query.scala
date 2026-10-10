@@ -208,6 +208,16 @@ object Query {
       }
     }
 
+  /** The files among `files` whose source is newer than their newest `.tasty`, as `show` and `tests` tag them. */
+  private def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] =
+    files.distinct.filter { file =>
+      val rel = os.RelPath(file)
+      Locate.staleness(root, rel, Locate.inPackageOf(root, layout, rel)) match {
+        case Staleness.Stale(_, _) => true
+        case _ => false
+      }
+    }.toSet
+
   /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
   def tests(
       root: Root,
@@ -255,7 +265,11 @@ object Query {
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
                 val head = (Vector(header(root)) ++ resolved.notes ++ notes).mkString("\n")
-                (Answer(Render.tests(d, helpers, tests, test, head, cap), Status.Found), nextRoots)
+                val stale = staleFiles(root, layout, Vector(d.file)).nonEmpty
+                (
+                  Answer(Render.tests(d, helpers, tests, test, head, cap, stale), Status.Found),
+                  nextRoots
+                )
               }
           }
       }
@@ -723,20 +737,7 @@ object Query {
           )
           val loadedDefns = companions.toVector
           // A file is stale when it is newer than the tasty it is read from, as the package's tasty files say.
-          val stale = loadedDefns
-            .map(_.file)
-            .distinct
-            .filter(file =>
-              Locate.staleness(
-                root,
-                os.RelPath(file),
-                Locate.inPackageOf(root, layout, os.RelPath(file))
-              ) match {
-                case Staleness.Stale(_, _) => true
-                case _ => false
-              }
-            )
-            .toSet
+          val stale = staleFiles(root, layout, loadedDefns.map(_.file))
           val rendered = Render.show(
             named = tops,
             traced = traced,
