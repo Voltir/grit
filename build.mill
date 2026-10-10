@@ -525,12 +525,15 @@ object grit extends Module {
     )
     def mainClass = Some("grit.outline.cli.Main")
     /* One JVM per open session on a 17 GB machine; adjusted from measurement. */
-    def forkArgs = Task { super.forkArgs() ++ Seq("-Xmx512m") }
+    // Measured on a five-call session: metaspace and class space 38 MB committed, code cache 23 MB peak; both caps keep 25 % headroom.
+    def forkArgs = Task { super.forkArgs() ++ Seq("-Xmx512m", "-XX:MaxMetaspaceSize=48m", "-XX:ReservedCodeCacheSize=32m") }
     /* Sources whose TASTy the tests read: capture syntax, docs, overloads, a type chain. Both checkers on. */
     object fixture extends GritModule with Placed {
       def folder = os.sub / "dev" / "outline" / "fixture"
     }
     object test extends GritTests {
+      // The caps above are the launcher's; the tests read more TASTy and need the metaspace the module had before.
+      def forkArgs = Task { super.forkArgs().filterNot(_.startsWith("-XX:")) }
       def forkEnv = Task {
         super.forkEnv() ++ Map("OUTLINE_FIXTURE_CLASSES" -> fixture.compile().classes.path.toString)
       }
