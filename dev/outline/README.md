@@ -36,13 +36,13 @@ line per package, at level 1 (the default) each definition with its doc's first 
     scripts/outline area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]
 
 **tests**: To add or change a test in a suite: its helpers and its tests' names with line ranges.
-`--test NAME` prints the verbatim body of each test whose name starts with NAME.
+`--test NAME` prints the verbatim body of each test whose name starts with NAME; `--body h[,h…]` prints each named helper's own lines.
 
-    scripts/outline tests Suite [--test NAME] [--cap BYTES] [--root DIR]
+    scripts/outline tests Suite [--test NAME] [--body h[,h…]] [--cap BYTES] [--root DIR]
 
 MCP tool names: `show`, `family`, `uses`, `area`, `tests`.
 
-File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
+File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines, and so is each helper's --body text. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
 
 ## Running it
 

@@ -25,7 +25,7 @@ object TestsTests extends TestSuite {
 
   /** The `tests` answer for `name`, over the fixture's classes unless `layout` says otherwise. */
   private def answer(name: String, test: Option[String], layout: Layout = FixtureLayout): Answer =
-    Query.tests(root, layout, Config.empty, Roots.empty(6000), name, test, 80000)._1
+    Query.tests(root, layout, Config.empty, Roots.empty(6000), name, test, Set.empty, 80000)._1
 
   def tests = Tests {
     test(
@@ -85,6 +85,7 @@ object TestsTests extends TestSuite {
               Roots.empty(6000),
               suite,
               None,
+              Set.empty,
               80000
             )
             ._1
@@ -93,6 +94,64 @@ object TestsTests extends TestSuite {
       assert(
         text.linesIterator.contains(
           "== dev/outline/fixture/src/store/Store.scala  grit.outline.fixture.store  [stale: source newer than .tasty]"
+        )
+      )
+    }
+
+    test("tests --body prints a helper's own lines, byte-identical to the file") {
+      val file = os.read.lines(root.dir / "dev/outline/fixture/src/store/Store.scala")
+      val helper = file.slice(64, 66).mkString("\n")
+      val text =
+        Query
+          .tests(
+            root,
+            FixtureLayout,
+            Config.empty,
+            Roots.empty(6000),
+            suite,
+            None,
+            Set("fresh"),
+            80000
+          )
+          ._1
+          .text
+      assert(text.contains(helper))
+    }
+
+    test("tests --body names a name that matches no helper, and the helpers it has") {
+      val text =
+        Query
+          .tests(
+            root,
+            FixtureLayout,
+            Config.empty,
+            Roots.empty(6000),
+            suite,
+            None,
+            Set("nope"),
+            80000
+          )
+          ._1
+          .text
+      assert(text.contains("-- --body nope matches nothing shown; names here: "))
+      assert(text.contains("fresh"))
+    }
+
+    test("show names the suite of a helper in test sources, and the --body that prints it") {
+      val (answer, _) = Query.show(
+        root,
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("OneLineTests.posed"),
+        1,
+        Set.empty,
+        false,
+        80000
+      )
+      assert(
+        answer.text.linesIterator.contains(
+          "-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests --body posed"
         )
       )
     }

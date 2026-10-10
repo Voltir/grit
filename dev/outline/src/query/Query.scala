@@ -226,6 +226,7 @@ object Query {
       roots: Roots,
       suite: String,
       test: Option[String],
+      bodies: Set[String],
       cap: Int
   ): (Answer, Roots) =
     if (layout.classesDirs(root).isEmpty)
@@ -264,10 +265,20 @@ object Query {
                 val notes = test
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
-                val head = (Vector(header(root)) ++ resolved.notes ++ notes).mkString("\n")
+                val helperNames = helpers.map(_.name).distinct.sorted
+                val bodyNotes = bodies.toVector.sorted
+                  .filterNot(b => helperNames.contains(b))
+                  .map(b =>
+                    s"-- --body $b matches nothing shown; names here: ${helperNames.mkString(", ")}"
+                  )
+                val head =
+                  (Vector(header(root)) ++ resolved.notes ++ notes ++ bodyNotes).mkString("\n")
                 val stale = staleFiles(root, layout, Vector(d.file)).nonEmpty
                 (
-                  Answer(Render.tests(d, helpers, tests, test, head, cap, stale), Status.Found),
+                  Answer(
+                    Render.tests(d, helpers, tests, test, bodies, head, cap, stale),
+                    Status.Found
+                  ),
                   nextRoots
                 )
               }
@@ -682,17 +693,19 @@ object Query {
       // One note per distinct suite: the outermost top-level definition of the match's file that holds it.
       def testSuiteNotes(sym: String, found: Resolved): Vector[String] =
         found.defns
-          .map(m =>
-            found.seen
+          .map { m =>
+            val suite = found.seen
               .find(t =>
                 t.file == m.file && t.lines.start <= m.lines.start && m.lines.end <= t.lines.end
               )
               .getOrElse(m)
-              .fullName
-          )
+            // A helper names its own suite and its --body, which prints the helper.
+            if (suite.fullName == m.fullName) suite.fullName
+            else s"${suite.fullName} --body ${m.name}"
+          }
           .distinct
           .sorted
-          .map(suite => s"-- $sym is in test sources: tests $suite")
+          .map(target => s"-- $sym is in test sources: tests $target")
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
           case Left(message) => failure = Some(message)

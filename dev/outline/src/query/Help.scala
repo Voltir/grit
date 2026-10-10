@@ -172,6 +172,12 @@ object Help {
         "NAME",
         Some("test"),
         "print the verbatim body of each test whose name starts with NAME."
+      ),
+      Flag(
+        "--body",
+        "h[,h…]",
+        Some("body"),
+        "print each named helper's own lines, its doc, signature and body, after its signature line; a name matching no helper is named in a note with the helpers' names."
       )
     ) ++ common
   )
@@ -181,7 +187,7 @@ object Help {
 
   /** Which text show, family and tests print is the file's own, for an Edit to match; in the help and descriptions of those three and in the server's instructions. */
   val fileText: String =
-    "File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only."
+    "File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only."
 
   /** The queries whose output is file text, and so carry `fileText` in their help and descriptions. */
   private val readsFiles: Set[String] = Set("show", "family", "tests")

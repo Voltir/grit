@@ -252,7 +252,7 @@ object QueryTests extends TestSuite {
       assert(answer.status == Status.NoMatch)
       assert(
         answer.text.endsWith(
-          "\n-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests"
+          "\n-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests --body posed"
         )
       )
     }

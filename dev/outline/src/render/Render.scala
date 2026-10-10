@@ -234,12 +234,13 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
+  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line, and a helper named in `bodies` its own text after its signature. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
   def tests(
       suite: Defn,
       helpers: Vector[Defn],
       tests: Vector[TestCase],
       prefix: Option[String],
+      bodies: Set[String],
       header: String,
       cap: Int,
       stale: Boolean
@@ -249,7 +250,8 @@ object Render {
     val suiteLine =
       s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}"
     val helperChunks = helpers.sortBy(_.lines.start).map { h =>
-      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}")
+      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}") ++
+        (if (bodies.contains(h.name)) Vector(h.head) ++ h.body.toVector else Vector.empty)
     }
     val testChunks = tests.map { t =>
       val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}"

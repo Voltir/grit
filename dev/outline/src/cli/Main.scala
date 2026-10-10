@@ -283,6 +283,7 @@ object Main {
 
   private final case class TestsOptions(
       test: Option[String],
+      bodies: Set[String],
       cap: Int,
       root: Option[String]
   )
@@ -291,6 +292,8 @@ object Main {
     rest match {
       case Nil => Right(o)
       case "--test" :: value :: tail => parseTests(tail, o.copy(test = Some(value)))
+      case "--body" :: value :: tail =>
+        parseTests(tail, o.copy(bodies = value.split(',').filter(_.nonEmpty).toSet))
       case "--cap" :: value :: tail =>
         value.toIntOption match {
           case Some(n) => parseTests(tail, o.copy(cap = n))
@@ -306,7 +309,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseTests(rest, TestsOptions(None, 80000, leadingRoot)) match {
+    parseTests(rest, TestsOptions(None, Set.empty, 80000, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.tests)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -322,6 +325,7 @@ object Main {
                   Roots.empty(6000),
                   suite,
                   o.test,
+                  o.bodies,
                   o.cap
                 )
                 (exitCode(answer.status), answer.text)
