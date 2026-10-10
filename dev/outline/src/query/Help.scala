@@ -53,7 +53,7 @@ object Help {
     examples = Vector(
       Example("read one move's signature and doc", "show Moves.ask"),
       Example(
-        "read two members' bodies, private ones included",
+        "read two private members you are about to edit",
         "show Render --body oneLine,caseItem --private"
       )
     ),
@@ -74,7 +74,7 @@ object Help {
         "--private",
         "",
         Some("private"),
-        "include the private members of the named types; takes no value."
+        "include private members. Ask for them only to edit them or to understand an implementation; otherwise trust the public interface and referential transparency to understand the code. Name the members you need with --body; --private on a whole type with no --body lists every internal helper."
       ),
       Flag(
         "--no-tests",
