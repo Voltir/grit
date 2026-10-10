@@ -4,6 +4,10 @@
       "command": "tools/enola",
       "args": ["--no-dashboard", "mcp-arch.yaml"]
     },
+    "outline": {
+      "command": "scripts/outline",
+      "args": ["mcp"]
+    },
     "grit-metals": {
       "type": "http",
       "url": "http://localhost:34721/mcp"
