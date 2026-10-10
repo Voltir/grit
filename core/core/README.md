@@ -112,16 +112,6 @@ In dependency order:
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `VoiceStore` (the voice in force), `Principals` (the accounts an edge named, by name), `Voucher` (the right to record what a trusted realm's source says of its accounts, ADR 0032), each change it makes, or why it made none, a `Linking`, `Askers` (who a turn answers, by the one asker rule its transactions' clearance is resolved by; held only by what a deployment's kit builds), and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
-- **`document`** — plugins' documents (ADR 0028): a `Document` is one version of a plugin's
-  document under a key, kept at a place, its `DocText` shown and searched, its data the
-  plugin's own, with its `Placement` (how many windows held it); a version is current until
-  the next under its key, or a withdrawal, supersedes it. `DocumentTerms` (a `DocLabel`, a
-  `DocWeight`, a retention and a bound) are what a plugin declares; `DocumentShelf` and
-  `DocumentKeeper`, one plugin's documents as it reads and writes them (`Written`, what a
-  write did); `DocumentSearch`, every enabled plugin's documents as windows draw on them, as
-  of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
-  and deletes of them (terms declared at each start, placements, a version or a plugin's
-  every document collected). ← `id`, `place`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
@@ -171,14 +161,8 @@ In dependency order:
   message (`recv`); `StepRecord`, a step as a reader after the fact sees it. ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
-- **`context`**, **`provider`** — the seams the engine plugs
-  into: `ContextAssembler` (and the `Window` it builds, as wide as its request's `Width`
-  asks: as deployed, or within a budget the eval harness names; and `Shown`: what the model is
-  shown of a window, each line grit writes into it under its `SectionTag`: the record, a
-  section from afar, a document a plugin keeps, a gap where turns were left out; and a grit
-  label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
-  and `Models` (the
-  catalog in force, and a provider per role's pin; ← `model`). Neither names the other.
+- **`provider`** — the trait the engine plugs a model into: `Provider` and `Models` (the
+  catalog in force, and a provider per role's pin). ← `model`, `message`
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
   a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
   followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, its
@@ -188,19 +172,6 @@ In dependency order:
   waited for, in its room's order), `StitchStore` (placements kept beside their entry
   and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
   in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`
-- **`recipe`** — what a call's input shows beyond its own thread, and how a turn is shaped:
-  a `Pool` of `Source`s (the
-  room's recent messages, its author's, the exchanges stitching offered) within a budget in
-  characters, each kept in the `Section` its source names, and what a pool shows of what it
-  found, in its sources' order; `Pool.read`, what a pool shows for a heard message, from what
-  its room held when it was said, read through `RoomReads` and the stitch kept for its
-  conversation. `TurnRecipe`, each turn's `Shaping` by what it is `Rooted` on (a heard
-  message `ByFocus`, or one said to grit): its window's `Width`, and its `Offering` of the
-  services its conversation links; `Offering.decide`, each service as a `ServiceOffer` with
-  its supplying sources and its verdict, withheld only where its gate over the root's
-  per-source answers fails; and `TurnRecipe.Shipped`, which shapes nothing. Nothing in core
-  imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`, `triage`, `context`,
-  `stitch`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
@@ -224,6 +195,37 @@ In dependency order:
   `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `place`, `message`, `model`, `schema`, `store`, `provider`, `approval`
+- **`document`** — plugins' documents (ADR 0028): a `Document` is one version of a plugin's
+  document under a key, kept at a place, its `DocText` shown and searched, its data the
+  plugin's own, with its `Placement` (how many windows held it); a version is current until
+  the next under its key, or a withdrawal, supersedes it. `DocumentTerms` (a `DocLabel`, a
+  `DocWeight`, a retention and a bound) are what a plugin declares; `DocumentShelf` and
+  `DocumentKeeper`, one plugin's documents as it reads and writes them (`Written`, what a
+  write did); `DocumentSearch`, every enabled plugin's documents as windows draw on them, as
+  of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
+  and deletes of them (terms declared at each start, placements, a version or a plugin's
+  every document collected); `Pointer`, the hosted call that reads what a document stands for,
+  shown under its text to a turn offered that tool. ← `id`, `place`, `visibility`, `store`, `tool`
+- **`context`** — the trait the engine plugs a window's assembly into: `ContextAssembler`
+  (and the `Window` it builds, as wide as its request's `Width` asks: as deployed, or within a
+  budget the eval harness names; and `Shown`: what the model is shown of a window, each line
+  grit writes into it under its `SectionTag`: the record, a section from afar, a document a
+  plugin keeps, a gap where turns were left out; and a grit label that starts a line in text
+  grit did not write, shown as a quoted paste). ← `id`, `place`, `message`, `period`, `store`,
+  `document`
+- **`recipe`** — what a call's input shows beyond its own thread, and how a turn is shaped:
+  a `Pool` of `Source`s (the
+  room's recent messages, its author's, the exchanges stitching offered) within a budget in
+  characters, each kept in the `Section` its source names, and what a pool shows of what it
+  found, in its sources' order; `Pool.read`, what a pool shows for a heard message, from what
+  its room held when it was said, read through `RoomReads` and the stitch kept for its
+  conversation. `TurnRecipe`, each turn's `Shaping` by what it is `Rooted` on (a heard
+  message `ByFocus`, or one said to grit): its window's `Width`, and its `Offering` of the
+  services its conversation links; `Offering.decide`, each service as a `ServiceOffer` with
+  its supplying sources and its verdict, withheld only where its gate over the root's
+  per-source answers fails; and `TurnRecipe.Shipped`, which shapes nothing. Nothing in core
+  imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`, `triage`, `context`,
+  `stitch`
 - **`act`** — what an actor may do, and under what (ADR 0034): `Acting`, who acts (its turn,
   whom its requests record, `ActsFor`, what its asks may spend, `Allowance`, and what becomes
   of a call whose tool asks a person first, `Gates`), pure data; `Moves`, a planner's ask and
