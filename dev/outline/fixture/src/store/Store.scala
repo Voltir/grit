@@ -77,3 +77,5 @@ object StoreSuite {
 
 /** A second Quiver, under another owner than the one in the package above. */
 trait Quiver
+
+object Twin

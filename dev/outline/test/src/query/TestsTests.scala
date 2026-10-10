@@ -55,6 +55,17 @@ object TestsTests extends TestSuite {
       assert(answer("grit.outline.fixture.store.Missing", None).status == Status.NoMatch)
     }
 
+    test("an ambiguous suite name is NoMatch, names every suite it matches, and prints none") {
+      val found = answer("Twin", None)
+      assert(found.status == Status.NoMatch)
+      assert(
+        found.text.contains(
+          "-- ambiguous Twin: grit.outline.fixture.Twin, grit.outline.fixture.store.Twin (name one fully)"
+        )
+      )
+      assert(!found.text.contains("== "))
+    }
+
     test("tests lists the suite's private helpers and its file's other top-level definitions") {
       val lines =
         answer("grit.outline.render.OneLineTests", None, MillLayout).text.linesIterator.toVector

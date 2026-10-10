@@ -87,3 +87,5 @@ object Holder {
     def of(n: Int): Either[String, Nested] = if (n < 0) Left("negative") else Right(Nested(n))
   }
 }
+
+object Twin

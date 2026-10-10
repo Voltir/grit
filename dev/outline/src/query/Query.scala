@@ -225,8 +225,15 @@ object Query {
         case Left(message) => (Answer(message, Status.Failed), roots)
         case Right(resolved) =>
           val nextRoots = Roots.put(roots, root, resolved.loaded)
-          resolved.defns.find(d => d.kind == Kind.Class || d.kind == Kind.Object) match {
+          def isSuite(d: Defn): Boolean = d.kind == Kind.Class || d.kind == Kind.Object
+          val ambiguous = resolved.defns.filter(isSuite).map(_.fullName).distinct.sizeIs > 1
+          resolved.defns.find(isSuite) match {
             case None => (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
+            case Some(_) if ambiguous =>
+              (
+                Answer((Vector(header(root)) ++ resolved.notes).mkString("\n"), Status.NoMatch),
+                nextRoots
+              )
             case Some(d) =>
               val path = root.dir / os.RelPath(d.file)
               if (!os.isFile(path))
@@ -247,7 +254,7 @@ object Query {
                 val notes = test
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
-                val head = (Vector(header(root)) ++ notes).mkString("\n")
+                val head = (Vector(header(root)) ++ resolved.notes ++ notes).mkString("\n")
                 (Answer(Render.tests(d, helpers, tests, test, head, cap), Status.Found), nextRoots)
               }
           }
