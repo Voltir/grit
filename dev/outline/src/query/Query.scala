@@ -46,7 +46,10 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
-  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. */
+  /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
+  val shortestBare: Int = 4
+
+  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
   def uses(
       root: Root,
       layout: Layout,
@@ -57,8 +60,11 @@ object Query {
       outside: Option[String],
       cap: Int
   ): (Answer, Roots) = {
-    val classes = layout.classesDirs(root)
-    if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
+    val bare = syms.filter(sym => !sym.contains('.') && sym.length < shortestBare)
+    lazy val classes = layout.classesDirs(root)
+    if (bare.nonEmpty)
+      (Answer(s"${header(root)}\n${refusal(bare, Roots.of(roots, root))}", Status.NoMatch), roots)
+    else if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
     else {
       // The cache read in this query, threaded through a scoped local, as `showIn` does.
       var state = Roots.of(roots, root)
@@ -442,6 +448,21 @@ object Query {
   private def header(root: Root): String = {
     val revision = Locate.revision(root)
     s"## root ${root.dir} (${revision.branch.getOrElse("detached")} @ ${revision.head})"
+  }
+
+  /** Why `uses` refuses each of `bare`, with the owners `in` already holds a definition of it in, at most 10. */
+  private def refusal(bare: Vector[String], in: Loaded): String = {
+    def every(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: every(d.members))
+    val held = every(in.byTasty.values.toVector.flatMap(_.defns))
+    bare
+      .map { sym =>
+        val owners = held.filter(_.name == sym).map(_.fullName).distinct.sorted
+        val known =
+          if (owners.isEmpty) ""
+          else s"; defined, among the files already read, as ${owners.take(10).mkString(", ")}"
+        s"-- uses refuses $sym: a name with no qualifier must be at least $shortestBare characters; qualify it with at least its owner, as in MoveLimits.of$known"
+      }
+      .mkString("\n")
   }
 
   /** A word a source file must hold to be searched for references to a target, and the simple name of the object that owns the target, which the file must hold too when there is one. */

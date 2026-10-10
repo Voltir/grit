@@ -116,11 +116,12 @@ object Help {
     operand = Operand(
       "Sym[,Sym…]",
       "symbols",
-      "symbols whose references to find: Name, Name.member or fully qualified; comma-separated on the CLI."
+      "symbols whose references to find: Name, Name.member or fully qualified; a Name with no qualifier shorter than 4 characters, such as of or get, is refused: qualify it with at least its owner, as in MoveLimits.of; comma-separated on the CLI."
     ),
     purpose = "To find who calls or names a definition before changing it.",
     examples = Vector(
-      Example("find the references to Inbox.hear outside core", "uses Inbox.hear --outside core")
+      Example("find the references to Inbox.hear outside core", "uses Inbox.hear --outside core"),
+      Example("find the calls to a short member name, qualified by its owner", "uses MoveLimits.of")
     ),
     flags = Vector(
       Flag("--in", "PREFIX", Some("in"), "only files whose repo-relative path starts with PREFIX."),

@@ -165,6 +165,28 @@ object UsesTests extends TestSuite {
       assert(searches == Right(Vector(Query.Search("get", None))))
     }
 
+    test(
+      "a bare name shorter than four characters is refused as NoMatch, reading no tasty, and the note says to qualify it"
+    ) {
+      val (answer, after) = Query.uses(
+        root,
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("of"),
+        None,
+        None,
+        80000
+      )
+      assert(answer.status == Status.NoMatch)
+      assert(
+        answer.text.linesIterator.contains(
+          "-- uses refuses of: a name with no qualifier must be at least 4 characters; qualify it with at least its owner, as in MoveLimits.of"
+        )
+      )
+      assert(Roots.of(after, root).entries == 0)
+    }
+
     test("the uses of Store.get outside the fixture are no match") {
       val (answer, _) = uses(s"$storePackage.Store.get", outside = Some("dev/outline/fixture"))
       assert(answer.status == Status.NoMatch)
