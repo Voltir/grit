@@ -1,6 +1,7 @@
 package grit.outline.query
 
-import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.locate.{Locate, Root}
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -25,7 +26,7 @@ object ResolveTests extends TestSuite {
       config: Config = Config.empty,
       scope: Scope = Scope.Main
   ): Resolved =
-    Resolve.resolve(root, MillLayout, config, scope, sym, Loaded.empty) match {
+    Resolve.resolve(root, FixtureLayout, config, scope, sym, Loaded.empty) match {
       case Right(r) => r
       case Left(message) => throw new Exception(message)
     }
@@ -119,20 +120,20 @@ object ResolveTests extends TestSuite {
 
     test("preload reads each name's files once, and a resolve after it reads none") {
       val syms = Vector("grit.outline.fixture.A.keep", "grit.outline.fixture.store.Store")
-      val tasty = syms.flatMap(sym => Locate.forTopLevel(root, MillLayout, sym)).distinct
-      val expected = Loaded.defns(root, MillLayout, tasty, Loaded.empty) match {
+      val tasty = syms.flatMap(sym => Locate.forTopLevel(root, FixtureLayout, sym)).distinct
+      val expected = Loaded.defns(root, FixtureLayout, tasty, Loaded.empty) match {
         case Right((_, _, read)) => read
         case Left(message) => throw new Exception(message)
       }
-      val preloaded = Resolve.preload(root, MillLayout, Scope.Main, syms, Loaded.empty) match {
+      val preloaded = Resolve.preload(root, FixtureLayout, Scope.Main, syms, Loaded.empty) match {
         case Right(in) => in
         case Left(message) => throw new Exception(message)
       }
       assert(expected > 0)
       assert(preloaded.byTasty.size == expected)
-      assert(Loaded.defns(root, MillLayout, tasty, preloaded).map(_._3) == Right(0))
+      assert(Loaded.defns(root, FixtureLayout, tasty, preloaded).map(_._3) == Right(0))
       syms.foreach { sym =>
-        Resolve.resolve(root, MillLayout, Config.empty, Scope.Main, sym, preloaded) match {
+        Resolve.resolve(root, FixtureLayout, Config.empty, Scope.Main, sym, preloaded) match {
           case Right(r) => assert(r.loaded.byTasty.keySet == preloaded.byTasty.keySet)
           case Left(message) => throw new Exception(message)
         }

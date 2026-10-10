@@ -492,7 +492,25 @@ object Query {
       .sortBy(_.toString)
   }
 
-  /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the source files `candidates` gives for `searches` that satisfy `keep`; with them, those files whose package has no `.tasty` in `classes`, and the cache after. The references are `Left` when their index cannot be read. */
+  /** The `.tasty` files in `classes` a search for `searches` reads: those in the package dirs of the files `candidates` gives that satisfy `keep`; with them, those files whose package has no `.tasty` in `classes` and that `config` does not hide. */
+  private[query] def toRead(
+      root: Root,
+      config: Config,
+      classes: Vector[os.Path],
+      searches: Vector[Search],
+      keep: os.RelPath => Boolean
+  ): (Vector[os.Path], Vector[os.RelPath]) = {
+    val kept = candidates(root, searches).filter(keep)
+    val inPackage = kept.map(file => file -> Locate.inPackageIn(root, classes, file))
+    val unsearched = inPackage.collect {
+      case (file, found)
+          if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
+        file
+    }
+    (inPackage.flatMap(_._2).distinct, unsearched)
+  }
+
+  /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the files `toRead` gives; with them, the files `toRead` names as not searched, and the cache after. The references are `Left` when their index cannot be read. */
   private def referencesIn(
       root: Root,
       layout: Layout,
@@ -503,14 +521,7 @@ object Query {
       keep: os.RelPath => Boolean,
       in: Loaded
   ): (Either[String, Vector[Use]], Vector[os.RelPath], Loaded) = {
-    val kept = candidates(root, searches).filter(keep)
-    val inPackage = kept.map(file => file -> Locate.inPackageIn(root, classes, file))
-    val tasty = inPackage.flatMap(_._2).distinct
-    val unsearched = inPackage.collect {
-      case (file, found)
-          if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
-        file
-    }
+    val (tasty, unsearched) = toRead(root, config, classes, searches, keep)
     if (names.isEmpty || tasty.isEmpty) (Right(Vector.empty), unsearched, in)
     else
       Loaded.uses(root, layout, tasty, in) match {

@@ -2,6 +2,7 @@ package grit.outline.query
 
 import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -26,7 +27,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("A.keep"),
@@ -44,7 +45,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("Nope"),
@@ -62,7 +63,7 @@ object QueryTests extends TestSuite {
       val (_, first) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("A.keep"),
@@ -71,8 +72,8 @@ object QueryTests extends TestSuite {
           false,
           80000
         )
-      val tasty = Locate.forTopLevel(root, MillLayout, "A.keep")
-      Loaded.defns(root, MillLayout, tasty, Roots.of(first, root)) match {
+      val tasty = Locate.forTopLevel(root, FixtureLayout, "A.keep")
+      Loaded.defns(root, FixtureLayout, tasty, Roots.of(first, root)) match {
         case Right((_, _, read)) => assert(read == 0)
         case Left(message) => throw new Exception(message)
       }
@@ -89,7 +90,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("A.keep"),
@@ -109,7 +110,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("grit.outline.fixture.Limits"),
@@ -124,7 +125,7 @@ object QueryTests extends TestSuite {
       val (withPrivate, _) =
         Query.show(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("grit.outline.fixture.Limits"),
@@ -285,31 +286,30 @@ object QueryTests extends TestSuite {
     test(
       "the tests section reads no test tasty of a package whose test sources do not mention the name"
     ) {
-      val (_, roots) =
-        Query.show(
-          root,
-          MillLayout,
-          Config.empty,
-          Roots.empty(6000),
-          Vector("Moves.ask"),
-          1,
-          Set.empty,
-          false,
-          80000
-        )
-      val testClasses = MillLayout.classesDirs(root).filter(MillLayout.isTest)
-      val allowed =
-        Locate
-          .mentioning(root, "ask")
-          .filter(file => MillLayout.isTestSource(file))
-          .flatMap(file => Locate.inPackageIn(root, testClasses, file))
-          .toSet
-      val read = Roots
-        .of(roots, root)
-        .refs
-        .keySet
-        .filter(tasty => testClasses.exists(classes => tasty.startsWith(classes)))
-      assert(read.subsetOf(allowed))
+      val dir = os.temp.dir(prefix = "outline-test-packages-")
+      os.write(dir / "build.mill", "")
+      os.write(
+        dir / "m" / "test" / "src" / "a" / "ATests.scala",
+        "package a\nobject ATests { val x = S.ask }\n",
+        createFolders = true
+      )
+      os.write(
+        dir / "m" / "test" / "src" / "b" / "BTests.scala",
+        "package b\nobject BTests { val y = 1 }\n",
+        createFolders = true
+      )
+      val classes = dir / "out" / "m" / "test" / "compile.dest" / "classes"
+      os.write(classes / "a" / "ATests.tasty", "", createFolders = true)
+      os.write(classes / "b" / "BTests.tasty", "", createFolders = true)
+      val (tasty, unsearched) = Query.toRead(
+        Root(dir),
+        Config.empty,
+        Vector(classes),
+        Vector(Query.Search("ask", None)),
+        MillLayout.isTestSource
+      )
+      assert(tasty == Vector(classes / "a" / "ATests.tasty"))
+      assert(unsearched.isEmpty)
     }
 
     test("show --no-tests prints no tests section") {

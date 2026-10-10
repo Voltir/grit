@@ -1,7 +1,8 @@
 package grit.outline.query
 
-import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.locate.{Locate, Root}
 import grit.outline.read.Read
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -24,7 +25,16 @@ object FamilyTests extends TestSuite {
   private val storePackage = "grit.outline.fixture.store"
 
   private def family(name: String, member: Option[String], withBody: Boolean): (Answer, Roots) =
-    Query.family(root, MillLayout, Config.empty, Roots.empty(6000), name, member, withBody, 80000)
+    Query.family(
+      root,
+      FixtureLayout,
+      Config.empty,
+      Roots.empty(6000),
+      name,
+      member,
+      withBody,
+      80000
+    )
 
   def tests = Tests {
     test(
@@ -32,9 +42,9 @@ object FamilyTests extends TestSuite {
     ) {
       val defns = Read.defns(
         root,
-        MillLayout,
+        FixtureLayout,
         Locate
-          .inPackageOf(root, MillLayout, os.RelPath("dev/outline/fixture/src/store/Store.scala"))
+          .inPackageOf(root, FixtureLayout, os.RelPath("dev/outline/fixture/src/store/Store.scala"))
       ) match {
         case Right(ds) => ds
         case Left(message) => throw new Exception(message)

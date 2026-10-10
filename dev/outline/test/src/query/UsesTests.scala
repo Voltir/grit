@@ -6,6 +6,7 @@ import java.nio.file.attribute.FileTime
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
 import grit.outline.model.Use
 import grit.outline.read.Read
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -32,11 +33,20 @@ object UsesTests extends TestSuite {
       in: Option[String] = None,
       outside: Option[String] = None
   ): (Answer, Roots) =
-    Query.uses(root, MillLayout, Config.empty, Roots.empty(6000), Vector(sym), in, outside, 80000)
+    Query.uses(
+      root,
+      FixtureLayout,
+      Config.empty,
+      Roots.empty(6000),
+      Vector(sym),
+      in,
+      outside,
+      80000
+    )
 
   /** `Loaded.uses` over `tasty` from `in`; a failure throws, so the test shows it. */
   private def loadedUses(tasty: Vector[os.Path], in: Loaded): (Vector[Use], Loaded, Int) =
-    Loaded.uses(root, MillLayout, tasty, in) match {
+    Loaded.uses(root, FixtureLayout, tasty, in) match {
       case Right(read) => read
       case Left(message) => throw new Exception(message)
     }
@@ -47,13 +57,14 @@ object UsesTests extends TestSuite {
     ) {
       val storeTasty = Locate.inPackageOf(
         root,
-        MillLayout,
+        FixtureLayout,
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
-      val sites = Read.uses(root, MillLayout, storeTasty, Set(s"$storePackage.Store.get")) match {
-        case Right(us) => us
-        case Left(message) => throw new Exception(message)
-      }
+      val sites =
+        Read.uses(root, FixtureLayout, storeTasty, Set(s"$storePackage.Store.get")) match {
+          case Right(us) => us
+          case Left(message) => throw new Exception(message)
+        }
       val enclosing = sites.map(_.enclosing).toSet
       assert(enclosing.contains(s"$storePackage.StoreContract.keepsWhatItIsGiven"))
       assert(enclosing.contains(s"$storePackage.Caller.all"))
@@ -65,13 +76,14 @@ object UsesTests extends TestSuite {
     ) {
       val storeTasty = Locate.inPackageOf(
         root,
-        MillLayout,
+        FixtureLayout,
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
-      val sites = Read.uses(root, MillLayout, storeTasty, Set(s"$storePackage.Store.get")) match {
-        case Right(us) => us
-        case Left(message) => throw new Exception(message)
-      }
+      val sites =
+        Read.uses(root, FixtureLayout, storeTasty, Set(s"$storePackage.Store.get")) match {
+          case Right(us) => us
+          case Left(message) => throw new Exception(message)
+        }
       assert(
         sites.exists(u => u.enclosing.endsWith("Caller.split") && u.text == ".get(\"k\")")
       )
@@ -132,7 +144,7 @@ object UsesTests extends TestSuite {
       val searches = Resolve
         .resolve(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Scope.WithTests,
           "grit.outline.fixture.Limits.of",
@@ -155,7 +167,7 @@ object UsesTests extends TestSuite {
       val searches = Resolve
         .resolve(
           root,
-          MillLayout,
+          FixtureLayout,
           Config.empty,
           Scope.WithTests,
           "grit.outline.fixture.store.Store.get",
@@ -170,7 +182,7 @@ object UsesTests extends TestSuite {
     ) {
       val (answer, after) = Query.uses(
         root,
-        MillLayout,
+        FixtureLayout,
         Config.empty,
         Roots.empty(6000),
         Vector("of"),
@@ -195,7 +207,7 @@ object UsesTests extends TestSuite {
     test("a second uses call over unchanged tasty reads no file") {
       val storeTasty = Locate.inPackageOf(
         root,
-        MillLayout,
+        FixtureLayout,
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val first = loadedUses(storeTasty, Loaded.empty)
@@ -209,12 +221,12 @@ object UsesTests extends TestSuite {
     ) {
       val storeTasty = Locate.inPackageOf(
         root,
-        MillLayout,
+        FixtureLayout,
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val afterUses = loadedUses(storeTasty, Loaded.empty)
-      val afterDefns = Loaded.defns(root, MillLayout, storeTasty, afterUses._2)
-      val fresh = Loaded.defns(root, MillLayout, storeTasty, Loaded.empty)
+      val afterDefns = Loaded.defns(root, FixtureLayout, storeTasty, afterUses._2)
+      val fresh = Loaded.defns(root, FixtureLayout, storeTasty, Loaded.empty)
       assert(afterUses._3 == storeTasty.size)
       assert(afterDefns.map(_._3) == Right(0))
       assert(afterDefns.map(_._1) == fresh.map(_._1))
@@ -223,7 +235,7 @@ object UsesTests extends TestSuite {
     test("a uses call after a tasty file's mtime changes reads that file again") {
       val storeTasty = Locate.inPackageOf(
         root,
-        MillLayout,
+        FixtureLayout,
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val dir = os.temp.dir(prefix = "outline-uses-mtime-")
@@ -245,11 +257,11 @@ object UsesTests extends TestSuite {
         def isTestSource(file: os.RelPath): Boolean = false
         def classesDirs(root: Root): Vector[os.Path] = {
           lookups += 1
-          MillLayout.classesDirs(root)
+          FixtureLayout.classesDirs(root)
         }
-        def libraryJars(root: Root): Vector[os.Path] = MillLayout.libraryJars(root)
-        def notCompiled(root: Root): String = MillLayout.notCompiled(root)
-        def isTest(classesDir: os.Path): Boolean = MillLayout.isTest(classesDir)
+        def libraryJars(root: Root): Vector[os.Path] = FixtureLayout.libraryJars(root)
+        def notCompiled(root: Root): String = FixtureLayout.notCompiled(root)
+        def isTest(classesDir: os.Path): Boolean = FixtureLayout.isTest(classesDir)
       }
       val candidates = Locate.mentioning(root, "get").size
       val (answer, _) =

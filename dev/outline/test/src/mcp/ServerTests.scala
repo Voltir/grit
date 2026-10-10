@@ -232,22 +232,29 @@ object ServerTests extends TestSuite {
     }
 
     test("show with tests false prints no tests section") {
-      val (on, _) = reply(
-        call(6, "show", ujson.Obj("symbols" -> ujson.Arr("Render.oneLine"), "root" -> repoRoot)),
+      val (on, warm) = reply(
+        call(
+          6,
+          "show",
+          ujson
+            .Obj("symbols" -> ujson.Arr("grit.outline.render.Render.oneLine"), "root" -> repoRoot)
+        ),
         empty
       )
-      assert(textOf(on).exists(_.contains("## tests exercising Render.oneLine")))
+      assert(
+        textOf(on).exists(_.contains("## tests exercising grit.outline.render.Render.oneLine"))
+      )
       val (off, _) = reply(
         call(
           7,
           "show",
           ujson.Obj(
-            "symbols" -> ujson.Arr("Render.oneLine"),
+            "symbols" -> ujson.Arr("grit.outline.render.Render.oneLine"),
             "tests" -> ujson.Bool(false),
             "root" -> repoRoot
           )
         ),
-        empty
+        warm
       )
       assert(textOf(off).exists(_.contains("def Render.oneLine")))
       assert(textOf(off).exists(!_.contains("## tests exercising")))

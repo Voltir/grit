@@ -1,6 +1,7 @@
 package grit.outline.query
 
-import grit.outline.locate.{MillLayout, Root}
+import grit.outline.locate.{Layout, MillLayout, Root}
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -22,8 +23,9 @@ object TestsTests extends TestSuite {
 
   private val suite = "grit.outline.fixture.store.StoreSuite"
 
-  private def answer(name: String, test: Option[String]): Answer =
-    Query.tests(root, MillLayout, Config.empty, Roots.empty(6000), name, test, 80000)._1
+  /** The `tests` answer for `name`, over the fixture's classes unless `layout` says otherwise. */
+  private def answer(name: String, test: Option[String], layout: Layout = FixtureLayout): Answer =
+    Query.tests(root, layout, Config.empty, Roots.empty(6000), name, test, 80000)._1
 
   def tests = Tests {
     test(
@@ -54,7 +56,8 @@ object TestsTests extends TestSuite {
     }
 
     test("tests lists the suite's private helpers and its file's other top-level definitions") {
-      val lines = answer("grit.outline.render.OneLineTests", None).text.linesIterator.toVector
+      val lines =
+        answer("grit.outline.render.OneLineTests", None, MillLayout).text.linesIterator.toVector
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val posed.*""")))
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val companion.*""")))
     }
@@ -63,7 +66,11 @@ object TestsTests extends TestSuite {
       val name =
         "a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc"
       val lines =
-        answer("grit.outline.render.OneLineTests", Some("a trait's one-liner lists each")).text
+        answer(
+          "grit.outline.render.OneLineTests",
+          Some("a trait's one-liner lists each"),
+          MillLayout
+        ).text
           .split("\n", -1)
           .toVector
       val header = lines.find(l => l.startsWith("    ") && l.endsWith(s" $name")).getOrElse("")

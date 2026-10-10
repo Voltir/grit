@@ -1,6 +1,7 @@
 package grit.outline.query
 
-import grit.outline.locate.{MillLayout, Root}
+import grit.outline.locate.Root
+import grit.outline.testing.FixtureLayout
 
 import utest.*
 
@@ -32,7 +33,7 @@ object AreaTests extends TestSuite {
   )
 
   private def area(config: Config, names: Vector[String], level: Int): Answer =
-    Query.area(root, MillLayout, config, Roots.empty(6000), names, level, 80000)._1
+    Query.area(root, FixtureLayout, config, Roots.empty(6000), names, level, 80000)._1
 
   def tests = Tests {
     test(
