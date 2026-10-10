@@ -178,6 +178,30 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
+      "a pointer whose argument holds objects is read back equal, their keys sorted at every depth in its line"
+    ) {
+      val p = name("doc-pointer-nested")
+      val k = keeper(p, terms())
+      // A JSON object column may keep shorter keys first: "b" before "aa".
+      val nested = got(
+        Pointer.of(
+          ToolName("github_get_file_contents"),
+          "at" -> ujson.Obj(
+            "aa" -> ujson.Obj("dd" -> ujson.Num(1), "c" -> ujson.Num(2)),
+            "b" -> ujson.Num(3)
+          )
+        )
+      )
+      val v = put(k, "k", "pointed words", 1, pointer = Some(nested))
+      transaction(ok(search.read(Vector(v)))).map(d => d.pointer.map(_.shown) -> d.pointer) ==>
+        Vector(
+          Some(
+            """Read it with github_get_file_contents {"at":{"aa":{"c":2,"dd":1},"b":3}}"""
+          ) -> Some(nested)
+        )
+    }
+
+    test(
       "a write changing only the pointer is a new version; the same one in another order is not"
     ) {
       val p = name("doc-pointer-unchanged")

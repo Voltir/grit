@@ -94,5 +94,53 @@ object PointerTests extends TestSuite {
       reordered.shown ==> pointer.shown
       reordered ==> pointer
     }
+
+    test(
+      "a pointer is unchanged by a change to its arguments as read, or to a value it was made from"
+    ) {
+      val at = ujson.Obj("ref" -> ujson.Str("main"))
+      val made = Pointer.of(tool, "path" -> ujson.Str("p"), "at" -> at).fold(sys.error, identity)
+      val shown = made.shown
+      at("ref") = ujson.Str("dev")
+      made.arguments("path") = ujson.Str("q")
+      val fresh = Pointer
+        .of(tool, "path" -> ujson.Str("p"), "at" -> ujson.Obj("ref" -> ujson.Str("main")))
+        .fold(sys.error, identity)
+      (made.shown, made) ==> (shown, fresh)
+    }
+
+    test(
+      "an argument's nested objects are kept with their keys sorted at every depth: built in either order, equal pointers with one shown line"
+    ) {
+      val inner = Pointer.of(
+        tool,
+        "at" -> ujson.Obj(
+          "b" -> ujson.Num(1),
+          "a" -> ujson.Obj(
+            "d" -> ujson.Num(1),
+            "c" -> ujson.Arr(ujson.Obj("f" -> ujson.Num(2), "e" -> ujson.Num(3)))
+          )
+        )
+      )
+      val outer = Pointer.of(
+        tool,
+        "at" -> ujson.Obj(
+          "a" -> ujson.Obj(
+            "c" -> ujson.Arr(ujson.Obj("e" -> ujson.Num(3), "f" -> ujson.Num(2))),
+            "d" -> ujson.Num(1)
+          ),
+          "b" -> ujson.Num(1)
+        )
+      )
+      (inner.map(_.shown), outer.map(_.shown), inner == outer) ==> (
+        Right(
+          """Read it with github_get_file_contents {"at":{"a":{"c":[{"e":3,"f":2}],"d":1},"b":1}}"""
+        ),
+        Right(
+          """Read it with github_get_file_contents {"at":{"a":{"c":[{"e":3,"f":2}],"d":1},"b":1}}"""
+        ),
+        true
+      )
+    }
   }
 }
