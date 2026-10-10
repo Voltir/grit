@@ -63,6 +63,25 @@ history of the current epoch: guard the change with `Durable.patch`, or start a 
 `Turn.Epoch` ([ADR 0004](docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md)).
 `TurnReplayTests` is the gate, and `LifecycleReplayTests` for the close, settle and posting.
 
+## Reading the code
+
+Read Scala through `scripts/outline` first (`dev/outline`; also the `outline` MCP server). It
+answers from the compiler's TASTy, grouped by file with line numbers, in less text than a file
+read, and works in any worktree (`--root`; it runs from the checkout it is in).
+
+- `area <name>[,name…]` — a map of one part of grit: start here on an unfamiliar task. The names
+  and what each covers are in `.outline.conf`.
+- `show <Sym>[,Sym…]` — signatures and docs, the types they name traced a level, and the tests
+  that exercise them; `--body <members>` for bodies. Several symbols per call.
+- `family <Trait>` — a trait and its implementations. `uses <Owner.member>` — every direct
+  reference, compiler-exact. `tests <Suite>` — a suite's tests and helpers.
+- The definition lines it prints are the file's own text: an Edit may copy them as `old_string`
+  without a Read first. `scripts/outline <query> --help` says which lines are file text.
+- Ask for private members (`--private`) only to edit them or to understand an implementation;
+  otherwise trust the public interface and referential transparency.
+- It reads compiled output: compile the module first if its TASTy is stale. Bash reads remain
+  for what it can't answer.
+
 ## Style rules
 
 Full rationale in [`STYLE.md`](STYLE.md).
@@ -171,13 +190,13 @@ commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
 
 Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) is for:
 
-- **who uses X** — `get-usages`, compiler-exact where grep and enola's symbol facts are not;
-- **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs`;
+- **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs` (for who uses X,
+  prefer `scripts/outline uses`, which works in any worktree);
 - **compiling or testing one module mid-edit, in this checkout** — `compile-module`,
   `test`; it builds into `.bsp/out`, so it never blocks a CLI `./mill`. It serves this
   checkout only (a worktree: the `grit-test-cycle` skill).
 
-Not for understanding a package's behaviour: read the files. Metals hands context out one
+Not for understanding a package's behaviour: use `scripts/outline area` and `show`, then the files. Metals hands context out one
 symbol at a time; in a measured comparison, file reads answered edge-case questions
 perfectly at a third fewer tokens and an eighth of the calls. Quirk: `inspect` ignores `module` —
 **always pass `fileInFocus`** (a source file in the symbol's module); without it the result
