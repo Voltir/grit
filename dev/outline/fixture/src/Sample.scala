@@ -73,3 +73,17 @@ object Outer {
     }
   }
 }
+
+/** An object holding a class and its companion. */
+object Holder {
+
+  /** A count, built through [[Nested.of]]. */
+  final case class Nested(n: Int)
+
+  /** `Nested`'s companion. */
+  object Nested {
+
+    /** A count, or why not: a negative `n`. */
+    def of(n: Int): Either[String, Nested] = if (n < 0) Left("negative") else Right(Nested(n))
+  }
+}

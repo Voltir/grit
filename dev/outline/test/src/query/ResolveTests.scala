@@ -37,6 +37,14 @@ object ResolveTests extends TestSuite {
       assert(r.notes.isEmpty)
     }
 
+    test(
+      "a fully named member of a companion nested in an object resolves to exactly that definition, with no note"
+    ) {
+      val r = resolve("grit.outline.fixture.Holder.Nested.of")
+      assert(r.defns.map(_.fullName) == Vector("grit.outline.fixture.Holder.Nested.of"))
+      assert(r.notes.isEmpty)
+    }
+
     test("a short name shared by two packages resolves to both, and the note names both") {
       val r = resolve("Tx")
       assert(
