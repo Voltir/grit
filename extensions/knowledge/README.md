@@ -18,7 +18,7 @@ Packages, in one-way order (each names only those before it):
   `owner`, `repo` and `path` and no `ref`), `Listing` (a directory's answer: its entries with
   their SHAs, or `Partial` when cut or naming possible path matches) and `Fetched` (a file's
   answer: its text and blob SHA, the only version a file's card is written at, or
-  `Unversioned`). Imports `card`.
+  `Unversioned`, saying why). Imports `card`.
 
 The test tree mirrors it. `test/resources/github/` holds `tools/call` results GitHub's hosted
 read-only server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-10-11 (in an
