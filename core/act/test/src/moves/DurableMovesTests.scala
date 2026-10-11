@@ -6,7 +6,14 @@ import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging,
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
 import grit.core.classify.{Answer as Judged, Answers, Classifier}
 import grit.core.clock.SetClock
-import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms, InMemoryDocuments}
+import grit.core.document.{
+  DocLabel,
+  DocWeight,
+  Document,
+  DocumentKeeper,
+  DocumentTerms,
+  InMemoryDocuments
+}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Advert
 import grit.core.edge.{
@@ -42,6 +49,15 @@ object DurableMovesTests extends MovesContract {
     val w = new MovesWorld(broken, MovesContract.Floor)
     val classifier = new Judging(Vector(Right(Answers(Vector(judgment), Spent, "test/judge"))))
     w.run(limits, shapes, classifier)(use)
+  }
+
+  def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document]) = {
+    val w = new MovesWorld(broken = false, MovesContract.Floor)
+    val got = w.keeping(limits)(use)
+    val docs = w.keeper
+      .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
+      .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+    (got, docs)
   }
 }
 

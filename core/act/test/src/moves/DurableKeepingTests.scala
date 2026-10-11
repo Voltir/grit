@@ -3,46 +3,24 @@ package grit.act.moves
 import java.time.Instant
 
 import grit.core.act.MovesFixtures.Answering
-import grit.core.act.{Keeping, MoveError, MoveLimits, Posed}
+import grit.core.act.{Keeping, MoveError, MoveLimits}
 import grit.core.document.{DocText, DocumentKeeper, Pointer, Written}
-import grit.core.durable.{InMemoryDurable, Journaled}
+import grit.core.durable.InMemoryDurable
 import grit.core.id.DocKey
-import grit.core.place.{Namespace, Place}
+import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Label, Level}
 import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** [[DurableMoves.keeping]]'s keeps, over [[MovesWorld]]'s documents, which roll nothing back:
-  * that a keep commits with its record, or not at all, is the live tier's to show.
+/** [[DurableMoves.keeping]]'s keeps as durable steps, over [[MovesWorld]]'s documents, which
+  * roll nothing back: that a keep commits with its record, or not at all, is the live tier's to
+  * show. The rules every keep keeps are [[MovesContract]]'s.
   */
 object DurableKeepingTests extends TestSuite {
-  import MovesContract.name
+  import MovesContract.{Kept, name, write}
   import MovesWorld.*
-
-  /** The label a keep wrote at, journaled as its written form. */
-  final case class Kept(label: String) extends caps.Pure
-  object Kept {
-    given Journaled[Kept] =
-      Journaled.json(k => ujson.Str(k.label), v => v.strOpt.map(Kept(_)).toRight("no label"))
-  }
-
-  private val Here: Place = Place.under(Namespace.Task, Vector("notes"))
-
-  private def key(k: String): DocKey =
-    DocKey.of(k).fold(e => throw new java.lang.AssertionError(e), identity)
-
-  private def text(t: String): DocText =
-    DocText.of(t).fold(e => throw new java.lang.AssertionError(e), identity)
-
-  /** Writes `t` under `k` at public through `keeper`, at `at`: the label it was kept at. */
-  private def write(keeper: DocumentKeeper, k: String, t: String, at: Instant)(using
-      Tx^
-  ): Either[StoreError, Kept] =
-    keeper
-      .write(key(k), Label.Public, Here, text(t), ujson.Obj(), None, at)
-      .map(w => Kept(Label.written(w.kept)))
 
   /** Every current document's key and text in `w`'s notes, as their plugin reads them. */
   private def kept(w: MovesWorld): Vector[(String, String)] =
@@ -73,12 +51,12 @@ object DurableKeepingTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a keep writes at the run's floor; replayed, it returns what it recorded without running its body"
+      "a keep is one step named for it; replayed, it returns what it recorded without running its body"
     ) {
       val floor = Label.at(Level.Internal)
       val w = new MovesWorld(broken = false, floor)
       val keep = (m: Keeping^) =>
-        Got(m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", "noted", at)))
+        Got(m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", Label.Public, at)))
       val first = w.keeping(MoveLimits.Zero)(keep)
       val steps = w.durable.recordedSteps(Turn.workflowId)
       val counting = new Counting(w.keeper)
@@ -94,59 +72,9 @@ object DurableKeepingTests extends TestSuite {
       (first, steps, kept(w), again, counting.writes) ==> (
         Got(Right(Kept(Label.written(floor)))),
         Vector("move:note"),
-        Vector(("k", "noted")),
+        Vector(("k", "k")),
         Right(Label.written(floor)),
         0
-      )
-    }
-
-    test("a keep whose body is Left keeps nothing, and its name is spent") {
-      val w = new MovesWorld(broken = false)
-      val got = w.keeping(MoveLimits.Zero) { m =>
-        val refused = m.keep[Kept](name("note")) { (keeper, at) =>
-          write(keeper, "k", "noted", at).flatMap(_ => Left(StoreError.Invalid("not today")))
-        }
-        val again = m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", "again", at))
-        Seen(Vector(refused, again).map(_.fold(_.toString, _.label)).mkString("; "))
-      }
-      (got.said, kept(w)) ==> (
-        s"${MoveError.Store("not today")}; ${MoveError.Repeated(name("note"))}",
-        Vector()
-      )
-    }
-
-    test("a keep named as an earlier ask is Repeated, and so is an ask or call named as a keep") {
-      val w = new MovesWorld(broken = false)
-      val got = w.keeping(MovesContract.limits(2, 1)) { m =>
-        val asked =
-          m.ask(name("a"), Posed.Text(MovesContract.Request)).fold(_.toString, _ => "asked")
-        val keptA = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "a", "a", at))
-        val keptB = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", "b", at))
-        val askedB =
-          m.ask(name("b"), Posed.Text(MovesContract.Request)).fold(_.toString, _ => "asked")
-        val calledB = m
-          .call(name("b"), MovesContract.Probe, MovesContract.Tool, MovesContract.Args)
-          .fold(_.toString, _.toString)
-        Seen(
-          Vector(
-            asked,
-            keptA.fold(_.toString, _.label),
-            keptB.fold(_.toString, _.label),
-            askedB,
-            calledB
-          )
-            .mkString("; ")
-        )
-      }
-      (got.said, kept(w)) ==> (
-        Vector(
-          "asked",
-          MoveError.Repeated(name("a")).toString,
-          Label.written(Label.Public),
-          MoveError.Repeated(name("b")).toString,
-          MoveError.Repeated(name("b")).toString
-        ).mkString("; "),
-        Vector(("b", "b"))
       )
     }
   }

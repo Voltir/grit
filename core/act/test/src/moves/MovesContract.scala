@@ -1,8 +1,11 @@
 package grit.act.moves
 
+import java.time.Instant
+
 import grit.core.act.{
   Asked,
   Called,
+  Keeping,
   MoveError,
   MoveKind,
   MoveLimits,
@@ -12,10 +15,14 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer as Judged, Ask, StateJson}
+import grit.core.document.{DocText, Document, DocumentKeeper}
+import grit.core.durable.Journaled
+import grit.core.id.DocKey
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.place.Service
+import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.JsonSchema
+import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Label, Level}
 
@@ -26,7 +33,9 @@ import utest.*
   * once, by either kind, is `Repeated` after, whatever the move came to; past its kind's limit a
   * move is `OverLimit`; a refused move is not made and counts against no limit; an ask whose
   * store failed was made, and counts; a JSON reply its schema refuses is asked for once more,
-  * and a model's failure is `Model` in the same words.
+  * and a model's failure is `Model` in the same words. And every [[Keeping]]'s: a keep whose
+  * body is `Left` keeps none of its writes, is `Store` in its words, and its name is spent; a
+  * keep writes at no less than its floor; keeps are not limited.
   */
 abstract class MovesContract extends TestSuite {
   import MovesContract.*
@@ -43,6 +52,12 @@ abstract class MovesContract extends TestSuite {
       shapes: Vector[ujson.Value] = Vector(),
       judgment: Judged = Judged.YesNo(Yes)
   )(use: Moves^ -> A): A
+
+  /** What `use` returns, given moves as [[within]]'s within `limits`, whose keeps keep a
+    * plugin's documents in transactions opened at [[Floor]]; and that plugin's current documents
+    * afterwards, as a run at [[Floor]] reads them, most recently written first.
+    */
+  def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document])
 
   val tests = Tests {
     test(
@@ -216,10 +231,116 @@ abstract class MovesContract extends TestSuite {
         )
       )
     }
+
+    test(
+      "a keep whose body is Left keeps none of its writes, is Store in its words, and its name is spent"
+    ) {
+      val (got, docs) = keeping(MoveLimits.Zero) { m =>
+        val refused = m.keep[Kept](name("a")) { (keeper, at) =>
+          write(keeper, "k", Label.Public, at).flatMap(_ => Left(StoreError.Invalid("not today")))
+        }
+        val again = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "k", Label.Public, at))
+        val other = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", Label.Public, at))
+        Seen(Vector(refused, again, other).map(_.map(_.label)))
+      }
+      (got, docs.map(d => DocKey.value(d.key))) ==> (
+        Seen(
+          Vector(
+            Left(MoveError.Store("not today")),
+            Left(MoveError.Repeated(name("a"))),
+            Right(Label.written(Floor))
+          )
+        ),
+        Vector("b")
+      )
+    }
+
+    test("a keep writes at no less than its floor: below it at the floor, above it as asked") {
+      val above = Label.at(Level.Restricted)
+      val (got, docs) = keeping(MoveLimits.Zero) { m =>
+        Seen(
+          Vector(
+            m.keep[Kept](name("low"))((keeper, at) => write(keeper, "low", Label.Public, at)),
+            m.keep[Kept](name("high"))((keeper, at) => write(keeper, "high", above, at))
+          ).map(_.map(_.label))
+        )
+      }
+      (got, docs.map(d => (DocKey.value(d.key), Label.written(d.label)))) ==> (
+        Seen(Vector(Right(Label.written(Floor)), Right(Label.written(above)))),
+        Vector(("low", Label.written(Floor)))
+      )
+    }
+
+    test("keeps are not limited, and count against no other kind's limit") {
+      val (got, docs) = keeping(limits(1, 0)) { m =>
+        val kept = Vector("a", "b", "c").map(n =>
+          m.keep[Kept](name(n))((keeper, at) => write(keeper, n, Label.Public, at)).map(_.label)
+        )
+        Seen(kept ++ Vector(asked(m, "d"), called(m, "e")))
+      }
+      (got, docs.map(d => DocKey.value(d.key)).sorted) ==> (
+        Seen(
+          Vector.fill(3)(Right(Label.written(Floor))) ++ Vector(
+            Right(Answer),
+            Left(MoveError.OverLimit(MoveKind.Call, 0))
+          )
+        ),
+        Vector("a", "b", "c")
+      )
+    }
+
+    test("a keep named as an earlier ask is Repeated, and so is an ask or call named as a keep") {
+      val (got, docs) = keeping(limits(2, 1)) { m =>
+        val first = asked(m, "a")
+        val keptA = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "a", Label.Public, at))
+        val keptB = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", Label.Public, at))
+        Seen(Vector(first, keptA.map(_.label), keptB.map(_.label), asked(m, "b"), called(m, "b")))
+      }
+      (got, docs.map(d => DocKey.value(d.key))) ==> (
+        Seen(
+          Vector(
+            Right(Answer),
+            Left(MoveError.Repeated(name("a"))),
+            Right(Label.written(Floor)),
+            Left(MoveError.Repeated(name("b"))),
+            Left(MoveError.Repeated(name("b")))
+          )
+        ),
+        Vector("b")
+      )
+    }
   }
 }
 
 object MovesContract {
+
+  /** The label a keep wrote at, journaled as its written form. */
+  final case class Kept(label: String) extends caps.Pure
+  object Kept {
+    given Journaled[Kept] =
+      Journaled.json(k => ujson.Str(k.label), v => v.strOpt.map(Kept(_)).toRight("no label"))
+  }
+
+  /** Where a keep's documents are placed. */
+  val Here: Place = Place.under(Namespace.Task, Vector("notes"))
+
+  /** Writes `k`'s own name as its text under `k` at `label` through `keeper`, at `at`: the
+    * label it was kept at.
+    */
+  def write(keeper: DocumentKeeper, k: String, label: Label, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Kept] =
+    keeper
+      .write(
+        DocKey.of(k).fold(e => throw new java.lang.AssertionError(e), identity),
+        label,
+        Here,
+        DocText.of(k).fold(e => throw new java.lang.AssertionError(e), identity),
+        ujson.Obj(),
+        None,
+        at
+      )
+      .map(w => Kept(Label.written(w.kept)))
 
   /** What a run's moves came to, each an ask's text or a call's result. */
   final case class Seen(moves: Vector[Either[MoveError, String]]) extends caps.Pure

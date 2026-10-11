@@ -19,7 +19,7 @@ import grit.core.tool.ToolName
   * move is [[MoveError.OverLimit]]; a refused move is not made. It never diverges: it is one
   * run, never rerun. [[made]] is each move made, in order.
   */
-final class ScriptedMoves(
+class ScriptedMoves(
     limits: MoveLimits,
     asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
     calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called],
@@ -69,7 +69,7 @@ final class ScriptedMoves(
     case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
   }
 
-  private def making[A](name: MoveName, kind: MoveKind, limit: Int)(
+  protected def making[A](name: MoveName, kind: MoveKind, limit: Int)(
       answer: => Either[MoveError, A]
   ): Either[MoveError, A] = {
     val count = made.count(n => kinds.get(n).contains(kind))
