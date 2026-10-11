@@ -486,6 +486,19 @@ object TurnFixtures {
   def peek(ws: Workspace^): Tool[String]^{ws} =
     Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, p => p, reading(ws, _))
 
+  /** `peek` alone, free, reading every file as "text": a call of it succeeds. */
+  def succeeding: Toolbox[caps.CapSet^{NoCheckout}] =
+    Toolbox
+      .of[caps.CapSet^{NoCheckout}](
+        Tool(
+          ToolSpec(ToolName("peek"), "Reads a file.", path),
+          Gate.Free,
+          p => p,
+          _ => Outcome.Done("text")
+        )
+      )
+      .fold(d => throw new java.lang.AssertionError(d), identity)
+
   /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
   def poke(ws: Workspace^): Tool[String]^{ws} =
     Tool(

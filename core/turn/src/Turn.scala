@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.act.phase.{Asking, Calling, Hearing}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
-import grit.core.document.{DocLabel, Document, DocumentSearch}
+import grit.core.document.{DocLabel, Document, DocumentSearch, Pointer}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
 import grit.core.edge.Permit
 import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
@@ -108,7 +108,9 @@ import TurnVerdict.Shape
   *      [[grit.core.speech.Outcome.Replied]], its edge awaiting the reply since triage decided
   *      to answer it. A turn rooted on a heard message it drafts a reply to
   *      ([[TurnOffer.Root.Heard]] or `Named`, as its `offer` recorded) records its answer as a
-  *      draft instead ([[grit.core.store.Payload.Draft]]), then:
+  *      draft instead ([[grit.core.store.Payload.Draft]]). Either way, each document of the
+  *      window whose pointer one of the turn's calls followed is counted as followed
+  *      ([[grit.core.document.DocumentStore.followed]]), in the same transaction; then:
   *   1. `judge` — an unprompted ([[TurnOffer.Root.Heard]]) turn's draft scored against its
   *      thread and what its window recalled ([[TurnJudge]]); nothing asked when it passes or
   *      nothing was recalled. A named turn's draft is not judged; one that passed this point
@@ -1654,7 +1656,9 @@ object Turn {
     * estimate of the request that produced it: rebuilt from the same window and the same
     * entries (the turn's own were all recorded before its call, and the reply is not yet
     * among them), shaped by `shape`. When the window is `recorded` with the reply, its
-    * queries and the window itself go in first ([[writeWindow]]).
+    * queries and the window itself go in first ([[writeWindow]]). Each of the window's
+    * documents whose pointer one of the turn's calls followed, and that succeeded, is counted
+    * as followed at `at` ([[Pointer.followedIn]]).
     */
   private def append(
       offer: TurnOffer,
@@ -1696,6 +1700,8 @@ object Turn {
         .left
         .map(storeFailure)
       _ <- Asking.spent(ledger, id, turn, message, estimator.request(sent)).left.map(storeFailure)
+      followed = Pointer.followedIn(showing.documents.map(_._1), callsOf(showing.mine))
+      _ <- records.documents.followed(followed, at).left.map(storeFailure)
       _ <- offer.root match {
         case TurnOffer.Root.ByName =>
           speech
@@ -1705,6 +1711,31 @@ object Turn {
         case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named => Right(true)
       }
     } yield id
+  }
+
+  /** Each tool call among `own`, a turn's own entries, by the name it was made under, with
+    * whether its result was kept and was not an error; a call under a name no tool could have
+    * is left out.
+    */
+  private def callsOf(own: Vector[Entry]): Vector[Pointer.Call] = {
+    val failed = own
+      .map(_.payload)
+      .collect { case Payload.Result(result, _) =>
+        result.callId -> result.isError
+      }
+      .toMap
+    own.map(_.payload).flatMap {
+      case Payload.Exchange(reply) =>
+        reply.blocks.flatMap {
+          case AssistantBlock.ToolCall(id, name, arguments) =>
+            ToolName
+              .of(name)
+              .toOption
+              .map(Pointer.Call(_, arguments, failed.get(id).contains(false)))
+          case _ => None
+        }
+      case _ => Vector.empty
+    }
   }
 
   /** The `record-window` step: `turn`'s window and the queries that chose it, recorded

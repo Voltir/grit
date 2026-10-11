@@ -11,6 +11,7 @@ import grit.core.document.{
   DocText,
   DocWeight,
   DocumentTerms,
+  Following,
   InMemoryDocuments,
   Placement,
   Pointer,
@@ -24,11 +25,13 @@ import grit.core.id.{
   EntryId,
   EntrySeq,
   PluginName,
+  ToolCallId,
   TurnSeq,
   WorkflowId
 }
-import grit.core.message.Message
+import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.place.Place
+import grit.core.provider.Provider
 import grit.core.store.{
   Db,
   Entry,
@@ -43,8 +46,8 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** A turn whose window holds plugins' documents: what the model is shown of them, and what
-  * `record-window` counts.
+/** A turn whose window holds plugins' documents: what the model is shown of them, what
+  * `record-window` counts, and what `append` counts as followed.
   */
 object TurnDocumentsTests extends TestSuite {
   import TurnFixtures.*
@@ -94,6 +97,60 @@ object TurnDocumentsTests extends TestSuite {
     def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
       Right(window)
   }
+
+  /** A pointer at `path` read with `tool`. */
+  private def pointing(tool: String, path: String): Option[Pointer] =
+    Some(got(Pointer.of(got(ToolName.of(tool)), "path" -> ujson.Str(path))))
+
+  /** A model whose first reply calls `tool` with `{"path": path}`, and whose next one
+    * answers.
+    */
+  private def calling(tool: String, path: String): Scripted =
+    new Scripted((_, n) =>
+      Right(
+        if (n == 0)
+          said(
+            "",
+            AssistantBlock.ToolCall(
+              ToolCallId("c1"),
+              tool,
+              ujson.Obj("path" -> ujson.Str(path))
+            )
+          ).copy(stop = StopReason.ToolUse)
+        else said("read it")
+      )
+    )
+
+  private val appendedAt = Instant.parse("2026-10-01T09:00:00Z")
+
+  private def fixed: Clock^ = new Clock {
+    def now(): Instant = appendedAt
+    def millis(): Long = appendedAt.toEpochMilli
+    def sleep(duration: FiniteDuration): Unit = ()
+  }
+
+  /** The turn `turn` run over `documents`, its window holding `held`, its model `provider`,
+    * offered `tools`, dated [[appendedAt]].
+    */
+  private def followingBody(
+      entries: InMemoryEntryStore,
+      documents: InMemoryDocuments,
+      held: Vector[DocumentVersion],
+      provider: Provider^,
+      tools: Toolbox[caps.CapSet^{NoCheckout}]
+  )(id: WorkflowId)(using Durable^): String =
+    turnBodyWith(
+      entries,
+      provider,
+      windowing(Window(Vector.empty, Vector.empty, Vector.empty, held)),
+      new InMemoryUsageLedger,
+      documents = documents,
+      clock = fixed,
+      tools = tools
+    )(id)
+
+  private def following(documents: InMemoryDocuments, versions: Vector[DocumentVersion]) =
+    ok(documents.read(versions)(using TestTx.fake)).map(_.following)
 
   val tests = Tests {
     test(
@@ -228,6 +285,90 @@ object TurnDocumentsTests extends TestSuite {
       placements ==> Vector.fill(2)(Placement(1, at))
       assert(durable.replay(turn.workflowId, durable.history(turn.workflowId))(body(_)).isRight)
       placements ==> Vector.fill(2)(Placement(1, at))
+    }
+
+    test(
+      "a turn whose call followed a document's pointer counts it once, at its reply's time; a replayed turn counts none again"
+    ) {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val followed =
+        write(documents, digest, "Cards", "readme", "Readme.", pointing("peek", "README.md"))
+      val other = write(documents, digest, "Cards", "other", "Other.", pointing("peek", "OTHER.md"))
+      val plain = write(documents, digest, "Cards", "plain", "Plain.")
+      val held = Vector(followed, other, plain)
+      val turn = say(entries, "what does the readme say?")
+      val durable = new InMemoryDurable
+      def body(id: WorkflowId)(using Durable^): String =
+        followingBody(entries, documents, held, calling("peek", "README.md"), succeeding)(id)
+      val output = durable.run(turn.workflowId)(body(_))
+      assert(output.startsWith("replied:"))
+      following(documents, held) ==> Vector(Following.of(1, appendedAt), None, None)
+      assert(durable.replay(turn.workflowId, durable.history(turn.workflowId))(body(_)).isRight)
+      following(documents, held) ==> Vector(Following.of(1, appendedAt), None, None)
+    }
+
+    test("a heard-rooted turn whose draft's call followed a document's pointer counts it") {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val followed =
+        write(documents, digest, "Cards", "readme", "Readme.", pointing("peek", "README.md"))
+      val turn = hear(entries, "someone should read the readme")
+      new InMemoryDurable().run(turn.workflowId)(
+        followingBody(
+          entries,
+          documents,
+          Vector(followed),
+          calling("peek", "README.md"),
+          succeeding
+        )
+      )
+      (
+        ok(entries.get(turn.draftId)(using TestTx.fake)).isDefined,
+        following(documents, Vector(followed))
+      ) ==> (true, Vector(Following.of(1, appendedAt)))
+    }
+
+    test(
+      "a call refused at bind follows nothing: a pointer naming a tool the turn was not offered, as a service its room may not send to is not"
+    ) {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val pointed =
+        write(documents, digest, "Cards", "readme", "Readme.", pointing("fetch", "README.md"))
+      val turn = say(entries, "what does the readme say?")
+      val output = new InMemoryDurable().run(turn.workflowId)(
+        followingBody(
+          entries,
+          documents,
+          Vector(pointed),
+          calling("fetch", "README.md"),
+          succeeding
+        )
+      )
+      (output.startsWith("replied:"), following(documents, Vector(pointed))) ==> (
+        true,
+        Vector(None)
+      )
+    }
+
+    test("a turn offered no tools counts no follow, and still appends its reply") {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val pointed =
+        write(documents, digest, "Cards", "readme", "Readme.", pointing("peek", "README.md"))
+      val turn = say(entries, "hello")
+      new InMemoryDurable().run(turn.workflowId)(
+        followingBody(entries, documents, Vector(pointed), new RecordingProvider, noTools)
+      )
+      (
+        ok(entries.get(turn.replyId)(using TestTx.fake)).isDefined,
+        following(documents, Vector(pointed))
+      ) ==> (true, Vector(None))
     }
   }
 }
