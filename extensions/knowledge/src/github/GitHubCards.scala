@@ -1,0 +1,109 @@
+package grit.knowledge.github
+
+import grit.core.document.Pointer
+import grit.core.id.{CorpusName, ScheduleKey}
+import grit.core.place.{Place, Service}
+import grit.core.tool.ToolName
+import grit.core.triage.Corpus
+import grit.core.visibility.Label
+
+/** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
+  * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
+  * `readTool`, `{server}_get_file_contents`, `server` being the name the deployment gave that
+  * MCP server. Of the repository, the paths under `include` (each a path prefix, or a file's
+  * path) and, of files, those whose extension is in `extensions` (every one when empty); at
+  * most `maxUnits` cards, the walk stopping there.
+  *
+  * `label` is what the repository contains, `None` for its service place's label: its sync
+  * schedules run at that clearance, and every card is kept at no less. It may be above the
+  * service's (a confidential repository behind an internal service), never below. The head of
+  * each file summarised (8 KB) goes to the catalog's summary model, a third party, whatever
+  * `label` is: declaring the source consents to that.
+  *
+  * Windows draw on its cards where a conversation's scope holds `at` (ADR 0028); whether a turn
+  * reads one is its label's business alone. A repository outside the server's own scope is
+  * refused by its edge: every call fails.
+  */
+final case class GitHubCards private (
+    corpus: CorpusName,
+    service: Service,
+    readTool: ToolName,
+    owner: String,
+    repo: String,
+    ref: String,
+    include: Vector[String],
+    extensions: Set[String],
+    maxUnits: Int,
+    label: Option[Label],
+    at: Place,
+    syncs: Vector[SyncSchedule]
+) extends caps.Pure {
+
+  /** The arguments reading the unit at `path` at `ref`: `owner`, `repo`, `path` and `ref`. */
+  def reading(path: String): ujson.Obj =
+    ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> path, "ref" -> ref)
+
+  /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no
+    * `ref`, so a read of it at any ref follows; or why not: those over
+    * [[grit.core.document.Pointer.of]]'s 1000 characters of JSON (a path near that long).
+    */
+  def pointer(path: String): Either[String, Pointer] =
+    Pointer.of(
+      readTool,
+      "owner" -> ujson.Str(owner),
+      "path" -> ujson.Str(path),
+      "repo" -> ujson.Str(repo)
+    )
+}
+
+object GitHubCards {
+
+  /** These, or why not: `corpus` supplies no service; `server` makes no tool name
+    * (`grit.core.tool.ToolName.of` of `{server}_get_file_contents`); `owner`, `repo` or `ref`
+    * blank; `maxUnits` under 1; no `syncs`, or two of one key.
+    */
+  def of(
+      corpus: Corpus,
+      server: String,
+      owner: String,
+      repo: String,
+      ref: String,
+      include: Vector[String],
+      extensions: Set[String],
+      maxUnits: Int,
+      label: Option[Label],
+      at: Place,
+      syncs: Vector[SyncSchedule]
+  ): Either[String, GitHubCards] =
+    for {
+      service <- corpus.supplies.toRight(
+        s"the corpus ${CorpusName.value(corpus.name)} supplies no service"
+      )
+      tool <- ToolName.of(s"${server}_get_file_contents")
+      _ <- Either.cond(!owner.isBlank, (), "a repository's owner is not blank")
+      _ <- Either.cond(!repo.isBlank, (), "a repository's name is not blank")
+      _ <- Either.cond(!ref.isBlank, (), "a repository's ref is not blank")
+      _ <- Either.cond(maxUnits >= 1, (), s"maxUnits is at least 1, not $maxUnits")
+      _ <- Either.cond(syncs.nonEmpty, (), "a source has at least one sync schedule")
+      _ <- syncs
+        .map(_.key)
+        .diff(syncs.map(_.key).distinct)
+        .headOption
+        .fold(Right(()))(key =>
+          Left(s"a source's sync schedules have one key each: ${ScheduleKey.value(key)} is two")
+        )
+    } yield new GitHubCards(
+      corpus.name,
+      service,
+      tool,
+      owner,
+      repo,
+      ref,
+      include,
+      extensions,
+      maxUnits,
+      label,
+      at,
+      syncs
+    )
+}

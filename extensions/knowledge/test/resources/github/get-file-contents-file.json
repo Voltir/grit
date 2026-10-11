@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-7eab724bff5dde51eb8a4c1453d87d9ca568f877"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "successfully downloaded text file (SHA: 3068d045f21e723190d01fed918ed7e6651bf59a)"
+    },
+    {
+      "type": "resource",
+      "resource": {
+        "uri": "repo://octocat/Hello-World/sha/0123456789abcdef0123456789abcdef01234567/contents/docs/testing.md",
+        "mimeType": "text/plain; charset=utf-8",
+        "text": "# Testing\n\nA short neutral page, standing in for the file GitHub answered with: how the\nproject is tested, unit tests beside the code and end-to-end tests apart.\n"
+      }
+    }
+  ],
+  "resultType": "complete"
+}

@@ -1,0 +1,161 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-7eab724bff5dde51eb8a4c1453d87d9ca568f877"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "[{\"type\":\"file\",\"name\":\"error-handling.md\",\"path\":\"docs/error-handling.md\",\"sha\":\"d483ebdec2b55d509f3ad89a83cd713e45d36337\",\"size\":6016,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/error-handling.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/error-handling.md\"},{\"type\":\"file\",\"name\":\"feature-flags.md\",\"path\":\"docs/feature-flags.md\",\"sha\":\"2924b9f3d7d8ce39fb2ef1018a1fdc7a3fd4bc45\",\"size\":25024,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/feature-flags.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/feature-flags.md\"},{\"type\":\"file\",\"name\":\"github-app-auth.md\",\"path\":\"docs/github-app-auth.md\",\"sha\":\"f1da08c7bc1b8afa9f3b89f115edaae415c2b6d7\",\"size\":2688,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/github-app-auth.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/github-app-auth.md\"},{\"type\":\"file\",\"name\":\"host-integration.md\",\"path\":\"docs/host-integration.md\",\"sha\":\"9a1d9396ffacf95acc1df58129b394d5153c282a\",\"size\":13083,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/host-integration.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/host-integration.md\"},{\"type\":\"file\",\"name\":\"insiders-features.md\",\"path\":\"docs/insiders-features.md\",\"sha\":\"5738252c7c26a1f586948ebf366c6a15e2958586\",\"size\":8947,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/insiders-features.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/insiders-features.md\"},{\"type\":\"dir\",\"name\":\"installation-guides\",\"path\":\"docs/installation-guides\",\"sha\":\"06826bd559e13531873832a7be3b4b9ccd27f4a7\",\"size\":0,\"html_url\":\"https://github.com/octocat/Hello-World/tree/0123456789abcdef0123456789abcdef01234567/docs/installation-guides\"},{\"type\":\"file\",\"name\":\"oauth-login.md\",\"path\":\"docs/oauth-login.md\",\"sha\":\"b2016580bb0d1ce136009befc97745f368f155f9\",\"size\":11261,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/oauth-login.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/oauth-login.md\"},{\"type\":\"file\",\"name\":\"policies-and-governance.md\",\"path\":\"docs/policies-and-governance.md\",\"sha\":\"d7f52212ab7ecb3f1f5273a16a175c96610b8470\",\"size\":16498,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/policies-and-governance.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/policies-and-governance.md\"},{\"type\":\"file\",\"name\":\"remote-server.md\",\"path\":\"docs/remote-server.md\",\"sha\":\"be910091480713bf6110de692bbcd8d2b69d545c\",\"size\":29854,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/remote-server.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/remote-server.md\"},{\"type\":\"file\",\"name\":\"scope-filtering.md\",\"path\":\"docs/scope-filtering.md\",\"sha\":\"2055db1483ef1d7a72a4ce0febb0dbb7e095313a\",\"size\":6814,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/scope-filtering.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/scope-filtering.md\"},{\"type\":\"file\",\"name\":\"server-configuration.md\",\"path\":\"docs/server-configuration.md\",\"sha\":\"25c641153edf99c5a0b1b30d81ecabc7b6647a3d\",\"size\":13562,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/server-configuration.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/server-configuration.md\"},{\"type\":\"file\",\"name\":\"streamable-http.md\",\"path\":\"docs/streamable-http.md\",\"sha\":\"d5fc8a5d0dbdbb3eb1a264dd2c765013149797d3\",\"size\":8120,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/streamable-http.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/streamable-http.md\"},{\"type\":\"file\",\"name\":\"testing.md\",\"path\":\"docs/testing.md\",\"sha\":\"2186b564b7665add4ff86de3317fc97efbd37530\",\"size\":2185,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/testing.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/testing.md\"},{\"type\":\"file\",\"name\":\"tool-renaming.md\",\"path\":\"docs/tool-renaming.md\",\"sha\":\"050ac9b77aa68e796454ed62df69cd664377a5b2\",\"size\":2783,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/tool-renaming.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/tool-renaming.md\"},{\"type\":\"file\",\"name\":\"toolsets-and-icons.md\",\"path\":\"docs/toolsets-and-icons.md\",\"sha\":\"0e54b1f16ac60d78cdfac5fa9ac02684b363c501\",\"size\":6140,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/toolsets-and-icons.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/toolsets-and-icons.md\"},{\"type\":\"file\",\"name\":\"typed-tool-schemas.md\",\"path\":\"docs/typed-tool-schemas.md\",\"sha\":\"2065872be00b0baa511305234b36e83719fbfe8f\",\"size\":3860,\"html_url\":\"https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/typed-tool-schemas.md\",\"download_url\":\"https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/typed-tool-schemas.md\"}]"
+    }
+  ],
+  "structuredContent": [
+    {
+      "type": "file",
+      "name": "error-handling.md",
+      "path": "docs/error-handling.md",
+      "sha": "d483ebdec2b55d509f3ad89a83cd713e45d36337",
+      "size": 6016,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/error-handling.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/error-handling.md"
+    },
+    {
+      "type": "file",
+      "name": "feature-flags.md",
+      "path": "docs/feature-flags.md",
+      "sha": "2924b9f3d7d8ce39fb2ef1018a1fdc7a3fd4bc45",
+      "size": 25024,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/feature-flags.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/feature-flags.md"
+    },
+    {
+      "type": "file",
+      "name": "github-app-auth.md",
+      "path": "docs/github-app-auth.md",
+      "sha": "f1da08c7bc1b8afa9f3b89f115edaae415c2b6d7",
+      "size": 2688,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/github-app-auth.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/github-app-auth.md"
+    },
+    {
+      "type": "file",
+      "name": "host-integration.md",
+      "path": "docs/host-integration.md",
+      "sha": "9a1d9396ffacf95acc1df58129b394d5153c282a",
+      "size": 13083,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/host-integration.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/host-integration.md"
+    },
+    {
+      "type": "file",
+      "name": "insiders-features.md",
+      "path": "docs/insiders-features.md",
+      "sha": "5738252c7c26a1f586948ebf366c6a15e2958586",
+      "size": 8947,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/insiders-features.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/insiders-features.md"
+    },
+    {
+      "type": "dir",
+      "name": "installation-guides",
+      "path": "docs/installation-guides",
+      "sha": "06826bd559e13531873832a7be3b4b9ccd27f4a7",
+      "size": 0,
+      "html_url": "https://github.com/octocat/Hello-World/tree/0123456789abcdef0123456789abcdef01234567/docs/installation-guides"
+    },
+    {
+      "type": "file",
+      "name": "oauth-login.md",
+      "path": "docs/oauth-login.md",
+      "sha": "b2016580bb0d1ce136009befc97745f368f155f9",
+      "size": 11261,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/oauth-login.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/oauth-login.md"
+    },
+    {
+      "type": "file",
+      "name": "policies-and-governance.md",
+      "path": "docs/policies-and-governance.md",
+      "sha": "d7f52212ab7ecb3f1f5273a16a175c96610b8470",
+      "size": 16498,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/policies-and-governance.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/policies-and-governance.md"
+    },
+    {
+      "type": "file",
+      "name": "remote-server.md",
+      "path": "docs/remote-server.md",
+      "sha": "be910091480713bf6110de692bbcd8d2b69d545c",
+      "size": 29854,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/remote-server.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/remote-server.md"
+    },
+    {
+      "type": "file",
+      "name": "scope-filtering.md",
+      "path": "docs/scope-filtering.md",
+      "sha": "2055db1483ef1d7a72a4ce0febb0dbb7e095313a",
+      "size": 6814,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/scope-filtering.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/scope-filtering.md"
+    },
+    {
+      "type": "file",
+      "name": "server-configuration.md",
+      "path": "docs/server-configuration.md",
+      "sha": "25c641153edf99c5a0b1b30d81ecabc7b6647a3d",
+      "size": 13562,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/server-configuration.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/server-configuration.md"
+    },
+    {
+      "type": "file",
+      "name": "streamable-http.md",
+      "path": "docs/streamable-http.md",
+      "sha": "d5fc8a5d0dbdbb3eb1a264dd2c765013149797d3",
+      "size": 8120,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/streamable-http.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/streamable-http.md"
+    },
+    {
+      "type": "file",
+      "name": "testing.md",
+      "path": "docs/testing.md",
+      "sha": "2186b564b7665add4ff86de3317fc97efbd37530",
+      "size": 2185,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/testing.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/testing.md"
+    },
+    {
+      "type": "file",
+      "name": "tool-renaming.md",
+      "path": "docs/tool-renaming.md",
+      "sha": "050ac9b77aa68e796454ed62df69cd664377a5b2",
+      "size": 2783,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/tool-renaming.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/tool-renaming.md"
+    },
+    {
+      "type": "file",
+      "name": "toolsets-and-icons.md",
+      "path": "docs/toolsets-and-icons.md",
+      "sha": "0e54b1f16ac60d78cdfac5fa9ac02684b363c501",
+      "size": 6140,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/toolsets-and-icons.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/toolsets-and-icons.md"
+    },
+    {
+      "type": "file",
+      "name": "typed-tool-schemas.md",
+      "path": "docs/typed-tool-schemas.md",
+      "sha": "2065872be00b0baa511305234b36e83719fbfe8f",
+      "size": 3860,
+      "html_url": "https://github.com/octocat/Hello-World/blob/0123456789abcdef0123456789abcdef01234567/docs/typed-tool-schemas.md",
+      "download_url": "https://raw.githubusercontent.com/octocat/Hello-World/0123456789abcdef0123456789abcdef01234567/docs/typed-tool-schemas.md"
+    }
+  ],
+  "resultType": "complete"
+}

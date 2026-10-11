@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-7eab724bff5dde51eb8a4c1453d87d9ca568f877"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"content\":[{\"text\":\"Resolved potential matches in the repository tree (resolved refs: {\\\"Ref\\\":\\\"refs/heads/main\\\",\\\"SHA\\\":\\\"0123456789abcdef0123456789abcdef01234567\\\"}, matching files: [\\\"docs/testing.md\\\"]).\",\"type\":\"text\"}]}"
+    }
+  ],
+  "structuredContent": {
+    "content": [
+      {
+        "text": "Resolved potential matches in the repository tree (resolved refs: {\"Ref\":\"refs/heads/main\",\"SHA\":\"0123456789abcdef0123456789abcdef01234567\"}, matching files: [\"docs/testing.md\"]).",
+        "type": "text"
+      }
+    ]
+  },
+  "resultType": "complete"
+}
