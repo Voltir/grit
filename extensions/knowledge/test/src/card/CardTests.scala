@@ -17,10 +17,9 @@ object CardTests extends TestSuite {
     right(Pointer.of(ToolName("github_get_file_contents"), "path" -> ujson.Str("docs/testing.md")))
 
   private def card(terms: Vector[String]): Card =
-    Card.of(
+    Card.file(
       corpus,
       "docs/testing.md",
-      UnitKind.File,
       version,
       right(CardSummary.of("How the project is tested.", terms)),
       pointer
@@ -64,6 +63,34 @@ object CardTests extends TestSuite {
           "version" -> "3068d045f21e723190d01fed918ed7e6651bf59a"
         )
       )
+    }
+
+    test("a directory's card's data holds the scope it was made under too") {
+      val scope = Scope.of(Set("include docs", "extension md"))
+      val dir = Card.directory(
+        corpus,
+        "docs",
+        version,
+        scope,
+        right(CardSummary.of("The directory docs.", Vector.empty)),
+        pointer
+      )
+      assert(
+        dir.data == ujson.Obj(
+          "kind" -> "directory",
+          "path" -> "docs",
+          "terms" -> ujson.Arr(),
+          "version" -> "3068d045f21e723190d01fed918ed7e6651bf59a",
+          "scope" -> Scope.value(scope)
+        )
+      )
+    }
+
+    test("a scope is the SHA-256 of its terms sorted, one to a line, whatever their order") {
+      // printf 'extension md\ninclude docs' | sha256sum
+      val pinned = "367673b8c5a2e8a980174976b881e4fa49f6e5064f3775993db49cc7a5206e10"
+      val scope = Scope.of(Set("include docs", "extension md"))
+      assert(Scope.value(scope) == pinned, Scope.parse(pinned) == Right(scope))
     }
 
     test("a key read back must be 64 lowercase hex digits") {

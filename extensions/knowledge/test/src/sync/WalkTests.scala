@@ -9,7 +9,7 @@ import grit.core.job.SlotRule
 import grit.core.place.Service
 import grit.core.triage.Corpus
 import grit.core.visibility.{Label, Level}
-import grit.knowledge.card.{Card, CardKey, CardSummary, UnitKind, UnitVersion}
+import grit.knowledge.card.{Card, CardKey, CardSummary, Scope, UnitKind, UnitVersion}
 import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing, SyncSchedule}
 
 import utest.*
@@ -37,15 +37,19 @@ object WalkTests extends TestSuite {
   private val corpus = Corpus(name, "the team's repository", service.place, Some(service))
   private val rule = SlotRule.Daily(LocalTime.of(3, 0), ZoneId.of("UTC"))
 
-  private def source(maxUnits: Int = 100): GitHubCards = right(
+  private def source(
+      maxUnits: Int = 100,
+      include: Vector[String] = Vector("docs"),
+      extensions: Set[String] = Set("md")
+  ): GitHubCards = right(
     GitHubCards.of(
       corpus,
       "github",
       "octocat",
       "Hello-World",
       "main",
-      Vector("docs"),
-      Set("md"),
+      include,
+      extensions,
       maxUnits,
       None,
       service.place,
@@ -76,14 +80,20 @@ object WalkTests extends TestSuite {
   private val summary = right(CardSummary.of("What the file holds.", Vector("a term")))
 
   private def held(path: String, v: Int, label: Label = floor): Held =
-    Held.of(name, path, label, sha(v))
+    Held.of(name, path, label, sha(v), None)
 
-  /** Every card of the repository as first written, kept at `label`. */
-  private def heldAll(label: Label = floor): Vector[Held] = Vector(
-    held("docs", 10, label),
+  /** A directory's card held at `label`, made under `scope`. */
+  private def heldDir(path: String, v: Int, label: Label, scope: Scope): Held =
+    Held.of(name, path, label, sha(v), Some(scope))
+
+  /** Every card of the repository as first written, kept at `label`, its directories' made
+    * under `scope`.
+    */
+  private def heldAll(label: Label = floor, scope: Scope = source().scope): Vector[Held] = Vector(
+    heldDir("docs", 10, label, scope),
     held("docs/a.md", 1, label),
     held("docs/b.md", 2, label),
-    held("docs/guide", 20, label),
+    heldDir("docs/guide", 20, label, scope),
     held("docs/guide/c.md", 3, label)
   )
 
@@ -136,10 +146,14 @@ object WalkTests extends TestSuite {
       listings: Map[String, Listing],
       files: Map[String, Fetched] = Map.empty,
       perRun: Int = 5,
-      maxUnits: Int = 100
+      maxUnits: Int = 100,
+      include: Vector[String] = Vector("docs"),
+      extensions: Set[String] = Set("md")
   ): (Vector[String], Synced) = {
-    val (steps, synced) =
-      drive(Walk.start(source(maxUnits), perRun, floor, held), moves(listings, files))
+    val (steps, synced) = drive(
+      Walk.start(source(maxUnits, include, extensions), perRun, floor, held),
+      moves(listings, files)
+    )
     (steps.map(shown), synced)
   }
 
@@ -190,10 +204,9 @@ object WalkTests extends TestSuite {
     test("a file's card holds its summary, its read's SHA and its pointer; its head is its text") {
       val (listings, files) = changedA(read("docs/a.md", 4))
       val made = steps(listings, files)
-      val card = Card.of(
+      val card = Card.file(
         name,
         "docs/a.md",
-        UnitKind.File,
         sha(4),
         summary,
         right(source().pointer("docs/a.md"))
@@ -207,11 +220,11 @@ object WalkTests extends TestSuite {
     test("a directory's card says what of it the source holds, at its tree's SHA, with no ask") {
       val (listings, files) = changedA(read("docs/a.md", 4))
       val words = "The directory docs holds 2 files and 1 directory: a.md, b.md, guide/."
-      val card = Card.of(
+      val card = Card.directory(
         name,
         "docs",
-        UnitKind.Directory,
         sha(11),
+        source().scope,
         right(CardSummary.of(words, Vector.empty)),
         right(source().pointer("docs"))
       )
@@ -381,6 +394,65 @@ object WalkTests extends TestSuite {
           "write docs/a.md @4",
           "write docs @11",
           "drop docs/a.md at internal"
+        )
+      )
+    }
+
+    test(
+      "extensions widened, a directory held under the old scope is listed and its new files read"
+    ) {
+      val (steps, result) = run(
+        heldAll(),
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+        Map("docs/logo.png" -> read("docs/logo.png", 92)),
+        extensions = Set("md", "png")
+      )
+      assert(
+        steps == Vector(
+          "list /",
+          "list docs",
+          "list docs/guide",
+          "write docs/guide @20",
+          "read docs/logo.png",
+          "summarise docs/logo.png @92",
+          "write docs/logo.png @92",
+          "write docs @10"
+        ),
+        result == synced(written = 3, unchanged = 3)
+      )
+    }
+
+    test("extensions narrowed, the cards of the files no longer taken are dropped") {
+      val wide = source(extensions = Set("md", "png")).scope
+      val (steps, _) = run(
+        heldAll(scope = wide) :+ held("docs/logo.png", 92),
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide)
+      )
+      assert(
+        steps == Vector(
+          "list /",
+          "list docs",
+          "list docs/guide",
+          "write docs/guide @20",
+          "write docs @10",
+          "drop docs/logo.png at confidential"
+        )
+      )
+    }
+
+    test("include narrowed beneath a directory, that directory's card is dropped with the rest") {
+      val (steps, _) = run(
+        heldAll(),
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+        include = Vector("docs/guide")
+      )
+      assert(
+        steps == Vector(
+          "list /",
+          "list docs",
+          "list docs/guide",
+          "write docs/guide @20",
+          "drop docs at confidential, docs/a.md at confidential, docs/b.md at confidential"
         )
       )
     }

@@ -7,6 +7,7 @@ import grit.core.job.SlotRule
 import grit.core.place.Service
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
+import grit.knowledge.card.Scope
 
 import utest.*
 
@@ -105,6 +106,32 @@ object GitHubCardsTests extends TestSuite {
           Left("a source's sync schedules have one key each: nightly is two")
       )
       assert(cards(syncs = Vector(sync("nightly"), sync("hourly"))).isRight)
+    }
+
+    test("of trims include's slashes and extensions' dots, and its scope digests the two") {
+      def of(include: Vector[String], extensions: Set[String]) = right(
+        GitHubCards.of(
+          corpus,
+          "github",
+          "octocat",
+          "Hello-World",
+          "main",
+          include,
+          extensions,
+          100,
+          None,
+          service.place,
+          Vector(sync("nightly"))
+        )
+      )
+      val trimmed = of(Vector("/docs/"), Set(".md"))
+      assert(
+        trimmed.include == Vector("docs"),
+        trimmed.extensions == Set("md"),
+        trimmed.scope == Scope.of(Set("include docs", "extension md")),
+        of(Vector("docs"), Set("md", "txt")).scope ==
+          Scope.of(Set("include docs", "extension md", "extension txt"))
+      )
     }
 
     test("a sync schedule refuses perRun under 1") {

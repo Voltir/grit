@@ -9,11 +9,13 @@ import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing}
 
 /** One run's walk of one source, as data: from the cards it holds, depth first by path from the
   * repository's root, each next step. Of the repository it walks the paths `include` names and,
-  * of files, those whose extension is one of `extensions` (each with or without its dot); the
+  * of files, those whose extension is one of `extensions`; the
   * directories on the way to an included path are listed and carry no card.
   *
-  * A directory whose tree SHA its held card records is not listed: each card held beneath it is
-  * unchanged. A file is read only when its listed SHA is not its held card's, and its card is
+  * A directory whose held card records its tree SHA, made under the source's
+  * [[grit.knowledge.github.GitHubCards.scope]], is not listed: each card held beneath it is
+  * unchanged. One made under another scope is listed, so a changed `include` or `extensions`
+  * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its card is
   * written at the SHA it was read at: from a summary of its first 8 KB, or, when its text is
   * blank, as `An empty file.` with no ask. A directory's card is written from its listing, with
   * no ask, after its children, and only when each was brought up to date. A unit's card held
@@ -29,7 +31,8 @@ import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing}
   * so the next run lists those again.
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop: of the cards of units gone
-  * from directories it listed in full (or outside the source now), and of the copies at other
+  * from directories it listed in full (or outside the source now, a directory it lists only as
+  * on the way to an included path among them), and of the copies at other
   * labels of units it kept current at the floor. A `Partial` listing, or a directory a stopped
   * walk never reached, drops nothing beneath it. A step that came to [[Outcome.Stopped]], or to
   * an outcome not of its kind, ends the walk at once, with no drop.
@@ -86,8 +89,17 @@ object Walk {
     /** Whether the copy of `key` the walk goes by records `version`. */
     def holds(key: CardKey, version: UnitVersion): Boolean = best(key).exists(_.version == version)
 
-    private val include: Vector[String] = cards.include.map(_.stripPrefix("/").stripSuffix("/"))
-    private val extensions: Set[String] = cards.extensions.map(_.stripPrefix("."))
+    /** Whether `entry`'s held card is up to date: at its version and, a directory's, made under
+      * the source's scope.
+      */
+    def current(entry: Entry): Boolean = {
+      val key = keyOf(entry.path)
+      holds(key, entry.version) &&
+      (entry.kind == UnitKind.File || best(key).exists(_.scope.contains(cards.scope)))
+    }
+
+    private val include: Vector[String] = cards.include
+    private val extensions: Set[String] = cards.extensions
 
     def inScope(entry: Entry): Boolean =
       include.exists(i => i.isEmpty || entry.path == i || entry.path.startsWith(i + "/")) &&
@@ -143,6 +155,7 @@ object Walk {
       unwritten: Vector[Unwritten],
       undone: Set[String],
       listed: Map[String, Set[String]],
+      passed: Set[String],
       settled: Vector[CardKey],
       stopped: Option[String]
   ) extends caps.Pure {
@@ -176,6 +189,7 @@ object Walk {
         Vector.empty,
         Set.empty,
         Map.empty,
+        Set.empty,
         Vector.empty,
         None
       )
@@ -190,14 +204,14 @@ object Walk {
       case (Waiting.Reading(path, pointer), Outcome.Fetched(fetched)) =>
         fetched match {
           case Fetched.Text(text, sha) if text.isBlank =>
-            write(env, s, Card.of(env.cards.corpus, path, UnitKind.File, sha, Empty, pointer))
+            write(env, s, Card.file(env.cards.corpus, path, sha, Empty, pointer))
           case Fetched.Text(text, sha) =>
             s.copy(asked = s.asked + 1)
               .step(Step.Summarise(path, head(text), sha), Waiting.Summary(path, sha, pointer))
           case Fetched.Unversioned(why) => advance(env, unwritten(s, path, why))
         }
       case (Waiting.Summary(path, sha, pointer), Outcome.Summarised(summary)) =>
-        write(env, s, Card.of(env.cards.corpus, path, UnitKind.File, sha, summary, pointer))
+        write(env, s, Card.file(env.cards.corpus, path, sha, summary, pointer))
       case (Waiting.Wrote(key), Outcome.Kept) =>
         advance(
           env,
@@ -252,7 +266,10 @@ object Walk {
     val tasks =
       children.map(e => if (env.inScope(e)) Task.Visit(e) else Task.Pass(e.path)) ++
         version.map(Task.Finish(path, _, carded))
-    val s1 = s.copy(stack = tasks.toList ++ s.stack)
+    val s1 = s.copy(
+      stack = tasks.toList ++ s.stack,
+      passed = if (version.isEmpty) s.passed + path else s.passed
+    )
     listing match {
       case Listing.Complete(_) =>
         s1.copy(listed = s1.listed.updated(path, children.map(_.path).toSet))
@@ -283,7 +300,7 @@ object Walk {
           }
         case Task.Visit(entry) =>
           val key = env.keyOf(entry.path)
-          if (env.holds(key, entry.version)) {
+          if (env.current(entry)) {
             entry.kind match {
               case UnitKind.File =>
                 known(env, s, popped, key) match {
@@ -330,7 +347,14 @@ object Walk {
                     write(
                       env,
                       popped,
-                      Card.of(env.cards.corpus, path, UnitKind.Directory, version, summary, pointer)
+                      Card.directory(
+                        env.cards.corpus,
+                        path,
+                        version,
+                        env.cards.scope,
+                        summary,
+                        pointer
+                      )
                     )
                 }
             }
@@ -374,7 +398,7 @@ object Walk {
     */
   private def unstacked(env: Env, s: State): State = {
     val left = s.stack.count {
-      case Task.Visit(entry) => !env.holds(env.keyOf(entry.path), entry.version)
+      case Task.Visit(entry) => !env.current(entry)
       case Task.Known(key) => env.replacing(key).nonEmpty
       case Task.Finish(_, _, _) => true
       case Task.Pass(_) => false
@@ -382,7 +406,8 @@ object Walk {
     s.copy(stack = Nil, left = s.left + left)
   }
 
-  /** The copies held of units gone from directories listed in full, and the copies at other
+  /** The copies held of units gone from directories listed in full or listed as on the way to
+    * an included path, and the copies at other
     * labels of units this walk kept current at the floor, but the one each write or relabel
     * replaced.
     */
@@ -391,7 +416,7 @@ object Walk {
     env.held.filter { h =>
       if (settled.contains(h.key)) h.label != env.floor && !replacedBy(env, h)
       else
-        s.listed.exists { (dir, children) =>
+        s.passed.contains(h.path) || s.listed.exists { (dir, children) =>
           beneath(h.path, dir) && !children.contains(toward(dir, h.path))
         }
     }

@@ -9,14 +9,16 @@ enum UnitKind(val word: String) {
   case Directory extends UnitKind("directory")
 }
 
-/** A unit's card: its key, its path in its source, its kind and version, its summary, and the
-  * call that reads it; its document's key, text and data.
+/** A unit's card: its key, its path in its source, its kind and version, the scope a
+  * directory's card was made under (none for a file's), its summary, and the call that reads it;
+  * its document's key, text and data.
   */
 final case class Card private (
     key: CardKey,
     path: String,
     kind: UnitKind,
     version: UnitVersion,
+    scope: Option[Scope],
     summary: CardSummary,
     pointer: Pointer
 ) extends caps.Pure {
@@ -37,25 +39,49 @@ final case class Card private (
     DocText.of(s).fold(why => throw new IllegalStateException(why), identity)
   }
 
-  /** Its document's data: `{"kind": "file" or "directory", "path", "terms", "version"}`. */
+  /** Its document's data: `{"kind": "file" or "directory", "path", "terms", "version"}`, and a
+    * directory's `"scope"`.
+    */
   def data: ujson.Obj =
-    ujson.Obj(
-      "kind" -> kind.word,
-      "path" -> path,
-      "terms" -> ujson.Arr.from(summary.terms.map(ujson.Str(_))),
-      "version" -> UnitVersion.value(version)
+    ujson.Obj.from(
+      Vector[(String, ujson.Value)](
+        "kind" -> kind.word,
+        "path" -> path,
+        "terms" -> ujson.Arr.from(summary.terms.map(ujson.Str(_))),
+        "version" -> UnitVersion.value(version)
+      ) ++ scope.map(s => "scope" -> ujson.Str(Scope.value(s)))
     )
 }
 
 object Card {
 
-  /** The card of `corpus`'s unit at `path`, keyed [[CardKey.of]] of the two. */
-  def of(
+  /** The card of `corpus`'s file at `path`, keyed [[CardKey.of]] of the two. */
+  def file(
       corpus: CorpusName,
       path: String,
-      kind: UnitKind,
       version: UnitVersion,
       summary: CardSummary,
       pointer: Pointer
-  ): Card = new Card(CardKey.of(corpus, path), path, kind, version, summary, pointer)
+  ): Card =
+    new Card(CardKey.of(corpus, path), path, UnitKind.File, version, None, summary, pointer)
+
+  /** The card of `corpus`'s directory at `path`, made under `scope`, keyed [[CardKey.of]] of
+    * `corpus` and `path`.
+    */
+  def directory(
+      corpus: CorpusName,
+      path: String,
+      version: UnitVersion,
+      scope: Scope,
+      summary: CardSummary,
+      pointer: Pointer
+  ): Card = new Card(
+    CardKey.of(corpus, path),
+    path,
+    UnitKind.Directory,
+    version,
+    Some(scope),
+    summary,
+    pointer
+  )
 }

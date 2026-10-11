@@ -7,7 +7,7 @@ import grit.core.id.{CorpusName, DocKey, DocumentVersion, PluginName}
 import grit.core.place.Service
 import grit.core.tool.ToolName
 import grit.core.visibility.{Label, Level}
-import grit.knowledge.card.{Card, CardSummary, UnitKind, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, Scope, UnitVersion}
 
 import utest.*
 
@@ -23,7 +23,7 @@ object HeldTests extends TestSuite {
   private val pointer = right(
     Pointer.of(right(ToolName.of("github_get_file_contents")), "path" -> ujson.Str("docs/a.md"))
   )
-  private val card = Card.of(name, "docs/a.md", UnitKind.File, version, summary, pointer)
+  private val card = Card.file(name, "docs/a.md", version, summary, pointer)
 
   private def document(key: DocKey = card.docKey, data: ujson.Value = card.data): Document =
     Document(
@@ -42,7 +42,18 @@ object HeldTests extends TestSuite {
 
   val tests = Tests {
     test("a card's document reads back as held at its own label, path and version") {
-      assert(Held.read(name, document()) == Right(Some(Held.of(name, "docs/a.md", label, version))))
+      assert(
+        Held.read(name, document()) == Right(Some(Held.of(name, "docs/a.md", label, version, None)))
+      )
+    }
+
+    test("a directory's card reads back with the scope it was made under") {
+      val scope = Scope.of(Set("include docs"))
+      val dir = Card.directory(name, "docs", version, scope, summary, pointer)
+      assert(
+        Held.read(name, document(dir.docKey, dir.data)) ==
+          Right(Some(Held.of(name, "docs", label, version, Some(scope))))
+      )
     }
 
     test("another source's card is not held") {
@@ -59,7 +70,12 @@ object HeldTests extends TestSuite {
         Held.read(name, document(data = noPath)) ==
           Left(s"the document $k is no card: its data holds no string path"),
         Held.read(name, document(data = badVersion)) ==
-          Left(s"the document $k is no card: its data's version, v1, is no git SHA")
+          Left(s"the document $k is no card: its data's version, v1, is no git SHA"),
+        Held.read(
+          name,
+          document(data = ujson.Obj.from(card.data.value.toSeq :+ ("scope" -> ujson.Num(7))))
+        ) ==
+          Left(s"the document $k is no card: its data's scope, 7, is no scope")
       )
     }
   }

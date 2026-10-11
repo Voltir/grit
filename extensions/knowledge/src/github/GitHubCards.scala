@@ -6,13 +6,15 @@ import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
+import grit.knowledge.card.Scope
 
 /** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
   * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
   * `readTool`, `{server}_get_file_contents`, `server` being the name the deployment gave that
   * MCP server. Of the repository, the paths under `include` (each a path prefix, or a file's
-  * path) and, of files, those whose extension is in `extensions` (every one when empty); at
-  * most `maxUnits` cards, the walk stopping there.
+  * path, with no leading or trailing `/`; `""` for every path) and, of files, those whose
+  * extension is in `extensions` (each with no dot; every one when empty), which [[scope]]
+  * digests; at most `maxUnits` cards, the walk stopping there.
   *
   * `label` is what the repository contains, `None` for its service place's label: its sync
   * schedules run at that clearance, and every card is kept at no less. It may be above the
@@ -39,6 +41,10 @@ final case class GitHubCards private (
     syncs: Vector[SyncSchedule]
 ) extends caps.Pure {
 
+  /** What of the repository becomes cards: [[include]] and [[extensions]], as a digest. */
+  def scope: Scope =
+    Scope.of(include.map(i => s"include $i").toSet ++ extensions.map(e => s"extension $e"))
+
   /** The arguments reading the unit at `path` at `ref`: `owner`, `repo`, `path` and `ref`. */
   def reading(path: String): ujson.Obj =
     ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> path, "ref" -> ref)
@@ -58,7 +64,8 @@ final case class GitHubCards private (
 
 object GitHubCards {
 
-  /** These, or why not: `corpus` supplies no service; `server` makes no tool name
+  /** These, `include`'s paths without a leading or trailing `/` and `extensions` without a
+    * leading dot, or why not: `corpus` supplies no service; `server` makes no tool name
     * (`grit.core.tool.ToolName.of` of `{server}_get_file_contents`); `owner`, `repo` or `ref`
     * blank; `maxUnits` under 1; no `syncs`, or two of one key.
     */
@@ -99,8 +106,8 @@ object GitHubCards {
       owner,
       repo,
       ref,
-      include,
-      extensions,
+      include.map(_.stripPrefix("/").stripSuffix("/")),
+      extensions.map(_.stripPrefix(".")),
       maxUnits,
       label,
       at,

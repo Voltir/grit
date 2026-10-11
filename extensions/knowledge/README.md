@@ -10,11 +10,12 @@ Packages, in one-way order (each names only those before it):
 - **`card`**: what a card is, whatever its source. `CardKey`, a unit's key (the SHA-256 of its
   corpus and path), `UnitVersion` (a git SHA), `CardSummary` and its reply (`CardSummary.Reply`,
   the schema a summary ask is sent), `Card` (a unit's path, kind, version, summary and pointer,
-  as its document's key, text and data), and `CardMoves`, the names of a sync run's moves
+  and a directory's `Scope`, what of its source it was made under, as its document's key, text
+  and data), and `CardMoves`, the names of a sync run's moves
   (`{phase}/{key}`, `held`, `drop`).
 - **`github`**: a repository as a card source, read through GitHub's MCP server's
   `get_file_contents`. `GitHubCards` (the repository, what of it becomes cards, its label and
-  its `SyncSchedule`s; a unit's read call and its pointer, `{server}_get_file_contents` with
+  its `SyncSchedule`s, and its `scope`; a unit's read call and its pointer, `{server}_get_file_contents` with
   `owner`, `repo` and `path` and no `ref`), `Listing` (a directory's answer: its entries with
   their SHAs, or `Partial` when cut or naming possible path matches) and `Fetched` (a file's
   answer: its text and blob SHA, the only version a file's card is written at, or
