@@ -285,6 +285,41 @@ abstract class DocumentContract extends TestSuite {
       placement ==> Vector(Placement(2, at(3)))
     }
 
+    test(
+      "followed counts each call and keeps the latest follow; a version never followed has none"
+    ) {
+      val p = name("doc-followed")
+      val k = keeper(p, terms())
+      val v = put(k, "k", "followed words", 1)
+      def following = transaction(ok(search.read(Vector(v)))).map(_.following)
+      following ==> Vector(None)
+      transaction(ok(store.followed(Vector(v), at(3))))
+      following ==> Vector(Following.of(1, at(3)))
+      transaction(ok(store.followed(Vector(v), at(2))))
+      following ==> Vector(Following.of(2, at(3)))
+    }
+
+    test(
+      "followed skips a version no longer kept, and one kept above its transaction's clearance"
+    ) {
+      val p = name("doc-followed-skipped")
+      val k = keeper(p, terms())
+      val gone = put(k, "gone", "gone words", 1)
+      transaction(ok(store.forget(gone)))
+      val high = opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(key("high"), Label.Public, place("here"), text("high words"), Empty, None, at(1))
+        )
+      ) match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      val unknown = DocumentVersion.of(Long.MaxValue).toVector
+      transaction(ok(store.followed(Vector(gone, high) ++ unknown, at(3))))
+      opened(Clearance.of(TestLabels.Trial))(ok(search.read(Vector(gone, high))))
+        .map(d => DocKey.value(d.key) -> d.following) ==> Vector("high" -> None)
+    }
+
     test("search ranks the shelves' documents current at its time, best first, ties latest first") {
       val (p, q) = (name("doc-search"), name("doc-search-other"))
       val k = keeper(p, terms())

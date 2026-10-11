@@ -15,6 +15,7 @@ import grit.core.document.{
   DocumentShelf,
   DocumentStore,
   DocumentTerms,
+  Following,
   Placement,
   Pointer,
   Shelved,
@@ -98,6 +99,27 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
         ps.setString(2, numbers(versions))
       }.map(_ => ())
 
+  def followed(versions: Vector[DocumentVersion], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] =
+    if (versions.isEmpty) Right(())
+    else {
+      val clearance = Tx.clearance(tx)
+      update(
+        s"""WITH ${SqlClearance.With}
+           |UPDATE grit.documents d
+           |   SET followed = d.followed + c.n,
+           |       last_followed = greatest(d.last_followed, ?)
+           |  FROM (SELECT v::bigint AS version, count(*) AS n
+           |          FROM jsonb_array_elements_text(?::jsonb) AS e(v) GROUP BY v) c
+           | WHERE d.version = c.version AND ${SqlClearance.kept("d")}""".stripMargin
+      ) { ps =>
+        SqlClearance.bind(ps, 1, clearance)
+        ps.setObject(SqlClearance.Params + 1, utc(at))
+        ps.setString(SqlClearance.Params + 2, numbers(versions))
+      }.map(_ => ())
+    }
+
   def kept()(using tx: Tx^): Either[StoreError, Vector[PluginName]] =
     rows(
       """SELECT plugin FROM (
@@ -139,7 +161,8 @@ private[sql] object SqlDocuments {
   /** A version's columns, as [[document]] reads them, from [[Labelled]]. */
   val Columns: String =
     "version, plugin, key, array_to_json(place)::text AS place, body, data::text AS data, " +
-      "pointer::text AS pointer, written_at, placed, last_placed, label_level, label_compartments"
+      "pointer::text AS pointer, written_at, placed, last_placed, followed, last_followed, " +
+      "label_level, label_compartments"
 
   /** A label's id: the parameters of [[SqlLabels.Arg]], looked up without interning it. */
   val LabelId: String =
@@ -243,7 +266,9 @@ private[sql] object SqlDocuments {
       ujson.read(rs.getString("data")),
       pointer,
       instant(rs, "written_at"),
-      Placement(rs.getLong("placed"), instant(rs, "last_placed"))
+      Placement(rs.getLong("placed"), instant(rs, "last_placed")),
+      Option(rs.getObject("last_followed", classOf[OffsetDateTime]))
+        .flatMap(last => Following.of(rs.getLong("followed"), last.toInstant))
     )
 
   def update(sql: String)(bind: PreparedStatement => Unit)(using

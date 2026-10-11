@@ -923,6 +923,8 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
 -- what it stands for (Pointer), {"arguments":{…},"tool":…} with every key sorted, NULL for
 -- none; a write holding the same body, place, data and pointer writes nothing (JSONB equality,
 -- so key order never makes a new version). `placed` and `last_placed` count the windows that held it (DocumentStore.placed); `last_placed` starts at `written_at`.
+-- `followed` and `last_followed` count the turns whose calls followed its pointer
+-- (DocumentStore.followed); `last_followed` is NULL while `followed` is 0.
 -- `label_id` is the label it is kept at (ADR 0030), and a key has one current version per
 -- label; `room_id` the room it was kept in (grit.core.visibility.Item.Kept), NULL for none.
 -- Writes to one plugin's documents are serialized by its posting; a concurrent write to one
@@ -942,6 +944,8 @@ CREATE TABLE IF NOT EXISTS grit.documents (
     superseded_at TIMESTAMPTZ,
     placed        BIGINT NOT NULL DEFAULT 0,
     last_placed   TIMESTAMPTZ NOT NULL,
+    followed      BIGINT NOT NULL DEFAULT 0,
+    last_followed TIMESTAMPTZ,
     label_id      SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     room_id       UUID REFERENCES grit.places(id)
 );

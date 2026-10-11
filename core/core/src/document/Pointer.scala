@@ -1,5 +1,6 @@
 package grit.core.document
 
+import grit.core.id.DocumentVersion
 import grit.core.tool.{ToolName, Writes}
 
 /** The hosted call that reads what a document stands for: `tool`, named as the model is
@@ -32,6 +33,22 @@ final case class Pointer private (tool: ToolName, private val pointed: ujson.Obj
 }
 
 object Pointer {
+
+  /** One call a turn made: `tool` as offered, its `arguments`, and whether its result was not an
+    * error.
+    */
+  final case class Call(tool: ToolName, arguments: ujson.Value, succeeded: Boolean)
+
+  /** The versions among `documents` whose pointer one of `calls` followed and that succeeded;
+    * once each, in `documents`' order.
+    */
+  def followedIn(documents: Vector[Document], calls: Vector[Call]): Vector[DocumentVersion] =
+    documents.collect {
+      case d
+          if d.pointer
+            .exists(p => calls.exists(c => c.succeeded && p.followedBy(c.tool, c.arguments))) =>
+        d.version
+    }.distinct
 
   /** This pointer, its arguments kept with every object's keys sorted at every depth, or why
     * not: two arguments of one name; one named [[grit.core.tool.Writes.Field]] (a call naming

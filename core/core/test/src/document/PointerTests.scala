@@ -1,6 +1,11 @@
 package grit.core.document
 
+import java.time.Instant
+
+import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.place.Place
 import grit.core.tool.{ToolName, Writes}
+import grit.core.visibility.Label
 
 import utest.*
 
@@ -18,7 +23,51 @@ object PointerTests extends TestSuite {
       )
       .fold(sys.error, identity)
 
+  private def at(path: String): Option[Pointer] =
+    Pointer.of(tool, "path" -> ujson.Str(path)).toOption
+
+  private def version(n: Long): DocumentVersion =
+    DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+
+  /** Version `n`, pointing as `pointer` says. */
+  private def document(n: Long, pointer: Option[Pointer]): Document =
+    Document(
+      version(n),
+      PluginName.of("cards").fold(sys.error, identity),
+      DocKey.of(s"k$n").fold(sys.error, identity),
+      Label.Public,
+      Place.Everywhere,
+      DocText.of(s"card $n").fold(sys.error, identity),
+      ujson.Obj(),
+      pointer,
+      Instant.EPOCH,
+      Placement(0, Instant.EPOCH),
+      None
+    )
+
+  private def call(path: String, succeeded: Boolean = true, named: ToolName = tool) =
+    Pointer.Call(named, ujson.Obj("path" -> ujson.Str(path), "ref" -> ujson.Str("main")), succeeded)
+
   val tests = Tests {
+    test(
+      "followedIn: each version whose pointer a call followed, once each, in the documents' order"
+    ) {
+      val documents = Vector(
+        document(1, at("a")),
+        document(2, None),
+        document(3, at("b")),
+        document(4, at("c"))
+      )
+      val calls = Vector(call("b"), call("a"), call("a"), call("c", named = ToolName("other")))
+      Pointer.followedIn(documents, calls) ==> Vector(version(1), version(3))
+    }
+
+    test("followedIn: a call whose result was an error follows nothing") {
+      val documents = Vector(document(1, at("a")), document(2, at("b")))
+      Pointer.followedIn(documents, Vector(call("a", succeeded = false), call("b"))) ==>
+        Vector(version(2))
+    }
+
     test(
       "a call naming the tool with every pointed argument equal, and another, follows the pointer"
     ) {

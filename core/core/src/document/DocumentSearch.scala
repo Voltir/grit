@@ -72,6 +72,14 @@ trait DocumentStore extends DocumentSearch {
     */
   def placed(versions: Vector[DocumentVersion], at: Instant)(using Tx^): Either[StoreError, Unit]
 
+  /** Counts each of `versions` followed by a turn whose reply or draft was appended at `at`:
+    * count up by one, last follow `at` unless later. One no longer kept, or that its transaction
+    * does not read, is skipped.
+    */
+  def followed(versions: Vector[DocumentVersion], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Unit]
+
   /** The plugins with documents or terms kept, enabled or not. */
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]]
 

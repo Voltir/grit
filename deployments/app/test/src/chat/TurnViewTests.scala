@@ -376,7 +376,8 @@ object TurnViewTests extends TestSuite {
         ujson.Obj(),
         None,
         Instant.parse("2026-09-30T23:30:00Z"),
-        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z")),
+        None
       )
       val label = got(DocLabel.of("Digest"))
       val held = Vector(

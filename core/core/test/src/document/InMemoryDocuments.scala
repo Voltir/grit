@@ -82,7 +82,8 @@ final class InMemoryDocuments extends DocumentStore {
                   pointer,
                   at,
                   None,
-                  Placement(0, at)
+                  Placement(0, at),
+                  None
                 )
               )
               over = holding(plugin).filterNot((_, r) => r.key == key && r.label == kept)
@@ -114,7 +115,8 @@ final class InMemoryDocuments extends DocumentStore {
                   pointer = None,
                   written = at,
                   superseded = None,
-                  placement = Placement(0, at)
+                  placement = Placement(0, at),
+                  following = None
                 )
               )
               _ <- tombstones.write(Target.Document(version(w)), at)
@@ -160,7 +162,7 @@ final class InMemoryDocuments extends DocumentStore {
       else
         rows.toVector
           .collect {
-            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _, _))
+            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _, _, _))
                 if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
               val found = InMemoryDocuments.words(DocText.value(text))
               val score = words.map(w => found.count(_ == w)).sum.toDouble
@@ -195,6 +197,20 @@ final class InMemoryDocuments extends DocumentStore {
       rows.get(v).foreach { r =>
         val latest = if (at.isAfter(r.placement.lastPlaced)) at else r.placement.lastPlaced
         rows = rows.updated(v, r.copy(placement = Placement(r.placement.count + 1, latest)))
+      }
+    }
+    Right(())
+  }
+
+  def followed(
+      versions: Vector[DocumentVersion],
+      at: Instant
+  )(using Tx^): Either[StoreError, Unit] = {
+    versions.map(DocumentVersion.value).foreach { v =>
+      rows.get(v).filter(reads).foreach { r =>
+        val count = r.following.fold(0L)(_.count) + 1
+        val latest = r.following.map(_.last).filter(_.isAfter(at)).getOrElse(at)
+        rows = rows.updated(v, r.copy(following = Following.of(count, latest)))
       }
     }
     Right(())
@@ -273,7 +289,8 @@ final class InMemoryDocuments extends DocumentStore {
       r.data,
       r.pointer,
       r.written,
-      r.placement
+      r.placement,
+      r.following
     )
 }
 
@@ -291,7 +308,8 @@ object InMemoryDocuments {
       pointer: Option[Pointer],
       written: Instant,
       superseded: Option[Instant],
-      placement: Placement
+      placement: Placement,
+      following: Option[Following]
   )
 
   /** `text`'s words, lower case. */

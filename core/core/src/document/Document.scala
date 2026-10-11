@@ -23,6 +23,20 @@ object DocText {
   */
 final case class Placement(count: Long, lastPlaced: Instant)
 
+/** How many turns followed a version's pointer, at least one, and when one last did. A
+  * version never followed has none ([[Document.following]] is `None`): unlike [[Placement]],
+  * which counts a version as placed when written so the bound can rank it, nothing reads a
+  * follow that never happened.
+  */
+final case class Following private (count: Long, last: Instant)
+
+object Following {
+
+  /** `count` follows, the last at `last`; `None` when `count` is under 1. */
+  def of(count: Long, last: Instant): Option[Following] =
+    Option.when(count >= 1)(new Following(count, last))
+}
+
 /** A version holding something, of `plugin`'s document under `key` at `label`, the label it is
   * kept at (ADR 0030): `text`, what a window shows and search ranks; `data`, its plugin's own,
   * never shown or searched; `pointer`, the call that reads what it stands for, if any; kept at
@@ -38,7 +52,8 @@ final case class Document(
     data: ujson.Value,
     pointer: Option[Pointer],
     written: Instant,
-    placement: Placement
+    placement: Placement,
+    following: Option[Following]
 )
 
 /** What a write did, and `kept`, the label its key's document is kept at: the one a read finds

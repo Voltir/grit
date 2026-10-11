@@ -630,7 +630,8 @@ object ShownTests extends TestSuite {
         ujson.Obj(),
         None,
         Instant.parse("2026-09-30T23:30:00Z"),
-        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z")),
+        None
       )
       Shown.document(document, got(DocLabel.of("Weekly digest"))) ==> Message.User(
         "[doc] Weekly digest, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
@@ -659,7 +660,8 @@ object ShownTests extends TestSuite {
         ujson.Obj(),
         Some(pointer),
         Instant.parse("2026-09-30T23:30:00Z"),
-        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z")),
+        None
       )
       Shown.document(document, got(DocLabel.of("Cards"))) ==> Message.User(
         "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
