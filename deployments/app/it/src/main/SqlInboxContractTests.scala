@@ -6,7 +6,8 @@ import java.util.UUID
 import scala.util.Using
 
 import grit.core.admin.{Answer, Command}
-import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.durable.Durable
+import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.identity.{Account, Standing, TestAccounts, Vouched}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
@@ -21,10 +22,18 @@ import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.turn.Turn
 
 /** The inbox contract, kept by SqlInbox against a real Postgres, under a launched engine (a
-  * turn's progress is read from DBOS's tables, which launching creates).
+  * turn's progress is read from DBOS's tables, which launching creates) whose every workflow
+  * body is [[Parked]].
   */
 object SqlInboxContractTests extends InboxContract {
-  import LiveTurn.*
+
+  /** A workflow body that returns at once, writing nothing. The contract reads only what the
+    * inbox itself records, so no workflow it starts may write beside a test while it runs: a
+    * turn the queue took up under load, its own or one an earlier test's engine left
+    * enqueued, wrote its model calls to the day's spend a capped test counts.
+    */
+  private val Parked: WorkflowId -> Durable^ ?-> String =
+    id => (_: Durable^) ?=> s"parked: ${WorkflowId.value(id)}"
 
   private lazy val config = TestPostgres.freshDatabase("sql_inbox_contract")
 
@@ -105,7 +114,7 @@ object SqlInboxContractTests extends InboxContract {
       visibility
     )
     try {
-      launch(engine, engine.entries, new CountingProvider)
+      engine.launch(Parked, Parked, Parked, Parked, Parked, Parked, Vector.empty)
       def spend(usd: BigDecimal): Unit = {
         val turn = TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First)
         val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
