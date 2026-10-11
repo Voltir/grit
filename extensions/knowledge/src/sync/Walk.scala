@@ -9,33 +9,34 @@ import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing}
 
 /** One run's walk of one source, as data: from the cards it holds, depth first by path from the
   * repository's root, each next step. Of the repository it walks the paths `include` names and,
-  * of files, those whose extension is one of `extensions`; the
-  * directories on the way to an included path are listed and carry no card.
+  * of files, those whose extension is one of `extensions`; the directories on the way to an
+  * included path are listed and carry no card.
   *
   * A directory whose held card records its tree SHA, made under the source's
   * [[grit.knowledge.github.GitHubCards.scope]], is not listed: each card held beneath it is
   * unchanged. One made under another scope is listed, so a changed `include` or `extensions`
-  * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its card is
-  * written at the SHA it was read at: from a summary of its first 8 KB, or, when its text is
-  * blank, as `An empty file.` with no ask. A directory's card is written from its listing, with
-  * no ask, after its children, and only when each was brought up to date. A unit's card held
-  * only at another label than the floor is relabelled when unchanged, and otherwise written;
-  * either way its copy there is withdrawn in that keep, never before. A unit held at the floor
-  * goes by that copy, whatever another label's records.
+  * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its
+  * card is written at the SHA it was read at: from a summary of its first 8 KB, or, when its
+  * text is blank, as `An empty file.` with no ask. A directory's card is written from its
+  * listing, with no ask, after its children, and only when each was brought up to date. A unit's
+  * card held only at another label than the floor is relabelled when unchanged, and otherwise
+  * written; either way its copy there is withdrawn in that keep, never before. A unit held at
+  * the floor goes by that copy, whatever another label's records.
   *
-  * It asks for at most `perRun` summaries: at the next it stops, counting what it left. It keeps
-  * at most `maxUnits` cards current (written, relabelled or unchanged, in walk order): at the
-  * next it stops, saying `the source holds its most cards, {maxUnits}`. A file read with no
-  * version, a directory listed only in part (`listed only in part`) and a unit whose path makes
-  * no pointer are [[Unwritten]], and leave the cards of the directories above them unwritten,
-  * so the next run lists those again.
+  * It asks for at most `perRun` summaries: at the next it stops, counting what it left. The
+  * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
+  * the units held and those written new reach it, and the walk goes on bringing the held up to
+  * date. A file read with no version, a directory listed only in part (`listed only in part`)
+  * and a unit whose path makes no pointer are [[Unwritten]]; they, and a unit not taken, leave
+  * the cards of the directories above them unwritten, so the next run lists those again.
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop: of the cards of units gone
   * from directories it listed in full (or outside the source now, a directory it lists only as
-  * on the way to an included path among them), and of the copies at other
-  * labels of units it kept current at the floor. A `Partial` listing, or a directory a stopped
-  * walk never reached, drops nothing beneath it. A step that came to [[Outcome.Stopped]], or to
-  * an outcome not of its kind, ends the walk at once, with no drop.
+  * on the way to an included path among them); of the copies at other labels of units it kept
+  * current at the floor; and, past `maxUnits` (when it was lowered), of the units last in walk
+  * order and the directories above them. A `Partial` listing, or a directory a stopped walk
+  * never reached, drops nothing beneath it. A step that came to [[Outcome.Stopped]], or to an
+  * outcome not of its kind, ends the walk at once, with no drop.
   */
 final class Walk private (private val env: Walk.Env, private val state: Walk.State)
     extends caps.Pure {
@@ -88,6 +89,9 @@ object Walk {
 
     /** Whether the copy of `key` the walk goes by records `version`. */
     def holds(key: CardKey, version: UnitVersion): Boolean = best(key).exists(_.version == version)
+
+    /** Whether no card of `key` is held. */
+    def isNew(key: CardKey): Boolean = !byKey.contains(key)
 
     /** Whether `entry`'s held card is up to date: at its version and, a directory's, made under
       * the source's scope.
@@ -146,7 +150,8 @@ object Walk {
       waiting: Waiting,
       next: Either[Synced, Step],
       asked: Int,
-      units: Int,
+      fresh: Int,
+      refused: Int,
       written: Int,
       relabelled: Int,
       withdrawn: Int,
@@ -167,6 +172,7 @@ object Walk {
         withdrawn,
         unchanged,
         left,
+        refused,
         unwritten,
         stopped
       )
@@ -178,7 +184,8 @@ object Walk {
       State(
         stack,
         Waiting.Done,
-        Left(Synced(env.cards.corpus, 0, 0, 0, 0, 0, Vector.empty, None)),
+        Left(Synced(env.cards.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)),
+        0,
         0,
         0,
         0,
@@ -215,12 +222,16 @@ object Walk {
       case (Waiting.Wrote(key), Outcome.Kept) =>
         advance(
           env,
-          s.copy(written = s.written + 1, units = s.units + 1, settled = s.settled :+ key)
+          s.copy(
+            written = s.written + 1,
+            fresh = if (env.isNew(key)) s.fresh + 1 else s.fresh,
+            settled = s.settled :+ key
+          )
         )
       case (Waiting.Relabelled(key), Outcome.Kept) =>
         advance(
           env,
-          s.copy(relabelled = s.relabelled + 1, units = s.units + 1, settled = s.settled :+ key)
+          s.copy(relabelled = s.relabelled + 1, settled = s.settled :+ key)
         )
       case (Waiting.Dropped(count), Outcome.Kept) => done(env, s.copy(withdrawn = count))
       case (waiting, other) => halt(env, s, s"${expected(waiting)} came to ${kind(other)}")
@@ -294,7 +305,7 @@ object Walk {
         case Task.Pass(path) =>
           popped.step(Step.List(path), Waiting.Listing(path, None))
         case Task.Known(key) =>
-          known(env, s, popped, key) match {
+          known(popped, env, key) match {
             case Some(next) => next
             case None => advance(env, unchanged(popped, key))
           }
@@ -303,7 +314,7 @@ object Walk {
           if (env.current(entry)) {
             entry.kind match {
               case UnitKind.File =>
-                known(env, s, popped, key) match {
+                known(popped, env, key) match {
                   case Some(next) => next
                   case None => advance(env, unchanged(popped, key))
                 }
@@ -318,7 +329,7 @@ object Walk {
                   popped.copy(stack = (key +: beneath).map(Task.Known(_)).toList ++ rest)
                 )
             }
-          } else if (s.units >= env.cards.maxUnits) stopAtMost(env, s)
+          } else if (env.isNew(key) && !room(env, s)) advance(env, refuse(popped, entry.path))
           else
             entry.kind match {
               case UnitKind.Directory =>
@@ -335,7 +346,7 @@ object Walk {
         case Task.Finish(path, version, children) =>
           if (s.undone.exists(u => u == path || u.startsWith(path + "/")))
             advance(env, popped.copy(undone = popped.undone + path))
-          else if (s.units >= env.cards.maxUnits) stopAtMost(env, s)
+          else if (env.isNew(env.keyOf(path)) && !room(env, s)) advance(env, refuse(popped, path))
           else
             env.cards.pointer(path) match {
               case Left(why) => advance(env, unwritten(popped, path, why))
@@ -362,21 +373,22 @@ object Walk {
   }
 
   /** The relabel step of a held unit whose version is current, when it is held only at another
-    * label; `None` when the floor holds it. At `maxUnits`, `s` stopped.
+    * label; `None` when the floor holds it.
     */
-  private def known(env: Env, s: State, popped: State, key: CardKey): Option[State] =
-    if (s.units >= env.cards.maxUnits) Some(stopAtMost(env, s))
-    else
-      env.replacing(key) match {
-        case None => None
-        case Some(from) => Some(popped.step(Step.Relabel(key, from), Waiting.Relabelled(key)))
-      }
+  private def known(s: State, env: Env, key: CardKey): Option[State] =
+    env.replacing(key).map(from => s.step(Step.Relabel(key, from), Waiting.Relabelled(key)))
 
   private def unchanged(s: State, key: CardKey): State =
-    s.copy(unchanged = s.unchanged + 1, units = s.units + 1, settled = s.settled :+ key)
+    s.copy(unchanged = s.unchanged + 1, settled = s.settled :+ key)
 
-  private def stopAtMost(env: Env, s: State): State =
-    end(env, s.copy(stopped = Some(s"the source holds its most cards, ${env.cards.maxUnits}")))
+  /** Whether a new unit's card would leave the source within `maxUnits`: the units it holds and
+    * those this walk has written new.
+    */
+  private def room(env: Env, s: State): Boolean = env.byKey.size + s.fresh < env.cards.maxUnits
+
+  /** `s` with the new unit at `path` not taken, so the directories above it are not written. */
+  private def refuse(s: State, path: String): State =
+    s.copy(refused = s.refused + 1, undone = s.undone + path)
 
   /** `s` come to its end: its drop, when anything is gone, and then its result. */
   private def end(env: Env, s: State): State = {
@@ -407,20 +419,34 @@ object Walk {
   }
 
   /** The copies held of units gone from directories listed in full or listed as on the way to
-    * an included path, and the copies at other
-    * labels of units this walk kept current at the floor, but the one each write or relabel
-    * replaced.
+    * an included path; the copies at other labels of units this walk kept current at the floor,
+    * but the one each write or relabel replaced; and the units past `maxUnits`.
     */
   private def drops(env: Env, s: State): Vector[Held] = {
     val settled = s.settled.toSet
-    env.held.filter { h =>
+    val gone = env.held.filter { h =>
       if (settled.contains(h.key)) h.label != env.floor && !replacedBy(env, h)
       else
         s.passed.contains(h.path) || s.listed.exists { (dir, children) =>
           beneath(h.path, dir) && !children.contains(toward(dir, h.path))
         }
     }
+    // Past maxUnits (it was lowered): the units last in walk order go, and the directories
+    // above them, so the next run lists those again and takes the units back when there is room.
+    val dropped = gone.toSet
+    val kept = env.held
+      .filterNot(dropped)
+      .map(_.path)
+      .distinct
+      .sortBy(_.split('/').toVector)(using Ordering.Implicits.seqOrdering[Vector, String])
+    val past = kept.drop(math.max(env.cards.maxUnits - s.fresh, 0))
+    val over = (past ++ past.flatMap(ancestors)).toSet
+    env.held.filter(h => dropped(h) || over(h.path))
   }
+
+  /** The paths of the directories above `path`. */
+  private def ancestors(path: String): Vector[String] =
+    path.split('/').toVector.inits.toVector.drop(1).filter(_.nonEmpty).map(_.mkString("/"))
 
   /** Whether `h` is the copy a write or relabel of its unit replaced. */
   private def replacedBy(env: Env, h: Held): Boolean = env.replacing(h.key).contains(h.label)

@@ -7,7 +7,8 @@ final case class Unwritten(path: String, why: String) extends caps.Pure
 
 /** What a run came to: how many cards it `written`, `relabelled` (copied up to its floor),
   * `withdrawn` and found `unchanged`; how many units it saw changed, new or held only at
-  * another label, and `left` unreached; the units it reached and could not write (`unwritten`), each tried again by the
+  * another label, and `left` unreached; how many new units it `refused`, the source holding its
+  * most cards; the units it reached and could not write (`unwritten`), each tried again by the
   * next run; and why it stopped, if it did. [[line]] is its reply.
   */
 final case class Synced(
@@ -17,14 +18,16 @@ final case class Synced(
     withdrawn: Int,
     unchanged: Int,
     left: Int,
+    refused: Int,
     unwritten: Vector[Unwritten],
     stopped: Option[String]
 ) extends caps.Pure {
 
   /** `{source}: {written} written, {relabelled} relabelled, {withdrawn} withdrawn, {unchanged}
-    * unchanged, {left plus unwritten} left for the next run`, then, when some are unwritten,
-    * `; not written: {path} ({why})` for at most [[Synced.Shown]] of them, separated by `, `, and
-    * `and {n} more` for the rest; then, when it stopped, `; stopped: {why}`.
+    * unchanged, {left plus unwritten} left for the next run`, then, when some were refused,
+    * `; {refused} new units not taken, the source holding its most cards`, then, when some are
+    * unwritten, `; not written: {path} ({why})` for at most [[Synced.Shown]] of them, separated
+    * by `, `, and `and {n} more` for the rest; then, when it stopped, `; stopped: {why}`.
     */
   def line: String = {
     val counts = s"${CorpusName.value(source)}: $written written, $relabelled relabelled, " +
@@ -34,7 +37,10 @@ final case class Synced(
     val notWritten =
       if (unwritten.isEmpty) ""
       else s"; not written: ${(named ++ Option.when(more > 0)(s"and $more more")).mkString(", ")}"
-    counts + notWritten + stopped.fold("")(why => s"; stopped: $why")
+    val notTaken =
+      if (refused == 0) ""
+      else s"; $refused new units not taken, the source holding its most cards"
+    counts + notTaken + notWritten + stopped.fold("")(why => s"; stopped: $why")
   }
 }
 

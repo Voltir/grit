@@ -171,9 +171,10 @@ object WalkTests extends TestSuite {
       withdrawn: Int = 0,
       unchanged: Int = 0,
       left: Int = 0,
+      refused: Int = 0,
       unwritten: Vector[Unwritten] = Vector.empty,
       stopped: Option[String] = None
-  ) = Synced(name, written, relabelled, withdrawn, unchanged, left, unwritten, stopped)
+  ) = Synced(name, written, relabelled, withdrawn, unchanged, left, refused, unwritten, stopped)
 
   /** `docs` changed at `a.md`, now `@4`, whose read answers `a`. */
   private def changedA(a: Fetched): (Map[String, Listing], Map[String, Fetched]) =
@@ -298,16 +299,17 @@ object WalkTests extends TestSuite {
     }
 
     test(
-      "stopped early, at perRun or maxUnits, it drops nothing beneath a directory it did not list"
+      "stopped at perRun, or refusing a new directory at maxUnits, it drops nothing beneath a directory it did not list"
     ) {
       val stale = Vector(held("docs/old.md", 5), held("docs/guide/old.md", 6))
       val listings =
         Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide)
       val files = Map("docs/a.md" -> read("docs/a.md", 1), "docs/b.md" -> read("docs/b.md", 2))
       val (perRun, _) = run(stale, listings, files, perRun = 1)
-      val (maxUnits, _) = run(stale, listings, files, maxUnits = 1)
+      val (maxUnits, _) = run(stale, listings, files, maxUnits = 3)
       assert(
         perRun.lastOption == Some("drop docs/old.md at confidential"),
+        !maxUnits.contains("list docs/guide"),
         maxUnits.lastOption == Some("drop docs/old.md at confidential")
       )
     }
@@ -457,13 +459,14 @@ object WalkTests extends TestSuite {
       )
     }
 
-    test("at maxUnits the walk stops, writing no more") {
+    test("at maxUnits a new unit is not taken, and the cards held are still brought up to date") {
       val (steps, result) = run(
-        Vector.empty,
+        Vector(held("docs/b.md", 1)),
         Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
         Map("docs/a.md" -> read("docs/a.md", 1), "docs/b.md" -> read("docs/b.md", 2)),
         maxUnits = 2
       )
+      // Held b.md and new a.md fill it: guide is not taken, and docs' own card waits on it.
       assert(
         steps == Vector(
           "list /",
@@ -475,11 +478,20 @@ object WalkTests extends TestSuite {
           "summarise docs/b.md @2",
           "write docs/b.md @2"
         ),
-        result == synced(
-          written = 2,
-          left = 2,
-          stopped = Some("the source holds its most cards, 2")
-        )
+        result == synced(written = 2, refused = 1)
+      )
+    }
+
+    test(
+      "held past maxUnits, the cards last in walk order drop down to it, with the directories above them"
+    ) {
+      val (steps, result) = run(heldAll(), Map("/" -> root()), maxUnits = 3)
+      assert(
+        steps == Vector(
+          "list /",
+          "drop docs at confidential, docs/guide at confidential, docs/guide/c.md at confidential"
+        ),
+        result == synced(withdrawn = 3, unchanged = 5)
       )
     }
 
@@ -541,15 +553,16 @@ object WalkTests extends TestSuite {
     }
 
     test(
-      "a reply line counts each kind, names at most 5 units unwritten, and says why it stopped"
+      "a reply line counts each kind and those not taken, names at most 5 unwritten, and says why it stopped"
     ) {
       val unwritten = (1 to 7).toVector.map(n => Unwritten(s"docs/$n.png", "a binary file"))
-      val full = synced(2, 1, 3, 40, 4, unwritten, Some("the source holds its most cards, 50"))
+      val full = synced(2, 1, 3, 40, 4, 6, unwritten, Some("the service github failed"))
       assert(
         full.line == "repo: 2 written, 1 relabelled, 3 withdrawn, 40 unchanged, " +
-          "11 left for the next run; not written: docs/1.png (a binary file), " +
+          "11 left for the next run; 6 new units not taken, the source holding its most cards; " +
+          "not written: docs/1.png (a binary file), " +
           "docs/2.png (a binary file), docs/3.png (a binary file), docs/4.png (a binary file), " +
-          "docs/5.png (a binary file), and 2 more; stopped: the source holds its most cards, 50",
+          "docs/5.png (a binary file), and 2 more; stopped: the service github failed",
         synced(unchanged = 5).line ==
           "repo: 0 written, 0 relabelled, 0 withdrawn, 5 unchanged, 0 left for the next run"
       )

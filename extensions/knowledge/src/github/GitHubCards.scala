@@ -14,7 +14,7 @@ import grit.knowledge.card.Scope
   * MCP server. Of the repository, the paths under `include` (each a path prefix, or a file's
   * path, with no leading or trailing `/`; `""` for every path) and, of files, those whose
   * extension is in `extensions` (each with no dot; every one when empty), which [[scope]]
-  * digests; at most `maxUnits` cards, the walk stopping there.
+  * digests; at most `maxUnits` cards.
   *
   * `label` is what the repository contains, `None` for its service place's label: its sync
   * schedules run at that clearance, and every card is kept at no less. It may be above the
