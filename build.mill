@@ -359,8 +359,15 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "knowledge"
     def moduleDeps = Seq(core)
 
+    /* WalkCaptureTests compiles probe sources against knowledge, with knowledge's own flags. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_PROBE_CLASSPATH" -> knowledge.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> knowledge.probeOptions().mkString(" ")
+        )
+      }
     }
   }
 

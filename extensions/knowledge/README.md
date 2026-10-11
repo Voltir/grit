@@ -19,6 +19,10 @@ Packages, in one-way order (each names only those before it):
   their SHAs, or `Partial` when cut or naming possible path matches) and `Fetched` (a file's
   answer: its text and blob SHA, the only version a file's card is written at, or
   `Unversioned`, saying why). Imports `card`.
+- **`sync`**: a sync run's plan, pure. `Walk`, from the cards a run holds (`Held`, each read
+  back from its document by `Held.read`) and each step's `Outcome`, the next `Step`: list, read,
+  summarise, write, relabel, and a last drop; `Synced`, what the run came to, and its reply line;
+  `SyncParams`, what a run is told. Imports `card` and `github`.
 
 The test tree mirrors it. `test/resources/github/` holds `tools/call` results GitHub's hosted
 read-only server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-10-11 (in an
