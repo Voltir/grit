@@ -19,10 +19,10 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * not match the body, or for a call an `Mcp-Param-*` header missing, unexpected or not
   * matching its argument, as the listed tool's `x-mcp-header` annotations say; `400` with `-32602` for `_meta` without its protocol version or client
   * capabilities; and `400` with `-32022` for a version it does not [[speaks]]. It answers
-  * `tools/list` from [[lists]], a page at a time, and `tools/call` from [[answers]] (an
-  * unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON or, after
-  * [[streams]], an event stream with a comment and a notification before the response. Every
-  * request it was sent is kept, in [[received]].
+  * `tools/list` from [[lists]], a page at a time, and `tools/call` from [[answers]] or
+  * [[answering]] (an unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON
+  * or, after [[streams]], an event stream with a comment and a notification before the
+  * response. Every request it was sent is kept, in [[received]].
   */
 final class FakeMcpServer private (val token: String) {
   import FakeMcpServer.*
@@ -41,7 +41,7 @@ final class FakeMcpServer private (val token: String) {
   private var ttls = Vector[Option[Long]](Some(0L))
 
   @caps.unsafe.untrackedCaptures
-  private var results = Map.empty[String, ujson.Obj]
+  private var results = Map.empty[String, ujson.Value -> ujson.Obj]
 
   @caps.unsafe.untrackedCaptures
   private var sse = false
@@ -89,7 +89,12 @@ final class FakeMcpServer private (val token: String) {
   /** Answers a `tools/call` of `name` with `result`, a `CallToolResult`, from now on. A listed
     * tool with no answer set answers one text block, `called {name} with {arguments}`.
     */
-  def answers(name: String, result: ujson.Obj): Unit =
+  def answers(name: String, result: ujson.Obj): Unit = answering(name)(_ => result)
+
+  /** Answers a `tools/call` of `name` with what `result` gives for its arguments, a
+    * `CallToolResult`, from now on.
+    */
+  def answering(name: String)(result: ujson.Value -> ujson.Obj): Unit =
     lock.synchronized { results = results.updated(name, result) }
 
   /** Answers in an event stream when `on`, else in JSON (the default). */
@@ -237,17 +242,19 @@ final class FakeMcpServer private (val token: String) {
                     case Some((n, None)) =>
                       ok(
                         id,
-                        script.results.getOrElse(
-                          n,
-                          ujson.Obj(
-                            "content" -> ujson.Arr(
-                              ujson.Obj(
-                                "type" -> "text",
-                                "text" -> s"called $n with ${ujson.write(arguments)}"
+                        script.results
+                          .get(n)
+                          .map(_(arguments))
+                          .getOrElse(
+                            ujson.Obj(
+                              "content" -> ujson.Arr(
+                                ujson.Obj(
+                                  "type" -> "text",
+                                  "text" -> s"called $n with ${ujson.write(arguments)}"
+                                )
                               )
                             )
                           )
-                        )
                       )
                   }
                 case _ => error(404, -32601, s"Method not found: ${method.getOrElse("")}")
@@ -444,7 +451,7 @@ object FakeMcpServer {
       tools: Vector[ujson.Obj],
       perPage: Int,
       ttls: Vector[Option[Long]],
-      results: Map[String, ujson.Obj],
+      results: Map[String, ujson.Value -> ujson.Obj],
       sse: Boolean,
       versions: Vector[String],
       refusal: Option[Refusal],
