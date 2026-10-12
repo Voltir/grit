@@ -5,7 +5,16 @@ import java.time.Instant
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
-import grit.core.id.{ConversationId, EntryId, EntrySeq, ShadowName, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PluginName,
+  ShadowName,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
@@ -20,6 +29,7 @@ import grit.eval.harness.capture.{
   Called,
   Drafted,
   Ended,
+  Held,
   Offered,
   Part,
   Parts,
@@ -45,6 +55,14 @@ object TurnFixtures {
   private def support(x: Double) = Support.read(x)
   private def part(kind: Part.Kind, tokens: Long, s: Option[Double] = None) =
     Part(kind, ConversationId("x"), Vector(EntrySeq(1)), Tokens(tokens), s.flatMap(support))
+  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def held(v: Long, pointer: Option[ToolName], tokens: Long) = Held.Kept(
+    version(v),
+    PluginName.of("notes").fold(sys.error, identity),
+    pointer,
+    Tokens(tokens),
+    None
+  )
   private def spent(
       role: Option[TurnRecord.Role],
       usd: Option[String],
@@ -110,7 +128,8 @@ object TurnFixtures {
       window = Some(
         Parts(
           Vector(part(Part.Kind.Open, 30), part(Part.Kind.Record, 10)),
-          Vector.empty,
+          // A card for a tool it was not offered.
+          Vector(held(7, Some(ToolName("github__get_file_contents")), 12)),
           Tokens(2),
           Tokens(8)
         )
@@ -142,7 +161,8 @@ object TurnFixtures {
       window = Some(
         Parts(
           Vector(part(Part.Kind.Open, 20, Some(0.5)), part(Part.Kind.Closed, 40, Some(0.1))),
-          Vector.empty,
+          // A card for a tool it was offered, and a document forgotten since.
+          Vector(held(8, Some(read), 6), Held.Gone(version(9))),
           Tokens.Zero,
           Tokens.Zero
         )
@@ -182,7 +202,8 @@ object TurnFixtures {
         window = Some(
           Parts(
             Vector(part(Part.Kind.Recent, 60, Some(0.2)), part(Part.Kind.Recalled, 15, Some(0.0))),
-            Vector.empty,
+            // A document with no pointer.
+            Vector(held(10, None, 5)),
             Tokens.Zero,
             Tokens(4)
           )

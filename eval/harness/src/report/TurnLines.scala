@@ -95,7 +95,8 @@ private[report] object TurnLines {
       "## Tokens",
       "",
       "Prompt: each system prompt layer's tokens, over the turns with an offer. Window: each part " +
-        "kind's tokens, over the turns with a window, as `Shown` shows it today.",
+        "kind's tokens and its documents', over the turns with a window, as `Shown` shows it " +
+        "today.",
       ""
     ) ++ slices.flatMap { (s, st) =>
       val prompt =
@@ -104,6 +105,7 @@ private[report] object TurnLines {
         w.parts.toVector.map((k, q) =>
           Vector(s"window ${Part.Kind.written(k)}", spread(Some(q), count))
         ) ++
+          w.documents.toVector.map(q => Vector("window documents", spread(Some(q), count))) ++
           Vector(
             Vector("window gaps", spread(Some(w.gaps), count)),
             Vector("window own", spread(Some(w.own), count)),
@@ -114,6 +116,18 @@ private[report] object TurnLines {
         (if (prompt.isEmpty && window.isEmpty) Vector("no offer or window recorded")
          else table("part", "tokens")(prompt ++ window)) ++ Vector("")
     }
+
+    val pointing = Vector(
+      "## Pointers unoffered",
+      "",
+      "Of the turns with an offer whose window held a document with a pointer, those holding " +
+        "one whose tool the turn was not offered, so its read line was not shown.",
+      ""
+    ) ++
+      bySlice("holding a pointer", "unoffered", "rate")(st =>
+        Vector(s"${st.unoffered.n}", s"${st.unoffered.hits}", rate(st.unoffered))
+      ) ++
+      Vector("")
 
     val estimating = Vector(
       "## Estimate against the ledger",
@@ -254,7 +268,8 @@ private[report] object TurnLines {
       Structure.byCost(turns).map((t, c) => line(t, c))
     )
 
-    (header ++ passing ++ failing ++ looping ++ tooling ++ tokens ++ estimating ++ costing ++
+    (header ++ passing ++ failing ++ looping ++ tooling ++ tokens ++ pointing ++ estimating ++
+      costing ++
       caching ++ speaking ++ reviewing ++ using ++ cases).mkString("\n") + "\n"
   }
 
@@ -280,7 +295,7 @@ private[report] object TurnLines {
       },
       s"${t.rounds.size}",
       if (named.isEmpty) "—" else named.mkString(", "),
-      t.window.fold("—")(w => s"${Tokens.value(w.parts.foldLeft(w.gaps + w.own)(_ + _.tokens))}"),
+      t.window.fold("—")(w => s"${Tokens.value(w.tokens)}"),
       first.fold("—")(s => s"${Tokens.value(s.estimated)} / ${Tokens.value(s.usage.input)}"),
       Mills.figure(c),
       t.window

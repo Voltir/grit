@@ -56,6 +56,7 @@ object ReportTests extends TestSuite {
         "## Rounds",
         "## Tools",
         "## Tokens",
+        "## Pointers unoffered",
         "## Estimate against the ledger",
         "## Cost per turn",
         "## Prompt cache",
@@ -73,6 +74,17 @@ object ReportTests extends TestSuite {
           "| all | 3 | 1 | 0.333 (1/3 in 2 threads) too few threads for an interval |",
           "| heard | 2 | 1 | 0.500 (1/2 in 1 thread) too few threads for an interval |"
         )
+    }
+
+    test("a turns report gives the rate of pointers unoffered over the turns holding one") {
+      // t1 and t2, both thread A, hold a card; t1's tool was not offered.
+      lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+        .dropWhile(_ != "## Pointers unoffered")
+        .takeWhile(_ != "## Estimate against the ledger")
+        .filter(l => l.startsWith("| all ") || l.startsWith("| tui ")) ==> Vector(
+        "| all | 2 | 1 | 0.500 (1/2 in 1 thread) too few threads for an interval |",
+        "| tui | 0 | 0 | — |"
+      )
     }
 
     test("a turns report counts the turns recorded before shapes, and their weighing by kind") {
@@ -118,9 +130,9 @@ object ReportTests extends TestSuite {
     test("a turns report's lines run most costly first, each with its top parts by support") {
       val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
       report.dropWhile(_ != "## Turns by cost").drop(6) ==> Vector(
-        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 50 | 100 / 80 | m$6 | — |",
-        "| w4 | slack | addressed | open | replied 90 | 0 | — | 79 | 200 / 100 | m$4.5 | recent 0.20, recalled 0.00 |",
-        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 60 | 50 / 0 | m$2 | open 0.50, closed 0.10 |",
+        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 62 | 100 / 80 | m$6 | — |",
+        "| w4 | slack | addressed | open | replied 90 | 0 | — | 84 | 200 / 100 | m$4.5 | recent 0.20, recalled 0.00 |",
+        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 66 | 50 / 0 | m$2 | open 0.50, closed 0.10 |",
         "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | m$0 | — |",
         "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | m$0 | — |"
       )

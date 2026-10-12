@@ -141,7 +141,7 @@ object Recipe {
     def tokens(w: Parts, k: Part.Kind) =
       Tokens.value(w.parts.filter(_.kind == k).foldLeft(Tokens.Zero)(_ + _.tokens)).toDouble
     def whole(w: Parts) =
-      Tokens.value(w.parts.foldLeft(w.gaps + w.own)(_ + _.tokens)).toDouble
+      Tokens.value(w.tokens).toDouble
     def used(pick: ((TurnCase, Parts, Parts)) => Parts) = Proportion.of(both.flatMap { b =>
       val (turn, _, _) = b
       turn.window.toVector

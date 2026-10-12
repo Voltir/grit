@@ -89,11 +89,19 @@ object StructureTests extends TestSuite {
       )
     }
 
-    test("window tokens by part kind, 0 in a window without the kind, and the whole") {
-      // Windows: t1 open 30 record 10 gaps 2 own 8 (50); t2 open 20 closed 40 (60); t4
-      // recent 60 recalled 15 own 4 (79).
+    test(
+      "window tokens by part kind, 0 in a window without the kind, its documents', and the whole"
+    ) {
+      // Windows: t1 open 30 record 10 documents 12 gaps 2 own 8 (62); t2 open 20 closed 40
+      // documents 6 (66); t4 recent 60 recalled 15 documents 5 own 4 (84).
       all.window.map(w =>
-        (w.parts.view.mapValues(q).toVector, q(w.gaps), q(w.own), q(w.total))
+        (
+          w.parts.view.mapValues(q).toVector,
+          w.documents.map(q),
+          q(w.gaps),
+          q(w.own),
+          q(w.total)
+        )
       ) ==> Some(
         (
           Vector(
@@ -103,11 +111,20 @@ object StructureTests extends TestSuite {
             Part.Kind.Recent -> (3, 20.0, 0.0, 60.0),
             Part.Kind.Recalled -> (3, 5.0, 0.0, 15.0)
           ),
+          Some((3, r(23.0 / 3), 6.0, 12.0)),
           (3, r(2.0 / 3), 0.0, 2.0),
           (3, 4.0, 4.0, 8.0),
-          (3, 63.0, 60.0, 79.0)
+          (3, r(212.0 / 3), 66.0, 84.0)
         )
       )
+    }
+
+    test(
+      "a pointer is unoffered in a turn whose window held a card for a tool it was not offered, over the turns holding a card, by thread"
+    ) {
+      // Holding a card: t1 (A), for a tool not offered; t2 (A), for one offered. t4's document
+      // has no pointer.
+      all.unoffered ==> Proportion(1, 2, 1, Proportion.Interval.TooFewClusters)
     }
 
     test("the estimate against the ledger's input of the first call to the main model") {

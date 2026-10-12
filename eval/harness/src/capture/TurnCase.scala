@@ -99,7 +99,17 @@ final case class Offered(
   * sections, then its `documents`, then its own conversation's record and turns; the tokens of
   * the gap lines among them, and of the turn's own messages before its first call.
   */
-final case class Parts(parts: Vector[Part], documents: Vector[Held], gaps: Tokens, own: Tokens)
+final case class Parts(parts: Vector[Part], documents: Vector[Held], gaps: Tokens, own: Tokens) {
+
+  /** Its documents' tokens, each as [[grit.core.context.Shown]] shows it today. */
+  def held: Tokens = documents.foldLeft(Tokens.Zero) {
+    case (sum, Held.Kept(_, _, _, tokens, _)) => sum + tokens
+    case (sum, Held.Gone(_)) => sum
+  }
+
+  /** Its whole: its parts', its documents', its gap lines' and its own messages' tokens. */
+  def tokens: Tokens = parts.foldLeft(gaps + own + held)(_ + _.tokens)
+}
 
 /** A document a window held, by its version. */
 enum Held {

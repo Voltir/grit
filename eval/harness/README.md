@@ -177,7 +177,9 @@ Packages, each importing only those above it:
   outcomes with their post and hold rates (each a `Proportion` clustered by thread), the prompt
   cache's hit rate (`Caching`: cached input tokens of input, clustered by thread, by role and
   for a turn's first main call against its later ones), the review verdicts
-  joined by case, and the window parts a reply `Used`. `Shapes`, how turns recorded their
+  joined by case, the window parts a reply `Used`, and the pointers unoffered (of the turns
+  whose window held a document with a pointer, those holding one for a tool not offered, a
+  `Proportion` clustered by thread). `Shapes`, how turns recorded their
   offers (shaped, recorded before shapes, none) and what their `weigh` steps recorded, failures
   by kind. `Recipe`, a turn variant against
   shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and

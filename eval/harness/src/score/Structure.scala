@@ -8,7 +8,17 @@ import grit.core.period.Probability
 import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.core.tool.ToolName
-import grit.eval.harness.capture.{Called, Drafted, Ended, Part, Said, Settled, Support, TurnCase}
+import grit.eval.harness.capture.{
+  Called,
+  Drafted,
+  Ended,
+  Held,
+  Part,
+  Said,
+  Settled,
+  Support,
+  TurnCase
+}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.stats.Proportion
 import grit.turn.{TurnOffer, TurnRecord}
@@ -84,10 +94,12 @@ final case class Calls(times: Int, turns: Int, settled: Settlings)
 final case class ToolUse(offeredIn: Int, calls: Calls)
 
 /** A window's tokens per turn, over the turns that recorded one: each part kind's (0 in a
-  * turn that showed none of it), the gap lines', the turn's own messages', and the whole's.
+  * turn that showed none of it), its documents' (0 in a turn that held none; `None` when no
+  * turn held one), the gap lines', the turn's own messages', and the whole's.
   */
 final case class Window(
     parts: VectorMap[Part.Kind, Quantiles],
+    documents: Option[Quantiles],
     gaps: Quantiles,
     own: Quantiles,
     total: Quantiles
@@ -188,6 +200,10 @@ final case class Used(turns: Int, parts: Int, used: Int, using: Int, top: Quanti
   *   the verdicts standing on a Slack turn's message, by why it was picked and the verdict
   * @param used
   *   `None` when no turn has a supported reply, where whether a part was used is undefined
+  * @param unoffered
+  *   of the turns with an offer whose window held a document with a pointer, those holding one
+  *   whose tool the turn was not offered (so its pointer's line was not shown), clustered by
+  *   thread
   */
 final case class Structure(
     n: Int,
@@ -209,7 +225,8 @@ final case class Structure(
     caching: Caching,
     online: Option[Online],
     verdicts: VectorMap[(Reason, Verdict), Int],
-    used: Option[Used]
+    used: Option[Used],
+    unoffered: Proportion
 )
 
 object Structure {
@@ -299,7 +316,15 @@ object Structure {
             supported.count(_.exists(_.used)),
             top
           )
-        )
+        ),
+      Proportion.of(ts.flatMap { t =>
+        val pointed = t.window.toVector.flatMap(_.documents).collect {
+          case Held.Kept(_, _, Some(tool), _, _) => tool
+        }
+        t.offered
+          .filter(_ => pointed.nonEmpty)
+          .map(o => t.conversation -> pointed.exists(tool => !o.tools.contains(tool)))
+      })
     )
   }
 
@@ -346,9 +371,7 @@ object Structure {
     for {
       gaps <- Quantiles.of(windows.map(w => Tokens.value(w.gaps).toDouble))
       own <- Quantiles.of(windows.map(w => Tokens.value(w.own).toDouble))
-      total <- Quantiles.of(
-        windows.map(w => tokens(w.parts) + Tokens.value(w.gaps) + Tokens.value(w.own))
-      )
+      total <- Quantiles.of(windows.map(w => Tokens.value(w.tokens).toDouble))
     } yield Window(
       VectorMap.from(
         Part.Kind.values.toVector
@@ -357,6 +380,9 @@ object Structure {
             Quantiles.of(windows.map(w => tokens(w.parts.filter(_.kind == k)))).map(k -> _)
           )
       ),
+      Option
+        .when(windows.exists(_.documents.nonEmpty))(windows.map(w => Tokens.value(w.held).toDouble))
+        .flatMap(Quantiles.of),
       gaps,
       own,
       total
