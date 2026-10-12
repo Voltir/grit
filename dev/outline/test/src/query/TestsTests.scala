@@ -1,7 +1,7 @@
 package grit.outline.query
 
-import grit.outline.locate.{Layout, MillLayout, Root}
-import grit.outline.testing.FixtureLayout
+import grit.outline.locate.{Layout, Root}
+import grit.outline.testing.{FixtureLayout, OutlineLayout}
 
 import utest.*
 
@@ -145,7 +145,7 @@ object TestsTests extends TestSuite {
     test("show names the suite of a helper in test sources, and the --body that prints it") {
       val (answer, _) = Query.show(
         root,
-        MillLayout,
+        OutlineLayout,
         Config.empty,
         Roots.empty(6000),
         Vector("OneLineTests.posed"),
@@ -163,7 +163,7 @@ object TestsTests extends TestSuite {
 
     test("tests lists the suite's private helpers and its file's other top-level definitions") {
       val lines =
-        answer("grit.outline.render.OneLineTests", None, MillLayout).text.linesIterator.toVector
+        answer("grit.outline.render.OneLineTests", None, OutlineLayout).text.linesIterator.toVector
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val posed.*""")))
       assert(lines.exists(_.trim.matches("""\d+-\d+ private val companion.*""")))
     }
@@ -175,7 +175,7 @@ object TestsTests extends TestSuite {
         answer(
           "grit.outline.render.OneLineTests",
           Some("a trait's one-liner lists each"),
-          MillLayout
+          OutlineLayout
         ).text
           .split("\n", -1)
           .toVector

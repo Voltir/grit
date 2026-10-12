@@ -1,6 +1,7 @@
 package grit.outline.render
 
-import grit.outline.locate.{Locate, MillLayout, Root}
+import grit.outline.locate.{Locate, Root}
+import grit.outline.testing.OutlineLayout
 import grit.outline.model.Defn
 import grit.outline.read.Read
 import grit.outline.trace.{Trace, Traced}
@@ -32,7 +33,7 @@ object RenderTests extends TestSuite {
       .walk(os.Path(fixtureClasses))
       .filter(p => p.ext == "tasty")
       .toVector
-    Read.defns(root, MillLayout, tastyFiles) match {
+    Read.defns(root, OutlineLayout, tastyFiles) match {
       case Right(defns) => defns
       case Left(message) => throw new Exception(message)
     }
@@ -45,7 +46,7 @@ object RenderTests extends TestSuite {
     }
 
   private def load(topLevel: String): Either[String, Vector[Defn]] =
-    Read.defns(root, MillLayout, Locate.forTopLevel(root, MillLayout, topLevel))
+    Read.defns(root, OutlineLayout, Locate.forTopLevel(root, OutlineLayout, topLevel))
 
   private def noTraced: Traced = Traced(Vector.empty, Vector.empty, Vector.empty)
 

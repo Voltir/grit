@@ -2,7 +2,7 @@ package grit.outline.query
 
 import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
-import grit.outline.testing.FixtureLayout
+import grit.outline.testing.{FixtureLayout, OutlineLayout}
 
 import utest.*
 
@@ -219,7 +219,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          OutlineLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("OneLineTests"),
@@ -240,7 +240,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          OutlineLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("OneLineTests.posed"),
@@ -261,7 +261,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          OutlineLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("Render.oneLine"),
@@ -316,7 +316,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          OutlineLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("Render.oneLine"),
@@ -334,7 +334,7 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          MillLayout,
+          OutlineLayout,
           Config.empty,
           Roots.empty(6000),
           Vector("grit.outline.model.Defn"),
