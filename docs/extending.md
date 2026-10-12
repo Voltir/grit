@@ -37,9 +37,9 @@ shipped implementations, by the kit's enums.
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
-| `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
+| `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest`, `Reminders`, `Knowledge` | yes: `Deployment.of(plugins = …)` |
 | `PlainJob`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
-| `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | — | yes: a plugin's `jobs`, its plugin declaring `documents` |
+| `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | `Knowledge`'s `knowledge-sync` | yes: a plugin's `jobs`, its plugin declaring `documents` |
 | `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
 | `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
@@ -69,6 +69,13 @@ reads it only through the service it `Exports`. `Deployment.of` refuses two plug
 name, a need no plugin of its name meets, a tool name taken twice (grit's own included), and a
 tool asking for a plugin its own does not need. A deployment's own plugin can contribute
 anything a shipped one can.
+
+**A keeping job: `Knowledge`.** `extensions/knowledge` keeps its documents through a job
+rather than a posting: `Sync`, a `KeepingJob`, walks a declared GitHub repository through the
+MCP tools an edge serves and keeps one card per unit, each pointing at the call that reads it.
+Its sources are declared with `Knowledge.of`, which refuses a source its runs could not read or
+send to under the deployment's `Visibility`. The reference deployment turns it on for
+`GRIT_PLUGINS=knowledge`; its README says what a deployment declares.
 
 **Jobs and schedules** ([ADR 0029](decisions/0029-a-job-is-versioned-code-a-schedule-is-data-and-a-clock-edge-starts-each-due-slot.md)).
 A `Job[P]` is versioned code: its `name`, its `version`, a codec for its parameters `P`
