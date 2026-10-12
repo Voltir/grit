@@ -3,8 +3,8 @@ package grit.outline.read
 import java.io.{ByteArrayOutputStream, PrintStream}
 
 import grit.outline.locate.{Layout, Root}
-import grit.outline.testing.OutlineLayout
 import grit.outline.model.{Defn, Kind, Lines, Ref}
+import grit.outline.testing.OutlineLayout
 
 import utest.*
 

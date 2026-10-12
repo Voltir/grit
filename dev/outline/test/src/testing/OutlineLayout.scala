@@ -7,7 +7,8 @@ import grit.outline.locate.{Layout, MillLayout, Root}
   * compiling beside it.
   */
 object OutlineLayout extends Layout {
-  private def own(root: Root)(p: os.Path): Boolean = p.startsWith(root.dir / "out" / "grit" / "outline")
+  private def own(root: Root)(p: os.Path): Boolean =
+    p.startsWith(root.dir / "out" / "grit" / "outline")
 
   def classesDirs(root: Root): Vector[os.Path] = MillLayout.classesDirs(root).filter(own(root))
   def libraryJars(root: Root): Vector[os.Path] = MillLayout.libraryJars(root)

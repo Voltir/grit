@@ -1,9 +1,9 @@
 package grit.outline.trace
 
 import grit.outline.locate.{Locate, Root}
-import grit.outline.testing.OutlineLayout
 import grit.outline.model.Defn
 import grit.outline.read.Read
+import grit.outline.testing.OutlineLayout
 
 import utest.*
 
