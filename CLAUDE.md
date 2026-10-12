@@ -126,9 +126,12 @@ scripts/check grit.core.topic.TopicsTests   # one suite, while iterating
 scripts/check grit.core                     # the module you touched
 ./mill grit.core.compile                    # does it type-check
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
-scripts/check                               # the commit gate: unit tier, law, format, clock, lint; once, last
-scripts/check --it                          # and the integration tier (below)
+scripts/check grit.core.durable.SeparationTests   # a probe suite a plan's capture section names
+scripts/check                               # the commit gate: unit, law, the probes a change reaches, format, clock, lint; once, last
+scripts/check --it                          # and the integration tier (below), for a change to grit.dbos or the live paths
+scripts/check --milestone                   # the gate, every probe and the integration tier; once per milestone
 ./mill __.test                              # every unit suite rerun: a flake hunt
+bash scripts/fetch-scalafmt.sh              # once: the format tier's pinned native scalafmt, into tools/
 scripts/sql grit_agent "SELECT …"           # a read-only query on a local database
 ```
 
@@ -144,6 +147,12 @@ JVM (`TestPostgres`), built from the same `docker/postgres/Dockerfile` compose b
 ([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).
 It needs Docker; there is no skip.
 
+**Capture probes** (suites that compile probe sources against their module to pin what
+capture and separation checking reject) are a third kind, a `probes` module beside `test`
+(`grit.core.probes`, `grit.act.probes`, `grit.turn.probes`, `grit.tools.probes`,
+`grit.tui.probes`). The gate runs a module's when a change touches capture syntax in its main
+sources, or in a module it depends on; `--probes` and `--milestone` run every one.
+
 **Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
 has every trap met so far (symptom, cause, fix), how to test that something does not
 compile, and the Scala-upgrade checklist. The ones that bite most:
@@ -153,8 +162,8 @@ compile, and the Scala-upgrade checklist. The ones that bite most:
 - scalafmt parses `^` only because of `runner.dialectOverride.allowCaptureChecking = true`;
   without it a file fails with *"`identifier` expected but `)` found"* and is silently skipped.
 - upickle's `derives ReadWriter` crashes; write codecs by hand over `ujson`.
-- `assertCompileError` never sees capture-checking errors; use the `Driver` probe in
-  `SeparationTests`.
+- `assertCompileError` never sees capture-checking errors; write a probe with
+  `Probes.batch`, in the module's `probes` tests (`SeparationTests` is the pattern).
 
 Every warning the build enables is an error (`-Werror`); `build.mill`'s `scalacOptions`
 lists the set in force, and a warning joins it in its own commit. `-Wunused:all` is on only
