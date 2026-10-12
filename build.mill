@@ -43,7 +43,7 @@ trait GritModule extends ScalaModule {
    * every run reads the shell's value afresh: the Mill daemon keeps its own environment. */
   def lint = Task.Input { Task.env.get("GRIT_LINT").contains("1") }
 
-  /* The flags a capture or separation probe (SeparationTests' `Driver`) compiles with: this
+  /* The flags a capture or separation probe (`Probes`, in a `probes` module) compiles with: this
    * module's, less -Werror. A probe pins which errors the checkers report; a warning in its
    * source would otherwise become one more error beside them. */
   def probeOptions = Task { scalacOptions().filterNot(_ == "-Werror") }
@@ -71,6 +71,23 @@ trait GritModule extends ScalaModule {
     def scalacOptions = Task {
       super.scalacOptions() ++
         Option.when(GritModule.this.lint())("-Wconf:msg=unused pattern variable:s")
+    }
+  }
+
+  /* Capture probes: suites that compile probe sources against this module, with its own flags
+   * (`GRIT_PROBE_CLASSPATH`, `GRIT_PROBE_OPTIONS`), to pin what capture and separation checking
+   * reject (docs/capture-checking.md). Their own module, so the commit gate's unit tier
+   * (`__.test`) leaves them out: scripts/check runs them when a change touches capture syntax,
+   * and at a milestone. */
+  trait GritProbes extends GritTests {
+    def mvnDeps = Task {
+      super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${GritModule.this.scalaVersion()}")
+    }
+    def forkEnv = Task {
+      super.forkEnv() ++ Map(
+        "GRIT_PROBE_CLASSPATH" -> GritModule.this.runClasspath().map(_.path.toString).mkString(":"),
+        "GRIT_PROBE_OPTIONS" -> GritModule.this.probeOptions().mkString(" ")
+      )
     }
   }
 }
@@ -137,20 +154,10 @@ object grit extends Module {
       mvn"com.lihaoyi::upickle:4.4.3"
     )
 
-    object test extends GritTests {
-      def mvnDeps = Task {
-        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
-      }
+    object test extends GritTests
 
-      /* SeparationTests compiles probe sources against core, with core's own flags, to pin
-       * what the compiler rejects (ADR 0003). */
-      def forkEnv = Task {
-        super.forkEnv() ++ Map(
-          "GRIT_PROBE_CLASSPATH" -> core.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> core.probeOptions().mkString(" ")
-        )
-      }
-    }
+    /* SeparationTests and the other capture suites, over `Probes` (ADR 0003). */
+    object probes extends GritProbes
   }
 
   /* The DBOS quarantine module (STYLE rule 8): everything that touches DBOS, JDBC or
@@ -234,28 +241,24 @@ object grit extends Module {
      * and the linear assembler: a provider called once, without Postgres. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly, grit.models)
-      def mvnDeps = Task {
-        super.mvnDeps() ++ Seq(
-          mvn"com.lihaoyi::os-lib:0.11.8",
-          mvn"org.scala-lang::scala3-compiler:${scalaVersion()}"
-        )
-      }
+      def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
 
       /* Recorded turn histories, one directory per epoch (ADR 0004): TurnReplayTests
        * replays them, RecordTurnHistories and scripts/capture-history.sh write them. Their
        * content signature rides in the environment, read by no test, so that `testCached`
        * reruns when a history is added or changed: Mill invalidates on an input's output,
-       * and the directory's path alone never changes.
-       * TurnCaptureTests compiles probe sources against turn, with turn's own flags. */
+       * and the directory's path alone never changes. */
       def histories = Task.Source(moduleDir / "histories")
       def forkEnv = Task {
         super.forkEnv() ++ Map(
           "GRIT_HISTORIES" -> histories().path.toString,
-          "GRIT_HISTORIES_SIG" -> histories().sig.toString,
-          "GRIT_PROBE_CLASSPATH" -> turn.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> turn.probeOptions().mkString(" ")
+          "GRIT_HISTORIES_SIG" -> histories().sig.toString
         )
       }
+    }
+
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }
   }
 
@@ -266,19 +269,13 @@ object grit extends Module {
     def folder = os.sub / "core" / "act"
     def moduleDeps = Seq(core)
 
-    /* The phases under core's in-memory durability and store fakes. PhaseCaptureTests compiles
-     * probe sources against act, with act's own flags. */
+    /* The phases under core's in-memory durability and store fakes. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
-      def mvnDeps = Task {
-        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
-      }
-      def forkEnv = Task {
-        super.forkEnv() ++ Map(
-          "GRIT_PROBE_CLASSPATH" -> act.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> act.probeOptions().mkString(" ")
-        )
-      }
+    }
+
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }
   }
 
@@ -384,15 +381,12 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "tools"
     def moduleDeps = Seq(core)
 
-    /* ClearedCaptureTests compiles probe sources against tools, with tools' own flags. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
-      def forkEnv = Task {
-        super.forkEnv() ++ Map(
-          "GRIT_PROBE_CLASSPATH" -> tools.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> tools.probeOptions().mkString(" ")
-        )
-      }
+    }
+
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }
   }
 
@@ -557,19 +551,11 @@ object grit extends Module {
      * `Durable` (ADR 0002), so nothing ADR 0003 protects is compiled here. */
     def separationChecking = false
 
-    object test extends GritTests {
-      /* NodeCaptureTests compiles probe sources against tui with tui's own flags, as
-       * grit.core.durable.SeparationTests does, to pin what capture checking rejects in a view
-       * tree's handlers and apps. */
-      def mvnDeps = Task {
-        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
-      }
-      def forkEnv = Task {
-        super.forkEnv() ++ Map(
-          "GRIT_PROBE_CLASSPATH" -> tui.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> tui.probeOptions().mkString(" ")
-        )
-      }
+    object test extends GritTests
+
+    /* What capture checking rejects in a view tree's handlers and apps. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }
 
     /* Everything runnable, so the library carries no demo baggage. Demo is the pty gate's
