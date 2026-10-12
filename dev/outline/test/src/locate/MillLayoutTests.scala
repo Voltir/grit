@@ -98,5 +98,11 @@ object MillLayoutTests extends TestSuite {
       assert(MillLayout.isTest(at(root, "out/x/test/compile.dest/classes")))
       assert(!MillLayout.isTest(at(root, "out/x/compile.dest/classes")))
     }
+
+    test("a probes module's classes and sources are tests'") {
+      val root = tree("out/x/probes/compile.dest/classes/A.tasty")
+      assert(MillLayout.isTest(at(root, "out/x/probes/compile.dest/classes")))
+      assert(MillLayout.isTestSource(os.RelPath("core/core/probes/src/durable/SeparationTests.scala")))
+    }
   }
 }

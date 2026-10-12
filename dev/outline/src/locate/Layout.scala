@@ -72,12 +72,15 @@ object MillLayout extends Layout {
       case _ => Vector.empty
     }
 
+  /** The folders a module's tests live in: unit tests, integration tests and capture probes. */
+  private val testFolders = Set("test", "it", "probes")
+
   def isTest(classesDir: os.Path): Boolean =
-    Set("test", "it").contains((classesDir / os.up / os.up).last)
+    testFolders.contains((classesDir / os.up / os.up).last)
 
   def isTestSource(file: os.RelPath): Boolean = {
     val segments = file.segments.toVector
-    segments.lift(segments.indexOf("src") - 1).exists(Set("test", "it").contains)
+    segments.lift(segments.indexOf("src") - 1).exists(testFolders.contains)
   }
 
   def notCompiled(root: Root): String =
