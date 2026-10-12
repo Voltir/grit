@@ -77,8 +77,9 @@ deleted because a type now says them. It has a **Capture and separation section*
 values hold capabilities and which must be pure; what each new trait, field and type
 parameter may capture (a type parameter left unbounded can smuggle a capability); where a
 step body or transaction must not reach; every `caps.unsafe` with its proof; and, for each
-claim the compiler is meant to enforce, a probe (the `Driver` probe in `SeparationTests`,
-`docs/capture-checking.md`) that shows the breach rejected.
+claim the compiler is meant to enforce, a probe (a `Probes.batch` suite in the module's
+`probes` tests, `SeparationTests` the pattern; `docs/capture-checking.md`), named by suite,
+that shows the breach rejected.
 
 ## Build and verify
 
@@ -86,7 +87,8 @@ claim the compiler is meant to enforce, a probe (the `Driver` probe in `Separati
   smart constructor, ADT shaped by case); don't restate what a type or visibility says;
   do state failure modes and behaviour-changing constants.
 - **Build, test and commit by the `grit-test-cycle` skill**, which is loaded, red first,
-  `--it` when it says; databases by the `grit-local-db` skill.
+  `--it` when it says, and each probe suite the plan names run by name; databases by the
+  `grit-local-db` skill.
 - **Checks cost real time.** Keep one warm Mill for the whole task: `./mill`, never
   `--no-daemon`, and no `./mill shutdown` between steps except once to clear a "Connection
   refused". One Mill job at a time. While iterating, run only the suite you are changing: red,
