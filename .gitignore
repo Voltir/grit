@@ -21,6 +21,7 @@ CLAUDE.local.md
 # `.enola/*` with a star, not a slash: git will not descend into an ignored
 # directory, so a slash form makes the negation below unreachable.
 tools/enola
+tools/scalafmt
 .enola/*
 !.enola/suppressions.yaml
 **/.enola/*

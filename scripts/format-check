@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# Every Scala source checked by scalafmt (checkFormatAll): exits non-zero when one is not
-# formatted, or when scalafmt cannot parse one, naming each such file. scalafmt reports an
-# unparseable file as `error: <path>: …`, skips it and still exits 0, so this reads its output
-# for them. It runs Mill without a daemon: scalafmt's worker lives in the daemon and remembers a
-# file it skipped as checked, so a second run in the same daemon passes it unseen. Arguments
-# are the Mill command to run it with (default ./mill).
+# Every Scala source under a module's src checked by the pinned native scalafmt (tools/scalafmt;
+# bash scripts/fetch-scalafmt.sh installs it), with .scalafmt.conf: exits non-zero when one is
+# not formatted, or when scalafmt cannot parse one, naming each such file. scalafmt reports an
+# unparseable file as `<path>:<line>: error: …`, skips it and still exits 0, so this reads its
+# output for them. Reformat with ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll
+# __.sources, which reads the same configuration and version.
 #
 #   scripts/format-check                       # as scripts/check's format tier runs it
 set -uo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-[ $# -gt 0 ] || set -- ./mill
-log=$("$1" --no-daemon "${@:2}" mill.scalalib.scalafmt.ScalafmtModule/checkFormatAll __.sources 2>&1)
+scalafmt=tools/scalafmt
+[ -x "$scalafmt" ] || { echo "format: no $scalafmt -- run: bash scripts/fetch-scalafmt.sh" >&2; exit 1; }
+
+mapfile -t files < <(find core extensions kit deployments eval dev -path '*/out' -prune -o \
+  -path '*/src/*' -name '*.scala' -print | sort)
+log=$("$scalafmt" --test --non-interactive --config .scalafmt.conf "${files[@]}" 2>&1)
 rc=$?
-printf '%s\n' "$log"
-mapfile -t skipped < <(grep -oE 'error: [^ ]+\.scala: ' <<<"$log" | sed -E 's/^error: (.*): $/\1/' | sort -u)
+mapfile -t skipped < <(grep -oE '^[^ ]+\.scala:[0-9]+: error:' <<<"$log" | sed -E 's/:[0-9]+: error:$//' | sort -u)
 for f in "${skipped[@]}"; do
   echo "format: ${f#"$PWD"/} does not parse; scalafmt skipped it"
 done
-# checkFormatAll lists each misformatted file as a bare path; it fails on them itself.
-grep -E '^/[^ ]+\.scala$' <<<"$log" | sort -u | while read -r f; do
+# --test prints each misformatted file's diff, headed `--- a<path>`; it fails on them itself.
+grep -E '^--- a' <<<"$log" | sed -E 's#^--- a##' | sort -u | while read -r f; do
   echo "format: ${f#"$PWD"/} is not formatted; run reformatAll"
 done
+echo "format: ${#files[@]} files checked"
 [ ${#skipped[@]} -eq 0 ] || exit 1
 exit "$rc"

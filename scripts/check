@@ -26,7 +26,8 @@
 #         `test`: suites compiling probe sources against their module with its own flags).
 #   --milestone is --it and --probes together: the run a milestone closes with.
 #   format  scripts/format-check: every source formatted, and none that scalafmt cannot parse
-#         (it skips such a file and exits 0), each named. --no-lint skips it.
+#         (it skips such a file and exits 0), each named, by the pinned native scalafmt
+#         (bash scripts/fetch-scalafmt.sh). --no-lint skips it.
 #   clock scripts/clock-check: no main source reads the JVM's time or randomness outside
 #         grit.core.clock (Instant.now, Clock.system, nanoTime, randomUUID, ...) unless marked
 #         `clock-check: <why>`, each named as file:line. --no-lint skips it.
@@ -263,7 +264,7 @@ if [ ${#targets[@]} -eq 0 ]; then
     fi
 
     if $lint; then
-      run_tier format out "" -- scripts/format-check "${mill[@]}"
+      run_tier format out "" -- scripts/format-check
       run_tier clock out "" -- scripts/clock-check
     fi
   fi
