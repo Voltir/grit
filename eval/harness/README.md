@@ -86,7 +86,9 @@ Packages, each importing only those above it:
   of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
   window part by ids alone or a document by version, or the thread, elsewhere, nowhere, or nothing asked), and whether
   grit should have spoken; a person's note is never read into one; `Locator.held`, whether a
-  window's parts show what a locator names. ← `capture`
+  window's parts show what a locator names. And `ChurnPairs`, the questions of a churn
+  comparison by id, each a `ChurnPair` of the messages that asked it before a change and after,
+  read from a local `churn-pairs.json`, ids alone. ← `capture`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   capture, variant, build, cap and repeats a run was started with, and a question set's
   names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
@@ -194,7 +196,13 @@ Packages, each importing only those above it:
   squares from its priced ledger rows, since grit records no price: the cached rate left out
   where no row has a cached token, and why a model has none; and each model's `Scale`, its
   provider's input tokens per token grit estimates, fitted through 0 over its calls with
-  both, none from under `Rates.MinCalls`; `Prices`, the two together.
+  both, none from under `Rates.MinCalls`; `Prices`, the two together. `Churn`, each question
+  of a `label.ChurnPairs` asked before a change and after: each turn's `Churn.Reads` (its hosted
+  calls before its first indexed read and its first useful one, by its calls' `Reading`s, or
+  none), each side `confounded` when its window held a part of another paired thread, and the
+  before−after differences as `Estimate`s clustered by question, over every pair and the
+  unconfounded, a turn that never reads counted apart; a pair whose message no turn answers is
+  refused by id.
   ← `stats`, `capture`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its capture's cases, the labels in
   force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case
@@ -213,7 +221,9 @@ Packages, each importing only those above it:
   (stated undefined when no reply used a part), the turns it changed, and the reference
   turns' pass rate under shipped and each variant. The synthetic reference judged under
   shipped and each variant (each turn a `CaseJudged`): `Report.synthetic`, each variant's pass
-  rate clustered by case, and its failing turns by name. ← `stats`, `reply`,
+  rate clustered by case, and its failing turns by name. A churn comparison: `Report.churn`,
+  each difference with its interval and MDE, the turns that never read counted apart, the
+  after-turns' rate following a card, and a line a question. ← `stats`, `reply`,
   `capture`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 

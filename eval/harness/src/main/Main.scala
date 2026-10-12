@@ -58,7 +58,7 @@ import grit.eval.harness.jev.{
   Variant,
   Variants
 }
-import grit.eval.harness.label.{Labels, ReplyLabels, Verdicts}
+import grit.eval.harness.label.{ChurnPairs, Labels, ReplyLabels, Verdicts}
 import grit.eval.harness.log.{
   Cache,
   Cached,
@@ -90,6 +90,7 @@ import grit.eval.harness.reply.{
 import grit.eval.harness.report.{CaseJudged, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
+  Churn,
   Decision,
   Drafting,
   Drafts,
@@ -154,6 +155,7 @@ object Main {
         )
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
+      case "churn" :: rest => exit(flags(rest).flatMap(churn))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
@@ -335,6 +337,21 @@ object Main {
         if (!Files.exists(file)) Right(Verdicts.Empty) else read(file).flatMap(Verdicts.read)
       }
       _ <- publish(dir, s"turns-$capture", Report.turns(capture, captured, standing))
+    } yield ()
+
+  /** `churn --eval <dir> --capture <yyyymmdd> --pairs <file>`: the capture's recorded turns'
+    * churn over the questions `<file>` pairs ([[ChurnPairs]]), written to
+    * `<dir>/reports/churn-<yyyymmdd>.md` and printed; refused, naming the question and the
+    * message, when no turn answers one side of a pair.
+    */
+  private def churn(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
+      captured <- readTurns(dir.resolve("capture").resolve(capture))
+      pairs <- need(f, "pairs").map(Path.of(_)).flatMap(read).flatMap(ChurnPairs.read)
+      measured <- Churn.of(captured, pairs)
+      _ <- publish(dir, s"churn-$capture", Report.churn(capture, measured))
     } yield ()
 
   /** `rebuild --capture <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]

@@ -152,6 +152,16 @@ object Report {
   def turns(capture: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
     TurnLines.of(capture, turns, verdicts)
 
+  /** A churn comparison over `capture` ([[grit.eval.harness.score.Churn]]), as markdown,
+    * text-free: the pairs and the turns confounded, by workflow; then each difference in calls
+    * before the first read (indexed and useful, all pairs and the unconfounded) with its pairs,
+    * interval and MDE, `—` under two questions; the turns that never read or never usefully, by
+    * side; the after-turns whose first read followed a card; and one line a question, each turn
+    * by workflow with its reads.
+    */
+  def churn(capture: String, churn: grit.eval.harness.score.Churn): String =
+    ChurnLines.of(capture, churn)
+
   /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
     * before shapes and with no offer; their weigh steps by what each recorded, failures by
     * kind.

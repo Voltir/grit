@@ -173,6 +173,18 @@
 #       every turn, by root and by where said; then one line a turn by workflow, most costly
 #       first, with its top 3 parts by support. Text-free; reads no database.
 #
+#   scripts/eval churn <yyyymmdd> <pairs file>
+#       The capture's recorded turns' churn over the questions <pairs file> pairs
+#       ({"<question id>": {"before": "<case id>", "after": "<case id>"}}, ids alone; the
+#       questions' words stay in a file of their own): per turn, its hosted calls before its
+#       first read through a document's pointer and before its first useful one (the reply's
+#       support in the result at 0.3 or over), a turn that never reads counted apart; per pair
+#       the before-turn's less the after-turn's, clustered by question, over every pair and
+#       over those neither of whose turns held a part of another paired thread; and the share
+#       of after-turns whose first read followed a card. Written to
+#       .local/eval/reports/churn-<date>.md and printed. Text-free; reads no database. Refused,
+#       naming the question, when no turn answers one side of a pair.
+#
 #   scripts/eval rebuild <yyyymmdd> --spend <usd> [--window <tokens>] [--tail <tokens>]
 #       Every turn grit_eval_<date> recorded, its window rebuilt by the shipped retrieval
 #       assembler over the database as it stood when the turn's assemble step started (rows
@@ -470,6 +482,17 @@ turns() {
   harness turns --eval "$main/.local/eval" --capture "$capture"
 }
 
+churn() {
+  local capture=${1:-} pairs=${2:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] && [ $# -eq 2 ] || usage
+  [ -f "$main/.local/eval/capture/$capture/turns.jsonl" ] ||
+    { echo "eval: no turns in $main/.local/eval/capture/$capture; capture again" >&2; exit 1; }
+  # The script runs from its checkout: a relative path is the caller's.
+  case $pairs in /*) ;; *) pairs="$OLDPWD/$pairs" ;; esac
+  [ -f "$pairs" ] || { echo "eval: no pairs file $pairs" >&2; exit 1; }
+  harness churn --eval "$main/.local/eval" --capture "$capture" --pairs "$pairs"
+}
+
 rebuild() {
   local capture=${1:-}
   [[ $capture =~ ^[0-9]{8}$ ]] || usage
@@ -549,6 +572,7 @@ case $1 in
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;
+  churn) shift; churn "$@" ;;
   rebuild) shift; rebuild "$@" ;;
   recipes) shift; recipes "$@" ;;
   reference-build) shift; reference_build "$@" ;;
