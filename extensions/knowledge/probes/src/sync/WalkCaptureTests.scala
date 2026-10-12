@@ -19,9 +19,6 @@ object WalkCaptureTests extends TestSuite {
       |import grit.knowledge.sync.*
       |""".stripMargin
 
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n", flags)
-
   /** A walk of `Walk`'s shape, declared as `Walk` is, holding the moves of the run it plans. */
   private val walkHoldsMoves =
     """final class Walk private (moves: Keeping^, held: Vector[Held]) extends caps.Pure {
@@ -29,23 +26,29 @@ object WalkCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  private val walkIsPure =
+    """def pure[A <: caps.Pure](a: A): A = a
+      |def walk(cards: GitHubCards, floor: Label): Walk =
+      |  pure(Walk.start(cards, 1, floor, Vector.empty))
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(prelude, List(walkIsPure, walkHoldsMoves))
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
+    test("one compile answers both probes: the walk's purity and its held moves") {
+      compiled.runs ==> 1
+    }
+
     test("the walk is pure data: a bound asking for caps.Pure takes it") {
-      val errs = errors(
-        """def pure[A <: caps.Pure](a: A): A = a
-          |def walk(cards: GitHubCards, floor: Label): Walk =
-          |  pure(Walk.start(cards, 1, floor, Vector.empty))
-          |""".stripMargin
-      )
-      assert(errs.isEmpty)
+      assert(compiled.errors(walkIsPure).isEmpty)
     }
 
     test("a walk holding its run's moves is rejected") {
-      assert(heldImpure(errors(walkHoldsMoves)))
+      assert(heldImpure(compiled.errors(walkHoldsMoves)))
     }
 
     test("capture checking is what rejects it") {
