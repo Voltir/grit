@@ -1,6 +1,6 @@
 ---
 name: grit-test-cycle
-description: Running grit's tests and gates while changing its code — scripts/check for a suite, a module or the commit gate, red-first tests, the integration tier, replay histories, Mill in a git worktree, and leaving no JVM behind.
+description: Running grit's tests and gates while changing its code — scripts/check for a suite, a module or the commit gate, red-first tests, capture probes, the integration tier and the milestone run, replay histories, Mill in a git worktree, and leaving no JVM behind.
 ---
 
 # grit's test cycle
@@ -11,8 +11,10 @@ description: Running grit's tests and gates while changing its code — scripts/
 scripts/check grit.core.speech.SpeechTests   # one suite, while iterating
 scripts/check grit.core                      # one module's unit tests
 scripts/check grit.dbos.it                   # an it module or suite (Docker)
-scripts/check                                # the commit gate: unit, law, format, lint
+scripts/check grit.core.durable.SeparationTests  # a probe suite
+scripts/check                                # the commit gate: unit, law, probes a change reaches, format, clock, lint
 scripts/check --it                           # the gate and the integration tier
+scripts/check --milestone                    # the gate, every probe and the integration tier
 ```
 
 It prints each failing test, every compile error and warning, and one totals line per tier;
@@ -27,8 +29,10 @@ cut short prints a smaller total that looks green.
 - **At a commit point**, once: `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll
   __.sources`, then bare `scripts/check`. Its tiers are the unit tier (`__.test.testCached`:
   a module's suites rerun only when their inputs changed; a failure is never cached), the
-  law (`scripts/enola-law.sh`; `bash scripts/fetch-enola.sh` first if `tools/` lacks enola)
-  and, last, **lint**: every module compiled with `-Wunused:all` in its own output
+  law (`scripts/enola-law.sh`; `bash scripts/fetch-enola.sh` first if `tools/` lacks enola),
+  the capture probes a change reaches (below), format (`bash scripts/fetch-scalafmt.sh` first
+  if `tools/` lacks scalafmt), clock and, last, **lint**: the modules holding a changed Scala
+  source and every module depending on one, compiled with `-Wunused:all` in their own output
   directory. An unused import passes a targeted run and fails lint.
 - **A cached suite can miss a file it reads**: a file a test reads by path is not an input
   unless `build.mill` makes its content one (`grit.turn.test`'s `histories` is the pattern).
@@ -45,10 +49,20 @@ The rule and its reasons: [STYLE.md, Tests](../../../STYLE.md#tests). The proced
   or a throwing stub. The commit message quotes the failing assertion, and for a plant
   carries its diff. A test that stays green is not done.
 
-## The integration tier (`--it`)
+## Capture probes
 
-Run it before committing a change to `grit.dbos`, `schema.sql`, an `it` module or the
-engine's live paths, and when a milestone closes. It needs Docker; there is no skip.
+A module's `probes` tests compile probe sources against it, through `Probes.batch`, to pin
+what capture and separation checking reject. The gate runs a module's probes when a change
+touches capture syntax (`^`, `caps.`, `SharedCapability`, `Pure`) in its main sources or a
+module it depends on, and every probe when `build.mill` or `.mill-version` changes. When a
+plan's capture section names a probe, run its suite by name, red on its plant and green, and
+once more before the commit; `scripts/check --probes` runs them all.
+
+## The integration tier (`--it`) and the milestone run (`--milestone`)
+
+Run `--it` before committing a change to `grit.dbos`, `schema.sql`, an `it` module or the
+engine's live paths. It needs Docker; there is no skip. When a milestone closes, run
+`--milestone`: the gate, every probe and the integration tier.
 
 ## Replay histories
 
