@@ -10,8 +10,9 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.ServedEdge
-import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
+import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Identities, Vouching}
+import grit.core.job.SlotRule
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
@@ -23,7 +24,8 @@ import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
-import grit.core.visibility.{Compartments, Group, GroupName, RoomLabels, Visibility}
+import grit.core.triage.Corpus
+import grit.core.visibility.{Compartments, Group, GroupName, Label, RoomLabels, Visibility}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
@@ -31,6 +33,8 @@ import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, Local
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
+import grit.knowledge.github.{GitHubCards, SyncSchedule}
+import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.mcp.client.McpServer
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
@@ -69,7 +73,9 @@ import grit.turn.{Turn, TurnLoop}
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
   * Digest on, each turn's model is offered `recent_activity`; with the reminders on,
-  * `remind_me`, `reminders` and `cancel_reminder`). When a period is asked about
+  * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each file and
+  * directory of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
+  * `GRIT_GITHUB_REF`, synced daily, [[knowledge]]). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
@@ -508,9 +514,14 @@ object Main {
   private val PluginsVar = "GRIT_PLUGINS"
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
-    * Those there are: `digest` ([[Digest]]) and `remind` ([[Reminders]]).
+    * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]) and `knowledge`
+    * ([[knowledge]], under `visibility`, its days beginning in `zone`).
     */
-  private[main] def pluginChoice(env: Map[String, String]): Either[String, Vector[Plugin]] =
+  private[main] def pluginChoice(
+      env: Map[String, String],
+      visibility: Visibility,
+      zone: java.time.ZoneId
+  ): Either[String, Vector[Plugin]] =
     env
       .get(PluginsVar)
       .map(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).distinct)
@@ -521,11 +532,80 @@ object Main {
             raw match {
               case "digest" => Right(done :+ new Digest(name))
               case "remind" => Right(done :+ new Reminders(name))
-              case other => Left(s"$PluginsVar: no plugin $other; there are digest and remind")
+              case "knowledge" =>
+                knowledge(name, env, visibility, zone)
+                  .map(done :+ _)
+                  .left
+                  .map(why => s"$PluginsVar: $why")
+              case other =>
+                Left(s"$PluginsVar: no plugin $other; there are digest, remind and knowledge")
             }
           }
         }
       }
+
+  /** The variable naming the owner of the repository the knowledge plugin reads. */
+  private val GithubOwnerVar = "GRIT_GITHUB_OWNER"
+
+  /** The variable naming the repository the knowledge plugin reads, under its owner. */
+  private val GithubRepoVar = "GRIT_GITHUB_REPO"
+
+  /** The variable naming the ref (a branch, tag or commit) the knowledge plugin reads at. */
+  private val GithubRefVar = "GRIT_GITHUB_REF"
+
+  /** The knowledge plugin `name` as `env` declares it ([[Knowledge]]): one source, the
+    * repository [[GithubOwnerVar]]/[[GithubRepoVar]] at [[GithubRefVar]], all of it, at most
+    * 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit serve` with
+    * [[GithubTokenVar]] set; a run while none serves them stops at its first call, and its
+    * reply says so). Kept at public, the corpus `github`, and drawn on where a conversation's
+    * scope holds `service:github` (`GRIT_SCOPE`); synced daily at 03:00 in `zone`, at most 30
+    * summaries a run. Why not: [[GithubTokenVar]] unset, or a part of the repository unset or
+    * blank, naming its variable; or [[Knowledge.of]]'s refusal under `visibility`.
+    */
+  private[main] def knowledge(
+      name: PluginName,
+      env: Map[String, String],
+      visibility: Visibility,
+      zone: java.time.ZoneId
+  ): Either[String, Knowledge] = {
+    def named(variable: String): Either[String, String] =
+      env
+        .get(variable)
+        .map(_.trim)
+        .filter(_.nonEmpty)
+        .toRight(s"knowledge reads the repository $variable names, and it is unset or blank")
+    for {
+      _ <- Either.cond(
+        env.contains(GithubTokenVar),
+        (),
+        s"knowledge reads GitHub, and $GithubTokenVar is unset"
+      )
+      owner <- named(GithubOwnerVar)
+      repo <- named(GithubRepoVar)
+      ref <- named(GithubRefVar)
+      service <- Service.of("github")
+      corpus <- CorpusName.of("github")
+      key <- ScheduleKey.of("daily")
+      daily <- SyncSchedule.of(key, SlotRule.Daily(java.time.LocalTime.of(3, 0), zone), 30)
+      cards <- GitHubCards.of(
+        Corpus(corpus, s"the GitHub repository $owner/$repo", Place.Everywhere, Some(service)),
+        "github",
+        owner,
+        repo,
+        ref,
+        Vector(""),
+        Set.empty,
+        600,
+        Some(Label.Public),
+        service.place,
+        Vector(daily)
+      )
+      plugin <- Knowledge
+        .of(name, Vector(CardSource.GitHub(cards)), visibility)
+        .left
+        .map(why => s"knowledge: $why")
+    } yield plugin
+  }
 
   private val StubTopicsVar = "GRIT_STUB_TOPICS"
 
@@ -576,7 +656,6 @@ object Main {
         env,
         if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
       )
-      plugins <- pluginChoice(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
       domains <- Claimed.fromEnv(env)
       trusted <- slackIn.fold[Either[String, Vector[Vouching]]](Right(Vector.empty))(team =>
@@ -589,6 +668,7 @@ object Main {
       identities <- Identities.of(trusted, domains).left.map(_.message)
       named <- admins(env)
       visible <- visibility(named, slackIn)
+      plugins <- pluginChoice(env, visible, zone)
       deployment <- Deployment
         .of(
           visibility = visible,

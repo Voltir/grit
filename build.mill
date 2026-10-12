@@ -634,6 +634,7 @@ object grit extends Module {
         grit.kit,
         grit.digest,
         grit.remind,
+        grit.knowledge,
         grit.prose,
         grit.tui,
         grit.host,

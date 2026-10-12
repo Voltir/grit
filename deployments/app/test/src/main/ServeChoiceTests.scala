@@ -49,6 +49,33 @@ object ServeChoiceTests extends TestSuite {
       )
     }
 
+    test(
+      "serve declares the knowledge plugin's sync when GRIT_PLUGINS names it with GitHub's repository, and refuses to start, naming the variable, without it"
+    ) {
+      val github = Map(
+        "GRIT_PLUGINS" -> "knowledge",
+        "GITHUB_MCP_TOKEN" -> "token",
+        "GRIT_GITHUB_OWNER" -> "octocat",
+        "GRIT_GITHUB_REPO" -> "Hello-World",
+        "GRIT_GITHUB_REF" -> "main"
+      )
+      def declared(env: Map[String, String]) =
+        Main
+          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
+          .map(_.declared.map((_, d) => grit.core.id.ScheduleKey.value(d.key)))
+      (
+        declared(github),
+        declared(github - "GRIT_GITHUB_OWNER"),
+        declared(github - "GRIT_PLUGINS")
+      ) ==> (
+        Right(Vector("github-daily")),
+        Left(
+          "GRIT_PLUGINS: knowledge reads the repository GRIT_GITHUB_OWNER names, and it is unset or blank"
+        ),
+        Right(Vector())
+      )
+    }
+
     test("the domains GRIT_CLAIMED_DOMAINS lists are the deployment's own; unset, it claims none") {
       def claimed(env: Map[String, String]) =
         Main
