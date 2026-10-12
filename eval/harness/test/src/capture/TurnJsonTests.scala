@@ -130,16 +130,20 @@ object TurnJsonTests extends TestSuite {
     Vector(
       Round(
         Vector(
-          Call(Called.Topic, Settled.Ok(5)),
-          Call(Called.Tool(ToolName("read")), Settled.Ok(12)),
-          Call(Called.Unnamed, Settled.Failed(3))
+          Call(Called.Topic, Settled.Ok(5), Reading.Other),
+          Call(
+            Called.Tool(ToolName("read")),
+            Settled.Ok(12),
+            Reading.Indexed(followed = true, Support.read(0.5))
+          ),
+          Call(Called.Unnamed, Settled.Failed(3), Reading.Other)
         )
       ),
       Round(
         Vector(
-          Call(Called.Tool(ToolName("search")), Settled.Expired),
-          Call(Called.Tool(ToolName("search")), Settled.Abandoned),
-          Call(Called.Tool(ToolName("read")), Settled.Unsettled)
+          Call(Called.Tool(ToolName("search")), Settled.Expired, Reading.Indexed(false, None)),
+          Call(Called.Tool(ToolName("search")), Settled.Abandoned, Reading.Other),
+          Call(Called.Tool(ToolName("read")), Settled.Unsettled, Reading.Other)
         )
       )
     ),
@@ -267,19 +271,27 @@ object TurnJsonTests extends TestSuite {
         """"ended":{"unfinished":"PENDING"},"spend":[],"speech":null}"""
     }
 
-    test("a call's form is pinned: an offered tool by name, a topic call and an unnamed one") {
+    test(
+      "a call's form is pinned: an offered tool by name, a topic call and an unnamed one, each with its reading"
+    ) {
       // The stored form, as above; a line written before topic calls were kept has no
       // "topic", and reads as before.
       val calls = Vector(
-        Call(Called.Tool(ToolName("read")), Settled.Ok(12)),
-        Call(Called.Topic, Settled.Ok(5)),
-        Call(Called.Unnamed, Settled.Expired)
+        Call(
+          Called.Tool(ToolName("read")),
+          Settled.Ok(12),
+          Reading.Indexed(true, Support.read(0.5))
+        ),
+        Call(Called.Topic, Settled.Ok(5), Reading.Other),
+        Call(Called.Unnamed, Settled.Expired, Reading.Indexed(false, None))
       )
       val line = TurnJson.write(unfinished.copy(rounds = Vector(Round(calls)))).render()
       line.slice(line.indexOf("\"rounds\""), line.indexOf(",\"ended\"")) ==>
-        """"rounds":[[{"tool":"read","topic":false,"settled":"ok","length":12},""" +
-        """{"tool":null,"topic":true,"settled":"ok","length":5},""" +
-        """{"tool":null,"topic":false,"settled":"expired","length":null}]]"""
+        """"rounds":[[{"tool":"read","topic":false,"settled":"ok","length":12,""" +
+        """"reading":{"indexed":{"followed":true,"support":0.5}}},""" +
+        """{"tool":null,"topic":true,"settled":"ok","length":5,"reading":"other"},""" +
+        """{"tool":null,"topic":false,"settled":"expired","length":null,""" +
+        """"reading":{"indexed":{"followed":false,"support":null}}}]]"""
       val older = line.replace(",\"topic\":false", "").replace(",\"topic\":true", "")
       TurnJson.read(ujson.read(older)).map(_.rounds.flatMap(_.calls.map(_.tool))) ==>
         Right(Vector(Called.Tool(ToolName("read")), Called.Unnamed, Called.Unnamed))
@@ -289,7 +301,7 @@ object TurnJsonTests extends TestSuite {
       val line = TurnJson
         .write(
           unfinished.copy(rounds =
-            Vector(Round(Vector(Call(Called.Tool(ToolName("read")), Settled.Ok(1)))))
+            Vector(Round(Vector(Call(Called.Tool(ToolName("read")), Settled.Ok(1), Reading.Other))))
           )
         )
         .render()

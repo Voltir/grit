@@ -15,6 +15,7 @@ import grit.eval.harness.capture.{
   Ended,
   Part,
   Parts,
+  Reading,
   Round,
   Said,
   Settled,
@@ -58,7 +59,7 @@ object RecipesTests extends TestSuite {
       None,
       TurnRecord.Weigh.Unrecorded,
       None,
-      Vector(Round(calls.toVector.map(t => Call(Called.Tool(t), Settled.Ok(1))))),
+      Vector(Round(calls.toVector.map(t => Call(Called.Tool(t), Settled.Ok(1), Reading.Other)))),
       Ended.Replied(10, false),
       Vector.empty,
       None

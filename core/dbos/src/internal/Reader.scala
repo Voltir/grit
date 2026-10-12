@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 import scala.util.control.NonFatal
 
-import grit.core.document.DocumentSearch
+import grit.core.document.{Document, DocumentSearch}
 import grit.core.durable.StepRecord
 import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
@@ -37,6 +37,7 @@ import grit.dbos.sql.{
   SqlConversationStore,
   SqlDb,
   SqlDocumentSearch,
+  SqlDocuments,
   SqlEntrySearch,
   SqlEntryStore,
   SqlLifecycleStore,
@@ -47,6 +48,7 @@ import grit.dbos.sql.{
   SqlReviews,
   SqlRoomReads,
   SqlStitchStore,
+  SqlTombstones,
   SqlToolSets,
   SqlTriageShadows,
   SqlTriageStore,
@@ -83,6 +85,11 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
 
   /** The enabled plugins' documents as windows draw on them. */
   val documents: DocumentSearch
+
+  /** Every plugin's current documents that its transaction reads, enabled or not, withdrawals
+    * left out: by plugin in name order, each plugin's most recently written first.
+    */
+  def current()(using Tx^): Either[StoreError, Vector[Document]]
   val principals: Principals
   val triage: TriageStore
   val shadows: TriageShadows
@@ -164,6 +171,17 @@ object Reader {
     val search: EntrySearch = new SqlEntrySearch()
     // Its keepers would write tombstones; a reader only searches, so none is ever built.
     val documents: DocumentSearch = new SqlDocumentSearch
+    // Read through its shelves and its list of plugins alone: no keeper is built, so no
+    // tombstone is written.
+    private val shelves = new SqlDocuments(new SqlTombstones)
+    def current()(using Tx^): Either[StoreError, Vector[Document]] =
+      shelves
+        .kept()
+        .flatMap(plugins =>
+          plugins.foldLeft[Either[StoreError, Vector[Document]]](Right(Vector.empty))((acc, p) =>
+            acc.flatMap(done => shelves.shelf(p).newest(Int.MaxValue).map(done ++ _))
+          )
+        )
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows

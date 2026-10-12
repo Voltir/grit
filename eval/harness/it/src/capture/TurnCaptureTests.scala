@@ -98,7 +98,8 @@ object TurnCaptureTests extends TestSuite {
     )
 
   /** A model scripted by the turn's own message: `~fail` refuses; `~loop` calls `echo` until
-    * two of its results are in, then replies; `~pass` passes; "what was it" answers from the
+    * two of its results are in, each with its count of results so far, then replies with the
+    * results' words; `~pass` passes; "what was it" answers from the
     * record; anything else replies.
     */
   private final class Scripted extends Provider {
@@ -121,9 +122,10 @@ object TurnCaptureTests extends TestSuite {
           AssistantBlock.ToolCall(
             grit.core.id.ToolCallId(s"call-$results"),
             "echo",
-            ujson.Obj("text" -> s"$Marker argument")
+            ujson.Obj("text" -> s"$Marker argument $results")
           )
         )
+      else if (said.contains("~loop")) reply(AssistantBlock.Text(s"$Marker echoed back"))
       else if (said.contains("~pass")) reply(AssistantBlock.Text("pass"))
       else if (said.contains("what was it")) reply(AssistantBlock.Text(s"$Marker Falcon 4200"))
       else reply(AssistantBlock.Text(s"$Marker replied"))
@@ -333,6 +335,12 @@ object TurnCaptureTests extends TestSuite {
           Some(right(Pointer.of(ToolName("echo"), "text" -> ujson.Str(s"$Marker argument 0"))))
         )
         val note = keep(engine, "note", None)
+        // Current, but held by no window: a card pointing at the loop's second echo.
+        val _ = keep(
+          engine,
+          "index",
+          Some(right(Pointer.of(ToolName("echo"), "text" -> ujson.Str(s"$Marker argument 1"))))
+        )
         launch(engine, Vector(card, note))
         right(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
         val tui = Origin.Tui(right(Directory.of("/tmp/harness-turns")), "s")
@@ -446,7 +454,7 @@ object TurnCaptureTests extends TestSuite {
             "slack C1/2000.1",
             TurnOffer.Root.Addressed,
             Focus.Open,
-            Ended.Replied(s"$Marker replied".length, false)
+            Ended.Replied(s"$Marker echoed back".length, false)
           ),
           // The stub reads every yes/no at 0.9, to-grit too: its offer recorded it by name, its
           // reply read as an addressed one's, and the case keeps the root the offer recorded,
@@ -485,9 +493,18 @@ object TurnCaptureTests extends TestSuite {
           assert(at(t).triage.nonEmpty)
         }
 
-        // The loop: two rounds of one echo each, both ran.
-        at(looped).rounds ==> Vector.fill(2)(
-          Round(Vector(Call(Called.Tool(ToolName("echo")), Settled.Ok(Echoed.length))))
+        // The loop: two rounds of one echo each, both ran, each read through a current card,
+        // the first's held by its window, and each result carrying the whole reply.
+        at(looped).rounds ==> Vector(true, false).map(followed =>
+          Round(
+            Vector(
+              Call(
+                Called.Tool(ToolName("echo")),
+                Settled.Ok(Echoed.length),
+                Reading.Indexed(followed, Support.read(1.0))
+              )
+            )
+          )
         )
         Vector(remark, question, failed, heard, unnamed).map(at(_).rounds) ==>
           Vector.fill(5)(Vector.empty)

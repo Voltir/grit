@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
+import grit.core.document.Pointer
 import grit.core.id.{
   ConversationId,
   DocumentVersion,
@@ -167,8 +168,52 @@ object Part {
 /** One reply of the tool loop that called tools, its calls in the order made. */
 final case class Round(calls: Vector[Call])
 
-/** One tool call: the tool it named, and how it settled. */
-final case class Call(tool: Called, settled: Settled)
+/** One tool call: the tool it named, how it settled, and what it read. */
+final case class Call(tool: Called, settled: Settled, reading: Reading)
+
+/** What a call read, classified at capture by the documents current then, whichever plugin kept
+  * them: so turns made before a document existed are classified as those made after.
+  */
+enum Reading {
+
+  /** It followed no current document's pointer. */
+  case Other
+
+  /** It followed a current document's pointer ([[grit.core.document.Pointer.followedBy]]).
+    *
+    * @param followed
+    *   a document its own turn's window held points at it too
+    * @param support
+    *   the reply's support in its result; `None` when the turn has no reply, its reply passed,
+    *   or the call has no result that is not an error
+    */
+  case Indexed(followed: Boolean, support: Option[Support])
+
+  /** Indexed, and its result carries the reply: support at or over [[Support.Used]]. */
+  def useful: Boolean = this match {
+    case Indexed(_, support) => support.exists(_.used)
+    case Other => false
+  }
+}
+
+object Reading {
+
+  /** A call of the tool named `sent` with `arguments`: indexed when one of `current`'s pointers
+    * is followed by it, followed when one of `held`'s is too, with `support`. A call following
+    * only `held`'s, a document no longer current, is [[Other]].
+    */
+  def of(
+      sent: String,
+      arguments: ujson.Value,
+      current: Vector[Pointer],
+      held: Vector[Pointer],
+      support: Option[Support]
+  ): Reading = ToolName.of(sent).toOption match {
+    case Some(tool) if current.exists(_.followedBy(tool, arguments)) =>
+      Indexed(held.exists(_.followedBy(tool, arguments)), support)
+    case _ => Other
+  }
+}
 
 /** The tool a call named, never its arguments. */
 enum Called {

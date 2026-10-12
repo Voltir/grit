@@ -23,6 +23,7 @@ import grit.eval.harness.capture.{
   Offered,
   Part,
   Parts,
+  Reading,
   Round,
   Said,
   Settled,
@@ -115,8 +116,13 @@ object TurnFixtures {
         )
       ),
       rounds = Vector(
-        Round(Vector(Call(Called.Topic, Settled.Ok(5)), Call(Called.Tool(read), Settled.Ok(9)))),
-        Round(Vector(Call(Called.Tool(read), Settled.Failed(3))))
+        Round(
+          Vector(
+            Call(Called.Topic, Settled.Ok(5), Reading.Other),
+            Call(Called.Tool(read), Settled.Ok(9), Reading.Other)
+          )
+        ),
+        Round(Vector(Call(Called.Tool(read), Settled.Failed(3), Reading.Other)))
       ),
       spend = Vector(
         spent(Some(TurnRecord.Role.Query), Some("0.001"), 12, 10),
@@ -141,7 +147,7 @@ object TurnFixtures {
           Tokens.Zero
         )
       ),
-      rounds = Vector(Round(Vector(Call(Called.Unnamed, Settled.Expired)))),
+      rounds = Vector(Round(Vector(Call(Called.Unnamed, Settled.Expired, Reading.Other)))),
       spend = Vector(
         spent(Some(TurnRecord.Role.Reply), Some("0.002"), 0, 50),
         spent(Some(TurnRecord.Role.Judge), None, 30, 30, cached = 10)

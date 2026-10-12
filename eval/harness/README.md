@@ -42,7 +42,9 @@ Packages, each importing only those above it:
   `weigh` step recorded (`grit.turn.TurnRecord.Weigh`), its window by part, the documents
   among them each `Held` by version (kept, with its plugin and its pointer's tool, or gone),
   its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
-  `topic` tool, or neither), how it ended, its ledger rows by role (each with its input, cached input and output tokens
+  `topic` tool, or neither, and its `Reading`: indexed when it followed the pointer of a
+  document current at capture, whichever plugin kept it, followed when its window held one too,
+  and its result's support, useful at `Support.Used`), how it ended, its ledger rows by role (each with its input, cached input and output tokens
   and its cost) and what became of a heard
   root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
   records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`

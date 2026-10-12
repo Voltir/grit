@@ -124,7 +124,7 @@ object Recipe {
     val called = pairs.flatMap { p =>
       p.turn.rounds
         .flatMap(_.calls)
-        .collect { case grit.eval.harness.capture.Call(Called.Tool(name), _) => name }
+        .collect { case grit.eval.harness.capture.Call(Called.Tool(name), _, _) => name }
         .distinct
         .map(name => p.turn.conversation -> p.variant.tools.contains(name))
     }

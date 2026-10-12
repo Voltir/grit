@@ -4,7 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyNote, Shown, Window}
-import grit.core.document.{DocLabel, Document}
+import grit.core.document.{DocLabel, Document, Pointer}
 import grit.core.durable.StepRecord
 import grit.core.id.{DocumentVersion, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
@@ -24,9 +24,11 @@ object TurnCapture {
 
   /** Every turn workflow `reader`'s database recorded before `dump.at`, as a case, ordered by
     * when it started, then by workflow id; and how many were skipped. Each window part's
-    * tokens are what [[CharEstimate]] costs it as [[Shown]] shows it now, and its support is
-    * computed from the reply's text, which is never kept. Equal databases capture equal turns.
-    * `Left` naming what could not be read; never a message's text.
+    * tokens are what [[CharEstimate]] costs it as [[Shown]] shows it now, and its support, and
+    * each call's, is computed from the reply's text, which is never kept; each call's
+    * [[Reading]] is classified by the documents current in the database, whichever plugin kept
+    * them. Equal databases capture equal turns. `Left` naming what could not be read; never a
+    * message's text.
     */
   def apply(reader: Reader^, dump: Dump): Either[String, Turns] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]) =
@@ -34,6 +36,8 @@ object TurnCapture {
     for {
       workflows <- reader.turns(dump.at).left.map(e => s"turn workflows unread: ${Capture.kind(e)}")
       starts <- reader.starts().left.map(e => s"engine starts unread: ${Capture.kind(e)}")
+      current <- read("current documents")(reader.current())
+      pointers = current.flatMap(_.pointer)
       cases <- Capture.each(workflows) { (workflow, recorded) =>
         TurnRef.fromWorkflowId(workflow) match {
           case None => Right(None)
@@ -48,7 +52,8 @@ object TurnCapture {
                   c.origin,
                   all,
                   recorded,
-                  Triaged.buildAt(starts, recorded.created)
+                  Triaged.buildAt(starts, recorded.created),
+                  pointers
                 )
               )
             } yield built
@@ -66,7 +71,8 @@ object TurnCapture {
       origin: Origin,
       all: Vector[Entry],
       recorded: Reader.Recorded,
-      build: Build
+      build: Build,
+      current: Vector[Pointer]
   ): Either[String, Option[TurnCase]] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]) =
       reader.all
@@ -164,7 +170,7 @@ object TurnCapture {
                   named <- reader.principals.speakers((at ++ near ++ mine).map(_.id).distinct)
                   documents <- held(reader, versions)
                 } yield Some(
-                  parts(
+                  documents.flatMap(_._2).flatMap(_._1.pointer) -> parts(
                     turn,
                     at,
                     recalled.toSet,
@@ -181,6 +187,7 @@ object TurnCapture {
               )
             case _ => Right(None)
           }
+          held = window.fold(Vector.empty[Pointer])(_._1)
           ledger <- read("ledger")(reader.ledger.of(turn.workflowId))
           speech <- TurnRecord
             .speech(steps)
@@ -203,8 +210,8 @@ object TurnCapture {
               tags.map(Live.of),
               offered,
               weighed,
-              window,
-              rounds(turn, mine, steps, tools),
+              window.map(_._2),
+              rounds(turn, mine, steps, tools, current, held, replied, asked),
               ended(reply, steps, recorded.status),
               ledger.map(r =>
                 Spent(TurnRecord.role(turn, r.entry), r.model, r.usage, r.estimatedInput)
@@ -352,14 +359,20 @@ object TurnCapture {
     )
   }
 
-  /** Each reply of the loop that called tools, by its round, and how each call settled:
-    * given up on as `steps` show, else by the result recorded after it.
+  /** Each reply of the loop that called tools, by its round, how each call settled (given up
+    * on as `steps` show, else by the result recorded after it), and what it read: by `current`'s
+    * pointers and those of the documents its window `held`, its support `replied`'s in its
+    * result.
     */
   private def rounds(
       turn: TurnRef,
       mine: Vector[Entry],
       steps: Vector[StepRecord],
-      tools: Set[ToolName]
+      tools: Set[ToolName],
+      current: Vector[Pointer],
+      held: Vector[Pointer],
+      replied: Option[String],
+      asked: String
   ): Vector[Round] = {
     val givenUp = TurnRecord.givenUp(steps)
     val calls = mine
@@ -380,19 +393,23 @@ object TurnCapture {
       val made = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
       Round(made.zipWithIndex.map { (c, j) =>
         val tool = Called.of(c.name, tools)
-        val settled = givenUp.get((n, j)) match {
-          case Some(TurnRecord.GivenUp.Expired) => Settled.Expired
-          case Some(TurnRecord.GivenUp.Abandoned) => Settled.Abandoned
-          case None =>
-            // Calls of one reply may share an id: the j-th result with it answers the j-th call.
-            val same = made.take(j).count(_.id == c.id)
-            results.filter(_.callId == c.id).lift(same) match {
-              case Some(r) if r.isError => Settled.Failed(r.content.length)
-              case Some(r) => Settled.Ok(r.content.length)
-              case None => Settled.Unsettled
-            }
+        // Calls of one reply may share an id: the j-th result with it answers the j-th call.
+        val result = givenUp.get((n, j)) match {
+          case Some(_) => None
+          case None => results.filter(_.callId == c.id).lift(made.take(j).count(_.id == c.id))
         }
-        Call(tool, settled)
+        val settled = (givenUp.get((n, j)), result) match {
+          case (Some(TurnRecord.GivenUp.Expired), _) => Settled.Expired
+          case (Some(TurnRecord.GivenUp.Abandoned), _) => Settled.Abandoned
+          case (None, Some(r)) if r.isError => Settled.Failed(r.content.length)
+          case (None, Some(r)) => Settled.Ok(r.content.length)
+          case (None, None) => Settled.Unsettled
+        }
+        val support = for {
+          said <- replied
+          r <- result.filterNot(_.isError)
+        } yield Support.of(said, asked, r.content)
+        Call(tool, settled, Reading.of(c.name, c.arguments, current, held, support))
       })
     }
   }

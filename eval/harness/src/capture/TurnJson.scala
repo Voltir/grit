@@ -388,7 +388,17 @@ object TurnJson {
       }),
       "topic" -> (c.tool == Called.Topic),
       "settled" -> settled,
-      "length" -> length.fold[ujson.Value](ujson.Null)(ujson.Num(_))
+      "length" -> length.fold[ujson.Value](ujson.Null)(ujson.Num(_)),
+      "reading" -> (c.reading match {
+        case Reading.Other => ujson.Str("other")
+        case Reading.Indexed(followed, support) =>
+          ujson.Obj(
+            "indexed" -> ujson.Obj(
+              "followed" -> followed,
+              "support" -> support.fold[ujson.Value](ujson.Null)(s => ujson.Num(s.value))
+            )
+          )
+      })
     )
   }
 
@@ -417,8 +427,26 @@ object TurnJson {
         case ("unsettled", None) => Right(Settled.Unsettled)
         case _ => Left(s"call: settled $settled")
       }
-    } yield Call(called, s)
+      reading <- f.field("reading").flatMap(readReading)
+    } yield Call(called, s, reading)
   }
+
+  private def readReading(v: ujson.Value): Either[String, Reading] =
+    v.strOpt match {
+      case Some("other") => Right(Reading.Other)
+      case _ =>
+        v.objOpt.map(_.keys.toVector) match {
+          case Some(Vector("indexed")) =>
+            val f = Fields("call: reading", v("indexed"))
+            for {
+              followed <- f.bool("followed")
+              support <- f
+                .optional("support")
+                .flatMap(opt(_)(s => s.numOpt.flatMap(Support.read).toRight("call: support")))
+            } yield Reading.Indexed(followed, support)
+          case _ => Left("call: reading neither other nor indexed")
+        }
+    }
 
   private def readEnded(v: ujson.Value): Either[String, Ended] = {
     val f = Fields("ended", v)

@@ -76,7 +76,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `enola-intent.yaml`): `Reader` (a database's stores, engine starts and DBOS's workflow
   records read without an engine or its lock, on sessions Postgres keeps read-only, under the
   compartments the database last ran under, and `all`, which reads every row whatever its
-  label, for capturing a database whole), and
+  label, for capturing a database whole, and `current`, every plugin's current documents), and
   `EngineStarts` (`grit.engine_starts` read back). ← `sql`, `workflow`, `engine`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
