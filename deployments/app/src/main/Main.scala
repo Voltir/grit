@@ -554,8 +554,8 @@ object Main {
   private val GithubRefVar = "GRIT_GITHUB_REF"
 
   /** The knowledge plugin `name` as `env` declares it ([[Knowledge]]): one source, the
-    * repository [[GithubOwnerVar]]/[[GithubRepoVar]] at [[GithubRefVar]], all of it, at most
-    * 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit serve` with
+    * repository [[GithubOwnerVar]]/[[GithubRepoVar]] at [[GithubRefVar]], its markdown files
+    * (`md`), at most 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit serve` with
     * [[GithubTokenVar]] set; a run while none serves them stops at its first call, and its
     * reply says so). Kept at public, the corpus `github`, and drawn on where a conversation's
     * scope holds `service:github` (`GRIT_SCOPE`); synced daily at 03:00 in `zone`, at most 30
@@ -594,7 +594,7 @@ object Main {
         repo,
         ref,
         Vector(""),
-        Set.empty,
+        Set("md"),
         600,
         Some(Label.Public),
         service.place,
