@@ -51,15 +51,15 @@ def package_of(path):
 
 
 def roots(kind):
-    """Each source root (`<module folder>/src` for production, `.../test/src` and `.../it/src`
-    for test) with the package each of its files declares."""
+    """Each source root (`<module folder>/src` for production, `.../test/src`, `.../it/src` and
+    `.../probes/src` for test) with the package each of its files declares."""
     found = {}
     for path in sources():
         m = re.match(r"(.+?/src)/", path)
         if not m:
             continue
         root = m.group(1)
-        is_test = re.search(r"/(test|it)/src$", root) is not None
+        is_test = re.search(r"/(test|it|probes)/src$", root) is not None
         if (kind == "test") == is_test:
             found.setdefault(root, []).append(package_of(path))
     return found
@@ -71,6 +71,8 @@ def root_of(package, kind):
     def ours(p):
         return p == package or p.startswith(package + ".")
     hits = [r for r, pkgs in roots(kind).items() if 2 * sum(map(ours, pkgs)) > len(pkgs)]
+    if kind == "test":  # a module's probes are tests too, but its tests' root is test/src
+        hits = [r for r in hits if not r.endswith("/probes/src")]
     if len(hits) != 1:
         fail(f"{len(hits)} {kind} source roots are mostly {package}: {hits}")
     return hits[0]
