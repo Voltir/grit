@@ -4,8 +4,9 @@ import scala.collection.immutable.VectorMap
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyNote, Shown, Window}
+import grit.core.document.{DocLabel, Document}
 import grit.core.durable.StepRecord
-import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{DocumentVersion, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, ToolSchema}
@@ -155,14 +156,27 @@ object TurnCapture {
             .left
             .map(why => s"weighing of ${WorkflowId.value(turn.workflowId)} unread: $why")
           window <- mine.find(_.id == Turn.windowId(turn)).map(_.payload) match {
-            case Some(Payload.Window(seqs, recalled, nearby, _)) =>
+            case Some(Payload.Window(seqs, recalled, nearby, versions)) =>
               read("window")(
                 for {
                   at <- reader.entries.at(turn.conversationId, seqs)
                   near <- Nearby.read(nearby, reader.entries)
                   named <- reader.principals.speakers((at ++ near ++ mine).map(_.id).distinct)
+                  documents <- held(reader, versions)
                 } yield Some(
-                  parts(turn, at, recalled.toSet, nearby, near, mine, named, replied, asked)
+                  parts(
+                    turn,
+                    at,
+                    recalled.toSet,
+                    nearby,
+                    near,
+                    documents,
+                    offered.fold(Set.empty[ToolName])(_.tools.toSet).contains,
+                    mine,
+                    named,
+                    replied,
+                    asked
+                  )
                 )
               )
             case _ => Right(None)
@@ -220,8 +234,9 @@ object TurnCapture {
       )
 
   /** `window`, drawn for `turn`, by part as [[apply]] captures a recorded one, each costed by
-    * [[CharEstimate]] as [[Shown]] shows it now, none with a support. `Left` naming what could
-    * not be read; never a message's text.
+    * [[CharEstimate]] as [[Shown]] shows it now, none with a support, and each document with its
+    * pointer's line, whatever tools the turn would be offered. `Left` naming what could not be
+    * read; never a message's text.
     */
   def costed(reader: Reader^, turn: TurnRef, window: Window): Either[String, Parts] =
     reader.all
@@ -232,6 +247,7 @@ object TurnCapture {
           near <- Nearby.read(window.nearby, reader.entries)
           mine = all.filter(_.turnSeq == turn.turnSeq).sortBy(e => EntrySeq.value(e.seq))
           named <- reader.principals.speakers((at ++ near ++ mine).map(_.id).distinct)
+          documents <- held(reader, window.documents)
         } yield parts(
           turn,
           at,
@@ -241,6 +257,8 @@ object TurnCapture {
           }.toSet,
           window.nearby,
           near,
+          documents,
+          _ => true,
           mine,
           named,
           None,
@@ -250,8 +268,23 @@ object TurnCapture {
       .left
       .map(e => s"the window of ${WorkflowId.value(turn.workflowId)} unread: ${Capture.kind(e)}")
 
+  /** Each of `versions` as a window holding it shows it today: its document, if it is still
+    * kept, and its plugin's label, if its plugin is enabled.
+    */
+  private def held(reader: Reader^, versions: Vector[DocumentVersion])(using
+      Tx^
+  ): Either[StoreError, Vector[(DocumentVersion, Option[(Document, Option[DocLabel])])]] =
+    for {
+      kept <- reader.documents.read(versions)
+      labelled <- reader.documents.labelled(versions)
+    } yield versions.map(v =>
+      v -> kept
+        .find(_.version == v)
+        .map(d => d -> labelled.collectFirst { case (l, label) if l.version == v => label })
+    )
+
   /** The window's parts in the order shown: each of `nearby`'s sections over `near`, then
-    * `at`, its own entries, by turn (a closing alone, as the record).
+    * `documents`, then `at`, its own entries, by turn (a closing alone, as the record).
     */
   private def parts(
       turn: TurnRef,
@@ -259,6 +292,8 @@ object TurnCapture {
       recalled: Set[grit.core.id.TurnSeq],
       nearby: Vector[Nearby],
       near: Vector[Entry],
+      documents: Vector[(DocumentVersion, Option[(Document, Option[DocLabel])])],
+      offered: ToolName => Boolean,
       mine: Vector[Entry],
       named: Speakers,
       replied: Option[String],
@@ -298,8 +333,20 @@ object TurnCapture {
         case _ => true
       }
     )
+    val shelf = documents.map {
+      case (v, None) => Held.Gone(v)
+      case (v, Some((d, label))) =>
+        // A document whose plugin is no longer enabled is shown by no window: nothing of it. Its
+        // pointer's line is shown only when the turn was offered its tool, as the turn shows it.
+        val shown =
+          label
+            .map(Shown.document(d.copy(pointer = d.pointer.filter(p => offered(p.tool))), _))
+            .toVector
+        Held.Kept(v, d.plugin, d.pointer.map(_.tool), cost(shown), support(shown))
+    }
     Parts(
       sections ++ own,
+      shelf,
       minus(cost(Shown.own(at, turn.turnSeq, named)), own.foldLeft(Tokens.Zero)(_ + _.tokens)),
       cost(Shown.turn(before, named))
     )

@@ -107,7 +107,12 @@ object TurnFixtures {
     .copy(
       offered = Some(both),
       window = Some(
-        Parts(Vector(part(Part.Kind.Open, 30), part(Part.Kind.Record, 10)), Tokens(2), Tokens(8))
+        Parts(
+          Vector(part(Part.Kind.Open, 30), part(Part.Kind.Record, 10)),
+          Vector.empty,
+          Tokens(2),
+          Tokens(8)
+        )
       ),
       rounds = Vector(
         Round(Vector(Call(Called.Topic, Settled.Ok(5)), Call(Called.Tool(read), Settled.Ok(9)))),
@@ -131,6 +136,7 @@ object TurnFixtures {
       window = Some(
         Parts(
           Vector(part(Part.Kind.Open, 20, Some(0.5)), part(Part.Kind.Closed, 40, Some(0.1))),
+          Vector.empty,
           Tokens.Zero,
           Tokens.Zero
         )
@@ -170,6 +176,7 @@ object TurnFixtures {
         window = Some(
           Parts(
             Vector(part(Part.Kind.Recent, 60, Some(0.2)), part(Part.Kind.Recalled, 15, Some(0.0))),
+            Vector.empty,
             Tokens.Zero,
             Tokens(4)
           )

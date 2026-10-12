@@ -106,8 +106,8 @@ object Reference {
       offered: Option[Set[Service]]
   ): Judged = {
     val each = expected.map {
-      case Expect.Holds(at) => window.map(w => Locator.held(at, w.parts))
-      case Expect.Omits(at) => window.map(w => !Locator.anyHeld(at, w.parts))
+      case Expect.Holds(at) => window.map(w => Locator.held(at, w))
+      case Expect.Omits(at) => window.map(w => !Locator.anyHeld(at, w))
       case Expect.Offers(s) => offered.map(_.contains(s))
       case Expect.Withholds(s) => offered.map(!_.contains(s))
     }

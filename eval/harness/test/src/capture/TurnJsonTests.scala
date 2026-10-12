@@ -9,8 +9,10 @@ import grit.core.context.Width
 import grit.core.id.{
   ConversationId,
   CorpusName,
+  DocumentVersion,
   EntryId,
   EntrySeq,
+  PluginName,
   QuestionName,
   TurnSeq,
   WorkflowId
@@ -37,6 +39,7 @@ object TurnJsonTests extends TestSuite {
   private val c = ConversationId("c1")
   private val at = Instant.parse("2026-10-02T17:05:00Z")
   private def p(x: Double) = Probability.clamped(x)
+  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
 
   private val repo = right(CorpusName.of("repo"))
 
@@ -107,6 +110,18 @@ object TurnJsonTests extends TestSuite {
             Tokens(10L * i),
             Option.when(i % 2 == 0)(right(Support.read(i / 10.0).toRight("support")))
           )
+        ),
+        // A card, a document with no pointer that no reply measured, and one forgotten since.
+        Vector(
+          Held.Kept(
+            version(7),
+            right(PluginName.of("knowledge")),
+            Some(ToolName("github__get_file_contents")),
+            Tokens(55),
+            Some(right(Support.read(0.4).toRight("support")))
+          ),
+          Held.Kept(version(8), right(PluginName.of("digest")), None, Tokens.Zero, None),
+          Held.Gone(version(9))
         ),
         Tokens(7),
         Tokens(40)
@@ -186,7 +201,7 @@ object TurnJsonTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a turn of every shape reads back as it was written: its offer's shape and set, and its weighing of every kind"
+      "a turn of every shape reads back as it was written: its offer's shape and set, its weighing of every kind, and its window's documents"
     ) {
       val all = Vector(heard, failed, unfinished, asked, nothing)
       all.map(t => TurnJson.read(ujson.read(TurnJson.write(t).render()))) ==> all.map(Right(_))
@@ -215,26 +230,37 @@ object TurnJsonTests extends TestSuite {
       )
     }
 
-    test("a line written before shapes were captured is refused, naming the recapture") {
-      // As an earlier build wrote it: no weighing, and an offer with neither set nor shape.
-      val older = Vector(heard, unfinished).map { t =>
-        val line = ujson.read(TurnJson.write(t).render())
-        line.obj.remove("weighed")
-        line.obj.get("offered").flatMap(_.objOpt).foreach { o =>
-          o.remove("set")
-          o.remove("shape")
-        }
+    test("a line of an older format, or of none, is refused, naming the recapture") {
+      // As an earlier build wrote it: no format, or the first, and no documents in its window.
+      def older(format: Option[Int]) = {
+        val line = ujson.read(TurnJson.write(heard).render())
+        line.obj.remove("format")
+        format.foreach(n => line("format") = n)
+        line("window").obj.remove("documents")
         line
       }
-      older.map(TurnJson.read) ==> Vector.fill(2)(
-        Left("turn: no weighed: written before shapes were captured; capture again")
+      Vector(older(None), older(Some(1))).map(TurnJson.read) ==> Vector(
+        Left("turn: no format: written by an older capture; recapture"),
+        Left("turn: format 1, not 2: written by an older capture; recapture")
       )
+    }
+
+    test(
+      "a window's documents are pinned: a kept one by its plugin and pointer, a gone one alone"
+    ) {
+      // The stored form: a change here is a change to every capture written before it.
+      val line = TurnJson.write(heard).render()
+      line.slice(line.indexOf("\"documents\""), line.indexOf(",\"gaps\"")) ==>
+        """"documents":[{"kept":{"version":7,"plugin":"knowledge",""" +
+        """"pointer":"github__get_file_contents","tokens":55,"support":0.4}},""" +
+        """{"kept":{"version":8,"plugin":"digest","pointer":null,"tokens":0,"support":null}},""" +
+        """{"gone":{"version":9}}]"""
     }
 
     test("a turn's line is pinned: its keys in order, its said and ended by kind") {
       // The stored form: a change here is a change to every capture written before it.
       TurnJson.write(unfinished.copy(spend = Vector.empty)).render() ==>
-        """{"workflow":"c2:0","conversation":"c1","turn":3,"said":{"task":"e2"},""" +
+        """{"format":2,"workflow":"c2:0","conversation":"c1","turn":3,"said":{"task":"e2"},""" +
         """"root":"addressed","focus":"focused","started":"2026-10-02T17:05:00Z",""" +
         """"build":"unknown","triage":null,"offered":null,"weighed":"unrecorded",""" +
         """"window":null,"rounds":[],""" +

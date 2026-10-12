@@ -2,8 +2,8 @@ package grit.eval.harness.label
 
 import scala.util.Try
 
-import grit.core.id.{ConversationId, EntrySeq, WorkflowId}
-import grit.eval.harness.capture.{Fields, Part}
+import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, WorkflowId}
+import grit.eval.harness.capture.{Fields, Part, Parts}
 
 /** How good a reply is, as a person judged it. */
 enum Quality {
@@ -42,6 +42,9 @@ enum Locator {
 
   /** Messages as they were said: their conversation, and their seqs in the order shown. */
   case Messages(of: ConversationId, seqs: ::[EntrySeq])
+
+  /** A document, by its version. */
+  case Document(version: DocumentVersion)
 }
 
 object Locator {
@@ -56,28 +59,30 @@ object Locator {
     case (_, first :: rest) => Some(Messages(part.conversation, ::(first, rest)))
   }
 
-  /** Whether `parts` show every entry `l` names: a record's closing entry in a part of its
+  /** Whether `window` shows everything `l` names: a record's closing entry in a part of its
     * conversation that is a record or a closed section; each of its messages in a part of
-    * their conversation, of any kind.
+    * their conversation, of any kind; a document's version among its documents, kept or gone
+    * since.
     */
-  def held(l: Locator, parts: Vector[Part]): Boolean = l match {
+  def held(l: Locator, window: Parts): Boolean = l match {
     case Record(of, closing) =>
-      parts.exists(p =>
+      window.parts.exists(p =>
         p.conversation == of && p.seqs.contains(closing) &&
           (p.kind == Part.Kind.Record || p.kind == Part.Kind.Closed)
       )
     case Messages(of, seqs) =>
-      seqs.forall(s => parts.exists(p => p.conversation == of && p.seqs.contains(s)))
+      seqs.forall(s => window.parts.exists(p => p.conversation == of && p.seqs.contains(s)))
+    case Document(version) => window.documents.exists(_.version == version)
   }
 
-  /** Whether `parts` show any entry `l` names, each found as [[held]] finds it. */
-  def anyHeld(l: Locator, parts: Vector[Part]): Boolean = l match {
-    case r: Record => held(r, parts)
-    case Messages(of, seqs) => seqs.exists(s => held(Messages(of, ::(s, Nil)), parts))
+  /** Whether `window` shows anything `l` names, each found as [[held]] finds it. */
+  def anyHeld(l: Locator, window: Parts): Boolean = l match {
+    case Messages(of, seqs) => seqs.exists(s => held(Messages(of, ::(s, Nil)), window))
+    case one => held(one, window)
   }
 
-  /** `l` as files write it: `{"record": {"conversation", "closing"}}` or `{"messages":
-    * {"conversation", "seqs"}}`.
+  /** `l` as files write it: `{"record": {"conversation", "closing"}}`, `{"messages":
+    * {"conversation", "seqs"}}` or `{"document": {"version"}}`.
     */
   def json(l: Locator): ujson.Value = l match {
     case Record(of, closing) =>
@@ -94,6 +99,8 @@ object Locator {
           "seqs" -> ujson.Arr.from(seqs.map(s => ujson.Num(EntrySeq.value(s).toDouble)))
         )
       )
+    case Document(version) =>
+      ujson.Obj("document" -> ujson.Obj("version" -> DocumentVersion.value(version).toDouble))
   }
 
   /** The locator `v` holds, as [[json]] writes it; why not, when it is not of that form. */
@@ -117,7 +124,12 @@ object Locator {
             case Nil => Left("locator: messages names no seq")
           }
         } yield Messages(ConversationId(of), some)
-      case _ => Left("locator: neither record nor messages")
+      case Some(Vector("document")) =>
+        Fields("locator: document", v("document"))
+          .long("version")
+          .flatMap(n => DocumentVersion.of(n).toRight("locator: document version"))
+          .map(Document(_))
+      case _ => Left("locator: neither record, messages nor document")
     }
   }
 }

@@ -2,10 +2,10 @@ package grit.eval.harness.reply
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, EntrySeq, WorkflowId}
+import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PluginName, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.place.Service
-import grit.eval.harness.capture.{Part, Parts}
+import grit.eval.harness.capture.{Held, Part, Parts}
 import grit.eval.harness.label.{Found, Locator, Quality, ReplyGuide, ReplyLabel, ReplyLabels}
 
 import utest.*
@@ -21,11 +21,33 @@ object ReferenceTests extends TestSuite {
   private val github = right(Service.of("github"))
   private def seqs(xs: Long*) = xs.toVector.map(EntrySeq(_))
   private def part(kind: Part.Kind, xs: Long*) = Part(kind, c, seqs(xs*), Tokens(10), None)
-  private def window(ps: Part*) = Some(Parts(ps.toVector, Tokens.Zero, Tokens.Zero))
+  private def window(ps: Part*) = Some(Parts(ps.toVector, Vector.empty, Tokens.Zero, Tokens.Zero))
   private val record = Locator.Record(c, EntrySeq(4))
   private val messages = Locator.Messages(c, ::(EntrySeq(1), List(EntrySeq(2))))
 
+  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def holding(ds: Held*) =
+    Some(Parts(Vector(part(Part.Kind.Open, 1)), ds.toVector, Tokens.Zero, Tokens.Zero))
+
   val tests = Tests {
+    test("a document is held by a window holding its version, kept or gone since, and no other") {
+      val notes = right(PluginName.of("notes"))
+      val doc = Locator.Document(version(7))
+      def judge(e: Expect, w: Option[Parts]) = Reference.judge(Vector(e), w, Some(Set.empty))
+      val kept = holding(Held.Kept(version(7), notes, None, Tokens(5), None))
+      val gone = holding(Held.Gone(version(7)))
+      val other = holding(Held.Kept(version(8), notes, None, Tokens(5), None))
+      Vector(kept, gone, other).map(judge(Expect.Holds(doc), _)) ==>
+        Vector(Judged.Pass, Judged.Pass, Judged.Fail)
+      Vector(kept, other).map(judge(Expect.Omits(doc), _)) ==> Vector(Judged.Fail, Judged.Pass)
+    }
+
+    test("a document's locator is written by its version and read back") {
+      val doc = Locator.Document(version(7))
+      Locator.json(doc).render() ==> """{"document":{"version":7}}"""
+      Locator.read(Locator.json(doc)) ==> Right(doc)
+    }
+
     test("holds passes when the window shows every entry its locator names, else fails") {
       def judge(w: Option[Parts]) =
         Reference.judge(Vector(Expect.Holds(messages)), w, Some(Set.empty))

@@ -4,7 +4,15 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PluginName,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -87,10 +95,33 @@ final case class Offered(
 }
 
 /** A turn's window as the model was shown it, part by part in the order shown: its nearby
-  * sections, then its own conversation's record and turns; the tokens of the gap lines among
-  * them, and of the turn's own messages before its first call.
+  * sections, then its `documents`, then its own conversation's record and turns; the tokens of
+  * the gap lines among them, and of the turn's own messages before its first call.
   */
-final case class Parts(parts: Vector[Part], gaps: Tokens, own: Tokens)
+final case class Parts(parts: Vector[Part], documents: Vector[Held], gaps: Tokens, own: Tokens)
+
+/** A document a window held, by its version. */
+enum Held {
+  def version: DocumentVersion
+
+  /** One still kept: the `plugin` that kept it; the tool its pointer names, as offered, `None`
+    * without one; its tokens as [[grit.core.context.Shown]] shows it today (0 when its plugin is
+    * no longer enabled, so no window shows it); and how much of the turn's reply it carries.
+    *
+    * @param support
+    *   the reply's support in it; `None` when the turn has no reply, or its reply passed
+    */
+  case Kept(
+      version: DocumentVersion,
+      plugin: PluginName,
+      pointer: Option[ToolName],
+      tokens: Tokens,
+      support: Option[Support]
+  )
+
+  /** One no longer kept, forgotten since: nothing more is known of it. */
+  case Gone(version: DocumentVersion)
+}
 
 /** One part of a window: what kind it is, the conversation and the entries (by seq) it shows,
   * its tokens as [[grit.core.context.Shown]] shows it today (0 when none of it is left to

@@ -148,7 +148,7 @@ object Recipe {
         .flatMap(_.parts)
         .filter(_.support.exists(_.used))
         .flatMap(Locator.of)
-        .map(l => turn.conversation -> Locator.held(l, pick(b).parts))
+        .map(l => turn.conversation -> Locator.held(l, pick(b)))
     })
     Recipe(
       pairs.size,

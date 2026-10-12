@@ -39,7 +39,8 @@ Packages, each importing only those above it:
   `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
   well as Slack ones (`Said`, the message it answers by id): its offer (the set offered, by id, and the shape its
   recipe decided, `grit.turn.TurnShape`, none for an offer recorded before shapes), what its
-  `weigh` step recorded (`grit.turn.TurnRecord.Weigh`), its window by part,
+  `weigh` step recorded (`grit.turn.TurnRecord.Weigh`), its window by part, the documents
+  among them each `Held` by version (kept, with its plugin and its pointer's tool, or gone),
   its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
   `topic` tool, or neither), how it ended, its ledger rows by role (each with its input, cached input and output tokens
   and its cost) and what became of a heard
@@ -49,8 +50,8 @@ Packages, each importing only those above it:
   tool definitions);
   `Support`, how much of a reply a part carries, computed where the text is and kept as the
   number, the line at which a part counts as used (`Support.Used`), and a window's most
-  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line written before shapes
-  were captured is refused: recapture);
+  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line of an
+  older `TurnJson.Format` is refused: recapture);
   `KnowledgeJson`, the corpora the deployment that recorded a capture declares, each
   with the service it supplies, read from the `knowledge.json` written beside the capture
   (grit's database keeps no declaration; its lines are the deployment's words, no
@@ -81,7 +82,7 @@ Packages, each importing only those above it:
   labels, kept by the workflow of the turn that wrote each (`ReplyLabels`, read from and
   written to `reply-labels.json`): each a `ReplyLabel` under a `ReplyGuide` this build knows,
   of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
-  window part by ids alone, or the thread, elsewhere, nowhere, or nothing asked), and whether
+  window part by ids alone or a document by version, or the thread, elsewhere, nowhere, or nothing asked), and whether
   grit should have spoken; a person's note is never read into one; `Locator.held`, whether a
   window's parts show what a locator names. ← `capture`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the

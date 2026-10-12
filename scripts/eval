@@ -12,8 +12,9 @@
 #       grit_eval_<date>, which must not exist yet; a later run reuses both. Each run then
 #       writes capture.json and cases.jsonl, turns.jsonl (every turn the database recorded,
 #       TUI and Slack, by workflow: its offer and the shape its recipe decided, what its
-#       weigh step recorded, its window by part, rounds, ending, spend and draft's outcome; a
-#       capture made before shapes is refused by every command reading it until recaptured) and verdicts.json (the review verdicts standing), all text-free, and
+#       weigh step recorded, its window by part and the documents it held, rounds, ending, spend
+#       and draft's outcome; a capture of an older format is refused by every command reading
+#       it until recaptured) and verdicts.json (the review verdicts standing), all text-free, and
 #       prints counts. Rerun over the same
 #       restored database by the same build, it writes the same bytes. A failed restore's
 #       errors, which can quote rows, go to .local/eval/review/restore-<date>.log.

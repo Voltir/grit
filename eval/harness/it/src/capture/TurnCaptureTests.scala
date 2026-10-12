@@ -8,9 +8,19 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
-import grit.core.context.Width
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Width, Window}
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Pointer, Written}
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  CloseRef,
+  DocKey,
+  DocumentVersion,
+  PluginName,
+  SourceId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
@@ -20,7 +30,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolUs
 import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
-import grit.core.store.{Focus, Origin}
+import grit.core.store.{Db, Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
@@ -131,7 +141,40 @@ object TurnCaptureTests extends TestSuite {
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */
   private val asks = grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
 
-  private def launch(engine: Engine^): Unit = {
+  /** `under`'s windows, each holding `held` too, as a retrieval assembler's would. */
+  private final class Holding(under: LinearAssembler, held: Vector[DocumentVersion])
+      extends ContextAssembler {
+    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      under.assemble(request).map(_.copy(documents = held))
+  }
+
+  /** The plugin every document here is kept by. */
+  private val notes = right(PluginName.of("notes"))
+  private val terms =
+    right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
+
+  /** A document of `notes` under `key`, pointing at `pointer`, written now. */
+  private def keep(engine: Engine^, key: String, pointer: Option[Pointer]): DocumentVersion =
+    right(
+      engine.jot.write(Subject.Public)(
+        engine
+          .keeper(notes, terms)
+          .write(
+            right(DocKey.of(key)),
+            grit.core.visibility.Label.Public,
+            Origin.Task("notes", key).room,
+            right(DocText.of(s"$Marker the $key note")),
+            ujson.Obj(),
+            pointer,
+            now()
+          )
+      )
+    ) match {
+      case Written.Versioned(v, _, _) => v
+      case other => throw new java.lang.AssertionError(s"not written: $other")
+    }
+
+  private def launch(engine: Engine^, held: Vector[DocumentVersion]): Unit = {
     val speaking = Speaking.Within(Limits.suggested(right(DailyCap.of("0.25")), asks))
     val classifier = new StubClassifier
     val tooling = TurnTooling[{}](
@@ -161,12 +204,15 @@ object TurnCaptureTests extends TestSuite {
             engine.voices,
             engine.askers
           ),
-          new LinearAssembler(
-            engine.entries,
-            engine.periods,
-            engine.principals,
-            CharEstimate,
-            LinearAssembler.DefaultBudget
+          new Holding(
+            new LinearAssembler(
+              engine.entries,
+              engine.periods,
+              engine.principals,
+              CharEstimate,
+              LinearAssembler.DefaultBudget
+            ),
+            held
           ),
           Classifier.none("no classifier"),
           new ScriptedModels(new Scripted),
@@ -273,12 +319,22 @@ object TurnCaptureTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "every turn is captured, TUI and Slack, addressed and heard, under the root its offer recorded, as it ran, the same on recapture, and no text reaches its files"
+      "every turn is captured, TUI and Slack, addressed and heard, under the root its offer recorded, as it ran, with the documents its window held, the same on recapture, and no text reaches its files"
     ) {
       val config = TestPostgres.freshDatabase("harness_turns")
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        launch(engine)
+        // Every window holds two documents: a card pointing at the loop's first echo, and a note
+        // with no pointer, forgotten before the capture. Their plugin is enabled once the engine
+        // has launched, which declares its own plugins.
+        val card = keep(
+          engine,
+          "card",
+          Some(right(Pointer.of(ToolName("echo"), "text" -> ujson.Str(s"$Marker argument 0"))))
+        )
+        val note = keep(engine, "note", None)
+        launch(engine, Vector(card, note))
+        right(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
         val tui = Origin.Tui(right(Directory.of("/tmp/harness-turns")), "s")
         // A TUI session: a remark, its period closed with a record, then a question it answers.
         val remark = ask(engine, tui, "t0", s"$Marker remember the Falcon budget is 4200")
@@ -335,6 +391,7 @@ object TurnCaptureTests extends TestSuite {
         // it reads open and to-grit low, so the same gate (asks alone) drafts it as heard.
         val heard = overheard("3000.1", s"$Marker ~pass is the deploy on friday? ~back:asks")
         val unnamed = overheard("4000.1", s"$Marker ~pass ~0.1 is the freeze on monday? ~back:asks")
+        right(engine.jot.write(Subject.Public)(engine.documents.forget(note)))
 
         def captured(): (Turns, Verdicts) = {
           val reader = Reader.open(config)
@@ -468,6 +525,21 @@ object TurnCaptureTests extends TestSuite {
         at(failed).window.map(_.parts.map(p => (p.kind, p.support))) ==>
           Some(Vector((Part.Kind.Record, None), (Part.Kind.Recent, None)))
         at(failed).window.flatMap(_.parts.lift(1)).map(_.seqs.size) ==> Some(2)
+
+        // Each window's documents in the order held: the card, kept by its plugin and pointing at
+        // echo, shown at a cost; the note, forgotten since, by its version alone. The question's
+        // reply shares no distinctive word with the card; the failed turn has no reply.
+        def documents(t: TurnRef) = at(t).window.map(_.documents.map {
+          case Held.Kept(v, plugin, pointer, tokens, support) =>
+            (v, Some((plugin, pointer, Tokens.value(tokens) > 0, support.map(_.value))))
+          case Held.Gone(v) => (v, None)
+        })
+        Vector(question, failed).map(documents) ==> Vector(
+          Some(
+            Vector((card, Some((notes, Some(ToolName("echo")), true, Some(0.0)))), (note, None))
+          ),
+          Some(Vector((card, Some((notes, Some(ToolName("echo")), true, None))), (note, None)))
+        )
 
         // Live triage's answers on the heard roots alone; the unprompted draft passed, and the
         // one answered as said to grit, like an addressed turn, keeps no draft's outcome.

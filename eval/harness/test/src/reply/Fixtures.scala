@@ -182,6 +182,7 @@ object Fixtures {
               support(0.9)
             )
           ),
+          Vector.empty,
           Tokens.Zero,
           Tokens.Zero
         )

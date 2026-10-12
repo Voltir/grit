@@ -3,7 +3,16 @@ package grit.eval.harness.capture
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
-import grit.core.id.{ConversationId, CorpusName, EntryId, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  CorpusName,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PluginName,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
@@ -18,12 +27,16 @@ import Fields.{each, opt}
 
 /** A turn of a capture as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
   * so equal turns write equal bytes. A read is `Left` naming the first field missing or not of
-  * its form; a line written before turns' shapes were captured, which has no `weighed`, is
-  * refused, naming the capture to recapture.
+  * its form; a line of another [[Format]], or of none, is refused, naming the recapture.
   */
 object TurnJson {
 
+  /** The format this build writes, first in every line: 2, since windows' documents were kept.
+    */
+  val Format: Int = 2
+
   def write(t: TurnCase): ujson.Value = ujson.Obj(
+    "format" -> Format,
     "workflow" -> WorkflowId.value(t.workflow),
     "conversation" -> ConversationId.value(t.conversation),
     "turn" -> TurnSeq.value(t.turn).toDouble,
@@ -55,6 +68,15 @@ object TurnJson {
   def read(v: ujson.Value): Either[String, TurnCase] = {
     val f = Fields("turn", v)
     for {
+      _ <- f
+        .optional("format")
+        .flatMap {
+          case Some(n) if n.numOpt.contains(Format.toDouble) => Right(())
+          case Some(n) => Left(s"turn: format ${n.render()}, not $Format")
+          case None => Left("turn: no format")
+        }
+        .left
+        .map(why => s"$why: written by an older capture; recapture")
       workflow <- f.str("workflow")
       conversation <- f.str("conversation")
       turn <- f.long("turn")
@@ -70,11 +92,7 @@ object TurnJson {
       started <- f.instant("started")
       build <- f.field("build").flatMap(CaptureJson.readBuild("turn", _))
       triage <- f.optional("triage").flatMap(opt(_)(CaptureJson.readLive))
-      weighed <- f
-        .field("weighed")
-        .left
-        .map(_ => "turn: no weighed: written before shapes were captured; capture again")
-        .flatMap(readWeigh)
+      weighed <- f.field("weighed").flatMap(readWeigh)
       offered <- f.optional("offered").flatMap(opt(_)(readOffered))
       window <- f.optional("window").flatMap(opt(_)(readParts))
       rounds <- f
@@ -282,6 +300,20 @@ object TurnJson {
         "support" -> part.support.fold[ujson.Value](ujson.Null)(s => ujson.Num(s.value))
       )
     }),
+    "documents" -> ujson.Arr.from(p.documents.map {
+      case Held.Kept(version, plugin, pointer, count, support) =>
+        ujson.Obj(
+          "kept" -> ujson.Obj(
+            "version" -> DocumentVersion.value(version).toDouble,
+            "plugin" -> PluginName.value(plugin),
+            "pointer" -> pointer.fold[ujson.Value](ujson.Null)(n => ujson.Str(ToolName.value(n))),
+            "tokens" -> tokens(count),
+            "support" -> support.fold[ujson.Value](ujson.Null)(s => ujson.Num(s.value))
+          )
+        )
+      case Held.Gone(version) =>
+        ujson.Obj("gone" -> ujson.Obj("version" -> DocumentVersion.value(version).toDouble))
+    }),
     "gaps" -> tokens(p.gaps),
     "own" -> tokens(p.own)
   )
@@ -313,9 +345,32 @@ object TurnJson {
             support
           )
         })
+      documents <- f.arr("documents").flatMap(each(_)(readHeld))
       gaps <- f.long("gaps")
       own <- f.long("own")
-    } yield Parts(parts, Tokens(gaps), Tokens(own))
+    } yield Parts(parts, documents, Tokens(gaps), Tokens(own))
+  }
+
+  private def readHeld(v: ujson.Value): Either[String, Held] = {
+    def version(f: Fields) =
+      f.long("version").flatMap(n => DocumentVersion.of(n).toRight(s"window: document version $n"))
+    v.objOpt.map(_.keys.toVector) match {
+      case Some(Vector("kept")) =>
+        val f = Fields("window: document", v("kept"))
+        for {
+          at <- version(f)
+          plugin <- f.str("plugin").flatMap(PluginName.of)
+          pointer <- f
+            .optional("pointer")
+            .flatMap(opt(_)(t => Fields.str("window: document pointer", t).flatMap(ToolName.of)))
+          count <- f.long("tokens")
+          support <- f
+            .optional("support")
+            .flatMap(opt(_)(s => s.numOpt.flatMap(Support.read).toRight("window: support")))
+        } yield Held.Kept(at, plugin, pointer, Tokens(count), support)
+      case Some(Vector("gone")) => version(Fields("window: document", v("gone"))).map(Held.Gone(_))
+      case _ => Left("window: a document neither kept nor gone")
+    }
   }
 
   private def writeCall(c: Call): ujson.Value = {

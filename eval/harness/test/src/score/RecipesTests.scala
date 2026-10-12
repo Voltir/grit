@@ -95,7 +95,9 @@ object RecipesTests extends TestSuite {
     }
 
     test("a variant that changes nothing reports no case") {
-      val window = Some(Parts(Vector(part(Part.Kind.Open, "x", 1, 30, None)), Tokens(2), Tokens(8)))
+      val window = Some(
+        Parts(Vector(part(Part.Kind.Open, "x", 1, 30, None)), Vector.empty, Tokens(2), Tokens(8))
+      )
       val same = Given(Vector(read), Tokens(50), window)
       val r = Recipe.of(Vector(TurnPair(turn("w1", "A", read), same, same)), none)
       (r.changed, r.saved, r.called) ==> (Vector.empty, 0L, Proportion(1, 1, 1, few))
@@ -110,6 +112,7 @@ object RecipesTests extends TestSuite {
           part(Part.Kind.Closed, "y", 2, 40, Some(0.3)),
           part(Part.Kind.Along, "z", 3, 20, Some(0.1))
         ),
+        Vector.empty,
         Tokens.Zero,
         Tokens(10)
       )
@@ -119,10 +122,16 @@ object RecipesTests extends TestSuite {
           part(Part.Kind.Closed, "y", 2, 40, None),
           part(Part.Kind.Along, "z", 3, 20, None)
         ),
+        Vector.empty,
         Tokens.Zero,
         Tokens(10)
       )
-      val narrow = Parts(Vector(part(Part.Kind.Along, "x", 1, 30, None)), Tokens.Zero, Tokens(10))
+      val narrow = Parts(
+        Vector(part(Part.Kind.Along, "x", 1, 30, None)),
+        Vector.empty,
+        Tokens.Zero,
+        Tokens(10)
+      )
       val t = turn("w1", "A").copy(window = Some(recorded))
       val r = Recipe.of(
         Vector(
@@ -150,7 +159,8 @@ object RecipesTests extends TestSuite {
         Vector(
           TurnPair(
             turn("w1", "A"),
-            offer(0).copy(window = Some(Parts(Vector.empty, Tokens.Zero, Tokens.Zero))),
+            offer(0)
+              .copy(window = Some(Parts(Vector.empty, Vector.empty, Tokens.Zero, Tokens.Zero))),
             offer(0)
           )
         ),
