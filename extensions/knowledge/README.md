@@ -26,6 +26,39 @@ Packages, in one-way order (each names only those before it):
   `SyncParams`, what a run is told. And `Sync`, the keeping job `knowledge-sync`, which makes
   each step as a move named by `CardMoves`: a call, a summary ask, or a keep, a card held at
   another label withdrawn in the keep that replaces it. Imports `card` and `github`.
+- **`plugin`**: the plugin a deployment turns on. `CardSource`, where cards come from (a
+  repository, `GitHubCards`), and `Knowledge`, the plugin over a deployment's sources: its
+  documents' terms, the `Sync` job, and each source's sync schedules, keyed `{source}-{key}`.
+  Imports `github` and `sync`.
+
+## What a deployment declares
+
+A deployment builds each source with `GitHubCards.of` (its corpus, which names it and supplies
+its service; the name the deployment gave GitHub's MCP server; the repository, ref and what of
+it becomes cards; at most how many cards; its label; the place its cards are kept at, drawn on
+where a conversation's scope holds it; and its `SyncSchedule`s), and the plugin with
+`Knowledge.of(name, sources, visibility)`, under the visibility it declares. It also serves an
+edge hosting the MCP server's `get_file_contents` at the source's service, or every run's first
+call fails and its reply says so. The reference deployment's `GRIT_PLUGINS=knowledge` is one
+such declaration (`deployments/app/README.md`).
+
+## The label rule
+
+A source is kept at one label: the one it declares, or its service place's when it declares
+none. It may be above the service's (a confidential repository behind an internal service),
+never below, and never above what the deployment trusts the service with: `Knowledge.of`
+refuses either, naming the source, since its runs could then not read the service or send it
+a call. Its schedules run at that label, so a run reads and keeps at it, and every answer a
+run's calls and asks bring back is at it: no card is kept where the next run cannot read it
+back. Whether a turn reads a card is its label's business alone: a turn in a room below the
+source's label holds none of its cards.
+
+## Data handling
+
+A sync run sends the head of each file it summarises (up to 8 KB) to the catalog's summary
+model, a third party, whatever the source's label. Declaring a source is the deployment's
+consent for that source's included files. A turn that reads the same file already sends all of
+it to the reply model.
 
 The test tree mirrors it. `test/resources/github/` holds `tools/call` results GitHub's hosted
 read-only server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-10-11 (in an

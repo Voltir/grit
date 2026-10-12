@@ -100,7 +100,8 @@ object Knowledge {
     else if (!trusted.dominates(label))
       Left(
         s"the source $source is labelled ${Label.shown(label)}, above what its service " +
-          s"${service.name} is trusted with, ${Label.shown(trusted)}: its runs' calls could not send"
+          s"${service.name} is trusted with, ${Label.shown(trusted)}: " +
+          "its runs' calls could not send"
       )
     else Right(label)
   }
