@@ -31,10 +31,12 @@
 #   clock scripts/clock-check: no main source reads the JVM's time or randomness outside
 #         grit.core.clock (Instant.now, Clock.system, nanoTime, randomUUID, ...) unless marked
 #         `clock-check: <why>`, each named as file:line. --no-lint skips it.
-#   lint  every module compiled with -Wunused:all (build.mill reads GRIT_LINT=1), in its own
-#         output directory, out/lint, so neither cache invalidates the other. Its Mill daemon
-#         is shut down when the tier ends. --no-lint or --no-unused skips it; --only-unused
-#         runs it alone; with targets, each target's module and its tests and nested modules.
+#   lint  the modules a change reaches (`reach`, below: each holding a changed .scala file and
+#         every module depending on one; all of them when a build file changed) compiled with
+#         -Wunused:all (build.mill reads GRIT_LINT=1), in its own output directory, out/lint,
+#         so neither cache invalidates the other. Its Mill daemon is shut down when the tier
+#         ends. --no-lint or --no-unused skips it; --only-unused runs it alone, over every
+#         module; with targets, each target's module and its tests and nested modules.
 # A target runs just that: no law, no format, no clock, no lint, unless --only-unused runs
 # lint for its modules. --it with a target is a usage error.
 # --only-unused runs lint alone, so it conflicts with --no-lint, --no-unused and --it.
@@ -236,6 +238,66 @@ run_tier() { # tier outdir reports-file -- command...
   [ "$rc" = 0 ] || status=1
 }
 
+# What a change reaches, from the files it touches since the merge base with main (committed,
+# uncommitted and untracked; with no main, everything) and build.mill's module graph
+# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints a line naming the tier
+# and its Mill arguments, `+`-joined, or the name alone when the change reaches nothing there:
+#   lint    each module holding a changed .scala file, and every module depending on one;
+#           every module (__.compile) when build.mill, .mill-version, .mill-jvm-opts or
+#           .scalafmt.conf changed. Any other file (a doc, a script) lints nothing.
+reach() {
+  local base graph
+  base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
+  if ! graph=$("${mill[@]}" show grit.moduleGraph 2>"$logs/graph.log"); then
+    echo "lint __.compile"
+    return
+  fi
+  python3 - "$base" "$graph" <<'PY'
+import json, re, subprocess, sys
+
+base, graph = sys.argv[1], [line.split() for line in json.loads(sys.argv[2])]
+if not base:
+    print("lint __.compile")
+    sys.exit()
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout.splitlines()
+
+folder = {g[0]: g[1] for g in graph}
+dependents = {}
+for g in graph:
+    for d in g[2:]:
+        dependents.setdefault(d, set()).add(g[0])
+
+def owner(path):
+    held = [m for m, f in folder.items() if path.startswith(f + "/")]
+    return max(held, key=lambda m: len(folder[m]), default=None)
+
+def closure(modules):
+    seen, todo = set(modules), list(modules)
+    while todo:
+        for d in dependents.get(todo.pop(), ()):
+            if d not in seen:
+                seen.add(d)
+                todo.append(d)
+    return seen
+
+def joined(tasks):
+    return " + ".join(sorted(tasks))
+
+untracked = set(git("ls-files", "--others", "--exclude-standard"))
+changed = set(git("diff", "--name-only", base)) | untracked
+scala = sorted(c for c in changed if c.endswith(".scala"))
+
+if changed & {"build.mill", ".mill-version", ".mill-jvm-opts", ".scalafmt.conf"}:
+    print("lint __.compile")
+else:
+    linted = closure({m for m in map(owner, scala) if m})
+    print("lint " + joined(f"{m}.compile" for m in linted))
+
+PY
+}
+
 report_path() { # module tier task
   echo "out/$(tr . / <<<"$1")/$2/$3.dest/test-report.xml"
 }
@@ -253,6 +315,8 @@ if [ ${#targets[@]} -eq 0 ]; then
     : >"$logs/law.reports"
     run_tier law out "" -- bash scripts/enola-law.sh
 
+    reached=$(reach)
+    read -r -a lint_args <<<"$(sed -n 's/^lint//p' <<<"$reached")"
     if $probes; then
       modules_of probes | while read -r m; do report_path "$m" probes testCached; done >"$logs/probes.reports"
       run_tier probes out "$logs/probes.reports" -- "${mill[@]}" __.probes.testCached
@@ -269,7 +333,13 @@ if [ ${#targets[@]} -eq 0 ]; then
     fi
   fi
   if $lint && $unused; then
-    lint_tier __.compile
+    $only && lint_args=(__.compile)
+    if [ ${#lint_args[@]} -gt 0 ]; then
+      lint_tier "${lint_args[@]}"
+    else
+      echo "== lint: no change reaches a Scala source"
+      totals+=("lint: nothing to lint")
+    fi
   fi
 else
   # Each target becomes a Mill task: a module's whole tests, or its named suites in one

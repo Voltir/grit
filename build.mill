@@ -145,6 +145,18 @@ trait LivePostgres extends TestModule {
 }
 
 object grit extends Module {
+
+  /* Every Java module under grit, one per entry: its name, its folder relative to the workspace,
+   * and its direct module dependencies (moduleDeps and compileModuleDeps), space-separated. From
+   * Mill's own module tree, so scripts/check's lint tier reads which modules a change reaches
+   * without parsing this file. */
+  def moduleGraph() = Task.Command {
+    moduleInternal.modules.collect { case m: JavaModule => m }.map { m =>
+      val deps = (m.moduleDeps ++ m.compileModuleDeps).map(_.toString).distinct
+      (Seq(m.toString, m.moduleDir.relativeTo(mill.api.BuildCtx.workspaceRoot).toString) ++ deps)
+        .mkString(" ")
+    }
+  }
   /* The domain and its seams. Names no other module, and has neither DBOS nor a JDBC
    * driver on its classpath -- STYLE rule 8's dev.dbos.* half is a compile error here. */
   object core extends GritPublished with Placed {
