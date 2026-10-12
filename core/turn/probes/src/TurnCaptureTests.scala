@@ -1,9 +1,8 @@
 package grit.turn
 
-import java.nio.file.Files
+import grit.core.durable.Probes
+import grit.core.durable.Probes.{classpath, options}
 
-import dotty.tools.dotc.Driver
-import dotty.tools.dotc.reporting.StoreReporter
 import utest.*
 
 /** What capture checking rejects about the tools a turn is offered, pinned by compiling
@@ -14,9 +13,6 @@ import utest.*
   */
 object TurnCaptureTests extends TestSuite {
 
-  private val classpath = sys.env.getOrElse("GRIT_PROBE_CLASSPATH", "")
-  private val options = sys.env.getOrElse("GRIT_PROBE_OPTIONS", "").split(" ").toList
-
   private val prelude =
     """package probe
       |import grit.core.host.*
@@ -25,17 +21,16 @@ object TurnCaptureTests extends TestSuite {
       |import grit.core.store.{Db, Jot}
       |import grit.core.tool.*
       |import grit.turn.*
-      |object Probe {
-      |  val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
-      |  extension (s: ToolSpec[String]) def hosted: Hosted[String] = new Hosted(s, Gate.Free, p => p)
-      |  def reads(ws: Workspace^): Tool[String]^{ws} =
-      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
-      |  def writes(e: Edits^): Tool[String]^{e} =
-      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
+      |val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
+      |extension (s: ToolSpec[String]) def hosted: Hosted[String] = new Hosted(s, Gate.Free, p => p)
+      |def reads(ws: Workspace^): Tool[String]^{ws} =
+      |  Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
+      |def writes(e: Edits^): Tool[String]^{e} =
+      |  Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
       |""".stripMargin
 
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    compile(prelude + body + "\n}\n", flags)
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** `source` with its capture sets erased, as code written without capture checking. */
   private def erased(source: String): String =
@@ -43,19 +38,6 @@ object TurnCaptureTests extends TestSuite {
       .replaceAll("(Toolbox|TurnTooling|Breached)\\[\\{[^}]*\\}\\]", "$1[?]")
       .replaceAll("\\^\\{[^}]*\\}", "")
       .replace("^", "")
-
-  private def compile(code: String, flags: List[String]): List[String] = {
-    val dir = Files.createTempDirectory("grit-turn-probe")
-    try {
-      val source = Files.writeString(dir.resolve("Probe.scala"), code)
-      val args = flags ++ List("-classpath", classpath, "-d", dir.toString, source.toString)
-      // The compiler only reads the array; separation checking treats any array as mutable.
-      val argv = caps.unsafe.unsafeAssumePure(args.toArray)
-      new Driver().process(argv, StoreReporter(), null).allErrors.map(_.message)
-    } finally {
-      Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
-    }
-  }
 
   /** The planted breach: [[TurnTooling]]'s shape, its hosted tools allowed to capture. */
   private val breach =
@@ -103,17 +85,41 @@ object TurnCaptureTests extends TestSuite {
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
+  private val reading =
+    """def reading(ws: Workspace^, e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling[{ws, e}]^{j}] =
+      |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Toolbox.Empty, Vector(spec.hosted), j, b))
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(
+    prelude,
+    List(
+      reading,
+      editing,
+      smuggled("TurnTooling"),
+      breach + smuggled("Breached"),
+      reads("pure"),
+      reads("spying")
+    )
+  )
+
+  /** The breaches, their capture sets erased, compiled with capture checking off. */
+  private lazy val unchecked = Probes.batch(
+    erased(prelude),
+    List(reads("spying"), editing, smuggled("TurnTooling")).map(erased),
+    options.filterNot(_.startsWith("-language:experimental."))
+  )
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
+    test("one compile answers every probe, with capture checking on and with it off") {
+      (compiled.runs, unchecked.runs) ==> (1, 1)
+    }
+
     test("a turn offered tools through what it names, and pure hosted tools, compiles") {
-      val errs = errors(
-        """def reading(ws: Workspace^, e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling[{ws, e}]^{j}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Toolbox.Empty, Vector(spec.hosted), j, b))
-          |""".stripMargin
-      )
+      val errs = errors(reading)
       assert(errs.isEmpty)
     }
 
@@ -138,14 +144,11 @@ object TurnCaptureTests extends TestSuite {
     }
 
     test("capture checking is what rejects a store that acts through a capability") {
-      val flags = options.filterNot(_.startsWith("-language:experimental."))
-      compile(erased(prelude + reads("spying") + "\n}\n"), flags) ==> List()
+      unchecked.errors(erased(reads("spying"))) ==> List()
     }
 
     test("capture checking is what rejects the tool that edits") {
-      val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val sources = Vector(editing, smuggled("TurnTooling"))
-      val errs = sources.flatMap(s => compile(erased(prelude + s + "\n}\n"), flags))
+      val errs = Vector(editing, smuggled("TurnTooling")).flatMap(s => unchecked.errors(erased(s)))
       errs ==> Vector()
     }
   }

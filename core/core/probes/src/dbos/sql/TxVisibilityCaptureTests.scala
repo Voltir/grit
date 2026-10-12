@@ -13,34 +13,40 @@ import utest.*
   */
 object TxVisibilityCaptureTests extends TestSuite {
 
-  private def probe(decides: String): List[String] =
-    Probes.errors(
-      s"""package grit.dbos.sql
-         |import grit.core.place.Place
-         |import grit.core.store.Tx
-         |import grit.core.visibility.*
-         |object Probe {
-         |  def f(c: java.sql.Connection^, other: java.sql.Connection^): Unit = {
-         |    val rooms = new Labeller[Room] {
-         |      def label(item: Room): Labelled = Labelled.Mapped($decides)
-         |      def requires: Vector[Compartment] = Vector.empty
-         |    }
-         |    val opened = Visibility
-         |      .of(Compartments.Shipped, rooms, Vector.empty, Vector.empty)
-         |      .map(v => Tx.open(c, Clearance.of(Label.Public), v, Recorded.Empty))
-         |    val _ = opened
-         |  }
-         |}
-         |""".stripMargin
-    )
+  private val prelude =
+    """package grit.dbos.sql
+      |import grit.core.place.Place
+      |import grit.core.store.Tx
+      |import grit.core.visibility.*
+      |""".stripMargin
+
+  private def opening(decides: String): String =
+    s"""def f(c: java.sql.Connection^, other: java.sql.Connection^): Unit = {
+       |    val rooms = new Labeller[Room] {
+       |      def label(item: Room): Labelled = Labelled.Mapped($decides)
+       |      def requires: Vector[Compartment] = Vector.empty
+       |    }
+       |    val opened = Visibility
+       |      .of(Compartments.Shipped, rooms, Vector.empty, Vector.empty)
+       |      .map(v => Tx.open(c, Clearance.of(Label.Public), v, Recorded.Empty))
+       |    val _ = opened
+       |  }""".stripMargin
+
+  private val byData = opening("if (item.place.segments.isEmpty) Label.Public else Label.Public")
+  private val holding = opening("{ other.isClosed(); Label.Public }")
+  private lazy val compiled = Probes.batch(prelude, List(byData, holding))
 
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("control: a transaction opened with a visibility whose labeller decides by data") {
-      probe("if (item.place.segments.isEmpty) Label.Public else Label.Public") ==> Nil
+      compiled.errors(byData) ==> Nil
     }
 
     test("a visibility whose labeller holds a connection is rejected") {
-      val errs = probe("{ other.isClosed(); Label.Public }")
+      val errs = compiled.errors(holding)
       // Refused at the labeller's own self type; any layer refusing `other` holds the claim.
       assert(
         errs.exists(e =>

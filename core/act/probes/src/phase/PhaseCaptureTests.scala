@@ -20,12 +20,15 @@ object PhaseCaptureTests extends TestSuite {
       |import grit.core.model.NameRepair
       |import grit.core.provider.{ModelRequest, Provider}
       |import grit.core.schema.{JsonSchema, Typed}
-      |object Probe {
-      |  def asked(p: Provider^, request: ModelRequest, schema: JsonSchema, c: Clock^)(using d: Durable^): String = {
       |""".stripMargin
 
-  private def errors(body: String): List[String] =
-    Probes.errors(prelude + body + "\n  }\n}\n")
+  /** `body` as a method's over a provider, a request, a schema and a clock, in a workflow. */
+  private def asked(body: String): String =
+    "def asked(p: Provider^, request: ModelRequest, schema: JsonSchema, c: Clock^)" +
+      s"(using d: Durable^): String = {\n$body\n}"
+
+  /** The error messages from compiling `body` as `asked`'s, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(asked(body))
 
   /** A reply asked in a step, the new branch taken when `patched` says so. */
   private def asking(patched: String): String =
@@ -44,19 +47,30 @@ object PhaseCaptureTests extends TestSuite {
        |  }
        |}""".stripMargin
 
+  private val askPatchedFirst = "val fresh = d.patch(\"ask-again\")\n" + asking("fresh")
+  private val askPatchedInStep = asking("d.patch(\"ask-again\")")
+  private val shapePatchedFirst = "val fresh = d.patch(\"repair\")\n" + shaping("fresh")
+
+  private lazy val compiled =
+    Probes.batch(prelude, List(askPatchedFirst, askPatchedInStep, shapePatchedFirst).map(asked))
+
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("a phase's step whose patch is read before it compiles") {
-      val errs = errors("val fresh = d.patch(\"ask-again\")\n" + asking("fresh"))
+      val errs = errors(askPatchedFirst)
       assert(classpath.nonEmpty, errs.isEmpty)
     }
 
     test("a phase's step whose body reads a patch is rejected") {
-      val errs = errors(asking("d.patch(\"ask-again\")"))
+      val errs = errors(askPatchedInStep)
       assert(errs.exists(_.contains("Separation failure")))
     }
 
     test("a JSON ask's step whose patch is read before it compiles") {
-      val errs = errors("val fresh = d.patch(\"repair\")\n" + shaping("fresh"))
+      val errs = errors(shapePatchedFirst)
       assert(errs.isEmpty)
     }
   }

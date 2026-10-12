@@ -9,17 +9,12 @@ import utest.*
   */
 object LabellerCaptureTests extends TestSuite {
 
-  private def probe(body: String): List[String] =
-    Probes.errors(
-      s"""package outside
-         |import grit.core.visibility.*
-         |import grit.core.place.Place
-         |trait Provider extends caps.SharedCapability { def call(): String }
-         |object Probe {
-         |  $body
-         |}
-         |""".stripMargin
-    )
+  private val prelude =
+    """package outside
+      |import grit.core.visibility.*
+      |import grit.core.place.Place
+      |trait Provider extends caps.SharedCapability { def call(): String }
+      |""".stripMargin
 
   /* Its type left to inference, so only the labeller's own self type can refuse `p`. */
   private def labeller(decides: String): String =
@@ -31,13 +26,21 @@ object LabellerCaptureTests extends TestSuite {
        |    val _ = made.label(Room(Place.Everywhere, None))
        |  }""".stripMargin
 
+  private val byItem = labeller("if (item.place.segments.isEmpty) Label.Public else Label.Public")
+  private val calling = labeller("{ p.call(); Label.Public }")
+  private lazy val compiled = Probes.batch(prelude, List(byItem, calling))
+
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("control: a labeller deciding by the item alone compiles") {
-      probe(labeller("if (item.place.segments.isEmpty) Label.Public else Label.Public")) ==> Nil
+      compiled.errors(byItem) ==> Nil
     }
 
     test("a labeller that calls a capability it holds is rejected") {
-      val errs = probe(labeller("{ p.call(); Label.Public }"))
+      val errs = compiled.errors(calling)
       assert(
         errs.exists(e =>
           e.contains("Reference `p` is not included in the allowed capture set {}") &&

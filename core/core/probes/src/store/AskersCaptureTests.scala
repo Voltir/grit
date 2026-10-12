@@ -11,32 +11,38 @@ import utest.*
 object AskersCaptureTests extends TestSuite {
 
   /* Its type left to inference, so only the trait's own self type can refuse `p`. */
-  private def probe(answers: String): List[String] =
-    Probes.errors(
-      s"""package outside
-         |import grit.core.store.*
-         |import grit.core.id.TurnRef
-         |import grit.core.identity.Principal
-         |trait Provider extends caps.SharedCapability { def call(): String }
-         |object Probe {
-         |  def make(p: Provider^): Unit = {
-         |    val made = new Askers {
-         |      def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
-         |        $answers
-         |    }
-         |    val _ = made
-         |  }
-         |}
-         |""".stripMargin
-    )
+  private val prelude =
+    """package outside
+      |import grit.core.store.*
+      |import grit.core.id.TurnRef
+      |import grit.core.identity.Principal
+      |trait Provider extends caps.SharedCapability { def call(): String }
+      |""".stripMargin
+
+  private def askers(answers: String): String =
+    s"""def make(p: Provider^): Unit = {
+       |    val made = new Askers {
+       |      def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
+       |        $answers
+       |    }
+       |    val _ = made
+       |  }""".stripMargin
+
+  private val throughTx = askers("Right(Some(Principal.Grit))")
+  private val calling = askers("{ p.call(); Right(None) }")
+  private lazy val compiled = Probes.batch(prelude, List(throughTx, calling))
 
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("control: askers answering through the transaction they are given compile") {
-      probe("Right(Some(Principal.Grit))") ==> Nil
+      compiled.errors(throughTx) ==> Nil
     }
 
     test("askers that call a capability they hold are rejected") {
-      val errs = probe("{ p.call(); Right(None) }")
+      val errs = compiled.errors(calling)
       assert(Probes.heldImpure(errs) && errs.exists(_.contains("Askers")))
     }
   }

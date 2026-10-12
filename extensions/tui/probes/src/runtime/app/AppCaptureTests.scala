@@ -1,9 +1,8 @@
 package grit.tui.runtime.app
 
-import java.nio.file.Files
+import grit.core.durable.Probes
+import grit.core.durable.Probes.{classpath, options}
 
-import dotty.tools.dotc.Driver
-import dotty.tools.dotc.reporting.StoreReporter
 import utest.*
 
 /** What capture checking rejects in a view tree's handlers and apps, pinned by compiling
@@ -11,9 +10,6 @@ import utest.*
   * capture errors (docs/capture-checking.md). The pattern is `grit.core.durable.SeparationTests`.
   */
 object AppCaptureTests extends TestSuite {
-
-  private val classpath = sys.env.getOrElse("GRIT_PROBE_CLASSPATH", "")
-  private val options = sys.env.getOrElse("GRIT_PROBE_OPTIONS", "").split(" ").toList
 
   private val prelude =
     """package probe
@@ -25,19 +21,10 @@ object AppCaptureTests extends TestSuite {
       |import grit.tui.wire.term.Terminal
       |import grit.tui.runtime.app.Effect
       |final case class N(n: Int) extends caps.Pure
-      |object Probe {
       |""".stripMargin
 
-  private def errors(body: String, flags: List[String] = options): List[String] = {
-    val dir = Files.createTempDirectory("grit-node-probe")
-    try {
-      val source = Files.writeString(dir.resolve("Probe.scala"), prelude + body + "\n}\n")
-      val args = flags ++ List("-classpath", classpath, "-d", dir.toString, source.toString)
-      new Driver().process(args.toArray, StoreReporter(), null).allErrors.map(_.message)
-    } finally {
-      Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
-    }
-  }
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** A copy handler that writes to the clipboard itself instead of asking for an Effect. */
   private val copies =
@@ -54,22 +41,104 @@ object AppCaptureTests extends TestSuite {
     * refused for what it captures, not for a mistake of its own.
     */
   private def rejectedForCapture(body: String): Boolean =
-    rejected(errors(body)) && errors(body, options.filterNot(_ == CaptureChecking)).isEmpty
+    rejected(errors(body)) && unchecked.errors(body).isEmpty
+
+  private val pureHandlers =
+    """enum Msg { case Copied(n: Int); case Key(i: Input) }
+    |val view: Int -> Node[Msg] = s =>
+    |  Node.column(
+    |    Node.fixed(1) -> Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => t.length + s).map(Msg.Copied(_)),
+    |    Node.flex() -> Node.doc(PaneKey.of("j"), Doc.empty, Anchor.Bottom).onScroll(_ => Msg.Copied(0))
+    |  ).onKey(i => Some(Msg.Key(i)))
+    |""".stripMargin
+
+  private val keyCaptures =
+    """def screen(term: Terminal): Node[Int] =
+    |  Node.column(Node.fixed(1) -> Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom))
+    |    .onKey(_ => { term.flush(); None })
+    |""".stripMargin
+
+  private val mapCaptures =
+    """def screen(term: Terminal, n: Node[Int]): Node[Int] = n.map(i => { term.flush(); i })
+    |""".stripMargin
+
+  private val smugglesThunk =
+    """enum Msg { case Run(f: () => Unit) }
+    |def pane(term: Terminal): Node[Msg] =
+    |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => Msg.Run(() => term.copyOut(t)))
+    |""".stripMargin
+
+  private val viewCloses =
+    """def app(term: Terminal): Int -> Node[Int] = s =>
+    |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onScroll(_ => { term.flush(); s })
+    |""".stripMargin
+
+  private val appMethods =
+    """object Counter extends App[Int, N] {
+    |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
+    |  def update(m: N, s: Int): (Int, Effect[N]) = (s + m.n, Effect.NoOp)
+    |  private def bump(s: Int): Int -> N = n => N(n + s)
+    |  def view(s: Int): Node[N] =
+    |    Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => bump(s)(t.length))
+    |}
+    |""".stripMargin
+
+  private val appHolds =
+    """final class Leaky(term: Terminal) extends App[Int, N] {
+    |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
+    |  def update(m: N, s: Int): (Int, Effect[N]) = { term.flush(); (s + m.n, Effect.NoOp) }
+    |  def view(s: Int): Node[N] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
+    |}
+    |""".stripMargin
+
+  private val carriesPure =
+    """enum Carry extends caps.Pure {
+    |  case Term(t: Terminal^)
+    |  case Plain
+    |}
+    |""".stripMargin
+
+  private val carriesOpen =
+    """enum Carry {
+    |  case Term(t: Terminal^)
+    |  case Plain
+    |}
+    |""".stripMargin
+
+  private val openMessage =
+    """enum Open { case Plain }
+    |object Opened extends App[Int, Open] {
+    |  def init: (Int, Effect[Open]) = (0, Effect.NoOp)
+    |  def update(m: Open, s: Int): (Int, Effect[Open]) = (s, Effect.NoOp)
+    |  def view(s: Int): Node[Open] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
+    |}
+    |""".stripMargin
+
+  /** The probes `rejectedForCapture` reads. */
+  private val forCapture = List(copies, keyCaptures, mapCaptures, smugglesThunk, appHolds)
+
+  /* An app's undeclared message type is refused by a bound, the typer's: a second compile
+   * answers the rest. */
+  private lazy val compiled = Probes.batch(
+    prelude,
+    forCapture ++ List(pureHandlers, viewCloses, appMethods, carriesPure, carriesOpen, openMessage)
+  )
+
+  private lazy val unchecked =
+    Probes.batch(prelude, forCapture, options.filterNot(_ == CaptureChecking))
 
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains(CaptureChecking))
     }
 
+    test("two compiles answer every probe, and one with capture checking off") {
+      (compiled.runs, unchecked.runs) ==> (2, 1)
+    }
+
     test("pure handlers, a mapped subtree and a view value compile") {
       val errs = errors(
-        """enum Msg { case Copied(n: Int); case Key(i: Input) }
-          |val view: Int -> Node[Msg] = s =>
-          |  Node.column(
-          |    Node.fixed(1) -> Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => t.length + s).map(Msg.Copied(_)),
-          |    Node.flex() -> Node.doc(PaneKey.of("j"), Doc.empty, Anchor.Bottom).onScroll(_ => Msg.Copied(0))
-          |  ).onKey(i => Some(Msg.Key(i)))
-          |""".stripMargin
+        pureHandlers
       )
       assert(errs.isEmpty)
     }
@@ -81,10 +150,7 @@ object AppCaptureTests extends TestSuite {
     test("a key handler that captures the terminal is rejected") {
       assert(
         rejectedForCapture(
-          """def screen(term: Terminal): Node[Int] =
-          |  Node.column(Node.fixed(1) -> Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom))
-          |    .onKey(_ => { term.flush(); None })
-          |""".stripMargin
+          keyCaptures
         )
       )
     }
@@ -92,8 +158,7 @@ object AppCaptureTests extends TestSuite {
     test("Node.map with a capturing function is rejected") {
       assert(
         rejectedForCapture(
-          """def screen(term: Terminal, n: Node[Int]): Node[Int] = n.map(i => { term.flush(); i })
-          |""".stripMargin
+          mapCaptures
         )
       )
     }
@@ -101,10 +166,7 @@ object AppCaptureTests extends TestSuite {
     test("a message that smuggles a thunk over the terminal is rejected at the handler") {
       assert(
         rejectedForCapture(
-          """enum Msg { case Run(f: () => Unit) }
-          |def pane(term: Terminal): Node[Msg] =
-          |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => Msg.Run(() => term.copyOut(t)))
-          |""".stripMargin
+          smugglesThunk
         )
       )
     }
@@ -114,9 +176,7 @@ object AppCaptureTests extends TestSuite {
       assert(
         rejected(
           errors(
-            """def app(term: Terminal): Int -> Node[Int] = s =>
-          |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onScroll(_ => { term.flush(); s })
-          |""".stripMargin
+            viewCloses
           )
         )
       )
@@ -124,14 +184,7 @@ object AppCaptureTests extends TestSuite {
 
     test("an app's handlers built in its own methods are pure with no ceremony") {
       val errs = errors(
-        """object Counter extends App[Int, N] {
-          |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
-          |  def update(m: N, s: Int): (Int, Effect[N]) = (s + m.n, Effect.NoOp)
-          |  private def bump(s: Int): Int -> N = n => N(n + s)
-          |  def view(s: Int): Node[N] =
-          |    Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => bump(s)(t.length))
-          |}
-          |""".stripMargin
+        appMethods
       )
       assert(errs.isEmpty)
     }
@@ -139,47 +192,28 @@ object AppCaptureTests extends TestSuite {
     test("an app that holds the terminal is rejected where it is defined") {
       assert(
         rejectedForCapture(
-          """final class Leaky(term: Terminal) extends App[Int, N] {
-          |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
-          |  def update(m: N, s: Int): (Int, Effect[N]) = { term.flush(); (s + m.n, Effect.NoOp) }
-          |  def view(s: Int): Node[N] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
-          |}
-          |""".stripMargin
+          appHolds
         )
       )
     }
 
     test("a message that carries the terminal is rejected where it is declared") {
       val errs = errors(
-        """enum Carry extends caps.Pure {
-          |  case Term(t: Terminal^)
-          |  case Plain
-          |}
-          |""".stripMargin
+        carriesPure
       )
       assert(errs.exists(_.contains("Term.this.t")))
     }
 
     test("without caps.Pure, a message may carry the terminal") {
       val errs = errors(
-        """enum Carry {
-          |  case Term(t: Terminal^)
-          |  case Plain
-          |}
-          |""".stripMargin
+        carriesOpen
       )
       assert(errs.isEmpty)
     }
 
     test("an app whose message type is not declared pure is refused") {
       val errs = errors(
-        """enum Open { case Plain }
-          |object Opened extends App[Int, Open] {
-          |  def init: (Int, Effect[Open]) = (0, Effect.NoOp)
-          |  def update(m: Open, s: Int): (Int, Effect[Open]) = (s, Effect.NoOp)
-          |  def view(s: Int): Node[Open] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
-          |}
-          |""".stripMargin
+        openMessage
       )
       assert(errs.exists(_.contains("does not conform to upper bound scala.caps.Pure")))
     }

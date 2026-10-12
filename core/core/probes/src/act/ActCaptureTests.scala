@@ -54,9 +54,8 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** The error messages from compiling `body` after the prelude. */
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n", flags)
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** 1. A job that keeps the moves it is handed in a field. */
   private val jobKeepsMoves =
@@ -152,61 +151,81 @@ object ActCaptureTests extends TestSuite {
       jobHoldsClassifier
     )
 
+  private val usesMoves =
+    """object Counter extends Counted {
+      |  def run(run: JobRun[Count], moves: Moves^): String =
+      |    moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+      |}
+      |final class Tally(key: DocKey, label: Label) extends Tallied {
+      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
+      |      .fold(_.toString, _.toString)
+      |}
+      |""".stripMargin
+
+  private val readsJson =
+    """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
+      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
+      |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+      |    val json = moves.ask(Names.of("json"), Posed.json("", Vector.empty, schema)).fold(_.toString, _.reply.text)
+      |    val asked = moves.ask(Names.of("text"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+      |    s"$shaped $json $asked"
+      |  }
+      |}
+      |""".stripMargin
+
+  private val judges =
+    """final class Weighs(schema: grit.core.schema.JsonSchema) extends Counted {
+      |  import Text.given
+      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |    val judged = Ask.score[String, Int]("How urgent is `text`?", Level(0, "not"), Level(1, "very"))
+      |      .fold(_.toString, ask =>
+      |        moves.ask(Names.of("urgency"), Posed.judge("the build is red", ask)).fold(_.toString, _.reply.likeliest.toString)
+      |      )
+      |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
+      |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+      |    s"$judged $shaped"
+      |  }
+      |}
+      |""".stripMargin
+
+  private val actingPure =
+    """final class Child(val parent: Acting) extends caps.Pure {
+      |  def closed: Acting = parent.copy(gates = Gates.Closed)
+      |}
+      |def pure[A <: caps.Pure](a: A): A = a
+      |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute)))
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(
+    prelude,
+    breaches.toList ++ List(keepReturnsRead, usesMoves, readsJson, judges, actingPure)
+  )
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
+    test("two compiles answer every probe: the typer's refusal of a keep's bound, then the rest") {
+      compiled.runs ==> 2
+    }
+
     test(
       "a job using its moves within its run, and a keeping job's keep over its keeper alone, compile"
     ) {
-      val errs = errors(
-        """object Counter extends Counted {
-          |  def run(run: JobRun[Count], moves: Moves^): String =
-          |    moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
-          |}
-          |final class Tally(key: DocKey, label: Label) extends Tallied {
-          |  def run(run: JobRun[Count], moves: Keeping^): String =
-          |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
-          |      .fold(_.toString, _.toString)
-          |}
-          |""".stripMargin
-      )
+      val errs = errors(usesMoves)
       assert(errs.isEmpty)
     }
 
     test("a job asking for JSON its pure reader reads, beside asks it makes itself, compiles") {
-      val errs = errors(
-        """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
-          |  def run(run: JobRun[Count], moves: Moves^): String = {
-          |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
-          |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
-          |    val json = moves.ask(Names.of("json"), Posed.json("", Vector.empty, schema)).fold(_.toString, _.reply.text)
-          |    val asked = moves.ask(Names.of("text"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
-          |    s"$shaped $json $asked"
-          |  }
-          |}
-          |""".stripMargin
-      )
+      val errs = errors(readsJson)
       assert(errs.isEmpty)
     }
 
     test("a job judging with its pure reader, beside a JSON ask, compiles") {
-      val errs = errors(
-        """final class Weighs(schema: grit.core.schema.JsonSchema) extends Counted {
-          |  import Text.given
-          |  def run(run: JobRun[Count], moves: Moves^): String = {
-          |    val judged = Ask.score[String, Int]("How urgent is `text`?", Level(0, "not"), Level(1, "very"))
-          |      .fold(_.toString, ask =>
-          |        moves.ask(Names.of("urgency"), Posed.judge("the build is red", ask)).fold(_.toString, _.reply.likeliest.toString)
-          |      )
-          |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
-          |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
-          |    s"$judged $shaped"
-          |  }
-          |}
-          |""".stripMargin
-      )
+      val errs = errors(judges)
       assert(errs.isEmpty)
     }
 
@@ -223,14 +242,7 @@ object ActCaptureTests extends TestSuite {
     }
 
     test("the acting value is pure data: a bound asking for caps.Pure takes it") {
-      val errs = errors(
-        """final class Child(val parent: Acting) extends caps.Pure {
-          |  def closed: Acting = parent.copy(gates = Gates.Closed)
-          |}
-          |def pure[A <: caps.Pure](a: A): A = a
-          |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute)))
-          |""".stripMargin
-      )
+      val errs = errors(actingPure)
       assert(errs.isEmpty)
     }
 

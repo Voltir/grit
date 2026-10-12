@@ -18,17 +18,15 @@ object ToolCaptureTests extends TestSuite {
     """package probe
       |import grit.core.host.*
       |import grit.core.tool.*
-      |object Probe {
-      |  val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
-      |  def reads(ws: Workspace^): Tool[String]^{ws} =
-      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
-      |  def writes(e: Edits^): Tool[String]^{e} =
-      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
+      |val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
+      |def reads(ws: Workspace^): Tool[String]^{ws} =
+      |  Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
+      |def writes(e: Edits^): Tool[String]^{e} =
+      |  Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
       |""".stripMargin
 
-  /** The error messages from compiling `body` inside `object Probe`. */
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n}\n", flags)
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** A read-only toolbox that is handed a tool that edits. */
   private val smuggled =
@@ -45,20 +43,33 @@ object ToolCaptureTests extends TestSuite {
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
+  private val readOnlyAndAll =
+    """def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] = Toolbox.of(reads(ws))
+      |def all(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws, e}]] =
+      |  Toolbox.of(reads(ws), writes(e))
+      |def told(store: Workspace^): Either[DuplicateName, Toolbox[{store}]] =
+      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
+      |""".stripMargin
+
+  private val sneaky =
+    """def sneaky(ws: Workspace^, e: Edits^): Tool[String]^{ws} =
+      |  Tool(spec, Gate.Free, p => p, p => { writes(e); reads(ws); Outcome.Done(p) })
+      |""".stripMargin
+
+  private lazy val compiled =
+    Probes.batch(prelude, List(readOnlyAndAll, smuggled, sneaky, toldEdits))
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("a read-only toolbox of reading tools compiles, and so does one that edits") {
-      val errs = errors(
-        """def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] = Toolbox.of(reads(ws))
-          |def all(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws, e}]] =
-          |  Toolbox.of(reads(ws), writes(e))
-          |def told(store: Workspace^): Either[DuplicateName, Toolbox[{store}]] =
-          |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
-          |""".stripMargin
-      )
+      val errs = errors(readOnlyAndAll)
       assert(errs.isEmpty)
     }
 
@@ -67,11 +78,7 @@ object ToolCaptureTests extends TestSuite {
     }
 
     test("a tool typed as reading that edits is rejected") {
-      val errs = errors(
-        """def sneaky(ws: Workspace^, e: Edits^): Tool[String]^{ws} =
-          |  Tool(spec, Gate.Free, p => p, p => { writes(e); reads(ws); Outcome.Done(p) })
-          |""".stripMargin
-      )
+      val errs = errors(sneaky)
       assert(rejected(errs))
     }
 
@@ -81,7 +88,7 @@ object ToolCaptureTests extends TestSuite {
 
     test("capture checking is what rejects the smuggled tools") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = Probes.errors(erased(prelude + smuggled + toldEdits + "\n}\n"), flags)
+      val errs = Probes.errors(erased(prelude + smuggled + toldEdits), flags)
       assert(errs.isEmpty)
     }
   }

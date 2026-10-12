@@ -61,9 +61,8 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** The error messages from compiling `body` after the prelude. */
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n", flags)
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** A plugin holding a store it was built with. */
   private val holdsDb =
@@ -148,22 +147,45 @@ object PluginCaptureTests extends TestSuite {
     toolHoldsDb
   )
 
+  private val allowed =
+    """object Store {
+      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+      |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
+      |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
+      |}
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(
+    prelude,
+    List(
+      holdsDb,
+      holdsClosure,
+      documentsHoldDb,
+      serviceCapturesDb,
+      serviceImpure,
+      runKeepsReads,
+      runStashesReads,
+      serviceKeepsTx,
+      toolHoldsDb,
+      allowed
+    )
+  )
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
     test(
+      "two compiles answer every probe: the typer's refusal of an exported service's bound, then the rest"
+    ) {
+      compiled.runs ==> 2
+    }
+
+    test(
       "a pure plugin with a tool, a cache, documents and their posting, needs and an exported service compiles"
     ) {
-      val errs = errors(
-        """object Store {
-          |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
-          |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
-          |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
-          |}
-          |""".stripMargin
-      )
+      val errs = errors(allowed)
       assert(errs.isEmpty)
     }
 

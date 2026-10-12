@@ -54,9 +54,8 @@ object JobCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** The error messages from compiling `body` after the prelude. */
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n", flags)
+  /** The error messages from compiling `body` after the prelude, with every probe below. */
+  private def errors(body: String): List[String] = compiled.errors(body)
 
   /** 1. A job holding a store it was built with. */
   private val jobHoldsDb =
@@ -116,21 +115,41 @@ object JobCaptureTests extends TestSuite {
   private val breaches: Vector[String] =
     Vector(jobHoldsDb, runKeepsDesk, runStashesDesk, toolHoldsDesk, toolboxEdits)
 
+  private val allowed =
+    """object Kit {
+      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+      |    Toolbox.of(Remember.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
+      |}
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(
+    prelude,
+    List(
+      jobHoldsDb,
+      declaredHolder,
+      runKeepsDesk,
+      runStashesDesk,
+      toolHoldsDesk,
+      toolboxEdits,
+      allowed
+    )
+  )
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
     test(
+      "two compiles answer every probe: the typer's refusal of a schedule's bound, then the rest"
+    ) {
+      compiled.runs ==> 2
+    }
+
+    test(
       "a pure job, a declared schedule, and a plugin tool booking its own job, run with the desk handed in, compile"
     ) {
-      val errs = errors(
-        """object Kit {
-          |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
-          |    Toolbox.of(Remember.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
-          |}
-          |""".stripMargin
-      )
+      val errs = errors(allowed)
       assert(errs.isEmpty)
     }
 

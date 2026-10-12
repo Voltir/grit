@@ -19,11 +19,7 @@ object TxCaptureTests extends TestSuite {
       |import grit.core.id.*
       |import grit.core.store.*
       |import grit.core.visibility.Subject
-      |object Probe {
       |""".stripMargin
-
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n}\n", flags)
 
   private val withoutSeparation =
     options.filterNot(_ == "-language:experimental.separationChecking")
@@ -71,13 +67,52 @@ object TxCaptureTests extends TestSuite {
   private def outlives(errs: List[String]): Boolean =
     errs.exists(e => e.contains("outlives its scope") && e.contains("grit.core.store.Tx^"))
 
+  private val usesTx: Vector[String] = openers.map(o =>
+    s"def f${o.params}: Any =\n  ${o.open("val _ = summon[Tx^]", "Option.empty[String]")}"
+  )
+
+  private val subjectComputed =
+    """def f(turn: TurnRef)(using d: Durable^): String = {
+      |  val subject = Subject.Turn(turn)
+      |  d.transact("t", subject) { val _ = summon[Tx^]; "read" }
+      |}
+      |""".stripMargin
+
+  private val readsDurable =
+    """def f(using d: Durable^): String =
+      |  d.transact("t", Subject.Public) { if (d.patch("p")) "new" else "old" }
+      |""".stripMargin
+
+  private val openedForNoOne: Vector[String] = Vector(
+    "def f(db: Db^): Any = db.read { Right(1) }",
+    "def f(jot: Jot^): Any = jot.write { Right(1) }",
+    """def f(using d: Durable^): String = d.transact("t") { "read" }"""
+  )
+
+  private val leaks: Vector[String] = openers.map(keptInVar) ++ openers.map(returned)
+
+  private lazy val compiled = Probes.batch(
+    prelude,
+    (usesTx ++ leaks ++ Vector(subjectComputed, readsDurable) ++ openedForNoOne).toList
+  )
+
+  private lazy val unseparated = Probes.batch(prelude, leaks.toList, withoutSeparation)
+
+  private def errors(body: String): List[String] = compiled.errors(body)
+
   val tests = Tests {
+    test(
+      "two compiles answer every probe: the typer's refusals of a subjectless opening, then the rest"
+    ) {
+      compiled.runs ==> 2
+    }
+
+    test("one compile answers every probe with separation checking off") {
+      unseparated.runs ==> 1
+    }
+
     test("control: each opener's body may use its Tx and return what it read") {
-      val errs = openers.flatMap(o =>
-        errors(
-          s"def f${o.params}: Any =\n  ${o.open("val _ = summon[Tx^]", "Option.empty[String]")}"
-        )
-      )
+      val errs = usesTx.flatMap(errors)
       errs ==> Vector.empty
     }
 
@@ -93,37 +128,23 @@ object TxCaptureTests extends TestSuite {
 
     test("capture checking, not separation checking, rejects a kept Tx") {
       val rejected = openers.map(o =>
-        kept(errors(keptInVar(o), withoutSeparation)) &&
-          outlives(errors(returned(o), withoutSeparation))
+        kept(unseparated.errors(keptInVar(o))) &&
+          outlives(unseparated.errors(returned(o)))
       )
       rejected ==> Vector(true, true, true, true)
     }
 
     test("control: a step body may capture a subject computed before it") {
-      errors(
-        """def f(turn: TurnRef)(using d: Durable^): String = {
-          |  val subject = Subject.Turn(turn)
-          |  d.transact("t", subject) { val _ = summon[Tx^]; "read" }
-          |}
-          |""".stripMargin
-      ) ==> Nil
+      errors(subjectComputed) ==> Nil
     }
 
     test("a step body that reads its Durable to choose whom it reads for is rejected") {
-      val errs = errors(
-        """def f(using d: Durable^): String =
-          |  d.transact("t", Subject.Public) { if (d.patch("p")) "new" else "old" }
-          |""".stripMargin
-      )
+      val errs = errors(readsDurable)
       assert(errs.exists(_.contains("Separation failure")))
     }
 
     test("no transaction opens without saying whom it is for") {
-      val errs = Vector(
-        "def f(db: Db^): Any = db.read { Right(1) }",
-        "def f(jot: Jot^): Any = jot.write { Right(1) }",
-        """def f(using d: Durable^): String = d.transact("t") { "read" }"""
-      ).map(errors(_))
+      val errs = openedForNoOne.map(errors)
       // A body where the subject goes is read as the subject: a typer error either way.
       val subjectless = (e: String) =>
         e.contains("Required: grit.core.visibility.Subject") ||

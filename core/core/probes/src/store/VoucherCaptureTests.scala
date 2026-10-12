@@ -10,17 +10,12 @@ import utest.*
   */
 object VoucherCaptureTests extends TestSuite {
 
-  private def probe(body: String): List[String] =
-    Probes.errors(
-      s"""package outside
-         |import grit.core.store.*
-         |import grit.core.identity.{Account, Realm, Vouched}
-         |trait Provider extends caps.SharedCapability { def call(): String }
-         |object Probe {
-         |  $body
-         |}
-         |""".stripMargin
-    )
+  private val prelude =
+    """package outside
+      |import grit.core.store.*
+      |import grit.core.identity.{Account, Realm, Vouched}
+      |trait Provider extends caps.SharedCapability { def call(): String }
+      |""".stripMargin
 
   /* Its type left to inference, so only the voucher's own self type can refuse `p`. */
   private def voucher(vouches: String): String =
@@ -37,15 +32,21 @@ object VoucherCaptureTests extends TestSuite {
        |    val _ = made.realms
        |  }""".stripMargin
 
+  private val throughTx = voucher("Right(Vector(Linking.Outside(vouched.account)))")
+  private val calling = voucher("{ p.call(); Right(Vector.empty) }")
+  private lazy val compiled = Probes.batch(prelude, List(throughTx, calling))
+
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("control: a voucher answering through the transaction it is given compiles") {
-      probe(
-        voucher("Right(Vector(Linking.Outside(vouched.account)))")
-      ) ==> Nil
+      compiled.errors(throughTx) ==> Nil
     }
 
     test("a voucher that calls a capability it holds is rejected") {
-      val errs = probe(voucher("{ p.call(); Right(Vector.empty) }"))
+      val errs = compiled.errors(calling)
       assert(
         errs.exists(e =>
           e.contains("Reference `p` is not included in the allowed capture set {}") &&

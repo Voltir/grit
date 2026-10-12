@@ -19,33 +19,50 @@ object SeparationTests extends TestSuite {
       |import grit.core.store.*
       |import grit.core.visibility.Subject
       |trait Provider extends caps.SharedCapability { def call(): String }
-      |object Probe {
       |""".stripMargin
-
-  /** The error messages from compiling `body` inside `object Probe`. */
-  private def errors(body: String, flags: List[String] = options): List[String] =
-    Probes.errors(prelude + body + "\n}\n", flags)
 
   private val nested =
     """def f(p: Provider^)(using d: Durable^): String =
       |  d.step("outer") { () => d.step("inner") { () => p.call() } }
       |""".stripMargin
 
+  private val sequenced =
+    """def f(p: Provider^)(using d: Durable^): String = {
+      |  val a = d.step("a") { () => p.call() }
+      |  val b = d.transact("b", Subject.Public) { p.call() }
+      |  a + b
+      |}
+      |""".stripMargin
+
+  private val boundFirst =
+    """def f(p: Provider^)(using d: Durable^): String = {
+      |  val inner = () => d.step("inner") { () => p.call() }
+      |  d.step("outer")(inner)
+      |}
+      |""".stripMargin
+
+  private val inTransaction =
+    """def f(p: Provider^)(using d: Durable^): String =
+      |  d.transact("outer", Subject.Public) { d.step("inner") { () => p.call() } }
+      |""".stripMargin
+
+  /** Every probe above, compiled in one run with core's flags. */
+  private lazy val compiled =
+    Probes.batch(prelude, List(sequenced, nested, boundFirst, inTransaction))
+
+  private def errors(body: String): List[String] = compiled.errors(body)
+
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.separationChecking"))
     }
 
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("a step body may capture other capabilities, in sequence and in a transaction") {
-      val errs = errors(
-        """def f(p: Provider^)(using d: Durable^): String = {
-          |  val a = d.step("a") { () => p.call() }
-          |  val b = d.transact("b", Subject.Public) { p.call() }
-          |  a + b
-          |}
-          |""".stripMargin
-      )
-      assert(errs.isEmpty)
+      assert(errors(sequenced).isEmpty)
     }
 
     test("a step inside a step is rejected") {
@@ -54,28 +71,16 @@ object SeparationTests extends TestSuite {
     }
 
     test("a step in a closure bound first, then run as a step, is rejected") {
-      val errs = errors(
-        """def f(p: Provider^)(using d: Durable^): String = {
-          |  val inner = () => d.step("inner") { () => p.call() }
-          |  d.step("outer")(inner)
-          |}
-          |""".stripMargin
-      )
-      assert(errs.exists(_.contains("Separation failure")))
+      assert(errors(boundFirst).exists(_.contains("Separation failure")))
     }
 
     test("a step inside a transaction is rejected") {
-      val errs = errors(
-        """def f(p: Provider^)(using d: Durable^): String =
-          |  d.transact("outer", Subject.Public) { d.step("inner") { () => p.call() } }
-          |""".stripMargin
-      )
-      assert(errs.exists(_.contains("Separation failure")))
+      assert(errors(inTransaction).exists(_.contains("Separation failure")))
     }
 
     test("separation checking is what rejects the nested step") {
-      val errs = errors(nested, options.filterNot(_ == "-language:experimental.separationChecking"))
-      assert(errs.isEmpty)
+      val flags = options.filterNot(_ == "-language:experimental.separationChecking")
+      assert(Probes.batch(prelude, List(nested), flags).errors(nested).isEmpty)
     }
   }
 }

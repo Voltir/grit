@@ -26,6 +26,8 @@ object BatchTests extends TestSuite {
     test("a typer error in one probe does not mask another's capture error") {
       val b = Probes.batch(prelude, List(typerError, holds))
       assert(heldImpure(b.errors(holds)), b.errors(typerError).exists(_.contains("Found:")))
+      // The typer error is kept from the first run; only the probe it left clean runs again.
+      b.runs ==> 2
     }
 
     test("a Setup-phase error in one probe does not mask another's capture error") {
@@ -38,13 +40,13 @@ object BatchTests extends TestSuite {
 
     test("a batch with no breach reaches capture checking") {
       val b = Probes.batch(prelude, List(clean, "def twice(s: String): String = s + s"))
-      assert(b.batched, b.errors(clean).isEmpty)
+      assert(b.runs == 1, b.errors(clean).isEmpty)
     }
 
     test("a batch with capture checking off reaches the typer") {
       val off = options.filterNot(_.startsWith("-language:experimental."))
       val b = Probes.batch(prelude, List(clean, typerError), off)
-      assert(b.batched, b.errors(clean).isEmpty, b.errors(typerError).nonEmpty)
+      assert(b.runs == 1, b.errors(clean).isEmpty, b.errors(typerError).nonEmpty)
     }
   }
 }

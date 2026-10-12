@@ -9,17 +9,12 @@ import utest.*
   */
 object MembershipsCaptureTests extends TestSuite {
 
-  private def probe(body: String): List[String] =
-    Probes.errors(
-      s"""package outside
-         |import grit.core.visibility.*
-         |import grit.core.identity.Account
-         |trait Provider extends caps.SharedCapability { def call(): String }
-         |object Probe {
-         |  $body
-         |}
-         |""".stripMargin
-    )
+  private val prelude =
+    """package outside
+      |import grit.core.visibility.*
+      |import grit.core.identity.Account
+      |trait Provider extends caps.SharedCapability { def call(): String }
+      |""".stripMargin
 
   /* Its type left to inference, so only the trait's own self type can refuse `p`. */
   private def memberships(answers: String): String =
@@ -30,13 +25,21 @@ object MembershipsCaptureTests extends TestSuite {
        |    val _ = made.groups(Account.Local)
        |  }""".stripMargin
 
+  private val fromAccount = memberships("GroupName.of(Account.written(account)).toOption.toSet")
+  private val calling = memberships("GroupName.of(p.call()).toOption.toSet")
+  private lazy val compiled = Probes.batch(prelude, List(fromAccount, calling))
+
   val tests = Tests {
+    test("one compile answers every probe") {
+      assert(compiled.runs == 1)
+    }
+
     test("control: memberships answering from the account alone compile") {
-      probe(memberships("GroupName.of(Account.written(account)).toOption.toSet")) ==> Nil
+      compiled.errors(fromAccount) ==> Nil
     }
 
     test("memberships that call a capability they hold are rejected") {
-      val errs = probe(memberships("GroupName.of(p.call()).toOption.toSet"))
+      val errs = compiled.errors(calling)
       assert(
         errs.exists(e =>
           e.contains("Reference `p` is not included in the allowed capture set {}") &&

@@ -42,13 +42,45 @@ object Probes {
   }
 
   /** `probes`, deduplicated, each compiled inside an object of its own after `prelude`, with
-    * `flags`: in one compiler run when that run reaches the checker the flags enable (capture
-    * checking; the typer when it is off), else each alone. Any error before capture checking (the
-    * typer's, or capture checking's setup's) stops the run there for every probe, so the batch
-    * tells it from a sentinel probe that checker must reject.
+    * `flags`, in as few compiler runs as give each the errors it would get compiled alone. Any
+    * error before capture checking (the typer's, say) stops a run there for every probe, so a
+    * sentinel probe that checker must reject (the typer, when capture checking is off) shows
+    * whether a run got that far. When it did not, the probes that reported errors keep them,
+    * since they stopped where alone they would, and those left without any run again; each is
+    * compiled alone at worst.
     */
   def batch(prelude: String, probes: List[String], flags: List[String] = options): Batch = {
-    val distinct = probes.distinct
+    val head = prelude + "\n"
+    def alone(body: String): List[String] = errors(head + s"object Probe0 {\n$body\n}\n", flags)
+    @scala.annotation.tailrec
+    def rounds(
+        pending: List[String],
+        answered: Map[String, List[String]],
+        runs: Int
+    ): Batch =
+      if (pending.isEmpty) Batch(answered, runs, alone)
+      else
+        once(head, pending, flags) match {
+          case Ran.Reached(byProbe) => Batch(answered ++ byProbe, runs + 1, alone)
+          case Ran.Stopped(byProbe) =>
+            val (failed, clean) = byProbe.partition(_._2.nonEmpty)
+            if (failed.isEmpty)
+              Batch(answered ++ clean.map((p, _) => p -> alone(p)), runs + 1 + clean.size, alone)
+            else rounds(clean.map(_._1), answered ++ failed, runs + 1)
+        }
+    rounds(probes.distinct, Map.empty, 0)
+  }
+
+  /** One compiler run's errors, by probe: whether it reached the checker `flags` enable. */
+  private enum Ran {
+    case Reached(byProbe: List[(String, List[String])])
+    case Stopped(byProbe: List[(String, List[String])])
+  }
+
+  /** `probes` and the sentinel, each in an object of its own after `head`, compiled once; an
+    * error outside every object (in `head`) counts against each probe.
+    */
+  private def once(head: String, probes: List[String], flags: List[String]): Ran = {
     val (sentinel, rejected) =
       if (flags.contains("-language:experimental.captureChecking"))
         (
@@ -56,36 +88,32 @@ object Probes {
           "() ->{c} String"
         )
       else ("val sentinel: Int = \"grit-probe-sentinel\"", "\"grit-probe-sentinel\"")
-    val wrapped = (distinct :+ sentinel).zipWithIndex.map { (body, i) =>
+    val wrapped = (probes :+ sentinel).zipWithIndex.map { (body, i) =>
       s"object Probe$i {\n$body\n}\n"
     }
-    val head = prelude + "\n"
     val starts = wrapped.scanLeft(head.count(_ == '\n'))(_ + _.count(_ == '\n'))
     val spans = starts.zip(starts.drop(1)).map((from, next) => (from, next - 1))
-    val code = head + wrapped.mkString
-    val errs = diagnostics(code, flags)
+    val errs = diagnostics(head + wrapped.mkString, flags)
     def within(span: (Int, Int))(line: Int): Boolean = line >= span._1 && line <= span._2
-    val (probeSpans, sentinelSpan) = (spans.init, spans.last)
-    val reached = errs.exists((l, m) => within(sentinelSpan)(l) && m.contains(rejected))
-    def alone(body: String): List[String] = errors(head + s"object Probe0 {\n$body\n}\n", flags)
-    if (!reached) Batch(distinct.map(p => p -> alone(p)).toMap, batched = false, alone)
-    else {
-      val outside = errs.filter((l, _) => !spans.exists(s => within(s)(l))).map(_._2)
-      val byProbe = distinct.zip(probeSpans).map { (body, span) =>
-        body -> (errs.filter((l, _) => within(span)(l)).map(_._2) ++ outside)
-      }
-      Batch(byProbe.toMap, batched = true, alone)
+    val outside = errs.filter((l, _) => !spans.exists(s => within(s)(l))).map(_._2)
+    val byProbe = probes.zip(spans).map { (body, span) =>
+      body -> (errs.filter((l, _) => within(span)(l)).map(_._2) ++ outside)
     }
+    val reached = spans.lastOption.exists(last =>
+      errs.exists((l, m) => within(last)(l) && m.contains(rejected))
+    )
+    if (reached) Ran.Reached(byProbe) else Ran.Stopped(byProbe)
   }
 
   /** What compiling a [[batch]]'s probes reported, by probe.
     *
-    * @param batched whether one compiler run answered every probe; false when that run stopped
-    *   before the checker the batch's flags enable, and each probe was compiled alone
+    * @param runs
+    *   the compiler runs it took: one when the first reached the checker the batch's flags
+    *   enable
     */
   final class Batch private[Probes] (
       byProbe: Map[String, List[String]],
-      val batched: Boolean,
+      val runs: Int,
       alone: String -> List[String]
   ) {
 
