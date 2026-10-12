@@ -249,9 +249,13 @@ weak coverage, it is false coverage: it reads as a guarantee and holds none.
 
 ## Why rule 10 is a feature, not an aspiration
 
-Once LSP/BSP integration lands, signatures can be stored as symbols independently of
-their bodies, and the assembler can serve **signature-only views** of the codebase. That
-retrieval strategy is only correct if the signatures are trustworthy.
+It is what keeps building on grit cheap. Whoever writes the next change, a person or an
+agent, reads what it calls through signature-only views (`scripts/outline show` prints a
+definition's signature and doc, and its body only on request) and stops there. When the
+signatures are the whole truth, that reader holds an accurate picture of the code in a
+fraction of the tokens its bodies would cost; when an effect hides in a body, it has to read
+the body, then what that body calls, and the cost fans out. The same holds for grit's own
+assembler, which can serve such views to a model only if they are trustworthy.
 
 In other words: grit is a context harness, so grit's own source should be the most
 elidable code in the repository. We dogfood the thesis.

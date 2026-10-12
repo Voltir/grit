@@ -107,6 +107,7 @@ capability is a promise of purity.**
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.
+    Trustworthy signatures let the next change be built from them alone, in far fewer tokens.
     Scaladoc says *what*, never *how*. An invariant a doc states is a missing type; a doc
     never restates what the type or visibility says; it does state every failure a caller
     can see and every constant that changes behaviour.
