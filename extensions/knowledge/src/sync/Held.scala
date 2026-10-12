@@ -1,6 +1,7 @@
 package grit.knowledge.sync
 
 import grit.core.document.Document
+import grit.core.durable.Journaled
 import grit.core.id.{CorpusName, DocKey}
 import grit.core.visibility.Label
 import grit.knowledge.card.{CardKey, Scope, UnitVersion}
@@ -28,6 +29,15 @@ object Held {
       version: UnitVersion,
       scope: Option[Scope]
   ): Held = new Held(CardKey.of(corpus, path), path, label, version, scope)
+
+  /** The card as its run's record holds it: `key` is read back as it was written. */
+  private[sync] def recorded(
+      key: CardKey,
+      path: String,
+      label: Label,
+      version: UnitVersion,
+      scope: Option[Scope]
+  ): Held = new Held(key, path, label, version, scope)
 
   /** `document`, one of the knowledge plugin's, as a card of `corpus` that a run holds; `None`
     * when it is another source's card (its key is not that of `corpus` and its data's path). Or
@@ -60,5 +70,62 @@ object Held {
     } yield Option.when(CardKey.of(corpus, path) == key)(
       new Held(key, path, document.label, version, scope)
     )
+  }
+}
+
+/** What a run's `held` keep read: the floor its run keeps cards at, and the cards it holds,
+  * by key.
+  */
+private[sync] final case class Holding(floor: Label, held: Vector[Held]) extends caps.Pure
+
+private[sync] object Holding {
+
+  /** Its record: `{"floor", "held"}`, each held card `{"key", "path", "label", "version"}` and a
+    * directory's `"scope"`, each label in its written form ([[Label.written]]), never taken
+    * apart.
+    */
+  given Journaled[Holding] = Journaled.json(
+    h =>
+      ujson.Obj(
+        "floor" -> Label.written(h.floor),
+        "held" -> ujson.Arr.from(h.held.map { c =>
+          val card = ujson.Obj(
+            "key" -> CardKey.value(c.key),
+            "path" -> c.path,
+            "label" -> Label.written(c.label),
+            "version" -> UnitVersion.value(c.version)
+          )
+          c.scope.foreach(s => card("scope") = Scope.value(s))
+          card
+        })
+      ),
+    json =>
+      for {
+        o <- json.objOpt.toRight(s"a held keep's record is an object: ${ujson.write(json)}")
+        floor <- o.get("floor").flatMap(_.strOpt).toRight("a held keep's record names its floor")
+        f <- Label.read(floor)
+        cards <- o.get("held").flatMap(_.arrOpt).toRight("a held keep's record lists its cards")
+        held <- cards.toVector.foldLeft[Either[String, Vector[Held]]](Right(Vector.empty)) {
+          (acc, c) => acc.flatMap(hs => card(c).map(hs :+ _))
+        }
+      } yield Holding(f, held)
+  )
+
+  private def card(json: ujson.Value): Either[String, Held] = {
+    def str(field: String): Either[String, String] =
+      json.objOpt
+        .flatMap(_.get(field))
+        .flatMap(_.strOpt)
+        .toRight(s"a held card's record holds no string $field: ${ujson.write(json)}")
+    for {
+      key <- str("key").flatMap(CardKey.parse)
+      path <- str("path")
+      label <- str("label").flatMap(Label.read)
+      version <- str("version").flatMap(UnitVersion.of)
+      scope <- json.objOpt.flatMap(_.get("scope")) match {
+        case None => Right(None)
+        case Some(_) => str("scope").flatMap(Scope.parse).map(Some(_))
+      }
+    } yield Held.recorded(key, path, label, version, scope)
   }
 }

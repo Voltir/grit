@@ -1,0 +1,326 @@
+package grit.knowledge.sync
+
+import java.time.Instant
+
+import scala.annotation.tailrec
+
+import grit.core.act.{Called, Keeping, MoveError, MoveKind, MoveLimits, MoveName, Posed}
+import grit.core.document.DocumentKeeper
+import grit.core.durable.Journaled
+import grit.core.id.{CorpusName, DocumentVersion, JobName}
+import grit.core.job.{JobRun, KeepingJob}
+import grit.core.message.Message
+import grit.core.place.Place
+import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Label
+import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
+import grit.knowledge.github.{Fetched, GitHubCards, Listing}
+
+/** The job `knowledge-sync`, version 1, over `cards`. A run, for the source its parameters
+  * name, walks it as [[Walk]] says: lists the directories whose tree changed since the cards it
+  * holds; writes a card at its own floor for each new or changed unit (a directory's from its
+  * listing, at no model cost; a file's from one summary, with search terms, of its first 8 KB,
+  * the model asked for at most 60 words), each pointing at the read of its unit; copies up to
+  * its floor, with no call or ask, the card of an unchanged unit held at another label; and
+  * withdraws the cards of units gone from directories it listed in full. A held card at another
+  * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
+  * card it did not replace current. A card is kept at no less than what its unit's answers were
+  * read at. Replies [[Synced.line]]: written, relabelled, withdrawn, unchanged, and left for the
+  * next run (past `perRun`), or why it stopped: an ask refused or unread, a call failed (naming
+  * the service and why), a keep the store refused, such as a key written by another run
+  * meanwhile (naming the card's path), or parameters naming no source of its. Its `limits`:
+  * asks, the largest `perRun` among its sources' syncs; calls, that plus the largest
+  * `maxUnits`; judgments, none. Parameters asking for more stop at the limit, and the reply
+  * says so.
+  */
+final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
+
+  val name: JobName = Sync.Name
+
+  val version: Int = 1
+
+  def write(params: SyncParams): ujson.Value =
+    ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)
+
+  def read(params: ujson.Value): Either[String, SyncParams] = {
+    val shown = ujson.write(params).take(100)
+    for {
+      o <- params.objOpt.toRight(s"a sync's parameters are an object: $shown")
+      source <- o
+        .get("source")
+        .flatMap(_.strOpt)
+        .toRight(s"a sync's parameters name its source: $shown")
+        .flatMap(CorpusName.of)
+      perRun <- o
+        .get("perRun")
+        .flatMap(_.numOpt)
+        .filter(n => n.isWhole && n >= 1 && n <= Int.MaxValue)
+        .toRight(s"a sync's parameters hold perRun, a whole number at least 1: $shown")
+    } yield SyncParams(source, perRun.toInt)
+  }
+
+  override val limits: MoveLimits = {
+    val asks = cards.flatMap(_.syncs.map(_.perRun)).maxOption.getOrElse(0)
+    val units = cards.map(_.maxUnits).maxOption.getOrElse(0)
+    // Each at least zero (a source's perRun and maxUnits are at least 1), the sum clipped to
+    // an Int: MoveLimits.of never refuses them.
+    MoveLimits
+      .of(asks, (asks.toLong + units).min(Int.MaxValue.toLong).toInt, 0)
+      .fold(why => throw new IllegalStateException(why), identity)
+  }
+
+  def run(run: JobRun[SyncParams], moves: Keeping^): String =
+    cards.find(_.corpus == run.params.source) match {
+      case None => s"${CorpusName.value(run.params.source)}: no source of this sync's"
+      case Some(source) => Sync.walk(source, run.params.perRun, moves)
+    }
+}
+
+object Sync {
+
+  /** `knowledge-sync`. */
+  val Name: JobName =
+    // A literal of the job name's grammar: every test of the job throws here if not.
+    JobName.of("knowledge-sync").fold(why => throw new IllegalStateException(why), identity)
+
+  /** What the summary model is told, before the file. */
+  private val System: String =
+    "You summarise one file of a repository for a catalog that tells an assistant what each " +
+      "file holds, so it can choose which to read. Reply by calling `reply` with `summary`, " +
+      s"at most ${CardSummary.Words} words on what the file is and what it holds, and `terms`, " +
+      s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +
+      "that the summary leaves out."
+
+  /** One run of `source`, asking for at most `perRun` summaries: its reply. */
+  private def walk(source: GitHubCards, perRun: Int, moves: Keeping^): String = {
+    val corpus = source.corpus
+    moves.keep(CardMoves.Held)((keeper, _) => holding(corpus, keeper)) match {
+      case Left(e) =>
+        val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+        none.copy(stopped = Some(s"reading the cards held: ${reason(e)}")).line
+      case Right(h) =>
+        val paths = h.held.map(c => c.key -> c.path).toMap
+
+        /** What `step` came to, and `labels` (each unit's path, to the label its answers were
+          * read at) with what it read added.
+          */
+        def make(step: Step, labels: Map[String, Label]): (Outcome, Map[String, Label]) =
+          step match {
+            case Step.List(path) =>
+              call(Phase.List, path) match {
+                case Left(why) => (Outcome.Stopped(s"listing $path: $why"), labels)
+                case Right((text, at)) =>
+                  Listing.of(text) match {
+                    case Left(why) => (Outcome.Stopped(s"listing $path: $why"), labels)
+                    case Right(l) => (Outcome.Listed(l), labels.updated(path, at))
+                  }
+              }
+            case Step.Read(path) =>
+              call(Phase.Read, path) match {
+                case Left(why) => (Outcome.Stopped(s"reading $path: $why"), labels)
+                case Right((text, at)) =>
+                  (Outcome.Fetched(Fetched.of(text)), labels.updated(path, at))
+              }
+            case Step.Summarise(path, head, _) =>
+              val asked = Posed.Json(
+                System,
+                Vector(
+                  Message.User(s"The file `$path` in ${source.owner}/${source.repo}:\n\n$head")
+                ),
+                CardSummary.Reply
+              )
+              moves.ask(CardMoves.of(Phase.Summary, CardKey.of(corpus, path)), asked) match {
+                case Left(e) => (Outcome.Stopped(s"summarising $path: ${reason(e)}"), labels)
+                case Right(a) =>
+                  (
+                    Outcome.Summarised(a.reply),
+                    labels.updated(path, labels.getOrElse(path, h.floor).join(a.at))
+                  )
+              }
+            case Step.Write(card, replacing) =>
+              val label = labels.getOrElse(card.path, h.floor)
+              val at = source.at
+              (
+                kept(
+                  moves.keep(CardMoves.of(Phase.Write, card.key))((keeper, now) =>
+                    replace(keeper, card, label, at, replacing, now)
+                  ),
+                  s"keeping the card of ${card.path}"
+                ),
+                labels
+              )
+            case Step.Relabel(key, from) =>
+              val (floor, at) = (h.floor, source.at)
+              val path = paths.getOrElse(key, CardKey.value(key))
+              (
+                kept(
+                  moves.keep(CardMoves.of(Phase.Relabel, key))((keeper, now) =>
+                    relabel(keeper, key, from, floor, at, now)
+                  ),
+                  s"relabelling the card of $path"
+                ),
+                labels
+              )
+            case Step.Drop(gone) =>
+              (
+                kept(
+                  moves.keep(CardMoves.Drop)((keeper, now) => drop(keeper, gone, now)),
+                  "withdrawing the cards gone"
+                ),
+                labels
+              )
+          }
+
+        /** The answer of the call reading `path` in `phase`, and its label; or why not. */
+        def call(phase: Phase, path: String): Either[String, (String, Label)] =
+          moves.call(
+            CardMoves.of(phase, CardKey.of(corpus, path)),
+            source.service,
+            source.readTool,
+            source.reading(path)
+          ) match {
+            case Left(e) => Left(reason(e))
+            case Right(Called.Done(text, at)) => Right((text, at))
+            case Right(Called.Failed(why)) =>
+              Left(s"the call to ${source.service.name} failed: $why")
+            case Right(Called.Interrupted) =>
+              Left(s"the call to ${source.service.name} went unanswered, and may have partly run")
+          }
+
+        @tailrec def go(w: Walk, labels: Map[String, Label]): String = w.next match {
+          case Left(synced) => synced.line
+          case Right(step) =>
+            val (outcome, next) = make(step, labels)
+            go(w.after(outcome), next)
+        }
+
+        go(Walk.start(source, perRun, h.floor, h.held), Map.empty)
+    }
+  }
+
+  /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
+  private def kept(result: Either[MoveError, Kept], doing: String): Outcome =
+    result.fold(e => Outcome.Stopped(s"$doing: ${reason(e)}"), _ => Outcome.Kept)
+
+  /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
+    * key; or the first document that is no card, as the store's refusal.
+    */
+  private def holding(corpus: CorpusName, keeper: DocumentKeeper)(using
+      tx: Tx^
+  ): Either[StoreError, Holding] =
+    // Every current document: the plugin's bound, counted over every label, holds them to the
+    // sum of its sources' maxUnits.
+    keeper.newest(Int.MaxValue).flatMap { documents =>
+      documents
+        .foldLeft[Either[String, Vector[Held]]](Right(Vector.empty)) { (acc, d) =>
+          acc.flatMap(hs => Held.read(corpus, d).map(hs ++ _))
+        }
+        .left
+        .map(StoreError.Invalid(_))
+        .map(hs => Holding(Tx.floor(tx), hs.sortBy(c => CardKey.value(c.key))))
+    }
+
+  /** `card` kept at `label` at `place`, `now`, its copy at `replacing` withdrawn first, in this
+    * one transaction.
+    */
+  private def replace(
+      keeper: DocumentKeeper,
+      card: Card,
+      label: Label,
+      place: Place,
+      replacing: Option[Label],
+      now: Instant
+  )(using Tx^): Either[StoreError, Kept] =
+    for {
+      // Withdrawn before the write, so the old copy never counts against the bound beside it.
+      old <- replacing.fold[Either[StoreError, Option[DocumentVersion]]](Right(None))(
+        keeper.withdraw(card.docKey, _, now)
+      )
+      w <- keeper.write(card.docKey, label, place, card.text, card.data, Some(card.pointer), now)
+    } yield Kept(old.size, Some(w.kept))
+
+  /** The card under `key` at `from` copied to `floor` at `place`, `now`, and withdrawn at
+    * `from`, in this one transaction. Refused when no card is kept there.
+    */
+  private def relabel(
+      keeper: DocumentKeeper,
+      key: CardKey,
+      from: Label,
+      floor: Label,
+      place: Place,
+      now: Instant
+  )(using Tx^): Either[StoreError, Kept] = {
+    val doc = CardKey.docKey(key)
+    keeper.current(doc, from).flatMap {
+      case None =>
+        Left(StoreError.Invalid(s"no card is kept at ${Label.shown(from)} to relabel"))
+      case Some(d) =>
+        for {
+          old <- keeper.withdraw(doc, from, now)
+          w <- keeper.write(doc, floor, place, d.text, d.data, d.pointer, now)
+        } yield Kept(old.size, Some(w.kept))
+    }
+  }
+
+  /** Each of `gone` withdrawn at its label, `now`. */
+  private def drop(keeper: DocumentKeeper, gone: Vector[Held], now: Instant)(using
+      Tx^
+  ): Either[StoreError, Kept] =
+    gone
+      .foldLeft[Either[StoreError, Int]](Right(0)) { (acc, c) =>
+        acc.flatMap(n => keeper.withdraw(CardKey.docKey(c.key), c.label, now).map(n + _.size))
+      }
+      .map(Kept(_, None))
+
+  /** Why a move was not made, as a run's reply says it. */
+  private def reason(error: MoveError): String = error match {
+    case MoveError.Repeated(name) => s"the move ${MoveName.value(name)} was made already"
+    case MoveError.OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
+    case MoveError.Capped => "the day's recorded spend reached its cap"
+    case MoveError.Model(why) => why
+    case MoveError.Store(why) => why
+    case MoveError.Diverged(name) =>
+      s"the run's moves differ from its record at ${MoveName.value(name)}"
+  }
+
+  private def plural(kind: MoveKind): String = kind match {
+    case MoveKind.Ask => "asks"
+    case MoveKind.Judge => "judgments"
+    case MoveKind.Call => "calls"
+    case MoveKind.Keep => "keeps"
+  }
+}
+
+/** What a keep writing, relabelling or dropping cards did, as its move records it: how many
+  * cards it withdrew, and the label it kept a card at, if it kept one.
+  */
+private[sync] final case class Kept(withdrawn: Int, at: Option[Label]) extends caps.Pure
+
+private[sync] object Kept {
+
+  /** Its record: `{"withdrawn"}`, and `"at"`, the label in its written form. */
+  given Journaled[Kept] = Journaled.json(
+    k => {
+      val o = ujson.Obj("withdrawn" -> k.withdrawn)
+      k.at.foreach(l => o("at") = Label.written(l))
+      o
+    },
+    json =>
+      for {
+        o <- json.objOpt.toRight(s"a keep's record is an object: ${ujson.write(json)}")
+        n <- o
+          .get("withdrawn")
+          .flatMap(_.numOpt)
+          .filter(_.isWhole)
+          .toRight(s"a keep's record counts what it withdrew: ${ujson.write(json)}")
+        at <- o.get("at") match {
+          case None => Right(None)
+          case Some(v) =>
+            v.strOpt
+              .toRight(s"a keep's record names its label: ${ujson.write(json)}")
+              .flatMap(Label.read)
+              .map(Some(_))
+        }
+      } yield Kept(n.toInt, at)
+  )
+}

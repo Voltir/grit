@@ -3,7 +3,7 @@ package grit.knowledge.card
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
-import grit.core.id.CorpusName
+import grit.core.id.{CorpusName, DocKey}
 
 /** A card's key: the SHA-256 of `{corpus}\n{path}`, as 64 lowercase hex digits, so a unit keeps
   * one key however long its path.
@@ -27,6 +27,11 @@ object CardKey {
     Either.cond(Hex64.matches(text), text, s"a card's key is 64 lowercase hex digits: $text")
 
   def value(key: CardKey): String = key
+
+  /** The key of the document holding `key`'s card: its hex digits. */
+  def docKey(key: CardKey): DocKey =
+    // 64 hex digits, one line within 200 characters: DocKey.of never refuses them.
+    DocKey.of(key).fold(why => throw new IllegalStateException(why), identity)
 
   private val Hex64 = "[0-9a-f]{64}".r
 }

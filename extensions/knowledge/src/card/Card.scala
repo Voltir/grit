@@ -24,9 +24,7 @@ final case class Card private (
 ) extends caps.Pure {
 
   /** Its document's key: [[key]]'s hex digits. */
-  def docKey: DocKey =
-    // 64 hex digits, one line within 200 characters: DocKey.of never refuses them.
-    DocKey.of(CardKey.value(key)).fold(why => throw new IllegalStateException(why), identity)
+  def docKey: DocKey = CardKey.docKey(key)
 
   /** Its document's text: the summary, then, after a blank line, `Terms: ` and its terms
     * separated by `, `; the summary alone when it has no terms.
