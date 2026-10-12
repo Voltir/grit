@@ -2,8 +2,8 @@
 # Time and fresh values reach main sources only through grit.core.clock's capabilities (Clock,
 # Fresh), so a test can set them: refuses `Instant.now`, `Clock.system`,
 # `System.currentTimeMillis`, `nanoTime` and `randomUUID`, and any import of `Instant.now`, in
-# every main source (no test or it source) outside grit.core.clock, naming each as file:line. A
-# comment line is never checked. A place that genuinely needs the JVM's own (a process's
+# every main source (no test, it or probes source) outside grit.core.clock, naming each as
+# file:line. A comment line is never checked. A place that genuinely needs the JVM's own (a process's
 # composition root, a monitor's wait) says why with a marker on the line, or in the comment
 # lines just above it:
 #
@@ -16,7 +16,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 find . -path ./out -prune -o -path ./tools -prune -o -path ./.local -prune -o \
   -path '*/src/*' -name '*.scala' -print |
-  grep -vE '/(test|it)/src/|^\./core/core/src/clock/' |
+  grep -vE '/(test|it|probes)/src/|^\./core/core/src/clock/' |
   sort |
   xargs awk '
     FNR == 1 { marked = 0 }

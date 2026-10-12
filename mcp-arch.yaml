@@ -47,6 +47,11 @@ ignore:
   # other branches. Indexed, every import in them resolves to the copy and breaks the law.
   - ".claude/worktrees/**"
 
+  # Capture probes (a module's probes/src): test sources, which no rule governs, declaring
+  # main packages. enola resolves an import to the first directory declaring its package,
+  # and `probes` sorts before `src`, so indexed, a main source's imports would land in them.
+  - "**/probes/**"
+
   # The enola binary itself (51MB, extensionless). Excluded by kind anyway; named here
   # so the census stays legible.
   - "tools/**"
