@@ -316,10 +316,12 @@ utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture
 separation-checking errors. Capture checking runs after the typer, and a probe that should
 fail compiles "cleanly" there.
 
-The way that works is `grit.core.durable.SeparationTests`. It runs `dotty.tools.dotc.Driver` in the
-test, against core's run classpath with core's own `scalacOptions`, which `build.mill`
-passes in as `GRIT_PROBE_CLASSPATH` and `GRIT_PROBE_OPTIONS`. It asserts on
-`reporter.allErrors`. Every probe suite needs:
+The way that works is a probe suite in the module's `probes` tests (build.mill's
+`GritProbes`), `grit.core.durable.SeparationTests` the pattern. `Probes.batch` runs
+`dotty.tools.dotc.Driver` in the test, against the module's run classpath with its own
+`scalacOptions`, which `build.mill` passes in as `GRIT_PROBE_CLASSPATH` and
+`GRIT_PROBE_OPTIONS`, and answers each probe with the errors reported within it. Every
+probe suite needs:
 
 - a positive control that must compile, which proves the classpath and prelude are sound;
 - a control with the flag off, which proves the flag is what rejects.
@@ -328,8 +330,18 @@ A negative test is not adopted until it has been watched failing on a planted br
 `SeparationTests`, that breach was `Durable` made a `SharedCapability`.
 
 Put one breach in each probe: a typer error in the same source stops compilation before
-capture checking runs, and masks it. `grit.tui`'s `AppCaptureTests` is the second suite on
-this pattern.
+capture checking runs, and masks it. A batch compiles all of a suite's probes (deduplicated)
+in one source, each in an object of its own, and a sentinel probe that capture checking must
+reject (the typer, with it off) shows whether the run got that far; when it did not, the
+probes that reported errors keep them and the rest compile again, each alone at worst. A
+probe whose breach is a bound's (a typer error) therefore costs a second compile, and each
+suite pins its count (`compiled.runs`), so a probe that starts stopping the compiler early is
+seen. In Scala 3.9.0, errors from capture checking's setup (`Int^`, an untrackable
+`String^{s}`) do not stop it; `BatchTests` guards a compiler where they would.
+
+The probes are out of the commit gate's unit tier: the gate runs a module's when a change
+touches capture syntax in it or a module it depends on, and `scripts/check --probes` or
+`--milestone` runs every one.
 
 ## Tooling that trips on capture syntax
 
@@ -355,17 +367,18 @@ this pattern.
 - **Scala 3.9's `-Wunused`** reports variables read only inside utest's `assert` as unused.
   `-Wunused` is on only in `scripts/check`'s lint tier, where `GritTests` silences exactly that
   message in tests.
-- **`-Werror` turns a probe's warning into an error.** The `Driver` probes compile with
+- **`-Werror` turns a probe's warning into an error.** The probes compile with
   `probeOptions`, the module's flags less `-Werror`, so a probe sees only the checkers' errors.
 
 ## On a Scala upgrade
 
-1. `./mill __.test` from clean, then `scripts/it`. `SeparationTests` failing means separation checking now
-   accepts or rejects something different: read the probes before changing them.
+1. `./mill __.test` from clean, then `scripts/check --milestone`. `SeparationTests` failing means
+   separation checking now accepts or rejects something different: read the probes before
+   changing them. A suite's `compiled.runs` changing, or `BatchTests` failing, means the
+   batches' sentinel or which phase stops a run moved.
 2. Re-check each trap above against the new compiler, and delete any that no longer
    applies.
-3. If separation checking is no longer experimental, delete `SeparationTests` and the
-   `scala3-compiler` test dependency (ADR 0003).
+3. If separation checking is no longer experimental, delete `SeparationTests` (ADR 0003).
 4. Try `derives ReadWriter` again, and the scalafmt override.
 5. Consider turning separation checking on in `grit.tui`, and run `scripts/tui-gate`
    after, since the terminal seam is what would change.
