@@ -240,16 +240,21 @@ run_tier() { # tier outdir reports-file -- command...
 
 # What a change reaches, from the files it touches since the merge base with main (committed,
 # uncommitted and untracked; with no main, everything) and build.mill's module graph
-# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints a line naming the tier
-# and its Mill arguments, `+`-joined, or the name alone when the change reaches nothing there:
+# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints two lines, each a tier's name and its Mill arguments, `+`-joined,
+# or the name alone when the change reaches nothing there:
 #   lint    each module holding a changed .scala file, and every module depending on one;
 #           every module (__.compile) when build.mill, .mill-version, .mill-jvm-opts or
 #           .scalafmt.conf changed. Any other file (a doc, a script) lints nothing.
+#   probes  the probes of each module whose main sources' changed lines touch capture syntax
+#           (`^`, `caps.`, `SharedCapability`, `Pure`), and of every probed module depending on
+#           one; a probes module whose own sources changed; every probe (__.probes) when
+#           build.mill or .mill-version changed, since the probes pin what this compiler rejects.
 reach() {
   local base graph
   base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
   if ! graph=$("${mill[@]}" show grit.moduleGraph 2>"$logs/graph.log"); then
     echo "lint __.compile"
+    echo "probes __.probes.testCached"
     return
   fi
   python3 - "$base" "$graph" <<'PY'
@@ -258,6 +263,7 @@ import json, re, subprocess, sys
 base, graph = sys.argv[1], [line.split() for line in json.loads(sys.argv[2])]
 if not base:
     print("lint __.compile")
+    print("probes __.probes.testCached")
     sys.exit()
 
 def git(*args):
@@ -295,6 +301,29 @@ else:
     linted = closure({m for m in map(owner, scala) if m})
     print("lint " + joined(f"{m}.compile" for m in linted))
 
+capture = re.compile(r"\^|caps\.|SharedCapability|\bPure\b")
+def touches_capture(path):
+    if path in untracked:
+        lines = open(path, errors="replace").read().splitlines()
+    else:
+        lines = [l[1:] for l in git("diff", "-U0", base, "--", path)
+                 if l[:1] in ("+", "-") and not l.startswith(("+++", "---"))]
+    return any(capture.search(l) for l in lines)
+
+if changed & {"build.mill", ".mill-version"}:
+    print("probes __.probes.testCached")
+else:
+    touched, own = set(), set()
+    for path in scala:
+        m = owner(path)
+        if m is None:
+            continue
+        if m.endswith(".probes"):
+            own.add(m)
+        elif path.startswith(folder[m] + "/src/") and touches_capture(path):
+            touched.add(m)
+    probed = {m + ".probes" for m in closure(touched) if m + ".probes" in folder} | own
+    print("probes " + joined(f"{m}.testCached" for m in probed))
 PY
 }
 
@@ -317,9 +346,13 @@ if [ ${#targets[@]} -eq 0 ]; then
 
     reached=$(reach)
     read -r -a lint_args <<<"$(sed -n 's/^lint//p' <<<"$reached")"
-    if $probes; then
+    read -r -a probes_args <<<"$(sed -n 's/^probes//p' <<<"$reached")"
+    $probes && probes_args=(__.probes.testCached)
+    if [ ${#probes_args[@]} -gt 0 ]; then
       modules_of probes | while read -r m; do report_path "$m" probes testCached; done >"$logs/probes.reports"
-      run_tier probes out "$logs/probes.reports" -- "${mill[@]}" __.probes.testCached
+      run_tier probes out "$logs/probes.reports" -- "${mill[@]}" "${probes_args[@]}"
+    else
+      echo "== probes: no change touches capture syntax"
     fi
 
     if $it; then
