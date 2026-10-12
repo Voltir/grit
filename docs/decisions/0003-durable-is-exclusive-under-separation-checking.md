@@ -29,9 +29,12 @@ Consequences:
   Java needs `caps.unsafe.unsafeAssumePure`, only in quarantine modules.
 - If `grit.tui` ever needs a `Durable`, this is violated silently: the flag is off there.
   Turning it on in tui is parked (`.local/backlog/tui-separation-checking.md`).
-- Enforcement: the compiler, pinned by `grit.core.durable.SeparationTests`, which compiles probes
-  against core with core's own flags: the three rejected forms must fail, the allowed forms
-  must compile, and the nested step must compile with the flag off. A compiler change that
-  stops rejecting a nested step fails the build (watched failing with `Durable` shared).
+- Enforcement: the compiler, pinned by `grit.core.durable.SeparationTests` (in `grit.core.probes`),
+  which compiles probes against core with core's own flags: the three rejected forms must
+  fail, the allowed forms must compile, and the nested step must compile with the flag off. A
+  compiler change that stops rejecting a nested step fails the build (watched failing with
+  `Durable` shared): the commit gate runs the probes whenever `build.mill`, where the Scala
+  version lives, changes, or a change touches capture syntax in core, and every milestone run
+  runs them all.
   The suite is temporary: it is deleted once separation checking leaves experimental
   status, and until then re-read at every Scala upgrade.
