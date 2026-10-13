@@ -436,7 +436,7 @@ object TurnViewTests extends TestSuite {
       )
       val pinned = Catalog
         .of(
-          Policy(
+          Policy.one(
             Assignment(oss, 4096, None),
             Assignment(oss, 1024, None),
             Assignment(flash, 1024, None),
@@ -468,7 +468,7 @@ object TurnViewTests extends TestSuite {
       // No profile for the pair, and no upstream named: unprofiled, served by none said.
       val bare = Catalog
         .of(
-          Policy(
+          Policy.one(
             Assignment(oss, 4096, None),
             Assignment(oss, 1024, None),
             Assignment(oss, 1024, None),

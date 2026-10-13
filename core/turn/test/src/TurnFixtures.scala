@@ -977,7 +977,8 @@ object TurnFixtures {
         None
       )
     Catalog.of(
-      Policy(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)),
+      Policy
+        .one(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)),
       Vector.empty
     )
   }
@@ -988,7 +989,7 @@ object TurnFixtures {
   final class FixedModels(turn: Provider^, summary: Provider^) extends Models {
     def catalog(): Either[String, Catalog] = Right(TestCatalog)
     def provider(pinned: Pinned): Provider^ =
-      if (pinned.assignment == TestCatalog.policy.summary) summary else turn
+      if (pinned.assignment == TestCatalog.policy.summary.first.assignment) summary else turn
   }
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing

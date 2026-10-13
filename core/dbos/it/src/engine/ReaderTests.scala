@@ -234,7 +234,7 @@ object ReaderTests extends TestSuite {
       val ref =
         ModelRef(ModelId.of("a/pinned").getOrElse(throw new java.lang.AssertionError()), None)
       val a = Assignment(ref, 100, None)
-      val pinned = Catalog.of(Policy(a, a, a, a), Vector.empty).pin
+      val pinned = Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin
       val engine = LiveEngine.open(config, "test")
       try {
         LiveDb.transaction(config)(

@@ -121,7 +121,7 @@ object CloseFixtures {
       None
     )
     // The heard role on its own budget, so a test can tell its pin from the summary's.
-    Catalog.of(Policy(a, a, a, a.copy(maxTokens = 512)), Vector.empty)
+    Catalog.of(Policy.one(a, a, a, a.copy(maxTokens = 512)), Vector.empty)
   }
 
   /** Every role's calls to `provider`, keeping each pin a provider was asked for. */

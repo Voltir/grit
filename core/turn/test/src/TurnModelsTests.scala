@@ -9,6 +9,7 @@ import grit.core.model.{
   AfterToolResult,
   Catalog,
   Known,
+  Ladder,
   NameRepair,
   Pinned,
   Profile,
@@ -51,7 +52,9 @@ object TurnModelsTests extends TestSuite {
   /** [[TestCatalog]] with the turn's budget changed: another version, another turn pin. */
   private val Changed: Catalog =
     TestCatalog.withPolicy(
-      TestCatalog.policy.copy(turn = TestCatalog.policy.turn.copy(maxTokens = 100))
+      TestCatalog.policy.copy(turn =
+        Ladder.one(TestCatalog.policy.turn.first.assignment.copy(maxTokens = 100))
+      )
     )
 
   private val isWindow: Entry -> Boolean = _.payload match {
@@ -71,7 +74,7 @@ object TurnModelsTests extends TestSuite {
       durable.recordedSteps(turn.workflowId).headOption ==> Some("pin-models")
       profiles.of(turn.workflowId)(using TestTx.fake) ==> Right(Some(TestCatalog.pin))
       // The answer under the turn's pin, then the summary under the summary's.
-      models.asked ==> Vector(TestCatalog.pin.turn, TestCatalog.pin.summary)
+      models.asked ==> Vector(TestCatalog.pin.turn.first, TestCatalog.pin.summary.first)
     }
 
     test("a catalog changed before a restart does not change a crashed turn's calls") {
@@ -88,7 +91,7 @@ object TurnModelsTests extends TestSuite {
       provider.requests ==> Vector.empty
       models.now = Right(Changed)
       durable.run(turn.workflowId)(modelsBody(entries, models, profiles, NoCheckout, noTools))
-      models.asked ==> Vector(TestCatalog.pin.turn, TestCatalog.pin.summary)
+      models.asked ==> Vector(TestCatalog.pin.turn.first, TestCatalog.pin.summary.first)
       profiles.of(turn.workflowId)(using TestTx.fake) ==> Right(Some(TestCatalog.pin))
       // A turn started after the change pins the new catalog.
       val next = say(store, "again")
@@ -121,7 +124,7 @@ object TurnModelsTests extends TestSuite {
       val _ = durable.replay(next.workflowId, Vector(pinned(Changed.pin)))(
         modelsBody(entries, later, profiles, NoCheckout, noTools)
       )
-      later.asked ==> Vector(Changed.pin.turn, Changed.pin.summary)
+      later.asked ==> Vector(Changed.pin.turn.first, Changed.pin.summary.first)
     }
 
     test("no catalog: the turn fails at its first step, keeps that, and calls nothing") {
@@ -160,7 +163,7 @@ object TurnModelsTests extends TestSuite {
         TestCatalog.overlaid(
           Vector(
             Profile(
-              TestCatalog.policy.turn.ref,
+              TestCatalog.policy.turn.first.assignment.ref,
               strict = Known.Of(s, Source.Declared("nick", LocalDate.of(2026, 9, 25)))
             )
           )
@@ -173,7 +176,7 @@ object TurnModelsTests extends TestSuite {
     test("a turn guides, reads and tells its model as its pin says") {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
       val pair = Profile(
-        TestCatalog.policy.turn.ref,
+        TestCatalog.policy.turn.first.assignment.ref,
         names = Known.Of(NameRepair.AsSent, nick),
         afterResult = Known.Of(AfterToolResult.InLastResult, nick),
         guidance = Known.Of(ToolGuidance.SystemLines, nick)

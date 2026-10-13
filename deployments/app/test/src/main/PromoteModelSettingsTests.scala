@@ -15,7 +15,7 @@ object PromoteModelSettingsTests extends TestSuite {
     test(
       "the promoted seed is the seed with every approved model setting laid over it, in the seed's form"
     ) {
-      val pair = seed.policy.turn.ref
+      val pair = seed.policy.turn.first.assignment.ref
       val approved = Profile(
         pair,
         names = Known.Of(

@@ -1071,7 +1071,7 @@ object Turn {
       TurnOffer.toolbox(tooling, offer),
       tooling.jot,
       tooling.budget,
-      pins.turn.settings.strict == StrictSchemas.Enforced,
+      pins.turn.first.settings.strict == StrictSchemas.Enforced,
       tooling.answerWithin
     )
 
@@ -1098,7 +1098,7 @@ object Turn {
       case Right(tools) =>
         val schemas = tools.schemas(strict)
         // How this turn's pair is read and told: the pin's, fixed for the turn.
-        val settings = pins.turn.settings
+        val settings = pins.turn.first.settings
         val repairs = Repairs(settings.names, settings.repairs)
         val after = settings.afterResult
         val guidance = settings.guidance
@@ -1353,7 +1353,7 @@ object Turn {
     request(env, offer.system, turn, window).flatMap { req =>
       val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
       Asking
-        .reply(env.models.provider(pins.turn), req.shaped(shape), hearing, env.clock)
+        .reply(env.models.provider(pins.turn.first), req.shaped(shape), hearing, env.clock)
         .left
         .map(TurnFailure.Model(_))
     }
@@ -1435,7 +1435,7 @@ object Turn {
           .flatMap { all =>
             val request = summaryRequest(all, turn, placing)
             Asking
-              .reply(env.models.provider(pins.summary), request, Hearing.silent(), env.clock)
+              .reply(env.models.provider(pins.summary.first), request, Hearing.silent(), env.clock)
               .left
               .map(TurnFailure.Model(_))
           }
@@ -1863,7 +1863,7 @@ object Turn {
           acc.flatMap(done => recorded[EntryId](name).map(id => done ++ id.map(round -> _)))
       }
       answer <- recorded[EntryId](Step.Append)
-      settings = profile.turn.settings
+      settings = profile.turn.first.settings
       strict = settings.strict == StrictSchemas.Enforced
       // As asking decided it live, the verdict patch read from its marker.
       asking = classified.flatMap(asked(_, took(Patches.Verdict)))

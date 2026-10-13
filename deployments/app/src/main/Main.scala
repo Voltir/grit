@@ -216,7 +216,7 @@ object Main {
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
     val modelName = secrets.openRouter.fold(StubProvider.Model)(_ =>
-      ModelId.value(deployment.policy.turn.ref.model)
+      ModelId.value(deployment.policy.turn.first.assignment.ref.model)
     )
     // A run with arguments prints each model call, so a replayed turn is visibly one that
     // did not call.

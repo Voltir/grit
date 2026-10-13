@@ -6,12 +6,15 @@ import grit.core.model.{
   Assignment,
   Catalog,
   Effort,
+  Grade,
   Known,
+  Ladder,
   ModelId,
   ModelRef,
   Policy,
   Profile,
   ReasoningReplay,
+  Rung,
   Source,
   Upstream
 }
@@ -26,14 +29,25 @@ object OpenRouterConfigTests extends TestSuite {
       upstream.headOption.map(u => Upstream.of(u).getOrElse(throw new java.lang.AssertionError(u)))
     )
 
-  private val seedLike = Policy(
-    Assignment(ref("big/one", "cerebras/fp16"), 4096, Some(Effort.Low)),
-    Assignment(ref("small/one", "fireworks"), 1024, None),
-    Assignment(ref("small/one", "fireworks"), 512, None),
+  private val seedTurn = Assignment(ref("big/one", "cerebras/fp16"), 4096, Some(Effort.Low))
+  private val seedSummary = Assignment(ref("small/one", "fireworks"), 1024, None)
+  private val seedQuery = Assignment(ref("small/one", "fireworks"), 512, None)
+  private val seedLike = Policy.one(
+    seedTurn,
+    seedSummary,
+    seedQuery,
     Assignment(ref("small/one", "fireworks"), 1024, None)
   )
 
   private def overlay(env: (String, String)*) = OpenRouterConfig.policy(env.toMap, seedLike)
+
+  /** Each role's ladder in `p`, as its rungs' grades and assignments. */
+  private def rungs(p: Policy) =
+    Vector(p.turn, p.summary, p.query).map(_.rungs.map(r => (r.grade, r.assignment)))
+
+  /** A role of one standard rung: its assignment. */
+  private def one(l: Ladder): Option[Assignment] =
+    Option.when(l.rest.isEmpty && l.first.grade == Grade.Standard)(l.first.assignment)
 
   val tests = Tests {
     test("key: required and not blank; toString never shows it") {
@@ -44,7 +58,9 @@ object OpenRouterConfigTests extends TestSuite {
         Left(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))
       OpenRouterConfig.key(Map("OPENROUTER_API_KEY" -> "sk-or-secret")) ==> Right("sk-or-secret")
       val shown =
-        OpenRouterConfig.of("sk-or-secret", Catalog.of(seedLike, Vector.empty).pin.turn).toString
+        OpenRouterConfig
+          .of("sk-or-secret", Catalog.of(seedLike, Vector.empty).pin.turn.first)
+          .toString
       assert(!shown.contains("sk-or-secret"))
     }
 
@@ -56,29 +72,76 @@ object OpenRouterConfigTests extends TestSuite {
     test(
       "policy: a model variable names the model and leaves it open, unless an upstream is named too"
     ) {
-      overlay("GRIT_MODEL" -> "x/y").map(_.turn) ==> Right(
-        Assignment(ref("x/y"), 4096, Some(Effort.Low))
+      overlay("GRIT_MODEL" -> "x/y").map(p => one(p.turn)) ==> Right(
+        Some(
+          Assignment(ref("x/y"), 4096, Some(Effort.Low))
+        )
       )
-      overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "coreweave").map(_.turn.ref) ==>
-        Right(ref("x/y", "coreweave"))
-      overlay("GRIT_PROVIDER" -> "coreweave").map(_.turn.ref) ==> Right(ref("big/one", "coreweave"))
-      overlay("GRIT_MAX_TOKENS" -> "2000").map(_.turn) ==>
-        Right(Assignment(ref("big/one", "cerebras/fp16"), 2000, Some(Effort.Low)))
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "coreweave").map(p =>
+        one(p.turn).map(_.ref)
+      ) ==>
+        Right(Some(ref("x/y", "coreweave")))
+      overlay("GRIT_PROVIDER" -> "coreweave").map(p => one(p.turn).map(_.ref)) ==>
+        Right(Some(ref("big/one", "coreweave")))
+      overlay("GRIT_MAX_TOKENS" -> "2000").map(p => one(p.turn)) ==>
+        Right(Some(Assignment(ref("big/one", "cerebras/fp16"), 2000, Some(Effort.Low))))
     }
 
     test("policy: a role that names nothing follows the turn's variables; its own win") {
       val followed = overlay("GRIT_MODEL" -> "x/y")
-      followed.map(p => (p.summary, p.query)) ==>
-        Right((Assignment(ref("x/y"), 1024, None), Assignment(ref("x/y"), 512, None)))
+      followed.map(p => (one(p.summary), one(p.query))) ==>
+        Right((Some(Assignment(ref("x/y"), 1024, None)), Some(Assignment(ref("x/y"), 512, None))))
       overlay("GRIT_MODEL" -> "x/y", "GRIT_QUERY_PROVIDER" -> "cerebras").map(p =>
-        (p.summary.ref, p.query.ref)
+        (one(p.summary).map(_.ref), one(p.query).map(_.ref))
       ) ==>
-        Right((ref("x/y"), ref("small/one", "cerebras")))
+        Right((Some(ref("x/y")), Some(ref("small/one", "cerebras"))))
       overlay("GRIT_SUMMARY_MODEL" -> "tiny/one", "GRIT_SUMMARY_MAX_TOKENS" -> "300").map(p =>
-        (p.turn, p.summary, p.query)
-      ) ==> Right((seedLike.turn, Assignment(ref("tiny/one"), 300, None), seedLike.query))
+        (p.turn, one(p.summary), p.query)
+      ) ==> Right((seedLike.turn, Some(Assignment(ref("tiny/one"), 300, None)), seedLike.query))
       // A budget variable alone is not naming a model: the role keeps its own pair.
       overlay("GRIT_MAX_TOKENS" -> "2000").map(_.summary) ==> Right(seedLike.summary)
+    }
+
+    test(
+      "policy: a grade's variables add a rung after the role's others, with its first rung's budget"
+    ) {
+      overlay(
+        "GRIT_STRONG_MODEL" -> "big/two",
+        "GRIT_STRONG_PROVIDER" -> "anthropic",
+        "GRIT_SUMMARY_LIGHT_MODEL" -> "tiny/one",
+        "GRIT_MAX_TOKENS" -> "2000"
+      ).map(rungs) ==> Right(
+        Vector(
+          Vector(
+            Grade.Standard -> seedTurn.copy(maxTokens = 2000),
+            Grade.Strong -> Assignment(ref("big/two", "anthropic"), 2000, Some(Effort.Low))
+          ),
+          Vector(
+            Grade.Standard -> seedSummary,
+            Grade.Light -> seedSummary.copy(ref = ref("tiny/one"))
+          ),
+          Vector(Grade.Standard -> seedQuery)
+        )
+      )
+      // A graded variable is not a standard one: the summary does not follow it.
+      overlay("GRIT_STRONG_MODEL" -> "big/two").map(p => one(p.summary)) ==> Right(
+        Some(seedSummary)
+      )
+    }
+
+    test("policy: a grade's variables lay over the role's rungs at that grade, and only those") {
+      val laddered = seedLike.copy(turn =
+        Ladder
+          .of(Vector(Rung(Grade.Standard, seedTurn), Rung(Grade.Strong, seedSummary)))
+          .getOrElse(throw new java.lang.AssertionError("ladder"))
+      )
+      OpenRouterConfig
+        .policy(Map("GRIT_STRONG_PROVIDER" -> "coreweave"), laddered)
+        .map(p => p.turn.rungs.map(_.assignment.ref)) ==>
+        Right(Vector(seedTurn.ref, ref("small/one", "coreweave")))
+      // An upstream with no rung at its grade has no model to keep.
+      overlay("GRIT_QUERY_STRONG_PROVIDER" -> "coreweave") ==>
+        Left(OpenRouterConfig.Invalid.Missing("GRIT_QUERY_STRONG_MODEL"))
     }
 
     test("policy: a bad variable is refused by name, never by value") {
@@ -105,12 +168,12 @@ object OpenRouterConfigTests extends TestSuite {
 
     test("of: a role's model, budget, upstream and effort, and its pair's reasoning replay") {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
-      val dropped = Profile(seedLike.turn.ref, replay = Known.Of(ReasoningReplay.Dropped, nick))
+      val dropped = Profile(seedTurn.ref, replay = Known.Of(ReasoningReplay.Dropped, nick))
       val pin = Catalog.of(seedLike, Vector(dropped)).pin
-      val t = OpenRouterConfig.of("k", pin.turn)
+      val t = OpenRouterConfig.of("k", pin.turn.first)
       (t.model, t.maxTokens, t.upstream.map(Upstream.value), t.effort, t.replay) ==>
         ("big/one", 4096, Some("cerebras/fp16"), Some(Effort.Low), ReasoningReplay.Dropped)
-      val s = OpenRouterConfig.of("k", pin.summary)
+      val s = OpenRouterConfig.of("k", pin.summary.first)
       (s.model, s.maxTokens, s.upstream.map(Upstream.value), s.effort, s.replay) ==>
         ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }

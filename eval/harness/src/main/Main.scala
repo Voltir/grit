@@ -402,7 +402,7 @@ object Main {
           pins <- Seed.catalog.map(_.pin)
           // The writer's settings name its model, so they key its answers; the key itself is
           // read only when a write is to be asked.
-          keyless = OpenRouterConfig.of("", pins.query)
+          keyless = OpenRouterConfig.of("", pins.query.first)
           estimated = Queries.estimate(requests, keyless, store)
           _ = println(
             s"window-only cases: ${only.size}; queries to write: ${requests.distinct.size}, " +
@@ -419,7 +419,7 @@ object Main {
                 .key(env)
                 .left
                 .map(_.message)
-                .map(k => Some(OpenRouterConfig.of(k, pins.query)))
+                .map(k => Some(OpenRouterConfig.of(k, pins.query.first)))
           answered = {
             val asking: Provider^ = writer match {
               case Some(c) => new OpenRouterProvider(c)

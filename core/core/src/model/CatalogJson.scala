@@ -75,31 +75,31 @@ object CatalogJson {
     }
   }
 
-  /** The turn profile's form: its three pins. */
-  def writeTurn(t: TurnProfile): ujson.Value = pins(t.turn, t.summary, t.query)
+  /** The turn profile's form: its three roles' pins. */
+  def writeTurn(t: TurnProfile): ujson.Value = profilePins(t.turn, t.summary, t.query)
 
   /** The turn profile `v` encodes, or the first thing wrong with it, named by its path. */
   def readTurn(v: ujson.Value): Either[String, TurnProfile] =
     for {
       o <- obj(v, "turn profile")
-      turn <- field(o, "turn", "turn profile").flatMap(readPinned(_, "turn"))
-      summary <- field(o, "summary", "turn profile").flatMap(readPinned(_, "summary"))
-      query <- field(o, "query", "turn profile").flatMap(readPinned(_, "query"))
+      turn <- field(o, "turn", "turn profile").flatMap(readPins(_, "turn"))
+      summary <- field(o, "summary", "turn profile").flatMap(readPins(_, "summary"))
+      query <- field(o, "query", "turn profile").flatMap(readPins(_, "query"))
     } yield TurnProfile.of(turn, summary, query)
 
   private[model] def content(policy: Policy, profiles: Vector[Profile]): ujson.Value =
     ujson.Obj(
       "policy" -> ujson.Obj(
-        "turn" -> assignment(policy.turn),
-        "summary" -> assignment(policy.summary),
-        "query" -> assignment(policy.query),
-        "heard" -> assignment(policy.heard)
+        "turn" -> ladder(policy.turn),
+        "summary" -> ladder(policy.summary),
+        "query" -> ladder(policy.query),
+        "heard" -> ladder(policy.heard)
       ),
       "profiles" -> ujson.Arr.from(profiles.map(profile))
     )
 
-  private[model] def pins(turn: Pinned, summary: Pinned, query: Pinned): ujson.Value =
-    ujson.Obj("turn" -> pinned(turn), "summary" -> pinned(summary), "query" -> pinned(query))
+  private[model] def profilePins(turn: Pins, summary: Pins, query: Pins): ujson.Value =
+    ujson.Obj("turn" -> pins(turn), "summary" -> pins(summary), "query" -> pins(query))
 
   /** An enum's stored words: `word` spells each case (an exhaustive match, so a new case
     * does not compile until it has a word); reading finds the case in `cases` so spelled.
@@ -163,6 +163,14 @@ object CatalogJson {
       case ToolGuidance.SystemLines => "system-lines"
     }
   )
+  private val GradeWords: Words[Grade] = Words(
+    Grade.values.toVector,
+    {
+      case Grade.Light => "light"
+      case Grade.Standard => "standard"
+      case Grade.Strong => "strong"
+    }
+  )
   private val EffortWords: Words[Effort] = Words(
     Effort.values.toVector,
     {
@@ -175,7 +183,8 @@ object CatalogJson {
     }
   )
 
-  // Writing.
+  // Writing. A rung or pin at [[Grade.Standard]] has no grade key, and a role of one rung is
+  // written as that rung, not a list: the forms stored before ladders, unchanged.
 
   private def ref(r: ModelRef, into: ujson.Obj): ujson.Obj = {
     into("model") = ModelId.value(r.model)
@@ -183,12 +192,25 @@ object CatalogJson {
     into
   }
 
-  private def assignment(a: Assignment): ujson.Value = {
-    val o = ref(a.ref, ujson.Obj())
+  private def assignment(a: Assignment, into: ujson.Obj = ujson.Obj()): ujson.Obj = {
+    val o = ref(a.ref, into)
     o("maxTokens") = a.maxTokens
     a.effort.foreach(e => o("effort") = EffortWords.of(e))
     o
   }
+
+  private def graded(g: Grade, into: ujson.Obj): ujson.Obj = {
+    if (g != Grade.Standard) into("grade") = GradeWords.of(g)
+    into
+  }
+
+  private def rung(r: Rung): ujson.Value = assignment(r.assignment, graded(r.grade, ujson.Obj()))
+
+  private def ladder(l: Ladder): ujson.Value =
+    if (l.rest.isEmpty) rung(l.first) else ujson.Arr.from(l.rungs.map(rung))
+
+  private def pins(p: Pins): ujson.Value =
+    if (p.rest.isEmpty) pinned(p.first) else ujson.Arr.from(p.all.map(pinned))
 
   private def repairs(set: Set[ArgRepair]): ujson.Value =
     ujson.Arr.from(set.toVector.map(RepairWords.of).sorted.map(ujson.Str(_)))
@@ -223,19 +245,18 @@ object CatalogJson {
 
   private def pinned(p: Pinned): ujson.Value = {
     val s = p.settings
-    ujson.Obj(
-      "catalog" -> CatalogVersion.value(p.version),
-      "assignment" -> assignment(p.assignment),
-      "settings" -> ujson.Obj(
-        "strict" -> StrictWords.of(s.strict),
-        "replay" -> ReplayWords.of(s.replay),
-        "names" -> NameWords.of(s.names),
-        "repairs" -> repairs(s.repairs),
-        "afterResult" -> AfterWords.of(s.afterResult),
-        "guidance" -> GuidanceWords.of(s.guidance),
-        "profiled" -> s.profiled
-      )
+    val o = graded(p.grade, ujson.Obj("catalog" -> CatalogVersion.value(p.version)))
+    o("assignment") = assignment(p.assignment)
+    o("settings") = ujson.Obj(
+      "strict" -> StrictWords.of(s.strict),
+      "replay" -> ReplayWords.of(s.replay),
+      "names" -> NameWords.of(s.names),
+      "repairs" -> repairs(s.repairs),
+      "afterResult" -> AfterWords.of(s.afterResult),
+      "guidance" -> GuidanceWords.of(s.guidance),
+      "profiled" -> s.profiled
     )
+    o
   }
 
   // Reading.
@@ -294,13 +315,38 @@ object CatalogJson {
       }
     } yield Assignment(r, max, effort)
 
+  private def readGrade(o: Fields, at: String): Either[String, Grade] =
+    o.get("grade") match {
+      case None => Right(Grade.Standard)
+      case Some(g) => GradeWords.read(g, s"$at.grade")
+    }
+
+  private def readRung(v: ujson.Value, at: String): Either[String, Rung] =
+    for {
+      o <- obj(v, at)
+      grade <- readGrade(o, at)
+      a <- readAssignment(v, at)
+    } yield Rung(grade, a)
+
+  /** One item, or a list of them, as stored. */
+  private def oneOrMore[A](v: ujson.Value, at: String)(
+      item: (ujson.Value, String) => Either[String, A]
+  ): Either[String, Vector[A]] =
+    v.arrOpt match {
+      case None => item(v, at).map(Vector(_))
+      case Some(items) => all(items.toVector.zipWithIndex.map((x, i) => item(x, s"$at[$i]")))
+    }
+
+  private def readLadder(v: ujson.Value, at: String): Either[String, Ladder] =
+    oneOrMore(v, at)(readRung).flatMap(rs => Ladder.of(rs).left.map(_ => s"$at has no rungs"))
+
   private def readPolicy(v: ujson.Value): Either[String, Policy] =
     for {
       o <- obj(v, "policy")
-      turn <- field(o, "turn", "policy").flatMap(readAssignment(_, "policy.turn"))
-      summary <- field(o, "summary", "policy").flatMap(readAssignment(_, "policy.summary"))
-      query <- field(o, "query", "policy").flatMap(readAssignment(_, "policy.query"))
-      heard <- field(o, "heard", "policy").flatMap(readAssignment(_, "policy.heard"))
+      turn <- field(o, "turn", "policy").flatMap(readLadder(_, "policy.turn"))
+      summary <- field(o, "summary", "policy").flatMap(readLadder(_, "policy.summary"))
+      query <- field(o, "query", "policy").flatMap(readLadder(_, "policy.query"))
+      heard <- field(o, "heard", "policy").flatMap(readLadder(_, "policy.heard"))
     } yield Policy(turn, summary, query, heard)
 
   private def readRepairs(v: ujson.Value, at: String): Either[String, Set[ArgRepair]] =
@@ -359,6 +405,7 @@ object CatalogJson {
     for {
       o <- obj(v, at)
       version <- text(o, "catalog", at)
+      grade <- readGrade(o, at)
       a <- field(o, "assignment", at).flatMap(readAssignment(_, s"$at.assignment"))
       so <- field(o, "settings", at).flatMap(obj(_, s"$at.settings"))
       sat = s"$at.settings"
@@ -373,7 +420,11 @@ object CatalogJson {
       )
     } yield Pinned(
       CatalogVersion(version),
+      grade,
       a,
       Settings(strict, replay, names, repairs, after, guidance, profiled)
     )
+
+  private def readPins(v: ujson.Value, at: String): Either[String, Pins] =
+    oneOrMore(v, at)(readPinned).flatMap(ps => Pins.of(ps).left.map(_ => s"$at has no pins"))
 }

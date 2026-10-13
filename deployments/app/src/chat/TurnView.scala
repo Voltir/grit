@@ -78,11 +78,11 @@ object TurnView {
 
     /** From the turn's pinned `profile`, its reply's `served` upstream. */
     def of(profile: TurnProfile, served: Option[String]): Models = {
-      val turn = profile.turn.assignment.ref
+      val turn = profile.turn.first.assignment.ref
       val others = Vector("summary" -> profile.summary, "query" -> profile.query).collect {
-        case (role, p) if p.assignment.ref != turn => role -> p.assignment.ref
+        case (role, p) if p.first.assignment.ref != turn => role -> p.first.assignment.ref
       }
-      Models(("model" -> turn) +: others, profile.turn.settings.profiled, served)
+      Models(("model" -> turn) +: others, profile.turn.first.settings.profiled, served)
     }
   }
 

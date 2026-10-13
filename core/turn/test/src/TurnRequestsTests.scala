@@ -274,7 +274,7 @@ object TurnRequestsTests extends TestSuite {
     test("a turn guided in its system prompt and told in its last result is rebuilt as sent") {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
       val pair = Profile(
-        TestCatalog.policy.turn.ref,
+        TestCatalog.policy.turn.first.assignment.ref,
         afterResult = Known.Of(AfterToolResult.InLastResult, nick),
         guidance = Known.Of(ToolGuidance.SystemLines, nick)
       )
@@ -288,7 +288,7 @@ object TurnRequestsTests extends TestSuite {
 
     test("a turn under a pair that enforces strict schemas says its schemas are recorded") {
       val pair = Profile(
-        TestCatalog.policy.turn.ref,
+        TestCatalog.policy.turn.first.assignment.ref,
         strict = Known.Of(
           StrictSchemas.Enforced,
           Source.Declared("nick", LocalDate.of(2026, 9, 25))

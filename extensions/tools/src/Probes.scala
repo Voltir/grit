@@ -1,7 +1,7 @@
 package grit.tools
 
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{Assignment, CatalogVersion, ModelRef, Pinned, Settings}
+import grit.core.model.{Assignment, CatalogVersion, Grade, ModelRef, Pinned, Settings}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolSchema, ToolUse}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
@@ -76,7 +76,12 @@ object Probes {
 
   /** A pin for `ref` alone: every unmeasured setting as grit behaves without a profile. */
   private def pinned(ref: ModelRef): Pinned =
-    Pinned(CatalogVersion("probe"), Assignment(ref, MaxTokens, None), Settings.of(None))
+    Pinned(
+      CatalogVersion("probe"),
+      Grade.Standard,
+      Assignment(ref, MaxTokens, None),
+      Settings.of(None)
+    )
 
   private val System = "You are being probed. Call the tool you are offered when asked."
 

@@ -127,7 +127,7 @@ private[grit] object Launch {
     }
     // The query writer is built with the assembler, from the catalog as the engine opens.
     val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
-    val writer = models.provider(startup.query)
+    val writer = models.provider(startup.query.first)
     val assembler: ContextAssembler^ = d.assembly match {
       case Assembly.Retrieval(budget, tail) =>
         new RetrievalAssembler(

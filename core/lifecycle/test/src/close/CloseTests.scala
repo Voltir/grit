@@ -247,7 +247,7 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.bodyOver(nothingNew, models, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      models.pins ==> Vector(TestCatalog.heardPin)
+      models.pins ==> Vector(TestCatalog.heard.first)
       val request = summary.requests.headOption
       request.map(_.system.startsWith(ClosingSummary.overheard(false))) ==> Some(true)
       request.map(_.system.contains("Standing:")) ==> Some(false)
@@ -277,7 +277,7 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.bodyOver(gate, models, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      models.pins ==> Vector(TestCatalog.pin.summary)
+      models.pins ==> Vector(TestCatalog.pin.summary.first)
       summary.requests.map(_.system.startsWith(ClosingSummary.system(false))) ==> Vector(true)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
         c.balance.in(Section.Standing).map(l => (l.text, l.ground))
@@ -419,7 +419,7 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.bodyOver(gate, models, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      models.pins ==> Vector(TestCatalog.heardPin)
+      models.pins ==> Vector(TestCatalog.heard.first)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
         (reason, c.flows.prose)
       } ==> Some((CloseReason.Lapsed, "Ben said standup moves to 10:00 from Monday."))

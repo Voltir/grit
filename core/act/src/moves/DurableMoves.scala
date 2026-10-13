@@ -361,7 +361,7 @@ object DurableMoves {
       models.catalog() match {
         case Left(why) =>
           Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
-        case Right(catalog) => Right((at, catalog.pin.summary))
+        case Right(catalog) => Right((at, catalog.pin.summary.first))
       }
     }
 

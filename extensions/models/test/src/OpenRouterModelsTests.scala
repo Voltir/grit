@@ -17,7 +17,7 @@ object OpenRouterModelsTests extends TestSuite {
   }
 
   private val seed: Catalog = Seed.catalog.getOrElse(sys.error("the seed"))
-  private val turnPair = seed.policy.turn.ref
+  private val turnPair = seed.policy.turn.first.assignment.ref
 
   val tests = Tests {
     test(
@@ -34,6 +34,16 @@ object OpenRouterModelsTests extends TestSuite {
       now.map(_.version) ==> Right(seed.overlaid(Vector(asSent)).version)
       assert(now.map(_.version) != Right(seed.version))
       now.map(c => Settings.of(c.profile(turnPair)).names) ==> Right(NameRepair.AsSent)
+    }
+
+    test("the stub answers the turn's pin with its delayed provider, every other role's with one") {
+      val stub = new StubModels(delayMs = 1)
+      val pins = StubModels.Catalog.pin
+      val turn = stub.provider(pins.turn.first)
+      val summary = stub.provider(pins.summary.first)
+      val query = stub.provider(pins.query.first)
+      val heard = stub.provider(StubModels.Catalog.heard.first)
+      assert(summary ne turn, query eq summary, heard eq summary)
     }
   }
 }

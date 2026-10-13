@@ -4,13 +4,15 @@ import java.net.URI
 import java.time.Duration
 
 import grit.core.model.{
-  Assignment,
   Effort,
+  Grade,
+  Ladder,
   ModelId,
   ModelRef,
   Pinned,
   Policy,
   ReasoningReplay,
+  Rung,
   Upstream
 }
 
@@ -63,52 +65,110 @@ object OpenRouterConfig {
       _ <- Either.cond(key.trim.nonEmpty, (), Invalid.Empty(KeyVar))
     } yield key
 
-  /** `policy` with each role's variables ([[ModelRole]]) laid over its assignment for this run;
-    * a blank variable is unset. A role's model variable names its model and leaves it open
-    * unless its upstream variable names one upstream; its upstream variable alone keeps its
-    * model. A summary or query role that sets neither follows the turn's model and upstream
-    * whenever the turn's variables set either. A budget variable replaces only the budget.
+  /** `policy` with each role's variables ([[ModelRole]]) laid over its ladder for this run; a
+    * blank variable is unset. A grade's model variable names the model of the role's rungs at
+    * that grade and leaves it open unless its upstream variable names one upstream; its upstream
+    * variable alone keeps their model. A grade the ladder has no rung at gets one, after its
+    * others, when its model variable is set: the first rung's budget and effort, that pair. A
+    * summary or query role that sets neither standard variable follows the turn's standard
+    * model and upstream whenever the turn's standard variables set either. A budget variable
+    * replaces only the standard rungs' budget. `Missing` names the model variable when a grade
+    * the ladder has no rung at sets only its upstream or budget.
     */
   def policy(env: Map[String, String], policy: Policy): Either[Invalid, Policy] = {
     def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
     def names(role: ModelRole) = set(role.modelVar).isDefined || set(role.upstreamVar).isDefined
 
-    def ref(role: ModelRole, own: ModelRef): Either[Invalid, ModelRef] =
+    def named(role: ModelRole, grade: Grade): Either[Invalid, (Option[ModelId], Option[Upstream])] =
       for {
-        model <- set(role.modelVar) match {
+        model <- set(role.modelVar(grade)) match {
           case None => Right(None)
-          case Some(m) => ModelId.of(m).map(Some(_)).toRight(Invalid.NotAModel(role.modelVar))
+          case Some(m) =>
+            ModelId.of(m).map(Some(_)).toRight(Invalid.NotAModel(role.modelVar(grade)))
         }
-        upstream <- set(role.upstreamVar) match {
+        upstream <- set(role.upstreamVar(grade)) match {
           case None => Right(None)
           case Some(u) =>
-            Upstream.of(u).map(Some(_)).toRight(Invalid.NotAnUpstream(role.upstreamVar))
+            Upstream.of(u).map(Some(_)).toRight(Invalid.NotAnUpstream(role.upstreamVar(grade)))
         }
-      } yield (model, upstream) match {
-        case (None, None) => own
-        case (Some(m), u) => ModelRef(m, u)
-        case (None, Some(u)) => own.copy(upstream = Some(u))
+      } yield (model, upstream)
+
+    def laid(own: ModelRef, named: (Option[ModelId], Option[Upstream])): ModelRef = named match {
+      case (None, None) => own
+      case (Some(m), u) => ModelRef(m, u)
+      case (None, Some(u)) => own.copy(upstream = Some(u))
+    }
+
+    def budget(role: ModelRole): Either[Invalid, Option[Int]] =
+      set(role.maxTokensVar) match {
+        case None => Right(None)
+        case Some(raw) =>
+          raw.toIntOption.filter(_ > 0).map(Some(_)).toRight(Invalid.NotPositive(role.maxTokensVar))
       }
 
-    def assignment(role: ModelRole, own: Assignment, turn: ModelRef): Either[Invalid, Assignment] =
-      for {
-        r <-
-          if (role != ModelRole.Turn && !names(role) && names(ModelRole.Turn)) Right(turn)
-          else ref(role, own.ref)
-        max <- set(role.maxTokensVar) match {
-          case None => Right(own.maxTokens)
-          case Some(raw) =>
-            raw.toIntOption.filter(_ > 0).toRight(Invalid.NotPositive(role.maxTokensVar))
+    def graded(
+        role: ModelRole,
+        ladder: Ladder,
+        grade: Grade,
+        pair: (Option[ModelId], Option[Upstream]),
+        max: Option[Int]
+    ): Either[Invalid, Ladder] =
+      if (ladder.rungs.exists(_.grade == grade))
+        Right(ladder.map { r =>
+          if (r.grade != grade) r
+          else
+            r.copy(assignment =
+              r.assignment.copy(
+                ref = laid(r.assignment.ref, pair),
+                maxTokens = max.getOrElse(r.assignment.maxTokens)
+              )
+            )
+        })
+      else
+        pair match {
+          case (Some(m), u) =>
+            val first = ladder.first.assignment
+            Right(
+              ladder :+ Rung(
+                grade,
+                first.copy(ref = ModelRef(m, u), maxTokens = max.getOrElse(first.maxTokens))
+              )
+            )
+          case (None, None) if max.isEmpty => Right(ladder)
+          case _ => Left(Invalid.Missing(role.modelVar(grade)))
         }
-      } yield own.copy(ref = r, maxTokens = max)
+
+    def ladder(role: ModelRole, own: Ladder, turn: Option[ModelRef]): Either[Invalid, Ladder] =
+      Grades.foldLeft[Either[Invalid, Ladder]](Right(own)) { (acc, grade) =>
+        for {
+          l <- acc
+          ownPair <- named(role, grade)
+          pair = (grade, turn) match {
+            case (Grade.Standard, Some(t)) if role != ModelRole.Turn && !names(role) =>
+              (Some(t.model), t.upstream)
+            case _ => ownPair
+          }
+          max <- if (grade == Grade.Standard) budget(role) else Right(None)
+          next <- graded(role, l, grade, pair, max)
+        } yield next
+      }
+
+    def standard(l: Ladder): Option[ModelRef] =
+      l.rungs.find(_.grade == Grade.Standard).map(_.assignment.ref)
 
     for {
-      turnRef <- ref(ModelRole.Turn, policy.turn.ref)
-      turn <- assignment(ModelRole.Turn, policy.turn, turnRef)
-      summary <- assignment(ModelRole.Summary, policy.summary, turnRef)
-      query <- assignment(ModelRole.Query, policy.query, turnRef)
+      turn <- ladder(ModelRole.Turn, policy.turn, None)
+      followed = if (names(ModelRole.Turn)) standard(turn) else None
+      summary <- ladder(ModelRole.Summary, policy.summary, followed)
+      query <- ladder(ModelRole.Query, policy.query, followed)
     } yield Policy(turn, summary, query, policy.heard)
   }
+
+  /** The grades whose variables are read, the standard first: a rung another grade adds
+    * copies the first rung as the standard variables left it.
+    */
+  private val Grades: Vector[Grade] =
+    Grade.Standard +: Grade.values.toVector.filter(_ != Grade.Standard)
 
   /** A role's configuration under `key`: its pinned assignment's model, budget, upstream and
     * effort, its settings' reasoning replay, and a five-minute timeout.
@@ -135,5 +195,5 @@ object OpenRouterConfig {
       k <- key(env).left.map(_.message)
       seed <- Seed.catalog
       p <- policy(env, seed.policy).left.map(_.message)
-    } yield of(k, role.in(seed.withPolicy(p).pin))
+    } yield of(k, role.in(seed.withPolicy(p).pin).first)
 }

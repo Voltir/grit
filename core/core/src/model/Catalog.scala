@@ -10,11 +10,51 @@ enum Effort {
   */
 final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort])
 
-/** Which pair does each job: answering the turn, summarising it, writing its search query,
+/** How strong a pair a call is made with, least first: a ladder's rungs are graded by it, and
+  * a turn's effort stage asks for one.
+  */
+enum Grade {
+  case Light, Standard, Strong
+}
+
+/** A pair a role may use, at `grade`. */
+final case class Rung(grade: Grade, assignment: Assignment)
+
+/** A role's rungs, in the order they are preferred. */
+final case class Ladder private (first: Rung, rest: Vector[Rung]) {
+  def rungs: Vector[Rung] = first +: rest
+
+  /** Each rung through `f`, in place. */
+  def map(f: Rung => Rung): Ladder = Ladder(f(first), rest.map(f))
+
+  /** This ladder with `rung` after its others, preferred least. */
+  def :+(rung: Rung): Ladder = Ladder(first, rest :+ rung)
+}
+
+object Ladder {
+
+  /** `rungs` as a ladder; `Left` when there are none. */
+  def of(rungs: Vector[Rung]): Either[String, Ladder] = rungs match {
+    case first +: rest => Right(Ladder(first, rest))
+    case _ => Left("a ladder has no rungs")
+  }
+
+  /** One [[Grade.Standard]] rung: a role assigned one pair. */
+  def one(assignment: Assignment): Ladder = Ladder(Rung(Grade.Standard, assignment), Vector.empty)
+}
+
+/** Which pairs do each job: answering the turn, summarising it, writing its search query,
   * and writing the closing of a period grit only heard (`heard`: nothing in it was said to
   * grit). A person's decision; a probe proposes settings of pairs, never an assignment.
   */
-final case class Policy(turn: Assignment, summary: Assignment, query: Assignment, heard: Assignment)
+final case class Policy(turn: Ladder, summary: Ladder, query: Ladder, heard: Ladder)
+
+object Policy {
+
+  /** Each role assigned one pair ([[Ladder.one]]). */
+  def one(turn: Assignment, summary: Assignment, query: Assignment, heard: Assignment): Policy =
+    Policy(Ladder.one(turn), Ladder.one(summary), Ladder.one(query), Ladder.one(heard))
+}
 
 /** A catalog's content hash: equal content, equal version. */
 opaque type CatalogVersion = String
@@ -35,15 +75,18 @@ final case class Catalog private (
   def profile(ref: ModelRef): Option[Profile] = profiles.find(_.ref == ref)
 
   /** What each role's calls are made under, for a turn starting now. */
-  def pin: TurnProfile = {
-    def pinned(a: Assignment) = Pinned(version, a, Settings.of(profile(a.ref)))
-    TurnProfile.of(pinned(policy.turn), pinned(policy.summary), pinned(policy.query))
-  }
+  def pin: TurnProfile = TurnProfile.of(pins(policy.turn), pins(policy.summary), pins(policy.query))
 
   /** What the closing of a period grit only heard is written under: the policy's `heard`
     * role. No turn's call, so no [[TurnProfile]] holds it.
     */
-  def heardPin: Pinned = Pinned(version, policy.heard, Settings.of(profile(policy.heard.ref)))
+  def heard: Pins = pins(policy.heard)
+
+  private def pins(ladder: Ladder): Pins = {
+    def pinned(r: Rung) =
+      Pinned(version, r.grade, r.assignment, Settings.of(profile(r.assignment.ref)))
+    Pins(pinned(ladder.first), ladder.rest.map(pinned))
+  }
 
   /** This catalog under `policy` instead. */
   def withPolicy(policy: Policy): Catalog = Catalog.of(policy, profiles)
@@ -67,10 +110,32 @@ object Catalog {
   }
 }
 
-/** What one role's calls in a turn are made under: the catalog it came from, the role's
-  * assignment, and the settings its pair resolves to.
+/** What one rung of a role's calls in a turn are made under: the catalog it came from, the
+  * rung's grade and assignment, and the settings its pair resolves to.
   */
-final case class Pinned(version: CatalogVersion, assignment: Assignment, settings: Settings)
+final case class Pinned(
+    version: CatalogVersion,
+    grade: Grade,
+    assignment: Assignment,
+    settings: Settings
+)
+
+/** One role's pins, in its ladder's order: [[Catalog.pin]] pins each rung. */
+final case class Pins private[model] (first: Pinned, rest: Vector[Pinned]) {
+  def all: Vector[Pinned] = first +: rest
+}
+
+object Pins {
+
+  /** `all` as a role's pins; `Left` when there are none. */
+  def of(all: Vector[Pinned]): Either[String, Pins] = all match {
+    case first +: rest => Right(Pins(first, rest))
+    case _ => Left("a role has no pins")
+  }
+
+  /** One pin: a role assigned one pair. */
+  def one(pinned: Pinned): Pins = Pins(pinned, Vector.empty)
+}
 
 /** A [[TurnProfile]]'s content hash. */
 opaque type TurnProfileId = String
@@ -84,21 +149,21 @@ object TurnProfileId {
   * under the same catalog and policy share one.
   */
 final case class TurnProfile private (
-    turn: Pinned,
-    summary: Pinned,
-    query: Pinned,
+    turn: Pins,
+    summary: Pins,
+    query: Pins,
     id: TurnProfileId
 )
 
 object TurnProfile {
 
   /** The three roles' pins, identified by [[CatalogJson]]'s form of them. */
-  def of(turn: Pinned, summary: Pinned, query: Pinned): TurnProfile =
+  def of(turn: Pins, summary: Pins, query: Pins): TurnProfile =
     TurnProfile(
       turn,
       summary,
       query,
-      TurnProfileId(Hash.of(CatalogJson.pins(turn, summary, query)))
+      TurnProfileId(Hash.of(CatalogJson.profilePins(turn, summary, query)))
     )
 }
 

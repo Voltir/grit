@@ -14,9 +14,11 @@ final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: Mode
     extends Models {
 
   private val pins = seed.pin
-  private val turn: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.turn))
-  private val summary: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.summary))
-  private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query))
+  private val turn: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.turn.first))
+  private val summary: Provider = new OpenRouterProvider(
+    OpenRouterConfig.of(key, pins.summary.first)
+  )
+  private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query.first))
 
   def catalog(): Either[String, Catalog] =
     db.read(Subject.Public)(settings.all())
@@ -25,9 +27,9 @@ final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: Mode
       .map(e => s"the kept model settings cannot be read: $e")
 
   def provider(pinned: Pinned): Provider^ =
-    if (pinned == pins.turn) turn
-    else if (pinned == pins.summary) summary
-    else if (pinned == pins.query) query
+    if (pinned == pins.turn.first) turn
+    else if (pinned == pins.summary.first) summary
+    else if (pinned == pins.query.first) query
     else new OpenRouterProvider(OpenRouterConfig.of(key, pinned))
 }
 
@@ -42,7 +44,7 @@ final class StubModels(delayMs: Long = 0) extends Models {
   def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
 
   def provider(pinned: Pinned): Provider^ =
-    if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+    if (pinned.assignment == StubModels.Catalog.policy.turn.first.assignment) turn else rest
 }
 
 object StubModels {
@@ -54,7 +56,7 @@ object StubModels {
       None
     )
     grit.core.model.Catalog.of(
-      grit.core.model.Policy(
+      grit.core.model.Policy.one(
         grit.core.model.Assignment(stub, 4096, None),
         grit.core.model.Assignment(stub, 1024, None),
         grit.core.model.Assignment(stub, 1024, None),

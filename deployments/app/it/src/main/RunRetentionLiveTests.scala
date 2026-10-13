@@ -82,7 +82,7 @@ object RunRetentionLiveTests extends TestSuite {
         edges = Vector.empty,
         worksIn = Vector.empty,
         plugins = plugins,
-        policy = Policy(assigned, assigned, assigned, assigned),
+        policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Budget.of(3).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(8000)),
         topics = Topics.Stub,

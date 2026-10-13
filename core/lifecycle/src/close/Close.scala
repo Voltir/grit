@@ -314,7 +314,7 @@ object Close {
     else {
       val written = for {
         catalog <- env.models.catalog()
-        pin = if (overheard) catalog.heardPin else catalog.pin.summary
+        pin = (if (overheard) catalog.heard else catalog.pin.summary).first
         reply <- env.models.provider(pin).complete(request).left.map(_.cause)
       } yield {
         val cost = Cost(reply.model, reply.usage, env.records.estimator.request(request))

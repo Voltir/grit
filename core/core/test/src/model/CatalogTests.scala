@@ -21,12 +21,11 @@ object CatalogTests extends TestSuite {
   private val probe = Source.Measured("exit-task", day, 3, 3)
   private val listed = Source.Advertised(day)
 
-  private val policy = Policy(
-    Assignment(oss, 4096, Some(Effort.Low)),
-    Assignment(oss, 1024, None),
-    Assignment(flash, 1024, None),
-    Assignment(flash, 2048, None)
-  )
+  private val turnAssigned = Assignment(oss, 4096, Some(Effort.Low))
+  private val summaryAssigned = Assignment(oss, 1024, None)
+  private val queryAssigned = Assignment(flash, 1024, None)
+  private val policy =
+    Policy.one(turnAssigned, summaryAssigned, queryAssigned, Assignment(flash, 2048, None))
 
   private val ossProfile = Profile(
     oss,
@@ -123,15 +122,18 @@ object CatalogTests extends TestSuite {
       "pin: each role gets its assignment and its pair's settings, under the catalog's version"
     ) {
       val t = catalog.pin
-      t.turn ==> Pinned(catalog.version, policy.turn, Settings.of(Some(ossProfile)))
-      t.summary ==> Pinned(catalog.version, policy.summary, Settings.of(Some(ossProfile)))
-      t.query ==> Pinned(catalog.version, policy.query, Settings.of(Some(flashProfile)))
+      def pin(a: Assignment, p: Profile) =
+        Pins.one(Pinned(catalog.version, Grade.Standard, a, Settings.of(Some(p))))
+      t.turn ==> pin(turnAssigned, ossProfile)
+      t.summary ==> pin(summaryAssigned, ossProfile)
+      t.query ==> pin(queryAssigned, flashProfile)
     }
 
     test("pin: turns under one catalog share an id; a change to any one role's pin is another") {
       catalog.pin.id ==> Catalog.of(policy, Vector(ossProfile, flashProfile)).pin.id
       val t = catalog.pin
-      val otherBudget = t.turn.copy(assignment = t.turn.assignment.copy(maxTokens = 1))
+      val otherBudget =
+        Pins.one(t.turn.first.copy(assignment = t.turn.first.assignment.copy(maxTokens = 1)))
       val ids = Vector(
         TurnProfile.of(otherBudget, t.summary, t.query),
         TurnProfile.of(t.turn, otherBudget, t.query),
@@ -144,17 +146,20 @@ object CatalogTests extends TestSuite {
     // These pin the stored forms: the seed file is written in the catalog's, and every
     // turn's profile row in the turn profile's.
     test("the heard role pins its own assignment under the catalog, with its pair's settings") {
-      catalog.heardPin ==> Pinned(
-        catalog.version,
-        Assignment(flash, 2048, None),
-        Settings.of(Some(flashProfile))
+      catalog.heard ==> Pins.one(
+        Pinned(
+          catalog.version,
+          Grade.Standard,
+          Assignment(flash, 2048, None),
+          Settings.of(Some(flashProfile))
+        )
       )
       assert(catalog.withPolicy(policy.copy(heard = policy.summary)).version != catalog.version)
     }
 
     test("stored form: a catalog") {
       val one = Catalog.of(
-        Policy(
+        Policy.one(
           Assignment(oss, 4096, Some(Effort.XHigh)),
           Assignment(oss, 1024, None),
           Assignment(ossOpen, 1, None),
@@ -197,9 +202,11 @@ object CatalogTests extends TestSuite {
       )
       CatalogJson.read(ujson.read(CatalogJson.write(every).render())) ==> Right(every)
       val efforts = Effort.values.toVector.map(e =>
-        catalog.withPolicy(policy.copy(turn = policy.turn.copy(effort = Some(e))))
+        catalog.withPolicy(policy.copy(turn = Ladder.one(turnAssigned.copy(effort = Some(e)))))
       )
-      efforts.map(c => CatalogJson.read(CatalogJson.write(c)).map(_.policy.turn.effort)) ==>
+      efforts.map(c =>
+        CatalogJson.read(CatalogJson.write(c)).map(_.policy.turn.first.assignment.effort)
+      ) ==>
         Effort.values.toVector.map(e => Right(Some(e)))
       val turn = every.pin
       CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(turn).render())) ==> Right(turn)
@@ -209,13 +216,108 @@ object CatalogTests extends TestSuite {
       val t =
         Catalog.of(policy.copy(summary = policy.turn, query = policy.turn), Vector(ossProfile)).pin
       val pinned =
-        s"""{"catalog":"${CatalogVersion.value(t.turn.version)}",""" +
+        s"""{"catalog":"${CatalogVersion.value(t.turn.first.version)}",""" +
           """"assignment":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"low"},""" +
           """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list","quoted-number"],""" +
           """"afterResult":"user-message","guidance":"schema-only","profiled":true}}"""
       CatalogJson
         .writeTurn(t)
         .render() ==> s"""{"turn":$pinned,"summary":$pinned,"query":$pinned}"""
+    }
+
+    test("pin: each rung of a role's ladder is pinned with its grade, in the ladder's order") {
+      val ladder = Ladder.of(
+        Vector(
+          Rung(Grade.Strong, Assignment(flash, 2048, None)),
+          Rung(Grade.Light, Assignment(ossOpen, 512, None)),
+          Rung(Grade.Standard, turnAssigned)
+        )
+      )
+      val pins = ladder.map(l => Catalog.of(policy.copy(turn = l), Vector(ossProfile)).pin.turn)
+      pins.map(_.all.map(p => (p.grade, p.assignment, p.settings.profiled))) ==> Right(
+        Vector(
+          (Grade.Strong, Assignment(flash, 2048, None), false),
+          (Grade.Light, Assignment(ossOpen, 512, None), false),
+          (Grade.Standard, turnAssigned, true)
+        )
+      )
+    }
+
+    test("a ladder has a rung, and a role's pins a pin") {
+      Ladder.of(Vector.empty) ==> Left("a ladder has no rungs")
+      Pins.of(Vector.empty) ==> Left("a role has no pins")
+      CatalogJson.read(
+        ujson.read(
+          CatalogJson
+            .write(catalog)
+            .render()
+            .replaceFirst(
+              "\"turn\":\\{[^}]*\\}",
+              "\"turn\":[]"
+            )
+        )
+      ) ==> Left("policy.turn has no rungs")
+    }
+
+    test(
+      "stored form: a role of several rungs is a list, and a rung off standard names its grade"
+    ) {
+      val strong = Rung(Grade.Strong, Assignment(flash, 2048, None))
+      val graded = Catalog.of(
+        Policy(
+          Ladder
+            .of(Vector(Rung(Grade.Standard, Assignment(ossOpen, 1, None)), strong))
+            .getOrElse(throw new java.lang.AssertionError("ladder")),
+          Ladder.one(summaryAssigned),
+          Ladder
+            .of(Vector(Rung(Grade.Light, Assignment(ossOpen, 1, None))))
+            .getOrElse(throw new java.lang.AssertionError("ladder")),
+          Ladder.one(summaryAssigned)
+        ),
+        Vector.empty
+      )
+      val policy = CatalogJson.write(graded)("policy")
+      policy("turn").render() ==>
+        """[{"model":"openai/gpt-oss-120b","maxTokens":1},""" +
+        """{"grade":"strong","model":"deepseek/deepseek-v4.1-flash-20260910","upstream":"fireworks","maxTokens":2048}]"""
+      policy("query")
+        .render() ==> """{"grade":"light","model":"openai/gpt-oss-120b","maxTokens":1}"""
+      CatalogJson.read(ujson.read(CatalogJson.write(graded).render())) ==> Right(graded)
+
+      val turn = graded.pin
+      val stored = CatalogJson.writeTurn(turn)
+      stored("turn").arrOpt.map(_.map(_.obj.get("grade").map(_.str))) ==>
+        Some(Vector(None, Some("strong")))
+      stored("query").obj.get("grade").map(_.str) ==> Some("light")
+      CatalogJson.readTurn(ujson.read(stored.render())) ==> Right(turn)
+    }
+
+    // Written by the code before ladders: a catalog row and a kept profile row as stored then.
+    // Reading either must give back the same version or id, and write the same text.
+    test(
+      "stored form: a catalog and a turn profile stored before ladders keep their version and id"
+    ) {
+      val catalogJson =
+        """{"policy":{"turn":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"xhigh"},""" +
+          """"summary":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":1024},""" +
+          """"query":{"model":"openai/gpt-oss-120b","maxTokens":1},""" +
+          """"heard":{"model":"deepseek/deepseek-v4.1-flash-20260910","upstream":"fireworks","maxTokens":2048}},""" +
+          """"profiles":[{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16",""" +
+          """"strict":{"value":"when-required","source":{"kind":"measured","probe":"exit-task","on":"2026-09-25","runs":3,"held":3}},""" +
+          """"repairs":{"value":["quoted-list","quoted-number"],"source":{"kind":"advertised","on":"2026-09-25"}}}]}"""
+      val read = CatalogJson.read(ujson.read(catalogJson))
+      read.map(c => CatalogVersion.value(c.version)) ==> Right("910ee609238f662b")
+      read.map(c => CatalogJson.write(c).render()) ==> Right(catalogJson)
+
+      val pinned =
+        """{"catalog":"3f0c2a91d7e4b605",""" +
+          """"assignment":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"low"},""" +
+          """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list","quoted-number"],""" +
+          """"afterResult":"user-message","guidance":"schema-only","profiled":true}}"""
+      val profileJson = s"""{"turn":$pinned,"summary":$pinned,"query":$pinned}"""
+      val profile = CatalogJson.readTurn(ujson.read(profileJson))
+      profile.map(p => TurnProfileId.value(p.id)) ==> Right("54b788bbdb8bafdd")
+      profile.map(p => CatalogJson.writeTurn(p).render()) ==> Right(profileJson)
     }
 
     test("reading: the first thing wrong, named by its path") {

@@ -878,7 +878,7 @@ object DeploymentTests extends TestSuite {
           worksIn = Vector.empty,
           reaches = Vector.empty,
           plugins = Vector.empty,
-          policy = grit.core.model.Policy(assigned, assigned, assigned, assigned),
+          policy = grit.core.model.Policy.one(assigned, assigned, assigned, assigned),
           offer =
             Offer(Offered.Read, grit.turn.TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
           assembly = Assembly.Linear(grit.core.message.Tokens(1000)),

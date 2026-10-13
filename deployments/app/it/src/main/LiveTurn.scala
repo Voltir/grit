@@ -73,7 +73,7 @@ object LiveTurn {
     private val rest = new StubProvider()
     def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
     def provider(pinned: Pinned): Provider^ =
-      if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+      if (pinned.assignment == StubModels.Catalog.policy.turn.first.assignment) turn else rest
   }
 
   /** A model settings book that keeps nothing: the live tests offer no tool that proposes one. */

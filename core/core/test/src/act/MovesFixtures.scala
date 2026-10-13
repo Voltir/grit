@@ -124,7 +124,10 @@ object MovesFixtures {
         1024,
         None
       )
-    Catalog.of(Policy(role("turn"), role("summary"), role("query"), role("summary")), Vector.empty)
+    Catalog.of(
+      Policy.one(role("turn"), role("summary"), role("query"), role("summary")),
+      Vector.empty
+    )
   }
 
   /** A token for each character of a message's or prompt's written form. */

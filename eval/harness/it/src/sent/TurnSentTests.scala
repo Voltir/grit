@@ -97,7 +97,7 @@ object TurnSentTests extends TestSuite {
     private val rest = new StubProvider()
     def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
     def provider(pinned: Pinned): Provider^ =
-      if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+      if (pinned.assignment == StubModels.Catalog.policy.turn.first.assignment) turn else rest
   }
 
   /** Weighs nothing: a TUI turn's recipe reads no answers. */

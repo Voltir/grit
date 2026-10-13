@@ -137,7 +137,7 @@ object TurnCaptureTests extends TestSuite {
     private val rest = new StubProvider()
     def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
     def provider(pinned: Pinned): Provider^ =
-      if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+      if (pinned.assignment == StubModels.Catalog.policy.turn.first.assignment) turn else rest
   }
 
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */

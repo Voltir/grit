@@ -148,7 +148,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
         edges = Vector.empty,
         worksIn = Vector(WorksIn(Place.under(Namespace.Task, Vector.empty), github)),
         plugins = Vector(knowledge),
-        policy = Policy(assigned, assigned, assigned, assigned),
+        policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Retrieval(Tokens(4000), RetrievalAssembler.DefaultTail),
         topics = Topics.Off("no classifier here"),

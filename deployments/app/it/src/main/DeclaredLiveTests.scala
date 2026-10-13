@@ -106,7 +106,7 @@ object DeclaredLiveTests extends TestSuite {
         edges = Vector.empty,
         worksIn = Vector.empty,
         plugins = Vector.empty,
-        policy = Policy(assigned, assigned, assigned, assigned),
+        policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(8000)),
         topics = Topics.Stub,
