@@ -7,10 +7,6 @@
     "outline": {
       "command": "scripts/outline",
       "args": ["mcp"]
-    },
-    "grit-metals": {
-      "type": "http",
-      "url": "http://localhost:34721/mcp"
     }
   }
 }

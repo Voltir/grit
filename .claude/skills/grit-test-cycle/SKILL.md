@@ -74,10 +74,9 @@ encodings must replay every history of its epoch
 
 ## In a git worktree
 
-Build and test with Mill. Metals serves the main checkout, so its `compile-*`/`test` there
-build code that is not yours; its read queries (`get-usages`, `typed-glob-search`,
-`get-docs`, `inspect` with `fileInFocus`) are sound for code your branch has not changed. A
-CLI `./mill` and Metals never block each other (separate build directories).
+Build and test with Mill, and read the code with `scripts/outline --root .` from the
+worktree: it answers from the worktree's own compiled output. Metals serves the main checkout
+only. A CLI `./mill` and Metals never block each other (separate build directories).
 
 A targeted `scripts/check` right after `--it` can leave two Mill daemons: the exiting one
 deletes `out/mill-daemon/socketPort`, orphaning the live one, and the next `./mill` says

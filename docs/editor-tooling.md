@@ -74,22 +74,11 @@ ps -eo pid,ppid,etime,rss,args | grep '[M]illBspMain' | cut -c1-120
 
 ## Metals for grit's own development
 
-**Registering the MCP server.** Metals serves MCP over HTTP; `.mcp.json` registers it for
-Claude Code as `grit-metals`, with the port Metals wrote to `.metals/mcp.json`. The port
-has stayed the same across Metals restarts; if Metals ever picks another, copy the new one
-into `.mcp.json`. `list-modules` is the cheapest check that it answers. What agents use it
-for is in [`CLAUDE.md`](../CLAUDE.md#metals).
+Metals is for the editor, and for compiling or testing one module mid-edit in this checkout
+from VS Code. Agents read the code through `scripts/outline` (CLAUDE.md, "Reading the code"),
+which answers in any worktree, and type-check with Mill.
 
-**`inspect` ignores `module`.** It resolves the symbol in the target of `fileInFocus`, or,
-without one, in the first build target Metals lists, which need not see the symbol. So
-`inspect {fqcn: "grit.app.chat.Commands", module: "grit.app"}` returns nothing although
-its footer says `Inspected from 'grit.app' module`, and with `fileInFocus` set to
-`deployments/app/src/chat/Commands.scala` it lists the object. `get-docs` and `get-usages`
-honour `module`. For a generic class, `inspect` lists only the companion's members; use
-`get-docs`.
-
-**Metals serves this checkout, not a git worktree.** Its `compile-*` and `test` build the
-main checkout's sources. In a worktree, type-check with the narrowest
-`./mill` target, `grit.<module>.compile` or `grit.<module>.test.compile`,
-which answers in about a second on a warm build directory. Metals' read queries are still
-right there for code the worktree's branch has not changed.
+**Metals serves this checkout, not a git worktree.** Its compiles and tests build the main
+checkout's sources. In a worktree, type-check with the narrowest `./mill` target,
+`grit.<module>.compile` or `grit.<module>.test.compile`, which answers in about a second on a
+warm build directory.
