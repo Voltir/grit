@@ -11,13 +11,15 @@ object CardMovesTests extends TestSuite {
     CorpusName.of("repo").fold(why => throw new java.lang.AssertionError(why), identity)
 
   val tests = Tests {
-    test("a unit's move is named its phase, a slash and its key, within 72 characters") {
+    test("a unit's move is named its phase's word, a slash and its key, within 72 characters") {
       val long = "src/" + ("deep/" * 60) + "file.scala"
       val key = CardKey.of(corpus, long)
       val names = Phase.values.toVector.map(p => MoveName.value(CardMoves.of(p, key)))
-      assert(names.contains(s"summary/${CardKey.value(key)}"))
-      assert(names.forall(_.length <= 72))
-      assert(names.distinct.size == Phase.values.size)
+      // Recorded move names: a changed word stops every run recorded under the old one replaying.
+      (names, names.forall(_.length <= 72)) ==> (
+        Vector("list", "read", "summary", "write", "relabel").map(w => s"$w/${CardKey.value(key)}"),
+        true
+      )
     }
 
     test("the whole-run keeps are held and drop") {
