@@ -86,6 +86,32 @@ object ClearanceTests extends TestSuite {
         .reads(Item.InRoom(place("direct:slack/T/U")), Label.at(Level.Internal)) ==> true
     }
 
+    test("whatever a reader reads, its floor dominates: what it writes at bounds what it knows") {
+      val levels = Vector(Level.Public, Level.Internal, Level.Restricted)
+      val compartments =
+        Vector(Vector.empty, Vector(compartment("trial")), Vector(compartment("x")))
+      val labels = for { l <- levels; cs <- compartments } yield Label.at(l, cs*)
+      val dm = place("direct:slack/T/U")
+      val items =
+        Vector(
+          Item.InRoom(room),
+          Item.InRoom(other),
+          Item.InRoom(dm),
+          Item.Kept(Some(room)),
+          Item.Kept(None),
+          Item.Kept(Some(dm))
+        )
+      val clearances = labels.map(Clearance.of) ++
+        (for { r <- Vector(room, dm); rl <- labels; a <- labels } yield Clearance.inRoom(r, rl, a))
+      val breaches = for {
+        c <- clearances
+        item <- items
+        l <- labels
+        if c.reads(item, l) && !c.floor.dominates(l)
+      } yield (c, item, l)
+      breaches.take(3) ==> Vector.empty
+    }
+
     test("a reader in a room writes at the room's label; one in none at its label") {
       uncleared.floor ==> trialLabel
       Clearance.of(Label.at(Level.Internal)).floor ==> Label.at(Level.Internal)

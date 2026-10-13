@@ -22,7 +22,8 @@ enum Item {
   * when `own`'s label dominates it. An item in or kept in a direct message's room
   * ([[grit.core.place.Place.direct]]) is read only when that room is `own`'s, up to its label,
   * whatever `everywhere` dominates, unless it is `maintaining`, grit's own work on every row
-  * ([[Maintenance]]).
+  * ([[Maintenance]]). Its [[floor]] dominates every label it reads, so a transaction's floor
+  * bounds what it knows.
   */
 final case class Clearance private (
     everywhere: Label,
