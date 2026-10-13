@@ -84,6 +84,14 @@ object RenderTests extends TestSuite {
         )
       )
     }
+    test("oneLine of an enum whose cases share a line lists each case once") {
+      val suit = named(read, "grit.outline.fixture.Suit")
+      assert(
+        suit.map(Render.oneLine(_, read)) == Vector(
+          "→ 93-96 enum Suit: Hearts :95 | Spades :95 | Clubs :95"
+        )
+      )
+    }
     test("a named three-argument Limits.of prints its body when its name is in bodies") {
       val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
       val withBody = Render.show(of3, noTraced, read, Set.empty, Set("of"), false, 80000)

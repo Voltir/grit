@@ -138,6 +138,11 @@ object ReadTests extends TestSuite {
       assert(red.signature == "  case Red")
     }
 
+    test("a parameterless enum case sharing its line has its own span as its signature, up to its comma") {
+      val suit = read.filter(_.fullName == "grit.outline.fixture.Suit")
+      assert(suit.map(_.members.map(_.signature)) == Vector(Vector("Hearts", "Spades", "Clubs")))
+    }
+
     test("A.keep's refs name the types its signature mentions, in the repo and outside it") {
       val keep = only(named(read, "grit.outline.fixture.A.keep"), "A.keep")
       assert(keep.refs.contains(Ref("grit.outline.fixture.B", "grit.outline.fixture.B", true)))

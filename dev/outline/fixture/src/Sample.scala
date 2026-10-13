@@ -89,3 +89,8 @@ object Holder {
 }
 
 object Twin
+
+/** A suit, its cases on one line. */
+enum Suit {
+  case Hearts, Spades, Clubs
+}

@@ -331,8 +331,12 @@ object Read {
           val sliced = if (inSpan) trimTrailing(slice(src, lineStart(src, p.start), cut)) else ""
           val rawSignature =
             if (!inSpan) trimTrailing(slice(src, lineBegin, lineEnd))
-            else if (sliced.isEmpty) trimTrailing(slice(src, lineStart(src, p.start), lineEnd))
-            else sliced
+            else if (sliced.isEmpty) {
+              // In `case A, B, C` a case's own span ends at the comma after its name.
+              val rest = trimTrailing(slice(src, lineStart(src, p.start), lineEnd))
+              val own = raw"^(\s*(?:case\s+)?`?${java.util.regex.Pattern.quote(nameOf(sym))}`?)\s*,".r
+              own.findFirstMatchIn(rest).map(_.group(1)).getOrElse(rest)
+            } else sliced
           val unassigned =
             if (rawSignature.endsWith("=")) rawSignature.dropRight(1) else rawSignature
           val signature = trimTrailing(unassigned)
