@@ -176,7 +176,8 @@ object RunFixtures {
     * dies once inside the first call's step, after it read whom the call is for; with
     * `crashModel`, inside the first model call. Required to call a tool, the model calls it
     * `calling` times, each with the next of `shapes` ([[Answering]]). Its classifier answers with the next of `judged`, or
-    * each question of its kind when there are none ([[Judging]]).
+    * each question of its kind when there are none ([[Judging]]). Its model's replies report
+    * `upstream` as who served them.
     */
   final class World(
       cap: Option[String] = None,
@@ -188,7 +189,8 @@ object RunFixtures {
       crashModel: Boolean = false,
       shapes: Vector[ujson.Value] = Vector(),
       judged: Vector[Either[ClassifierError, Answers]] = Vector(),
-      calling: Int = 1
+      calling: Int = 1,
+      upstream: Option[String] = None
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
@@ -214,7 +216,7 @@ object RunFixtures {
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
-    val models: Answering = new Answering(Answer, crashModel, shapes, calling)
+    val models: Answering = new Answering(Answer, crashModel, shapes, calling, upstream)
     val classifier: Judging = new Judging(judged)
 
     private val switches = new Switches(crashRecord, crashServing)

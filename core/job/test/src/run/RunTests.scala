@@ -2,7 +2,7 @@ package grit.job.run
 
 import grit.act.moves.MoveSteps
 import grit.core.act.MovesFixtures.{Judged, PerChar}
-import grit.core.act.Posed
+import grit.core.act.{MoveError, Posed}
 import grit.core.classify.{
   Answer as Judgment,
   Answers,
@@ -151,6 +151,58 @@ object RunTests extends TestSuite {
           MoveSteps.record(move("a")),
           Run.Step.Reply
         )
+    }
+
+    test(
+      "an ask made from what no model is cleared for is Uncleared at its label, and asks no model"
+    ) {
+      val w = new World(floor = Label.at(Level.Internal))
+      val turn = w.started(w.declared("standup"))
+      val job =
+        new Moving(1, limits(1, 0), (n, m) => uncleared(m.ask(move("a"), Posed.Text(request(n.n)))))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
+      (w.reply(turn), w.models.calls, w.durable.recordedSteps(turn.workflowId)) ==>
+        (
+          Some("uncleared at internal"),
+          0,
+          Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), Run.Step.Reply)
+        )
+    }
+
+    test(
+      "a judgment made from what the classifier's service is not cleared for is Uncleared at its label, at once: no classifier call, no wait to ask again"
+    ) {
+      val w = new World(floor = Label.at(Level.Internal))
+      val turn = w.started(w.declared("standup"))
+      val started = w.clock.now()
+      val job = new Moving(
+        1,
+        limits(1, 0),
+        (_, m) => {
+          import Triaged.given
+          uncleared(m.ask(move("j"), Posed.judge(Triaged.State, Triaged.questions)))
+        }
+      )
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
+      (w.reply(turn), w.classifier.calls, w.clock.now()) ==>
+        (Some("uncleared at internal"), 0, started)
+    }
+
+    test("an ask's and a judgment's ledger rows record who served them") {
+      val w = new World(upstream = Some("acme"))
+      val turn = w.started(w.declared("standup"))
+      val job = new Moving(
+        1,
+        limits(2, 0),
+        (n, m) => {
+          import Triaged.given
+          val _ = m.ask(move("a"), Posed.Text(request(n.n)))
+          m.ask(move("j"), Posed.judge(Triaged.State, Triaged.questions)).fold(_.toString, _ => "")
+        }
+      )
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
+      w.ledger.of(turn.workflowId)(using TestTx.fake).map(_.map(_.upstream)) ==>
+        Right(Vector(Some("acme"), Some("service:test")))
     }
 
     test("an ask once the day's spend reached its cap is Capped and asks no model") {
@@ -779,6 +831,14 @@ object RunTests extends TestSuite {
     * `state`, and replies the owner chosen, its confidence and the likeliest urgency, or the
     * error, telling `seen` what it replied.
     */
+  /** What a move came to, as a job's reply says it, an uncleared one as the label it was made
+    * at.
+    */
+  private def uncleared[R](asked: Either[MoveError, R]): String = asked match {
+    case Left(MoveError.Uncleared(at)) => s"uncleared at ${Label.written(at)}"
+    case other => other.toString
+  }
+
   private def judging(seen: Seen, state: String = Triaged.State): Moving =
     new Moving(
       1,

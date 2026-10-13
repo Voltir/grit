@@ -899,7 +899,7 @@ object Turn {
               case None => TurnJudge.Judgement.Passed
               case Some(text) =>
                 TurnJudge.judge(
-                  env.classifier.at(routed),
+                  env.classifier.asking(routed),
                   records.estimator,
                   TurnJudge.state(
                     all,

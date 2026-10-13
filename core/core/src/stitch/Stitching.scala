@@ -115,7 +115,7 @@ object Stitching {
     Routed
       .reading(db)((routed, bounded) =>
         opening(reads, bounded, turn, tuning, keptAsks = false).map(
-          _.map((first, offer) => first -> place(classifier.at(routed), offer, tuning))
+          _.map((first, offer) => first -> place(classifier.asking(routed), offer, tuning))
         )
       )
       .flatten

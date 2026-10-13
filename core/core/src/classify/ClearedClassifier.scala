@@ -1,7 +1,7 @@
 package grit.core.classify
 
 import grit.core.place.Service
-import grit.core.route.Routed
+import grit.core.route.{Routed, Uncleared}
 import grit.core.visibility.{Label, Party}
 
 /** The deployment's classifier behind its clearance check (ADR 0037): its states go to one
@@ -17,11 +17,22 @@ sealed trait ClearedClassifier extends caps.SharedCapability {
     */
   def upstream: Option[String]
 
-  /** The classifier to ask about what was read under `routed`; when its service is not
-    * cleared for `routed`, one that answers every call `Unavailable` at once, naming the
-    * classification, and sends nothing.
+  /** The classifier to ask about what was read under `routed`; `Left` when its service is not
+    * cleared for `routed`, and then nothing may be sent to it.
     */
-  def at(routed: Routed): Classifier^
+  def at(routed: Routed): Either[Uncleared, Classifier^]
+
+  /** [[at]]'s classifier; when that is `Left`, one that answers every call `Unavailable` at
+    * once, naming its service and the classification, and sends nothing: what a site whose
+    * fallback is the classifier's unavailable path asks.
+    */
+  final def asking(routed: Routed): Classifier^ = at(routed) match {
+    case Right(classifier) => classifier
+    case Left(uncleared) => unavailable(uncleared)
+  }
+
+  /** What [[asking]] asks in this one's place when it is not cleared for `uncleared`. */
+  protected def unavailable(uncleared: Uncleared): Classifier
 }
 
 object ClearedClassifier {
@@ -35,17 +46,19 @@ object ClearedClassifier {
 
   private final class Of(service: Service, classifier: Classifier^) extends ClearedClassifier {
     def upstream: Option[String] = Some(service.place.written)
-    def at(routed: Routed): Classifier^ =
-      if (routed.clears(Party.Service(service))) classifier
-      else
-        Classifier.none(
-          s"its service, ${service.place.written}, is not cleared for what was read, " +
-            Label.shown(routed.classification.label)
-        )
+    def at(routed: Routed): Either[Uncleared, Classifier^] =
+      if (routed.clears(Party.Service(service))) Right(classifier)
+      else Left(Uncleared(routed.classification.label))
+    protected def unavailable(uncleared: Uncleared): Classifier =
+      Classifier.none(
+        s"its service, ${service.place.written}, is not cleared for what was read, " +
+          Label.shown(uncleared.classification)
+      )
   }
 
   private final class None(why: String) extends ClearedClassifier {
     def upstream: Option[String] = scala.None
-    def at(routed: Routed): Classifier^ = Classifier.none(why)
+    def at(routed: Routed): Either[Uncleared, Classifier^] = Right(Classifier.none(why))
+    protected def unavailable(uncleared: Uncleared): Classifier = Classifier.none(why)
   }
 }

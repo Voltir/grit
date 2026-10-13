@@ -52,7 +52,7 @@ final class Mentions(
       (routed, read) = routedRead
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(Corpora.Empty)(sources.at)
-      answered <- within(questions.ask(classifier.at(routed), read.state, asked)).flatMap(
+      answered <- within(questions.ask(classifier.asking(routed), read.state, asked)).flatMap(
         _.left.map {
           case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
           case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable

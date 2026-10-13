@@ -110,6 +110,49 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
+      "an uncleared ask's refusal is written with the label it was made from, and one without it does not read"
+    ) {
+      pinned[AskMade](
+        AskMade.Refused(
+          AskMade.Kind.Uncleared,
+          "no model cleared for internal",
+          "v1:ab",
+          Some(Label.at(Level.Internal))
+        ),
+        """{"refused":"uncleared","why":"no model cleared for internal","digest":"v1:ab","at":"internal"}"""
+      )
+      summon[Journaled[AskMade]]
+        .decode("""{"refused":"uncleared","why":"no model cleared","digest":"v1:ab"}""")
+        .isLeft ==> true
+    }
+
+    test(
+      "a call's cost is written with who served it, and one recorded before reads with nobody"
+    ) {
+      val served = AskMade.Call("test/summary", message.usage, Tokens(42), Some("acme"))
+      pinned[AskMade](
+        AskMade.Unshaped("v1:ab", "no call", Vector(served)),
+        """{"unshaped":{"digest":"v1:ab","why":"no call","calls":[{"model":"test/summary",""" +
+          """"usage":{"input":10,"output":2,"cachedInput":0,"costUsd":"0.001"},"estimate":42,"upstream":"acme"}]}}"""
+      )
+      pinned[AskMade](
+        AskMade.Judged(
+          "v1:ab",
+          "[]",
+          Label.at(Level.Internal),
+          served.copy(upstream = Some("service:jev"))
+        ),
+        """{"judged":{"digest":"v1:ab","answers":[],"model":"test/summary",""" +
+          """"usage":{"input":10,"output":2,"cachedInput":0,"costUsd":"0.001"},"estimate":42,""" +
+          """"upstream":"service:jev","at":"internal"}}"""
+      )
+      summon[Journaled[AskMade]].decode(
+        """{"unshaped":{"digest":"v1:ab","why":"no call","calls":[{"model":"test/summary",""" +
+          """"usage":{"input":10,"output":2,"cachedInput":0,"costUsd":"0.001"},"estimate":42}]}}"""
+      ) ==> Right(AskMade.Unshaped("v1:ab", "no call", Vector(served.copy(upstream = None))))
+    }
+
+    test(
       "a JSON ask's move step is written shaped with its digest, reply, label and each call's model, usage and estimate, or unshaped saying why"
     ) {
       val calls = Vector(

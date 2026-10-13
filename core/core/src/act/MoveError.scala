@@ -1,5 +1,7 @@
 package grit.core.act
 
+import grit.core.visibility.Label
+
 /** Why a move was not made. */
 enum MoveError {
 
@@ -16,6 +18,11 @@ enum MoveError {
     * reply did not read: `why`.
     */
   case Model(why: String)
+
+  /** No model or classifier the ask could go to is cleared for `classification`, the label of
+    * what it is made from: a deployment's declaration, so asking again changes nothing.
+    */
+  case Uncleared(classification: Label)
 
   /** The store failed, or a keep's body returned `Left`: `why`. Nothing the move wrote is kept,
     * and the move counts as made: making it again under its name is [[Repeated]].

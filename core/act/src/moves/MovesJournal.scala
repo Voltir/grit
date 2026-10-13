@@ -22,9 +22,10 @@ private[moves] enum AskMade {
   case Made(digest: String, message: Message.Assistant, at: Label, estimate: Tokens)
 
   /** No answer, `why`: the allowance did not admit it, no catalog read or the provider failed,
-    * or the store failed.
+    * nothing it could go to was cleared for `at`, or the store failed. `at` is `Some` for an
+    * uncleared refusal alone.
     */
-  case Refused(kind: AskMade.Kind, why: String, digest: String)
+  case Refused(kind: AskMade.Kind, why: String, digest: String, at: Option[Label] = None)
 
   /** A JSON ask's reply conformed and read: `reply`, its conforming JSON written compactly;
     * what it was asked held nothing above `at`; `calls`, its model calls in order.
@@ -48,8 +49,8 @@ private[moves] enum AskMade {
   /** Each model call this record holds, in order: what its record step records. */
   def spent: Vector[AskMade.Call] = this match {
     case Made(_, message, _, estimate) =>
-      Vector(AskMade.Call(message.model, message.usage, estimate))
-    case Refused(_, _, _) => Vector()
+      Vector(AskMade.Call(message.model, message.usage, estimate, message.upstream))
+    case Refused(_, _, _, _) => Vector()
     case Shaped(_, _, _, calls) => calls
     case Unshaped(_, _, calls) => calls
     case Judged(_, _, _, call) => Vector(call)
@@ -62,12 +63,19 @@ private[moves] object AskMade {
     case Capped extends Kind("capped")
     case Model extends Kind("model")
     case Store extends Kind("store")
+    case Uncleared extends Kind("uncleared")
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at
-    * `estimate`.
+    * `estimate`, served by `upstream` (a reply's as its provider reported it, or the
+    * classifier's service; `None`: not reported).
     */
-  final case class Call(model: String, usage: Usage, estimate: Tokens)
+  final case class Call(
+      model: String,
+      usage: Usage,
+      estimate: Tokens,
+      upstream: Option[String] = None
+  )
 }
 
 /** What a call's `move:{n}` step came to. */
@@ -106,13 +114,17 @@ private[moves] object CallMade {
   * added to.
   *   - an ask's `move:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
   *     as an entry holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form, `e`
-  *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`;
+  *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`,
+  *     or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
+  *     classifier it could go to was cleared for;
   *   - a JSON ask's `move:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"calls":[c…]}}`, `j`
   *     its conforming JSON, or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
-  *     it ([[grit.core.store.PayloadJson.writeUsage]]);
+  *     it ([[grit.core.store.PayloadJson.writeUsage]]), then `"upstream":p` when who served it
+  *     was reported;
   *   - a judgment's `move:{n}`:
-  *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}`, each `a`
+  *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}` (its
+  *     call's `"upstream":p` before `at` when reported), each `a`
   *     an answer as [[grit.core.classify.AnswersJson]] writes it, or
   *     `{"unjudged":{"digest":d,"why":w,"model":m,"usage":u,"estimate":e}}`, or refused as
   *     above;
@@ -383,8 +395,11 @@ object MovesJournal {
           "estimate" -> ujson.Num(Tokens.value(estimate).toDouble)
         )
       )
-    case AskMade.Refused(kind, why, digest) =>
-      ujson.Obj("refused" -> kind.key, "why" -> why, "digest" -> digest)
+    case AskMade.Refused(kind, why, digest, at) =>
+      ujson.Obj.from(
+        Vector[(String, ujson.Value)]("refused" -> kind.key, "why" -> why, "digest" -> digest) ++
+          at.map(l => "at" -> ujson.Str(Label.written(l)))
+      )
     case AskMade.Shaped(digest, reply, at, calls) =>
       ujson.Obj(
         "shaped" -> ujson.Obj(
@@ -421,11 +436,11 @@ object MovesJournal {
 
   /** `c`'s fields, in the order every form writes them. */
   private def costFields(c: AskMade.Call): Vector[(String, ujson.Value)] =
-    Vector(
+    Vector[(String, ujson.Value)](
       "model" -> ujson.Str(c.model),
       "usage" -> PayloadJson.writeUsage(c.usage),
       "estimate" -> ujson.Num(Tokens.value(c.estimate).toDouble)
-    )
+    ) ++ c.upstream.map(u => "upstream" -> ujson.Str(u))
 
   private def readAsk(v: ujson.Value): Either[String, AskMade] =
     fields(v, "ask").flatMap { o =>
@@ -484,7 +499,14 @@ object MovesJournal {
             kind <- AskMade.Kind.values.find(_.key == key).toRight(s"ask: no refusal $key")
             why <- str(o, "why")
             digest <- str(o, "digest")
-          } yield AskMade.Refused(kind, why, digest)
+            at <- o.get("at") match {
+              case None if kind == AskMade.Kind.Uncleared =>
+                Left("ask: an uncleared refusal names no label")
+              case None => Right(None)
+              case Some(l) =>
+                l.strOpt.toRight("ask: at is not text").flatMap(Label.read).map(Some(_))
+            }
+          } yield AskMade.Refused(kind, why, digest, at)
         case _ => Left("ask: expected ok, refused, shaped, unshaped, judged or unjudged")
       }
     }
@@ -504,7 +526,11 @@ object MovesJournal {
       model <- str(o, "model")
       usage <- o.get("usage").toRight("ask: no usage").flatMap(PayloadJson.readUsage)
       estimate <- whole(o, "estimate")
-    } yield AskMade.Call(model, usage, Tokens(estimate))
+      upstream <- o.get("upstream") match {
+        case None => Right(None)
+        case Some(u) => u.strOpt.toRight("ask: upstream is not text").map(Some(_))
+      }
+    } yield AskMade.Call(model, usage, Tokens(estimate), upstream)
 
   /** A count of tokens under `key`. */
   private def whole(o: collection.Map[String, ujson.Value], key: String): Either[String, Long] =

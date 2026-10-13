@@ -65,29 +65,38 @@ object ClearedClassifierTests extends TestSuite {
       val inner = new Counting
       val cleared = ClearedClassifier.of(jev, inner)
       val asked = Vector(Label.Public, internal).map(l =>
-        cleared.at(routedAt(l)).ask(Note("x"), urgent).map(_.model)
+        cleared.at(routedAt(l)) match {
+          case Right(c) => Right(c.ask(Note("x"), urgent).map(_.model))
+          case Left(u) => Left(u)
+        }
       )
-      (asked, inner.calls) ==> (Vector(Right("jev"), Right("jev")), 2)
+      (asked, inner.calls) ==> (Vector(Right(Right("jev")), Right(Right("jev"))), 2)
     }
 
     test(
-      "a classifier whose service is not cleared for what was read is Unavailable, naming the classification, and is not called"
+      "a classifier whose service is not cleared for what was read is Uncleared at the classification, asked in its place Unavailable naming both, and is not called"
     ) {
       val inner = new Counting
       val restricted = Label.at(Level.Restricted)
-      ClearedClassifier.of(jev, inner).at(routedAt(restricted)).ask(Note("x"), urgent) ==>
+      val cleared = ClearedClassifier.of(jev, inner)
+      (
+        cleared.at(routedAt(restricted)).left.map(_.classification),
+        cleared.asking(routedAt(restricted)).ask(Note("x"), urgent)
+      ) ==> (
+        Left(restricted),
         Left(
           ClassifierError.Unavailable(
             "its service, service:jev, is not cleared for what was read, " +
               Label.shown(restricted)
           )
         )
+      )
       inner.calls ==> 0
     }
 
     test("no classifier answers Unavailable with its reason, and records no upstream") {
       val none = ClearedClassifier.none("topics are off")
-      (none.at(routedAt(Label.Public)).ask(Note("x"), urgent), none.upstream) ==>
+      (none.asking(routedAt(Label.Public)).ask(Note("x"), urgent), none.upstream) ==>
         (Left(ClassifierError.Unavailable("topics are off")), None)
     }
 

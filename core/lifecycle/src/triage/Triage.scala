@@ -199,7 +199,7 @@ object Triage {
             val sources = read.place.fold(Corpora.Empty)(env.sources.at)
             (
               read.entry,
-              env.questions.ask(env.classifier.at(routed), read.state, sources) match {
+              env.questions.ask(env.classifier.asking(routed), read.state, sources) match {
                 case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
                 case Left(ClassifierError.Unavailable(why)) =>
                   Tags.Unanswered(s"unavailable: $why")

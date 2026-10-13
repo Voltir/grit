@@ -140,6 +140,9 @@ object SyncTests extends TestSuite {
 
     /** Capped when sent `path`; otherwise as [[Fixed]]. */
     case Capped(path: String)
+
+    /** Uncleared at `at` when sent `path`; otherwise as [[Fixed]]. */
+    case Uncleared(path: String, at: Label)
   }
 
   /** The reply `summaries` gives to `system` and `messages`, at `raised`' label for the first
@@ -158,7 +161,9 @@ object SyncTests extends TestSuite {
       Right(Asked(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms)), label))
     summaries match {
       case Summaries.Capped(path) if text.contains(path) => Left(MoveError.Capped)
-      case Summaries.Fixed | Summaries.Capped(_) => said("What the file holds.", "a term")
+      case Summaries.Uncleared(path, l) if text.contains(path) => Left(MoveError.Uncleared(l))
+      case Summaries.Fixed | Summaries.Capped(_) | Summaries.Uncleared(_, _) =>
+        said("What the file holds.", "a term")
       case Summaries.Counting =>
         said(s"${text.count(_ == '~')} tildes and ${text.count(_ == '^')} carets")
       case Summaries.Blank => said(" ")
@@ -323,6 +328,26 @@ object SyncTests extends TestSuite {
           stopped = Some("summarising docs/b.md: the day's recorded spend reached its cap")
         ),
         Vector(("docs/a.md", "What the file holds.\n\nTerms: a term", true))
+      )
+    }
+
+    test(
+      "an ask no model is cleared for ends the run, naming the label, every card kept before it whole"
+    ) {
+      val confidential = Label.at(Level.Confidential)
+      val k = keeping(
+        floor,
+        new InMemoryDocuments,
+        summaries = Summaries.Uncleared("docs/b.md", confidential)
+      )
+      val reply = runOf(k)
+      (reply, k.kept.map(pathOf)) ==> (
+        line(
+          written = 1,
+          left = 1,
+          stopped = Some("summarising docs/b.md: no model is cleared for [level: confidential]")
+        ),
+        Vector("docs/a.md")
       )
     }
 

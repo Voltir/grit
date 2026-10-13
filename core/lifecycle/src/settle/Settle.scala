@@ -75,7 +75,7 @@ object Settle {
                         .speakers(bounded, env.records.principals, own)
                         .getOrElse(Speakers.none)
                       SettleQuestion.judge(
-                        env.classifier.at(routed),
+                        env.classifier.asking(routed),
                         SettleQuestion.Transcript(PeriodTranscript.of(own, names))
                       )
                   }

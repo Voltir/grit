@@ -26,7 +26,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{NameRepair, Pinned}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
-import grit.core.route.Routed
+import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
@@ -192,7 +192,12 @@ object DurableMoves {
                 Shaping.request(system, messages, Posed.ReplyTool, reply.schema, settings.strict)
               def costs(calls: Vector[Shaped.Call]): Vector[AskMade.Call] =
                 calls.map(c =>
-                  AskMade.Call(c.answer.model, c.answer.usage, records.estimator.request(c.sent))
+                  AskMade.Call(
+                    c.answer.model,
+                    c.answer.usage,
+                    records.estimator.request(c.sent),
+                    c.answer.upstream
+                  )
                 )
               Shaping.shaped(
                 models.provider(pin),
@@ -236,17 +241,23 @@ object DurableMoves {
             case Left(refusal) => refusal
             case Right((at, routed)) =>
               // Asked only when its service is cleared for what the admitting read knew.
-              Classifying.answers(classifier.at(routed), request, clock) match {
-                case Left(error) => AskMade.Refused(AskMade.Kind.Model, unanswered(error), digest)
-                case Right(answers) =>
-                  val estimate = records.estimator.system(Request.json(request).render())
-                  val call = AskMade.Call(answers.model, answers.usage, estimate)
-                  questions.read(answers.answers) match {
-                    case Left(error) => AskMade.Unjudged(digest, unanswered(error), call)
-                    case Right(_) =>
-                      val written =
-                        ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
-                      AskMade.Judged(digest, written, at, call)
+              classifier.at(routed) match {
+                case Left(u) => uncleared(u, "no classifier", digest)
+                case Right(asked) =>
+                  Classifying.answers(asked, request, clock) match {
+                    case Left(error) =>
+                      AskMade.Refused(AskMade.Kind.Model, unanswered(error), digest)
+                    case Right(answers) =>
+                      val estimate = records.estimator.system(Request.json(request).render())
+                      val call =
+                        AskMade.Call(answers.model, answers.usage, estimate, classifier.upstream)
+                      questions.read(answers.answers) match {
+                        case Left(error) => AskMade.Unjudged(digest, unanswered(error), call)
+                        case Right(_) =>
+                          val written =
+                            ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
+                          AskMade.Judged(digest, written, at, call)
+                      }
                   }
               }
           }
@@ -281,9 +292,12 @@ object DurableMoves {
       else
         (made, kept) match {
           case (_, Left(why)) => Left(MoveError.Store(why))
-          case (AskMade.Refused(AskMade.Kind.Capped, _, _), _) => Left(MoveError.Capped)
-          case (AskMade.Refused(AskMade.Kind.Model, why, _), _) => Left(MoveError.Model(why))
-          case (AskMade.Refused(AskMade.Kind.Store, why, _), _) => Left(MoveError.Store(why))
+          case (AskMade.Refused(AskMade.Kind.Capped, _, _, _), _) => Left(MoveError.Capped)
+          case (AskMade.Refused(AskMade.Kind.Model, why, _, _), _) => Left(MoveError.Model(why))
+          case (AskMade.Refused(AskMade.Kind.Store, why, _, _), _) => Left(MoveError.Store(why))
+          // The journal reads no uncleared refusal without its label.
+          case (AskMade.Refused(AskMade.Kind.Uncleared, why, _, at), _) =>
+            Left(at.fold(MoveError.Model(why))(MoveError.Uncleared(_)))
           case (AskMade.Unshaped(_, why, _), _) => Left(MoveError.Model(why))
           case (AskMade.Unjudged(_, why, _), _) => Left(MoveError.Model(why))
           case (other, Right(())) => read(other).getOrElse(Left(diverge(name)))
@@ -348,8 +362,9 @@ object DurableMoves {
   }
 
   /** Whether an ask may be made, read in one transaction for `subject`: the label what it is
-    * made from may hold, and the catalog's pin for summaries; or its refusal, under `digest`,
-    * when [[admits]] refuses it or no catalog reads.
+    * made from may hold, and the first of the catalog's pins for summaries cleared for what
+    * that read knew; or its refusal, under `digest`, when [[admits]] refuses it, no catalog
+    * reads, or no pin is cleared.
     */
   private def admitted(
       records: MoveRecords,
@@ -360,13 +375,26 @@ object DurableMoves {
       subject: Subject,
       digest: String
   ): Either[AskMade, (Label, Pinned)] =
-    admits(records, db, clock, allowance, subject, digest).flatMap { (at, _) =>
+    admits(records, db, clock, allowance, subject, digest).flatMap { (at, routed) =>
       models.catalog() match {
         case Left(why) =>
           Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
-        case Right(catalog) => Right((at, catalog.pin.summary.first))
+        case Right(catalog) =>
+          routed
+            .cleared(catalog.pin.summary)
+            .map(pins => (at, pins.first))
+            .toRight(uncleared(Uncleared(routed.classification.label), "no model", digest))
       }
     }
+
+  /** An ask refused, under `digest`, because `what` it could go to is cleared for `u`. */
+  private def uncleared(u: Uncleared, what: String, digest: String): AskMade =
+    AskMade.Refused(
+      AskMade.Kind.Uncleared,
+      s"$what cleared for ${Label.written(u.classification)}",
+      digest,
+      Some(u.classification)
+    )
 
   /** Whether `allowance` admits an ask, read in one transaction for `subject`: the label what
     * it is made from may hold, and what that read was routed for; or its refusal, under
@@ -406,7 +434,7 @@ object DurableMoves {
             case 1 => s"$base:repair"
             case _ => s"$base:repair$i"
           })
-          Asking.cost(ledger, entry, turn, c.model, None, c.usage, c.estimate) match {
+          Asking.cost(ledger, entry, turn, c.model, c.upstream, c.usage, c.estimate) match {
             case Left(StoreError.DuplicateId(_)) => Right(())
             case other => other
           }

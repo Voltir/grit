@@ -115,6 +115,8 @@ object RecordJobHistories {
         w.serve()
         probed(w, d, 2)
       },
+      // An ask made from what no summary model is cleared for: refused with its label.
+      record("run-asked-uncleared", floor = Label.at(Level.Internal))((w, d) => probed(w, d, 1)),
       record("run-capped", cap = Some("0.0001")) { (w, d) =>
         // The day's spend is past the cap before the run asks.
         val _ = probed(w, d, 1, key = "earlier")

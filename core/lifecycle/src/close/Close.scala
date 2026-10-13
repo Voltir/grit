@@ -134,7 +134,7 @@ object Close {
                   .reading(reads(env, attempt)) { (routed, bounded) =>
                     val entries = own(bounded, env, attempt, first)
                     CloseGate.asked(
-                      env.classifier.at(routed),
+                      env.classifier.asking(routed),
                       CloseGate.Transcript(
                         known,
                         elsewhere(bounded, env, entries),

@@ -13,7 +13,7 @@ object ClearedClassifierCaptureTests extends TestSuite {
   private val prelude =
     """package outside
       |import grit.core.classify.*
-      |import grit.core.route.Routed
+      |import grit.core.route.{Routed, Uncleared}
       |import grit.core.store.*
       |import grit.core.visibility.*
       |final case class Note(text: String)
@@ -25,13 +25,14 @@ object ClearedClassifierCaptureTests extends TestSuite {
     """def site(db: Db^, s: Subject, classifier: ClearedClassifier^): Either[StoreError, Boolean] =
       |  Routed
       |    .reading(db, s)((r, reads) =>
-      |      reads.read(Right(Note("x"))).map(n => classifier.at(r).ask(n, urgent).isRight)
+      |      reads.read(Right(Note("x"))).map(n => classifier.asking(r).ask(n, urgent).isRight)
       |    )
       |    .flatten""".stripMargin
   private val extended =
     """def f: ClearedClassifier = new ClearedClassifier {
       |  def upstream: Option[String] = None
-      |  def at(routed: Routed): Classifier^ = Classifier.none("unchecked")
+      |  def at(routed: Routed): Either[Uncleared, Classifier^] = Right(Classifier.none("unchecked"))
+      |  protected def unavailable(u: Uncleared): Classifier = Classifier.none("unchecked")
       |}""".stripMargin
   private val carried =
     """def f(db: Db^, s: Subject, classifier: ClearedClassifier^): Unit = {

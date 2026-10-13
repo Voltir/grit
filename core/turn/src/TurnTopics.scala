@@ -139,7 +139,7 @@ object TurnTopics {
       .flatten match {
       case Left(error) =>
         Classification(Vector.empty, None, Vector.empty, None, Some(s"store: ${describe(error)}"))
-      case Right((routed, all)) => place(classifier.at(routed), estimator, turn, all)
+      case Right((routed, all)) => place(classifier.asking(routed), estimator, turn, all)
     }
 
   /** [[classify]], over `all` of the conversation's entries. */

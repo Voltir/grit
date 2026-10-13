@@ -278,6 +278,7 @@ object Sync {
     case MoveError.OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
     case MoveError.Capped => "the day's recorded spend reached its cap"
     case MoveError.Model(why) => why
+    case MoveError.Uncleared(at) => s"no model is cleared for ${Label.shown(at)}"
     case MoveError.Store(why) => why
     case MoveError.Diverged(name) =>
       s"the run's moves differ from its record at ${MoveName.value(name)}"

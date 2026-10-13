@@ -95,7 +95,7 @@ object Shadow {
     val questions = variant.questions
     val request = questions.request(state, sources)
     val start = clock.millis()
-    val answered = questions.ask(variant.classifier.at(routed), state, sources)
+    val answered = questions.ask(variant.classifier.asking(routed), state, sources)
     val latency = (clock.millis() - start).millis
     answered match {
       case Left(error) => Shadowed.Failed(request.digest, error.kind, latency)

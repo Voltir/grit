@@ -101,16 +101,17 @@ enum Called {
 trait Moves {
 
   /** One reply to `posed`, from the model its shape names: for [[Posed.Text]] and
-    * [[Posed.Json]], the model the catalog in force assigns to summaries
-    * (`grit.core.model.Policy.summary`), within its output budget; for [[Posed.Judgment]], the
-    * deployment's classifier, asked again while it is unavailable, as a provider is. Each
-    * model's or classifier's call's cost is recorded once, under the run's conversation. The
-    * request goes to that model's provider, or the classifier, a third party the deployment
-    * trusts with everything sent to it: nothing checks what goes there. Admitted once, before
+    * [[Posed.Json]], the first of the models the catalog in force assigns to summaries
+    * (`grit.core.model.Policy.summary`) that is cleared for what the run's conversation knows,
+    * within its output budget; for [[Posed.Judgment]], the deployment's classifier, asked
+    * again while it is unavailable, as a provider is. Each model's or classifier's call's cost
+    * is recorded once, under the run's conversation, with who served it. Admitted once, before
     * its first call (a [[Posed.Json]] repair is not admitted again). [[MoveError.Capped]] when
-    * the allowance does not admit it, and nothing is called; [[MoveError.Model]] when no
-    * catalog reads (for a text or JSON ask), the provider or classifier fails after its
-    * retries, or the reply does not read ([[Posed.Json]]: after its repairs).
+    * the allowance does not admit it, and [[MoveError.Uncleared]] when no summary model (or
+    * the classifier's service) is cleared for what the conversation knows (ADR 0037): in
+    * both, nothing is called. [[MoveError.Model]] when no catalog reads (for a text or JSON
+    * ask), the provider or classifier fails after its retries, or the reply does not read
+    * ([[Posed.Json]]: after its repairs).
     */
   def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]]
 

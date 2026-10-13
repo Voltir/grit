@@ -2,7 +2,7 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar, Summary}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
 import grit.core.classify.{Answer as Judged, Answers, Classifier}
 import grit.core.clock.SetClock
@@ -66,7 +66,8 @@ object DurableMovesTests extends MovesContract {
   * (`grit.core.act.MovesFixtures.Judging`), an edge at [[MovesContract.Probe]] advertising
   * [[MovesContract.Tool]] that claims, answers [[MovesContract.Read]] and rings each request as
   * it is written, and the documents of [[MovesWorld.Notes]]. Its every transaction and read is
-  * opened at `floor`, and [[MovesContract.Probe]] is trusted with `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
+  * opened at `floor`, and [[MovesContract.Probe]], its summary model and its classifier are
+  * cleared for `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
   * daily, so every ask's admission fails.
   */
 final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends caps.SharedCapability {
@@ -82,6 +83,8 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         Vector.empty,
         Vector(
           Cleared(Party.Service(Probe), floor),
+          // The world's summary model is cleared for what it knows.
+          Cleared(Party.of(Summary).getOrElse(sys.error("no upstream")), floor),
           // The world's classifier is cleared for what it knows.
           Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
         )

@@ -4,7 +4,7 @@ import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Questio
 import grit.core.durable.InMemoryDurable
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator, ToolUse}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject, Visibility}
@@ -21,12 +21,14 @@ object MovesFixtures {
     * call's arguments the next of `shapes` (the last again once they run out;
     * `{"answer": answer}` when there are none), the `i`th call of its `n`th answer `call-{n}`,
     * or `call-{n}-{i}` from its second. With `crash`, the process dies inside the first call.
+    * Each reply reports `upstream` as who served it.
     */
   final class Answering(
       answer: String,
       crash: Boolean = false,
       shapes: Vector[ujson.Value] = Vector(),
-      calling: Int = 1
+      calling: Int = 1,
+      upstream: Option[String] = None
   ) extends Models {
     @caps.unsafe.untrackedCaptures
     var calls = 0
@@ -65,7 +67,8 @@ object MovesFixtures {
             blocks,
             stop,
             Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
-            "test/summary"
+            "test/summary",
+            upstream
           )
         )
       }
@@ -113,7 +116,14 @@ object MovesFixtures {
       Answer.Score(0, s.levels.indices.toVector.map(i => if (i == 0) 1.0 else 0.0), 1.0)
   }
 
-  /** Each role pinned to `test/<role>`, 1024 tokens out. */
+  /** The summaries' pair, `test/summary` served by `test` alone: a party a world clears. */
+  val Summary: ModelRef =
+    ModelRef(
+      ModelId.of("test/summary").getOrElse(throw new java.lang.AssertionError("summary")),
+      Upstream.of("test")
+    )
+
+  /** Each role pinned to `test/<role>`, 1024 tokens out, the summaries to [[Summary]]. */
   val TestCatalog: Catalog = {
     def role(name: String) =
       Assignment(
@@ -124,10 +134,8 @@ object MovesFixtures {
         1024,
         None
       )
-    Catalog.of(
-      Policy.one(role("turn"), role("summary"), role("query"), role("summary")),
-      Vector.empty
-    )
+    val summary = Assignment(Summary, 1024, None)
+    Catalog.of(Policy.one(role("turn"), summary, role("query"), summary), Vector.empty)
   }
 
   /** A token for each character of a message's or prompt's written form. */
