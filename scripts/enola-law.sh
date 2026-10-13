@@ -8,10 +8,9 @@
 # and cycles are read off import edges, which are sound here. grit declares no layers
 # (Mill and the rules already cover them; see that file).
 #
-# Scope, part two: enola's Scala symbol facts are DEGRADED on this repository -- capture
-# checking is on project-wide and the extractor drops symbols without reporting a parse
-# error. Never add a symbol-shaped explainer (exported-surface, complexity-outliers) to
-# --fail-on here. See the TRUST BOUNDARY note in mcp-arch.yaml.
+# Scope, part two: enola's Scala symbol facts never gate here. Never add a symbol-shaped
+# explainer (exported-surface, complexity-outliers) to --fail-on. See the TRUST BOUNDARY note
+# in mcp-arch.yaml.
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

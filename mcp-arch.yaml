@@ -3,19 +3,22 @@
 # carries rules for a dozen ecosystems this repo does not use.
 #
 # TRAP: `ignore` REPLACES enola's built-in list rather than extending it. Anything left
-# out of this file is indexed, so a deletion here is a decision, not a tidy-up.
+# out of this file is indexed, so a deletion here is a decision, not a tidy-up. (Since 0.4.29
+# enola also skips its own `.claude/rules/enola.md` whatever this list says.)
+#
+# scripts/enola-law.sh's greps read the Scala sources git tracks or would track, so a path
+# this list indexes must not be gitignored: .gitignore and this list must agree.
 #
 # TRUST BOUNDARY -- read before writing any rule against this snapshot.
-# grit compiles with -language:experimental.captureChecking project-wide, and enola's
-# Scala extractor silently degrades on capture syntax: it drops symbols and mis-nests
-# the survivors while still reporting `parse_errors: 0`. Measured on the controlled
-# fixture in ../Spikes/capture-spike-enola: 40 symbols extracted from capture-annotated
-# sources vs 46 from structurally identical plain ones, IDENTICAL on enola 0.4.8
-# (extractor v257), 0.4.15 (v264) and 0.4.22 (v271) -- the grammar has not moved. What DOES extract
-# correctly is import edges, modules, and using-clear defs.
-# Therefore: import-edge and module facts may gate. Symbol counts, exported-surface and
-# complexity outliers are degraded here and must never be a gate. See the 2026-09-07
-# rows in roadmap/decisions.md.
+# Import-edge and module facts may gate; symbol facts (symbol counts, exported-surface,
+# complexity outliers, `enola impact`'s graph) never do. grit compiles with capture checking
+# project-wide, and up to enola 0.4.24 the Scala extractor dropped and mis-nested symbols under
+# capture syntax while reporting `parse_errors: 0` (on a controlled fixture: 40 symbols from
+# capture-annotated sources against 46 from structurally identical plain ones). 0.4.29
+# extracts all 46 with their right owners, but its receipt would be as silent about a new
+# regression, and the fixture covers no separation-checking syntax. So symbol facts may guide
+# exploration, and a symbol-level claim is confirmed against the compiler's view (outline)
+# before it is stated.
 repo: "."
 
 ignore:
@@ -50,19 +53,24 @@ ignore:
   # Capture probes (a module's probes/src): test sources, which no rule governs, declaring
   # main packages. enola resolves an import to the first directory declaring its package,
   # and `probes` sorts before `src`, so indexed, a main source's imports would land in them.
+  # Still needed on 0.4.29: indexed, a renamed import (`Label as VisibilityLabel`) resolves
+  # into core's probes and the law reports two false breaches.
   - "**/probes/**"
+
+  # Working documents this checkout keeps out of git. They yield no intent (every intent fact
+  # comes from enola-intent.yaml), only heading symbols that moved the snapshot on every edit,
+  # and a baseline pinned here would differ from one pinned in a clean clone.
+  - "roadmap/**"
+  - "CLAUDE.local.md"
 
   # The enola binary itself (51MB, extensionless). Excluded by kind anyway; named here
   # so the census stays legible.
   - "tools/**"
 
 # Deliberately NOT ignored, against the upstream default:
-#   *.md   -- the mdintent extractor reads each directory's CLAUDE.md and STYLE.md as
-#             the intent governing the code beside it, which is how this repo is
-#             written. Ignoring markdown silently disables that extractor. Note this
-#             pulls in roadmap/ and CLAUDE.local.md, which are GIT-ignored but not
-#             enola-ignored -- deliberate: the roadmap and decisions log are exactly
-#             the stated intent, and enola only reads them.
+#   *.md   -- the mdintent extractor reads markdown for stated intent. grit's markdown states
+#             none in its form today (every intent fact comes from enola-intent.yaml), so this
+#             only keeps the extractor's input in place for when it does.
 #   mill, docker-compose.yml -- excluded by kind regardless; leaving them in the walk
 #             shows the census really covered the whole tree.
 #

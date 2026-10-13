@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # Installs the pinned enola binary into tools/enola -- project-local rather than on
-# PATH, because grit has no devcontainer and no CI to carry a system install. Adapted
-# from ../Spikes/capture-spike-enola/scripts/fetch-enola.sh. Re-run to re-fetch.
+# PATH, because grit has no devcontainer and no CI to carry a system install.
+# Re-run to re-fetch.
 #
 # TRAP: two things drift out from under this pin. `enola upgrade` replaces the binary in
 # place, so anyone who runs it diverges from what this script installed. And a release
 # carries an EXTRACTOR version of its own (`enola --version --json`) which decides how
 # facts are read -- so a bump here can move the snapshot with no repository code
-# changing. Re-pin the baseline afterwards and expect the first check to report noise.
+# changing. Until the baseline is re-pinned, `enola check` declines to grade (exit 3) and
+# scripts/enola-law.sh fails, printing how to re-pin.
 #
-# TRAP: the pinned version is NOT a free upgrade decision. enola's Scala extractor
-# silently degrades on capture-checking syntax, which grit uses project-wide, and the
-# damage is invisible in the receipt (`parse_errors: 0`). Before bumping this number,
-# re-run the measurement in ../Spikes/capture-spike-enola -- its cap/ and plain/ trees
-# are a controlled fixture with a documented symbol baseline. See the 2026-09-07 rows in
-# roadmap/decisions.md.
+# TRAP: the pinned version is NOT a free upgrade decision. grit uses capture-checking syntax
+# project-wide, and up to 0.4.24 enola's Scala extractor silently degraded on it: on a
+# controlled fixture (five files of capture syntax beside the same five without it), 0.4.8,
+# 0.4.15 and 0.4.22 extracted 40 symbols against the plain files' 46, dropping 7 and
+# mis-owning 11, while the receipt said `parse_errors: 0`. 0.4.29 extracts all 46 with their
+# right owners, and its receipt says `parse_errors: 0` too: the receipt cannot report this
+# damage, so a bump re-runs that comparison. It also diffs grit's import-edge and module facts
+# against the previous version's (they gate) and reruns scripts/enola-plant.
 set -euo pipefail
 
-ENOLA_VERSION=0.4.22
+ENOLA_VERSION=0.4.29
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dest="$repo_root/tools"
 
