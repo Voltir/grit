@@ -6,7 +6,6 @@ import scala.jdk.CollectionConverters.*
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
-import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.durable.Durable
 import grit.core.id.{SourceId, TurnRef, WorkflowId}

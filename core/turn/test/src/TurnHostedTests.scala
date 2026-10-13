@@ -328,7 +328,7 @@ object TurnHostedTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "search")
       val durable = fallen()
-      val edge = atGithub(durable, q => Serve.Now(Outcome.Done("found")))
+      val edge = atGithub(durable, _ => Serve.Now(Outcome.Done("found")))
       val provider = model(("t1", "github_search", "grit"))
       durable.run(turn.workflowId)(routedRestricted(entries, provider, edge)) ==> Done
       (provider.requests.headOption.map(_.tools.map(_.name)), edge.sent.size) ==>

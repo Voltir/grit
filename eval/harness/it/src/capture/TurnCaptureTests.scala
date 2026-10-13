@@ -6,7 +6,6 @@ import scala.concurrent.duration.*
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
-import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Width, Window}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Pointer, Written}
