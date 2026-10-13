@@ -28,9 +28,8 @@ Decision:
   cleared it takes its degraded path (a fixed reply, a mechanical fallback, no judgment), never
   an uncleared call. A turn routes in a step of its own, before its offer, and records the
   classification it routed for; every later read whose content a model is sent runs only in a
-  transaction classified at most that, and every later transaction that writes or sends runs
-  only at exactly that, so a clearance that rose or fell meanwhile cannot send or write more
-  than was routed.
+  transaction classified at most that, so a clearance that rose meanwhile fails the turn, and
+  every later send is checked against that classification, never the current floor.
 - **Routing is staged:** safety first, by clearance alone; then, only where safety left a
   choice, the task and effort the turn calls for pick among what remains. No later stage can
   undo the first.
@@ -45,6 +44,8 @@ Consequences: a deployment that labels rooms above public must declare clearance
 and its classifier's service, or calls there fail closed; under the default visibility every
 room is public and every check passes. A party cleared for a compartment receives everything in
 it. The provider's retention is the deployment's to judge when it clears a pair; grit cannot see
-it. Enforced by a capture probe (no classification made outside core), core's tests of the rule,
-and, per site, a test that an uncleared party is sent nothing. Amends ADR 0031's and ADR 0034's
+it. A turn holds its routed classification for its whole run, Bell–LaPadula's tranquility
+for the turn's subject: a clearance that falls mid-turn takes effect at the next turn. Enforced
+by a capture probe (no classification made outside core), core's tests of the rule, and, per
+site, a test that an uncleared party is sent nothing. Amends ADR 0031's and ADR 0034's
 consequences that left the model provider and the ask unchecked.
