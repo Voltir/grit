@@ -75,7 +75,10 @@ object AboutTests extends TestSuite {
           "Compartments are Bell–LaPadula's categories.",
           "a room's members read everything said in it up to the room's label, whatever their " +
             "own clearance",
-          "Writes out of grit."
+          "Writes out of grit.",
+          "is allowed only when the deployment has cleared that service for this room's label.",
+          "Models and the classifier are parties too: each is sent only what it is cleared for, " +
+            "and where none is, grit does not make the call."
         ).filterNot(shipped("security").replaceAll("\\s+", " ").contains)
       ) ==> (true, Vector())
     }

@@ -36,7 +36,9 @@ it reads at, and mentions direct messages only when the person asked about their
 
 Writes out of grit. A call that writes outside grit names its place, and is allowed only to a
 place whose label is at least this room's; a call that sends arguments to an outside service
-is allowed only when the deployment trusts that service with this room's label.
+is allowed only when the deployment has cleared that service for this room's label. Models and
+the classifier are parties too: each is sent only what it is cleared for, and where none is,
+grit does not make the call.
 
 Enforcement. Every database read and write grit makes is filtered by the clearance its
 transaction was opened with, in grit's core: no plugin, edge or model decides it, and nothing
