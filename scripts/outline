@@ -31,6 +31,9 @@ if [ -f "$launcher" ]; then
 fi
 if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ] || [ -n "$newer" ]; then
   build_mill grit.outline.launcher >&2
+  # Mill rewrites the launcher only when a source's content changed; a source merely touched (a checkout,
+  # a branch switch) would otherwise stay newer than it and send every query back through Mill.
+  touch "$launcher"
   mkdir -p "$dir"
   path_of grit.outline.javaHome > "$java_home_file"
 fi
