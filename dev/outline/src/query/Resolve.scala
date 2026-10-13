@@ -19,7 +19,7 @@ final case class Resolved(
 object Resolve {
 
   /** The `.tasty` a `scope` searches among `tasty`: `Scope.Main` drops the classes directories holding only tests' classes. */
-  private def usable(
+  private[query] def usable(
       root: Root,
       layout: Layout,
       scope: Scope,
@@ -47,7 +47,7 @@ object Resolve {
     else Loaded.defns(root, layout, tasty, in).map { case (_, next, _) => next }
   }
 
-  /** `sym`'s definitions under `root`: those whose fullName is exactly `sym`; else those whose fullName ends with `.sym` (when more than one distinct fullName, the note `-- ambiguous <sym>: <full names, comma-separated> (name one fully)`); else, by `sym`'s last segment among the packages of files mentioning it. When `sym` has a qualifier, that step keeps the candidates whose owner (the fullName without its last segment) has the qualifier's last segment as its simple name; when none does, every candidate is listed and nothing resolves. One distinct fullName left resolves to its definitions, with the note `-- no <sym> as written; by last segment: <full names>`; more than one, or a qualifier that matches no candidate's owner, resolves to none, with the note `-- no <sym> as written; by last segment, name one fully: <full names, comma-separated>`. Only an exact match sees `config.hidden` sources; `Scope.Main` skips test-only classes dirs. Empty `defns` when nothing matches. */
+  /** `sym`'s definitions under `root`: those whose fullName is exactly `sym`; else those whose fullName ends with `.sym` (when more than one distinct fullName, the note `-- ambiguous <sym>: <full names, comma-separated> (name one fully)`); else, by `sym`'s last segment among the packages of files mentioning it. When `sym` has a qualifier, that step keeps the candidates whose owner (the fullName without its last segment) has the qualifier's last segment as its simple name; when none does, every candidate is listed and nothing resolves. One distinct fullName left resolves to its definitions, with the note `-- no <sym> as written; by last segment: <full names>`; more than one, or a qualifier that matches no candidate's owner, resolves to none, with the note `-- no <sym> as written; by last segment, name one fully: <full names, comma-separated>`. Only an exact match sees `config.hidden` sources; `Scope.Main` skips test-only classes dirs. Empty `defns` when nothing matches, with the note `-- no match for <sym>; try find *<last segment>*`. */
   def resolve(
       root: Root,
       layout: Layout,
@@ -98,7 +98,7 @@ object Resolve {
             val listed = if (unmatched) byLast else owned
             val names = listed.map(_.fullName).distinct.sorted
             val notes =
-              if (listed.isEmpty) Vector(s"-- no match for $sym")
+              if (listed.isEmpty) Vector(s"-- no match for $sym; try find *$last*")
               else if (names.size == 1 && !unmatched)
                 Vector(s"-- no $sym as written; by last segment: ${names.mkString(", ")}")
               else

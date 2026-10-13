@@ -41,7 +41,7 @@ object QueryTests extends TestSuite {
       assert(answer.text.contains("→ 16-17 final case class B(c: C, note: String)"))
     }
 
-    test("show of a name nothing defines is NoMatch, saying so and nothing else") {
+    test("show of a name nothing defines is NoMatch, saying so and suggesting find with the name") {
       val (answer, _) =
         Query.show(
           root,
@@ -56,7 +56,7 @@ object QueryTests extends TestSuite {
         )
       assert(answer.status == Status.NoMatch)
       assert(answer.text.startsWith(s"## root ${root.dir} ("))
-      assert(answer.text.endsWith("\n-- no match for Nope"))
+      assert(answer.text.endsWith("\n-- no match for Nope; try find *Nope*"))
     }
 
     test("a second read of unchanged tasty reads no files") {

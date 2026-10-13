@@ -22,7 +22,7 @@ final case class Entry(
     flags: Vector[Flag]
 )
 
-/** The five queries' help, as plain data: nothing here reads a file or runs a query. */
+/** The queries' help, as plain data: nothing here reads a file or runs a query. */
 object Help {
 
   private val cap = Flag(
@@ -155,6 +155,22 @@ object Help {
     ) ++ common
   )
 
+  val find: Entry = Entry(
+    query = "find",
+    operand = Operand(
+      "pattern",
+      "pattern",
+      "a name pattern: dot-separated segments matched against the last segments of each definition's full name, each whole, with * for any run of characters within one segment; quote it in the shell."
+    ),
+    purpose =
+      "To find a definition when you don't know its name: one line per definition in main sources, members included, with its full name, file, lines and collapsed signature.",
+    examples = Vector(
+      Example("find every type whose name holds Shelf", "find '*Shelf*'"),
+      Example("find the member placed of any owner", "find '*.placed'")
+    ),
+    flags = common
+  )
+
   val tests: Entry = Entry(
     query = "tests",
     operand = Operand("Suite", "suite", "the suite's class or object, by name or fully qualified."),
@@ -183,7 +199,7 @@ object Help {
   )
 
   /** Every query, in the order the summary lists them. */
-  val entries: Vector[Entry] = Vector(show, family, uses, area, tests)
+  val entries: Vector[Entry] = Vector(show, family, uses, area, find, tests)
 
   /** Which text show, family and tests print is the file's own, for an Edit to match; in the help and descriptions of those three and in the server's instructions. */
   val fileText: String =

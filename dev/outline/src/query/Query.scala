@@ -46,6 +46,73 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
+  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). Private members and `config.hidden` sources are left out. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line; `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
+  def find(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      roots: Roots,
+      pattern: String,
+      cap: Int
+  ): (Answer, Roots) = {
+    val segments = pattern.split("\\.", -1).toVector
+    val classes = layout.classesDirs(root)
+    if (segments.exists(_.isEmpty))
+      (
+        Answer(
+          s"${header(root)}\n$pattern has an empty segment\n${Help.usage(Help.find)}",
+          Status.Failed
+        ),
+        roots
+      )
+    else if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
+    else {
+      val globs = segments.map(segmentGlob)
+      def matches(d: Defn): Boolean = {
+        val names = d.fullName.split('.').toVector
+        names.size >= globs.size &&
+        names.takeRight(globs.size).zip(globs).forall { case (n, g) => g.matches(n) }
+      }
+      def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
+      def visible(ds: Vector[Defn]): Vector[Defn] =
+        ds.filterNot(_.isPrivate).flatMap(d => d +: visible(d.members))
+
+      // A definition's name is a word of its source, so only the packages holding one are read.
+      val word = ("(?<![\\w$])" + segments.last
+        .split("\\*", -1)
+        .map(java.util.regex.Pattern.quote)
+        .mkString("[\\w$]*") + "(?![\\w$])").r
+      val tasty = Resolve.usable(
+        root,
+        layout,
+        Scope.Main,
+        Locate.holding(root, word).flatMap(file => Locate.inPackageIn(root, classes, file)).distinct
+      )
+      val (defns, loaded, notes) =
+        tasty
+          .grouped(Loaded.readBatch)
+          .foldLeft((Vector.empty[Defn], Roots.of(roots, root), Vector.empty[String])) {
+            case ((ds, in, ns), batch) =>
+              val (more, next, moreNotes) = loadAll(root, layout, batch.toVector, in)
+              (ds ++ more, next, ns ++ moreNotes)
+          }
+      val found =
+        visible(defns)
+          .filter(d => matches(d) && !hidden(d))
+          .distinct
+          .sortBy(d => (d.fullName, d.file, d.lines.start))
+      val head = (header(root) +: notes).mkString("\n")
+      val answer =
+        if (found.isEmpty) Answer(s"$head\nno definition matches $pattern", Status.NoMatch)
+        else Answer(Render.find(found, head, cap), Status.Found)
+      (answer, Roots.put(roots, root, loaded))
+    }
+  }
+
+  /** `segment` as a regular expression matching a whole name segment, each `*` any run of characters. */
+  private def segmentGlob(segment: String): scala.util.matching.Regex =
+    segment.split("\\*", -1).map(java.util.regex.Pattern.quote).mkString(".*").r
+
   /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
   val shortestBare: Int = 4
 
@@ -732,7 +799,7 @@ object Query {
       failure match {
         case Some(message) => (Answer(message, Status.Failed), state)
         case None if matches.isEmpty =>
-          // resolve's `-- no match for X` note is the one line naming a miss
+          // resolve's `-- no match for X; try find *X*` note is the one line naming a miss
           (Answer(noteText.stripSuffix("\n"), Status.NoMatch), state)
         case None =>
           val tops = matches.toVector.distinct

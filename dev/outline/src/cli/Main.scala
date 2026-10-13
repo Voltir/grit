@@ -141,6 +141,8 @@ object Main {
         tests(suite, rest, cwd, leadingRoot)
       case "area" :: names :: rest if !names.startsWith("--") =>
         area(names, rest, cwd, leadingRoot)
+      case "find" :: pattern :: rest if !pattern.startsWith("--") =>
+        find(pattern, rest, cwd, leadingRoot)
       case other :: _ =>
         (2, Help.entry(other).fold(s"unknown query $other\n${Help.summary}")(Help.usage))
     }
@@ -276,6 +278,42 @@ object Main {
                     o.level,
                     o.cap
                   )
+                (exitCode(answer.status), answer.text)
+            }
+        }
+    }
+
+  private final case class FindOptions(cap: Int, root: Option[String])
+
+  private def parseFind(rest: List[String], o: FindOptions): Either[String, FindOptions] =
+    rest match {
+      case Nil => Right(o)
+      case "--cap" :: value :: tail =>
+        value.toIntOption match {
+          case Some(n) => parseFind(tail, o.copy(cap = n))
+          case None => Left(s"--cap takes a number of bytes, not $value")
+        }
+      case "--root" :: value :: tail => parseFind(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
+  private def find(
+      pattern: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseFind(rest, FindOptions(80000, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n${Help.usage(Help.find)}")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.find)}")
+          case Some(d) =>
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) =
+                  Query.find(Root(d), MillLayout, config, Roots.empty(6000), pattern, o.cap)
                 (exitCode(answer.status), answer.text)
             }
         }

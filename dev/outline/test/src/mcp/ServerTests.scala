@@ -131,13 +131,13 @@ object ServerTests extends TestSuite {
     }
 
     test(
-      "tools/list names exactly show, family, uses, area and tests, and no description mentions grit"
+      "tools/list names exactly show, family, uses, area, find and tests, and no description mentions grit"
     ) {
       val (r, _) = reply(request(3, "tools/list", ujson.Obj()), empty)
       val tools =
         resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
       val names = tools.flatMap(field(_, "name")).flatMap(_.strOpt).toSet
-      assert(names == Set("show", "family", "uses", "area", "tests"))
+      assert(names == Set("show", "family", "uses", "area", "find", "tests"))
       assert(!ujson.write(resultOf(r).getOrElse(ujson.Null)).toLowerCase.contains("grit"))
     }
 

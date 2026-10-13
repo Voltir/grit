@@ -107,16 +107,7 @@ object Locate {
   def mentioningEach(root: Root, words: Vector[String]): Map[String, Vector[os.RelPath]] = {
     val patterns =
       words.distinct.map(w => w -> ("\\b" + java.util.regex.Pattern.quote(w) + "\\b").r)
-    val held = os
-      .walk(
-        root.dir,
-        skip = p => p.relativeTo(root.dir).segments.headOption.exists(skipped.contains)
-      )
-      .filter(p =>
-        p.ext == "scala" && os.isFile(p) && p.relativeTo(root.dir).segments.contains("src")
-      )
-      .sortBy(_.toString)
-      .toVector
+    val held = sources(root)
       .map { p =>
         val text = os.read(p)
         p.relativeTo(root.dir) -> patterns.collect {
@@ -127,6 +118,20 @@ object Locate {
       w -> held.collect { case (rel, ws) if ws.contains(w) => rel }
     }.toMap
   }
+
+  /** The files `mentioning` searches whose text holds a match of `word`, sorted. */
+  def holding(root: Root, word: scala.util.matching.Regex): Vector[os.RelPath] =
+    sources(root).filter(p => word.findFirstIn(os.read(p)).isDefined).map(_.relativeTo(root.dir))
+
+  /** Repo `.scala` files under a `src` directory, outside the root's build and tool dirs, sorted. */
+  private def sources(root: Root): Vector[os.Path] =
+    os.walk(
+      root.dir,
+      skip = p => p.relativeTo(root.dir).segments.headOption.exists(skipped.contains)
+    ).filter(p =>
+      p.ext == "scala" && os.isFile(p) && p.relativeTo(root.dir).segments.contains("src")
+    ).sortBy(_.toString)
+      .toVector
 
   /** Whether `file` is newer than its newest `tasty`; `NoTasty` when `tasty` is empty, `NoSource` when `file` is missing. */
   def staleness(root: Root, file: os.RelPath, tasty: Vector[os.Path]): Staleness =

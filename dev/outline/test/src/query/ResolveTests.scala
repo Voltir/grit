@@ -115,7 +115,11 @@ object ResolveTests extends TestSuite {
     test("a name nothing defines resolves to nothing, and the note says there is no match") {
       val r = resolve("grit.outline.fixture.Nonexistent")
       assert(r.defns.isEmpty)
-      assert(r.notes == Vector("-- no match for grit.outline.fixture.Nonexistent"))
+      assert(
+        r.notes == Vector(
+          "-- no match for grit.outline.fixture.Nonexistent; try find *Nonexistent*"
+        )
+      )
     }
 
     test("preload reads each name's files once, and a resolve after it reads none") {

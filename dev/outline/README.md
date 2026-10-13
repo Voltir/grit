@@ -35,12 +35,20 @@ line per package, at level 1 (the default) each definition with its doc's first 
 
     scripts/outline area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]
 
+**find**: To find a definition when you don't know its name: one line per definition in main
+sources, members included, as its full name, file, lines and collapsed signature. The pattern's
+dot-separated segments match the last segments of a full name, each whole, `*` standing for any run
+of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. A `show`
+that matches nothing suggests `find` with the name's last segment.
+
+    scripts/outline find pattern [--cap BYTES] [--root DIR]
+
 **tests**: To add or change a test in a suite: its helpers and its tests' names with line ranges.
 `--test NAME` prints the verbatim body of each test whose name starts with NAME; `--body h[,h…]` prints each named helper's own lines.
 
     scripts/outline tests Suite [--test NAME] [--body h[,h…]] [--cap BYTES] [--root DIR]
 
-MCP tool names: `show`, `family`, `uses`, `area`, `tests`.
+MCP tool names: `show`, `family`, `uses`, `area`, `find`, `tests`.
 
 File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines, and so is each helper's --body text. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
 
@@ -89,7 +97,7 @@ One-way dependency order: model ← locate ← read; model ← trace ← render;
 - `read`: TASTy files into definitions, each with its source slices.
 - `trace`: the repository types reached from named roots within a number of hops.
 - `render`: the text of a family and of a traced type.
-- `query`: the five queries, their caches, and the `.outline.conf` reader.
+- `query`: the queries, their caches, and the `.outline.conf` reader.
 - `cli`: argument parsing and subcommands.
 - `mcp`: the JSON-RPC server over stdio, exposing the same queries as tools.
 

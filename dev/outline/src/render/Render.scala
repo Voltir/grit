@@ -201,6 +201,18 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
+  /** The `find` answer under `header`: each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>`; cut at `cap` bytes. */
+  def find(found: Vector[Defn], header: String, cap: Int): String = {
+    val chunks = found.map { d =>
+      Vector(
+        s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}"
+      )
+    }
+    val (kept, truncated) = fit(chunks, found.size, cap)
+    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+    body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
   /** A definition of an area, with the role its family gives it: `prefix` is "" for a symbol or a trait, "impl " for an implementation, "contract " for a contract. */
   final case class Listed(defn: Defn, prefix: String)
 

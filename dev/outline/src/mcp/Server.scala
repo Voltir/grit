@@ -88,6 +88,15 @@ object Server {
     Vector("names")
   )
 
+  private val findTool: ujson.Value = tool(
+    Help.find,
+    Vector(
+      prop(Help.find, "pattern", "type" -> "string"),
+      prop(Help.find, "root", "type" -> "string")
+    ),
+    Vector("pattern")
+  )
+
   private val usesTool: ujson.Value = tool(
     Help.uses,
     Vector(
@@ -163,7 +172,8 @@ object Server {
                 id,
                 Right(
                   ujson.Obj(
-                    "tools" -> ujson.Arr(showTool, familyTool, usesTool, areaTool, testsTool)
+                    "tools" -> ujson
+                      .Arr(showTool, familyTool, usesTool, areaTool, findTool, testsTool)
                   )
                 ),
                 state,
@@ -233,6 +243,9 @@ object Server {
             (Right(result), next, Some(name))
           case "area" =>
             val (result, next) = area(args, state)
+            (Right(result), next, Some(name))
+          case "find" =>
+            val (result, next) = find(args, state)
             (Right(result), next, Some(name))
           case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
         }
@@ -421,6 +434,19 @@ object Server {
       level <- levelArg(args)
       root <- rootArg(args)
     } yield AreaArgs(names, level, root)
+
+  private def find(args: ujson.Value, state: State): (ujson.Value, State) =
+    (for {
+      pattern <- reqText(args, "pattern")
+      root <- rootArg(args)
+    } yield (pattern, root.getOrElse(state.defaultRoot))) match {
+      case Left(problem) => (toolResult(s"bad arguments for find: $problem", isError = true), state)
+      case Right((pattern, root)) =>
+        configured(root, state) { config =>
+          val (answer, roots) = Query.find(root, MillLayout, config, state.roots, pattern, cap)
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
+    }
 
   private def levelArg(args: ujson.Value): Either[String, Int] =
     field(args, "level") match {
