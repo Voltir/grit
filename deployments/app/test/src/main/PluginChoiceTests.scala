@@ -1,9 +1,10 @@
 package grit.app.main
 
-import java.time.{LocalTime, ZoneId}
+import java.time.{Instant, LocalTime, ZoneId}
 
+import grit.core.act.{Called, MoveError, ScriptedKeeping}
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Declared, SlotRule}
+import grit.core.job.{Declared, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.place.Service
 import grit.core.plugin.Plugin
 import grit.core.visibility.{Compartments, Label, Labelled, Level, RoomLabels, Trust, Visibility}
@@ -40,6 +41,31 @@ object PluginChoiceTests extends TestSuite {
       )
     )
 
+  /** What each keeping schedule of `env`'s plugins replies when run once, its first call
+    * failing with its arguments as the call's error.
+    */
+  private def firstCalls(env: Map[String, String]): Either[String, Vector[String]] =
+    choice(env).map(_.flatMap(p => p.schedules.map(runOnce(p, _))))
+
+  private def runOnce[P <: caps.Pure](plugin: Plugin, d: Declared[P]): String =
+    d.job match {
+      case k: KeepingJob[P] =>
+        plugin.documents.fold("a keeping job of a plugin keeping no documents") { documents =>
+          k.run(
+            JobRun(d.params, Instant.EPOCH, Instant.EPOCH),
+            new ScriptedKeeping(
+              k.limits,
+              d.clearance,
+              plugin.name,
+              documents.terms,
+              _ => Left(MoveError.Model("no text ask")),
+              (_, _, args) => Right(Called.Failed(ujson.write(args)))
+            )
+          )
+        }
+      case _: PlainJob[P] => "not a keeping job"
+    }
+
   val tests = Tests {
     test("GRIT_PLUGINS: unset is none; a list of names turns each on once") {
       names(Map.empty) ==> Right(Vector())
@@ -62,11 +88,18 @@ object PluginChoiceTests extends TestSuite {
     }
 
     test(
-      "knowledge, with GitHub's token and repository set, syncs that repository daily at 03:00 at public"
+      "knowledge, with GitHub's token and repository set, syncs that repository at its ref, from its root, daily at 03:00 at public"
     ) {
       val env = github + ("GRIT_PLUGINS" -> "knowledge")
-      (names(env), scheduled(env)) ==> (
+      (names(env), firstCalls(env), scheduled(env)) ==> (
         Right(Vector(("Knowledge", "knowledge"))),
+        Right(
+          Vector(
+            "github: 0 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run; " +
+              "stopped: listing /: the call to github failed: " +
+              """{"owner":"octocat","repo":"Hello-World","path":"/","ref":"main"}"""
+          )
+        ),
         Right(
           Vector(
             (
