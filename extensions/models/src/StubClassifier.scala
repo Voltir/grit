@@ -19,6 +19,10 @@ object StubClassifier {
   /** The model id a stub answer records. */
   val Model = "grit/stub-classifier"
 
+  /** The service its states go to, `service:stub`: the party a deployment clears it as. */
+  val Service: grit.core.place.Service =
+    grit.core.place.Service.of("stub").fold(e => throw new IllegalStateException(e), identity)
+
   /** Answers from markers in the state's `new_message` string (the field `grit.turn`'s
     * topic states send):
     *

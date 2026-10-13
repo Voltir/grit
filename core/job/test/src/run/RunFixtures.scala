@@ -259,7 +259,7 @@ object RunFixtures {
             documents.savepoints
           ),
           models,
-          classifier,
+          grit.core.classify.TestClassifiers.cleared(classifier),
           db,
           clock
         ),

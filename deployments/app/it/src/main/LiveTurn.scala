@@ -135,7 +135,7 @@ object LiveTurn {
               CharEstimate,
               LinearAssembler.DefaultBudget
             ),
-            grit.core.classify.Classifier.none("no classifier"),
+            grit.core.classify.ClearedClassifier.none("no classifier"),
             models,
             engine.db,
             Clock.system(),
@@ -162,7 +162,7 @@ object LiveTurn {
                 engine.rooms,
                 knowledge,
                 grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
-                new StubClassifier,
+                grit.core.classify.ClearedClassifier.of(StubClassifier.Service, new StubClassifier),
                 engine.placements,
                 engine.db,
                 Clock.system(),
@@ -186,7 +186,7 @@ object LiveTurn {
               engine.triage,
               engine.conversations
             ),
-            grit.core.classify.Classifier.none("no classifier"),
+            grit.core.classify.ClearedClassifier.none("no classifier"),
             models,
             engine.db,
             Clock.system()
@@ -195,7 +195,7 @@ object LiveTurn {
         Settle.body(
           SettleEnv(
             SettleRecords(entries, engine.periods, engine.lifecycle, engine.principals),
-            grit.core.classify.Classifier.none("no classifier"),
+            grit.core.classify.ClearedClassifier.none("no classifier"),
             engine.db,
             Clock.system()
           )
@@ -229,7 +229,7 @@ object LiveTurn {
               engine.lifecycle,
               engine.rooms
             ),
-            grit.core.classify.Classifier.none("no classifier"),
+            grit.core.classify.ClearedClassifier.none("no classifier"),
             engine.db,
             Clock.system(),
             grit.lifecycle.triage.TriageSpeech(
@@ -253,7 +253,7 @@ object LiveTurn {
               engine.search,
               engine.principals
             ),
-            grit.core.classify.Classifier.none("no classifier"),
+            grit.core.classify.ClearedClassifier.none("no classifier"),
             engine.db,
             Clock.system(),
             grit.core.stitch.Tuning.Default

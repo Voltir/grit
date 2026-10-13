@@ -1,6 +1,6 @@
 package grit.lifecycle.settle
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, Principals}
 
@@ -10,7 +10,7 @@ import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, Principals}
   */
 final case class SettleEnv(
     records: SettleRecords,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     db: Db^,
     clock: Clock^
 )

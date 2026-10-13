@@ -6,7 +6,7 @@ import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
@@ -99,16 +99,17 @@ private[grit] object Launch {
 
   /** As [[apply]], but every model call is made through `models`, and every question the
     * topics and a job's judgments ask goes to `classifier`, and the turn's weighing's to
-    * `weighing`: a launch whose calls a test counts, and whose time it sets through the clock it
-    * opened `engine` with. A shadow still asks the classifier `s` and `d` name.
+    * `weighing`, each as its clearance allows: a launch whose calls a test counts, and whose
+    * time it sets through the clock it opened `engine` with. A shadow still asks the classifier
+    * `s` and `d` name.
     */
   private[grit] def asking(
       engine: Engine^,
       d: Deployment,
       s: Secrets,
       models: Models,
-      classifier: Classifier^,
-      weighing: Classifier^,
+      classifier: ClearedClassifier^,
+      weighing: ClearedClassifier^,
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
@@ -531,27 +532,34 @@ private[grit] object Launch {
   }
 
   /** The classifier `d` places topics with: Jev over `s`'s settings, which [[Secrets.of]]
-    * holds for [[Topics.Jev]].
+    * holds for [[Topics.Jev]], as the party [[JevClassifier.Service]]; the stub as
+    * [[StubClassifier.Service]].
     */
-  private def classifier(d: Deployment, s: Secrets): Classifier^ = (d.topics, s.jev) match {
-    case (Topics.Jev, Some(config)) => new JevClassifier(config)
-    case (Topics.Jev, None) => Classifier.none("JEV_API_KEY is not set")
-    case (Topics.Stub, _) => new StubClassifier
-    case (Topics.Off(reason), _) => Classifier.none(reason)
-  }
+  private def classifier(d: Deployment, s: Secrets): ClearedClassifier^ =
+    (d.topics, s.jev) match {
+      case (Topics.Jev, Some(config)) =>
+        ClearedClassifier.of(JevClassifier.Service, new JevClassifier(config))
+      case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+      case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+      case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+    }
 
   /** [[classifier]] for a mention's weighing: Jev's requests time out at
     * [[Mentions.AskWithin]], so a call the weighing gave up on ends there too.
     */
-  private def weighing(d: Deployment, s: Secrets): Classifier^ = (d.topics, s.jev) match {
-    case (Topics.Jev, Some(config)) =>
-      new JevClassifier(
-        config.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis))
-      )
-    case (Topics.Jev, None) => Classifier.none("JEV_API_KEY is not set")
-    case (Topics.Stub, _) => new StubClassifier
-    case (Topics.Off(reason), _) => Classifier.none(reason)
-  }
+  private def weighing(d: Deployment, s: Secrets): ClearedClassifier^ =
+    (d.topics, s.jev) match {
+      case (Topics.Jev, Some(config)) =>
+        ClearedClassifier.of(
+          JevClassifier.Service,
+          new JevClassifier(
+            config.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis))
+          )
+        )
+      case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+      case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+      case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+    }
 
   /** Each of `d`'s shadows by name, asking its question of the classifier `d` places topics
     * with ([[classifier]]): Jev's of the shadow's model when it names one.
@@ -575,12 +583,23 @@ private[grit] object Launch {
             val model = v.model.getOrElse(config.model)
             others.updated(
               v.name,
-              ShadowAsking(v.questions, model, new JevClassifier(config.copy(model = model)))
+              ShadowAsking(
+                v.questions,
+                model,
+                ClearedClassifier.of(
+                  JevClassifier.Service,
+                  new JevClassifier(config.copy(model = model))
+                )
+              )
             )
           case (Topics.Stub, _) =>
             others.updated(
               v.name,
-              ShadowAsking(v.questions, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
+              ShadowAsking(
+                v.questions,
+                v.model.getOrElse(StubClassifier.Model),
+                ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+              )
             )
           case (Topics.Jev, None) =>
             others.updated(
@@ -588,12 +607,15 @@ private[grit] object Launch {
               ShadowAsking(
                 v.questions,
                 v.model.getOrElse(JevConfig.DefaultModel),
-                Classifier.none("JEV_API_KEY is not set")
+                ClearedClassifier.none("JEV_API_KEY is not set")
               )
             )
           // Deployment.of refuses shadows with topics off.
           case (Topics.Off(reason), _) =>
-            others.updated(v.name, ShadowAsking(v.questions, "none", Classifier.none(reason)))
+            others.updated(
+              v.name,
+              ShadowAsking(v.questions, "none", ClearedClassifier.none(reason))
+            )
         }
     }
 

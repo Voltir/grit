@@ -4,11 +4,12 @@ import java.util.concurrent.{ExecutionException, FutureTask, TimeUnit, TimeoutEx
 
 import scala.concurrent.duration.*
 
-import grit.core.classify.{Classifier, ClassifierError, Request}
+import grit.core.classify.{ClassifierError, ClearedClassifier, Request}
 import grit.core.clock.Clock
 import grit.core.id.TurnRef
 import grit.core.provider.TokenEstimator
 import grit.core.recipe.RoomReads
+import grit.core.route.Routed
 import grit.core.stitch.{Opening, Placements, StitchReads, Tuning}
 import grit.core.store.Db
 import grit.core.triage.{Corpora, Tags, Weighing}
@@ -19,15 +20,15 @@ import grit.core.visibility.Subject
   * `tuning`), read for the turn through `db`, `reads` and `rooms`, with the corpora of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
-  * `clock`. The classifier is given `askWithin` to answer, past which the message is
-  * `Late`, unweighed. Its request's input is estimated by `estimator`. It writes nothing.
+  * `clock`. The classifier is asked only when its service is cleared for what the read knew,
+  * and is given `askWithin` to answer, past which the message is `Late`, unweighed. Its request's input is estimated by `estimator`. It writes nothing.
   */
 final class Mentions(
     reads: StitchReads,
     rooms: RoomReads,
     sources: Corpora,
     questions: TriageQuestions,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     placements: Placements^,
     db: Db^,
     clock: Clock^,
@@ -39,13 +40,19 @@ final class Mentions(
   def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
     for {
       _ <- placed(turn)
-      read <- TriageInput
-        .read(reads, rooms, db.as(Subject.Turn(turn)), turn, tuning, TriageRecipe.Shipped)
+      routedRead <- Routed
+        .reading(db, Subject.Turn(turn))((routed, bounded) =>
+          TriageInput
+            .read(reads, rooms, bounded, turn, tuning, TriageRecipe.Shipped)
+            .map(routed -> _)
+        )
         .left
         .map(_ => Weighing.Unweighed.Unread)
+        .flatMap(_.left.map(_ => Weighing.Unweighed.Unread))
+      (routed, read) = routedRead
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(Corpora.Empty)(sources.at)
-      answered <- within(questions.ask(classifier, read.state, asked)).flatMap(
+      answered <- within(questions.ask(classifier.at(routed), read.state, asked)).flatMap(
         _.left.map {
           case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
           case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable

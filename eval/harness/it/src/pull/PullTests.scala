@@ -113,7 +113,8 @@ object PullTests extends TestSuite {
                 engine.lifecycle,
                 engine.rooms
               ),
-              new StubClassifier,
+              grit.core.classify.ClearedClassifier
+                .of(grit.models.StubClassifier.Service, new StubClassifier),
               engine.db,
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
@@ -133,7 +134,8 @@ object PullTests extends TestSuite {
                 engine.search,
                 engine.principals
               ),
-              new StubClassifier,
+              grit.core.classify.ClearedClassifier
+                .of(grit.models.StubClassifier.Service, new StubClassifier),
               engine.db,
               Clock.system(),
               Tuning.Default
@@ -154,8 +156,18 @@ object PullTests extends TestSuite {
               engine.shadows,
               // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
               Map(
-                words -> ShadowAsking(TriageQuestions.V1, "stub", new StubClassifier),
-                set -> ShadowAsking(TriageQuestions.V2, "stub", new StubClassifier)
+                words -> ShadowAsking(
+                  TriageQuestions.V1,
+                  "stub",
+                  grit.core.classify.ClearedClassifier
+                    .of(grit.models.StubClassifier.Service, new StubClassifier)
+                ),
+                set -> ShadowAsking(
+                  TriageQuestions.V2,
+                  "stub",
+                  grit.core.classify.ClearedClassifier
+                    .of(grit.models.StubClassifier.Service, new StubClassifier)
+                )
               ),
               Corpora.Empty,
               engine.db,

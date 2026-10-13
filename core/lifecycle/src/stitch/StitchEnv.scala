@@ -1,6 +1,6 @@
 package grit.lifecycle.stitch
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.Db
@@ -11,7 +11,7 @@ import grit.core.store.Db
   */
 final case class StitchEnv(
     reads: StitchReads,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     db: Db^,
     clock: Clock^,
     tuning: Tuning

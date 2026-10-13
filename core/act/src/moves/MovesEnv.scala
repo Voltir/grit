@@ -1,6 +1,6 @@
 package grit.act.moves
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeDirectory, ToolRequests}
 import grit.core.job.ScheduleStore
@@ -33,7 +33,7 @@ final case class MoveRecords(
 final case class MovesEnv(
     records: MoveRecords,
     models: Models^,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     db: Db^,
     clock: Clock^
 )

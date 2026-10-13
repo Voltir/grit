@@ -142,7 +142,7 @@ object TurnSentTests extends TestSuite {
             CharEstimate,
             LinearAssembler.DefaultBudget
           ),
-          Classifier.none("no classifier"),
+          grit.core.classify.ClearedClassifier.none("no classifier"),
           new LoopingModels(model),
           engine.db,
           Clock.system(),

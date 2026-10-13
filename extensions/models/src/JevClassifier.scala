@@ -44,3 +44,10 @@ final class JevClassifier(config: JevConfig) extends Classifier {
         Left(ClassifierError.Unavailable(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
     }
 }
+
+object JevClassifier {
+
+  /** The service its states go to, `service:jev`: the party a deployment clears it as. */
+  val Service: grit.core.place.Service =
+    grit.core.place.Service.of("jev").fold(e => throw new IllegalStateException(e), identity)
+}

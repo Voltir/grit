@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.classify.Classifier
+import grit.core.classify.{Classifier, TestClassifiers}
 import grit.core.clock.Clock
 import grit.core.store.Db
 import grit.core.visibility.Subject
@@ -40,7 +40,7 @@ final class InMemoryPlacements(
     if (!first) Right("placed already")
     else
       Stitching.turn(
-        classifier,
+        TestClassifiers.cleared(classifier),
         reads,
         db.as(Subject.Conversation(opening.ref.turn.conversationId)),
         opening.ref.turn,

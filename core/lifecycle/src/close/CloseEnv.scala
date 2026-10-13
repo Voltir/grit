@@ -1,6 +1,6 @@
 package grit.lifecycle.close
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.store.{
@@ -23,7 +23,7 @@ import grit.core.triage.TriageStore
   */
 final case class CloseEnv(
     records: CloseRecords,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     models: Models^,
     db: Db^,
     clock: Clock^

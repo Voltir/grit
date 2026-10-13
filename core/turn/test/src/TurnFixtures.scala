@@ -712,7 +712,7 @@ object TurnFixtures {
           CharEstimate,
           LinearAssembler.DefaultBudget
         ),
-        NoClassifier,
+        grit.core.classify.TestClassifiers.cleared(NoClassifier),
         new FixedModels(provider, new StubProvider(), catalog),
         db,
         new NoWait,
@@ -1097,7 +1097,7 @@ object TurnFixtures {
         ),
         hosting(),
         assembler,
-        NoClassifier,
+        grit.core.classify.TestClassifiers.cleared(NoClassifier),
         new FixedModels(provider, summarizer, catalog),
         db,
         new NoWait,
@@ -1147,7 +1147,7 @@ object TurnFixtures {
         ),
         hosted,
         assembler,
-        classifier,
+        grit.core.classify.TestClassifiers.cleared(classifier),
         new FixedModels(provider, new StubProvider()),
         FakeDb,
         clock,
@@ -1196,7 +1196,7 @@ object TurnFixtures {
           CharEstimate,
           LinearAssembler.DefaultBudget
         ),
-        NoClassifier,
+        grit.core.classify.TestClassifiers.cleared(NoClassifier),
         new FixedModels(turn, summary),
         FakeDb,
         new NoWait,
@@ -1468,7 +1468,7 @@ object TurnFixtures {
           CharEstimate,
           LinearAssembler.DefaultBudget
         ),
-        classifier,
+        grit.core.classify.TestClassifiers.cleared(classifier),
         new FixedModels(provider, summarizer),
         FakeDb,
         clock,
@@ -1520,7 +1520,7 @@ object TurnFixtures {
           CharEstimate,
           LinearAssembler.DefaultBudget
         ),
-        NoClassifier,
+        grit.core.classify.TestClassifiers.cleared(NoClassifier),
         models,
         FakeDb,
         new NoWait,

@@ -5,6 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
+import grit.core.route.Routed
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed}
 import grit.core.visibility.Subject
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
@@ -60,33 +61,41 @@ object Shadow {
     env.variants.get(shadow.name) match {
       case None => Left(s"no variant ${ShadowName.value(shadow.name)} is declared")
       case Some(variant) =>
-        TriageInput
-          .heard(
-            env.reads,
-            env.rooms,
-            env.db.as(Subject.Conversation(shadow.triage.period.conversationId)),
-            TurnRef(shadow.triage.period.conversationId, shadow.triage.turn),
-            env.tuning,
-            TriageRecipe.Shipped
-          )
-          .map { read =>
-            // A conversation not found is at no place, so no source covers it.
-            val sources = read.place.fold(Corpora.Empty)(env.sources.at)
-            read.entry -> named(env.clock, variant, read.state, sources)
+        Routed
+          .reading(env.db.as(Subject.Conversation(shadow.triage.period.conversationId))) {
+            (routed, reads) =>
+              TriageInput
+                .heard(
+                  env.reads,
+                  env.rooms,
+                  reads,
+                  TurnRef(shadow.triage.period.conversationId, shadow.triage.turn),
+                  env.tuning,
+                  TriageRecipe.Shipped
+                )
+                .map { read =>
+                  // A conversation not found is at no place, so no source covers it.
+                  val sources = read.place.fold(Corpora.Empty)(env.sources.at)
+                  read.entry -> named(env.clock, variant, routed, read.state, sources)
+                }
           }
+          .left
+          .map(e => s"thread unread: ${ShadowJournal.describe(e)}")
+          .flatten
     }
 
-  /** What `variant` made of `state` asked its questions with `sources`. */
+  /** What `variant` made of `state`, read under `routed`, asked its questions with `sources`. */
   private def named(
       clock: Clock^,
       variant: ShadowAsking^,
+      routed: Routed,
       state: TriageQuestion.State,
       sources: Corpora
   ): Shadowed = {
     val questions = variant.questions
     val request = questions.request(state, sources)
     val start = clock.millis()
-    val answered = questions.ask(variant.classifier, state, sources)
+    val answered = questions.ask(variant.classifier.at(routed), state, sources)
     val latency = (clock.millis() - start).millis
     answered match {
       case Left(error) => Shadowed.Failed(request.digest, error.kind, latency)

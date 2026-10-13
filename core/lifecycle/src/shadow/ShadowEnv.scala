@@ -1,6 +1,6 @@
 package grit.lifecycle.shadow
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.id.ShadowName
 import grit.core.recipe.RoomReads
@@ -28,10 +28,11 @@ final case class ShadowEnv(
 )
 
 /** A declared variant as its shadows ask: `questions`, of the model `requested` (as the
-  * deployment names it, kept with each answer), through `classifier`.
+  * deployment names it, kept with each answer), through `classifier`, asked only when its
+  * service is cleared for what the shadow read.
   */
 final case class ShadowAsking(
     questions: TriageQuestions,
     requested: String,
-    classifier: Classifier^
+    classifier: ClearedClassifier^
 )

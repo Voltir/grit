@@ -522,7 +522,9 @@ object Turn {
             pins.at
           )
         )
-        .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
+        .flatMap(offered =>
+          weighCost(ledger, env.classifier.upstream, turn, weighed).map(_ => offered)
+        )
     ).flatMap(TurnOffer.load(hosting, pins.reads(env.db).as(Subject.Turn(turn)), _)) match {
       case Left(failure) => failedEarly(env, turn, failure)
       case Right(offer) => pinned(env, tooling, turn)(using pins, offer, d)
@@ -667,10 +669,12 @@ object Turn {
   }
 
   /** The cost of the classifier call `weighed` made, when the turn asked it, recorded in
-    * `ledger` under [[TurnWeighing.id]] with its estimate; nothing otherwise.
+    * `ledger` under [[TurnWeighing.id]] with its estimate, served by `upstream`; nothing
+    * otherwise.
     */
   private def weighCost(
       ledger: UsageLedger,
+      upstream: Option[String],
       turn: TurnRef,
       weighed: Option[TurnWeighing.Weighed]
   )(using Tx^): Either[TurnFailure, Unit] =
@@ -682,7 +686,7 @@ object Turn {
             turn,
             turn.workflowId,
             tags.model,
-            None,
+            upstream,
             tags.usage,
             estimate
           )
@@ -791,7 +795,14 @@ object Turn {
     val topicFailure = placing match {
       case Placing.Placed(c) =>
         d.transact(Step.RecordTopic, Subject.Turn(turn))(
-          TurnTopics.record(records.entries, records.ledger, turn, c, env.clock.now())
+          TurnTopics.record(
+            records.entries,
+            records.ledger,
+            env.classifier.upstream,
+            turn,
+            c,
+            env.clock.now()
+          )
         ).left
           .toOption
       case Placing.Unplaced => None
@@ -871,10 +882,12 @@ object Turn {
           )
           strand <- strandOf(stitching, conversations, turn, all, now)
           named <- records.principals.speakers((all ++ strand.shown).map(_.id))
-        } yield Judging(all, window, near, strand, named)
+          // Routed by the read that built the state: the classifier is asked only when its
+          // service is cleared for it.
+        } yield (Routed.of, Judging(all, window, near, strand, named))
       } match {
       case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${describe(e)}")
-      case Right(Judging(all, window, near, strand, named)) =>
+      case Right((routed, Judging(all, window, near, strand, named))) =>
         (
           all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),
           all.collectFirst {
@@ -886,7 +899,7 @@ object Turn {
               case None => TurnJudge.Judgement.Passed
               case Some(text) =>
                 TurnJudge.judge(
-                  env.classifier,
+                  env.classifier.at(routed),
                   records.estimator,
                   TurnJudge.state(
                     all,
@@ -1006,7 +1019,15 @@ object Turn {
       }
       _ <- called.fold[Either[TurnFailure, Unit]](Right(()))(c =>
         ledger
-          .record(TurnJudge.id(turn), turn, turn.workflowId, c.model, None, c.usage, c.estimated)
+          .record(
+            TurnJudge.id(turn),
+            turn,
+            turn.workflowId,
+            c.model,
+            env.classifier.upstream,
+            c.usage,
+            c.estimated
+          )
           .left
           .map(storeFailure)
       )

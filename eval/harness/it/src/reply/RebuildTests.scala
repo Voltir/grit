@@ -149,7 +149,7 @@ object RebuildTests extends TestSuite {
             Assembled.Shipped.tail,
             Tuning.Default
           ),
-          Classifier.none("no classifier"),
+          grit.core.classify.ClearedClassifier.none("no classifier"),
           new StubModels(),
           engine.db,
           Clock.system(),
@@ -176,7 +176,7 @@ object RebuildTests extends TestSuite {
               engine.rooms,
               Corpora.Empty,
               grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
-              Classifier.none("no classifier"),
+              grit.core.classify.ClearedClassifier.none("no classifier"),
               engine.placements,
               engine.db,
               Clock.system(),
@@ -206,7 +206,7 @@ object RebuildTests extends TestSuite {
             engine.lifecycle,
             engine.rooms
           ),
-          classifier,
+          grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
           engine.db,
           Clock.system(),
           TriageSpeech(
@@ -230,7 +230,7 @@ object RebuildTests extends TestSuite {
             engine.search,
             engine.principals
           ),
-          classifier,
+          grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
           engine.db,
           Clock.system(),
           Tuning.Default

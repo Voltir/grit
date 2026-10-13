@@ -1,6 +1,6 @@
 package grit.lifecycle.triage
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.edge.{Acknowledgements, Deliveries}
 import grit.core.id.TurnRef
@@ -22,7 +22,7 @@ import grit.core.triage.{Corpora, TriageStore}
   */
 final case class TriageEnv(
     records: TriageRecords,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     db: Db^,
     clock: Clock^,
     speech: TriageSpeech^,

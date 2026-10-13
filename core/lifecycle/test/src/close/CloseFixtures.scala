@@ -304,7 +304,7 @@ object CloseFixtures {
             triage,
             conversations
           ),
-          gate,
+          grit.core.classify.TestClassifiers.cleared(gate),
           models,
           FakeDb,
           clock

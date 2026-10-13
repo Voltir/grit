@@ -93,8 +93,16 @@ object ShadowFixtures {
           triaged.rooms,
           shadows,
           Map(
-            Words -> ShadowAsking(TriageQuestions.v1(Reworded), "jev-variant", classifier),
-            Asks -> ShadowAsking(TriageQuestions.V2, "jev-variant", classifier)
+            Words -> ShadowAsking(
+              TriageQuestions.v1(Reworded),
+              "jev-variant",
+              grit.core.classify.TestClassifiers.cleared(classifier)
+            ),
+            Asks -> ShadowAsking(
+              TriageQuestions.V2,
+              "jev-variant",
+              grit.core.classify.TestClassifiers.cleared(classifier)
+            )
           ),
           Catalog,
           TriageFixtures.FakeDb,

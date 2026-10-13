@@ -26,6 +26,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{NameRepair, Pinned}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
+import grit.core.route.Routed
 import grit.core.schema.Typed
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
@@ -233,8 +234,9 @@ object DurableMoves {
         val made = d.step(MoveSteps.ask(name)) { () =>
           admits(records, db, clock, allowance, subject, digest) match {
             case Left(refusal) => refusal
-            case Right(at) =>
-              Classifying.answers(classifier, request, clock) match {
+            case Right((at, routed)) =>
+              // Asked only when its service is cleared for what the admitting read knew.
+              Classifying.answers(classifier.at(routed), request, clock) match {
                 case Left(error) => AskMade.Refused(AskMade.Kind.Model, unanswered(error), digest)
                 case Right(answers) =>
                   val estimate = records.estimator.system(Request.json(request).render())
@@ -357,7 +359,7 @@ object DurableMoves {
       subject: Subject,
       digest: String
   ): Either[AskMade, (Label, Pinned)] =
-    admits(records, db, clock, allowance, subject, digest).flatMap { at =>
+    admits(records, db, clock, allowance, subject, digest).flatMap { (at, _) =>
       models.catalog() match {
         case Left(why) =>
           Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
@@ -366,8 +368,8 @@ object DurableMoves {
     }
 
   /** Whether `allowance` admits an ask, read in one transaction for `subject`: the label what
-    * it is made from may hold; or its refusal, under `digest`, when the store fails or the
-    * allowance does not admit it.
+    * it is made from may hold, and what that read was routed for; or its refusal, under
+    * `digest`, when the store fails or the allowance does not admit it.
     */
   private def admits(
       records: MoveRecords,
@@ -376,13 +378,13 @@ object DurableMoves {
       allowance: Allowance,
       subject: Subject,
       digest: String
-  ): Either[AskMade, Label] =
+  ): Either[AskMade, (Label, Routed)] =
     db.read(subject)((tx: Tx^) ?=>
-      Asking.admits(allowance, records.spending, clock.now()).map(_ -> Tx.floor(tx))
+      Asking.admits(allowance, records.spending, clock.now()).map((_, Tx.floor(tx), Routed.of))
     ) match {
       case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, describe(e), digest))
-      case Right((false, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
-      case Right((true, at)) => Right(at)
+      case Right((false, _, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
+      case Right((true, at, routed)) => Right((at, routed))
     }
 
   /** `calls`' costs recorded for `turn`: the first under `base`, the first repair's under

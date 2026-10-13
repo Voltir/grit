@@ -140,8 +140,8 @@ object RunRetentionLiveTests extends TestSuite {
         d,
         secrets(config, d),
         new ReminderLiveTests.Through(model),
-        classifier,
-        classifier,
+        grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
+        grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
         sweeping = false,
         _ => ()
       )

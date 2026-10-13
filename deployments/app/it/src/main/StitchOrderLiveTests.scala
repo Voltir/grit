@@ -187,7 +187,7 @@ object StitchOrderLiveTests extends TestSuite {
             engine.lifecycle,
             engine.rooms
           ),
-          classifier,
+          grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
           engine.db,
           Clock.system(),
           TriageSpeech(Speaking.Off, Budget(java.time.ZoneOffset.UTC, None), _ => Right(())),
@@ -207,7 +207,7 @@ object StitchOrderLiveTests extends TestSuite {
             engine.search,
             engine.principals
           ),
-          classifier,
+          grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
           engine.db,
           Clock.system(),
           Tuning.Default

@@ -2,7 +2,7 @@ package grit.turn
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.classify.Classifier
+import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
@@ -47,7 +47,7 @@ final case class TurnEnv(
     records: TurnRecords,
     hosting: TurnHosting,
     assembler: ContextAssembler^,
-    classifier: Classifier^,
+    classifier: ClearedClassifier^,
     models: Models^,
     db: Db^,
     clock: Clock^,

@@ -258,7 +258,15 @@ object TriageFixtures {
 
     /** An opening's placement over this world, asking `classifier`, at `minutes`. */
     def placement(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
-      Stitch.body(StitchEnv(reads, classifier, FakeDb, new Stopped(at(minutes)), Tuning.Default))(
+      Stitch.body(
+        StitchEnv(
+          reads,
+          grit.core.classify.TestClassifiers.cleared(classifier),
+          FakeDb,
+          new Stopped(at(minutes)),
+          Tuning.Default
+        )
+      )(
         id
       )
 
@@ -314,7 +322,7 @@ object TriageFixtures {
             lifecycle,
             rooms
           ),
-          classifier,
+          grit.core.classify.TestClassifiers.cleared(classifier),
           FakeDb,
           new Stopped(at(minutes)),
           TriageSpeech(

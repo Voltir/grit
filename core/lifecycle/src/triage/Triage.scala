@@ -3,6 +3,7 @@ package grit.lifecycle.triage
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
+import grit.core.route.Routed
 import grit.core.speech.{Decision, SpeechJson}
 import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
 import grit.core.store.StoreError
@@ -174,27 +175,42 @@ object Triage {
     */
   private def ask(env: TriageEnv^, triage: TriageRef): Either[String, (EntryId, Tags)] = {
     val r = env.records
-    TriageInput
-      .heard(
-        StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
-        r.rooms,
-        env.db.as(Subject.Conversation(triage.period.conversationId)),
-        TurnRef(triage.period.conversationId, triage.turn),
-        env.tuning,
-        TriageRecipe.Shipped
-      )
-      .map { read =>
-        // A conversation not found is at no place, so no source covers it.
-        val sources = read.place.fold(Corpora.Empty)(env.sources.at)
-        (
-          read.entry,
-          env.questions.ask(env.classifier, read.state, sources) match {
-            case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
-            case Left(ClassifierError.Unavailable(why)) => Tags.Unanswered(s"unavailable: $why")
-            case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")
+    // The classifier is asked only when its service is cleared for what the read knew.
+    Routed
+      .reading(env.db.as(Subject.Conversation(triage.period.conversationId))) { (routed, reads) =>
+        TriageInput
+          .heard(
+            StitchReads(
+              r.entries,
+              r.conversations,
+              r.lifecycle,
+              r.stitches,
+              r.search,
+              r.principals
+            ),
+            r.rooms,
+            reads,
+            TurnRef(triage.period.conversationId, triage.turn),
+            env.tuning,
+            TriageRecipe.Shipped
+          )
+          .map { read =>
+            // A conversation not found is at no place, so no source covers it.
+            val sources = read.place.fold(Corpora.Empty)(env.sources.at)
+            (
+              read.entry,
+              env.questions.ask(env.classifier.at(routed), read.state, sources) match {
+                case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
+                case Left(ClassifierError.Unavailable(why)) =>
+                  Tags.Unanswered(s"unavailable: $why")
+                case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")
+              }
+            )
           }
-        )
       }
+      .left
+      .map(e => s"thread unread: ${describe(e)}")
+      .flatten
   }
 
   /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's

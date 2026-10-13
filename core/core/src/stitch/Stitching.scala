@@ -7,6 +7,7 @@ import grit.core.classify.{
   Ask,
   Classifier,
   ClassifierError,
+  ClearedClassifier,
   Criterion,
   Decision,
   Request,
@@ -17,6 +18,7 @@ import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.Probability
 import grit.core.place.{Place, Scope}
+import grit.core.route.Routed
 import grit.core.store.{
   Conversation,
   ConversationStore,
@@ -100,18 +102,23 @@ object Stitching {
   /** Where `turn`'s message goes ([[place]]), when it is an [[Opening]], in the scope in
     * force, read through `db` from `reads`: its entry and its placement. `None`, asking
     * nothing, otherwise, when a placement is kept for it already, or when nothing is offered.
-    * `Left` when the store fails.
+    * `classifier` is asked only when its service is cleared for what the read knew
+    * ([[ClearedClassifier.at]]). `Left` when the store fails.
     */
   def turn(
-      classifier: Classifier^,
+      classifier: ClearedClassifier^,
       reads: StitchReads,
       db: Reads^,
       turn: TurnRef,
       tuning: Tuning
   ): Either[StoreError, Option[(EntryId, Placed)]] =
-    opening(reads, db, turn, tuning, keptAsks = false).map(
-      _.map((first, offer) => first -> place(classifier, offer, tuning))
-    )
+    Routed
+      .reading(db)((routed, bounded) =>
+        opening(reads, bounded, turn, tuning, keptAsks = false).map(
+          _.map((first, offer) => first -> place(classifier.at(routed), offer, tuning))
+        )
+      )
+      .flatten
 
   /** `turn`'s message, when it is an [[Opening]], and what it is offered; a message with a
     * placement kept for it is offered nothing unless `keptAsks`.

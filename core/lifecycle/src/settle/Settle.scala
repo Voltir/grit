@@ -3,6 +3,7 @@ package grit.lifecycle.settle
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, SettleRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
+import grit.core.route.Routed
 import grit.core.store.{Speakers, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.lifecycle.transcript.PeriodTranscript
@@ -55,25 +56,34 @@ object Settle {
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
           case Right(Checked.Asking(first)) =>
             val judgement = d.step(Step.Ask) { () =>
-              val entries = PeriodTranscript.entries(
-                reads,
-                env.records.entries,
-                question.period,
-                first,
-                question.last
-              )
-              entries match {
-                case Left(error) => Judgement.Unanswered(s"transcript unread: ${describe(error)}")
-                case Right(own) =>
-                  // Unread names are no names: each line is then its role's.
-                  val names = PeriodTranscript
-                    .speakers(reads, env.records.principals, own)
-                    .getOrElse(Speakers.none)
-                  SettleQuestion.judge(
-                    env.classifier,
-                    SettleQuestion.Transcript(PeriodTranscript.of(own, names))
+              // The classifier is asked only when its service is cleared for what was read.
+              Routed
+                .reading(reads) { (routed, bounded) =>
+                  val entries = PeriodTranscript.entries(
+                    bounded,
+                    env.records.entries,
+                    question.period,
+                    first,
+                    question.last
                   )
-              }
+                  entries match {
+                    case Left(error) =>
+                      Judgement.Unanswered(s"transcript unread: ${describe(error)}")
+                    case Right(own) =>
+                      // Unread names are no names: each line is then its role's.
+                      val names = PeriodTranscript
+                        .speakers(bounded, env.records.principals, own)
+                        .getOrElse(Speakers.none)
+                      SettleQuestion.judge(
+                        env.classifier.at(routed),
+                        SettleQuestion.Transcript(PeriodTranscript.of(own, names))
+                      )
+                  }
+                }
+                .fold(
+                  error => Judgement.Unanswered(s"transcript unread: ${describe(error)}"),
+                  identity
+                )
             }
             val verdict = Verdict(env.clock.now(), question.last, judgement)
             d.transact(Step.Record, subject)(

@@ -80,7 +80,11 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         RoomLabels.Public,
         Vector.empty,
         Vector.empty,
-        Vector(Cleared(Party.Service(Probe), floor))
+        Vector(
+          Cleared(Party.Service(Probe), floor),
+          // The world's classifier is cleared for what it knows.
+          Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
+        )
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =
@@ -137,7 +141,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         documents.savepoints
       ),
       models,
-      classifier,
+      grit.core.classify.TestClassifiers.cleared(classifier),
       new FakeDb(Clearance.of(floor), visibility),
       clock
     )

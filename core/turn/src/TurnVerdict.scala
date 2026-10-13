@@ -332,13 +332,16 @@ object TurnVerdict {
     }
   }
 
-  /** What the calls made for the verdict cost, the reply's own call aside: their model,
-    * summed usage, and the estimated input of their requests.
+  /** What the calls made for the verdict cost, the reply's own call aside: their model, who
+    * served the first, summed usage, and the estimated input of their requests.
     */
-  def cost(spent: Vector[(Message.Assistant, Tokens)]): Option[(String, Usage, Tokens)] =
+  def cost(
+      spent: Vector[(Message.Assistant, Tokens)]
+  ): Option[(String, Option[String], Usage, Tokens)] =
     spent.headOption.map { (first, _) =>
       (
         first.model,
+        first.upstream,
         Usage.total(spent.map(_._1.usage)),
         spent.map(_._2).foldLeft(Tokens.Zero)(_ + _)
       )

@@ -7,6 +7,7 @@ import grit.core.classify.{
   Ask,
   Classifier,
   ClassifierError,
+  ClearedClassifier,
   Criterion,
   Decision,
   StateJson
@@ -14,6 +15,7 @@ import grit.core.classify.{
 import grit.core.id.{EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.TokenEstimator
+import grit.core.route.Routed
 import grit.core.store.{Db, Entry, EntryStore, EntryTopics, Payload, StoreError, Tx, UsageLedger}
 import grit.core.topic.{Band, Placement, Topic, TopicEvent, TopicId, Weights}
 import grit.core.visibility.Subject
@@ -119,20 +121,25 @@ object TurnTopics {
   )
 
   /** The `classify` step: where `turn`'s message goes, from every entry of its
-    * conversation read through `db`, asking `classifier` as the bands say. Never fails:
-    * what goes wrong is in the result.
+    * conversation read through `db`, asking `classifier` as the bands say, asked only when its
+    * service is cleared for what the read knew ([[ClearedClassifier.at]]). Never fails: what
+    * goes wrong is in the result.
     */
   def classify(
-      classifier: Classifier^,
+      classifier: ClearedClassifier^,
       entries: EntryStore,
       db: Db^,
       estimator: TokenEstimator,
       turn: TurnRef
   ): Classification =
-    db.read(Subject.Turn(turn))(entries.list(turn.conversationId)) match {
+    Routed
+      .reading(db, Subject.Turn(turn))((routed, reads) =>
+        reads.read(entries.list(turn.conversationId)).map(all => (routed, all))
+      )
+      .flatten match {
       case Left(error) =>
         Classification(Vector.empty, None, Vector.empty, None, Some(s"store: ${describe(error)}"))
-      case Right(all) => place(classifier, estimator, turn, all)
+      case Right((routed, all)) => place(classifier.at(routed), estimator, turn, all)
     }
 
   /** [[classify]], over `all` of the conversation's entries. */
@@ -247,11 +254,13 @@ object TurnTopics {
 
   /** The `record-topic` step: `classification`'s events as `turn`'s entry
     * [[placedId]], dated `at`, after everything in the conversation, and the classifier's
-    * cost beside it in the ledger. Nothing to record is recorded as nothing.
+    * cost beside it in the ledger, served by `upstream`. Nothing to record is recorded as
+    * nothing.
     */
   def record(
       entries: EntryStore,
       ledger: UsageLedger,
+      upstream: Option[String],
       turn: TurnRef,
       classification: Classification,
       at: Instant
@@ -262,13 +271,13 @@ object TurnTopics {
       turn,
       placedId(turn),
       classification.events,
-      classification.cost,
+      classification.cost.map((model, usage, estimate) => (model, upstream, usage, estimate)),
       at
     )
 
   /** Records `events` as `turn`'s entry `id`, dated `at`, after everything in the
-    * conversation, with `cost` (a model, its usage and the estimated input) in the ledger
-    * beside it. No events, no entry: `id` is returned all the same.
+    * conversation, with `cost` (a model, who served it, its usage and the estimated input) in
+    * the ledger beside it. No events, no entry: `id` is returned all the same.
     */
   private[turn] def writeEvents(
       entries: EntryStore,
@@ -276,7 +285,7 @@ object TurnTopics {
       turn: TurnRef,
       id: EntryId,
       events: Vector[TopicEvent],
-      cost: Option[(String, Usage, Tokens)],
+      cost: Option[(String, Option[String], Usage, Tokens)],
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     if (events.isEmpty) Right(id)
@@ -294,8 +303,8 @@ object TurnTopics {
             at
           )
         )
-        _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, usage, estimate) =>
-          ledger.record(id, turn, turn.workflowId, model, None, usage, estimate)
+        _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, upstream, usage, estimate) =>
+          ledger.record(id, turn, turn.workflowId, model, upstream, usage, estimate)
         }
       } yield id).left.map(e => TurnFailure.Store(describe(e)))
 

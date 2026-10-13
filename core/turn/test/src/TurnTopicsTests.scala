@@ -184,6 +184,11 @@ object TurnTopicsTests extends TestSuite {
       assert(placed.exists(p => close(p.weights.elsewhere, 0.15)))
       ledger.rows.collect { case r if r._1 == TurnTopics.placedId(turns(1)) => r._3 } ==>
         Vector(StubClassifier.Model)
+      // Served by the classifier's service, as its clearance names it.
+      ledger
+        .of(turns(1).workflowId)(using TestTx.fake)
+        .map(_.collect { case r if r.entry == TurnTopics.placedId(turns(1)) => r.upstream }) ==>
+        Right(Vector(Some("service:test")))
     }
 
     test("unsure: it stays for now, in the uncertain band") {

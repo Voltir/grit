@@ -308,7 +308,7 @@ object TriageTests extends TestSuite {
       val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
       Stitching.offered(w.reads, FakeDb.as(Subject.Public), turn, Tuning.Default) ==> Right(None)
       Stitching.turn(
-        classifier,
+        grit.core.classify.TestClassifiers.cleared(classifier),
         w.reads,
         FakeDb.as(Subject.Public),
         turn,

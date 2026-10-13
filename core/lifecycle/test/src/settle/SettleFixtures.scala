@@ -159,7 +159,7 @@ object SettleFixtures {
       Settle.body(
         SettleEnv(
           SettleRecords(entries, periods, lifecycle, principals),
-          classifier,
+          grit.core.classify.TestClassifiers.cleared(classifier),
           FakeDb,
           new Stopped(at(minutes))
         )
