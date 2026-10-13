@@ -102,20 +102,22 @@ object TurnDocumentsTests extends TestSuite {
   private def pointing(tool: String, path: String): Option[Pointer] =
     Some(got(Pointer.of(got(ToolName.of(tool)), "path" -> ujson.Str(path))))
 
-  /** A model whose first reply calls `tool` with `{"path": path}`, and whose next one
-    * answers.
+  /** A model whose first reply calls `tool` with `{"path": path}`, `times` times, and whose
+    * next one answers.
     */
-  private def calling(tool: String, path: String): Scripted =
+  private def calling(tool: String, path: String, times: Int = 1): Scripted =
     new Scripted((_, n) =>
       Right(
         if (n == 0)
           said(
             "",
-            AssistantBlock.ToolCall(
-              ToolCallId("c1"),
-              tool,
-              ujson.Obj("path" -> ujson.Str(path))
-            )
+            (1 to times).map { i =>
+              AssistantBlock.ToolCall(
+                ToolCallId(s"c$i"),
+                tool,
+                ujson.Obj("path" -> ujson.Str(path))
+              )
+            }*
           ).copy(stop = StopReason.ToolUse)
         else said("read it")
       )
@@ -129,15 +131,24 @@ object TurnDocumentsTests extends TestSuite {
     def sleep(duration: FiniteDuration): Unit = ()
   }
 
+  /** A clock a second later at each read, starting after [[appendedAt]]. */
+  private def ticking: Clock^ = new Clock {
+    private val reads = new java.util.concurrent.atomic.AtomicLong(0)
+    def now(): Instant = appendedAt.plusSeconds(reads.incrementAndGet())
+    def millis(): Long = now().toEpochMilli
+    def sleep(duration: FiniteDuration): Unit = ()
+  }
+
   /** The turn `turn` run over `documents`, its window holding `held`, its model `provider`,
-    * offered `tools`, dated [[appendedAt]].
+    * offered `tools`, dated by `clock`.
     */
   private def followingBody(
       entries: InMemoryEntryStore,
       documents: InMemoryDocuments,
       held: Vector[DocumentVersion],
       provider: Provider^,
-      tools: Toolbox[caps.CapSet^{NoCheckout}]
+      tools: Toolbox[caps.CapSet^{NoCheckout}],
+      clock: Clock^ = fixed
   )(id: WorkflowId)(using Durable^): String =
     turnBodyWith(
       entries,
@@ -145,7 +156,7 @@ object TurnDocumentsTests extends TestSuite {
       windowing(Window(Vector.empty, Vector.empty, Vector.empty, held)),
       new InMemoryUsageLedger,
       documents = documents,
-      clock = fixed,
+      clock = clock,
       tools = tools
     )(id)
 
@@ -288,7 +299,7 @@ object TurnDocumentsTests extends TestSuite {
     }
 
     test(
-      "a turn whose call followed a document's pointer counts it once, at its reply's time; a replayed turn counts none again"
+      "a turn whose calls followed a document's pointer counts it once, at its reply's time; a replayed turn counts none again"
     ) {
       val entries = new InMemoryEntryStore
       val documents = new InMemoryDocuments
@@ -300,13 +311,23 @@ object TurnDocumentsTests extends TestSuite {
       val held = Vector(followed, other, plain)
       val turn = say(entries, "what does the readme say?")
       val durable = new InMemoryDurable
+      val clock = ticking
       def body(id: WorkflowId)(using Durable^): String =
-        followingBody(entries, documents, held, calling("peek", "README.md"), succeeding)(id)
+        followingBody(
+          entries,
+          documents,
+          held,
+          calling("peek", "README.md", times = 2),
+          succeeding,
+          clock
+        )(id)
       val output = durable.run(turn.workflowId)(body(_))
       assert(output.startsWith("replied:"))
-      following(documents, held) ==> Vector(Following.of(1, appendedAt), None, None)
+      val replied = ok(entries.get(turn.replyId)(using TestTx.fake)).map(_.createdAt)
+      val once = Vector(replied.flatMap(Following.of(1, _)), None, None)
+      (following(documents, held), once.headOption.flatten.isDefined) ==> (once, true)
       assert(durable.replay(turn.workflowId, durable.history(turn.workflowId))(body(_)).isRight)
-      following(documents, held) ==> Vector(Following.of(1, appendedAt), None, None)
+      following(documents, held) ==> once
     }
 
     test("a heard-rooted turn whose draft's call followed a document's pointer counts it") {
