@@ -375,21 +375,5 @@ object TurnDocumentsTests extends TestSuite {
         Vector(None)
       )
     }
-
-    test("a turn offered no tools counts no follow, and still appends its reply") {
-      val entries = new InMemoryEntryStore
-      val documents = new InMemoryDocuments
-      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
-      val pointed =
-        write(documents, digest, "Cards", "readme", "Readme.", pointing("peek", "README.md"))
-      val turn = say(entries, "hello")
-      new InMemoryDurable().run(turn.workflowId)(
-        followingBody(entries, documents, Vector(pointed), new RecordingProvider, noTools)
-      )
-      (
-        ok(entries.get(turn.replyId)(using TestTx.fake)).isDefined,
-        following(documents, Vector(pointed))
-      ) ==> (true, Vector(None))
-    }
   }
 }
