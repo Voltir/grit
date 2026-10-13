@@ -421,10 +421,16 @@ object TurnFixtures {
       body(using TestTx.fake)
   }
 
-  /** Writes straight through to the in-memory store, never rolled back. */
-  final class FakeJot extends Jot {
+  /** Writes straight through to the in-memory store, never rolled back, each write at what
+    * `clearance` says then, under `visibility`.
+    */
+  final class FakeJot(
+      clearance: () -> grit.core.visibility.Clearance = () =>
+        grit.core.visibility.Clearance.of(Label.Public),
+      visibility: Visibility = Visibility.Shipped
+  ) extends Jot {
     def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
+      body(using TestTx.fake(clearance(), visibility))
   }
 
   /** A checkout with nothing in it: every read fails as not found. */
@@ -661,7 +667,7 @@ object TurnFixtures {
     * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
     * fixture's TUI session unless given, linked to a service by `worksIn`, and to services it
     * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]); its asker is
-    * as `askers` resolves it; it reads through `db` and pins `catalog`.
+    * as `askers` resolves it; it reads through `db`, writes through `jot` and pins `catalog`.
     */
   def hostedBody(
       entries: EntryStore,
@@ -680,7 +686,8 @@ object TurnFixtures {
       ledger: UsageLedger = new InMemoryUsageLedger,
       askers: Askers = LocalAsker,
       db: Db^ = FakeDb,
-      catalog: Catalog = TestCatalog
+      catalog: Catalog = TestCatalog,
+      jot: Jot^ = new FakeJot
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -725,7 +732,7 @@ object TurnFixtures {
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
         Toolbox.Empty,
         hosted,
-        new FakeJot,
+        jot,
         budget(calls),
         worksIn = worksIn,
         reaches = reaches,

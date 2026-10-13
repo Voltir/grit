@@ -137,6 +137,7 @@ object CallingTests extends TestSuite {
     case Quiet
     case Rings
     case Answered(outcome: Outcome)
+    case Rises(clearance: grit.core.visibility.RisingClearance)
   }
 
   /** `edges`' requests, but the `expire` step's settle and the `abandon` step's abandon are
@@ -155,6 +156,7 @@ object CallingTests extends TestSuite {
       case Meanwhile.Rings => durable.send(slot.turn.workflowId, slot.key, "rang")
       case Meanwhile.Answered(o) =>
         val _ = edges.answerAs(edge, slot, o)
+      case Meanwhile.Rises(clearance) => clearance.rise()
     }
     def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
         Tx^
@@ -189,17 +191,20 @@ object CallingTests extends TestSuite {
     (edges, edge)
   }
 
-  /** What the wait for `cs` comes to over `requests`, and the steps it recorded. */
+  /** What the wait for `cs`, bounded by `bound`, comes to over `requests`, and the steps it
+    * recorded.
+    */
   private def waited(
       durable: InMemoryDurable,
       requests: ToolRequests,
       place: Option[Place] = Some(github.place),
-      rung: Boolean = false
+      rung: Boolean = false,
+      bound: Option[Label] = None
   ): (String, Vector[String]) = {
     val got = durable.run(id) { _ =>
       // Rung before the wait begins, as an edge that answered at once has.
       if (rung) durable.send(id, cs.key, "rang")
-      Calling.await(requests, cs, place, steps, Subject.Turn(turn)).toString
+      Calling.await(requests, cs, place, steps, Subject.Turn(turn), bound).toString
     }
     (got, durable.recordedSteps(id).filterNot(_.startsWith("DBOS.")))
   }
@@ -334,6 +339,36 @@ object CallingTests extends TestSuite {
         ("Known(Done(ok))", Vector("expire:0:0")),
         ("Known(Done(ok))", Vector("expire:0:0", "abandon:0:0"))
       )
+    }
+
+    test(
+      "a request answered as its wait ends is unread where the turn knows more than its bound, at either step, asking again"
+    ) {
+      val (internal, restricted) = (Label.at(Level.Internal), Label.at(Level.Restricted))
+      val answered = Meanwhile.Answered(Outcome.Done("ok"))
+      val atExpire = new InMemoryDurable(resolve = _ => Clearance.of(restricted))
+      val (early, edge) = sent(claimed = true)
+      val first = waited(
+        atExpire,
+        new Racing(early, atExpire, edge, answered, Meanwhile.Quiet),
+        bound = Some(internal)
+      )
+      val rising = new grit.core.visibility.RisingClearance(internal, restricted)
+      val atAbandon = new InMemoryDurable(resolve = _ => rising.now)
+      val (late, other) = sent(claimed = true)
+      val second = waited(
+        atAbandon,
+        new Racing(late, atAbandon, other, Meanwhile.Rises(rising), answered),
+        bound = Some(internal)
+      )
+      (
+        first._1.startsWith("Unread("),
+        first._1.contains("ask again"),
+        first._2,
+        second._1.startsWith("Unread("),
+        second._1.contains("ask again"),
+        second._2
+      ) ==> (true, true, Vector("expire:0:0"), true, true, Vector("expire:0:0", "abandon:0:0"))
     }
 
     test("a claimed request is waited on RunWithin more, then rung when its edge rings") {

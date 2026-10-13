@@ -12,7 +12,7 @@ import grit.core.id.{ToolCallId, TurnRef}
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 
 /** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
   * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
@@ -74,7 +74,9 @@ object TurnHosted {
     * says whether it went to a serving edge then. Its outcome, the answer, or why there is
     * none, is kept by `tool:n:j` through `settling`; once the edge rang, that step reads the
     * answer from the request ([[Calling.answer]]); a call not sent, it reads whether the turn
-    * has an asker, to say why. It is sent as `pins` says ([[dispatch]]).
+    * has an asker, to say why. It is sent as `pins` says ([[dispatch]]), and every read of its
+    * answer, or of why there is none, runs only while the turn knows no more than it was routed
+    * for (`pins.known`): after a rise the turn fails, saying to ask again, and keeps no answer.
     */
   private[turn] def settle(
       hosting: TurnHosting,
@@ -94,7 +96,9 @@ object TurnHosted {
     val outcome: Either[TurnFailure, Waited] =
       Calling.gate(Gates.Asker(answerWithin), hosted) match {
         case Gated.Free =>
-          Right(if (sent) Waited.Phase(awaited(hosting, slot, place)) else Waited.Unsent)
+          Right(
+            if (sent) Waited.Phase(awaited(hosting, slot, place, pins.bound)) else Waited.Unsent
+          )
         case Gated.Refused(o) => Right(Waited.Phase(Awaited.Known(o)))
         case Gated.Ask(asked, within) =>
           val entries = settling.entries
@@ -112,7 +116,9 @@ object TurnHosted {
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot), Subject.Turn(turn))(
                     dispatch(hosting, turn, to, Vector((slot, hosted)), Permit.Approved, pins)
                   )
-                } yield if (went) Waited.Phase(awaited(hosting, slot, place)) else Waited.Unsent
+                } yield
+                  if (went) Waited.Phase(awaited(hosting, slot, place, pins.bound))
+                  else Waited.Unsent
             }
           }
       }
@@ -120,7 +126,9 @@ object TurnHosted {
     outcome.flatMap {
       case Waited.Unsent =>
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, clock.now())(unsent(askers, slot.turn, place))
+          settling.answerFrom(slot, call, shown, clock.now())(
+            pins.known.map(_ => unsent(askers, slot.turn, place))
+          )
         )
       case Waited.Phase(Awaited.Known(o)) =>
         d.step(slot.step)(() => settling.answer(slot, call, shown, o, clock.now()))
@@ -131,7 +139,9 @@ object TurnHosted {
       case Waited.Phase(Awaited.Rung(cs)) =>
         d.step(slot.step)(() =>
           settling.answerFrom(slot, call, shown, clock.now())(
-            Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
+            pins.known.map(_ =>
+              Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
+            )
           )
         )
     }
@@ -163,16 +173,20 @@ object TurnHosted {
   /** The request of the call at `slot` waited on ([[Calling.await]]), its silent edge's steps
     * `expire:n:j` and `abandon:n:j`.
     */
-  private def awaited(hosting: TurnHosting, slot: TurnTools.Slot, workspace: Option[Place])(using
-      d: Durable^
-  ): Awaited[TurnFailure] = {
+  private def awaited(
+      hosting: TurnHosting,
+      slot: TurnTools.Slot,
+      workspace: Option[Place],
+      bound: Option[Label]
+  )(using d: Durable^): Awaited[TurnFailure] = {
     import TurnJournal.given
     Calling.await(
       hosting.requests,
       slot.call,
       workspace,
       WaitSteps(TurnHostedSteps.expire(slot), TurnHostedSteps.abandon(slot)),
-      Subject.Turn(slot.turn)
+      Subject.Turn(slot.turn),
+      bound
     )
   }
 

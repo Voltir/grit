@@ -335,6 +335,43 @@ object TurnHostedTests extends TestSuite {
         (Some(Vector()), 0)
     }
 
+    test(
+      "a hosted call answered after the turn's clearance rose fails the turn, asking again, and keeps no answer"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "search")
+      val rising = new grit.core.visibility.RisingClearance(internal, restricted)
+      val durable = new InMemoryDurable(resolve = _ => rising.now, visibility = githubInternal)
+      // The edge answers at once, as the conversation's clearance rises.
+      val edge = atGithub(
+        durable,
+        _ => {
+          rising.rise()
+          Serve.Now(Outcome.Done("found"))
+        }
+      )
+      val ran = durable.run(turn.workflowId)(
+        hostedBody(
+          entries,
+          model(("t1", "github_search", "grit")),
+          edge,
+          hosted = Vector.empty,
+          from = Origin.Slack("T1", "C1", "1.0"),
+          worksIn = Vector(WorksIn(Place.Everywhere, github)),
+          db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(internal), githubInternal),
+          catalog = RoutedCatalog,
+          jot = new FakeJot(() => rising.now, githubInternal)
+        )
+      )
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
+      (
+        edge.sent.size,
+        ran.startsWith("failed: Store("),
+        ran.contains("ask again"),
+        entries.get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
+      ) ==> (1, true, true, Right(None))
+    }
+
     test("a request at a service no edge claims in time is answered that nothing serves it") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "search")

@@ -12,7 +12,7 @@ import grit.core.job.ScheduleStore
 import grit.core.place.{Place, Service}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-import grit.core.visibility.{Classification, Subject}
+import grit.core.visibility.{Classification, Label, Subject}
 
 /** The steps a hosted call's wait takes when its edge is silent: `expire`, after
   * [[Calling.ServeWithin]], and `abandon`, after [[Calling.RunWithin]] more.
@@ -167,15 +167,17 @@ object Calling {
     * `subject`): answered meanwhile, `Known` with the answer; unclaimed, `Known` with a `Failed`
     * naming `place`'s service, or saying no edge serves it; claimed, waited on [[RunWithin]]
     * more, then `Rung`, or `steps.abandon`: answered meanwhile, `Known`, else
-    * `Known(Interrupted)`. A step that cannot read the request is `Unread`. Its steps record
-    * what they found in `F`'s form.
+    * `Known(Interrupted)`. A step that cannot read the request is `Unread`, as is one whose
+    * transaction knows more than `bound` ([[Tx.within]], checked first, saying to ask again;
+    * `None`: unbounded). Its steps record what they found in `F`'s form.
     */
   def await[F](
       requests: ToolRequests,
       cs: CallSlot,
       place: Option[Place],
       steps: WaitSteps,
-      subject: Subject
+      subject: Subject,
+      bound: Option[Label]
   )(using
       d: Durable^,
       faults: Faults[F],
@@ -185,7 +187,9 @@ object Calling {
     d.recv(cs.key, ServeWithin) match {
       case Some(_) => Awaited.Rung(cs)
       case None =>
-        d.transact(steps.expire, subject)(standing(requests.settle(cs))) match {
+        d.transact(steps.expire, subject)(
+          standing(within(bound).flatMap(_ => requests.settle(cs)))
+        ) match {
           case Left(failure) => Awaited.Unread(failure)
           case Right(RequestState.Answered(o)) => Awaited.Known(o)
           case Right(RequestState.Expired) =>
@@ -194,7 +198,9 @@ object Calling {
             d.recv(cs.key, RunWithin) match {
               case Some(_) => Awaited.Rung(cs)
               case None =>
-                d.transact(steps.abandon, subject)(standing(requests.abandon(cs))) match {
+                d.transact(steps.abandon, subject)(
+                  standing(within(bound).flatMap(_ => requests.abandon(cs)))
+                ) match {
                   case Left(failure) => Awaited.Unread(failure)
                   case Right(RequestState.Answered(o)) => Awaited.Known(o)
                   case Right(_) => Awaited.Known(Outcome.Interrupted)
@@ -234,6 +240,9 @@ object Calling {
       case Left(StoreError.Invalid(_)) => Right(Outcome.Failed(RungGone))
       case Left(e) => Left(faults.store(e.toString))
     }
+
+  private def within(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
+    bound.fold(Right(()))(Tx.within(_))
 
   private def standing[F](state: Either[StoreError, RequestState])(using
       faults: Faults[F]
