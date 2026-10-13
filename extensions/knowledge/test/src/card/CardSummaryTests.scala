@@ -34,8 +34,16 @@ object CardSummaryTests extends TestSuite {
     }
 
     test("a reply of more than 8 terms does not conform, and a summary of 9 is refused") {
+      def conforms(n: Int) = CardSummary.Reply.schema
+        .check(ujson.Obj("summary" -> "A file.", "terms" -> terms(n)), Set.empty)
+        .map(_ => ())
+        .left
+        .map(_.toString)
+      (conforms(8), conforms(9)) ==> (
+        Right(()),
+        Left("Mismatch(terms,expected at most 8 items, got 9)")
+      )
       assert(reply(ujson.Obj("summary" -> "A file.", "terms" -> terms(8))).isRight)
-      assert(reply(ujson.Obj("summary" -> "A file.", "terms" -> terms(9))).isLeft)
       assert(
         CardSummary.of("A file.", terms(9).value.toVector.flatMap(_.strOpt)) ==
           Left("a summary has at most 8 terms, not 9")
