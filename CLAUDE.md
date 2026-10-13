@@ -8,7 +8,8 @@ local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges r
 only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
 Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 with `pg_textsearch` · capture checking on, and separation
-checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)).
+checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)). Versions live in
+`build.mill` and `.mill-version`.
 
 ## Architecture
 
