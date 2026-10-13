@@ -27,15 +27,19 @@ Decision:
   chooses among its cleared candidates in a transaction opened for the work, and when none is
   cleared it takes its degraded path (a fixed reply, a mechanical fallback, no judgment), never
   an uncleared call. A turn routes in a step of its own, before its offer, and records the
-  classification it routed for; what the turn's window was then assembled from is checked
-  against it, from the labels the window recorded, so a clearance that rose and fell meanwhile
-  cannot send more than was routed.
+  classification it routed for; every later read whose content a model is sent runs only in a
+  transaction classified at most that, and every later transaction that writes or sends runs
+  only at exactly that, so a clearance that rose or fell meanwhile cannot send or write more
+  than was routed.
 - **Routing is staged:** safety first, by clearance alone; then, only where safety left a
   choice, the task and effort the turn calls for pick among what remains. No later stage can
   undo the first.
 - Each dimension is declared and checked on its own. Integrity (ADR 0036) adds its own
   declaration beside clearances, and the rule above does not change: sending is a
   confidentiality question.
+
+The one model call outside routing is the operator's `probe_pair`: it asks first, and sends
+grit's fixed probe text, never anything read from the store.
 
 Consequences: a deployment that labels rooms above public must declare clearances for its pairs
 and its classifier's service, or calls there fail closed; under the default visibility every
