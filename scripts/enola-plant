@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""The law's own test: plants a breach of every rule and of each of scripts/enola-law.sh's
-greps, runs the law against each, and passes only when every plant was caught. The plants
-are deleted afterwards (on failure too), and the law is run once more on the clean tree.
+"""The law's own test: plants a breach of every rule, of the cycle check and of each of
+scripts/enola-law.sh's greps, runs the law once over all of them, and passes only when every
+plant was caught. The law is run on the clean tree first (it must pass, and it pins a baseline
+if none is pinned), the plants are deleted afterwards (on failure too), and the law is run once
+more on the clean tree.
 
     scripts/enola-plant
 
@@ -13,14 +15,20 @@ scripts/enola-law.sh or where a module's folder is; a layout change runs it befo
 Where the plants go is read from the tree, so a layout change needs no edit here:
   rules     enola-intent.yaml's components. Every `forbid_name` rule: one file in core's test
             sources (a member of every outside-* component, and outside the process grep's
-            `src` roots, which its java.lang.ProcessBuilder import would trip) importing every
-            forbidden class. Every `allow` rule: one file in its component's first match,
+            production roots, which its java.lang.ProcessBuilder import would trip) importing
+            every forbidden class. Every `allow` rule: one file in its component's first match,
             importing grit.app.main.Main -- a deployment, which ADR 0021 lets no component name.
+  cycle     two packages in core's main sources importing each other: enola reports cycles
+            between production packages only.
+  names     the four name greps: each name written fully qualified, with no import (so no
+            edge for a rule to see), in the kit's main sources, which none may name.
   unruled   the quarantine grep: one unruled class imported in each of grit.dbos, grit.models,
             grit.mcp, grit.host and grit.slack's sources, each of which it must list.
   process   the process grep: `new ProcessBuilder` with no import in every production source
-            folder but grit.host's, each of which it must list.
-Each kind runs on its own, since the greps stop the law before enola's check.
+            root but grit.host's (the outline tool's test fixture's included: a `src` root),
+            each of which it must list.
+Each catch is read from its own part of the law's output: a rule from enola's `constraint
+<id> violated`, every other kind from the lines under its check's heading.
 
 Exits 0 when every plant was caught, 1 otherwise, 2 when the tree is not as expected.
 Plant files need not compile: the law reads source, and nothing here runs Mill.
@@ -83,8 +91,8 @@ def member(path, component):
 
 
 def write(folder, name, body):
-    os.makedirs(os.path.join(folder, PLANT), exist_ok=True)
     path = os.path.join(folder, PLANT, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(body)
     return path
@@ -99,7 +107,7 @@ planted = []
 
 
 def clean():
-    for folder in sorted({os.path.dirname(p) for p in planted}):
+    for folder in sorted({p[: p.index("/" + PLANT + "/") + len(PLANT) + 1] for p in planted}):
         shutil.rmtree(folder, ignore_errors=True)
     planted.clear()
 
@@ -126,6 +134,38 @@ def plant_rules(intent):
     return {r["id"] for r in rules}
 
 
+CYCLE = {"a": "b", "b": "a"}  # each planted package and the one it imports
+
+
+def plant_cycle():
+    root = root_of("grit.core", "src")
+    for pkg, other in CYCLE.items():
+        planted.append(write(root, f"{pkg}/{pkg.upper()}.scala",
+                             f"package grit.{PLANT}.{pkg}\n\nimport grit.{PLANT}.{other}.{other.upper()}\n\n"
+                             f"object {pkg.upper()} {{ def other = {other.upper()} }}\n"))
+    return {f"{root}/{PLANT}/{pkg}" for pkg in CYCLE}
+
+
+# Each name grep's heading in the law's output, and the fully qualified use that must trip it.
+NAMES = {
+    "may name LabelParts": "grit.core.visibility.LabelParts",
+    "may name Maintenance": "grit.core.visibility.Maintenance",
+    "may name grit.dbos.internal": "grit.dbos.internal.Reader",
+    "may name PrincipalIds": "grit.core.id.PrincipalIds",
+}
+
+
+def plant_names():
+    root = root_of("grit.kit", "src")
+    files = {}
+    for heading, name in NAMES.items():
+        path = write(root, name.rsplit(".", 1)[1] + ".scala",
+                     f"package grit.{PLANT}\n\nval named = {name}\n")
+        planted.append(path)
+        files[heading] = path
+    return files
+
+
 UNRULED = {
     "grit.dbos": "dev.dbos.transact.EnolaPlantDbos",
     "grit.models": "java.net.http.EnolaPlantModels",
@@ -138,22 +178,38 @@ UNRULED = {
 def plant_unruled():
     for package, cls in UNRULED.items():
         planted.append(write(root_of(package, "src"), "Unruled.scala",
-                             f"package grit.enolaplant\n\nimport {cls}\n"))
+                             f"package grit.{PLANT}\n\nimport {cls}\n"))
     return set(UNRULED.values())
 
 
 def plant_process():
     host = root_of("grit.host", "src")
+    files = set()
     for root in roots("src"):
         if root != host:
-            planted.append(write(root, "Process.scala",
-                                 "package grit.enolaplant\n\nval p = new ProcessBuilder(\"true\")\n"))
-    return set(planted)
+            path = write(root, "Process.scala", f"package grit.{PLANT}\n\nval p = new ProcessBuilder(\"true\")\n")
+            planted.append(path)
+            files.add(path)
+    return files
 
 
-def caught_rules(output):
-    """The rules enola's check reports violated, from its regressions block."""
-    return set(re.findall(r"constraint (\S+) violated", output))
+def block(output, heading):
+    """The lines indented two spaces under the line containing `heading`, stripped."""
+    lines = output.splitlines()
+    found = set()
+    for i, line in enumerate(lines):
+        if heading in line and not line.startswith(" "):
+            for item in lines[i + 1:]:
+                if not item.startswith("  "):
+                    break
+                found.add(item.strip())
+    return found
+
+
+def report(kind, wanted, caught):
+    missed = sorted(set(wanted) - set(caught))
+    print(f"{kind}: {len(wanted) - len(missed)} of {len(wanted)} caught" + (f"; missed: {' '.join(missed)}" if missed else ""))
+    return not missed
 
 
 def main():
@@ -161,30 +217,27 @@ def main():
         intent = yaml.safe_load(f)
     if any(os.path.isdir(os.path.join(r, PLANT)) for kind in ("src", "test") for r in roots(kind)):
         fail(f"a {PLANT}/ folder is already in the tree; delete it first")
+    rc, out = law()
+    if rc != 0:
+        print(out[-3000:])
+        fail("the law fails on the clean tree; plants could not be told apart from what is there")
     ok = True
     try:
         ids = plant_rules(intent)
-        rc, out = law()
-        clean()
-        missed = sorted(ids - caught_rules(out))
-        print(f"rules: {len(ids) - len(missed)} of {len(ids)} caught" + (f"; missed: {' '.join(missed)}" if missed else ""))
-        ok &= rc != 0 and not missed
-
+        cycle = plant_cycle()
+        names = plant_names()
         classes = plant_unruled()
-        rc, out = law()
-        clean()
-        listed = set(re.findall(r"^  (\S+)$", out, re.M)) if "no rule in enola-intent.yaml names" in out else set()
-        missed = sorted(classes - listed)
-        print(f"unruled grep: {len(classes) - len(missed)} of {len(classes)} caught" + (f"; missed: {' '.join(missed)}" if missed else ""))
-        ok &= rc != 0 and not missed
-
         files = plant_process()
         rc, out = law()
         clean()
-        listed = set(re.findall(r"^  (\S+)$", out, re.M)) if "Only grit.host may start a process" in out else set()
-        missed = sorted(files - listed)
-        print(f"process grep: {len(files) - len(missed)} of {len(files)} caught" + (f"; missed: {' '.join(missed)}" if missed else ""))
-        ok &= rc != 0 and not missed
+        ok &= rc != 0
+        ok &= report("rules", ids, set(re.findall(r"constraint (\S+) violated", out)))
+        cycled = block(out, "The law fails on any import cycle")
+        ok &= report("cycle", cycle, {p for p in cycle if any(p in line for line in cycled)})
+        ok &= report("name greps", names.values(),
+                     {path for heading, path in names.items() if path in block(out, heading)})
+        ok &= report("unruled grep", classes, block(out, "no rule in enola-intent.yaml names"))
+        ok &= report("process grep", files, block(out, "Only grit.host may start a process"))
     finally:
         clean()
     rc, out = law()
