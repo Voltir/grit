@@ -340,7 +340,7 @@ object Render {
     Set("case", "final", "sealed", "abstract", "open", "implicit", "private", "protected", "class")
 
   private def caseItem(d: Defn): String = {
-    // Read leaves a parameterless enum case's signature empty; its name is what the signature would be without `case `.
+    // A case Read found no signature for falls back to its name, which is what the signature would be without `case `.
     val signature = collapse(withoutDocs(d.signature))
     val source = if (signature.isEmpty) d.name else signature
     val cut = source.indexOf(" extends ")
