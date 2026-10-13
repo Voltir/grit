@@ -14,9 +14,9 @@ set -uo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-find . -path ./out -prune -o -path ./tools -prune -o -path ./.local -prune -o \
-  -path '*/src/*' -name '*.scala' -print |
-  grep -vE '/(test|it|probes)/src/|^\./core/core/src/clock/' |
+# The files this checkout tracks: never a nested worktree's, nor a build's output.
+git ls-files -- '*/src/*.scala' |
+  grep -vE '/(test|it|probes)/src/|^core/core/src/clock/' |
   sort |
   xargs awk '
     FNR == 1 { marked = 0 }
@@ -30,7 +30,6 @@ find . -path ./out -prune -o -path ./tools -prune -o -path ./.local -prune -o \
         line = $0
         sub(/^[[:space:]]+/, "", line)
         file = FILENAME
-        sub(/^\.\//, "", file)
         printf "clock-check: %s:%d reads the JVM'"'"'s time or randomness outside grit.core.clock: %s\n", file, FNR, line
         found = 1
       }
