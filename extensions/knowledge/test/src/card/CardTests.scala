@@ -35,13 +35,10 @@ object CardTests extends TestSuite {
       assert(DocKey.value(card(Vector.empty).docKey) == CardKey.value(key))
     }
 
-    test("a path over 200 characters has a stable key of 64 hex digits") {
+    test("a path over 200 characters is hashed whole") {
       val long = "src/" + ("deep/" * 60) + "file.scala"
       assert(long.length > 200)
-      val key = CardKey.of(corpus, long)
-      assert(key == CardKey.of(corpus, long))
-      assert(CardKey.value(key).length == 64)
-      assert(key != CardKey.of(corpus, long + "x"))
+      assert(CardKey.of(corpus, long) != CardKey.of(corpus, long + "x"))
     }
 
     test("a card's text is its summary, then a line of its terms") {

@@ -14,9 +14,10 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** [[DurableMoves.keeping]]'s keeps as durable steps, over [[MovesWorld]]'s documents, which
-  * roll nothing back: that a keep commits with its record, or not at all, is the live tier's to
-  * show. The rules every keep keeps are [[MovesContract]]'s.
+/** [[DurableMoves.keeping]]'s keeps as durable steps, over [[MovesWorld]]'s in-memory
+  * documents, whose savepoints roll a keep's writes back: that a keep commits with its record,
+  * or not at all, is the live tier's to show. The rules every keep keeps are
+  * [[MovesContract]]'s.
   */
 object DurableKeepingTests extends TestSuite {
   import MovesContract.{Kept, name, write}

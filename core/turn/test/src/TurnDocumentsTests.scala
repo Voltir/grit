@@ -353,7 +353,7 @@ object TurnDocumentsTests extends TestSuite {
     }
 
     test(
-      "a call refused at bind follows nothing: a pointer naming a tool the turn was not offered, as a service its room may not send to is not"
+      "a call of a tool the turn was not offered is refused at bind and follows nothing"
     ) {
       val entries = new InMemoryEntryStore
       val documents = new InMemoryDocuments

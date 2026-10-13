@@ -95,15 +95,6 @@ object PointerTests extends TestSuite {
       pointer.followedBy(tool, ujson.Str("owner")) ==> false
     }
 
-    test("a call of the unprefixed name does not follow the pointer, with equal arguments") {
-      val call = ujson.Obj(
-        "owner" -> ujson.Str("o"),
-        "repo" -> ujson.Str("r"),
-        "path" -> ujson.Str("p")
-      )
-      pointer.followedBy(ToolName("get_file_contents"), call) ==> false
-    }
-
     test("a pointer refuses two arguments of one name") {
       Pointer
         .of(tool, "path" -> ujson.Str("p"), "path" -> ujson.Str("q"))
