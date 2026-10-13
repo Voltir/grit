@@ -197,7 +197,7 @@ object Query {
     }
   }
 
-  /** The `area` answer for the named areas `names`, declared in `config`: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `NoMatch` for a name no area declares, `Failed` for a level outside 0..1; cut at `cap` bytes. */
+  /** The `area` answer for the named areas `names`, declared in `config`; with no names, one line per declared area, its name and its purpose. For names: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `NoMatch` for a name no area declares, `Failed` for a level outside 0..1; cut at `cap` bytes. */
   def area(
       root: Root,
       layout: Layout,
@@ -209,7 +209,12 @@ object Query {
   ): (Answer, Roots) =
     if (level < 0 || level > 1)
       (Answer(s"level must be 0 or 1\n${Help.usage(Help.area)}", Status.Failed), roots)
-    else {
+    else if (names.isEmpty) {
+      val listed = config.areas.map(a => a.purpose.fold(a.name)(p => s"${a.name}  $p"))
+      if (listed.isEmpty)
+        (Answer(s"${header(root)}\nno area declared in .outline.conf", Status.NoMatch), roots)
+      else (Answer((header(root) +: listed).mkString("\n"), Status.Found), roots)
+    } else {
       val declared = config.areas.map(_.name)
       names.find(n => !declared.contains(n)) match {
         case Some(n) =>

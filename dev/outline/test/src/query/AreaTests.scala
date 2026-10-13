@@ -27,8 +27,10 @@ object AreaTests extends TestSuite {
       Area(
         "chain",
         Vector("grit.outline.fixture.A", "grit.outline.fixture.Colour"),
-        Vector("grit.outline.fixture.store.Store")
-      )
+        Vector("grit.outline.fixture.store.Store"),
+        Some("A chain of types, and a store.")
+      ),
+      Area("colours", Vector("grit.outline.fixture.Colour"), Vector.empty)
     )
   )
 
@@ -51,6 +53,30 @@ object AreaTests extends TestSuite {
       assert(Config.read(Root(repeated)).left.toOption.exists(_.contains("line 2")))
     }
 
+    test("an area line's quoted text between its name and its colon is its purpose") {
+      val dir = os.temp.dir()
+      os.write(dir / ".outline.conf", "area chain \"Where a chain starts.\": X.y\n")
+      assert(
+        Config.read(Root(dir)) == Right(
+          Config(
+            Vector.empty,
+            Vector(Area("chain", Vector("X.y"), Vector.empty, Some("Where a chain starts.")))
+          )
+        )
+      )
+    }
+
+    test("area with no name lists each declared area with its purpose") {
+      val answer = area(chain, Vector.empty, 1)
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator.drop(1).toVector == Vector(
+          "chain  A chain of types, and a store.",
+          "colours"
+        )
+      )
+    }
+
     test("level 0 lists one line for each package the chain's definitions are in") {
       val text = area(chain, Vector("chain"), 0).text
       assert(text.linesIterator.exists(_.startsWith("grit.outline.fixture  ")))
@@ -69,7 +95,7 @@ object AreaTests extends TestSuite {
     test("an undeclared area name is NoMatch, and the answer names the declared areas") {
       val answer = area(chain, Vector("nope"), 1)
       assert(answer.status == Status.NoMatch)
-      assert(answer.text.contains("no area nope; declared: chain"))
+      assert(answer.text.contains("no area nope; declared: chain, colours"))
     }
   }
 }

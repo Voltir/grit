@@ -137,12 +137,14 @@ object Help {
   val area: Entry = Entry(
     query = "area",
     operand = Operand(
-      "name[,name…]",
+      "[name[,name…]]",
       "names",
-      "declared area names, as the project's .outline.conf declares them; comma-separated on the CLI."
+      "declared area names, as the project's .outline.conf declares them; comma-separated on the CLI; none to list the declared areas, each with its purpose."
     ),
-    purpose = "To get a map of a part of the project.",
+    purpose =
+      "To get a map of a part of the project, or with no name the list of the declared areas.",
     examples = Vector(
+      Example("list the declared areas and what each is for", "area"),
       Example("map the storage area", "area storage")
     ),
     flags = Vector(

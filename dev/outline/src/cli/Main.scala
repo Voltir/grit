@@ -141,6 +141,8 @@ object Main {
         tests(suite, rest, cwd, leadingRoot)
       case "area" :: names :: rest if !names.startsWith("--") =>
         area(names, rest, cwd, leadingRoot)
+      case "area" :: rest =>
+        area("", rest, cwd, leadingRoot)
       case "find" :: pattern :: rest if !pattern.startsWith("--") =>
         find(pattern, rest, cwd, leadingRoot)
       case other :: _ =>

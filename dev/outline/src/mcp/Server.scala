@@ -85,7 +85,7 @@ object Server {
       prop(Help.area, "level", "type" -> "integer"),
       prop(Help.area, "root", "type" -> "string")
     ),
-    Vector("names")
+    Vector.empty
   )
 
   private val findTool: ujson.Value = tool(
@@ -430,7 +430,7 @@ object Server {
 
   private def parseArea(args: ujson.Value): Either[String, AreaArgs] =
     for {
-      names <- stringList(args, "names", required = true)
+      names <- stringList(args, "names", required = false)
       level <- levelArg(args)
       root <- rootArg(args)
     } yield AreaArgs(names, level, root)

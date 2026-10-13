@@ -31,9 +31,10 @@ filter by path prefix.
     scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]
 
 **area**: To get a map of a part of the project: the areas `.outline.conf` declares, at level 0 one
-line per package, at level 1 (the default) each definition with its doc's first sentence.
+line per package, at level 1 (the default) each definition with its doc's first sentence. With no
+name, the declared areas, each with its purpose.
 
-    scripts/outline area name[,name…] [--level 0|1] [--cap BYTES] [--root DIR]
+    scripts/outline area [name[,name…]] [--level 0|1] [--cap BYTES] [--root DIR]
 
 **find**: To find a definition when you don't know its name: one line per definition in main
 sources, members included, as its full name, file, lines and collapsed signature. The pattern's
@@ -78,12 +79,13 @@ The launcher is built on first use and rebuilt when a source under `dev/outline/
 The file sits at the repository root. Lines starting with `#` are comments.
 
     hide vendor/generated
-    area storage: com.example.store.Store com.example.store.Tx family:com.example.store.Repository
+    area storage "Where records are kept.": com.example.store.Store com.example.store.Tx family:com.example.store.Repository
     test-call test
 
 - `hide <path>`: source paths no query shows unless it names them fully.
-- `area <name>: <symbols…>`: a named set of symbols, and `family:<Trait>` entries for a trait's
-  implementations and contracts.
+- `area <name> "<purpose>": <symbols…>`: a named set of symbols, and `family:<Trait>` entries for a
+  trait's implementations and contracts; the quoted purpose, optional, is what `area` with no name
+  lists.
 - `test-call <name>`: the call `tests` reads test names from, as in `test("name") { … }`.
 
 A bad line is named by its line number in the error.
