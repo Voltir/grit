@@ -4,8 +4,8 @@ import grit.core.durable.Probes
 
 import utest.*
 
-/** `clearance` captures the store it is given and nothing else: its declared type,
-  * `Tool[Unit]^{store}`, refuses a tool that also calls another capability.
+/** `clearance` captures nothing: it reads through the reads its turn hands each call, so its
+  * declared type, `Tool[Unit]`, refuses a tool that also reads a store of its own.
   */
 object ClearedCaptureTests extends TestSuite {
 
@@ -15,39 +15,36 @@ object ClearedCaptureTests extends TestSuite {
       |import grit.core.tool.{Args, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
       |import grit.core.visibility.Subject
       |import grit.tools.Cleared
-      |trait Provider extends caps.SharedCapability { def call(): String }
       |""".stripMargin
 
-  /* A model of `Cleared.tool` at its declared type, whose run does `runs` before reading. */
-  private def model(runs: String): String =
-    s"""def tool(askers: Askers, store: Db^, p: Provider^): Tool[Unit]^{store} =
+  /* A model of `Cleared.tool` at its declared type, its run reading through `reads`. */
+  private def model(reads: String): String =
+    s"""def tool(askers: Askers, store: Db^): Tool[Unit] =
        |    Hosted[Unit](
        |      ToolSpec(ToolName("clearance"), "d", Args.of(NamedTuple.Empty).map(_ => ())),
        |      Gate.Free,
        |      _ => ""
-       |    ).calling((_, at) => {
-       |      $runs
-       |      store.read(Subject.Turn(at.turn))((tx: Tx^) ?=> Right("x")).fold(_ => Outcome.Failed("x"), Outcome.Done(_))
-       |    })""".stripMargin
+       |    ).reading((_, at, handed) =>
+       |      $reads.read((tx: Tx^) ?=> Right("x")).fold(_ => Outcome.Failed("x"), Outcome.Done(_))
+       |    )""".stripMargin
 
-  private val itself =
-    "def made(askers: Askers, store: Db^): Tool[Unit]^{store} = Cleared.tool(askers, store)"
-  private val reading = model("()")
-  private val calling = model("val _ = p.call()")
-  private lazy val compiled = Probes.batch(prelude, List(itself, reading, calling))
+  private val itself = "def made(askers: Askers): Tool[Unit] = Cleared.tool(askers)"
+  private val handed = model("handed")
+  private val ownStore = model("store.as(Subject.Turn(at.turn))")
+  private lazy val compiled = Probes.batch(prelude, List(itself, handed, ownStore))
 
   val tests = Tests {
     test("one compile answers every probe") {
       assert(compiled.runs == 1)
     }
 
-    test("control: the tool itself, and a model reading only the store, compile at that type") {
-      (compiled.errors(itself), compiled.errors(reading)) ==> (Nil, Nil)
+    test("control: the tool itself, and a model reading what it is handed, compile at that type") {
+      (compiled.errors(itself), compiled.errors(handed)) ==> (Nil, Nil)
     }
 
-    test("a model that also calls another capability is rejected at that type") {
-      val errs = compiled.errors(calling)
-      assert(errs.exists(e => e.contains("p") && e.contains("cannot flow into capture set")))
+    test("a model that reads a store of its own is rejected at that type") {
+      val errs = compiled.errors(ownStore)
+      assert(errs.exists(e => e.contains("store") && e.contains("cannot flow into capture set")))
     }
   }
 }

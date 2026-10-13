@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.Subject
 
@@ -100,14 +100,25 @@ object TurnTools {
     } yield slot.askId).left.map(storeFailure)
   }
 
-  /** `pending` read against `tools` with `repairs`, ready to run; or the outcome it is
-    * answered with, unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that
-    * does not bind.
+  /** `pending` read against `tools` with `repairs`, ready to run, a call of a tool that reads
+    * the store run through `reads` ([[Bound.Reading]]); or the outcome it is answered with,
+    * unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that does not bind.
     */
-  def read[C^](tools: Toolbox[C], pending: Pending, repairs: Repairs): Either[Outcome, Bound^{C}] =
+  def read[C^](
+      tools: Toolbox[C],
+      pending: Pending,
+      repairs: Repairs,
+      reads: Reads^
+  ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, reads}] =
     pending match {
       case Pending.Refused(_, refused) => Left(refused)
-      case Pending.Run(call) => tools.bind(call, repairs).left.map(_.outcome)
+      case Pending.Run(call) =>
+        tools.bind(call, repairs) match {
+          case Left(error) => Left(error.outcome)
+          case Right(reading: Bound.Reading) => Right(reading.through(reads))
+          case Right(runs: Bound.Runs) => Right(runs)
+          case Right(hosted: Bound.Hosted) => Right(hosted)
+        }
     }
 
   /** Where a turn keeps what its tool calls came to: in `entries`, written through `jot` from

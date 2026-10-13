@@ -37,7 +37,7 @@ object TurnToolsTests extends TestSuite {
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
     val settling = new TurnTools.Settling(new FakeJot, entries)
-    TurnTools.read(tools(ws), pending, Repairs.All) match {
+    TurnTools.read(tools(ws), pending, Repairs.All, PublicReads) match {
       case Left(outcome) => settling.answer(slot, id, pending.call.name, outcome, Instant.EPOCH)
       case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>

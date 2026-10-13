@@ -5,19 +5,20 @@ import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
+import grit.core.store.Reads
 
 /** A tool the loop can offer and run: what the model is told of it, whether a person
   * approves each call, how a call is shown, and what it does. `shown` is what a call acts
   * on, as a transcript shows it after the tool's name ([[Bound.shown]]). `run` captures the
   * capabilities it acts through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run`
   * never throws: every failure is an [[Outcome]]. A tool whose run is told which call it is
-  * comes from [[Hosted.calling]].
+  * comes from [[Hosted.calling]]; one that reads grit's store, from [[Hosted.reading]].
   */
 final class Tool[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    run: (A, CallSlot) => Outcome,
+    run: Tool.Run[A]^,
     aim: Option[Tool.Aim] = None
 ) extends Tool.Offered {
 
@@ -77,10 +78,17 @@ final class Tool[A] private[tool] (
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
-        Right(gate match {
-          case Gate.Free => new Bound.Free(spec.name, line, at => run(args, at))
-          case Gate.Ask(describe) =>
-            new Bound.Gated(spec.name, line, describe(args), at => run(args, at))
+        val ask = gate match {
+          case Gate.Free => None
+          case Gate.Ask(describe) => Some(describe(args))
+        }
+        Right(run match {
+          case plain: Tool.Plain[A] =>
+            ask.fold(new Bound.Free(spec.name, line, at => plain(args, at)))(shown =>
+              new Bound.Gated(spec.name, line, shown, at => plain(args, at))
+            )
+          case reading: Tool.Reading[A] =>
+            new Bound.Reading(spec.name, line, ask, (at, reads) => reading(args, at, reads))
         })
     }
 }
@@ -96,7 +104,7 @@ object Tool {
       shown: A -> String,
       run: A => Outcome
   ): Tool[A]^{run} =
-    new Tool(spec, gate, shown, (args: A, _: CallSlot) => run(args))
+    new Tool(spec, gate, shown, new Plain((args: A, _: CallSlot) => run(args)))
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
     * under its recorded name and schema, asking first when it did, and writing to the
@@ -114,6 +122,17 @@ object Tool {
     entry.writes.fold[Offered](Tool[ujson.Value](spec, gate, _ => "", _ => goneOutcome))(writes =>
       new Writing(spec, gate, _ => "", writes).over((_, _) => goneOutcome)
     )
+  }
+
+  /** How a tool runs: told its call ([[Plain]]), or handed reads too ([[Reading]]). */
+  private[tool] sealed trait Run[A]
+
+  private[tool] final class Plain[A](run: (A, CallSlot) => Outcome) extends Run[A] {
+    def apply(args: A, at: CallSlot): Outcome = run(args, at)
+  }
+
+  private[tool] final class Reading[A](run: (A, CallSlot, Reads^) => Outcome) extends Run[A] {
+    def apply(args: A, at: CallSlot, reads: Reads^): Outcome = run(args, at, reads)
   }
 
   /** A tool whatever its arguments' type, as a [[Toolbox]] holds it. */
@@ -169,7 +188,14 @@ final class Hosted[A](val spec: ToolSpec[A], val gate: Gate[A], shown: A -> Stri
   def over(run: A => Outcome): Tool[A]^{run} = Tool(spec, gate, shown, run)
 
   /** This tool, run by `run`, which is told the call it runs. */
-  def calling(run: (A, CallSlot) => Outcome): Tool[A]^{run} = new Tool(spec, gate, shown, run)
+  def calling(run: (A, CallSlot) => Outcome): Tool[A]^{run} =
+    new Tool(spec, gate, shown, new Tool.Plain(run))
+
+  /** This tool, run by `run`, which is told the call it runs and handed, at each call, reads
+    * for that call's turn as the turn hands them ([[Bound.Reading]]). An edge does not run it.
+    */
+  def reading(run: (A, CallSlot, Reads^) => Outcome): Tool[A]^{run} =
+    new Tool(spec, gate, shown, new Tool.Reading(run))
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
@@ -316,7 +342,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry),
       aimed,
       sent => shown(sent._1),
-      (sent, _) => run(sent._1, sent._2),
+      new Tool.Plain((sent, _) => run(sent._1, sent._2)),
       Some(Tool.Aim(spec.args.schema(false), writes.placed))
     )
   }

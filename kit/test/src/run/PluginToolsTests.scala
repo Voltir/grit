@@ -100,15 +100,19 @@ object PluginToolsTests extends TestSuite {
         .bound(plugins, n => PluginReads(reads.docs(n), documents.shelf(n)))
         .fold(u => sys.error(u.toString), identity)
       val box = Toolbox
-        .of[caps.CapSet^{FakeDb, desks}](bound.map(_.over(FakeDb, desks))*)
+        .of[caps.CapSet^{desks}](bound.map(_.over(desks))*)
         .fold(d => sys.error(d.toString), identity)
       val outcomes = Vector("book", "book_more").map(tool =>
         box.bind(
           AssistantBlock.ToolCall(ToolCallId(tool), tool, ujson.Obj("n" -> 1)),
           Repairs.All
         ) match {
-          case Right(free: Bound.Free) => free(TestCallSlots.First)
-          case other => sys.error(s"not free: $other")
+          case Right(r: Bound.Reading) =>
+            r.through(FakeDb.as(Subject.Turn(TestCallSlots.First.turn))) match {
+              case free: Bound.Free => free(TestCallSlots.First)
+              case other => sys.error(s"not free: $other")
+            }
+          case other => sys.error(s"not reading: $other")
         }
       )
       (outcomes, asked.toVector) ==> (
@@ -128,7 +132,7 @@ object PluginToolsTests extends TestSuite {
       }
       val models = new StubModels()
       val offered =
-        Launch.own(Persona.Grit, noOne, FakeDb).map(_.name) ++
+        Launch.own(Persona.Grit, noOne).map(_.name) ++
           Launch.operator(Unkept, models).map(_.name) ++ Coding.hosted.map(_.name)
       (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }

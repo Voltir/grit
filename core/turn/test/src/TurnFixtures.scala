@@ -1030,6 +1030,9 @@ object TurnFixtures {
     )
   }
 
+  /** Reads for the public through [[FakeDb]]: what a fixture's tools read through. */
+  def PublicReads: grit.core.store.Reads^ = FakeDb.as(Subject.Public)
+
   /** Reads at [[grit.core.classify.TestClassifiers.Above]], every pair of [[RoutedCatalog]] a
     * deployment can clear cleared for them, and the fake classifiers' service not: a turn
     * routed there, its classifier uncleared.
@@ -1083,7 +1086,7 @@ object TurnFixtures {
 
   /** The turn's workflow body over `entries`, reading through `db`, under `catalog`, the
     * summary's calls made by `summarizer` and every other by `provider`, windowed by
-    * `assembler`; offered no tools.
+    * `assembler`; offered `tools`.
     */
   def routedBody(
       entries: EntryStore,
@@ -1092,7 +1095,8 @@ object TurnFixtures {
       assembler: ContextAssembler^,
       db: Db^,
       catalog: Catalog,
-      speech: TurnSpeech = quiet()
+      speech: TurnSpeech = quiet(),
+      tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -1116,7 +1120,7 @@ object TurnFixtures {
         noTriage()
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
-        noTools,
+        tools,
         Toolbox.Empty,
         Vector.empty,
         new FakeJot,

@@ -3,6 +3,8 @@ package grit.turn
 import grit.core.act.MovesFixtures.FakeDb as LabelledDb
 import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.InMemoryDurable
+import grit.core.id.{TestCallSlots, ToolCallId}
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{
   Assignment,
   Catalog,
@@ -15,8 +17,10 @@ import grit.core.model.{
   Rung,
   Upstream
 }
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Uncleared
-import grit.core.store.{Db, InMemoryEntryStore, StoreError, Tx}
+import grit.core.store.{Db, InMemoryEntryStore, Payload, StoreError, Tx}
+import grit.core.tool.{Args, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -189,6 +193,51 @@ object TurnRouteTests extends TestSuite {
       )
       (provider.requests.size, ran.startsWith("failed: Assembly("), ran.contains("ask again")) ==>
         (0, true, true)
+    }
+
+    test(
+      "a tool reading the store reads bounded by what the turn was routed for: a read after a rise fails, asking again"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "what is my floor?")
+      val db = new Rising(flashCleared)
+      val looks = Toolbox
+        .of[caps.CapSet^{NoCheckout}](
+          Hosted[Unit](
+            ToolSpec(ToolName("look"), "Reads the floor.", Args.of(NamedTuple.Empty).map(_ => ())),
+            Gate.Free,
+            _ => ""
+          ).reading((_, _, reads) =>
+            reads
+              .read((tx: Tx^) ?=> Right(Label.shown(Tx.floor(tx))))
+              .fold(e => Outcome.Failed(e.toString), Outcome.Done(_))
+          )
+        )
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      // The floor rises as the model calls the tool.
+      val provider = new Provider {
+        @caps.unsafe.untrackedCaptures
+        var calls = 0
+        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+          calls += 1
+          if (calls == 1) {
+            db.rise()
+            Right(said("", AssistantBlock.ToolCall(ToolCallId("t1"), "look", ujson.Obj())))
+          } else Right(said("done"))
+        }
+      }
+      val _ = new InMemoryDurable().run(turn.workflowId)(
+        routedBody(entries, provider, new RecordingProvider, new Asking, db, catalog, tools = looks)
+      )
+      val result = entries
+        .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using TestTx.fake)
+        .toOption
+        .flatten
+        .map(_.payload)
+      result.collect { case Payload.Result(r, _) =>
+        (r.isError, r.content.contains("ask again"))
+      } ==>
+        Some((true, true))
     }
 
     test("an offer made where the turn knows more than it was routed for fails, asking again") {

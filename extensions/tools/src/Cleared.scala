@@ -2,13 +2,13 @@ package grit.tools
 
 import scala.NamedTuple
 
-import grit.core.store.{Askers, Db, Tx}
+import grit.core.store.{Askers, Tx}
 import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
-import grit.core.visibility.{Explanation, Label, Subject}
+import grit.core.visibility.{Explanation, Label}
 
 /** `clearance`: what the person asking is cleared for, and why. It takes no argument, so it
-  * concerns only the asker. Each call reads in one transaction opened for the call's turn
-  * ([[grit.core.visibility.Subject.Turn]]). In a direct message
+  * concerns only the asker. Each call reads in one transaction of the reads its turn hands it
+  * ([[grit.core.tool.Hosted.reading]]). In a direct message
   * ([[grit.core.place.Place.direct]]) it answers [[Explanation.text]] of
   * [[grit.core.store.Tx.explain]] of the turn's asker
   * ([[grit.core.store.Askers.of]]) and the label that transaction writes at (`Tx.floor`: the
@@ -35,13 +35,13 @@ object Cleared {
 
   /** `clearance`, explaining the asker `askers` resolves in a direct message, and outside one
     * telling the model the room's label (e.g. "This room is labelled [level: internal].") then
-    * [[OwnClearanceNote]]; each call read from `store`; an error [[Outcome]], [[Unread]], when
-    * that read fails.
+    * [[OwnClearanceNote]]; each call read through the reads its turn hands it; an error
+    * [[Outcome]], [[Unread]], when that read fails.
     */
-  def tool(askers: Askers, store: Db^): Tool[Unit]^{store} =
-    described.calling((_, at) =>
-      store
-        .read(Subject.Turn(at.turn)) { (tx: Tx^) ?=>
+  def tool(askers: Askers): Tool[Unit] =
+    described.reading((_, at, reads) =>
+      reads
+        .read { (tx: Tx^) ?=>
           Tx.clearance(tx).own match {
             case Some(own) if own.room.direct =>
               askers.of(at.turn).map(asker => Explanation.text(Tx.explain(asker, Tx.floor(tx))))

@@ -1314,7 +1314,12 @@ object Turn {
               val free = calls.zipWithIndex.foldLeft[Either[TurnFailure, Vector[
                 (TurnTools.Slot, ToolCallId, Bound.Hosted)
               ]]](Right(Vector.empty)) { case (acc, (pending, index)) =>
-                TurnTools.read(tools, pending, repairs) match {
+                TurnTools.read(
+                  tools,
+                  pending,
+                  repairs,
+                  pins.reads(env.db).as(Subject.Turn(turn))
+                ) match {
                   case Right(h: Bound.Hosted) if h.ask.isEmpty =>
                     for {
                       done <- acc
@@ -1347,7 +1352,12 @@ object Turn {
               val call = pending.call.id
               val clock = env.clock
               val settling = new TurnTools.Settling(jot, env.records.entries)
-              val settled = TurnTools.read(tools, pending, repairs) match {
+              val settled = TurnTools.read(
+                tools,
+                pending,
+                repairs,
+                pins.reads(env.db).as(Subject.Turn(turn))
+              ) match {
                 case Left(outcome) =>
                   val named = pending.call.name
                   d.step(slot.step) { () =>

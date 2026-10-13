@@ -82,6 +82,7 @@ object CodingTests extends TestSuite {
       case free: Bound.Free => (None, free(TestCallSlots.First))
       case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved, TestCallSlots.First))
       case hosted: Bound.Hosted => (hosted.ask, Outcome.Failed("hosted, not run here"))
+      case _: Bound.Reading => (None, Outcome.Failed("reads the store, not run here"))
     }
 
   val tests = Tests {

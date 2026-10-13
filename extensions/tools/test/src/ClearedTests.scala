@@ -28,8 +28,8 @@ object ClearedTests extends TestSuite {
   private val channel: Place = Origin.Slack("T", "C", "1.0").room
 
   /** What a call of `clearance` at [[TestCallSlots.First]] comes to, under `visibility`, a read
-    * for that call's turn opened in `room` at `label` for an asker cleared for `asker`; a read
-    * for any other subject, or any when `down`, failing.
+    * for that call's turn, as its turn hands it, opened in `room` at `label` for an asker
+    * cleared for `asker`; a read for any other subject, or any when `down`, failing.
     */
   private def called(
       visibility: Visibility,
@@ -53,14 +53,18 @@ object ClearedTests extends TestSuite {
         else body(using TestTx.fake(clearance, visibility))
     }
     Toolbox
-      .of(Cleared.tool(danaAsks, store))
+      .of(Cleared.tool(danaAsks))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
         AssistantBlock.ToolCall(ToolCallId("c1"), "clearance", ujson.Obj()),
         Repairs.All
       ) match {
-      case Right(b: Bound.Free) => b(at)
-      case other => throw new java.lang.AssertionError(s"not free: $other")
+      case Right(r: Bound.Reading) =>
+        r.through(store.as(Subject.Turn(at.turn))) match {
+          case b: Bound.Free => b(at)
+          case other => throw new java.lang.AssertionError(s"not free: $other")
+        }
+      case other => throw new java.lang.AssertionError(s"not reading: $other")
     }
   }
 

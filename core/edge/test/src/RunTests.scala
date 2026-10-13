@@ -84,6 +84,22 @@ object RunTests extends TestSuite {
         Outcome.Failed("echo does not ask first here; it did not run.")
     }
 
+    test("a tool that reads grit's store is not run here, free or approved") {
+      val text = Args.of((text = Field.text("What."))).map(_.text)
+      def reading(name: ToolName, gate: Gate[String]) =
+        new Hosted(ToolSpec(name, "Reads.", text), gate, t => t)
+          .reading((_, _, reads) =>
+            reads.read(Right("read")).fold(_ => Outcome.Failed("unread"), Outcome.Done(_))
+          )
+      val box = Toolbox
+        .of(reading(ToolName("reads"), Gate.Free), reading(ToolName("asks"), Gate.Ask(t => t)))
+        .getOrElse(throw new java.lang.AssertionError())
+      (Run.request(request("reads"), box), Run.request(request("asks", Permit.Approved), box)) ==> (
+        Outcome.Failed("reads is not run here; it did not run."),
+        Outcome.Failed("asks is not run here; it did not run.")
+      )
+    }
+
     test("a tool made with calling is told the request's slot, free or approved") {
       val text = Args.of((text = Field.text("What."))).map(_.text)
       def where(name: ToolName, gate: Gate[String]) =

@@ -6,6 +6,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
+import grit.core.store.Reads
 
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[caps.CapSet^{ws}]` cannot edit or run a command unless `ws`
@@ -99,7 +100,7 @@ object Toolbox {
 
 /** A call whose tool was found and whose arguments read, ready to run: [[Bound.Free]] as it
   * is, [[Bound.Gated]] only with a person's [[Approval]] in hand; [[Bound.Hosted]] by an
-  * edge.
+  * edge; [[Bound.Reading]] by its turn, through the reads it hands it.
   */
 sealed trait Bound {
   def tool: ToolName
@@ -112,12 +113,15 @@ sealed trait Bound {
 
 object Bound {
 
+  /** A call that runs here: [[Free]] or [[Gated]]. */
+  sealed trait Runs extends Bound
+
   /** A call of a tool that runs without asking. */
   final class Free private[tool] (
       val tool: ToolName,
       val shown: String,
       run: CallSlot => Outcome
-  ) extends Bound {
+  ) extends Runs {
 
     /** Runs the call, its tool told that it is the call at `at`. */
     def apply(at: CallSlot): Outcome = run(at)
@@ -131,7 +135,7 @@ object Bound {
       val shown: String,
       val ask: String,
       run: CallSlot => Outcome
-  ) extends Bound {
+  ) extends Runs {
 
     /** Runs the call when `approval` is [[Approval.Approved]], its tool told that it is the
       * call at `at`. Otherwise it does not run:
@@ -142,6 +146,24 @@ object Bound {
       case Approval.Approved => run(at)
       case Approval.Declined(reason) => Outcome.Declined(reason)
       case Approval.TimedOut => Outcome.Unanswered
+    }
+  }
+
+  /** A call of a tool that reads grit's store ([[Hosted.reading]]): run only by the turn it
+    * belongs to, through the reads that turn hands it; an edge answers that it is not run
+    * there.
+    */
+  final class Reading private[tool] (
+      val tool: ToolName,
+      val shown: String,
+      ask: Option[String],
+      run: (CallSlot, Reads^) => Outcome
+  ) extends Bound {
+
+    /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
+    def through(reads: Reads^): Runs^{this, reads} = ask match {
+      case None => new Free(tool, shown, at => run(at, reads))
+      case Some(shownFirst) => new Gated(tool, shown, shownFirst, at => run(at, reads))
     }
   }
 

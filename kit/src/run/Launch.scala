@@ -19,7 +19,7 @@ import grit.core.place.Weight
 import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
-import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
+import grit.core.store.{Askers, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
@@ -346,7 +346,6 @@ private[grit] object Launch {
         ticking(engine, new ClockEdge(engine.inbox, engine.schedules, engine.db, clock, d.allJobs))
       }
     }
-    val store: Db^ = engine.db
     // Each plugin's desk, of its own jobs: built per call, since it keeps nothing but the
     // engine's transactions and its clock.
     val desks: Desks^{engine} = new Desks {
@@ -375,18 +374,16 @@ private[grit] object Launch {
     // model. The coding tools are hosted: offered here, run by the edge serving the
     // conversation's directory (ADR 0017).
     // Offered everywhere: grit's own, and every plugin's tools.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
-      Toolbox.of[caps.CapSet^{store, desks}](
-        (Vector[Tool.Offered^{store, desks}](
-          own(d.persona, engine.askers, store)*
-        ) ++
-          plugged.map(_.over(store, desks)))*
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks}]] =
+      Toolbox.of[caps.CapSet^{desks}](
+        (Vector[Tool.Offered^{desks}](own(d.persona, engine.askers)*) ++
+          plugged.map(_.over(desks)))*
       )
     val launching = d.offer.tools match {
       case Offered.Read =>
         everyone.map(tools =>
           launch(
-            TurnTooling[caps.CapSet^{store, desks}](
+            TurnTooling[caps.CapSet^{desks}](
               tools,
               Toolbox.Empty,
               Coding.readOnlyHosted,
@@ -409,9 +406,9 @@ private[grit] object Launch {
         ) match {
           case (Right(tools), Right(operator)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[caps.CapSet^{tuned, models, store, desks}](tools, operator).map { _ =>
+            Toolbox.joined[caps.CapSet^{tuned, models, desks}](tools, operator).map { _ =>
               launch(
-                TurnTooling[caps.CapSet^{tuned, models, store, desks}](
+                TurnTooling[caps.CapSet^{tuned, models, desks}](
                   tools,
                   operator,
                   Coding.hosted,
@@ -439,19 +436,18 @@ private[grit] object Launch {
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
     * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`
-    * resolves them, explained as read through `store` ([[Cleared]]); the
+    * resolves them, explained as read through the reads its turn hands it ([[Cleared]]); the
     * kit, and the turn it launches, which reads them in its dispatch, alone hold the engine's
     * askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
     */
   private[run] def own(
       persona: Persona,
-      askers: Askers,
-      store: Db^
-  ): Vector[Tool.Offered^{store}] = {
+      askers: Askers
+  ): Vector[Tool.Offered] = {
     val about: Tool[Option[About.Subject]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
-    Vector[Tool.Offered^{store}](about, Cleared.tool(askers, store))
+    Vector[Tool.Offered](about, Cleared.tool(askers))
   }
 
   /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person
