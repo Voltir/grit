@@ -21,7 +21,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.Earning
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -46,7 +46,8 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
   *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
   *      is cut off at its token limit (its cost still kept), or when the gate found
-  *      nothing new (and then no model is called), the period's per-turn summaries joined
+  *      nothing new or no pin of its role is cleared for what its period reads now ([[grit.core.route.Routed]];
+  *      and then no model is called), the period's per-turn summaries joined
   *      as the prose, and the balance carried with the topics' edits alone. A period grit
   *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) that earned
   *      its closing is written by the catalog's heard pin, as reported speech, asking only its
@@ -271,9 +272,46 @@ object Close {
       known: Balance,
       cap: Int,
       reason: CloseReason
+  ): Summarised =
+    // What the writer is sent is read under one routing of the period's conversation, which
+    // chooses the pin it may go to: a direct message's floor may have risen since the gate.
+    Routed
+      .reading(reads(env, attempt)) { (routed, read) =>
+        written(env, attempt, first, asked, known, cap, reason, Right(routed), read)
+      }
+      .fold(
+        // Unrouted, the period is unread (only the names of no entries are read), and no model
+        // is asked.
+        e =>
+          written(
+            env,
+            attempt,
+            first,
+            asked,
+            known,
+            cap,
+            reason,
+            Left(describe(e)),
+            reads(env, attempt)
+          ),
+        identity
+      )
+
+  /** [[summarise]], its period read through `read` under `routed`; when the routing read
+    * failed (`Left`), the period closed as unread.
+    */
+  private def written(
+      env: CloseEnv^,
+      attempt: CloseRef,
+      first: TurnSeq,
+      asked: Asked,
+      known: Balance,
+      cap: Int,
+      reason: CloseReason,
+      routed: Either[String, Routed],
+      read: Reads^
   ): Summarised = {
-    val read = reads(env, attempt)
-    val entries = own(read, env, attempt, first)
+    val entries = routed.flatMap(_ => own(read, env, attempt, first))
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
     val labelled = {
       val own = entries.getOrElse(Vector.empty)
@@ -325,9 +363,12 @@ object Close {
     else if (asked.nothingNew && !overheard) carried("nothing new: carried")
     else {
       val written = for {
+        r <- routed
         catalog <- env.models.catalog()
-        pin = (if (overheard) catalog.heard else catalog.pin.summary).first
-        reply <- env.models.provider(pin).complete(request).left.map(_.cause)
+        pins <- r
+          .cleared(if (overheard) catalog.heard else catalog.pin.summary)
+          .toRight(s"no model cleared for ${Label.written(r.classification.label)}")
+        reply <- env.models.provider(pins.first).complete(request).left.map(_.cause)
       } yield {
         val cost =
           Cost(reply.model, reply.usage, env.records.estimator.request(request), reply.upstream)

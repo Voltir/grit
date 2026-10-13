@@ -557,8 +557,66 @@ object CloseTests extends TestSuite {
           new SetClock(at(Lapsed)),
           db = grit.core.classify.TestClassifiers.above()
         )
-      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}"
+      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
+        "; no summary: no model cleared for internal"
       gate.calls ==> 0
+    }
+
+    test(
+      "a close whose summary pin is not cleared for what it read asks no model: the period is carried, saying why"
+    ) {
+      val w = new World
+      w.say("hello", 0)
+      val models = new OneModel(answering("Summary: small talk."))
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(
+          gate,
+          models,
+          new SetClock(at(Lapsed)),
+          db = grit.core.classify.TestClassifiers.above()
+        )
+      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
+        "; no summary: no model cleared for internal"
+      models.pins ==> Vector.empty
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
+        c.flows.prose
+      } ==> Some("hello")
+    }
+
+    test(
+      "a heard period whose heard pin is not cleared for what it read asks no model: it is carried, saying why"
+    ) {
+      val w = new World
+      w.hear("Standup moves to 10:00 from Monday.", "Ben", 0)
+      w.tag("Standup moves to 10:00 from Monday.", worthKeeping)
+      val models = new OneModel(answering("Summary: Ben said standup moves."))
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(
+          gate,
+          models,
+          new SetClock(at(Lapsed)),
+          db = grit.core.classify.TestClassifiers.above()
+        )
+      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
+        "; no summary: no model cleared for internal"
+      models.pins ==> Vector.empty
+    }
+
+    test(
+      "a direct message's close routes its summary at the floor it reads then: risen past every cleared model, it asks none"
+    ) {
+      val w =
+        new World(Origin.Direct(grit.core.identity.TestAccounts.sourced("slack:T1/U-ana"), "1.0"))
+      w.say("hello", 0)
+      val floor = new Floor
+      // The person is cleared higher while the gate is asked, after the gate's own routed read.
+      val asked = new Gate(Some(Vector(0.9, 0.9, 0.8, 0.1)), () => floor.risen = true)
+      val models = new OneModel(answering("Summary: small talk."))
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(asked, models, new SetClock(at(Lapsed)), db = new Rising(floor))
+      ) ==> "closed: closing:c1:1; no summary: no model cleared for internal"
+      asked.calls ==> 1
+      models.pins ==> Vector.empty
     }
 
     test("the gate's answers choose the parts asked for; without a classifier, every one") {

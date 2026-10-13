@@ -47,7 +47,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Clearance, Label, Subject}
 import grit.dbos.sql.TestTx
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
@@ -138,9 +138,10 @@ object CloseFixtures {
   }
 
   /** A classifier answering each yes/no with the next of `yes`, counting its calls; or, with
-    * none, unavailable.
+    * none, unavailable. `during` runs as each call is made, for a test that changes what is
+    * read while the gate is asked.
     */
-  final class Gate(yes: Option[Vector[Double]]) extends Classifier {
+  final class Gate(yes: Option[Vector[Double]], during: () -> Unit = () => ()) extends Classifier {
     // A count, read only by the test that owns the gate.
     @caps.unsafe.untrackedCaptures
     var calls = 0
@@ -155,6 +156,7 @@ object CloseFixtures {
     ): Either[ClassifierError, Answers] = {
       calls += 1
       states = states :+ state
+      during()
       yes match {
         case None => Left(ClassifierError.Unavailable("no classifier"))
         case Some(ps) =>
@@ -181,6 +183,28 @@ object CloseFixtures {
     def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using
         TestTx.fake
+      )
+  }
+
+  /** Whether a [[Rising]] floor has risen; set once by the test that owns it. */
+  final class Floor {
+    // A flag, set once; read only by the Rising db that shares it.
+    @caps.unsafe.untrackedCaptures
+    var risen = false
+  }
+
+  /** Reads whose floor is public until `floor` has risen, then
+    * [[grit.core.classify.TestClassifiers.Above]]: a direct message's conversation, whose floor
+    * is its person's clearance now, after that person is cleared higher.
+    */
+  final class Rising(floor: Floor) extends Db {
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake(
+          Clearance.of(
+            if (floor.risen) grit.core.classify.TestClassifiers.Above else Label.Public
+          )
+        )
       )
   }
 
