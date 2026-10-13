@@ -103,21 +103,23 @@ object SyncTests extends TestSuite {
       "docs/a.md" -> file(a, aText)
     ) ++ b.map(n => "docs/b.md" -> file(n, "Testing the app."))
 
-  /** Each call's answer: `answers`' text for its `path`, at `at`; `Failed` for a path it lacks,
-    * or, when `refused`, for every call, saying so.
+  /** Each call's answer: `answers`' text for its `path`, at `raised`' label for that path or
+    * else `at`; `Failed` for a path it lacks, or, when `refused`, for every call, saying so.
     */
   private def answer(
       answers: Map[String, String],
       at: Label,
+      raised: Map[String, Label],
       refused: Option[String],
       args: ujson.Obj
   ): Either[MoveError, Called] =
     Right(refused.fold {
-      args.value
-        .get("path")
-        .flatMap(_.strOpt)
+      val path = args.value.get("path").flatMap(_.strOpt)
+      path
         .flatMap(answers.get)
-        .fold(Called.Failed("Not Found"))(Called.Done(_, at))
+        .fold(Called.Failed("Not Found"))(
+          Called.Done(_, path.flatMap(raised.get).getOrElse(at))
+        )
     }(Called.Failed(_)))
 
   /** The text the summary model is sent: its system text, then each user message's. */
@@ -140,16 +142,20 @@ object SyncTests extends TestSuite {
     case Capped(path: String)
   }
 
-  /** The reply `summaries` gives, at `at`, to `system` and `messages`. */
+  /** The reply `summaries` gives to `system` and `messages`, at `raised`' label for the first
+    * path they name, or else at `at`.
+    */
   private def reply(
       summaries: Summaries,
       at: Label,
+      raised: Map[String, Label],
       system: String,
       messages: Vector[Message]
   ): Either[MoveError, Asked[ujson.Value]] = {
     val text = sent(system, messages)
+    val label = raised.collectFirst { case (path, l) if text.contains(path) => l }.getOrElse(at)
     def said(summary: String, terms: String*): Either[MoveError, Asked[ujson.Value]] =
-      Right(Asked(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms)), at))
+      Right(Asked(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms)), label))
     summaries match {
       case Summaries.Capped(path) if text.contains(path) => Left(MoveError.Capped)
       case Summaries.Fixed | Summaries.Capped(_) => said("What the file holds.", "a term")
@@ -160,14 +166,17 @@ object SyncTests extends TestSuite {
   }
 
   /** A run's moves at `at`: calls answered from `answers` (each refused, saying `refused`,
-    * when given), asks as `summaries`, keeps into `documents`.
+    * when given), asks as `summaries`, keeps into `documents`. A call reading a path in
+    * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there.
     */
   private def keeping(
       at: Label,
       documents: InMemoryDocuments,
       answers: Map[String, String] = repo(),
       summaries: Summaries = Summaries.Fixed,
-      refused: Option[String] = None
+      refused: Option[String] = None,
+      readAt: Map[String, Label] = Map.empty,
+      summaryAt: Map[String, Label] = Map.empty
   ): ScriptedKeeping =
     new ScriptedKeeping(
       sync.limits,
@@ -175,10 +184,10 @@ object SyncTests extends TestSuite {
       plugin,
       terms,
       _ => Left(MoveError.Model("no text ask")),
-      (_, _, args) => answer(answers, at, refused, args),
+      (_, _, args) => answer(answers, at, readAt, refused, args),
       // Positional, not named: a named argument is lifted into a local whose inferred type
       // keeps `Vector`'s internal array (docs/capture-checking.md).
-      (system, messages) => reply(summaries, at, system, messages),
+      (system, messages) => reply(summaries, at, summaryAt, system, messages),
       _ => Left(MoveError.Model("no judgment")),
       documents
     )
@@ -250,6 +259,25 @@ object SyncTests extends TestSuite {
       (reply, held(k)) ==> (
         line(written = 3),
         Vector(("docs", floor), ("docs/a.md", floor), ("docs/b.md", floor))
+      )
+    }
+
+    test(
+      "a card is kept at the join of its unit's answers' labels, where they rise above the floor"
+    ) {
+      val (acme, trial) = (right(Compartment.of("acme")), right(Compartment.of("trial")))
+      val documents = new InMemoryDocuments
+      val k = keeping(
+        floor,
+        documents,
+        readAt = Map("docs/a.md" -> Label.at(Level.Confidential, acme)),
+        summaryAt = Map("docs/a.md" -> Label.at(Level.Confidential, trial))
+      )
+      val reply = runOf(k)
+      val both = Label.at(Level.Confidential, acme, trial)
+      (reply, held(keeping(both, documents))) ==> (
+        line(written = 3),
+        Vector(("docs", floor), ("docs/a.md", both), ("docs/b.md", floor))
       )
     }
 
