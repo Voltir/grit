@@ -2,7 +2,7 @@ package grit.outline.cli
 
 import scala.annotation.tailrec
 
-import grit.outline.locate.{MillLayout, Root}
+import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.mcp.Server
 import grit.outline.query.{Answer, Config, Help, Query, Roots, Status}
 
@@ -119,7 +119,7 @@ object Main {
                     val (answer: Answer, _) =
                       Query.show(
                         Root(d),
-                        MillLayout,
+                        new MemoLayout(MillLayout),
                         config,
                         Roots.empty(6000),
                         syms,
@@ -167,7 +167,7 @@ object Main {
                 val (answer, _) =
                   Query.family(
                     Root(d),
-                    MillLayout,
+                    new MemoLayout(MillLayout),
                     config,
                     Roots.empty(6000),
                     name,
@@ -219,7 +219,7 @@ object Main {
                 val (answer, _) =
                   Query.uses(
                     Root(d),
-                    MillLayout,
+                    new MemoLayout(MillLayout),
                     config,
                     Roots.empty(6000),
                     syms.split(',').toVector.filter(_.nonEmpty),
@@ -273,7 +273,7 @@ object Main {
                 val (answer, _) =
                   Query.area(
                     Root(d),
-                    MillLayout,
+                    new MemoLayout(MillLayout),
                     config,
                     Roots.empty(6000),
                     names.split(',').toVector.filter(_.nonEmpty),
@@ -315,7 +315,14 @@ object Main {
               case Left(message) => (2, message)
               case Right(config) =>
                 val (answer, _) =
-                  Query.find(Root(d), MillLayout, config, Roots.empty(6000), pattern, o.cap)
+                  Query.find(
+                    Root(d),
+                    new MemoLayout(MillLayout),
+                    config,
+                    Roots.empty(6000),
+                    pattern,
+                    o.cap
+                  )
                 (exitCode(answer.status), answer.text)
             }
         }
@@ -360,7 +367,7 @@ object Main {
               case Right(config) =>
                 val (answer, _) = Query.tests(
                   Root(d),
-                  MillLayout,
+                  new MemoLayout(MillLayout),
                   config,
                   Roots.empty(6000),
                   suite,

@@ -86,3 +86,22 @@ object MillLayout extends Layout {
   def notCompiled(root: Root): String =
     s"no compiled classes under ${root.dir / "out"}: run ./mill <module>.compile"
 }
+
+/** `layout` with each root's `classesDirs` and `libraryJars` computed once and reused for this value's lifetime. A
+  * build compiled after the first call is not seen, so build one per query and never keep it across queries.
+  */
+final class MemoLayout(layout: Layout) extends Layout {
+
+  // Each walk of Mill's `out` stats tens of thousands of entries, and one query asks for them dozens of times. The
+  // maps are this value's own and grow by at most one entry per root it is asked about.
+  private val classes = scala.collection.mutable.Map.empty[Root, Vector[os.Path]]
+  private val jars = scala.collection.mutable.Map.empty[Root, Vector[os.Path]]
+
+  def classesDirs(root: Root): Vector[os.Path] =
+    classes.getOrElseUpdate(root, layout.classesDirs(root))
+  def libraryJars(root: Root): Vector[os.Path] =
+    jars.getOrElseUpdate(root, layout.libraryJars(root))
+  def notCompiled(root: Root): String = layout.notCompiled(root)
+  def isTest(classesDir: os.Path): Boolean = layout.isTest(classesDir)
+  def isTestSource(file: os.RelPath): Boolean = layout.isTestSource(file)
+}

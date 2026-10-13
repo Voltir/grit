@@ -2,7 +2,7 @@ package grit.outline.mcp
 
 import scala.util.Try
 
-import grit.outline.locate.{MillLayout, Root}
+import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.query.{Config, Entry, Help, Query, Roots}
 
 /** The server between calls: each root's cache, and the root a call without one uses. */
@@ -283,7 +283,7 @@ object Server {
         configured(a.root.getOrElse(state.defaultRoot), state) { config =>
           val (answer, roots) = Query.show(
             a.root.getOrElse(state.defaultRoot),
-            MillLayout,
+            new MemoLayout(MillLayout),
             config,
             state.roots,
             a.symbols,
@@ -305,7 +305,7 @@ object Server {
         configured(a.root.getOrElse(state.defaultRoot), state) { config =>
           val (answer, roots) = Query.family(
             a.root.getOrElse(state.defaultRoot),
-            MillLayout,
+            new MemoLayout(MillLayout),
             config,
             state.roots,
             a.name,
@@ -331,7 +331,7 @@ object Server {
         configured(a.root.getOrElse(state.defaultRoot), state) { config =>
           val (answer, roots) = Query.uses(
             a.root.getOrElse(state.defaultRoot),
-            MillLayout,
+            new MemoLayout(MillLayout),
             config,
             state.roots,
             a.symbols,
@@ -384,7 +384,7 @@ object Server {
         configured(t.root.getOrElse(state.defaultRoot), state) { config =>
           val (answer, roots) = Query.tests(
             t.root.getOrElse(state.defaultRoot),
-            MillLayout,
+            new MemoLayout(MillLayout),
             config,
             state.roots,
             t.suite,
@@ -417,7 +417,7 @@ object Server {
         configured(a.root.getOrElse(state.defaultRoot), state) { config =>
           val (answer, roots) = Query.area(
             a.root.getOrElse(state.defaultRoot),
-            MillLayout,
+            new MemoLayout(MillLayout),
             config,
             state.roots,
             a.names,
@@ -443,7 +443,8 @@ object Server {
       case Left(problem) => (toolResult(s"bad arguments for find: $problem", isError = true), state)
       case Right((pattern, root)) =>
         configured(root, state) { config =>
-          val (answer, roots) = Query.find(root, MillLayout, config, state.roots, pattern, cap)
+          val (answer, roots) =
+            Query.find(root, new MemoLayout(MillLayout), config, state.roots, pattern, cap)
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
     }
