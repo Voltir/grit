@@ -21,7 +21,7 @@ import grit.core.model.{
 }
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
-import grit.core.route.{Routing, Uncleared}
+import grit.core.route.{Routed, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{
@@ -58,7 +58,7 @@ import TurnVerdict.Shape
   *      the turn: a weighing that fails records why, by kind, and offers everything. Turns that passed this point before it
   *      shipped offer unweighed ([[Patches.Weigh]]).
   *   1. `route` — the pin each role's calls are made under ([[Route]]): the first of its pins
-  *      whose pair is cleared for what the turn's transaction knows ([[Routing.cleared]]), read
+  *      whose pair is cleared for what the turn's transaction knows ([[grit.core.route.Routing.cleared]]), read
   *      once. With no turn pin cleared it fails `Uncleared`; with no summary or query pin, that
   *      call is not made. Every later read whose content a model is sent is bounded by the
   *      classification it routed for ([[grit.core.store.Db.within]]). Turns that passed this
@@ -607,17 +607,15 @@ object Turn {
       profile: TurnProfile
   ): Either[TurnFailure, Route] =
     env.db
-      .read(Subject.Turn(turn)) { (tx: Tx^) ?=>
-        Right((Tx.classification, Tx.visibility(tx).clearances))
-      }
+      .read(Subject.Turn(turn))(Right(Routed.of))
       .left
       .map(storeFailure)
-      .flatMap { (classification, clearances) =>
-        def cleared(pins: grit.core.model.Pins) =
-          Routing.cleared(pins, clearances, classification).map(_.first)
+      .flatMap { routed =>
+        def cleared(pins: grit.core.model.Pins) = routed.cleared(pins).map(_.first)
+        val label = routed.classification.label
         cleared(profile.turn)
-          .toRight(TurnFailure.Uncleared(classification.label))
-          .map(Route(classification.label, _, cleared(profile.summary), cleared(profile.query)))
+          .toRight(TurnFailure.Uncleared(label))
+          .map(Route(label, _, cleared(profile.summary), cleared(profile.query)))
       }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
