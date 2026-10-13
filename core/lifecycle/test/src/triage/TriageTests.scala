@@ -327,6 +327,20 @@ object TriageTests extends TestSuite {
       w.tags(t) ==> Some(Tags.Unanswered("unavailable: no classifier"))
     }
 
+    test(
+      "a classifier whose service is not cleared for what the triage read is not asked: its tags unanswered"
+    ) {
+      val w = new World
+      val t = w.hear("lunch?", "Ana", 0)
+      val classifier = new Scripted(Vector(0.1, 0.9), Vector(0.9))
+      new InMemoryDurable().run(t.workflowId)(
+        w.body(classifier, 5, db = grit.core.classify.TestClassifiers.above())
+      ) ==>
+        Unoffered + s"""tagged: unanswered: unavailable: ${grit.core.classify.TestClassifiers.Uncleared}; held: {"kind":"off"}"""
+      (w.tags(t), classifier.calls) ==>
+        (Some(Tags.Unanswered(s"unavailable: ${grit.core.classify.TestClassifiers.Uncleared}")), 0)
+    }
+
     test("a message gone while it was asked keeps no tags") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)

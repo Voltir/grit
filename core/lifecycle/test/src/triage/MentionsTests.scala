@@ -40,7 +40,15 @@ object MentionsTests extends TestSuite {
 
   import TriageFixtures.*
 
-  private def mentions(w: World, classifier: Classifier^, placements: Placements^) =
+  /** Weighing over `w`, asking `classifier`, reading at
+    * [[grit.core.classify.TestClassifiers.Above]] when `above`.
+    */
+  private def mentions(
+      w: World,
+      classifier: Classifier^,
+      placements: Placements^,
+      above: Boolean = false
+  ) =
     new Mentions(
       w.reads,
       w.rooms,
@@ -48,7 +56,7 @@ object MentionsTests extends TestSuite {
       grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
       grit.core.classify.TestClassifiers.cleared(classifier),
       placements,
-      FakeDb,
+      if (above) grit.core.classify.TestClassifiers.above() else FakeDb,
       new Stopped(at(5)),
       ByChar,
       Tuning.Default
@@ -136,6 +144,16 @@ object MentionsTests extends TestSuite {
       // One yes/no answer to the set's seven.
       mentions(w, new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1)), new Waits(Right("placed")))
         .weigh(t) ==> Left(Weighing.Unweighed.Unreadable)
+    }
+
+    test("a classifier whose service is not cleared for what the weighing read is not asked") {
+      val w = new World
+      w.hear("when is standup?", "Ben", 0)
+      val t = w.say("is the release branch cut?", 1, Some("Ana"))
+      val classifier = new Scripted(Vector(0.1, 0.9), Vector(0.9))
+      mentions(w, classifier, new Waits(Right("placed")), above = true).weigh(t) ==>
+        Left(Weighing.Unweighed.Unavailable)
+      classifier.calls ==> 0
     }
 
     test("a classifier that does not answer within the bound weighs nothing, as late") {

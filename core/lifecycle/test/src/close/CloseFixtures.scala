@@ -280,15 +280,27 @@ object CloseFixtures {
       entries.get(period.closingId)(using TestTx.fake).getOrElse(None)
 
     /** The close's body over this world, with `gate`, `summary` and `clock`, its periods
-      * `sealing`.
+      * `sealing`, reading through `db`.
       */
-    def body(gate: Classifier^, summary: Provider^, clock: Clock^, sealing: PeriodStore = periods)(
+    def body(
+        gate: Classifier^,
+        summary: Provider^,
+        clock: Clock^,
+        sealing: PeriodStore = periods,
+        db: Db^ = FakeDb
+    )(
         id: WorkflowId
     )(using Durable^): String =
-      bodyOver(gate, new OneModel(summary), clock, sealing)(id)
+      bodyOver(gate, new OneModel(summary), clock, sealing, db)(id)
 
     /** The close's body over this world, its models `models`. */
-    def bodyOver(gate: Classifier^, models: Models^, clock: Clock^, sealing: PeriodStore = periods)(
+    def bodyOver(
+        gate: Classifier^,
+        models: Models^,
+        clock: Clock^,
+        sealing: PeriodStore = periods,
+        db: Db^ = FakeDb
+    )(
         id: WorkflowId
     )(using Durable^): String =
       Close.body(
@@ -306,7 +318,7 @@ object CloseFixtures {
           ),
           grit.core.classify.TestClassifiers.cleared(gate),
           models,
-          FakeDb,
+          db,
           clock
         )
       )(id)

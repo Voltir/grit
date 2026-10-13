@@ -33,6 +33,23 @@ object StitchTests extends TestSuite {
       w.stitches.links(Vector(b))(using TestTx.fake) ==> Right(Vector(Link(b, c)))
     }
 
+    test(
+      "a classifier whose service is not cleared for what the placement read is not asked: unread"
+    ) {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      val classifier = follows
+      new InMemoryDurable().run(StitchRef(TurnRef(b, t.turn), at(1)).workflowId)(
+        w.placement(classifier, 2, grit.core.classify.TestClassifiers.above())
+      ) ==> "stitched: unread"
+      (w.stitches.links(Vector(b))(using TestTx.fake), classifier.calls) ==> (
+        Right(Vector.empty),
+        0
+      )
+    }
+
     test("a placement resumed after it asked reads its answer back, and asks nothing again") {
       val w = new World
       w.hear("where did we land on the Engine contract term?", "Nick", 0)

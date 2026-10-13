@@ -202,6 +202,18 @@ object ShadowTests extends TestSuite {
       )
     }
 
+    test(
+      "a classifier whose service is not cleared for what the shadow read is not asked: kept as failed, unavailable"
+    ) {
+      val w = new World
+      val t = w.hear("lunch?", "Ana", 0)
+      val classifier = new Scripted(Vector(0.1, 0.9), Vector(0.9))
+      new InMemoryDurable().run(ShadowRef(t, Words).workflowId)(
+        w.body(classifier, 5, grit.core.classify.TestClassifiers.above())
+      ) ==> "kept: failed: unavailable"
+      classifier.calls ==> 0
+    }
+
     test("answers that do not read as triage's are kept as failed, unreadable") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)

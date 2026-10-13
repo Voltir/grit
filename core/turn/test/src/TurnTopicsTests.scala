@@ -266,6 +266,34 @@ object TurnTopicsTests extends TestSuite {
       texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
     }
 
+    test(
+      "a classifier whose service is not cleared for what the turn read: unclassified, and not asked"
+    ) {
+      val entries = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      val durable = new InMemoryDurable
+      val turns = Vector("hello", "and more").map { text =>
+        val turn = say(entries, text)
+        durable.run(turn.workflowId)(
+          turnBodyWith(
+            entries,
+            new RecordingProvider,
+            new Before(entries),
+            new InMemoryUsageLedger,
+            classifier,
+            aboveTheClassifier = true
+          )
+        )
+        turn
+      }
+      (last(topics(entries), turns(1)).map(_.by), classifier.calls) ==> (
+        Some(
+          Placement.Unclassified("unavailable: " + grit.core.classify.TestClassifiers.Uncleared)
+        ),
+        0
+      )
+    }
+
     test("a crash recording the placement resumes there, and asks nothing twice") {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable

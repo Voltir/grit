@@ -33,7 +33,8 @@ object TurnSpeechTests extends TestSuite {
       speaking: Speaking = Speaking.Within(speechLimits),
       answer: Either[ProviderError, Message.Assistant] = Right(said("It moved to Thursday.")),
       kept: Option[InMemoryTriageStore] = None,
-      durable: InMemoryDurable = new InMemoryDurable
+      durable: InMemoryDurable = new InMemoryDurable,
+      routed: Boolean = false
   ): String =
     durable.run(w.turn.workflowId)(
       turnBodyWith(
@@ -46,7 +47,8 @@ object TurnSpeechTests extends TestSuite {
         weighing = TurnWeighing(
           kept.getOrElse(new InMemoryTriageStore(w.entries, NoPeriods)),
           new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
-        )
+        ),
+        aboveTheClassifier = routed
       )
     )
 
@@ -293,6 +295,19 @@ object TurnSpeechTests extends TestSuite {
       run(w, new Judge(Some((0.9, 0.9))))
       (outcome(w), awaited(w), reply(w)) ==>
         (Some(Outcome.Failed("no address to reply to")), Vector.empty, None)
+    }
+
+    test(
+      "a judge whose service is not cleared for what the turn read: unjudged, not asked, nothing posted"
+    ) {
+      val w = speechWorld()
+      val judge = new Judge(Some((0.9, 0.9)))
+      run(w, judge, routed = true)
+      (outcome(w), judge.calls, awaited(w)) ==> (
+        Some(Outcome.Unjudged("unavailable: " + grit.core.classify.TestClassifiers.Uncleared)),
+        0,
+        Vector.empty
+      )
     }
 
     test("the judge unavailable: unjudged, nothing posted") {

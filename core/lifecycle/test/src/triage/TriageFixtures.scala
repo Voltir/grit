@@ -256,13 +256,17 @@ object TriageFixtures {
         .find(_.turnSeq == triage.turn)
         .flatMap(e => this.triage.of(Vector(e.id))(using TestTx.fake).toOption.flatMap(_.get(e.id)))
 
-    /** An opening's placement over this world, asking `classifier`, at `minutes`. */
-    def placement(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
+    /** An opening's placement over this world, asking `classifier`, at `minutes`, reading
+      * through `db`.
+      */
+    def placement(classifier: Classifier^, minutes: Long, db: Db^ = FakeDb)(id: WorkflowId)(using
+        Durable^
+    ): String =
       Stitch.body(
         StitchEnv(
           reads,
           grit.core.classify.TestClassifiers.cleared(classifier),
-          FakeDb,
+          db,
           new Stopped(at(minutes)),
           Tuning.Default
         )
@@ -295,14 +299,15 @@ object TriageFixtures {
     }
 
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
-      * `speaking` says, with no daily cap, the deployment's knowledge `sources` those given; a
-      * turn it starts is kept in [[started]].
+      * `speaking` says, with no daily cap, the deployment's knowledge `sources` those given,
+      * reading through `db`; a turn it starts is kept in [[started]].
       */
     def body(
         classifier: Classifier^,
         minutes: Long,
         speaking: Speaking = Speaking.Off,
-        sources: Corpora = Corpora.Empty
+        sources: Corpora = Corpora.Empty,
+        db: Db^ = FakeDb
     )(
         id: WorkflowId
     )(using Durable^): String =
@@ -323,7 +328,7 @@ object TriageFixtures {
             rooms
           ),
           grit.core.classify.TestClassifiers.cleared(classifier),
-          FakeDb,
+          db,
           new Stopped(at(minutes)),
           TriageSpeech(
             speaking,

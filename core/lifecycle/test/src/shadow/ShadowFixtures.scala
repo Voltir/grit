@@ -84,9 +84,15 @@ object ShadowFixtures {
 
     /** The shadow's body over this world, with [[Catalog]]: `classifier` asks variant
       * [[Words]] v1 in [[Reworded]], and variant [[Asks]] V2, of model `jev-variant`, at
-      * `minutes`, each call taking 250 ms.
+      * `minutes`, each call taking 250 ms, reading through `db`.
       */
-    def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
+    def body(
+        classifier: Classifier^,
+        minutes: Long,
+        db: grit.core.store.Db^ = TriageFixtures.FakeDb
+    )(
+        id: WorkflowId
+    )(using Durable^): String =
       Shadow.body(
         ShadowEnv(
           triaged.reads,
@@ -105,7 +111,7 @@ object ShadowFixtures {
             )
           ),
           Catalog,
-          TriageFixtures.FakeDb,
+          db,
           new Ticking(TriageFixtures.at(minutes), 250),
           Tuning.Default
         )

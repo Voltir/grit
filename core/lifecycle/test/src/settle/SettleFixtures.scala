@@ -154,13 +154,17 @@ object SettleFixtures {
     /** The question a sweep would ask about period 1 as it stands. */
     def question: SettleRef = activity.map(_.question).getOrElse(sys.error("period 1 is not open"))
 
-    /** The settle's body over this world, with `classifier`, at `minutes`. */
-    def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
+    /** The settle's body over this world, with `classifier`, at `minutes`, reading through
+      * `db`.
+      */
+    def body(classifier: Classifier^, minutes: Long, db: Db^ = FakeDb)(id: WorkflowId)(using
+        Durable^
+    ): String =
       Settle.body(
         SettleEnv(
           SettleRecords(entries, periods, lifecycle, principals),
           grit.core.classify.TestClassifiers.cleared(classifier),
-          FakeDb,
+          db,
           new Stopped(at(minutes))
         )
       )(id)

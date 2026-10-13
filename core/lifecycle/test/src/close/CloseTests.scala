@@ -544,6 +544,23 @@ object CloseTests extends TestSuite {
       summary.requests.size ==> 1
     }
 
+    test(
+      "a gate whose service is not cleared for what the close read is not asked: every part is, saying why"
+    ) {
+      val w = new World
+      w.say("hello", 0)
+      val gate = new Gate(Some(Vector(0.1, 0.2, 0.3, 0.6)))
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(
+          gate,
+          answering("Summary: small talk."),
+          new SetClock(at(Lapsed)),
+          db = grit.core.classify.TestClassifiers.above()
+        )
+      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}"
+      gate.calls ==> 0
+    }
+
     test("the gate's answers choose the parts asked for; without a classifier, every one") {
       val w = new World
       w.say("hello", 0)

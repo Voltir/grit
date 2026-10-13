@@ -1030,6 +1030,15 @@ object TurnFixtures {
     )
   }
 
+  /** Reads at [[grit.core.classify.TestClassifiers.Above]], every pair of [[RoutedCatalog]] a
+    * deployment can clear cleared for them, and the fake classifiers' service not: a turn
+    * routed there, its classifier uncleared.
+    */
+  def AboveTheClassifier: Db^ =
+    grit.core.classify.TestClassifiers.above(
+      clearing(grit.core.classify.TestClassifiers.Above, RoutedFlash, RoutedSummary, RoutedQuery)
+    )
+
   /** A visibility clearing each of `pairs` for `label`, and no other. */
   def clearing(label: Label, pairs: ModelRef*): Visibility =
     labelling(
@@ -1116,7 +1125,9 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
-    * and counting `documents`, dated by `clock`, the model offered `tools`.
+    * and counting `documents`, dated by `clock`, the model offered `tools`; when
+    * `aboveTheClassifier`, routed under [[RoutedCatalog]] at reads its classifier is not
+    * cleared for ([[AboveTheClassifier]]).
     */
   def turnBodyWith(
       entries: EntryStore,
@@ -1131,6 +1142,7 @@ object TurnFixtures {
       weighing: TurnWeighing^ = noTriage(),
       documents: DocumentStore = new InMemoryDocuments,
       clock: Clock^ = new NoWait,
+      aboveTheClassifier: Boolean = false,
       tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools
   )(
       id: WorkflowId
@@ -1148,8 +1160,12 @@ object TurnFixtures {
         hosted,
         assembler,
         grit.core.classify.TestClassifiers.cleared(classifier),
-        new FixedModels(provider, new StubProvider()),
-        FakeDb,
+        new FixedModels(
+          provider,
+          new StubProvider(),
+          if (aboveTheClassifier) RoutedCatalog else TestCatalog
+        ),
+        if (aboveTheClassifier) AboveTheClassifier else FakeDb,
         clock,
         Fresh.random(),
         speech,

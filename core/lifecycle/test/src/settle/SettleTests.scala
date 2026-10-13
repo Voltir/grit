@@ -70,6 +70,19 @@ object SettleTests extends TestSuite {
       absent.calls ==> 1
     }
 
+    test(
+      "a classifier whose service is not cleared for what the settle read is not asked: unanswered"
+    ) {
+      val w = new World
+      val _ = w.turn("hello", 0)
+      val weigher = new Weigher(Some(Vector(0.9, 0.1, 0.0)))
+      new InMemoryDurable().run(w.question.workflowId)(
+        w.body(weigher, 90, grit.core.classify.TestClassifiers.above())
+      ) ==>
+        s"judged: unanswered: unavailable: ${grit.core.classify.TestClassifiers.Uncleared}"
+      weigher.calls ==> 0
+    }
+
     test("a turn that comes in while the classifier is asked leaves no verdict") {
       val w = new World
       w.turn("hello", 0)
