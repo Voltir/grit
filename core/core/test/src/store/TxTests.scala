@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.model.{ModelId, Upstream}
 import grit.core.place.{Place, Service}
 import grit.core.visibility.*
 import grit.dbos.sql.TestTx
@@ -22,6 +23,12 @@ object TxTests extends TestSuite {
   private val github = service("github")
   private val jira = service("jira")
   private val wiki = service("wiki")
+
+  private val flash = ModelId.of("vendor/flash").getOrElse(throw new java.lang.AssertionError())
+  private def upstream(slug: String): Upstream =
+    Upstream.of(slug).getOrElse(throw new java.lang.AssertionError(slug))
+  private val flashAtA = Party.Model(flash, upstream("a"))
+  private val flashAtB = Party.Model(flash, upstream("b"))
 
   private val confidentialTrial = Label.at(Level.Confidential, trial)
   private val internal = Label.at(Level.Internal)
@@ -65,7 +72,10 @@ object TxTests extends TestSuite {
           rooms,
           Vector.empty,
           Vector.empty,
-          Vector(Trust(github, confidentialTrial))
+          Vector(
+            Cleared(Party.Service(github), confidentialTrial),
+            Cleared(flashAtA, confidentialTrial)
+          )
         )
         .left
         .map(_.toString)
@@ -238,7 +248,7 @@ object TxTests extends TestSuite {
         Vector(true, true, false, false)
     }
 
-    test("a service is sent to only when what it is trusted with is as high as the floor") {
+    test("a service is sent to only when what it is cleared for is as high as the floor") {
       val floors = Vector(confidentialTrial, internal, internalFinance, Label.Public)
       // In a room at each floor, asked by someone cleared for nothing: the floor, not the read.
       val sends = floors.map { floor =>
@@ -246,6 +256,27 @@ object TxTests extends TestSuite {
         (Tx.sendsTo(github)(using tx), Tx.sendsTo(wiki)(using tx))
       }
       sends ==> Vector((true, false), (true, false), (false, false), (true, true))
+    }
+
+    test(
+      "a model is sent to only when its pair's clearance is as high as the floor, the " +
+        "transaction's classification"
+    ) {
+      val floors = Vector(confidentialTrial, internal, internalFinance, Label.Public)
+      val sends = floors.map { floor =>
+        val tx = at(Clearance.inRoom(room, floor, Label.Public))
+        (
+          Tx.classification(using tx).label,
+          Tx.clears(flashAtA)(using tx),
+          Tx.clears(flashAtB)(using tx)
+        )
+      }
+      sends ==> Vector(
+        (confidentialTrial, true, false),
+        (internal, true, false),
+        (internalFinance, false, false),
+        (Label.Public, true, true)
+      )
     }
   }
 }

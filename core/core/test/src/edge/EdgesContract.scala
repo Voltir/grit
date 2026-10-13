@@ -9,13 +9,14 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Clearance,
+  Cleared,
   Compartments,
   Label,
   Labelled,
   Level,
+  Party,
   RoomLabels,
   TestLabels,
-  Trust,
   Visibility
 }
 
@@ -110,8 +111,10 @@ abstract class EdgesContract extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector(
-          Trust(
-            grit.core.place.Service.of("vault").getOrElse(throw new java.lang.AssertionError()),
+          Cleared(
+            Party.Service(
+              grit.core.place.Service.of("vault").getOrElse(throw new java.lang.AssertionError())
+            ),
             Label.at(Level.Restricted, TestLabels.trial)
           )
         )

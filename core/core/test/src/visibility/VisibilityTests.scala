@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
+import grit.core.model.{ModelId, Upstream}
 import grit.core.place.Service
 import grit.core.store.Tx
 import grit.dbos.sql.TestTx
@@ -18,6 +19,12 @@ object VisibilityTests extends TestSuite {
   private val github =
     Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
   private val jira = Service.of("jira").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  private val flash = ModelId.of("vendor/flash").getOrElse(throw new java.lang.AssertionError())
+  private def upstream(slug: String): Upstream =
+    Upstream.of(slug).getOrElse(throw new java.lang.AssertionError(slug))
+  private val flashAtA = Party.Model(flash, upstream("a"))
+  private val flashAtB = Party.Model(flash, upstream("b"))
 
   private val ana = TestAccounts.account("test:ana")
   private val bo = TestAccounts.account("test:bo")
@@ -57,7 +64,7 @@ object VisibilityTests extends TestSuite {
     ) {
       import scala.compiletime.testing.typeChecks
       assert(
-        typeChecks("Visibility.Shipped.trusted(github)"),
+        typeChecks("Visibility.Shipped.clearances.of(Party.Service(github))"),
         !typeChecks("Visibility.Shipped.roomLabel(place(\"slack:acme/C1\"))"),
         !typeChecks("Visibility.Shipped.cleared(Principal.Grit)"),
         !typeChecks("Visibility.Shipped.explain(None, Label.Public)")
@@ -281,36 +288,56 @@ object VisibilityTests extends TestSuite {
       }
     }
 
-    test("a service is trusted with its declared label, and with public when none is declared") {
-      val trusted = Visibility
+    test(
+      "a party is cleared for its declared clearance, and for public when none is declared: " +
+        "a model at another upstream is another party"
+    ) {
+      val cleared = Visibility
         .of(
           compartments,
           RoomLabels.Public,
           groups,
           grants,
-          Vector(Trust(github, Label.at(Level.Confidential, trial)))
+          Vector(
+            Cleared(Party.Service(github), Label.at(Level.Confidential, trial)),
+            Cleared(flashAtA, Label.at(Level.Internal, acme))
+          )
         )
-        .map(v => (v.trusted(github), v.trusted(jira)))
-      trusted ==> Right((Label.at(Level.Confidential, trial), Label.Public))
-      Visibility.Shipped.trusted(github) ==> Label.Public
+        .map(v =>
+          Vector(Party.Service(github), Party.Service(jira), flashAtA, flashAtB)
+            .map(v.clearances.of)
+        )
+      cleared ==> Right(
+        Vector(
+          Label.at(Level.Confidential, trial),
+          Label.Public,
+          Label.at(Level.Internal, acme),
+          Label.Public
+        )
+      )
+      Visibility.Shipped.clearances.of(Party.Service(github)) ==> Label.Public
     }
 
-    test("a trust naming an undeclared compartment, or a service trusted twice, is refused") {
+    test("a clearance naming an undeclared compartment, or a party cleared twice, is refused") {
       val finance = compartment("finance")
       Visibility.of(
         compartments,
         RoomLabels.Public,
         groups,
         grants,
-        Vector(Trust(github, Label.at(Level.Internal, trial, finance)))
-      ) ==> Left(VisibilityRefusal.Undeclared(Namer.Trusted(github), finance))
+        Vector(Cleared(Party.Service(github), Label.at(Level.Internal, trial, finance)))
+      ) ==> Left(VisibilityRefusal.Undeclared(Namer.Cleared(Party.Service(github)), finance))
       Visibility.of(
         compartments,
         RoomLabels.Public,
         groups,
         grants,
-        Vector(Trust(github, Label.at(Level.Internal)), Trust(github, Label.Public))
-      ) ==> Left(VisibilityRefusal.TrustedTwice(github))
+        Vector(
+          Cleared(flashAtA, Label.at(Level.Internal)),
+          Cleared(flashAtB, Label.at(Level.Internal)),
+          Cleared(flashAtA, Label.Public)
+        )
+      ) ==> Left(VisibilityRefusal.ClearedTwice(flashAtA))
     }
   }
 }

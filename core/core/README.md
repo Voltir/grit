@@ -22,14 +22,14 @@ In dependency order, each with the core packages it imports:
 - **`identity`**: who someone is across sources (ADR 0032): accounts, the realms that name them,
   what a trusted realm attests, and the person the store resolves them to. An account is never
   an email address. ← `id`
-- **`visibility`**: who may see what (ADR 0030): labels, compartments, clearances, and what a
-  transaction is opened for. `Label` is opaque, never taken apart; `LabelParts`, its stored
-  form, may be named only here and in `grit.dbos` (enola-intent.yaml). ← `id`, `place`,
-  `identity`
-- **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
-  first, for a provider's prompt cache. ← `id`
 - **`model`**: what grit knows about models, as data: the catalog, the settings a call is made
   under, and the policy of which pair does each job. Imports nothing in core.
+- **`visibility`**: who may see what (ADR 0030): labels, compartments, the clearances of people
+  and of the parties grit sends to (ADR 0037), and what a transaction is opened for. `Label` is
+  opaque, never taken apart; `LabelParts`, its stored form, may be named only here and in
+  `grit.dbos` (enola-intent.yaml). ← `id`, `place`, `identity`, `model`
+- **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
+  first, for a provider's prompt cache. ← `id`
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`
 - **`schema`**: the JSON Schemas a reply is held to, in the subset every provider's strict mode
   accepts. ← `model`

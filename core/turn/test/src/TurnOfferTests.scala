@@ -51,7 +51,7 @@ import grit.core.tool.{
   Writes
 }
 import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
-import grit.core.visibility.{Clearance, Label, Level, TestLabels, Trust, Visibility}
+import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -366,7 +366,7 @@ object TurnOfferTests extends TestSuite {
       elsewhere.place -> internal,
       vault.place -> Label.at(Level.Restricted)
     ),
-    Vector(Trust(github, confidentialTrial))
+    Vector(Cleared(Party.Service(github), confidentialTrial))
   )
 
   /** `post_x`, writing to `trial` (at [[trialRoom]]) or `general`; `post_y`, to `general`. */

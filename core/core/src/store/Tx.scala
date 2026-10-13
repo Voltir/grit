@@ -3,11 +3,13 @@ package grit.core.store
 import grit.core.identity.{Held, Principal}
 import grit.core.place.{Place, Service}
 import grit.core.visibility.{
+  Classification,
   Clearance,
   Explanation,
   Item,
   Label,
   Labelled,
+  Party,
   Recorded,
   Room,
   RoomAccess,
@@ -159,12 +161,19 @@ object Tx {
   def readsFrom(source: Place)(using tx: Tx^): Boolean =
     tx.clearance.reads(Item.InRoom(source), roomLabel(source))
 
-  /** Whether what this transaction knows may be sent to `service` as a call's arguments: what
-    * the deployment trusts `service` with ([[Visibility.trusted]], public when it declares no
-    * trust) dominates [[floor]]. What the call returns is checked by [[readsFrom]] of its place.
+  /** What this transaction knows is classified at: [[floor]]. */
+  def classification(using tx: Tx^): Classification = Classification(floor(tx))
+
+  /** Whether what this transaction knows may be sent to `party`
+    * ([[grit.core.visibility.Clearances.clears]]).
     */
-  def sendsTo(service: Service)(using tx: Tx^): Boolean =
-    tx.visibility.trusted(service).dominates(floor(tx))
+  def clears(party: Party)(using tx: Tx^): Boolean =
+    tx.visibility.clearances.clears(party, classification)
+
+  /** Whether what this transaction knows may be sent to `service` as a call's arguments
+    * ([[clears]] its party). What the call returns is checked by [[readsFrom]] of its place.
+    */
+  def sendsTo(service: Service)(using tx: Tx^): Boolean = clears(Party.Service(service))
 
   /** `room`'s label before its compartments are admitted: the one set through grit, else the
     * deployment's labeller's for it with its reported access.

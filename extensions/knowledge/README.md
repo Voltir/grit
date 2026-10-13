@@ -37,7 +37,7 @@ such declaration (`deployments/app/README.md`).
 
 A source is kept at one label: the one it declares, or its service place's when it declares
 none. It may be above the service's (a confidential repository behind an internal service),
-never below, and never above what the deployment trusts the service with: `Knowledge.of`
+never below, and never above what the deployment clears the service for: `Knowledge.of`
 refuses either, naming the source, since its runs could then not read the service or send it
 a call. Its schedules run at that label, so a run reads and keeps at it, and every answer a
 run's calls and asks bring back is at it: no card is kept where the next run cannot read it

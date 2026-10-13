@@ -7,7 +7,16 @@ import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.place.Service
 import grit.core.plugin.Plugin
-import grit.core.visibility.{Compartments, Label, Labelled, Level, RoomLabels, Trust, Visibility}
+import grit.core.visibility.{
+  Cleared,
+  Compartments,
+  Label,
+  Labelled,
+  Level,
+  Party,
+  RoomLabels,
+  Visibility
+}
 
 import utest.*
 
@@ -156,7 +165,7 @@ object PluginChoiceTests extends TestSuite {
             .fold(p => sys.error(p.written), identity),
           Vector.empty,
           Vector.empty,
-          Vector(Trust(github, internal))
+          Vector(Cleared(Party.Service(github), internal))
         )
         .fold(r => sys.error(r.toString), identity)
       choice(this.github + ("GRIT_PLUGINS" -> "knowledge"), labelled) ==> Left(

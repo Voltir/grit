@@ -155,11 +155,14 @@ part is declared data or a pure function:
   `Realm`, such as every `slack:{team}/` account, as the attester `identities` trusts for it
   attests them); and what each group's members are cleared for: a person is cleared for the
   join of the grants of every group any of their accounts puts them in.
-- `trusts`: what each outside service (`service:{name}`) is trusted with, as a label
-  ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md));
-  public for a service it does not name. It is the most a turn may send the service as a
-  call's arguments. What the service contains is another label, its place's, given by
-  `rooms` as any room's. Grants clear people, trusts clear services, and rooms label content.
+- `clearances`: what each party grit sends to is cleared for, as a label
+  ([ADR 0037](decisions/0037-every-party-grit-sends-to-is-cleared-and-every-model-call-goes-to-a-cleared-pair-or-is-not-made.md)):
+  an outside service (`service:{name}`), sent a call's arguments
+  ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md))
+  or a classifier's states, and a model at one named upstream; public for a party it does not
+  name. It is the most grit may send the party. What a service contains is another label, its
+  place's, given by `rooms` as any room's. Grants clear people, clearances clear parties, and
+  rooms label content.
 
 Every other part of a deployment that names a compartment declares it, and `Deployment.of`
 refuses one the visibility does not declare: a plugin's `compartments`, an edge's

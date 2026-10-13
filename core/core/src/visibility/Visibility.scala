@@ -1,10 +1,10 @@
 package grit.core.visibility
 
-import grit.core.place.{Place, Service}
+import grit.core.place.Place
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
   * compartments, the labeller of its rooms, its groups and what each group's members are
-  * cleared for, and what it trusts each outside service with. What a room is labelled and a
+  * cleared for, and what each party it sends to is cleared for. What a room is labelled and a
   * person is cleared for in force is read on a transaction ([[grit.core.store.Tx.roomLabel]],
   * [[grit.core.store.Tx.clearanceOf]]), which adds what is recorded through grit.
   */
@@ -13,17 +13,10 @@ final case class Visibility private (
     rooms: Labeller[Room],
     groups: Vector[Group],
     grants: Vector[Grant],
-    trusts: Vector[Trust],
+    clearances: Clearances,
     administrators: Option[GroupName],
     stewards: Vector[Steward]
-) {
-
-  /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
-    * declared.
-    */
-  def trusted(service: Service): Label =
-    trusts.find(_.service == service).fold(Label.Public)(_.label)
-}
+)
 
 object Visibility {
 
@@ -31,7 +24,7 @@ object Visibility {
   private def ownGroupOf(compartments: Compartments, group: GroupName): Option[Compartment] =
     compartments.declared.find(c => GroupName.own(c) == group)
 
-  /** No compartment but unmapped, every room public, no group, no service trusted above
+  /** No compartment but unmapped, every room public, no group, no party cleared above
     * public: every label is public, so every reader reads what it read before labels existed.
     */
   val Shipped: Visibility =
@@ -40,17 +33,18 @@ object Visibility {
       RoomLabels.Public,
       Vector.empty,
       Vector.empty,
-      Vector.empty,
+      Clearances.Empty,
       None,
       Vector.empty
     )
 
   /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
     * compartment `compartments` does not declare, named by a declared room label,
-    * `rooms.requires`, a grant or a trust (`Undeclared`, saying where); two groups of one name;
-    * a grant to a group not declared; a service trusted twice; or `administrators` naming no
-    * declared group (`NoSuchGroup`), or a compartment's own group, the one named as it
-    * (`AdministersCompartment`), which people cleared for it through grit join.
+    * `rooms.requires`, a grant or a clearance (`Undeclared`, saying where); two groups of one
+    * name; a grant to a group not declared; a party cleared twice (`ClearedTwice`); or
+    * `administrators` naming no declared group (`NoSuchGroup`), or a compartment's own group,
+    * the one named as it (`AdministersCompartment`), which people cleared for it through grit
+    * join.
     * `administrators`' declared members alone may make the changes
     * [[grit.core.admin.Authority]] reserves to administrators; with none, no one may. A
     * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
@@ -63,7 +57,7 @@ object Visibility {
       rooms: Labeller[Room],
       groups: Vector[Group],
       grants: Vector[Grant],
-      trusts: Vector[Trust] = Vector.empty,
+      clearances: Vector[Cleared] = Vector.empty,
       administrators: Option[GroupName] = None,
       stewards: Vector[Steward] = Vector.empty
   ): Either[VisibilityRefusal, Visibility] = {
@@ -76,6 +70,7 @@ object Visibility {
       case _ => Vector.empty
     }
     val names = groups.map(_.name)
+    val cleared = Clearances.of(clearances).left.map(VisibilityRefusal.ClearedTwice(_))
     val direct = rooms match {
       case r: RoomLabels =>
         r.declared.collectFirst {
@@ -98,11 +93,10 @@ object Visibility {
             .find(g => !names.contains(g.group))
             .map(g => VisibilityRefusal.NoSuchGroup(g.group))
         )
-        .orElse(trusts.flatMap(t => undeclared(Namer.Trusted(t.service), t.label)).headOption)
-        .orElse {
-          val services = trusts.map(_.service)
-          services.diff(services.distinct).headOption.map(VisibilityRefusal.TrustedTwice(_))
-        }
+        .orElse(
+          clearances.flatMap(c => undeclared(Namer.Cleared(c.party), c.clearance)).headOption
+        )
+        .orElse(cleared.left.toOption)
         .orElse(administrators.flatMap { g =>
           if (!names.contains(g)) Some(VisibilityRefusal.NoSuchGroup(g))
           else ownGroupOf(compartments, g).map(_ => VisibilityRefusal.AdministersCompartment(g))
@@ -122,9 +116,10 @@ object Visibility {
           val stewarded = stewards.map(_.compartment)
           stewarded.diff(stewarded.distinct).headOption.map(VisibilityRefusal.StewardedTwice(_))
         }
-    refusal.toLeft(
-      new Visibility(compartments, rooms, groups, grants, trusts, administrators, stewards)
-    )
+    for {
+      _ <- refusal.toLeft(())
+      c <- cleared
+    } yield new Visibility(compartments, rooms, groups, grants, c, administrators, stewards)
   }
 }
 
@@ -146,8 +141,8 @@ enum Namer {
   /** A grant to `group`. */
   case Granted(group: GroupName)
 
-  /** The trust of `service`. */
-  case Trusted(service: Service)
+  /** The clearance of `party`. */
+  case Cleared(party: Party)
 
   /** A [[Steward]] of `compartment`. */
   case Stewarded(compartment: Compartment)
@@ -181,17 +176,11 @@ enum VisibilityRefusal {
   /** Two stewards are declared for `compartment`. */
   case StewardedTwice(compartment: Compartment)
 
-  /** Two trusts name `service`. */
-  case TrustedTwice(service: Service)
+  /** Two clearances name `party`. */
+  case ClearedTwice(party: Party)
 
   /** `place`, a room the deployment's [[RoomLabels]] declares, is within `direct`: a direct
     * message's room is labelled at its person's clearance, never by the labeller.
     */
   case DirectDeclared(place: Place)
 }
-
-/** The deployment trusts `service` with `label`: what a turn may send it as a call's arguments
-  * is at most this ([[grit.core.store.Tx.sendsTo]]). What it contains is its place's label,
-  * given as any room's.
-  */
-final case class Trust(service: Service, label: Label)

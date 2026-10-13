@@ -22,13 +22,14 @@ import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload, Tx}
 import grit.core.triage.Corpus
 import grit.core.visibility.{
+  Cleared,
   Compartments,
   Label,
   Labelled,
   Level,
+  Party,
   RoomLabels,
   Subject,
-  Trust,
   Visibility
 }
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -96,7 +97,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
           .fold(p => sys.error(p.written), identity),
         Vector.empty,
         Vector.empty,
-        Vector(Trust(github, trusted))
+        Vector(Cleared(Party.Service(github), trusted))
       )
       .fold(r => sys.error(r.toString), identity)
 

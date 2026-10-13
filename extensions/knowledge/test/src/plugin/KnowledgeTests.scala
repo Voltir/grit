@@ -7,13 +7,14 @@ import grit.core.job.{Declared, SlotRule}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.triage.Corpus
 import grit.core.visibility.{
+  Cleared,
   Compartment,
   Compartments,
   Label,
   Labelled,
   Level,
+  Party,
   RoomLabels,
-  Trust,
   Visibility
 }
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
@@ -59,7 +60,7 @@ object KnowledgeTests extends TestSuite {
       )
     )
 
-  /** Every room labelled `otherwise`, GitHub's service trusted with `trusted`. */
+  /** Every room labelled `otherwise`, GitHub's service cleared for `trusted`. */
   private def visibility(otherwise: Labelled, trusted: Label): Visibility =
     Visibility
       .of(
@@ -67,7 +68,7 @@ object KnowledgeTests extends TestSuite {
         RoomLabels.of(Vector.empty, otherwise).fold(p => sys.error(p.written), identity),
         Vector.empty,
         Vector.empty,
-        Vector(Trust(service, trusted))
+        Vector(Cleared(Party.Service(service), trusted))
       )
       .fold(r => sys.error(r.toString), identity)
 
@@ -101,10 +102,10 @@ object KnowledgeTests extends TestSuite {
       )
     }
 
-    test("a source whose service is trusted with less than its label is refused, naming it") {
+    test("a source whose service is cleared for less than its label is refused, naming it") {
       declared(Vector(source(Some(confidential))), internalService) ==> Left(
         "the source repo is labelled [level: confidential], above what its service github is " +
-          "trusted with, [level: internal]: its runs' calls could not send"
+          "cleared for, [level: internal]: its runs' calls could not send"
       )
     }
 

@@ -87,6 +87,7 @@ import grit.core.tool.{
 }
 import grit.core.triage.{Kind, Tags}
 import grit.core.visibility.{
+  Cleared,
   Compartment,
   Compartments,
   Label,
@@ -95,7 +96,6 @@ import grit.core.visibility.{
   Room,
   Subject,
   TestLabels,
-  Trust,
   Visibility
 }
 import grit.dbos.sql.TestTx
@@ -120,11 +120,11 @@ object TurnFixtures {
   val finance: Compartment = TestLabels.compartment("finance")
 
   /** A deployment's visibility declaring [[trial]] and [[finance]]: each of `places` labelled
-    * as given, any other place unplaced, and each service trusted as `trusts` says.
+    * as given, any other place unplaced, and each party cleared as `clearances` says.
     */
   def labelling(
       places: Vector[(Place, Label)],
-      trusts: Vector[Trust] = Vector.empty
+      clearances: Vector[Cleared] = Vector.empty
   ): Visibility = {
     val rooms: Labeller[Room] = new Labeller[Room] {
       def label(item: Room): Labelled =
@@ -136,7 +136,7 @@ object TurnFixtures {
     (for {
       compartments <- Compartments.of(Vector(trial, finance)).left.map(_.toString)
       v <- Visibility
-        .of(compartments, rooms, Vector.empty, Vector.empty, trusts)
+        .of(compartments, rooms, Vector.empty, Vector.empty, clearances)
         .left
         .map(_.toString)
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)

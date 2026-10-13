@@ -32,7 +32,7 @@ import grit.core.provider.Models
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
-import grit.core.visibility.{Clearance, Compartments, Label, RoomLabels, Trust, Visibility}
+import grit.core.visibility.{Clearance, Cleared, Compartments, Label, Party, RoomLabels, Visibility}
 import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against [[DurableMoves]], over [[InMemoryDurable]] and core's in-memory
@@ -80,7 +80,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
         RoomLabels.Public,
         Vector.empty,
         Vector.empty,
-        Vector(Trust(Probe, floor))
+        Vector(Cleared(Party.Service(Probe), floor))
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =

@@ -6,7 +6,7 @@ import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{Declared, Job}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
-import grit.core.visibility.{Label, Room, Visibility}
+import grit.core.visibility.{Label, Party, Room, Visibility}
 import grit.knowledge.github.GitHubCards
 import grit.knowledge.sync.{Sync, SyncParams}
 
@@ -53,7 +53,7 @@ object Knowledge {
     * label or, when it declares none, its service place's; or why not: no source; two of one
     * corpus; two sync schedules of one key; a source labelled below its service's place, so
     * that its runs could not read the service (an unmapped place is below only labels holding
-    * `unmapped`); or one whose service is trusted with less than its label, so that its runs'
+    * `unmapped`); or one whose service is cleared for less than its label, so that its runs'
     * calls could not send. A service's place takes no label through grit (ADR 0033 labels
     * rooms by command in them), so its declared label is the one in force, and a plugin this
     * returns has runs that are not refused for either reason.
@@ -90,17 +90,17 @@ object Knowledge {
     // As Tx.roomLabel reads the place with nothing recorded through grit and no access reported.
     val place =
       visibility.compartments.admit(visibility.rooms.label(Room(service.place, None)).label)
-    val trusted = visibility.trusted(service)
+    val cleared = visibility.clearances.of(Party.Service(service))
     val label = cards.label.getOrElse(place)
     if (!label.dominates(place))
       Left(
         s"the source $source is labelled ${Label.shown(label)}, below its service " +
           s"${service.name}'s place, ${Label.shown(place)}: its runs could not read the service"
       )
-    else if (!trusted.dominates(label))
+    else if (!cleared.dominates(label))
       Left(
         s"the source $source is labelled ${Label.shown(label)}, above what its service " +
-          s"${service.name} is trusted with, ${Label.shown(trusted)}: " +
+          s"${service.name} is cleared for, ${Label.shown(cleared)}: " +
           "its runs' calls could not send"
       )
     else Right(label)

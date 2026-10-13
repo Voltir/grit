@@ -58,7 +58,16 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
-import grit.core.visibility.{Clearance, Compartments, Label, RoomLabels, Subject, Trust, Visibility}
+import grit.core.visibility.{
+  Clearance,
+  Cleared,
+  Compartments,
+  Label,
+  Party,
+  RoomLabels,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 /** A run's world over core's in-memory fakes: an inbox that starts slots as the SQL one does,
@@ -191,7 +200,7 @@ object RunFixtures {
           RoomLabels.Public,
           Vector.empty,
           Vector.empty,
-          Vector(Trust(Probe, trust))
+          Vector(Cleared(Party.Service(Probe), trust))
         )
         .fold(r => sys.error(r.toString), identity)
     private val db = new FakeDb(Clearance.of(floor), visibility)
