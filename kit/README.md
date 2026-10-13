@@ -13,50 +13,27 @@ the kit as a `grit.core.edge.ServedEdge` value its extension's entry object make
 plugin, and offers every plugin's tools the same way, each bound when the engine starts over
 the plugin's own documents and the services of the plugins it needs (ADR 0027).
 
+Its types are the code's (`scripts/outline area deployment`); this file holds the package
+order and what the signatures cannot say.
+
 In dependency order:
 
-- **`deployment`** — what a deployment declares: `Deployment` (built by `Deployment.of`,
-  called with named arguments, whose doc lists each `DeploymentRefusal`), its own jobs and
-  declared schedules beside its plugins' (ADR 0029), `PluginBinding` (each plugin's tools
-  bound over its documents, its needs' services and a desk of its own jobs), `Offer` and
-  `Offered`
-  (the tools every turn's model is offered), `Assembly` (how a window is assembled),
-  `Topics` (how a message is placed among topics), the shadows of triage's question it
-  records (`grit.lifecycle.shadow.ShadowVariant`), the corpora their question
-  sets ask about (`grit.core.triage.Corpora`), and the review of one of them it picks
-  heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate,
-  and the place the one edge that answers it posts its prompts, `ServedEdge.reviewsAt`),
-  the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
-  ADR 0025), the persona grit presents as (`grit.core.persona.Persona`, ADR 0026), its
-  visibility (`grit.core.visibility.Visibility`, ADR 0030): who may see what, injected
-  into core, with `Requirer` naming what else in it names a compartment (a plugin, an edge,
-  a declared schedule's clearance), and its identities (`grit.core.identity.Identities`,
-  ADR 0032): the attester it trusts for each realm, and the email domains it claims. Beside
-  its edges it declares, by core's links, which conversations work in a service an edge hosts (`WorksIn`) and which
-  conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
-- **`environment`** — what the process environment supplies, never declared: `DotEnv` (a
-  `.env` file under the real environment) and `Secrets` (the database, OpenRouter's key, and
-  Jev's settings for `Topics.Jev`). An edge's credentials are its own `needs`. ← `deployment`
-- **`run`** — running a deployment: `Kit.serve` (the engine and every edge, delivered to
-  every `Kit.DeliverEvery` until the process is stopped, a declared review's messages
-  picked every `Kit.PickEvery`, and each attesting edge asked for a look at once and every
-  `Attesting.Every`; each edge's stores carry an `Attesting` over the realms the deployment
-  trusts its attester for, whose reports are logged at info, warn or error by
-  `Kit.reported`), `Kit.catchUp` (an edge's
-  `CatchUp` heard once, estimated, each source's label shown, and agreed to first, then swept until nothing is left to
-  close), the two alone ending what the deployment's identities no longer trust as they start
-  (a process running its own chat may be declared with fewer edges, and so trust fewer
-  realms), each failing as a `KitFailure`; `Kit.launch`
-  (the engine's workflows, for grit's own chat, ending no attestation); `Launch`, the workflows launched the same way by every way grit runs, telling the time by the
-  clock the engine was opened with (`Engine.clock`), with the
-  deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
-  edge (`grit.job.clock.ClockEdge`) starting what they have waiting, and grit's own tools
-  offered in every conversation (`about`, and `clearance` over the engine's askers, which the
-  kit alone holds) beside every plugin's (`Launch.asking`, the same with its models and
-  classifiers given, is how a live test counts calls);
-  `Serving`, the edges opened, delivered to, asked for looks and closed; `Picking`, a review's pick round,
-  of the messages its place may receive;
-  `CatchingUp` and `Estimate`, a
-  catch-up's flow and its bound; `KeptModelSettings`. ← `deployment`, `environment`
+- **`deployment`**: what a deployment declares, built by `Deployment.of`, whose doc lists each
+  refusal: its plugins and its own jobs (ADR 0029), the tools every turn is offered, how a
+  window is assembled and messages placed among topics, triage's shadows and the corpora they
+  ask about, a review, the turn recipe (ADR 0025), the persona (ADR 0026), its visibility (ADR
+  0030) and its identities (ADR 0032), and by core's links which conversations work in or reach
+  a service an edge hosts. Imports nothing in kit.
+- **`environment`**: what the process environment supplies, never declared: a `.env` file under
+  the real environment, the database, OpenRouter's key and Jev's settings. An edge's
+  credentials are its own `needs`. ← `deployment`
+- **`run`**: running a deployment. `Kit.serve` runs the engine and every edge until the process
+  is stopped; `Kit.catchUp` hears an edge's catch-up once, estimated, each source's label shown
+  and agreed to first, then sweeps until nothing is left to close. Those two alone end what the
+  deployment's identities no longer trust as they start: a process running its own chat may be
+  declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
+  workflows, telling the time by the engine's clock, with declared schedules reconciled at
+  start and grit's own tools (`about`, and `clearance` over the engine's askers, which the kit
+  alone holds) offered beside every plugin's. ← `deployment`, `environment`
 
 No source file sits at the module's root, and the test tree mirrors it.

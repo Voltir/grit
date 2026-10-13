@@ -7,29 +7,20 @@ read through the MCP tools a deployment offers, never a client of its own.
 
 Packages, in one-way order (each names only those before it):
 
-- **`card`**: what a card is, whatever its source. `CardKey`, a unit's key (the SHA-256 of its
-  corpus and path), `UnitVersion` (a git SHA), `CardSummary` and its reply (`CardSummary.Reply`,
-  the schema a summary ask is sent), `Card` (a unit's path, kind, version, summary and pointer,
-  and a directory's `Scope`, what of its source it was made under, as its document's key, text
-  and data), and `CardMoves`, the names of a sync run's moves
-  (`{phase}/{key}`, `held`, `drop`).
+- **`card`**: what a card is, whatever its source: a unit's key (the SHA-256 of its corpus and
+  path), its version (a git SHA), its summary, and its document's key, text and data; and the
+  names of a sync run's moves (`{phase}/{key}`, `held`, `drop`).
 - **`github`**: a repository as a card source, read through GitHub's MCP server's
-  `get_file_contents`. `GitHubCards` (the repository, what of it becomes cards, its label and
-  its `SyncSchedule`s, and its `scope`; a unit's read call and its pointer, `{server}_get_file_contents` with
-  `owner`, `repo` and `path` and no `ref`), `Listing` (a directory's answer: its entries with
-  their SHAs, or `Partial` when cut or naming possible path matches) and `Fetched` (a file's
-  answer: its text and blob SHA, the only version a file's card is written at, or
-  `Unversioned`, saying why). Imports `card`.
-- **`sync`**: a sync run. Its plan, pure: `Walk`, from the cards a run holds (`Held`, each read
-  back from its document by `Held.read`) and each step's `Outcome`, the next `Step`: list, read,
-  summarise, write, relabel, and a last drop; `Synced`, what the run came to, and its reply line;
-  `SyncParams`, what a run is told. And `Sync`, the keeping job `knowledge-sync`, which makes
-  each step as a move named by `CardMoves`: a call, a summary ask, or a keep, a card held at
-  another label withdrawn in the keep that replaces it. Imports `card` and `github`.
-- **`plugin`**: the plugin a deployment turns on. `CardSource`, where cards come from (a
-  repository, `GitHubCards`), and `Knowledge`, the plugin over a deployment's sources: its
-  documents' terms, the `Sync` job, and each source's sync schedules, keyed `{source}-{key}`.
-  Imports `github` and `sync`.
+  `get_file_contents`. A unit's pointer is `{server}_get_file_contents` with `owner`, `repo` and
+  `path` and no `ref`. A file's card is written only at its blob SHA; a file answered without
+  one is not carded. Imports `card`.
+- **`sync`**: a sync run. Its plan is pure: from the cards a run holds and each step's outcome,
+  the next step (list, read, summarise, write, relabel, and a last drop). `Sync`, the keeping
+  job `knowledge-sync`, makes each step as a move: a call, a summary ask, or a keep; a card held
+  at another label is withdrawn in the keep that replaces it. Imports `card` and `github`.
+- **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
+  `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
+  `sync`.
 
 ## What a deployment declares
 

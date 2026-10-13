@@ -20,211 +20,56 @@ the search queries a rebuild's window-only cases had written, each kept in the c
 its request's key and never printed. A capture's text stays in Postgres, in the database the
 capture was restored to.
 
+Its types are the code's (`scripts/outline area eval`); this file holds the package order and
+the rules each package keeps that its signatures cannot state.
+
 Packages, each importing only those above it:
 
-- **`stats`** — `Mills`, a USD amount as every report shows a price: in millidollars,
-  written `m$2.9`; `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
-  and the least difference a paired comparison of its precision detects, over Student's t;
-  and `Proportion`, how many items hit, with Wilson's 95% interval on their effective number
-  (n over the clustered design effect), none under `Proportion.MinClusters` clusters, its
-  items listed or given by count (`Proportion.counted`: a call's cached tokens of its input); pure,
+- **`stats`**: estimates and proportions with their intervals, clustered, over Student's t and
+  Wilson's interval; and `Mills`, a USD amount as every report shows a price (`m$2.9`). Pure,
   naming nothing of grit's.
-- **`capture`** — a capture, text-free: `CaseId`, a heard message's identity outside any one
-  database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
-  the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
-  capture as a whole (its dump, the settings and tuning in force, the builders' constants,
-  the build that captured it); `CaptureJson`, their files' JSON; `Capture`, a `Captured` read
-  from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
-  builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
-  `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
-  well as Slack ones (`Said`, the message it answers by id): its offer (the set offered, by id, and the shape its
-  recipe decided, `grit.turn.TurnShape`, none for an offer recorded before shapes), what its
-  `weigh` step recorded (`grit.turn.TurnRecord.Weigh`), its window by part, the documents
-  among them each `Held` by version (kept, with its plugin and its pointer's tool, or gone),
-  its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
-  `topic` tool, or neither, and its `Reading`: indexed when it followed the pointer of a
-  document current at capture, whichever plugin kept it, followed when its window held one too,
-  and its result's support, useful at `Support.Used`), how it ended, its ledger rows by role (each with its input, cached input and output tokens
-  and its cost) and what became of a heard
-  root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
-  records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`
-  (`TurnCapture.costed` costs a rebuilt window the same way, and `TurnCapture.schema` a set of
-  tool definitions);
-  `Support`, how much of a reply a part carries, computed where the text is and kept as the
-  number, the line at which a part counts as used (`Support.Used`), and a window's most
-  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line of an
-  older `TurnJson.Format` is refused: recapture);
-  `KnowledgeJson`, the corpora the deployment that recorded a capture declares, each
-  with the service it supplies, read from the `knowledge.json` written beside the capture
-  (grit's database keeps no declaration; its lines are the deployment's words, no
-  conversation's), and only when the harness asks a turn: their lines are its questions'
-  words. `Fields`, the reader every file's JSON
-  is read through.
-- **`sent`** — one recorded turn as its model was sent it, text and all, for a person to
-  read (`scripts/eval context`): `TurnSent`, read from a database through `Reader` and
-  `grit.turn.TurnRecord` (its calls' requests rebuilt by `TurnRecord.requests` through this
-  build's code, and the decisions that led there: the stitch placement, triage's tags, the
-  speech decision and judgement, queries, window and ledger rows by role, `capture.Spent`);
-  `Picked`, which way its answering call was sent, by the estimate its ledger row recorded;
-  `SentMarkdown`, the markdown, its tool results cut as `Cut` says. And `HeardSent`, what Jev
-  was asked of a heard message and answered: the stitch state as its placement recorded it
-  (and the question as this build words it), and triage's request rebuilt through the
-  shipped builder (`TriageInput`, `TriageQuestions.shipped`, worded for the persona and
-  corpora a capture's directory declares), since triage keeps none, beside the tags
-  it kept. It reads its own rather
-  than through `TurnCapture`, whose readers are private to capturing and keep
-  numbers, never text. ← `stats`, `capture`
-- **`label`** — a person's labels of a capture's cases, kept apart from the cases so a
-  recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
-  each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,
-  and its `Place`); and `Verdicts`, the verdict a review's rater left standing on a picked
-  message (`Rated`: the shadow it was picked against, why, the verdict, the rater's id and
-  when), as `pull` writes them. Labels judge the inputs a call was given, verdicts the speech
-  decision at its moment: the two are reported side by side, never merged. And replies'
-  labels, kept by the workflow of the turn that wrote each (`ReplyLabels`, read from and
-  written to `reply-labels.json`): each a `ReplyLabel` under a `ReplyGuide` this build knows,
-  of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
-  window part by ids alone or a document by version, or the thread, elsewhere, nowhere, or nothing asked), and whether
-  grit should have spoken; a person's note is never read into one; `Locator.held`, whether a
-  window's parts show what a locator names. And `ChurnPairs`, the questions of a churn
-  comparison by id, each a `ChurnPair` of the messages that asked it before a change and after,
-  read from a local `churn-pairs.json`, ids alone. ← `capture`
-- **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
-  capture, variant, build, cap and repeats a run was started with, and a question set's
-  names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
-  focus its message was said at), `Footer` (what it spent), and `Weights`, a classifier's
-  answer by position, never by key, and `Log.named`, a log by position read under its
-  questions' names; `LogJson`, their JSON lines, and `LogJson.named`, a question set's
-  answers under their names as live's and a shadow's rows keep them;
-  `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
-  request is never paid for twice. ← `capture`
-- **`pull`** — `Pull`, what a deployment's database kept of the heard messages a capture
-  holds, read through `Reader` as run logs: live triage's tags (variant `kept`), under the
-  names its question set asked them by, the rows of another set's names left out and counted,
-  and each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
-  position, a question set's under its names, or refused when a name kept both; with the
-  messages no capture holds yet, and each shadow's that ended keeping nothing; and
-  `Pull.verdicts`, the verdicts standing on reviewed messages, by case. ← `capture`, `label`,
-  `log`
-- **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
-  (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
-  `Asking`, how a question is put to Jev through the shipped call: v1 in a wording,
-  stitching's, or a question set's with the corpora it asks about;
-  `QuestionSet`, a question set a comparison names (its gate, and its questions read as
-  durable and as `to`), and `Sets`, those it can name (`v1` to `v4`, each by the gate live
-  triage drafted by while it was live);
-  `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
-  rebuilt state compares to the capture's; `Review`, a case's questions as rebuilt, text and
-  all, for a person to read beside it (`scripts/eval inputs` writes them under
-  `.local/eval/review/` and prints only counts);
-  `Spend`, what a request costs before it is sent, and `Budget`, a run's spend under its
+- **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
+  digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
+  from a restored database through `Reader` and the turn's own reading of its records, rebuilt
+  through the shipped builders, never through SQL of its own. A file of an older format is
+  refused: recapture. The corpora a capture's deployment declares are read from the
+  `knowledge.json` written beside it (grit's database keeps no declaration), and only when the
+  harness asks a turn.
+- **`sent`**: one recorded turn as its model was sent it, text and all, for a person to read
+  (`scripts/eval context`), and what Jev was asked of a heard message, rebuilt through the
+  shipped builder since triage keeps no request. It reads its own records rather than through
+  `capture`, whose readers keep numbers, never text. ← `stats`, `capture`
+- **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
+  labels, replies' labels (a person's note is never read into one), review verdicts, and churn
+  pairs by id. Labels judge the inputs a call was given, verdicts the speech decision at its
+  moment: the two are reported side by side, never merged. ← `capture`
+- **`log`**: a run's log, text-free, a classifier's answers by position, never by key; and the
+  cache of answers under their request's key, so an unchanged request is never paid for twice.
+  ← `capture`
+- **`pull`**: what a deployment's database kept of a capture's heard messages, read as run logs:
+  live triage's tags, each declared shadow's answers, and the verdicts standing. ← `capture`,
+  `label`, `log`
+- **`jev`**: Jev's suite: the variants a run can name, how a question is put through the shipped
+  call, a case's questions rebuilt and their drift from the capture, and a run's spend under its
   cap. ← `capture`, `log`
-- **`reply`** — `ReplyReview`, a few turns' replies for a person to label: turns named or
-  picked (`Ask`, `By`), at most five, refused past that; each shown as the message it
-  answers, its reply's text, and at most three of its window's parts best supported first,
-  cut at 800 characters, never the turn's own thread, a tool result, reasoning or the query;
-  rendered as a file of label stubs, and the labels read back from it once filled.
-  `Rebuild`, a recorded turn's window drawn again by the shipped retrieval assembler, built as
-  `Assembled` says, at a `Width`, over `AsOf`: the restored database's stores as they stood
-  when the turn's `assemble` step started (rows written later left out, the periods open
-  elsewhere, the closings kept and the documents current as they were then), its query
-  replayed from the one it recorded; `Drift`, the rebuilt window against the recorded one by
-  ids (same, a section from elsewhere or a document changed, own entries changed, both, or
-  gone to a purge or a document's retention). `WindowOnly`, a heard
-  message live triage read as asking that no turn answered, its window rebuilt as of
-  triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
-  key and asked under a `Budget`. `TurnVariant`, a named way to build a turn other than as
-  shipped: a `grit.core.recipe.TurnRecipe`, applied to a recorded turn as a deployment
-  declaring it would apply it (`Shaped`: for a turn that recorded its shape, its whole set
-  less the tools of each service `Offering.decide` withholds over the services and sources
-  the shape recorded, by the root's answers; a turn recorded before shapes offered as
-  recorded under every variant; and the window's width; a variant past the reply model's
-  context is refused). `TurnAnswers`, those answers: what the turn's `weigh` step recorded,
-  or, for a message said to grit its recipe did not read, live triage's set asked of it by
-  the harness, and only when a variant gates a service its shape recorded.
-  `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
-  what a locator names, or none of it, a service's tools are offered, or withheld), from a
-  person's reply labels (an answer found in records shown) and a hand-written file, each turn
-  `Judged` under a variant. `TurnTriage`, live triage's question set put to the message a recorded turn
-  answers, built by the shipped builder over the database as it stood when the turn started,
-  a message said to grit read as one heard (`TurnAsk`). `Synthetic`, `grit.eval`'s cases as a
-  reference: each case in each variant a turn said to grit in the synthetic database, found by
-  its conversations' origins as `grit.eval.Layout` lays them out (`Asked`), each conversation's
-  `[must]` entries expected held and its `[never]` entries omitted, a case labelling neither
-  left out; its window drawn as `Rebuild` draws one, over the database as it stands, searched with the case's own query, within the
-  case's scope (`AsOf.settled`, the lifecycle settings read as given). ← `capture`, `label`,
-  `log`, `jev`
-- **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
-  (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
-  kept, within the cap; `Repeats`, how many times each is asked. ← `capture`, `log`, `jev`
-- **`score`** — what a run's log says: `Answers`, its answers by case, each averaged over its
-  repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
-  `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
-  `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
-  `Clustered` by exchange and by author and `Split` by the label `context`, or a rate, its
-  `Proportions` by exchange and by author; `Agreement`,
-  `Repeated` and `Spending`, what needs no label; `Order`, cases in labelling order, by the difference between two runs or by a run's repeat spread, the unlabelled first; `Rule`, an adoption rule written before the run it judges, on one question or triage's four's mean (`Measure`), over every case or one context, with lines B may not cross elsewhere (`Guard`, judged by `Guarded`), and `Decision`, what it makes of two runs, refused under the paired MDE or the rule's least, or for a guard broken; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Changed`, the cases two runs asked triage of by different requests, `Size`, how large a run's triage calls were, and `Apart`, what Jev's repeat noise alone reads as a difference; `Drafting`, one side of a draft comparison (a log's named answers, its set's gate, and the
-  questions read as durable and as `to`); `Drafts`, a question set's draft against live
-  triage's, each by its own set's gate (`Cells`, the 2×2 by focus), each of its
-  probabilities' mean and spread (`Column`), and its `durable` against live's; `Judgement`, a
-  review's verdicts against both drafts and each side's `to`, counts by the reason each
-  message was picked; `Spread`, how far
-  apart its repeats answered, and how far its answers are from what was kept live; `Noise`,
-  Jev's repeat spread on each triage question, and `MovedOn`, the cases whose state moved on
-  since live triage asked, where a replica shadow stands from live beyond it. `Structure`, a
-  capture's recorded turns read structurally over a `Slice` (all, a root, or where said): the
-  turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
-  `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
-  estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
-  outcomes with their post and hold rates (each a `Proportion` clustered by thread), the prompt
-  cache's hit rate (`Caching`: cached input tokens of input, clustered by thread, by role and
-  for a turn's first main call against its later ones), the review verdicts
-  joined by case, the window parts a reply `Used`, and the pointers unoffered (of the turns
-  whose window held a document with a pointer, those holding one for a tool not offered, a
-  `Proportion` clustered by thread). `Shapes`, how turns recorded their
-  offers (shaped, recorded before shapes, none) and what their `weigh` steps recorded, failures
-  by kind. `Recipe`, a turn variant against
-  shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and
-  their definitions' tokens saved, what those are worth over the calls that would have sent
-  them (`Priced`: tokens saved once a main-model call, scaled to the provider's count where
-  the model has a `Scale`, their effective price with each call's
-  share cached as its input was, the range from all cached to none, and the calls' hit rate),
-  called-tool recall (of the tools a turn called, those the
-  variant still offers), window tokens per part, used-section recall (of the parts a reply
-  used, those the variant's window holds, `Locator.held`), and the turns it changed.
-  `Rates`, each model's `Rate` (input, cached input and output, USD a token) read by least
-  squares from its priced ledger rows, since grit records no price: the cached rate left out
-  where no row has a cached token, and why a model has none; and each model's `Scale`, its
-  provider's input tokens per token grit estimates, fitted through 0 over its calls with
-  both, none from under `Rates.MinCalls`; `Prices`, the two together. `Churn`, each question
-  of a `label.ChurnPairs` asked before a change and after: each turn's `Churn.Reads` (its hosted
-  calls before its first indexed read and its first useful one, by its calls' `Reading`s, or
-  none), each side `confounded` when its window held a part of another paired thread, and the
-  before−after differences as `Estimate`s clustered by question, over every pair and the
-  unconfounded, a turn that never reads counted apart; a pair whose message no turn answers is
-  refused by id.
-  ← `stats`, `capture`, `label`, `log`
-- **`report`** — `Report`, a run scored (`Scored`: its log, its capture's cases, the labels in
-  force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case
-  labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
-  (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
-  shadow against live's log, each by its own set's gate (`Report.Side`), and against the
-  verdicts given: `Report.drafts`, counts only. A capture's recorded turns read structurally
-  (`score.Structure`) beside the verdicts standing: `Report.turns`, its header counting their
-  shapes and weighing (`Report.shapes`, the recipes notes' first line too), the pass rate first, then
-  each section over every turn, by root and by where said, then a line a turn by cost, with
-  the used-part threshold stated as a heuristic and used-section recall stated undefined where
-  no reply said anything. Turn variants against shipped: `Report.recipes`, each `Varied`
-  variant's tools (called-tool recall first), what the tools withheld are worth in m$
-  beside the hit rate and how far the cache moves it, the rates they were priced at, window
-  tokens by part, used-section recall
-  (stated undefined when no reply used a part), the turns it changed, and the reference
-  turns' pass rate under shipped and each variant. The synthetic reference judged under
-  shipped and each variant (each turn a `CaseJudged`): `Report.synthetic`, each variant's pass
-  rate clustered by case, and its failing turns by name. A churn comparison: `Report.churn`,
-  each difference with its interval and MDE, the turns that never read counted apart, the
-  after-turns' rate following a card, and a line a question. ← `stats`, `reply`,
-  `capture`, `label`, `log`, `pull`, `score`
-- **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
+- **`reply`**: replies and windows. A reply review shows at most five turns, each with at most
+  three window parts, cut at 800 characters, never the turn's own thread, a tool result,
+  reasoning or the query. A rebuild draws a recorded turn's window again through the shipped
+  retrieval assembler over the database as it stood when the turn's `assemble` step started,
+  its query replayed. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
+  variant past the reply model's context is refused. The reference judges builds by ids alone,
+  from reply labels, a hand-written file and `grit.eval`'s synthetic cases. ← `capture`,
+  `label`, `log`, `jev`
+- **`run`**: a run's calls asked of Jev through the shipped calls, answered from the cache when
+  it holds them, else asked, timed and kept, within the cap. ← `capture`, `log`, `jev`
+- **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered
+  by exchange and by author, adoption rules written before the run they judge, draft and
+  review comparisons, a capture's turns read structurally, turn variants against shipped, and
+  churn. grit records no price, so each model's rates are read by least squares from its priced
+  ledger rows. ← `stats`, `capture`, `label`, `log`
+- **`report`**: a run scored, or two compared, as markdown with every mean's and rate's interval;
+  text-free. With no case labelled, only what needs no label. ← `stats`, `reply`, `capture`,
+  `label`, `log`, `pull`, `score`
+- **`main`**: the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

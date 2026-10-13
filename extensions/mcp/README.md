@@ -13,11 +13,9 @@ beside `grit.models` (STYLE rule 8); neither names the other.
 
 In dependency order:
 
-- **`wire`** — the protocol over ujson, pure: `McpError`, every expected failure of one
-  exchange; `McpTool`, a listed tool grit may offer, read from a `tools/list` page with those
-  `Skipped` and why; `Rpc`, the requests grit sends and the results and errors read back;
-  `Headers`, what a request carries besides its body; `Sse`, the response in an event
-  stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
+- **`wire`**: the protocol over ujson, pure: the requests grit sends, the results and errors
+  read back, a response in an event stream, and a call's result as the text the model reads.
+  Imports nothing in mcp.
 - **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered, which
   calls are sent and which of their answers' results are shown, `Open` or held `Within` exact
   argument `Bound`s, so a deployment bounds a service at the edge rather than by asking the
@@ -28,16 +26,13 @@ In dependency order:
   repository each result names. It names a service, no organisation; which repositories
   is the deployment's to say. Imports `scope`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
-- **`client`** — a server reached over HTTP: `McpServer`, a server a deployment declares;
-  `Bearer`, its token read from the environment and never shown; `McpClient`, its tools
-  (`Listed`) and calls, each request a POST of its own, held to its scope. The JDK HTTP
+- **`client`**: a server a deployment declares, reached over HTTP, each request a POST of its
+  own held to its scope; its token is read from the environment and never shown. The JDK HTTP
   client lives here alone. Imports `wire` and `scope`.
-- **`edge`** — the servers' tools served at a service place: `McpEdge`, the `ServedEdge` a
-  deployment declares, which registers the place, advertises there (with the instructions
-  the deployment declared for the place, if any, as its Place layer) and serves it; and
-  `McpTools`, the `grit.edge.Tools` it serves with, which runs a request by calling its server
-  and tells the desk what to advertise when the lists change, leaving out a tool whose schema
-  declares `to` (the argument core keeps for a writing tool's destination). Imports `wire` and
+- **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
+  advertises there (with the instructions the deployment declared for the place, if any, as its
+  Place layer), and runs each request by calling its server. A tool whose schema declares `to`
+  (the argument core keeps for a writing tool's destination) is left out. Imports `wire` and
   `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
