@@ -89,13 +89,17 @@ object TxTests extends TestSuite {
   val tests = Tests {
     test("in a confidential trial room, a place is written to only when its label is as high") {
       given Tx = inRoom(Label.Public)
-      Vector(public, sameLevel, above).map(Tx.writesTo) ==> Vector(false, true, true)
+      Vector(public, sameLevel, above).map(Tx.writesTo(_, Tx.classification)) ==>
+        Vector(false, true, true)
     }
 
     test("an unplaced destination is never written to, whatever the floor") {
       val floors = Vector(Clearance.of(Label.Public), Clearance.of(unmapped))
       val written =
-        (floors.map(at) :+ inRoom(Label.Public)).map(tx => Tx.writesTo(unplaced)(using tx))
+        (floors.map(at) :+ inRoom(Label.Public)).map { tx =>
+          given Tx = tx
+          Tx.writesTo(unplaced, Tx.classification)
+        }
       written ==> Vector(false, false, false)
       Tx.writable(unplaced)(using at(Clearance.of(unmapped))) ==> None
     }
@@ -253,9 +257,32 @@ object TxTests extends TestSuite {
       // In a room at each floor, asked by someone cleared for nothing: the floor, not the read.
       val sends = floors.map { floor =>
         val tx = at(Clearance.inRoom(room, floor, Label.Public))
-        (Tx.sendsTo(github)(using tx), Tx.sendsTo(wiki)(using tx))
+        given Tx = tx
+        (Tx.sendsTo(github, Tx.classification), Tx.sendsTo(wiki, Tx.classification))
       }
       sends ==> Vector((true, false), (true, false), (false, false), (true, true))
+    }
+
+    test("a routed classification is held at its label, and never below what is known now") {
+      val bounds = Vector(Label.Public, internal, confidentialTrial)
+      // Known now: an internal floor, as after a direct message's clearance fell or rose.
+      given Tx = at(Clearance.of(internal))
+      bounds.map(b => Tx.locked(b).label) ==> Vector(internal, internal, confidentialTrial)
+    }
+
+    test(
+      "a send and a write out are checked at the classification they are given, not at the floor"
+    ) {
+      // A public floor, sending what a turn routed at the confidential trial label read.
+      given Tx = at(Clearance.of(Label.Public))
+      val routed = Tx.locked(confidentialTrial)
+      val atRouted = (
+        Tx.sendsTo(wiki, routed),
+        Tx.sendsTo(github, routed),
+        Tx.writesTo(public, routed),
+        Tx.writesTo(sameLevel, routed)
+      )
+      atRouted ==> (false, true, false, true)
     }
 
     test(
@@ -267,8 +294,8 @@ object TxTests extends TestSuite {
         val tx = at(Clearance.inRoom(room, floor, Label.Public))
         (
           Tx.classification(using tx).label,
-          Tx.clears(flashAtA)(using tx),
-          Tx.clears(flashAtB)(using tx)
+          Tx.clears(flashAtA, Tx.classification(using tx))(using tx),
+          Tx.clears(flashAtB, Tx.classification(using tx))(using tx)
         )
       }
       sends ==> Vector(

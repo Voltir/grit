@@ -92,6 +92,40 @@ object TurnHostedTests extends TestSuite {
       worksIn = Vector(WorksIn(Place.Everywhere, github))
     )(id)
 
+  private val internal = Label.at(Level.Internal)
+  private val restricted = Label.at(Level.Restricted)
+
+  /** `github` readable and cleared at internal; every pair of [[RoutedCatalog]] at restricted. */
+  private val githubInternal: grit.core.visibility.Visibility =
+    labelling(
+      Vector(github.place -> Label.Public),
+      grit.core.visibility.Cleared(grit.core.visibility.Party.Service(github), internal) +:
+        Vector(RoutedOpen, RoutedFlash, RoutedSummary, RoutedQuery).flatMap(r =>
+          grit.core.visibility.Party.of(r).map(grit.core.visibility.Cleared(_, restricted))
+        )
+    )
+
+  /** A turn routed at restricted (its reads at restricted) whose transactions run at internal
+    * after: its clearance fell mid-turn.
+    */
+  private def fallen(): InMemoryDurable =
+    new InMemoryDurable(resolve = _ => Clearance.of(internal), visibility = githubInternal)
+
+  /** [[linkedBody]] under [[RoutedCatalog]], its reads at restricted: what it is routed for. */
+  private def routedRestricted(entries: InMemoryEntryStore, provider: Scripted, edge: Served)(
+      id: grit.core.id.WorkflowId
+  )(using grit.core.durable.Durable^): String =
+    hostedBody(
+      entries,
+      provider,
+      edge,
+      hosted = Vector.empty,
+      from = Origin.Slack("T1", "C1", "1.0"),
+      worksIn = Vector(WorksIn(Place.Everywhere, github)),
+      db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(restricted), githubInternal),
+      catalog = RoutedCatalog
+    )(id)
+
   private val elsewhere: Service =
     Service.of("elsewhere").fold(e => throw new java.lang.AssertionError(e), identity)
 
@@ -277,6 +311,28 @@ object TurnHostedTests extends TestSuite {
       edge.sent.map(_.workspace) ==> Vector(github.place)
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("found at service:github", false))
+    }
+
+    test("a turn whose clearance fell after it was routed still replies") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "hello")
+      val durable = fallen()
+      val edge = atGithub(durable, _ => Serve.Never)
+      val provider = new Scripted((_, _) => Right(calling("done")))
+      durable.run(turn.workflowId)(routedRestricted(entries, provider, edge)) ==> Done
+    }
+
+    test(
+      "a turn whose clearance fell after it was routed sends only where its routed classification is cleared: a service cleared for the fallen floor alone is not offered, and nothing is sent"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "search")
+      val durable = fallen()
+      val edge = atGithub(durable, q => Serve.Now(Outcome.Done("found")))
+      val provider = model(("t1", "github_search", "grit"))
+      durable.run(turn.workflowId)(routedRestricted(entries, provider, edge)) ==> Done
+      (provider.requests.headOption.map(_.tools.map(_.name)), edge.sent.size) ==>
+        (Some(Vector()), 0)
     }
 
     test("a request at a service no edge claims in time is answered that nothing serves it") {

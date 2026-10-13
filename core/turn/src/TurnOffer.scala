@@ -9,6 +9,7 @@ import grit.core.recipe.{Offering, Rooted, ServiceOffer}
 import grit.core.store.{EntryStore, Origin, Payload, Position, Reads, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 import grit.core.triage.{Corpora, Tags}
+import grit.core.visibility.Classification
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none when its conversation has none
@@ -87,7 +88,7 @@ object TurnOffer {
     * no destination only when the turn also sends to it ([[grit.core.store.Tx.sendsTo]]):
     * their arguments go to it. An advertised tool that writes
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
-    * and not at all when none is; one the engine describes, only when it writes to all of its
+    * and not at all when none is; what it sends and writes out is checked at `at`; one the engine describes, only when it writes to all of its
     * places. Its prompt: the base,
     * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]], its edge's
     * fragment, where its reply goes ([[TurnPrompt.destination]]), what it is called
@@ -118,7 +119,8 @@ object TurnOffer {
       tooling: TurnTooling[C]^,
       turn: TurnRef,
       weighed: Option[Tags],
-      answering: Boolean
+      answering: Boolean,
+      at: Classification
   )(using
       tx: Tx^
   ): Either[TurnFailure, Recorded] =
@@ -154,18 +156,18 @@ object TurnOffer {
         hosting.toolSets.get(a.tools)
       )
       // A directory is this machine, not outside grit: only a service is sent to.
-      sends = workspace.flatMap(_.service).forall(Tx.sendsTo(_))
+      sends = workspace.flatMap(_.service).forall(Tx.sendsTo(_, at))
       names = served.tools.map(_.name).toSet
       // An engine-described tool is offered only as it is described, never narrowed.
       described = tooling.hosted.filter { h =>
         val whole = h.entry
         names.contains(h.name) &&
-        whole.offerable(sends).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
+        whole.offerable(sends, at).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
       engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.hosted.map(_.name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
-        .flatMap(_.offerable(sends))
+        .flatMap(_.offerable(sends, at))
         .flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
       // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
@@ -173,7 +175,7 @@ object TurnOffer {
         case Rooted.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
         case Rooted.Heard(_) => Vector.empty
       }
-      reaching <- reachedFrom(hosting, services, engines ++ hosted.map(_.name))
+      reaching <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at)
       took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
       (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
       kept = !atWorkspace.exists(_.offer.withheld)
@@ -351,7 +353,8 @@ object TurnOffer {
   private def reachedFrom(
       hosting: TurnHosting,
       services: Vector[Service],
-      taken: Set[ToolName]
+      taken: Set[ToolName],
+      at: Classification
   )(using Tx^): Either[StoreError, Vector[(Service, ToolSet)]] =
     services
       .foldLeft[Either[StoreError, (Vector[(Service, ToolSet)], Set[ToolName])]](
@@ -366,10 +369,10 @@ object TurnOffer {
           set <- advert.fold[Either[StoreError, ToolSet]](Right(ToolSet.Empty))(a =>
             hosting.toolSets.get(a.tools)
           )
-          sends = Tx.sendsTo(service)
+          sends = Tx.sendsTo(service, at)
           entries = set.tools
             .filter(e => !done._2.contains(e.name))
-            .flatMap(_.offerable(sends))
+            .flatMap(_.offerable(sends, at))
             .filter(Hosted.advertised(_).nonEmpty)
           // A ToolSet's entries have distinct names, so a subset's do too.
           offered = ToolSet.of(entries).getOrElse(ToolSet.Empty)

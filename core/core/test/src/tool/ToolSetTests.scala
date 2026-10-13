@@ -121,19 +121,24 @@ object ToolSetTests extends TestSuite {
       ToolSet.read(twice) ==> Left("a tool set names peek twice")
     }
 
-    test("a writing entry is offerable less the places its transaction may not write to, or not") {
+    test(
+      "a writing entry is offerable less the places what was read at its classification may not be written to, or not"
+    ) {
+      // A public floor, offering what a turn routed at internal read: written as internal.
+      given Tx = floored(Label.Public)
       val narrowed =
         post
-          .offerable(sends = true)(using floored(internal))
+          .offerable(sends = true, Tx.locked(internal))
           .flatMap(_.writes)
           .map(_.to.keys.toVector)
       narrowed ==> Some(Vector("general", "#general"))
-      post.offerable(sends = true)(using floored(Label.at(Level.Confidential))) ==> None
+      post.offerable(sends = true, Tx.locked(Label.at(Level.Confidential))) ==> None
     }
 
     test("an entry declaring no destination is offerable only where its arguments may be sent") {
       given Tx = floored(Label.Public)
-      (peek.offerable(sends = true), peek.offerable(sends = false)) ==> (Some(peek), None)
+      val at = Tx.classification
+      (peek.offerable(sends = true, at), peek.offerable(sends = false, at)) ==> (Some(peek), None)
     }
   }
 }

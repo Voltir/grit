@@ -104,8 +104,10 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
     * rung as it is written.
     */
   private object answering extends ToolRequests, EdgeDirectory {
-    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] = {
-      val sent = edges.dispatch(requests)
+    def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+        Tx^
+    ): Either[StoreError, Unit] = {
+      val sent = edges.dispatch(requests, at)
       requests.foreach { q =>
         if (edges.claimAs(edge, q) && edges.answerAs(edge, q.slot, Outcome.Done(Read)))
           durable.send(q.slot.turn.workflowId, q.slot.key, "rang")

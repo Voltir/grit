@@ -67,7 +67,9 @@ object EdgeLiveTests extends TestSuite {
           Set.empty,
           None
         )
-        LiveDb.transaction(config)(new SqlToolRequests().dispatch(Vector(request))) ==> Right(())
+        LiveDb.transaction(config)(
+          new SqlToolRequests().dispatch(Vector(request), grit.core.store.Tx.classification)
+        ) ==> Right(())
         waiting.join()
         // Woken by the NOTIFY, half a second into a ten-second wait.
         assert(woke.get() >= 400, woke.get() < 2000)

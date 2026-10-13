@@ -97,7 +97,15 @@ object TurnOfferTests extends TestSuite {
     val entries = new InMemoryEntryStore
     entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First), weighed, answering = false)
+      .decide(
+        hosting,
+        entries,
+        tooling,
+        TurnRef(c, TurnSeq.First),
+        weighed,
+        answering = false,
+        Tx.classification
+      )
       .flatMap(r =>
         Prompts
           .prompt(r.prompt)
@@ -155,7 +163,15 @@ object TurnOfferTests extends TestSuite {
       budget(5)
     )
     TurnOffer
-      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First), None, false)
+      .decide(
+        hosting,
+        new InMemoryEntryStore,
+        tooling,
+        TurnRef(c, TurnSeq.First),
+        None,
+        false,
+        Tx.classification
+      )
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
       .fold(
         f => throw new java.lang.AssertionError(f.toString),
@@ -217,7 +233,15 @@ object TurnOfferTests extends TestSuite {
       worksIn = links
     )
     TurnOffer
-      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First), None, false)
+      .decide(
+        hosting,
+        new InMemoryEntryStore,
+        tooling,
+        TurnRef(c, TurnSeq.First),
+        None,
+        false,
+        Tx.classification
+      )
       .flatMap(r =>
         ToolSets
           .get(r.tools)
@@ -282,7 +306,15 @@ object TurnOfferTests extends TestSuite {
     val log = new InMemoryEntryStore
     log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First), weighed, answering)
+      .decide(
+        hosting,
+        log,
+        tooling,
+        TurnRef(c, TurnSeq.First),
+        weighed,
+        answering,
+        Tx.classification
+      )
       .flatMap(r =>
         (for {
           set <- ToolSets.get(r.tools)
@@ -435,7 +467,15 @@ object TurnOfferTests extends TestSuite {
       )
     )
     TurnOffer
-      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First), None, answering = false)
+      .decide(
+        hosting,
+        log,
+        tooling,
+        TurnRef(c, TurnSeq.First),
+        None,
+        answering = false,
+        Tx.classification
+      )
       .flatMap(r =>
         (for {
           set <- ToolSets.get(r.tools)

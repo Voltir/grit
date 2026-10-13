@@ -202,8 +202,8 @@ object OpenerLiveTests extends TestSuite {
           .map(tx =>
             (
               Tx.writable(board)(using tx),
-              Tx.writesTo(board)(using tx),
-              Tx.writesTo(origin.room)(using tx)
+              Tx.writesTo(board, Tx.classification(using tx))(using tx),
+              Tx.writesTo(origin.room, Tx.classification(using tx))(using tx)
             )
           )
       }

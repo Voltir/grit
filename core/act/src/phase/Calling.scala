@@ -12,7 +12,7 @@ import grit.core.job.ScheduleStore
 import grit.core.place.{Place, Service}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Classification, Subject}
 
 /** The steps a hosted call's wait takes when its edge is silent: `expire`, after
   * [[Calling.ServeWithin]], and `abandon`, after [[Calling.RunWithin]] more.
@@ -139,14 +139,16 @@ object Calling {
 
   /** Those of `sent` addressed to `place` written for the live edge serving it, which is woken
     * when this transaction commits: true. False, and nothing written, when no live edge serves
-    * `place` or none is addressed there. One this transaction may not send is written answered
-    * with its refusal ([[grit.core.edge.ToolRequests.refusal]]), and is never claimed.
+    * `place` or none is addressed there. One that what was read at `at` may not be sent in is
+    * written answered with its refusal ([[grit.core.edge.ToolRequests.refusal]]), and is never
+    * claimed.
     */
   def dispatch(
       requests: ToolRequests,
       edges: EdgeDirectory,
       place: Place,
-      sent: Vector[ToolRequest]
+      sent: Vector[ToolRequest],
+      at: Classification
   )(using Tx^): Either[StoreError, Boolean] = {
     val there = sent.filter(_.workspace == place)
     if (there.isEmpty) Right(false)
@@ -155,7 +157,7 @@ object Calling {
         .serving(place)
         .flatMap(
           _.fold[Either[StoreError, Boolean]](Right(false))(_ =>
-            requests.dispatch(there).map(_ => true)
+            requests.dispatch(there, at).map(_ => true)
           )
         )
   }

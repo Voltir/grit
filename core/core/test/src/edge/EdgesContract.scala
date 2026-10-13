@@ -130,7 +130,7 @@ abstract class EdgesContract extends TestSuite {
     )
 
   private def dispatched(rs: ToolRequest*): Unit =
-    transaction(requests.dispatch(rs.toVector)) ==> Right(())
+    transaction(requests.dispatch(rs.toVector, Tx.classification)) ==> Right(())
 
   private def keys(
       listed: Either[DeskError, Vector[ToolRequest]]
@@ -161,7 +161,9 @@ abstract class EdgesContract extends TestSuite {
       val untrusted = request("refused", 2, wiki)
       val above = request("refused", 3, vault)
       val d = desk(Set(poster, wiki, vault))
-      inRoom(requests.dispatch(Vector(down, unplaced, untrusted, above))) ==> Right(())
+      inRoom(
+        requests.dispatch(Vector(down, unplaced, untrusted, above), Tx.classification)
+      ) ==> Right(())
       keys(d.open()) ==> Right(Vector())
       Vector(down, unplaced, untrusted, above).map(r => transaction(requests.settle(r.slot))) ==>
         Vector(
@@ -178,7 +180,7 @@ abstract class EdgesContract extends TestSuite {
       val printer = service("printer")
       val r = request("permitted", 0, printer, destination = Some(slack("board")))
       val d = desk(Set(printer))
-      inRoom(requests.dispatch(Vector(r))) ==> Right(())
+      inRoom(requests.dispatch(Vector(r), Tx.classification)) ==> Right(())
       d.open().map(_.map(q => (q.slot.key, q.destination))) ==>
         Right(Vector((r.slot.key, Some(slack("board")))))
     }

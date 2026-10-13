@@ -19,12 +19,15 @@ import grit.core.place.Place
 import grit.core.prompt.FragmentId
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSetId}
+import grit.core.visibility.Classification
 
 /** [[ToolRequests]] over `grit.tool_requests`. */
 final class SqlToolRequests extends ToolRequests {
   import SqlEntryStore.attempt
 
-  def dispatch(requests: Vector[ToolRequest])(using tx: Tx^): Either[StoreError, Unit] = {
+  def dispatch(requests: Vector[ToolRequest], at: Classification)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
       val opened = Using.resource(
@@ -53,7 +56,7 @@ final class SqlToolRequests extends ToolRequests {
         )
       ) { ps =>
         requests.map { q =>
-          val refused = ToolRequests.refusal(q)
+          val refused = ToolRequests.refusal(q, at)
           ps.setString(1, SqlToolRequests.pathJson(q.workspace))
           // JSON null for no destination, so no destination place is written.
           ps.setString(2, q.destination.fold("null")(SqlToolRequests.pathJson))

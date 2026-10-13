@@ -65,7 +65,9 @@ object ServerTests extends TestSuite {
     test("an open request in a registered place is claimed, run over its directory, and answered") {
       val edges = new InMemoryEdges
       val q = request(0, api)
-      edges.dispatch(Vector(q))(using TestTx.fake)
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
       val tools = new Counting
       new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 1
       edges.answers ==> Vector((q.slot, Outcome.Done("ran in /work/api")))
@@ -121,7 +123,9 @@ object ServerTests extends TestSuite {
       val secret = ujson.Obj("text" -> "the secret plan")
       val failed = request(0, api).copy(arguments = secret)
       val thrown = request(1, api).copy(arguments = secret)
-      edges.dispatch(Vector(failed, thrown))(using TestTx.fake)
+      edges.dispatch(Vector(failed, thrown), grit.core.store.Tx.classification(using TestTx.fake))(
+        using TestTx.fake
+      )
       val tools = new Tools {
         def run(route: Route, q: ToolRequest): Outcome =
           if (q.slot == failed.slot) Outcome.Failed(s"bad arguments: ${q.arguments}")
@@ -139,7 +143,9 @@ object ServerTests extends TestSuite {
     test("a request another edge claimed first is not run here") {
       val edges = new InMemoryEdges
       val q = request(0, api)
-      edges.dispatch(Vector(q))(using TestTx.fake)
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
       edges.desk(Set(api)).claim(q) ==> Right(true)
       val tools = new Counting
       new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 0
@@ -149,7 +155,9 @@ object ServerTests extends TestSuite {
     test("an orphan declared Rerun is run once more by the edge that finds it") {
       val edges = new InMemoryEdges
       val q = request(0, api, Retry.Rerun)
-      edges.dispatch(Vector(q))(using TestTx.fake)
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
       val dead = edges.desk(Set(api))
       dead.claim(q) ==> Right(true)
       edges.kill(dead.registration.edge)
@@ -165,7 +173,9 @@ object ServerTests extends TestSuite {
     test("an orphan declared Interrupt is answered Interrupted, and never run") {
       val edges = new InMemoryEdges
       val q = request(0, api, Retry.Interrupt)
-      edges.dispatch(Vector(q))(using TestTx.fake)
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
       val dead = edges.desk(Set(api))
       dead.claim(q) ==> Right(true)
       edges.kill(dead.registration.edge)

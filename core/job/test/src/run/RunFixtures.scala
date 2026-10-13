@@ -352,8 +352,10 @@ object RunFixtures {
   final class AnsweringEdges(edges: InMemoryEdges, durable: InMemoryDurable, switches: Switches)
       extends ToolRequests,
         EdgeDirectory {
-    def dispatch(sent: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] = {
-      val written = edges.dispatch(sent)
+    def dispatch(sent: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+        Tx^
+    ): Either[StoreError, Unit] = {
+      val written = edges.dispatch(sent, at)
       for (q <- sent; edge <- switches.answering) {
         if (edges.claimAs(edge, q) && edges.answerAs(edge, q.slot, Outcome.Done("read")))
           durable.send(q.slot.turn.workflowId, q.slot.key, "rang")

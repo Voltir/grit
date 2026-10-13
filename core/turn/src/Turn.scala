@@ -40,7 +40,7 @@ import grit.core.store.{
 import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
 import grit.core.topic.Topic
 import grit.core.triage.{Tags, Weighing}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Classification, Label, Subject}
 
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
@@ -518,7 +518,8 @@ object Turn {
             tooling,
             turn,
             weighed.flatMap(_.answers),
-            answering
+            answering,
+            pins.at
           )
         )
         .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
@@ -1051,7 +1052,7 @@ object Turn {
     * `Uncleared`; or, for a turn that passed `route` before it shipped ([[Patches.Route]]),
     * each role's first pin and no bound.
     */
-  private final case class Picked(
+  private[turn] final case class Picked(
       turn: Pinned,
       summary: Either[TurnFailure, Pinned],
       query: Option[Pinned],
@@ -1066,9 +1067,14 @@ object Turn {
 
     /** Whether a transaction knows no more than this is bounded by ([[Tx.within]]). */
     def known(using Tx^): Either[StoreError, Unit] = bound.fold(Right(()))(Tx.within(_))
+
+    /** What the turn sends and writes out at in a transaction: a routed turn's classification
+      * held while it runs ([[Tx.locked]]), else what the transaction knows.
+      */
+    def at(using Tx^): Classification = bound.fold(Tx.classification)(Tx.locked(_))
   }
 
-  private object Picked {
+  private[turn] object Picked {
     def of(profile: TurnProfile, route: Option[Route]): Picked = route match {
       case Some(r) =>
         Picked(
@@ -1307,7 +1313,7 @@ object Turn {
                       if (workspace.contains(place)) Step.dispatch(round)
                       else Step.reach(round, place)
                     d.transact(step, Subject.Turn(turn))(
-                      TurnHosted.dispatch(hosting, turn, place, qs, Permit.Free)
+                      TurnHosted.dispatch(hosting, turn, place, qs, Permit.Free, pins)
                     ).map { sent =>
                       dispatched.update((round.index, place), sent)
                     }
@@ -1352,7 +1358,8 @@ object Turn {
                     sent,
                     answerWithin,
                     settling,
-                    clock
+                    clock,
+                    pins
                   )
               }
               settled.map(_ => ())

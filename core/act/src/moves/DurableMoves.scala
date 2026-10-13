@@ -480,8 +480,12 @@ object DurableMoves {
         CallMade.Unsent(CallMade.Kind.Refused, why, digest)
       )
       request = Calling.request(cs, hosted, place, Permit.Free, principal)
-      refusal = ToolRequests.refusal(request)
-      went <- stored(Calling.dispatch(records.requests, records.edges, place, Vector(request)))
+      // A job's run holds no routed classification: it sends at what its transaction knows.
+      at = Tx.classification
+      refusal = ToolRequests.refusal(request, at)
+      went <- stored(
+        Calling.dispatch(records.requests, records.edges, place, Vector(request), at)
+      )
       _ <-
         if (went) Right(()) else unsent(CallMade.Kind.Unserved, failed(Calling.unserved(service)))
       _ <- refusal.fold[Either[CallMade, Unit]](Right(()))(o =>

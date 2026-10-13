@@ -145,11 +145,12 @@ object Tx {
         case _ => None
       }
 
-  /** Whether what this transaction knows may be written to `to` outside grit: `to` is
-    * [[writable]] and its label dominates [[floor]] (ADR 0030, no write down).
+  /** Whether what was read at `at` may be written to `to` outside grit: `to` is [[writable]]
+    * and its label dominates `at` (ADR 0030, no write down). `at` is [[classification]], or a
+    * routed turn's [[locked]] classification.
     */
-  def writesTo(to: Place)(using tx: Tx^): Boolean =
-    writable(to).exists(_.dominates(floor(tx)))
+  def writesTo(to: Place, at: Classification)(using tx: Tx^): Boolean =
+    writable(to).exists(_.dominates(at.label))
 
   /** Whether what `source` contains may be read in this transaction: as anything recorded in a
     * room at `source` is read ([[Clearance.reads]]), at the label in force there
@@ -163,6 +164,14 @@ object Tx {
 
   /** What this transaction knows is classified at: [[floor]]. */
   def classification(using tx: Tx^): Classification = Classification(floor(tx))
+
+  /** What a turn routed for `bound` sends and writes out at in this transaction: `bound`
+    * joined with [[classification]], so never below what the transaction knows. A routed turn
+    * holds its routed classification while it runs (tranquility, ADR 0037): a floor that fell
+    * since does not lower what it may send to.
+    */
+  def locked(bound: Label)(using tx: Tx^): Classification =
+    Classification(floor(tx).join(bound))
 
   /** `Right` when what this transaction knows is classified at most `bound`
     * ([[classification]]); otherwise `StoreError.Invalid`, naming both and saying to ask
@@ -180,16 +189,18 @@ object Tx {
     )
   }
 
-  /** Whether what this transaction knows may be sent to `party`
-    * ([[grit.core.visibility.Clearances.clears]]).
+  /** Whether what was read at `at` may be sent to `party`, as this transaction's deployment
+    * clears it ([[grit.core.visibility.Clearances.clears]]). `at` is [[classification]], or a
+    * routed turn's [[locked]] classification.
     */
-  def clears(party: Party)(using tx: Tx^): Boolean =
-    tx.visibility.clearances.clears(party, classification)
+  def clears(party: Party, at: Classification)(using tx: Tx^): Boolean =
+    tx.visibility.clearances.clears(party, at)
 
-  /** Whether what this transaction knows may be sent to `service` as a call's arguments
-    * ([[clears]] its party). What the call returns is checked by [[readsFrom]] of its place.
+  /** Whether what was read at `at` may be sent to `service` as a call's arguments ([[clears]]
+    * its party). What the call returns is checked by [[readsFrom]] of its place.
     */
-  def sendsTo(service: Service)(using tx: Tx^): Boolean = clears(Party.Service(service))
+  def sendsTo(service: Service, at: Classification)(using tx: Tx^): Boolean =
+    clears(Party.Service(service), at)
 
   /** `room`'s label before its compartments are admitted: the one set through grit, else the
     * deployment's labeller's for it with its reported access.

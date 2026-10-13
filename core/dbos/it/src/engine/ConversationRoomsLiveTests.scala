@@ -230,7 +230,8 @@ object ConversationRoomsLiveTests extends TestSuite {
                 Set.empty,
                 Some(Place.under(Namespace.Slack, Vector("T", room)))
               )
-            )
+            ),
+            Tx.classification
           )
         )
       }

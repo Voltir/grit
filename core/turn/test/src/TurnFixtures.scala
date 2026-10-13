@@ -585,8 +585,10 @@ object TurnFixtures {
     private def ring(q: ToolRequest): Unit =
       durable.send(q.slot.turn.workflowId, q.slot.key, grit.core.edge.Desk.Doorbell)
 
-    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
-      edges.dispatch(requests).map(_ => requests.foreach(take))
+    def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+        Tx^
+    ): Either[StoreError, Unit] =
+      edges.dispatch(requests, at).map(_ => requests.foreach(take))
 
     /** `q`, already dispatched, kept in [[sent]] and served as `serve` says. */
     def take(q: ToolRequest): Unit = {
@@ -634,8 +636,10 @@ object TurnFixtures {
   final class Desks(first: Served, rest: Vector[Served]) extends grit.core.edge.ToolRequests {
     private def all: Vector[Served] = first +: rest
 
-    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
-      first.edges.dispatch(requests).map { _ =>
+    def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+        Tx^
+    ): Either[StoreError, Unit] =
+      first.edges.dispatch(requests, at).map { _ =>
         requests.foreach(q => all.find(_.at == q.workspace).foreach(_.take(q)))
       }
 
@@ -657,7 +661,7 @@ object TurnFixtures {
     * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
     * fixture's TUI session unless given, linked to a service by `worksIn`, and to services it
     * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]); its asker is
-    * as `askers` resolves it.
+    * as `askers` resolves it; it reads through `db` and pins `catalog`.
     */
   def hostedBody(
       entries: EntryStore,
@@ -674,7 +678,9 @@ object TurnFixtures {
       knowledge: grit.core.triage.Corpora = grit.core.triage.Corpora.Empty,
       weighing: TurnWeighing^ = noTriage(),
       ledger: UsageLedger = new InMemoryUsageLedger,
-      askers: Askers = LocalAsker
+      askers: Askers = LocalAsker,
+      db: Db^ = FakeDb,
+      catalog: Catalog = TestCatalog
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -707,8 +713,8 @@ object TurnFixtures {
           LinearAssembler.DefaultBudget
         ),
         NoClassifier,
-        new FixedModels(provider, new StubProvider()),
-        FakeDb,
+        new FixedModels(provider, new StubProvider(), catalog),
+        db,
         new NoWait,
         Fresh.random(),
         quiet(),

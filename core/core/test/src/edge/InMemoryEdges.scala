@@ -7,6 +7,7 @@ import grit.core.place.Place
 import grit.core.prompt.Fragment
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
+import grit.core.visibility.Classification
 
 /** In-memory [[ToolRequests]], [[EdgeDirectory]] and [[Desks]] for tests, keeping
   * [[EdgesContract]]. It reads the `Tx` only for [[ToolRequests.refusal]]. Each answer an edge
@@ -49,10 +50,12 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   private def update(slot: CallSlot)(f: Row => Row): Unit =
     rows = rows.map(r => if (r.request.slot == slot) f(r) else r)
 
-  def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] = {
+  def dispatch(requests: Vector[ToolRequest], at: Classification)(using
+      Tx^
+  ): Either[StoreError, Unit] = {
     requests.foreach { q =>
       if (!rows.exists(_.request.slot == q.slot)) {
-        val state = ToolRequests.refusal(q).fold(InMemoryEdges.Open)(RequestState.Answered(_))
+        val state = ToolRequests.refusal(q, at).fold(InMemoryEdges.Open)(RequestState.Answered(_))
         rows = rows :+ Row(q, state, None)
       }
     }

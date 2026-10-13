@@ -156,8 +156,10 @@ object CallingTests extends TestSuite {
       case Meanwhile.Answered(o) =>
         val _ = edges.answerAs(edge, slot, o)
     }
-    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
-      edges.dispatch(requests)
+    def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+        Tx^
+    ): Either[StoreError, Unit] =
+      edges.dispatch(requests, at)
     def settle(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] = {
       happen(atExpire, slot)
       edges.settle(slot)
@@ -182,7 +184,7 @@ object CallingTests extends TestSuite {
     val edges = new InMemoryEdges
     val edge = edges.register(Set(github.place))
     val q = requestAt(github.place)
-    val _ = edges.dispatch(Vector(q))(using TestTx.fake)
+    val _ = edges.dispatch(Vector(q), Tx.classification(using TestTx.fake))(using TestTx.fake)
     if (claimed) { val _ = edges.claimAs(edge, q) }
     (edges, edge)
   }
@@ -268,8 +270,14 @@ object CallingTests extends TestSuite {
       val other = requestAt(elsewhere, TestCallSlots.at(turn, index = 1))
       given Tx = TestTx.fake
       val toGithub =
-        Calling.dispatch(edges, edges, github.place, Vector(requestAt(github.place), other))
-      val unserved = Calling.dispatch(edges, edges, elsewhere, Vector(other))
+        Calling.dispatch(
+          edges,
+          edges,
+          github.place,
+          Vector(requestAt(github.place), other),
+          Tx.classification
+        )
+      val unserved = Calling.dispatch(edges, edges, elsewhere, Vector(other), Tx.classification)
       (toGithub, unserved, edges.rows.map(_.request.slot)) ==> (
         Right(true),
         Right(false),
@@ -277,10 +285,15 @@ object CallingTests extends TestSuite {
       )
     }
 
-    test("a request its transaction may not send is written answered with its refusal") {
+    test(
+      "a request may not be sent at the classification it is dispatched at is written answered with its refusal, though the floor now would send it"
+    ) {
       val edges = serving
-      given Tx = TestTx.fake(Clearance.of(Label.at(Level.Internal)))
-      val went = Calling.dispatch(edges, edges, github.place, Vector(requestAt(github.place)))
+      // A public floor, dispatching what was read at internal: as a routed turn after a fall.
+      given Tx = TestTx.fake(Clearance.of(Label.Public))
+      val routed = Tx.locked(Label.at(Level.Internal))
+      val went =
+        Calling.dispatch(edges, edges, github.place, Vector(requestAt(github.place)), routed)
       (went, edges.rows.map(_.state)) ==> (
         Right(true),
         Vector(
@@ -379,7 +392,9 @@ object CallingTests extends TestSuite {
       val (done, edge) = sent(claimed = true)
       val _ = done.answerAs(edge, cs, Outcome.Done("ok"))
       val broken = new ToolRequests {
-        def dispatch(requests: Vector[ToolRequest])(using Tx^) = Right(())
+        def dispatch(requests: Vector[ToolRequest], at: grit.core.visibility.Classification)(using
+            Tx^
+        ) = Right(())
         def settle(slot: CallSlot)(using Tx^) = Right(RequestState.Expired)
         def abandon(slot: CallSlot)(using Tx^) = Right(RequestState.Expired)
         def answered(slot: CallSlot)(using Tx^) =

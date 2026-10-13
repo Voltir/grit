@@ -522,7 +522,9 @@ abstract class PeriodContract extends TestSuite {
           Set.empty,
           None
         )
-      transaction(requests.dispatch(Vector(request(t0), request(t1)))) ==> Right(())
+      transaction(requests.dispatch(Vector(request(t0), request(t1)), Tx.classification)) ==> Right(
+        ()
+      )
       transaction(periods.purge(p1, at(100))) ==> Right(())
       val gone = request(t0).slot
       (transaction(requests.settle(gone)), transaction(requests.settle(request(t1).slot))) ==>

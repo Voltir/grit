@@ -5,6 +5,7 @@ import grit.core.place.Place
 import grit.core.prompt.FragmentId
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolSetId}
+import grit.core.visibility.Classification
 
 /** The engine's side of hosted tool calls (ADR 0017): each call's request, written once under
   * its slot's key, and where it stands.
@@ -12,11 +13,13 @@ import grit.core.tool.{Outcome, ToolSetId}
 trait ToolRequests {
 
   /** Writes each of `requests` unless a request has its key, and wakes the edges serving
-    * their workspaces when the transaction commits. A request this transaction may not send
-    * ([[ToolRequests.refusal]]) is written already answered with that refusal, and no edge
-    * opens it.
+    * their workspaces when the transaction commits. A request what was read at `at` may not
+    * be sent in ([[ToolRequests.refusal]]) is written already answered with that refusal, and
+    * no edge opens it.
     */
-  def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit]
+  def dispatch(requests: Vector[ToolRequest], at: Classification)(using
+      Tx^
+  ): Either[StoreError, Unit]
 
   /** Expires the request at `slot` if no edge has claimed it, and says where it stands.
     * `StoreError.Invalid` when no request has its key.
@@ -37,16 +40,16 @@ trait ToolRequests {
 
 object ToolRequests {
 
-  /** What `request` is answered with when this transaction may not send it, naming the place
-    * it may not reach and never a label; `None` when it may. It may not when its destination
-    * is one the transaction does not write to ([[Tx.writesTo]]); when it has none and its
-    * workspace is a service the transaction does not send to ([[Tx.sendsTo]]); or when the
+  /** What `request` is answered with when this transaction may not send it, made of what was
+    * read at `at`, naming the place it may not reach and never a label; `None` when it may. It
+    * may not when its destination is one not written to at `at` ([[Tx.writesTo]]); when it has
+    * none and its workspace is a service not sent to at `at` ([[Tx.sendsTo]]); or when the
     * transaction does not read from its workspace ([[Tx.readsFrom]]).
     */
-  def refusal(request: ToolRequest)(using Tx^): Option[Outcome] = {
+  def refusal(request: ToolRequest, at: Classification)(using Tx^): Option[Outcome] = {
     val refused: Option[String] = request.destination match {
-      case Some(to) if !Tx.writesTo(to) => Some(s"may not write to ${to.written}")
-      case None if request.workspace.service.exists(s => !Tx.sendsTo(s)) =>
+      case Some(to) if !Tx.writesTo(to, at) => Some(s"may not write to ${to.written}")
+      case None if request.workspace.service.exists(s => !Tx.sendsTo(s, at)) =>
         Some(s"may not send to ${request.workspace.written}")
       case _ if !Tx.readsFrom(request.workspace) =>
         Some(s"may not read from ${request.workspace.written}")

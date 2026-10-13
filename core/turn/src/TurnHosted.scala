@@ -44,15 +44,17 @@ object TurnHosted {
 
   /** A `dispatch`, `reach` or `dispatch:n:j` step: `calls`, `turn`'s calls addressed to
     * `place`, let through by `permit`, sent to the edge serving it as requests made for the
-    * turn's asker, read in this transaction ([[Calling.asker]]): true. False, and nothing sent,
-    * when the turn has no asker, or no live edge serves `place` ([[Calling.dispatch]]).
+    * turn's asker, read in this transaction ([[Calling.asker]]), checked at what `pins` sends
+    * at ([[Turn.Picked.at]]): true. False, and nothing sent, when the turn has no asker, or no
+    * live edge serves `place` ([[Calling.dispatch]]).
     */
-  def dispatch(
+  private[turn] def dispatch(
       hosting: TurnHosting,
       turn: TurnRef,
       place: Place,
       calls: Vector[(TurnTools.Slot, Bound.Hosted)],
-      permit: Permit
+      permit: Permit,
+      pins: Turn.Picked
   )(using Tx^): Either[TurnFailure, Boolean] =
     Calling
       .asker(turn, hosting.askers)
@@ -60,7 +62,7 @@ object TurnHosted {
         _.fold[Either[StoreError, Boolean]](Right(false)) { asker =>
           val sent =
             calls.map((slot, hosted) => Calling.request(slot.call, hosted, place, permit, asker))
-          Calling.dispatch(hosting.requests, hosting.edges, place, sent)
+          Calling.dispatch(hosting.requests, hosting.edges, place, sent, pins.at)
         }
       )
       .left
@@ -72,9 +74,9 @@ object TurnHosted {
     * says whether it went to a serving edge then. Its outcome, the answer, or why there is
     * none, is kept by `tool:n:j` through `settling`; once the edge rang, that step reads the
     * answer from the request ([[Calling.answer]]); a call not sent, it reads whether the turn
-    * has an asker, to say why.
+    * has an asker, to say why. It is sent as `pins` says ([[dispatch]]).
     */
-  def settle(
+  private[turn] def settle(
       hosting: TurnHosting,
       slot: TurnTools.Slot,
       call: ToolCallId,
@@ -83,7 +85,8 @@ object TurnHosted {
       sent: Boolean,
       answerWithin: FiniteDuration,
       settling: TurnTools.Settling^,
-      clock: Clock^
+      clock: Clock^,
+      pins: Turn.Picked
   )(using d: Durable^): Either[TurnFailure, TurnTools.Settled] = {
     import TurnJournal.given
     val named = ToolName.value(hosted.tool)
@@ -107,7 +110,7 @@ object TurnHosted {
                 for {
                   to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot), Subject.Turn(turn))(
-                    dispatch(hosting, turn, to, Vector((slot, hosted)), Permit.Approved)
+                    dispatch(hosting, turn, to, Vector((slot, hosted)), Permit.Approved, pins)
                   )
                 } yield if (went) Waited.Phase(awaited(hosting, slot, place)) else Waited.Unsent
             }

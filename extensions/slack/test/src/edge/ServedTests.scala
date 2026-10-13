@@ -553,7 +553,7 @@ object ServedTests extends TestSuite {
             "at most 2 per 1 hour"
         )
         val q = PostingTests.request(ujson.Obj("text" -> "the build is green"), 0)
-        val _ = w.edges.dispatch(Vector(q))(using TestTx.fake)
+        val _ = w.edges.dispatch(Vector(q), Tx.classification(using TestTx.fake))(using TestTx.fake)
         val deadline = System.nanoTime() + 10_000_000_000L
         while (w.edges.answers.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
         (w.edges.answers, w.slack.posts.map(p => (p.channel, p.post.fallback))) ==> (
