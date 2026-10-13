@@ -1,7 +1,8 @@
 # 0031. A write out of grit names its place, and a service is a place and a party
 
 Status: accepted (2026-10-07); amended (2026-10-08) by ADR 0033: a place written to may be
-labelled through grit, and a quiet room is written to by no one
+labelled through grit, and a quiet room is written to by no one; amended (2026-10-13) by ADR
+0037: the model provider is a party, cleared as a service is
 
 Context: ADR 0030 filtered what a transaction reads of grit's own rows and floored what it
 writes there. Effects that leave grit (a post to another channel, a call to an outside service)
