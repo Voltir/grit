@@ -334,7 +334,8 @@ object Read {
             else if (sliced.isEmpty) {
               // In `case A, B, C` a case's own span ends at the comma after its name.
               val rest = trimTrailing(slice(src, lineStart(src, p.start), lineEnd))
-              val own = raw"^(\s*(?:case\s+)?`?${java.util.regex.Pattern.quote(nameOf(sym))}`?)\s*,".r
+              val own =
+                raw"^(\s*(?:case\s+)?`?${java.util.regex.Pattern.quote(nameOf(sym))}`?)\s*,".r
               own.findFirstMatchIn(rest).map(_.group(1)).getOrElse(rest)
             } else sliced
           val unassigned =

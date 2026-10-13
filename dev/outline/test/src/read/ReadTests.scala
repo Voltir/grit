@@ -138,7 +138,9 @@ object ReadTests extends TestSuite {
       assert(red.signature == "  case Red")
     }
 
-    test("a parameterless enum case sharing its line has its own span as its signature, up to its comma") {
+    test(
+      "a parameterless enum case sharing its line has its own span as its signature, up to its comma"
+    ) {
       val suit = read.filter(_.fullName == "grit.outline.fixture.Suit")
       assert(suit.map(_.members.map(_.signature)) == Vector(Vector("Hearts", "Spades", "Clubs")))
     }
