@@ -1,7 +1,7 @@
 package grit.core.visibility
 
 /** The deployment clears `party` for `clearance`: what grit sends it is classified at most this. */
-final case class Cleared(party: Party, clearance: Label)
+final case class Cleared(party: Party, clearance: Label) derives CanEqual
 
 /** What each party is cleared for, by the deployment's declaration. */
 final case class Clearances private (declared: Vector[Cleared]) {

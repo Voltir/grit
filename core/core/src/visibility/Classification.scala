@@ -9,5 +9,7 @@ object Classification {
 
   private[core] def apply(floor: Label): Classification = floor
 
+  given CanEqual[Classification, Classification] = CanEqual.derived
+
   extension (c: Classification) def label: Label = c
 }

@@ -37,7 +37,7 @@ object Upstream {
   * the pair a [[Profile]] describes. Upstreams differ in what they enforce, so the same model
   * at two upstreams is two pairs.
   */
-final case class ModelRef(model: ModelId, upstream: Option[Upstream]) {
+final case class ModelRef(model: ModelId, upstream: Option[Upstream]) derives CanEqual {
   override def toString: String =
     ModelId.value(model) + upstream.fold("")(u => s" @ ${Upstream.value(u)}")
 }

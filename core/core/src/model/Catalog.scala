@@ -8,20 +8,20 @@ enum Effort {
 /** Which pair does one job, with its output budget (`maxTokens`, at least 1) and the effort
   * asked of it (`None`: none is asked, and the model's default holds).
   */
-final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort])
+final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort]) derives CanEqual
 
 /** How strong a pair a call is made with, least first: a ladder's rungs are graded by it, and
   * a turn's effort stage asks for one.
   */
-enum Grade {
+enum Grade derives CanEqual {
   case Light, Standard, Strong
 }
 
 /** A pair a role may use, at `grade`. */
-final case class Rung(grade: Grade, assignment: Assignment)
+final case class Rung(grade: Grade, assignment: Assignment) derives CanEqual
 
 /** A role's rungs, in the order they are preferred. */
-final case class Ladder private (first: Rung, rest: Vector[Rung]) {
+final case class Ladder private (first: Rung, rest: Vector[Rung]) derives CanEqual {
   def rungs: Vector[Rung] = first +: rest
 
   /** Each rung through `f`, in place. */
@@ -118,10 +118,10 @@ final case class Pinned(
     grade: Grade,
     assignment: Assignment,
     settings: Settings
-)
+) derives CanEqual
 
 /** One role's pins, in its ladder's order: [[Catalog.pin]] pins each rung. */
-final case class Pins private[model] (first: Pinned, rest: Vector[Pinned]) {
+final case class Pins private[model] (first: Pinned, rest: Vector[Pinned]) derives CanEqual {
   def all: Vector[Pinned] = first +: rest
 }
 
