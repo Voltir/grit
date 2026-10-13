@@ -177,20 +177,22 @@ Metals spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
 
 ```bash
 bash scripts/fetch-enola.sh    # pinned, sha256-verified, into tools/ (gitignored)
-bash scripts/enola-law.sh      # regenerate, lint the declarations, check the law, fail on a new cycle
+bash scripts/enola-law.sh      # regenerate, lint the declarations, check the law, fail on a cycle between production packages
 ```
 
 `mcp-arch.yaml` is the walk config, `enola-intent.yaml` is the law. It is also an MCP
 server — prefer `impact_analysis`, `explore`, `traverse` and `find_path` over re-deriving
 structure by grepping.
 
-**The trust boundary is not negotiable.** enola's Scala extractor silently degrades on
-capture syntax — drops and mis-nests symbols while reporting `parse_errors: 0`. Measured
-on a controlled fixture, re-measured before every version bump (`scripts/fetch-enola.sh`).
+**The trust boundary is not negotiable.** enola's Scala extractor dropped and mis-nested
+symbols under capture syntax while reporting `parse_errors: 0`, up to 0.4.24. 0.4.29 reads the
+controlled fixture correctly, but its receipt would be as silent about a new regression.
+Re-measured before every version bump (`scripts/fetch-enola.sh`).
 
 - **Import-edge and module facts are sound** and may gate. Every rule in the law is of this kind.
-- **Symbol facts are degraded.** Never gate on `exported-surface`, `complexity-outliers`,
-  or any symbol count, and do not quote one as evidence about this codebase.
+- **Symbol facts never gate** (`exported-surface`, `complexity-outliers`, any symbol count).
+  They may guide exploration (`impact_analysis`, `explore`); a symbol-level claim is confirmed
+  with outline before it is stated.
 
 **A green gate is not automatically a checked gate.** A declaration that matches nothing
 passes vacuously and `lint` still exits 0; `enola-law.sh` greps for that. A rule is not

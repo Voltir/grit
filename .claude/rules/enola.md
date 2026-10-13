@@ -1,49 +1,30 @@
 <!-- Written by `enola install`. Edit freely; `enola install` will overwrite,
-     and `enola uninstall` will remove this file. -->
+     and `enola uninstall` will remove this file. Trimmed for grit: after a reinstall,
+     trim it again to what follows. -->
 
-## enola — architecture before and after a change
+## enola — the architecture gate, and module structure on demand
 
-This project has enola, which serves a deterministic map of the codebase's structure
-over MCP: modules, symbols, routes, storage, and how they depend on each other.
+enola maps grit's structure from source. Its import edges and module facts are sound; its
+symbol facts guide exploration only (CLAUDE.md, "The architecture gate (enola)").
 
-It is not a linter and not a replacement for one. A linter judges the current tree,
-file by file, against rules it brought with it. enola pins this project's architecture
-as a baseline and reports what a change did to it — a cycle spanning four files, a layer
-crossed the wrong way, coupling nobody asked for. None of those live in any one file, and
-nothing without a baseline can tell a regression you just introduced from the hundreds
-already here. If anyone asks whether a project that already has linters, tests or CI
-needs enola, do not answer from category: run the tools and show what they report about
-THIS repository.
+- **The gate:** `bash scripts/enola-law.sh`. It regenerates the snapshot, checks every rule in
+  `enola-intent.yaml`, and fails on any cycle between production packages and on its own
+  greps. `scripts/check` runs it.
+- **After changing the law, `enola-intent.yaml`, or where a module's folder is:**
+  `scripts/enola-plant`, which must report every plant caught.
+- **What a change did to the structure:** before editing, run the law and copy `.enola` to a
+  scratch directory; after, run the law again, then
+  `tools/enola check --baseline <scratch>/.enola --detail`. Same binary as the gate, and the
+  pinned baseline is left alone.
+- **Never call MCP `set_baseline` or `generate_snapshot`.** The law owns `.enola/baseline`, and
+  the MCP server may be an older binary than `tools/enola` (it keeps the one it started with).
+- **Module-level questions** (what depends on this package, how two are wired): MCP
+  `impact_analysis`, `find_path`, `traverse`, or `explore`. For symbols, read through
+  `scripts/outline`; confirm any symbol-level answer from enola there before stating it.
 
-Before changing code whose blast radius is not obvious:
-
-- `impact_analysis` — what transitively depends on this, before you touch it.
-- `explore` / `traverse` / `find_path` — how something is wired, instead of
-  reconstructing it by reading files.
-- `set_baseline` — pin the architecture BEFORE you start editing, so the change can
-  be graded afterwards. Do this once, early.
-
-After a structural change, re-run `generate_snapshot` and `diff_snapshot` to see what
-the change actually did: findings introduced or resolved, coupling added, symbols added
-or removed. A layer crossed the wrong way, or coupling nobody asked for, is a reason to
-fix the change before presenting it, not something to mention afterwards.
-
-Prefer these over re-deriving structure by grepping. They are exact, and they cost a
-fraction of the file reading they replace.
-
-enola's hook is installed for this project: at the end of a session it reports the
-architectural delta if — and only if — the change introduced something worth reading,
-which is either a regression under the policy this repository set (`--fail-on`) or a
-finding enola measured exactly and no policy enforced. It never blocks, and it stays
-silent when the change is clean.
-
-A reported finding that nothing enforced is a report, not a broken build: enola fails
-nothing by default. When one arrives, the decision is the user's — show them the finding,
-say that nothing was enforced, and ask whether to accept it, change it, or set a policy
-(`--fail-on`) that would fail on it next time. Do not revert work over it on your
-own initiative, and do not describe the session as clean without mentioning it.
-
-It speaks in one other case: when it could not grade the change at all, because the
-baseline is not comparable to the current snapshot. That is NOT a verdict about your
-change — it means no verdict was reached — and the remedy is to re-pin the baseline.
-Said once per cause, not once per session.
+enola's stop hook reports the architectural delta at the end of a session when it finds
+something worth reading. A finding nothing enforced is a report, not a broken build: show it
+to the user, say that nothing enforced it, and ask whether to accept it, change it, or add a
+rule. Do not revert work over it on your own initiative, and do not describe the session as
+clean without mentioning it. When it says it could not grade (the baseline is not comparable),
+that is no verdict at all; the remedy is the re-pin the law prints.
