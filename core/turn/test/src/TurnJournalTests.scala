@@ -36,6 +36,32 @@ object TurnJournalTests extends TestSuite {
       }
     }
 
+    test(
+      "a route reads back as written, a role with no pin cleared absent, and a turn uncleared as its label"
+    ) {
+      import grit.core.visibility.{Label, Level}
+      val pin = TurnFixtures.TestCatalog.pin
+      val routed: Either[TurnFailure, Route] =
+        Right(Route(Label.at(Level.Internal), pin.turn.first, None, Some(pin.query.first)))
+      roundTrip(routed) ==> Right(routed)
+      routing.encode(routed).contains("summary") ==> false
+      val uncleared: Either[TurnFailure, Route] =
+        Left(TurnFailure.Uncleared(Label.at(Level.Restricted)))
+      (roundTrip(uncleared), routing.encode(uncleared)) ==> (
+        Right(uncleared),
+        """{"failed":"uncleared","reason":"restricted"}"""
+      )
+    }
+
+    test("a query's note keeps who served it, and one recorded before reads with none") {
+      val note = TurnFixtures.queried.copy(upstream = Some("Fireworks"))
+      val noted: Either[TurnFailure, Window] = Right(Window(Vector(EntrySeq(0)), Vector(note)))
+      roundTrip(noted) ==> Right(noted)
+      val before: Either[TurnFailure, Window] =
+        Right(Window(Vector(EntrySeq(0)), Vector(TurnFixtures.queried)))
+      window.encode(before).contains("upstream") ==> false
+    }
+
     test("a window's notes read back, and one without notes keeps the bare array") {
       val noted: Either[TurnFailure, Window] = Right(
         Window(

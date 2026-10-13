@@ -28,6 +28,8 @@ In dependency order, each with the core packages it imports:
   and of the parties grit sends to (ADR 0037), and what a transaction is opened for. `Label` is
   opaque, never taken apart; `LabelParts`, its stored form, may be named only here and in
   `grit.dbos` (enola-intent.yaml). ← `id`, `place`, `identity`, `model`
+- **`route`**: which of a role's pairs a call is made with (ADR 0037): the pins cleared for what
+  a transaction knows, and what a turn says when none is. ← `model`, `visibility`
 - **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
   first, for a provider's prompt cache. ← `id`
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`

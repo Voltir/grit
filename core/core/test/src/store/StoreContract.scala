@@ -192,7 +192,7 @@ abstract class StoreContract extends TestSuite {
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(3), EntrySeq(5)))
     }
 
-    test("the ledger gives back what was recorded, the cost exactly and its absence as None") {
+    test("the ledger gives back what was recorded, who served it and the cost exactly, or None") {
       val c = conversation("ledger")
       val free = usage.copy(costUsd = None)
       transaction {
@@ -203,6 +203,7 @@ abstract class StoreContract extends TestSuite {
           TurnRef(c, TurnSeq.First),
           WorkflowId("w-exact"),
           "m",
+          Some("Fireworks"),
           usage,
           Tokens(12)
         )
@@ -211,6 +212,7 @@ abstract class StoreContract extends TestSuite {
           TurnRef(c, TurnSeq.First),
           WorkflowId("w-exact"),
           "n",
+          None,
           free,
           Tokens(3)
         )
@@ -218,8 +220,8 @@ abstract class StoreContract extends TestSuite {
       transaction(ledger.of(WorkflowId("w-exact"))) ==>
         Right(
           Vector(
-            UsageLedger.Row(EntryId("costly"), "m", usage, Tokens(12)),
-            UsageLedger.Row(EntryId("free"), "n", free, Tokens(3))
+            UsageLedger.Row(EntryId("costly"), "m", Some("Fireworks"), usage, Tokens(12)),
+            UsageLedger.Row(EntryId("free"), "n", None, free, Tokens(3))
           )
         )
     }
@@ -234,6 +236,7 @@ abstract class StoreContract extends TestSuite {
           TurnRef(c, TurnSeq.First),
           WorkflowId("w-dup"),
           "m",
+          None,
           usage,
           Tokens(1)
         )
@@ -242,6 +245,7 @@ abstract class StoreContract extends TestSuite {
           TurnRef(c, TurnSeq.First),
           WorkflowId("w-dup"),
           "m",
+          None,
           usage,
           Tokens(2)
         )
@@ -253,6 +257,7 @@ abstract class StoreContract extends TestSuite {
             TurnRef(c, TurnSeq.First),
             WorkflowId("w-dup"),
             "m",
+            None,
             usage,
             Tokens(3)
           )
@@ -271,18 +276,21 @@ abstract class StoreContract extends TestSuite {
           entries.insert(entry(c, id, seq.toLong))
         }
         // Recorded in the reverse of their ids' order, so ordering by id cannot pass.
-        ledger.record(EntryId("z"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("z"), TurnRef(c, TurnSeq.First), w, "m", None, usage, Tokens(1))
         ledger.record(
           EntryId("other"),
           TurnRef(c, TurnSeq.First),
           WorkflowId("w-order-other"),
           "m",
+          None,
           usage,
           Tokens(1)
         )
-        ledger.record(EntryId("a"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("a"), TurnRef(c, TurnSeq.First), w, "m", None, usage, Tokens(1))
       }
-      transaction(ledger.record(EntryId("m"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1)))
+      transaction(
+        ledger.record(EntryId("m"), TurnRef(c, TurnSeq.First), w, "m", None, usage, Tokens(1))
+      )
       transaction(ledger.of(w)).map(_.map(r => EntryId.value(r.entry))) ==>
         Right(Vector("z", "a", "m"))
     }
@@ -301,11 +309,11 @@ abstract class StoreContract extends TestSuite {
           entries.insert(entry(c, id, seq.toLong))
         }
         entries.insert(entry(other, "f-other", 0))
-        ledger.record(EntryId("f0"), at(c, 0), w, "m", usage, Tokens(1))
-        ledger.record(EntryId("f1"), at(c, 1), w, "m", usage, Tokens(1))
-        ledger.record(EntryId("f2"), at(c, 2), w, "m", usage, Tokens(1))
-        ledger.record(EntryId("f3"), at(c, 3), w, "m", usage, Tokens(1))
-        ledger.record(EntryId("f-other"), at(other, 1), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("f0"), at(c, 0), w, "m", None, usage, Tokens(1))
+        ledger.record(EntryId("f1"), at(c, 1), w, "m", None, usage, Tokens(1))
+        ledger.record(EntryId("f2"), at(c, 2), w, "m", None, usage, Tokens(1))
+        ledger.record(EntryId("f3"), at(c, 3), w, "m", None, usage, Tokens(1))
+        ledger.record(EntryId("f-other"), at(other, 1), w, "m", None, usage, Tokens(1))
       }
       transaction(ledger.forget(c, TurnSeq(1), TurnSeq(2))) ==> Right(())
       transaction(ledger.of(w)).map(_.map(r => EntryId.value(r.entry))) ==>

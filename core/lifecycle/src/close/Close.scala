@@ -91,8 +91,15 @@ object Close {
     case Abandoned(why: String)
   }
 
-  /** What a summary cost: its `model`, its `usage`, and the estimate of its request. */
-  final case class Cost(model: String, usage: Usage, estimate: Tokens)
+  /** What a summary cost: its `model`, the `upstream` that served it as its provider reported
+    * (`None`: not reported), its `usage`, and the estimate of its request.
+    */
+  final case class Cost(
+      model: String,
+      usage: Usage,
+      estimate: Tokens,
+      upstream: Option[String] = None
+  )
 
   /** What `summarise` wrote: the `closing` (`None` only when the period had no text at all
     * and no turns), what it cost when a model wrote it, and why no model did.
@@ -317,7 +324,8 @@ object Close {
         pin = (if (overheard) catalog.heard else catalog.pin.summary).first
         reply <- env.models.provider(pin).complete(request).left.map(_.cause)
       } yield {
-        val cost = Cost(reply.model, reply.usage, env.records.estimator.request(request))
+        val cost =
+          Cost(reply.model, reply.usage, env.records.estimator.request(request), reply.upstream)
         // A reply cut off at its token limit may have lost any part, a Resolved one
         // included, and its last line may be half written: none of it is read.
         if (reply.stop == StopReason.MaxTokens)
@@ -408,6 +416,7 @@ object Close {
                 TurnRef(attempt.period.conversationId, attempt.last),
                 attempt.workflowId,
                 c.model,
+                c.upstream,
                 c.usage,
                 c.estimate
               )

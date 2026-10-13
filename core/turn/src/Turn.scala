@@ -10,13 +10,22 @@ import grit.core.document.{DocLabel, Document, DocumentSearch, Pointer}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
 import grit.core.edge.Permit
 import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
+import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.model.{
+  AfterToolResult,
+  Pinned,
+  StrictSchemas,
+  ToolGuidance,
+  TurnProfile,
+  TurnProfileId
+}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.route.{Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{
+  Db,
   Entry,
   EntryStore,
   Jot,
@@ -31,7 +40,7 @@ import grit.core.store.{
 import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
 import grit.core.topic.Topic
 import grit.core.triage.{Tags, Weighing}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
@@ -48,6 +57,12 @@ import TurnVerdict.Shape
   *      once its opening's placement has ended ([[TurnWeighing.said]]); or none. Never fails
   *      the turn: a weighing that fails records why, by kind, and offers everything. Turns that passed this point before it
   *      shipped offer unweighed ([[Patches.Weigh]]).
+  *   1. `route` — the pin each role's calls are made under ([[Route]]): the first of its pins
+  *      whose pair is cleared for what the turn's transaction knows ([[Routing.cleared]]), read
+  *      once. With no turn pin cleared it fails `Uncleared`; with no summary or query pin, that
+  *      call is not made. Every later read whose content a model is sent is bounded by the
+  *      classification it routed for ([[grit.core.store.Db.within]]). Turns that passed this
+  *      point before it shipped make each role's calls on its first pin ([[Patches.Route]]).
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
@@ -58,8 +73,9 @@ import TurnVerdict.Shape
   *      `weigh` asked about has its call's cost recorded in the ledger in the same
   *      transaction ([[TurnWeighing.id]]). Its root is `ByName` when triage decided to answer
   *      its heard message as said to grit ([[grit.core.speech.SpeechStore.answering]]).
-  *   1. `record-failure` — only when `pin-models` or `offer` failed, ending the turn: a
-  *      heard message's turn keeps `Failed` as what became of it ([[failedEarly]]).
+  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn:
+  *      a heard message's turn keeps `Failed` as what became of it ([[failedEarly]]), and one
+  *      said to grit that no turn pin is cleared for is replied [[Uncleared.reply]].
   *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
   *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
   *      every opening heard before it in its room is placed; nothing waited for otherwise.
@@ -146,6 +162,7 @@ object Turn {
   object Step {
     val PinModels = "pin-models"
     val Weigh = "weigh"
+    val Route = "route"
     val Offer = "offer"
     val RecordFailure = "record-failure"
     val Stitched = "stitched"
@@ -188,6 +205,7 @@ object Turn {
       Vector(
         PinModels,
         Weigh,
+        Route,
         Offer,
         RecordFailure,
         Stitched,
@@ -401,6 +419,12 @@ object Turn {
       * has recorded later steps there, and takes none.
       */
     val RecordFailure = "record-failure"
+
+    /** A turn's calls are routed in `route`, after `weigh` and before `offer`, to pairs cleared
+      * for its classification (2026-10-13). A turn that passed this point before it shipped
+      * makes each role's calls on its first pin.
+      */
+    val Route = "route"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -451,42 +475,65 @@ object Turn {
           .flatMap(profileOf(env, _)) match {
           case Left(failure) => failedEarly(env, turn, failure)
           case Right(profile) =>
-            val hosting = env.hosting
             // Taken by every turn that had not offered when it shipped, whatever the recipe, so
             // a recovery under another deployment's configuration replays the same steps.
             val weighed =
               if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, tooling, turn))
               else None
-            val ledger = env.records.ledger
-            val speech = env.speech.store
-            d.transact(Step.Offer, Subject.Turn(turn))(
-              speech
-                .answering(turn)
-                .left
-                .map(storeFailure)
-                .flatMap(answering =>
-                  TurnOffer.decide(
-                    hosting,
-                    env.records.entries,
-                    tooling,
-                    turn,
-                    weighed.flatMap(_.answers),
-                    answering
-                  )
-                )
-                .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
-            ).flatMap(TurnOffer.load(hosting, env.db.as(Subject.Turn(turn)), _)) match {
+            // Taken as weigh is, so a recovery under another deployment's clearances replays it.
+            val routed =
+              if (d.patch(Patches.Route))
+                d.step(Step.Route)(() => routeOf(env, turn, profile))
+                  .map(Some(_))
+              else Right(None)
+            routed match {
               case Left(failure) => failedEarly(env, turn, failure)
-              case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
+              case Right(r) => offered(env, tooling, turn, weighed)(using Picked.of(profile, r), d)
             }
         }
     }
 
+  /** The `offer` step, its transaction bounded as `pins` says, then the rest of the turn under
+    * `pins`.
+    */
+  private def offered[C^](
+      env: TurnEnv^,
+      tooling: TurnTooling[C]^,
+      turn: TurnRef,
+      weighed: Option[TurnWeighing.Weighed]
+  )(using pins: Picked, d: Durable^): String = {
+    import TurnJournal.recordedOffer
+    val hosting = env.hosting
+    val ledger = env.records.ledger
+    val speech = env.speech.store
+    d.transact(Step.Offer, Subject.Turn(turn))(
+      pins.known
+        .flatMap(_ => speech.answering(turn))
+        .left
+        .map(storeFailure)
+        .flatMap(answering =>
+          TurnOffer.decide(
+            hosting,
+            env.records.entries,
+            tooling,
+            turn,
+            weighed.flatMap(_.answers),
+            answering
+          )
+        )
+        .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
+    ).flatMap(TurnOffer.load(hosting, pins.reads(env.db).as(Subject.Turn(turn)), _)) match {
+      case Left(failure) => failedEarly(env, turn, failure)
+      case Right(offer) => pinned(env, tooling, turn)(using pins, offer, d)
+    }
+  }
+
   /** The `record-failure` step, for `turn`, which ended in `failure` before its offer was
     * made or read: `Failed` kept as what became of it when it answers a heard message
-    * ([[grit.core.speech.SpeechStore.drafted]]), so its decision never stands drafting; nothing
-    * for a message said to grit. Taken by every turn that fails there, whatever it answers,
-    * since which it answers is read inside the step.
+    * ([[grit.core.speech.SpeechStore.drafted]]), so its decision never stands drafting; for a
+    * message said to grit, [[Uncleared.reply]] kept as its reply when `failure` is
+    * `Uncleared`, and nothing otherwise. Taken by every turn that fails there, whatever it
+    * answers, since which it answers is read inside the step.
     */
   private def failedEarly(env: TurnEnv^, turn: TurnRef, failure: TurnFailure)(using
       d: Durable^
@@ -503,7 +550,11 @@ object Turn {
           .flatMap(own =>
             own.minByOption(_.seq).map(_.payload) match {
               case Some(Payload.Heard(_)) => store.drafted(turn, Outcome.Failed(why), None, at)
-              case _ => Right(false)
+              case _ =>
+                failure match {
+                  case TurnFailure.Uncleared(c) => replyUncleared(entries, turn, c, at)
+                  case _ => Right(false)
+                }
             }
           )
           .left
@@ -513,6 +564,60 @@ object Turn {
         case Right(_) => s"failed: $failure"
       }
   }
+
+  /** [[Uncleared.reply]] kept as `turn`'s reply, dated `at`: what a turn said to grit is
+    * answered when no turn pin is cleared for `classification`. No call was made, so no cost.
+    */
+  private def replyUncleared(
+      entries: EntryStore,
+      turn: TurnRef,
+      classification: Label,
+      at: Instant
+  )(using Tx^): Either[StoreError, Boolean] = {
+    val reply = Message.Assistant(
+      Vector(AssistantBlock.Text(Uncleared.reply(Uncleared(classification)))),
+      StopReason.EndTurn,
+      Usage.Zero,
+      "grit" // no model wrote it
+    )
+    for {
+      next <- entries.lockNext(turn.conversationId)
+      _ <- entries.insert(
+        Entry(
+          turn.replyId,
+          turn.conversationId,
+          turn.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(reply),
+          at
+        )
+      )
+    } yield true
+  }
+
+  /** The `route` step: the pin each role's calls are made under, the first of `profile`'s for
+    * it whose pair is cleared for what a read for `turn` knows. `Uncleared` when no turn pin
+    * is; `Store` when the read fails.
+    */
+  private def routeOf(
+      env: TurnEnv^,
+      turn: TurnRef,
+      profile: TurnProfile
+  ): Either[TurnFailure, Route] =
+    env.db
+      .read(Subject.Turn(turn)) { (tx: Tx^) ?=>
+        Right((Tx.classification, Tx.visibility(tx).clearances))
+      }
+      .left
+      .map(storeFailure)
+      .flatMap { (classification, clearances) =>
+        def cleared(pins: grit.core.model.Pins) =
+          Routing.cleared(pins, clearances, classification).map(_.first)
+        cleared(profile.turn)
+          .toRight(TurnFailure.Uncleared(classification.label))
+          .map(Route(classification.label, _, cleared(profile.summary), cleared(profile.query)))
+      }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
     * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would
@@ -573,7 +678,15 @@ object Turn {
     weighed match {
       case Some(TurnWeighing.Weighed.Asked(Weighing.Weighed(tags, estimate))) =>
         ledger
-          .record(TurnWeighing.id(turn), turn, turn.workflowId, tags.model, tags.usage, estimate)
+          .record(
+            TurnWeighing.id(turn),
+            turn,
+            turn.workflowId,
+            tags.model,
+            None,
+            tags.usage,
+            estimate
+          )
           .left
           .map(storeFailure)
       case Some(TurnWeighing.Weighed.Kept(_) | TurnWeighing.Weighed.Failed(_)) | None =>
@@ -631,7 +744,7 @@ object Turn {
 
   /** [[body]] once `turn`'s models are pinned and its offer is made. */
   private def pinned[C^](env: TurnEnv^, tooling: TurnTooling[C]^, turn: TurnRef)(using
-      pins: TurnProfile,
+      pins: Picked,
       offer: TurnOffer,
       d: Durable^
   ): String = {
@@ -894,7 +1007,7 @@ object Turn {
       }
       _ <- called.fold[Either[TurnFailure, Unit]](Right(()))(c =>
         ledger
-          .record(TurnJudge.id(turn), turn, turn.workflowId, c.model, c.usage, c.estimated)
+          .record(TurnJudge.id(turn), turn, turn.workflowId, c.model, None, c.usage, c.estimated)
           .left
           .map(storeFailure)
       )
@@ -932,6 +1045,42 @@ object Turn {
 
   /** The id of the record of `turn`'s window. */
   def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")
+
+  /** The pin each role's calls are made under, and the classification each read whose content
+    * a model is sent is bounded by: a routed turn's [[Route]], a summary uncleared failing
+    * `Uncleared`; or, for a turn that passed `route` before it shipped ([[Patches.Route]]),
+    * each role's first pin and no bound.
+    */
+  private final case class Picked(
+      turn: Pinned,
+      summary: Either[TurnFailure, Pinned],
+      query: Option[Pinned],
+      bound: Option[Label]
+  ) {
+
+    /** `db`, its reads bounded as this says ([[Db.within]]). */
+    def reads(db: Db^): Db^ = bound match {
+      case Some(b) => Db.within(db, b)
+      case None => db
+    }
+
+    /** Whether a transaction knows no more than this is bounded by ([[Tx.within]]). */
+    def known(using Tx^): Either[StoreError, Unit] = bound.fold(Right(()))(Tx.within(_))
+  }
+
+  private object Picked {
+    def of(profile: TurnProfile, route: Option[Route]): Picked = route match {
+      case Some(r) =>
+        Picked(
+          r.turn,
+          r.summary.toRight(TurnFailure.Uncleared(r.classification)),
+          r.query,
+          Some(r.classification)
+        )
+      case None =>
+        Picked(profile.turn.first, Right(profile.summary.first), Some(profile.query.first), None)
+    }
+  }
 
   /** Whether `turn`'s message was placed among its conversation's topics
     * ([[Patches.Topics]]).
@@ -991,14 +1140,17 @@ object Turn {
       turn: TurnRef,
       placing: Placing,
       tooling: TurnTooling[C]^
-  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
+  )(using env: TurnEnv^, pins: Picked, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     val heard = d.stream(TurnStream.Key)
     val prepared = for {
       window <- d.step(Step.Assemble) { () =>
-        env.assembler.assemble(AssemblyRequest(turn, offer.width))(using env.db).left.map {
-          case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
-        }
+        env.assembler
+          .assemble(AssemblyRequest(turn, pins.query, offer.width))(using pins.reads(env.db))
+          .left
+          .map { case AssemblyError.Store(error) =>
+            TurnFailure.Assembly(describe(error))
+          }
       }
       recorded =
         if (d.patch(Patches.RecordWindow)) WindowRecord.OwnStep else WindowRecord.WithReply
@@ -1061,7 +1213,7 @@ object Turn {
       recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
       tooling: TurnTooling[C]^
-  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] =
+  )(using env: TurnEnv^, pins: Picked, offer: TurnOffer, d: Durable^): Ran[EntryId] =
     looping(
       heard,
       turn,
@@ -1071,7 +1223,7 @@ object Turn {
       TurnOffer.toolbox(tooling, offer),
       tooling.jot,
       tooling.budget,
-      pins.turn.first.settings.strict == StrictSchemas.Enforced,
+      pins.turn.settings.strict == StrictSchemas.Enforced,
       tooling.answerWithin
     )
 
@@ -1091,14 +1243,14 @@ object Turn {
       budget: TurnLoop.Budget,
       strict: Boolean,
       answerWithin: FiniteDuration
-  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
+  )(using env: TurnEnv^, pins: Picked, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     offered(own, asked) match {
       case Left(failure) => Ran(Left(failure), None)
       case Right(tools) =>
         val schemas = tools.schemas(strict)
         // How this turn's pair is read and told: the pin's, fixed for the turn.
-        val settings = pins.turn.first.settings
+        val settings = pins.turn.settings
         val repairs = Repairs(settings.names, settings.repairs)
         val after = settings.afterResult
         val guidance = settings.guidance
@@ -1332,7 +1484,7 @@ object Turn {
       shape: Shape
   )(using
       env: TurnEnv^,
-      pins: TurnProfile,
+      pins: Picked,
       offer: TurnOffer
   ): Either[TurnFailure, Message.Assistant] =
     callShaped(heard, turn, window, shape(_))
@@ -1347,13 +1499,13 @@ object Turn {
       shape: ModelRequest -> ModelRequest
   )(using
       env: TurnEnv^,
-      pins: TurnProfile,
+      pins: Picked,
       offer: TurnOffer
   ): Either[TurnFailure, Message.Assistant] =
     request(env, offer.system, turn, window).flatMap { req =>
       val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
       Asking
-        .reply(env.models.provider(pins.turn.first), req.shaped(shape), hearing, env.clock)
+        .reply(env.models.provider(pins.turn), req.shaped(shape), hearing, env.clock)
         .left
         .map(TurnFailure.Model(_))
     }
@@ -1370,7 +1522,7 @@ object Turn {
       first: Message.Assistant
   )(using
       env: TurnEnv^,
-      pins: TurnProfile,
+      pins: Picked,
       offer: TurnOffer,
       d: Durable^
   ): Ran[TurnVerdict.Replied] = {
@@ -1424,20 +1576,24 @@ object Turn {
       turn: TurnRef,
       answered: EntryId,
       placing: Placing
-  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Either[TurnFailure, EntryId] = {
+  )(using env: TurnEnv^, pins: Picked, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
       message <- d.step(Step.Summarise) { () =>
-        env.db
-          .read(Subject.Turn(turn))(env.records.entries.list(turn.conversationId))
-          .left
-          .map(storeFailure)
-          .flatMap { all =>
-            val request = summaryRequest(all, turn, placing)
-            Asking
-              .reply(env.models.provider(pins.summary.first), request, Hearing.silent(), env.clock)
+        pins.summary
+          .flatMap { pin =>
+            pins
+              .reads(env.db)
+              .read(Subject.Turn(turn))(env.records.entries.list(turn.conversationId))
               .left
-              .map(TurnFailure.Model(_))
+              .map(storeFailure)
+              .flatMap { all =>
+                val request = summaryRequest(all, turn, placing)
+                Asking
+                  .reply(env.models.provider(pin), request, Hearing.silent(), env.clock)
+                  .left
+                  .map(TurnFailure.Model(_))
+              }
           }
           // Nothing reads a summary's reasoning, and it was most of what this step recorded.
           .map[Message.Assistant](m =>
@@ -1541,8 +1697,9 @@ object Turn {
       system: String,
       turn: TurnRef,
       window: Window
-  ): Either[TurnFailure, Unshaped] =
-    env.db
+  )(using pins: Picked): Either[TurnFailure, Unshaped] =
+    pins
+      .reads(env.db)
       .read(Subject.Turn(turn))(shown(env.records, turn, window))
       .left
       .map(storeFailure)
@@ -1787,7 +1944,9 @@ object Turn {
             )
             entries
               .insert(entry)
-              .flatMap(_ => ledger.record(qid, turn, turn.workflowId, q.model, q.usage, q.estimate))
+              .flatMap(_ =>
+                ledger.record(qid, turn, turn.workflowId, q.model, q.upstream, q.usage, q.estimate)
+              )
               .left
               .map(storeFailure)
               .map(_ => seq.next)
@@ -1863,7 +2022,8 @@ object Turn {
           acc.flatMap(done => recorded[EntryId](name).map(id => done ++ id.map(round -> _)))
       }
       answer <- recorded[EntryId](Step.Append)
-      settings = profile.turn.first.settings
+      routed <- recorded[Route](Step.Route)
+      settings = routed.fold(profile.turn.first)(_.turn).settings
       strict = settings.strict == StrictSchemas.Enforced
       // As asking decided it live, the verdict patch read from its marker.
       asking = classified.flatMap(asked(_, took(Patches.Verdict)))
@@ -1918,6 +2078,7 @@ object Turn {
     case TurnFailure.Assembly(why) => why
     case TurnFailure.Model(why) => why
     case TurnFailure.Store(why) => why
+    case TurnFailure.Uncleared(c) => Uncleared.reply(Uncleared(c))
   }
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))

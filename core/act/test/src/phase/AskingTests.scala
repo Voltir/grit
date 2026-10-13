@@ -100,9 +100,11 @@ object AskingTests extends TestSuite {
       ledger.now = start
       val daily = Allowance.Daily(budget("0.02"))
       val before = Asking.admits(daily, ledger, start)
-      val _ = ledger.record(EntryId("a"), turn, turn.workflowId, "m", answer("a").usage, Tokens(1))
+      val _ =
+        ledger.record(EntryId("a"), turn, turn.workflowId, "m", None, answer("a").usage, Tokens(1))
       val under = Asking.admits(daily, ledger, start)
-      val _ = ledger.record(EntryId("b"), turn, turn.workflowId, "m", answer("b").usage, Tokens(1))
+      val _ =
+        ledger.record(EntryId("b"), turn, turn.workflowId, "m", None, answer("b").usage, Tokens(1))
       val at = Asking.admits(daily, ledger, start)
       val tomorrow = Asking.admits(daily, ledger, start.plus(1, java.time.temporal.ChronoUnit.DAYS))
       (before, under, at, tomorrow) ==> (Right(true), Right(true), Right(false), Right(true))
@@ -116,15 +118,15 @@ object AskingTests extends TestSuite {
     }
 
     test(
-      "a cost is recorded once, an ask's as its reply's and a call's as its model's and usage, each beside its estimate; again, DuplicateId"
+      "a cost is recorded once, an ask's as its reply's, who served it included, and a call's as its model's and usage, each beside its estimate; again, DuplicateId"
     ) {
       val ledger = new InMemoryUsageLedger
       given Tx = TestTx.fake
-      val reply = answer("hi")
+      val reply = answer("hi").copy(upstream = Some("Fireworks"))
       val usage = Usage(Tokens(30), Tokens(4), Tokens(10), Some(BigDecimal("0.002")))
       val first = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
       val second = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
-      val call = Asking.cost(ledger, EntryId("f"), turn, "judge", usage, Tokens(28))
+      val call = Asking.cost(ledger, EntryId("f"), turn, "judge", None, usage, Tokens(28))
       (first, second, call, ledger.of(turn.workflowId)) ==>
         (
           Right(()),
@@ -132,8 +134,8 @@ object AskingTests extends TestSuite {
           Right(()),
           Right(
             Vector(
-              UsageLedger.Row(EntryId("e"), "m", reply.usage, Tokens(7)),
-              UsageLedger.Row(EntryId("f"), "judge", usage, Tokens(28))
+              UsageLedger.Row(EntryId("e"), "m", Some("Fireworks"), reply.usage, Tokens(7)),
+              UsageLedger.Row(EntryId("f"), "judge", None, usage, Tokens(28))
             )
           )
         )

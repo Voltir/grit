@@ -49,12 +49,18 @@ final class StubModels(delayMs: Long = 0) extends Models {
 
 object StubModels {
 
-  /** Every role on the stub ([[StubProvider.Model]]), with the seed's budgets; no profiles. */
-  val Catalog: Catalog = {
-    val stub = grit.core.model.ModelRef(
+  /** The stub's pair: [[StubProvider.Model]] at an upstream named `stub`, so a deployment can
+    * clear it as a party (ADR 0037); nothing is sent outside grit.
+    */
+  val Ref: grit.core.model.ModelRef =
+    grit.core.model.ModelRef(
       grit.core.model.ModelId.of(StubProvider.Model).getOrElse(sys.error("the stub's model id")),
-      None
+      grit.core.model.Upstream.of("stub")
     )
+
+  /** Every role on the stub ([[Ref]]), with the seed's budgets; no profiles. */
+  val Catalog: Catalog = {
+    val stub = Ref
     grit.core.model.Catalog.of(
       grit.core.model.Policy.one(
         grit.core.model.Assignment(stub, 4096, None),

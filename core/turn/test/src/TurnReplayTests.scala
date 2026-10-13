@@ -79,6 +79,25 @@ object TurnReplayTests extends TestSuite {
       assert(failures.isEmpty)
     }
 
+    test("every recorded route is written back byte for byte") {
+      // A route is recorded data: each role's pin as a profile writes it, a role with none
+      // cleared absent, and a turn with none cleared its failure.
+      val j = TurnJournal.routing
+      val outputs = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector.flatMap(_.steps.collect {
+          case s if s.name == Turn.Step.Route => (path.last, s.outcome)
+        })
+      }
+      assert(outputs.map(_._1).toSet.size >= 6)
+      val failures = outputs.collect {
+        case (file, InMemoryDurable.Outcome.Output(text))
+            if j.decode(text).map(j.encode) != Right(text) =>
+          file
+        case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
+      }
+      assert(failures.isEmpty)
+    }
+
     test("every recorded offer is written back byte for byte") {
       // An offer is recorded data: one recorded before shapes reads as unshaped, and today's
       // codec writes the same text back, so recipes change no offer already recorded.

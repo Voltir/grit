@@ -276,6 +276,8 @@ object TurnTopicsTests extends TestSuite {
         "pin-models",
         "DBOS.patch-weigh",
         "weigh",
+        "DBOS.patch-route",
+        "route",
         "offer",
         "DBOS.patch-stitch-in-room-order",
         "stitched",

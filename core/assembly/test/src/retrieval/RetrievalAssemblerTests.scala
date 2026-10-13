@@ -43,9 +43,10 @@ import grit.core.id.{
 }
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.place.{Locality, Place, Prefix, Scope, Weight}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{InMemoryStitchStore, StitchJson, StitchStore, Tuning}
 import grit.core.store.{
   ClosingEntry,
@@ -77,13 +78,16 @@ object RetrievalAssemblerTests extends TestSuite {
     )
 
   /** Answers every request with `answer`, or fails; keeps what it was sent. */
-  private final class Writer(answer: Option[String]) extends Provider {
+  private final class Writer(answer: Option[String], upstream: Option[String] = None)
+      extends Provider {
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       requests = requests :+ request
-      answer.map(reply(_, "writer")).toRight(ProviderError.Unavailable("down"))
+      answer
+        .map(reply(_, "writer").copy(upstream = upstream))
+        .toRight(ProviderError.Unavailable("down"))
     }
   }
 
@@ -297,6 +301,27 @@ object RetrievalAssemblerTests extends TestSuite {
     Vector(exchange("Which database do probes use?", "grit_agent, never grit.")) ++
       (1 to 5).map(filler) :+ ask
 
+  private def pin(model: String): Pinned = {
+    val ref = ModelRef(ModelId.of(model).getOrElse(sys.error(model)), None)
+    val a = Assignment(ref, 100, None)
+    Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin.query.first
+  }
+
+  /** The pin a window's query is asked to be written under. */
+  private val QueryPin = pin("query/writer")
+
+  /** Models whose calls under `pin` alone `writer` answers; under any other, each call fails. */
+  private final class Writing(writer: Provider^, pin: Pinned) extends Models {
+    def catalog(): Either[String, Catalog] = Left("no catalog")
+    def provider(pinned: Pinned): Provider^ =
+      if (pinned == pin) writer else new Failing(s"asked under ${pinned.assignment.ref}")
+  }
+
+  private final class Failing(why: String) extends Provider {
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
+      Left(ProviderError.Unavailable(why))
+  }
+
   /** Turn 6's window. With a 25-token tail, the recent turns are 4 and 5. */
   private def assemble(
       world: World,
@@ -311,7 +336,8 @@ object RetrievalAssemblerTests extends TestSuite {
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
       width: Width = Width.Deployed,
-      documents: DocumentSearch = new InMemoryDocuments
+      documents: DocumentSearch = new InMemoryDocuments,
+      query: Option[Pinned] = Some(QueryPin)
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
@@ -347,14 +373,14 @@ object RetrievalAssemblerTests extends TestSuite {
           c => Origin.Task("conversation", ConversationId.value(c))
         )
       ),
-      writer,
+      new Writing(writer, QueryPin),
       CharEstimate,
       Tokens(budget),
       Tokens(25),
       tuning,
       Hits
     )
-      .assemble(AssemblyRequest(turn, width))(using new FakeDb)
+      .assemble(AssemblyRequest(turn, query, width))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
   }
 
@@ -392,7 +418,7 @@ object RetrievalAssemblerTests extends TestSuite {
       CharEstimate,
       Tokens(budget)
     )
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
+      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6)), None))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 
   private def placeOf(name: String): Place = Origin.Task("conversation", name).place
@@ -983,6 +1009,30 @@ object RetrievalAssemblerTests extends TestSuite {
         linear(entries, 60).entries,
         Vector(AssemblyNote.FellBack("no query: down"))
       )
+    }
+
+    test("with no query pin, no query is written: the linear window, noted so") {
+      val entries = store(buried*)
+      val writer = new Writer(Some("probes grit_agent"))
+      val unasked = assemble(entries, writer, budget = 60, query = None)
+      (unasked, writer.requests.size) ==> (
+        Window(
+          linear(entries, 60).entries,
+          Vector(AssemblyNote.FellBack(RetrievalAssembler.NoPin))
+        ),
+        0
+      )
+    }
+
+    test("the query is written under the request's pin alone, and notes who served it") {
+      val entries = store(buried*)
+      val other =
+        assemble(entries, new Writer(Some("probes")), budget = 60, query = Some(pin("x/y")))
+      other.notes ==> Vector(AssemblyNote.FellBack("no query: asked under x/y"))
+      val served = new Writer(Some("probes"), upstream = Some("Fireworks"))
+      assemble(entries, served, budget = 60).notes.collect { case q: AssemblyNote.Queried =>
+        q.upstream
+      } ==> Vector(Some("Fireworks"))
     }
 
     test("a document in scope is drawn, ranked by its score times its plugin's weight") {

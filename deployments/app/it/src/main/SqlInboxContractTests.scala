@@ -126,6 +126,7 @@ object SqlInboxContractTests extends InboxContract {
                 turn,
                 turn.workflowId,
                 "m",
+                None,
                 usage,
                 Tokens(1)
               )

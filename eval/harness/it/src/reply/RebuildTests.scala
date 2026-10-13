@@ -25,8 +25,9 @@ import grit.core.id.{
 }
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, TestClosings}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
@@ -86,6 +87,12 @@ object RebuildTests extends TestSuite {
   )
 
   /** A query writer answering "Falcon budget", counting what it is asked. */
+  /** The stub's models, every query written by a [[Writer]] of its own. */
+  private object Writing extends Models {
+    def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
+    def provider(pinned: Pinned): Provider^ = new Writer
+  }
+
   private final class Writer extends Provider {
     // Untracked: a Writer is made by the one test that reads it, handed to the two answers it
     // runs one after the other on its own thread, and read once both return; no other code
@@ -136,7 +143,7 @@ object RebuildTests extends TestSuite {
             engine.search,
             engine.documents,
             engine.stitches,
-            new Writer,
+            Writing,
             CharEstimate,
             Assembled.Shipped.window,
             Assembled.Shipped.tail,

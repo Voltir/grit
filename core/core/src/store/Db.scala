@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 
 /** Capability to read the store outside any durable step: each call is a short read-only
   * transaction of its own, so a rerun reads again and may see newer rows.
@@ -19,6 +19,19 @@ trait Db extends caps.SharedCapability {
       def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
         db.read(subject)(body)
     }
+  }
+}
+
+object Db {
+
+  /** `db`, every read through which runs its body only when what its transaction knows is
+    * classified at most `bound`; any other runs nothing and fails as [[Tx.within]] says.
+    * [[Reads]] made from it ([[Db.as]]) keep the bound. What a step hands code that must read
+    * no more than its calls were routed for.
+    */
+  def within(db: Db^, bound: Label): Db^ = new Db {
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      db.read(subject)(Tx.within(bound).flatMap(_ => body))
   }
 }
 

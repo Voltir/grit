@@ -45,7 +45,7 @@ object LinearAssemblerTests extends TestSuite {
       CharEstimate,
       Tokens(budget)
     )
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width))(using new FakeDb)
+      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn)), None, width))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries)
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
@@ -216,7 +216,7 @@ object LinearAssemblerTests extends TestSuite {
       }
       val w = store()
       new LinearAssembler(Down, w.periods, w.principals, CharEstimate, Tokens(1000))
-        .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using new FakeDb) ==>
+        .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1)), None))(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }
   }

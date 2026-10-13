@@ -59,6 +59,7 @@ object TurnTests extends TestSuite {
     Vector(
       "pin-models",
       "weigh",
+      "route",
       "offer",
       "record-failure",
       "stitched",
@@ -86,10 +87,11 @@ object TurnTests extends TestSuite {
   private val Recorded: Vector[String] =
     Always
       .patch(1, Vector("DBOS.patch-weigh"), 0)
-      .patch(4, Vector("DBOS.patch-stitch-in-room-order"), 0)
-      .patch(6, Vector("DBOS.patch-topics"), 0)
-      .patch(10, Vector("DBOS.patch-record-window"), 0)
-      .patch(12, Vector("DBOS.patch-tools"), 0)
+      .patch(3, Vector("DBOS.patch-route"), 0)
+      .patch(6, Vector("DBOS.patch-stitch-in-room-order"), 0)
+      .patch(8, Vector("DBOS.patch-topics"), 0)
+      .patch(12, Vector("DBOS.patch-record-window"), 0)
+      .patch(14, Vector("DBOS.patch-tools"), 0)
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -100,7 +102,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 9
+  private val Placing = 11
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -125,7 +127,7 @@ object TurnTests extends TestSuite {
           recipe = recipe
         )
       )
-      asked ==> Vector(AssemblyRequest(turn, narrow))
+      asked ==> Vector(AssemblyRequest(turn, Some(TestCatalog.pin.query.first), narrow))
     }
 
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
@@ -154,7 +156,8 @@ object TurnTests extends TestSuite {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"
       Turn.running(Vector("pin-models")) ==> "weigh"
-      Turn.running(Vector("pin-models", "DBOS.patch-weigh", "weigh")) ==> "offer"
+      Turn.running(Vector("pin-models", "DBOS.patch-weigh", "weigh")) ==> "route"
+      Turn.running(Vector("pin-models", "weigh", "DBOS.patch-route", "route")) ==> "offer"
       Turn.running(Vector("pin-models", "offer")) ==> "stitched"
       Turn.running(Vector("pin-models", "offer", "stitched")) ==> "classify"
       Turn.running(Vector("pin-models", "offer", "stitch")) ==> "classify"
@@ -443,19 +446,24 @@ object TurnTests extends TestSuite {
       durable.recordedSteps(turn.workflowId) ==> Recorded
     }
 
-    test("a query assembly wrote is recorded before the reply, with its cost, and never sent") {
+    test(
+      "a query assembly wrote is recorded before the reply, with its cost and who served it, and never sent"
+    ) {
       val entries = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
       val durable = new InMemoryDurable
       val provider = new RecordingProvider
       val turn = say(entries, "hello")
+      val served = queried.copy(upstream = Some("Fireworks"))
       durable.run(turn.workflowId)(
-        turnBodyWith(entries, provider, new Noting(entries, queried), ledger)
+        turnBodyWith(entries, provider, new Noting(entries, served), ledger)
       ) ==> Done
       texts(entries).take(3) ==>
         Vector("user: hello", "query: hello greeting", "assistant: stub reply to: hello")
       ledger.rows.map(r => (r._1, r._4, r._5)).headOption ==>
         Some((Turn.queryId(turn, 0), queried.usage, queried.estimate))
+      ledger.of(turn.workflowId)(using TestTx.fake).map(_.headOption.map(_.upstream)) ==>
+        Right(Some(Some("Fireworks")))
       provider.requests.map(_.messages) ==> Vector(Vector(Message.User("hello")))
     }
 

@@ -378,12 +378,13 @@ object RunFixtures {
         turn: TurnRef,
         workflow: WorkflowId,
         model: String,
+        upstream: Option[String],
         usage: Usage,
         estimatedInput: Tokens
     )(using Tx^): Either[StoreError, Unit] =
       if (switches.recordArmed) { switches.recordArmed = false; throw new InMemoryDurable.Crash }
       else if (failing) Left(StoreError.DatabaseError("the ledger is down"))
-      else ledger.record(entry, turn, workflow, model, usage, estimatedInput)
+      else ledger.record(entry, turn, workflow, model, upstream, usage, estimatedInput)
     def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
       ledger.of(workflow)
     def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using

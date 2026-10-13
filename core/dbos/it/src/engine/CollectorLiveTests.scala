@@ -343,7 +343,15 @@ object CollectorLiveTests extends TestSuite {
     val a = Assignment(ref, 100, None)
     LiveDb.transaction(config) {
       for {
-        _ <- new SqlUsageLedger().record(EntryId(entry), turn, workflow, "m", usage, Tokens(1))
+        _ <- new SqlUsageLedger().record(
+          EntryId(entry),
+          turn,
+          workflow,
+          "m",
+          None,
+          usage,
+          Tokens(1)
+        )
         _ <- new SqlModelProfileStore()
           .pin(turn.workflowId, Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin)
         _ <- new grit.dbos.sql.SqlPromptStore().record(

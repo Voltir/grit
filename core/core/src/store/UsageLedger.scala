@@ -10,7 +10,8 @@ trait UsageLedger {
     * `workflow`, beside `estimatedInput`: what grit estimated the request's input would cost,
     * so the estimate can be checked against the provider's `usage.input`. A close's cost is
     * made for its period's last turn but kept under the close's workflow, so [[of]] that
-    * turn's workflow leaves it out. Once per entry: a second record of the same entry is
+    * turn's workflow leaves it out. `upstream` is who served it, as its provider reported;
+    * `None` when it did not. Once per entry: a second record of the same entry is
     * `DuplicateId`.
     */
   def record(
@@ -18,6 +19,7 @@ trait UsageLedger {
       turn: TurnRef,
       workflow: WorkflowId,
       model: String,
+      upstream: Option[String],
       usage: Usage,
       estimatedInput: Tokens
   )(using Tx^): Either[StoreError, Unit]
@@ -33,8 +35,15 @@ trait UsageLedger {
 
 object UsageLedger {
 
-  /** One response's cost: the entry that holds it, the model that gave it, its `usage`,
-    * and grit's estimate of its request's input.
+  /** One response's cost: the entry that holds it, the model that gave it and the upstream
+    * that served it (`None`: not reported), its `usage`, and grit's estimate of its request's
+    * input.
     */
-  final case class Row(entry: EntryId, model: String, usage: Usage, estimatedInput: Tokens)
+  final case class Row(
+      entry: EntryId,
+      model: String,
+      upstream: Option[String],
+      usage: Usage,
+      estimatedInput: Tokens
+  )
 }

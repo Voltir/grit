@@ -50,6 +50,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
       turn: TurnRef,
       workflow: WorkflowId,
       model: String,
+      upstream: Option[String],
       usage: Usage,
       estimatedInput: Tokens
   )(using tx: Tx^): Either[StoreError, Unit] = {
@@ -61,8 +62,8 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         conn.prepareStatement(
           """INSERT INTO grit.usage_ledger
             |  (entry_id, workflow_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |   estimated_input_tokens, conversation_id, turn_seq)
-            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?)""".stripMargin
+            |   estimated_input_tokens, conversation_id, turn_seq, upstream)
+            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?)""".stripMargin
         )
       ) { ps =>
         ps.setString(1, EntryId.value(entry))
@@ -75,6 +76,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         ps.setLong(8, Tokens.value(estimatedInput))
         ps.setString(9, ConversationId.value(turn.conversationId))
         ps.setLong(10, TurnSeq.value(turn.turnSeq))
+        ps.setString(11, upstream.orNull)
         ps.executeUpdate()
       }
       conn.releaseSavepoint(savepoint)
@@ -93,7 +95,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
       Using.resource(
         conn.prepareStatement(
           """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |       estimated_input_tokens
+            |       estimated_input_tokens, upstream
             |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
         )
       ) { ps =>
@@ -110,6 +112,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
             rows += UsageLedger.Row(
               EntryId(rs.getString(1)),
               rs.getString(2),
+              Option(rs.getString(8)),
               usage,
               Tokens(rs.getLong(7))
             )

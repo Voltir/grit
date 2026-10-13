@@ -1,10 +1,11 @@
 package grit.lifecycle.close
 
 import grit.core.id.TurnSeq
+import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Ground, Section, TestClosings}
 
 import utest.*
-import Close.Checked
+import Close.{Checked, Cost, Summarised}
 
 /** [[CloseJournal]]: the close's recorded step outputs, read back across versions. */
 object CloseJournalTests extends TestSuite {
@@ -35,6 +36,16 @@ object CloseJournalTests extends TestSuite {
       j.encode(due) ==>
         """{"ok":{"due":"lapsed","first":0,"known":{"open":[],"standing":[{"text":"s","since":1,"touched":1,"ground":"tool"}],"topics":[]},"cap":4096,"v":3}}"""
       j.decode(j.encode(due)) ==> Right(due)
+    }
+
+    test("a summary's cost keeps who served it, and one recorded before reads with none") {
+      val s = CloseJournal.summarised
+      val usage = Usage(Tokens(3), Tokens(2), Tokens.Zero, None)
+      val served = Summarised(None, Some(Cost("m", usage, Tokens(4), Some("Fireworks"))), None)
+      s.decode(s.encode(served)) ==> Right(served)
+      val before =
+        """{"cost":{"model":"m","usage":{"input":3,"output":2,"cachedInput":0},"estimate":4}}"""
+      s.decode(before).map(_.cost.flatMap(_.upstream)) ==> Right(None)
     }
   }
 }

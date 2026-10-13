@@ -403,7 +403,7 @@ object DurableMoves {
             case 1 => s"$base:repair"
             case _ => s"$base:repair$i"
           })
-          Asking.cost(ledger, entry, turn, c.model, c.usage, c.estimate) match {
+          Asking.cost(ledger, entry, turn, c.model, None, c.usage, c.estimate) match {
             case Left(StoreError.DuplicateId(_)) => Right(())
             case other => other
           }

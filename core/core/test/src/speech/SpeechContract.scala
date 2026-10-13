@@ -220,7 +220,15 @@ abstract class SpeechContract extends TestSuite {
       val before = transaction(right(speech.spentOn(today)))
       transaction {
         right(
-          ledger.record(drafting.draftId, drafting, drafting.workflowId, "m", usage, Tokens(10))
+          ledger.record(
+            drafting.draftId,
+            drafting,
+            drafting.workflowId,
+            "m",
+            None,
+            usage,
+            Tokens(10)
+          )
         )
         right(
           ledger.record(
@@ -228,6 +236,7 @@ abstract class SpeechContract extends TestSuite {
             drafting,
             drafting.workflowId,
             "jev",
+            None,
             usage.copy(costUsd = None),
             Tokens(10)
           )
@@ -244,7 +253,15 @@ abstract class SpeechContract extends TestSuite {
       val before = transaction(right(speech.spentOn(today)))
       transaction {
         right(
-          ledger.record(drafting.draftId, drafting, drafting.workflowId, "m", usage, Tokens(10))
+          ledger.record(
+            drafting.draftId,
+            drafting,
+            drafting.workflowId,
+            "m",
+            None,
+            usage,
+            Tokens(10)
+          )
         )
         right(
           ledger.record(
@@ -252,11 +269,12 @@ abstract class SpeechContract extends TestSuite {
             drafting,
             drafting.workflowId,
             "jev",
+            None,
             usage,
             Tokens(10)
           )
         )
-        right(ledger.record(held.replyId, held, held.workflowId, "m", usage, Tokens(10)))
+        right(ledger.record(held.replyId, held, held.workflowId, "m", None, usage, Tokens(10)))
       }
       transaction(speech.spentOn(today)) ==>
         Right(before + Spend(2, Cost.Exact(BigDecimal("0.002"))))
@@ -270,7 +288,15 @@ abstract class SpeechContract extends TestSuite {
       val before = transaction(right(speech.spentOn(today)))
       transaction {
         right(
-          ledger.record(answering.replyId, answering, answering.workflowId, "m", usage, Tokens(10))
+          ledger.record(
+            answering.replyId,
+            answering,
+            answering.workflowId,
+            "m",
+            None,
+            usage,
+            Tokens(10)
+          )
         )
       }
       (

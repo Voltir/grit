@@ -15,7 +15,11 @@ object TurnStitchTests extends TestSuite {
 
   /** What a turn records after its offer, patch markers left out. */
   private def ran(durable: grit.core.durable.InMemoryDurable, ch: StitchChannel): Vector[String] =
-    durable.recordedSteps(ch.turn.workflowId).filterNot(_.startsWith("DBOS.")).drop(3)
+    durable
+      .recordedSteps(ch.turn.workflowId)
+      .filterNot(_.startsWith("DBOS."))
+      .dropWhile(_ != Turn.Step.Offer)
+      .drop(1)
 
   val tests = Tests {
     test(

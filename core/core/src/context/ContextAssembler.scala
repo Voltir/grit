@@ -2,6 +2,7 @@ package grit.core.context
 
 import grit.core.id.{DocumentVersion, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
+import grit.core.model.Pinned
 import grit.core.store.{Db, Nearby, StoreError}
 
 /** Chooses what the model sees on a turn: a fresh window over the store, computed each
@@ -15,8 +16,14 @@ trait ContextAssembler {
   def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
 }
 
-/** What an assembler is asked to build a window for, and how wide. */
-final case class AssemblyRequest(turn: TurnRef, width: Width = Width.Deployed)
+/** What an assembler is asked to build a window for, how wide, and the pin its search query
+  * is written under; `None`: no query is written.
+  */
+final case class AssemblyRequest(
+    turn: TurnRef,
+    query: Option[Pinned],
+    width: Width = Width.Deployed
+)
 
 /** How wide a window is drawn. */
 enum Width {
@@ -50,10 +57,17 @@ final case class Window(
   */
 enum AssemblyNote {
 
-  /** It asked `model` for a search query and got `query` back, at `usage`; `estimate` is the
-    * estimated input of that request.
+  /** It asked `model` for a search query and got `query` back, at `usage`, served by
+    * `upstream` as its provider reported (`None`: not reported); `estimate` is the estimated
+    * input of that request.
     */
-  case Queried(query: String, model: String, usage: Usage, estimate: Tokens)
+  case Queried(
+      query: String,
+      model: String,
+      usage: Usage,
+      estimate: Tokens,
+      upstream: Option[String] = None
+  )
 
   /** It added these earlier `turns`, found by search, to the recent ones; none when
     * nothing it found fitted.

@@ -8,11 +8,13 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{AssemblyError, AssemblyRequest, Width, Window}
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.model.{Catalog, Pinned}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
+import grit.models.Seed
 import grit.turn.Turn
 
 /** How the shipped [[RetrievalAssembler]] is built to rebuild a window: the deployment's
@@ -55,8 +57,8 @@ final case class RebuiltWindow(
 object Rebuild {
 
   /** `turn`'s window, `width` wide, drawn by the shipped [[RetrievalAssembler]] built as
-    * `assembled` says over `view`, its search query written by `writer` when it writes one.
-    * `Left` naming what failed, never a message's text.
+    * `assembled` says over `view`, its search query written by `writer` when it writes one,
+    * asked as under the seed's query pin. `Left` naming what failed, never a message's text.
     */
   def window(
       view: AsOf,
@@ -65,26 +67,36 @@ object Rebuild {
       writer: Provider^,
       width: Width
   )(using Db^): Either[String, Window] =
-    new RetrievalAssembler(
-      view.entries,
-      view.conversations,
-      view.periods,
-      view.principals,
-      view.lifecycle,
-      view.search,
-      view.documents,
-      view.stitches,
-      writer,
-      CharEstimate,
-      assembled.window,
-      assembled.tail,
-      assembled.tuning,
-      assembled.hits
-    ).assemble(AssemblyRequest(turn, width))
-      .left
-      .map { case AssemblyError.Store(e) =>
-        s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
-      }
+    Seed.catalog.flatMap { seed =>
+      new RetrievalAssembler(
+        view.entries,
+        view.conversations,
+        view.periods,
+        view.principals,
+        view.lifecycle,
+        view.search,
+        view.documents,
+        view.stitches,
+        new Writing(writer),
+        CharEstimate,
+        assembled.window,
+        assembled.tail,
+        assembled.tuning,
+        assembled.hits
+      ).assemble(AssemblyRequest(turn, Some(seed.pin.query.first), width))
+        .left
+        .map { case AssemblyError.Store(e) =>
+          s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
+        }
+    }
+
+  /** Models whose every pin's calls `writer` answers: a rebuilt window's query is the one its
+    * writer replays, whatever pin it is asked under.
+    */
+  private final class Writing(writer: Provider^) extends Models {
+    def catalog(): Either[String, Catalog] = Seed.catalog
+    def provider(pinned: Pinned): Provider^ = writer
+  }
 
   /** The window of the turn `workflow` recorded, rebuilt [[window]] over `reader`'s database as
     * it stood when the turn's `assemble` step started, its query the one the turn recorded:

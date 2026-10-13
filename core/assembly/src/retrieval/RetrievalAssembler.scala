@@ -14,7 +14,7 @@ import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, S
 import grit.core.id.{CallSlot, ConversationId, DocumentVersion, PluginName, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Locality, Place, Weight}
-import grit.core.provider.{Provider, TokenEstimator}
+import grit.core.provider.{Models, TokenEstimator}
 import grit.core.stitch.{Along, Said, StitchStore, Strand, Tuning}
 import grit.core.store.{
   Audience,
@@ -43,8 +43,8 @@ import grit.core.visibility.Subject
   * [[grit.core.store.Origin.room]]), the turns of their open periods and their kept
   * closings. The
   * closing is paid first and the recent tail next, as in [[LinearAssembler]] (the tail is
-  * `tail` tokens, or what is left when less). `writer` then writes one query
-  * ([[QueryWriter]]), and `search` ranks each kind of candidate against it, `hits` of each.
+  * `tail` tokens, or what is left when less). `models` then writes one query
+  * ([[QueryWriter]]), under `request.query`'s pin alone, and `search` ranks each kind of candidate against it, `hits` of each.
   * They rank in one pool, the turn's own scores multiplied by the settings' weight (a tie
   * goes to the turn's own), and fill the rest of `budget`, best first, one that does not
   * fit passed over for the next.
@@ -84,8 +84,9 @@ import grit.core.visibility.Subject
   *
   * No query is written when there is nothing to search: the linear window of `budget` holds
   * every earlier turn of the period, and no other conversation's open period or closing, and
-  * no document, is in scope. When the writer fails or writes nothing, the window is that
-  * linear one, with a note saying why, and nothing from elsewhere and no document.
+  * no document, is in scope. When the request names no query pin, or the writer fails or
+  * writes nothing, the window is that linear one, with a note saying why, and nothing from
+  * elsewhere and no document.
   * `AssemblyError.Store` when a store fails or the turn's conversation is gone.
   */
 final class RetrievalAssembler(
@@ -97,7 +98,7 @@ final class RetrievalAssembler(
     search: EntrySearch,
     documents: DocumentSearch,
     stitches: StitchStore,
-    writer: Provider^,
+    models: Models^,
     estimator: TokenEstimator,
     budget: Tokens,
     tail: Tokens,
@@ -221,8 +222,12 @@ final class RetrievalAssembler(
                 )
             val own = all.filter(_.turnSeq == turn.turnSeq)
             val asked = QueryWriter.request(own)
-            writer.complete(asked) match {
-              case Left(error) =>
+            request.query.map(models.provider(_).complete(asked)) match {
+              case None =>
+                Right(
+                  window(closings, linear, Vector(AssemblyNote.FellBack(RetrievalAssembler.NoPin)))
+                )
+              case Some(Left(error)) =>
                 Right(
                   window(
                     closings,
@@ -230,10 +235,15 @@ final class RetrievalAssembler(
                     Vector(AssemblyNote.FellBack(s"no query: ${error.cause}"))
                   )
                 )
-              case Right(reply) =>
+              case Some(Right(reply)) =>
                 val query = QueryWriter.text(reply)
-                val queried =
-                  AssemblyNote.Queried(query, reply.model, reply.usage, estimator.request(asked))
+                val queried = AssemblyNote.Queried(
+                  query,
+                  reply.model,
+                  reply.usage,
+                  estimator.request(asked),
+                  reply.upstream
+                )
                 if (query.isEmpty)
                   Right(
                     window(
@@ -605,6 +615,9 @@ object RetrievalAssembler {
 
   /** How many ranked entries each search returns. */
   val DefaultHits = 30
+
+  /** The note a window drawn with no query pin carries. */
+  val NoPin = "no query: none was asked for"
 
   /** The recent tail's default share of the window. */
   val DefaultTail: Tokens = Tokens(8_000)

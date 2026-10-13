@@ -43,7 +43,7 @@ import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.mcp.client.{FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
-import grit.models.StubProvider
+import grit.models.{StubModels, StubProvider}
 import grit.turn.{Turn, TurnLoop}
 
 import utest.*
@@ -97,7 +97,11 @@ object KnowledgeSyncLiveTests extends TestSuite {
           .fold(p => sys.error(p.written), identity),
         Vector.empty,
         Vector.empty,
-        Vector(Cleared(Party.Service(github), trusted))
+        Vector(
+          Cleared(Party.Service(github), trusted),
+          // The turn's calls go to the stub, cleared as a deployment clears its pairs.
+          Cleared(Party.of(StubModels.Ref).getOrElse(sys.error("the stub's party")), trusted)
+        )
       )
       .fold(r => sys.error(r.toString), identity)
 

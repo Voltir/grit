@@ -164,6 +164,22 @@ object Tx {
   /** What this transaction knows is classified at: [[floor]]. */
   def classification(using tx: Tx^): Classification = Classification(floor(tx))
 
+  /** `Right` when what this transaction knows is classified at most `bound`
+    * ([[classification]]); otherwise `StoreError.Invalid`, naming both and saying to ask
+    * again: what it knows rose since `bound` was read.
+    */
+  def within(bound: Label)(using tx: Tx^): Either[StoreError, Unit] = {
+    val known = classification.label
+    Either.cond(
+      bound.dominates(known),
+      (),
+      StoreError.Invalid(
+        s"a read at ${Label.shown(known)} is above the ${Label.shown(bound)} its calls were " +
+          "routed for, which changed since: ask again"
+      )
+    )
+  }
+
   /** Whether what this transaction knows may be sent to `party`
     * ([[grit.core.visibility.Clearances.clears]]).
     */

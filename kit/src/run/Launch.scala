@@ -125,9 +125,6 @@ private[grit] object Launch {
     reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
       throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
-    // The query writer is built with the assembler, from the catalog as the engine opens.
-    val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
-    val writer = models.provider(startup.query.first)
     val assembler: ContextAssembler^ = d.assembly match {
       case Assembly.Retrieval(budget, tail) =>
         new RetrievalAssembler(
@@ -139,7 +136,7 @@ private[grit] object Launch {
           engine.search,
           engine.documents,
           engine.stitches,
-          writer,
+          models,
           CharEstimate,
           budget,
           tail,

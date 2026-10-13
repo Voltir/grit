@@ -158,12 +158,14 @@ object TurnHostedTests extends TestSuite {
 
   /** A durable whose every transaction is the fixture's TUI room, labelled confidential
     * {trial}, for an asker cleared at `asker`, under a deployment placing elsewhere as
-    * `elsewhereAt` says and nothing else but the room.
+    * `elsewhereAt` says and nothing else but the room. Its turns take no `route` step: no
+    * fixture pair is cleared above public, and what they are offered is the question here.
     */
   private def labelledRoom(asker: Label, elsewhereAt: Option[Label]): InMemoryDurable = {
     val room = Place.of(checkout)
     val roomLabel = Label.at(Level.Confidential, trial)
     new InMemoryDurable(
+      unpatched = Set(Turn.Patches.Route),
       resolve = _ => Clearance.inRoom(room, roomLabel, asker),
       visibility = labelling(Vector(room -> roomLabel) ++ elsewhereAt.map(elsewhere.place -> _))
     )

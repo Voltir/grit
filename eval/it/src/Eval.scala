@@ -7,9 +7,10 @@ import grit.core.context.{AssemblyNote, AssemblyRequest, ContextAssembler, Shown
 import grit.core.document.DocWeight
 import grit.core.id.{DocumentVersion, EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.Nearby
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -191,7 +192,8 @@ object Eval {
       strategy: Strategy,
       live: Provider^
   ): Either[String, Score] = {
-    val request = AssemblyRequest(loaded.turn)
+    // Every query is written by the strategy's writer, whatever pin it is asked under.
+    val request = AssemblyRequest(loaded.turn, Some(Writing.Pin))
     // The settings are one row for the whole database: each run sets the case's scope, so
     // no case sees another's conversations, and its strategy's weight.
     val weight = strategy match {
@@ -250,7 +252,7 @@ object Eval {
       engine: Engine^,
       writer: Provider^,
       budget: Tokens
-  ): ContextAssembler^{writer} =
+  ): ContextAssembler^ =
     new RetrievalAssembler(
       engine.entries,
       engine.conversations,
@@ -260,7 +262,7 @@ object Eval {
       engine.search,
       engine.documents,
       engine.stitches,
-      writer,
+      new Writing(writer),
       CharEstimate,
       budget,
       Tokens(Tokens.value(budget) / 3),
@@ -404,8 +406,8 @@ object Eval {
 
   private def noted(notes: Vector[AssemblyNote]): String =
     notes.map {
-      case AssemblyNote.Queried(q, "handwritten", _, _) => ""
-      case AssemblyNote.Queried(q, _, _, _) => s"  query: \"${q.take(70)}\""
+      case AssemblyNote.Queried(q, "handwritten", _, _, _) => ""
+      case AssemblyNote.Queried(q, _, _, _, _) => s"  query: \"${q.take(70)}\""
       case AssemblyNote.FellBack(why) => s"  fell back: $why"
       case AssemblyNote.Recalled(turns) => s"  recalled ${turns.size} turn(s)"
     }.mkString
@@ -435,4 +437,24 @@ object Eval {
         blocks.collect { case AssistantBlock.Text(t) => s"\"${t.take(40)}…\"" }.mkString
       case Message.ToolResult(_, content, _) => s"\"${content.take(40)}\""
     }
+
+  /** Models whose every pin's calls `writer` answers. */
+  private final class Writing(writer: Provider^) extends Models {
+    def catalog(): Either[String, Catalog] = Right(Writing.Catalog)
+    def provider(pinned: Pinned): Provider^ = writer
+  }
+
+  private object Writing {
+    val Catalog: Catalog = {
+      val a = Assignment(
+        ModelRef(ModelId.of("eval/writer").getOrElse(sys.error("eval/writer")), None),
+        1024,
+        None
+      )
+      grit.core.model.Catalog.of(Policy.one(a, a, a, a), Vector.empty)
+    }
+
+    /** The pin each query is asked under. */
+    val Pin: Pinned = Catalog.pin.query.first
+  }
 }

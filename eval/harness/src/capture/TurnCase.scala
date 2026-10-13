@@ -293,7 +293,7 @@ object Ended {
 
   /** A [[grit.turn.TurnFailure]]'s kind, never its reason. */
   enum Why {
-    case Assembly, Model, Store
+    case Assembly, Model, Store, Uncleared
   }
 }
 

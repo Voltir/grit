@@ -408,6 +408,8 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     turn_seq            BIGINT NOT NULL,
     workflow_id         TEXT NOT NULL,
     model               TEXT NOT NULL,
+    -- Who served it, as its provider reported (Message.Assistant.upstream); NULL when none was.
+    upstream            TEXT,
     input_tokens        BIGINT NOT NULL,
     output_tokens       BIGINT NOT NULL,
     cached_input_tokens BIGINT NOT NULL,

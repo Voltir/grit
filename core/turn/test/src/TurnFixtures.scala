@@ -983,14 +983,131 @@ object TurnFixtures {
     )
   }
 
-  /** Models for a test: [[TestCatalog]] is in force, and the summary's calls go to
-    * `summary`, every other role's to `turn`.
+  /** A pair, `model` at `upstream` (`None`: OpenRouter picks, so no party). */
+  def pair(model: String, upstream: Option[String]): ModelRef =
+    ModelRef(
+      ModelId.of(model).getOrElse(throw new java.lang.AssertionError(model)),
+      upstream.map(u =>
+        grit.core.model.Upstream.of(u).getOrElse(throw new java.lang.AssertionError(u))
+      )
+    )
+
+  /** The turn's ladder of [[RoutedCatalog]]: a pair OpenRouter routes, then one at fireworks. */
+  val RoutedOpen: ModelRef = pair("test/routed-open", None)
+  val RoutedFlash: ModelRef = pair("test/routed-flash", Some("fireworks"))
+
+  /** [[RoutedCatalog]]'s summary and query pairs, each at an upstream of its own. */
+  val RoutedSummary: ModelRef = pair("test/routed-summary", Some("deepinfra"))
+  val RoutedQuery: ModelRef = pair("test/routed-query", Some("together"))
+
+  /** A catalog whose roles are pairs a deployment can clear: the turn's ladder
+    * [[RoutedOpen]] then [[RoutedFlash]], the summary [[RoutedSummary]] and the query
+    * [[RoutedQuery]]. What a fixture turn routed by its clearances pins.
     */
-  final class FixedModels(turn: Provider^, summary: Provider^) extends Models {
-    def catalog(): Either[String, Catalog] = Right(TestCatalog)
-    def provider(pinned: Pinned): Provider^ =
-      if (pinned.assignment == TestCatalog.policy.summary.first.assignment) summary else turn
+  val RoutedCatalog: Catalog = {
+    def ladder(refs: ModelRef*) =
+      grit.core.model.Ladder
+        .of(
+          refs.toVector.map(r =>
+            grit.core.model.Rung(grit.core.model.Grade.Standard, Assignment(r, 100, None))
+          )
+        )
+        .getOrElse(throw new java.lang.AssertionError())
+    Catalog.of(
+      Policy(
+        ladder(RoutedOpen, RoutedFlash),
+        ladder(RoutedSummary),
+        ladder(RoutedQuery),
+        ladder(RoutedSummary)
+      ),
+      Vector.empty
+    )
   }
+
+  /** A visibility clearing each of `pairs` for `label`, and no other. */
+  def clearing(label: Label, pairs: ModelRef*): Visibility =
+    labelling(
+      Vector.empty,
+      pairs.toVector.flatMap(r => grit.core.visibility.Party.of(r).map(Cleared(_, label)))
+    )
+
+  /** The window [[LinearAssembler]] draws, noted as a query writer would note it: the query
+    * written under the request's pin, served at fireworks; with no pin, none written.
+    */
+  final class Querying(entries: EntryStore) extends ContextAssembler {
+    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      new LinearAssembler(
+        entries,
+        NoPeriods,
+        new InMemoryPrincipals,
+        CharEstimate,
+        LinearAssembler.DefaultBudget
+      )
+        .assemble(request)
+        .map(
+          _.copy(notes =
+            Vector(
+              request.query.fold[AssemblyNote](
+                AssemblyNote.FellBack(grit.assembly.retrieval.RetrievalAssembler.NoPin)
+              )(_ => queried.copy(upstream = Some("Fireworks")))
+            )
+          )
+        )
+  }
+
+  /** Models for a test: `inForce` is the catalog, and the calls under a pin of its summary's
+    * ladder go to `summary`, every other to `turn`.
+    */
+  final class FixedModels(turn: Provider^, summary: Provider^, inForce: Catalog = TestCatalog)
+      extends Models {
+    def catalog(): Either[String, Catalog] = Right(inForce)
+    def provider(pinned: Pinned): Provider^ =
+      if (inForce.policy.summary.rungs.exists(_.assignment == pinned.assignment)) summary
+      else turn
+  }
+
+  /** The turn's workflow body over `entries`, reading through `db`, under `catalog`, the
+    * summary's calls made by `summarizer` and every other by `provider`, windowed by
+    * `assembler`; offered no tools.
+    */
+  def routedBody(
+      entries: EntryStore,
+      provider: Provider^,
+      summarizer: Provider^,
+      assembler: ContextAssembler^,
+      db: Db^,
+      catalog: Catalog,
+      speech: TurnSpeech = quiet()
+  )(id: WorkflowId)(using Durable^): String =
+    Turn.body(
+      TurnEnv(
+        TurnRecords(
+          entries,
+          new InMemoryUsageLedger,
+          CharEstimate,
+          profilesKept(),
+          new InMemoryPrincipals,
+          new InMemoryDocuments
+        ),
+        hosting(),
+        assembler,
+        NoClassifier,
+        new FixedModels(provider, summarizer, catalog),
+        db,
+        new NoWait,
+        Fresh.random(),
+        speech,
+        unstitched(),
+        noTriage()
+      ),
+      TurnTooling[caps.CapSet^{NoCheckout}](
+        noTools,
+        Toolbox.Empty,
+        Vector.empty,
+        new FakeJot,
+        budget(5)
+      )
+    )(id)
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
     * and counting `documents`, dated by `clock`, the model offered `tools`.
@@ -1357,13 +1474,14 @@ object TurnFixtures {
       TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
 
-  /** A profile store already holding [[TestCatalog]]'s profile, as the database holds it
+  /** A profile store already holding [[TestCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it
     * across a turn's restarts: a body built afresh for a resumed turn reads its recorded pin
     * back by id.
     */
   def profilesKept(): InMemoryModelProfileStore = {
     val kept = new InMemoryModelProfileStore
     val _ = kept.pin(WorkflowId("kept"), TestCatalog.pin)(using TestTx.fake)
+    val _ = kept.pin(WorkflowId("routed"), RoutedCatalog.pin)(using TestTx.fake)
     kept
   }
 

@@ -30,10 +30,11 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{DocumentPosting, Documents, Needs, Plugin}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{ClosedPeriod, Db, Entry, Nearby, Origin, Payload, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
@@ -96,6 +97,17 @@ object VisibilityLiveTests extends TestSuite {
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** Writes every query as `zephyr`, the word every thread and document below holds. */
+  private val QueryPin: Pinned = {
+    val a = Assignment(ModelRef(ModelId.of("q/q").getOrElse(sys.error("q/q")), None), 100, None)
+    Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin.query.first
+  }
+
+  /** Every pin's query written by [[Query]]. */
+  private object Querying extends Models {
+    def catalog(): Either[String, Catalog] = Left("no catalog")
+    def provider(pinned: Pinned): Provider^ = Query
+  }
+
   private object Query extends Provider {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
       Right(
@@ -335,7 +347,7 @@ object VisibilityLiveTests extends TestSuite {
         engine.search,
         engine.documents,
         engine.stitches,
-        Query,
+        Querying,
         CharEstimate,
         Tokens(24_000),
         RetrievalAssembler.DefaultTail,
@@ -388,7 +400,8 @@ object VisibilityLiveTests extends TestSuite {
 
       def asked(label: String, origin: Origin, by: Account): (TurnRef, Asked) = {
         val turn = ask(label, origin, "zephyr?", by)
-        val window = ok("assembling")(assembler.assemble(AssemblyRequest(turn))(using store))
+        val window =
+          ok("assembling")(assembler.assemble(AssemblyRequest(turn, Some(QueryPin)))(using store))
         val slot = CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError("slot"))
         val outcome = tools.bind(
           AssistantBlock.ToolCall(ToolCallId("recent"), "recent_activity", ujson.Obj()),

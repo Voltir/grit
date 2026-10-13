@@ -34,7 +34,7 @@ object SqlSpendingTests extends SpendingContract {
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, usd.map(BigDecimal(_)))
       sql
-        .record(entry, turn, workflow, "m", usage, Tokens(1))
+        .record(entry, turn, workflow, "m", None, usage, Tokens(1))
         .fold(e => sys.error(e.toString), identity)
       // A row is recorded at the transaction's time; the contract needs chosen ones.
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)

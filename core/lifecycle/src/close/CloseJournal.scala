@@ -109,6 +109,7 @@ private[close] object CloseJournal {
             "usage" -> PayloadJson.writeUsage(c.usage),
             "estimate" -> Tokens.value(c.estimate).toDouble
           )
+          c.upstream.foreach(u => o("cost")("upstream") = u)
         }
         s.note.foreach(n => o("note") = n)
         o
@@ -134,7 +135,8 @@ private[close] object CloseJournal {
                   .get("estimate")
                   .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
                   .toRight("cost: bad estimate")
-              } yield Some(Cost(model, usage, estimate))
+                upstream = co.get("upstream").flatMap(_.strOpt)
+              } yield Some(Cost(model, usage, estimate, upstream))
           }
           note <- o.get("note") match {
             case None => Right(None)

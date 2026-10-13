@@ -104,12 +104,14 @@ object TurnViewTests extends TestSuite {
         UsageLedger.Row(
           EntryId("q"),
           "w",
+          None,
           Usage(Tokens(5), Tokens(1), Tokens.Zero, Some(BigDecimal("0.0001"))),
           Tokens(4)
         ),
         UsageLedger.Row(
           EntryId("e7"),
           "m",
+          None,
           Usage(Tokens(99), Tokens(3), Tokens.Zero, Some(BigDecimal("0.0002"))),
           Tokens(90)
         )

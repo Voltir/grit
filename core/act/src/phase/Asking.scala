@@ -72,10 +72,10 @@ object Asking {
       reply: Message.Assistant,
       estimate: Tokens
   )(using Tx^): Either[StoreError, Unit] =
-    cost(ledger, entry, turn, reply.model, reply.usage, estimate)
+    cost(ledger, entry, turn, reply.model, reply.upstream, reply.usage, estimate)
 
-  /** As [[spent]], for any model's call: `usage` of the call made by `model`, recorded for
-    * `turn` under `entry` beside `estimate`; the one way an ask's cost reaches the ledger.
+  /** As [[spent]], for any model's call: `usage` of the call made by `model`, served by
+    * `upstream` as its provider reported, recorded for `turn` under `entry` beside `estimate`; the one way an ask's cost reaches the ledger.
     * `DuplicateId` when `entry`'s is recorded already.
     */
   def cost(
@@ -83,8 +83,9 @@ object Asking {
       entry: EntryId,
       turn: TurnRef,
       model: String,
+      upstream: Option[String],
       usage: Usage,
       estimate: Tokens
   )(using Tx^): Either[StoreError, Unit] =
-    ledger.record(entry, turn, turn.workflowId, model, usage, estimate)
+    ledger.record(entry, turn, turn.workflowId, model, upstream, usage, estimate)
 }

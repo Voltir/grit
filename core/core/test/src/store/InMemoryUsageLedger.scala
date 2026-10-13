@@ -36,17 +36,23 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   @caps.unsafe.untrackedCaptures
   var rows = Vector.empty[(EntryId, WorkflowId, String, Usage, Tokens, TurnRef)]
 
+  /** Who served each row's response, by its entry, when its provider reported it. */
+  @caps.unsafe.untrackedCaptures
+  private var upstreams = Map.empty[EntryId, String]
+
   def record(
       entry: EntryId,
       turn: TurnRef,
       workflow: WorkflowId,
       model: String,
+      upstream: Option[String],
       usage: Usage,
       estimatedInput: Tokens
   )(using Tx^): Either[StoreError, Unit] =
     if (rows.exists(_._1 == entry)) Left(StoreError.DuplicateId(entry))
     else {
       rows = rows :+ (entry, workflow, model, usage, estimatedInput, turn)
+      upstreams = upstream.fold(upstreams)(u => upstreams.updated(entry, u))
       recordedAt = recordedAt.updated(entry, now)
       Right(())
     }
@@ -54,7 +60,7 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
     Right(rows.collect {
       case (entry, w, model, usage, estimate, _) if w == workflow =>
-        UsageLedger.Row(entry, model, usage, estimate)
+        UsageLedger.Row(entry, model, upstreams.get(entry), usage, estimate)
     })
 
   def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using

@@ -194,10 +194,12 @@ object TurnWeighTests extends TestSuite {
       pinned.map(_.name) ==> Vector(Turn.Step.PinModels)
       val today = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
       today.durable.replay(today.turn.workflowId, pinned)(today.body(today.triage)).isRight ==> true
-      today.durable.recordedSteps(today.turn.workflowId).take(4) ==> Vector(
+      today.durable.recordedSteps(today.turn.workflowId).take(6) ==> Vector(
         Turn.Step.PinModels,
         InMemoryDurable.patchMarker(Turn.Patches.Weigh),
         Turn.Step.Weigh,
+        InMemoryDurable.patchMarker(Turn.Patches.Route),
+        Turn.Step.Route,
         Turn.Step.Offer
       )
       today.offered ==> Vector.empty

@@ -37,6 +37,7 @@ object SessionViewTests extends TestSuite {
     UsageLedger.Row(
       EntryId(s"e$seq"),
       model,
+      None,
       Usage(Tokens(in), Tokens(out), Tokens.Zero, usd.map(BigDecimal(_))),
       Tokens(in)
     )

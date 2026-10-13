@@ -1,9 +1,12 @@
 package grit.turn
 
+import grit.core.act.MovesFixtures.FakeDb as LabelledDb
 import grit.core.context.AssemblyNote
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{EntrySeq, TurnRef}
+import grit.core.model.ModelRef
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.visibility.{Clearance, Label, Level}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
   * into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is what
@@ -47,6 +50,30 @@ object RecordTurnHistories {
     * name's file was written by an earlier build, and is replayed as it was written.
     */
   private def shapes: Vector[(String, History)] = {
+
+    /** A turn said to grit under [[RoutedCatalog]], each read at `label` with `pairs` cleared
+      * for it; heard instead when `heard`, under Within.
+      */
+    def routedTurn(label: Label, heard: Boolean, pairs: ModelRef*): History = {
+      val w = speechWorld()
+      val entries = if (heard) w.entries else new InMemoryEntryStore
+      val turn = if (heard) w.turn else say(entries, "hello")
+      val durable = new InMemoryDurable
+      durable.run(turn.workflowId)(
+        routedBody(
+          entries,
+          new RecordingProvider,
+          new RecordingProvider,
+          new Querying(entries),
+          LabelledDb(Clearance.of(label), clearing(label, pairs*)),
+          RoutedCatalog,
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries)
+        )
+      )
+      recorded(durable, turn)
+    }
+    val internal = Label.at(Level.Internal)
+    val routed = routedTurn(Label.Public, heard = false)
 
     /** A turn rooted on a heard message, its draft judged at 0.9, under `speaking`. */
     def heard(speaking: grit.core.speech.Speaking): History = {
@@ -768,7 +795,16 @@ object RecordTurnHistories {
         Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
         _ => Serve.Now(grit.core.tool.Outcome.Done("alpha")),
         crash = Some(_.payload.isInstanceOf[Payload.Result])
-      )
+      ),
+      "routed" -> routed,
+      "routed-second-rung" ->
+        routedTurn(internal, heard = false, RoutedFlash, RoutedSummary, RoutedQuery),
+      "routed-no-summary" -> routedTurn(internal, heard = false, RoutedFlash, RoutedQuery),
+      "routed-no-query" -> routedTurn(internal, heard = false, RoutedFlash, RoutedSummary),
+      "uncleared-said" -> routedTurn(internal, heard = false),
+      "uncleared-heard" -> routedTurn(internal, heard = true),
+      "routed-crashed-after-route" ->
+        inFlight(routed, routed.steps.indexWhere(_.name == Turn.Step.Route) + 1)
     )
   }
 }

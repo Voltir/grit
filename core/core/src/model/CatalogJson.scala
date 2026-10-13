@@ -75,6 +75,9 @@ object CatalogJson {
     }
   }
 
+  /** A pin, as a turn profile writes each of its pins. */
+  def writePinned(p: Pinned): ujson.Value = pinned(p)
+
   /** The turn profile's form: its three roles' pins. */
   def writeTurn(t: TurnProfile): ujson.Value = profilePins(t.turn, t.summary, t.query)
 
@@ -401,7 +404,10 @@ object CatalogJson {
       guidance <- readKnown(o, "guidance", at)(GuidanceWords.read)
     } yield Profile(r, strict, replay, names, repairs, after, guidance)
 
-  private def readPinned(v: ujson.Value, at: String): Either[String, Pinned] =
+  /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
+    * `at`.
+    */
+  def readPinned(v: ujson.Value, at: String): Either[String, Pinned] =
     for {
       o <- obj(v, at)
       version <- text(o, "catalog", at)

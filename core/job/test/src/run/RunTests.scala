@@ -161,6 +161,7 @@ object RunTests extends TestSuite {
           w.started(w.declared("earlier")),
           WorkflowId("earlier"),
           "m",
+          None,
           Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("1"))),
           Tokens(1)
         )(using TestTx.fake)
@@ -435,6 +436,7 @@ object RunTests extends TestSuite {
           w.started(w.declared("earlier")),
           WorkflowId("earlier"),
           "m",
+          None,
           Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("1"))),
           Tokens(1)
         )(using TestTx.fake)
@@ -646,6 +648,7 @@ object RunTests extends TestSuite {
           w.started(w.declared("earlier")),
           WorkflowId("earlier"),
           "m",
+          None,
           Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("1"))),
           Tokens(1)
         )(using TestTx.fake)

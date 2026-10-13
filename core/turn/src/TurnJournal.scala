@@ -5,7 +5,7 @@ import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.id.{CorpusName, EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
-import grit.core.model.TurnProfileId
+import grit.core.model.{CatalogJson, TurnProfileId}
 import grit.core.place.{Place, Service}
 import grit.core.prompt.FragmentId
 import grit.core.recipe.ServiceOffer
@@ -14,10 +14,13 @@ import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
+import grit.core.visibility.Label
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
-  * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier
-  * build wrote, so change these only with the workflow version (`workflow-versioning`).
+  * `{"failed": kind, "reason": text}`, an uncleared turn's reason its classification's
+  * written label. In-flight turns must read back what an earlier build wrote: an encoding
+  * only grows, a field absent reading as it did before it existed, and any other change is a
+  * patch or a new epoch (ADR 0004, [[Turn.Patches]]).
   */
 private[turn] object TurnJournal {
 
@@ -69,13 +72,15 @@ private[turn] object TurnJournal {
     )
 
   private def writeNote(n: AssemblyNote): ujson.Value = n match {
-    case AssemblyNote.Queried(query, model, usage, estimate) =>
-      ujson.Obj(
+    case AssemblyNote.Queried(query, model, usage, estimate, upstream) =>
+      val o = ujson.Obj(
         "queried" -> query,
         "model" -> model,
         "usage" -> PayloadJson.writeUsage(usage),
         "estimate" -> Tokens.value(estimate).toDouble
       )
+      upstream.foreach(u => o("upstream") = u)
+      o
     case AssemblyNote.FellBack(reason) => ujson.Obj("fellBack" -> reason)
     case AssemblyNote.Recalled(turns) =>
       ujson.Obj("recalled" -> ujson.Arr.from(turns.map(t => ujson.Num(TurnSeq.value(t).toDouble))))
@@ -95,7 +100,8 @@ private[turn] object TurnJournal {
               .get("estimate")
               .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
               .toRight("note: bad estimate")
-          } yield AssemblyNote.Queried(query, model, usage, estimate)
+            upstream = o.value.get("upstream").flatMap(_.strOpt)
+          } yield AssemblyNote.Queried(query, model, usage, estimate, upstream)
         case (None, Some(ujson.Str(reason)), None) => Right(AssemblyNote.FellBack(reason))
         case (None, None, Some(ujson.Arr(turns))) =>
           val seqs = turns.toVector.collect {
@@ -213,6 +219,44 @@ private[turn] object TurnJournal {
           case (Some(id), Some(failed)) => Right(TurnTools.Settled(EntryId(id), failed))
           case _ => Left("settled: expected {result, failed}")
         }
+    )
+
+  /** A `route` step's output: `{"classification": label written, "turn": pin, "summary": pin,
+    * "query": pin}`, each pin as [[CatalogJson.writePinned]] writes it; `summary` or `query`
+    * absent when none of that role's pins is cleared.
+    */
+  given routing: Journaled[Either[TurnFailure, Route]] =
+    outcome(
+      r => {
+        val o = ujson.Obj(
+          "classification" -> Label.written(r.classification),
+          "turn" -> CatalogJson.writePinned(r.turn)
+        )
+        r.summary.foreach(p => o("summary") = CatalogJson.writePinned(p))
+        r.query.foreach(p => o("query") = CatalogJson.writePinned(p))
+        o
+      },
+      v => {
+        def optional(o: collection.Map[String, ujson.Value], key: String) =
+          o.get(key) match {
+            case None => Right(None)
+            case Some(p) => CatalogJson.readPinned(p, s"route.$key").map(Some(_))
+          }
+        for {
+          o <- v.objOpt.toRight("route: expected an object")
+          classification <- o
+            .get("classification")
+            .flatMap(_.strOpt)
+            .toRight("route: missing classification")
+            .flatMap(Label.read)
+          turn <- o
+            .get("turn")
+            .toRight("route: missing turn")
+            .flatMap(CatalogJson.readPinned(_, "route.turn"))
+          summary <- optional(o, "summary")
+          query <- optional(o, "query")
+        } yield Route(classification, turn, summary, query)
+      }
     )
 
   /** A turn's pinned profile, by its id: the profile is kept in the profile store. */
@@ -638,6 +682,7 @@ private[turn] object TurnJournal {
             case TurnFailure.Assembly(r) => ("assembly", r)
             case TurnFailure.Model(r) => ("model", r)
             case TurnFailure.Store(r) => ("store", r)
+            case TurnFailure.Uncleared(c) => ("uncleared", Label.written(c))
           }
           ujson.Obj("failed" -> kind, "reason" -> reason)
       },
@@ -668,6 +713,7 @@ private[turn] object TurnJournal {
       case (Some("assembly"), Some(r)) => Some(TurnFailure.Assembly(r))
       case (Some("model"), Some(r)) => Some(TurnFailure.Model(r))
       case (Some("store"), Some(r)) => Some(TurnFailure.Store(r))
+      case (Some("uncleared"), Some(r)) => Label.read(r).toOption.map(TurnFailure.Uncleared(_))
       case _ => None
     }
 }

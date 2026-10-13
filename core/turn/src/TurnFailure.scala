@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.act.phase.Faults
+import grit.core.visibility.Label
 
 /** Why a turn ended without a reply, or without a summary. Recorded as a step's output and replayed, so each
   * case carries text rather than the error it came from.
@@ -15,6 +16,9 @@ enum TurnFailure {
 
   /** The store could not be read or written. */
   case Store(reason: String)
+
+  /** No pair the role may use is cleared for the turn's classification: its call is not made. */
+  case Uncleared(classification: Label)
 }
 
 object TurnFailure {
