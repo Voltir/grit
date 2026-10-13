@@ -646,7 +646,11 @@ object grit extends Module {
      * build their own classpaths and do not see it. */
     def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
-    object test extends GritTests
+    /* knowledge's tests for their recorded GitHub answers (`Answers`), read here through
+     * grit.mcp's own `Answer.of`, which knowledge may not name. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.knowledge.test)
+    }
 
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
      * classpath, which it halts mid-turn. */
