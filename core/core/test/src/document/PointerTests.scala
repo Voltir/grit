@@ -80,13 +80,14 @@ object PointerTests extends TestSuite {
       pointer.followedBy(tool, call) ==> true
     }
 
-    test("a call differing in one pointed argument does not follow the pointer") {
-      val call = ujson.Obj(
+    test("a call differing in one pointed argument, or without it, does not follow the pointer") {
+      val differing = ujson.Obj(
         "owner" -> ujson.Str("o"),
         "repo" -> ujson.Str("r"),
         "path" -> ujson.Str("q")
       )
-      pointer.followedBy(tool, call) ==> false
+      val without = ujson.Obj("owner" -> ujson.Str("o"), "repo" -> ujson.Str("r"))
+      (pointer.followedBy(tool, differing), pointer.followedBy(tool, without)) ==> (false, false)
     }
 
     test("a call whose arguments are not an object does not follow the pointer") {
