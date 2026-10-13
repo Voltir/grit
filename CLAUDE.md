@@ -8,16 +8,15 @@ local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges r
 only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
 Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 with `pg_textsearch` · capture checking on, and separation
-checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)). Versions live in
-`build.mill` and `.mill-version`.
+checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)).
 
 ## Architecture
 
 Context is not a scrollback buffer; it is a queryable store, and what goes to the model is
-a **computed projection** of that store. Three seams carry the whole design:
+a **computed projection** of that store. Three traits carry the whole design:
 
 - `EntryStore` — append-only, never rewritten
-- `ContextAssembler` — the projection; *the* seam the thesis hangs on
+- `ContextAssembler` — the projection; *the* trait the thesis hangs on
 - `Provider` — the model call
 
 Retrieval, summaries, relevance checks and LSP code context are all future
@@ -27,51 +26,52 @@ checking rejects any attempt to let it outlive its block.
 
 Mill modules, and what each may name. A module's folder follows ADR 0021's three questions
 (`core/`, `extensions/`, `kit/`, `deployments/`, `eval/`; [`docs/extending.md`](docs/extending.md)),
-while its Mill name, package and artifact stay `grit.<name>`:
+while its Mill name, package and artifact stay `grit.<name>`. More on each: `scripts/outline
+area`, and the README in its folder (package order, and what the code cannot say).
 
-| Module | Package | Depends on | Holds |
+| Module | Packages | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.{clock,id,persona,place,identity,visibility,prompt,model,message,schema,classify,topic,period,retention,store,spend,triage,speech,review,durable,approval,provider,stitch,host,tool,document,context,recipe,act,job,inbox,plugin,admin,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`core/core/README.md`](core/core/README.md) |
-| `grit.dbos` | `grit.dbos.{sql,workflow,engine,internal}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; `internal` (`Reader`) is lent to the eval harness alone; package order in [`core/dbos/README.md`](core/dbos/README.md) |
-| `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`core/prose/README.md`](core/prose/README.md) |
-| `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
-| `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
-| `grit.act` | `grit.act.{phase,moves}` | core | what an actor's moves do (ADR 0034): `phase`, the steps the turn and jobs share, in their caller's step names and recorded forms (`Asking`, a model's reply with its retries, whether an allowance admits it and its cost recorded once; `Classifying`, a judgment's classifier answers with its retries; `Shaping`, a JSON ask's request, its reply read and one repair; `Calling`, a hosted call's gate, principal, request, dispatch, the wait for its edge, a person's approval and the answer read); `moves`, `DurableMoves`, a planner's `Moves` and a keeping job's `Keeping` over those phases, each move named and made once per run, its input's digest recorded, a keep one transaction under a savepoint; over core's traits and `Durable`; names core alone; package order in [`core/act/README.md`](core/act/README.md) |
-| `grit.turn` | `grit.turn` | core, act | the durable turn's body, written against `Durable`: what it offers (`TurnOffer`, its prompt's words `TurnPrompt`), its hosted calls as requests (`TurnHosted`), and `TurnRecord`, a turn read after the fact from the steps it recorded |
-| `grit.lifecycle` | `grit.lifecycle.{transcript,close,settle,stitch,triage,shadow,post}` | core | the engine's workflows besides the turn: `Close`, a period sealed with its closing entry, `Settle`, a quiet period asked whether anyone is waiting, `Posting`, closed periods posted to a plugin (ADRs 0011, 0012), `Stitch`, a thread's first message placed among its room's exchanges, one room at a time in the order heard (ADR 0023), and `Triage`, what a heard message is (ADR 0020) and whether grit drafts a reply to it (ADR 0022), and `Shadow`, a declared variant of triage's question asked of a message already triaged, recorded and never acted on; package order in [`core/lifecycle/README.md`](core/lifecycle/README.md) |
-| `grit.job` | `grit.job.{run,clock}` | core, act | jobs (ADR 0029): `Run`, the `run` workflow's body, a job's run as a turn of its slot's own conversation, its moves made through `grit.act` (ADR 0034), its reply written and awaited where its schedule reports, superseded at another version; `ClockEdge`, which starts each schedule's waiting slot through the inbox (ADR 0002); names no `grit.turn`; package order in [`core/job/README.md`](core/job/README.md) |
-| `grit.digest` | `grit.digest` | core | `Digest`, the hello-world plugin: one document per room and label holding its newest closings' lines, which retrieval draws on, and the `recent_activity` tool it offers over them; [`extensions/digest/README.md`](extensions/digest/README.md) |
-| `grit.remind` | `grit.remind` | core | `Reminders`, the plugin whose job `remind` posts a person's reminder in the thread that asked for it; [`extensions/remind/README.md`](extensions/remind/README.md) |
-| `grit.knowledge` | `grit.knowledge.{card,github,sync,plugin}` | core | `Knowledge`, the plugin that keeps cards (ADR 0028): one short document per unit of a declared source (a GitHub repository's files and directories), a summary with search terms and a pointer to the hosted call that reads the unit, kept by its keeping job `Sync` (`knowledge-sync`) through the source's MCP tools and rewritten only when the unit's version changes; package order in [`extensions/knowledge/README.md`](extensions/knowledge/README.md) |
-| `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier`; [`extensions/models/README.md`](extensions/models/README.md) |
-| `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell`, `LocalInstructions` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment), `LocalMachine` (this process's `ProcessIdentity`); the only module that starts a process or reads which process and machine this is; [`extensions/host/README.md`](extensions/host/README.md) |
-| `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone: `Server` (claims, runs and answers the tool requests addressed to the places it hosts, ADR 0017, with the `Tools` it is given), `Run` (a request run by a toolbox, as its permit says), `PlaceFragments` (a place's instruction files, or the text its edge was declared with, as the prompt's Place layer) |
-| `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run, each written once as a `Hosted` description the engine offers and the `Tool` over `grit.core.host`'s capabilities an edge runs (ADR 0017); `Tuning`: `propose_model_setting`, a measured setting of a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair; `About`: `about`, what grit is and how it works, from docs shipped in its resources; `Cleared`: `clearance`, what the person asking is cleared for, told only in a direct message with them, and elsewhere the room's own label and that a person's own clearance is told only in a direct message; `Names`, every one of their names; [`extensions/tools/README.md`](extensions/tools/README.md) |
-| `grit.slack` | `grit.slack.{event,text,client,edge}` | core, prose, edge | the Slack edge (ADR 0019): the Slack SDK's quarantine (`SocketSlack`, over Socket Mode), Slack's events and text read into grit's terms, a reply's prose as Slack rich text, and `SlackEdge`, which hears every channel its bot is a member of and what was said there before each join (ADR 0033), records a thread's messages, and a person's direct messages in their own room, as turns, posts their replies, attests who its workspace's accounts are (ADR 0032), runs its slash command's label and clearance commands through core's administration, serves `slack_post` in its member channels that are not quiet, and posts a review's prompts and keeps its rater's reactions; package order in [`extensions/slack/README.md`](extensions/slack/README.md) |
-| `grit.mcp` | `grit.mcp.{wire,client,edge}` | core modules (incl. `grit.edge`) | the MCP client (revision 2026-07-28, Streamable HTTP): a declared server's read-only tools, offered by an edge hosting them at a service place (ADR 0017); `wire`, the protocol over ujson, pure; `edge`, `McpEdge`, the `ServedEdge` a deployment declares; the JDK HTTP client's second egress beside `grit.models`; package order in [`extensions/mcp/README.md`](extensions/mcp/README.md) |
-| `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`core/assembly/README.md`](core/assembly/README.md) |
-| `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases (`Cases`, in the format `Case` reads) and their `Layout` in a database, written by `Load` over core's traits; its integration sources (`grit.eval.it`) are the assembly eval: every assembler over those cases in a throwaway Postgres; a report, not a gate |
-| `grit.eval.harness` | `grit.eval.harness.{stats,capture,sent,label,log,pull,jev,reply,run,score,report,main}` | core, dbos (`internal`'s `Reader`, and an `Engine` to write the synthetic reference), turn, assembly, lifecycle, models, eval | the eval harness: captures of a database through the shipped builders, and the turns it recorded, as text-free files under `.local/eval/`, their windows rebuilt as of their assembly; `grit.eval`'s cases as a synthetic reference; run only through `scripts/eval`; package order in [`eval/harness/README.md`](eval/harness/README.md) |
-| `grit.kit` | `grit.kit.{deployment,environment,run}` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host | what a deployment is built against (ADR 0021): the `Deployment` value (its visibility and identities among it), `Secrets`, and `Kit.serve`/`Kit.catchUp`, which run a deployment's `ServedEdge`s beside its engine and end what its identities no longer trust; package order in [`kit/README.md`](kit/README.md); which modules are core, extension or deployment, and what a deployment can supply, in [`docs/extending.md`](docs/extending.md) |
-| `grit.app` | `grit.app.{config,look,chat,main}` | kit, digest, remind, knowledge, slack, mcp, tui, host, edge (everything, transitively) | the reference deployment; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), `grit serve` (the Slack edge, and GitHub's MCP tools when its token is set, through `Kit.serve`), `grit backfill`, or a one-shot run with arguments; package order in [`deployments/app/README.md`](deployments/app/README.md) |
+| `grit.core` | `grit.core.*` | — | the domain and the traits; no DBOS, no JDBC driver on its classpath |
+| `grit.dbos` | `sql`, `workflow`, `engine`, `internal` | core | the DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `internal` is lent to the eval harness alone |
+| `grit.prose` | `form`, `markdown` | — | prose as edge-neutral blocks, read from markdown; each edge renders them |
+| `grit.tui` | `model`, `components`, `wire`, `runtime` | core | the terminal UI library; core only from `components`/`runtime` |
+| `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos |
+| `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn and jobs share; names core alone |
+| `grit.turn` | `grit.turn` | core, act | the durable turn's body, and a turn read back from the steps it recorded |
+| `grit.lifecycle` | `transcript`, `close`, `settle`, `stitch`, `triage`, `shadow`, `post` | core | the engine's workflows besides the turn |
+| `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |
+| `grit.digest` | `grit.digest` | core | the hello-world plugin |
+| `grit.remind` | `grit.remind` | core | the reminders plugin |
+| `grit.knowledge` | `card`, `github`, `sync`, `plugin` | core | the plugin that keeps cards of a declared source (ADR 0028) |
+| `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
+| `grit.host` | `grit.host` | core | `grit.core.host`'s capabilities over this machine |
+| `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
+| `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
+| `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0019) and the Slack SDK's quarantine |
+| `grit.mcp` | `wire`, `scope`, `github`, `client`, `edge` | core, edge | the MCP client: a declared server's read-only tools at a service place (ADR 0017) |
+| `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
+| `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
+| `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, eval | the eval harness, run only through `scripts/eval` |
+| `grit.kit` | `deployment`, `environment`, `run` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host | what a deployment is built against (ADR 0021) |
+| `grit.app` | `config`, `look`, `chat`, `main` | kit, digest, remind, knowledge, slack, mcp, tui, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
 
-Mill `moduleDeps` are transitive, so
-`grit.kit` and `grit.app` see `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
-it. Working in `extensions/tui/`? Read [`extensions/tui/CLAUDE.md`](extensions/tui/CLAUDE.md) first.
+Mill `moduleDeps` are transitive, so `grit.kit` and `grit.app` see `dev.dbos.*` through
+`grit.dbos` — enola's rule, not the compiler, guards it. Working in `extensions/tui/`? Read
+[`extensions/tui/CLAUDE.md`](extensions/tui/CLAUDE.md) first.
 
-**Changing a workflow's steps** (names, order, output encodings) must replay every
-history of the current epoch: guard the change with `Durable.patch`, or start a new
-`Turn.Epoch` ([ADR 0004](docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md)).
-`TurnReplayTests` is the gate, and `LifecycleReplayTests` for the close, settle and posting.
+**Changing a workflow's steps** (names, order, output encodings) must replay every history
+of the current epoch: guard it with `Durable.patch`, or start a new `Turn.Epoch`
+([ADR 0004](docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md)).
+`TurnReplayTests` and `LifecycleReplayTests` are the gate.
 
 ## Reading the code
 
 Read Scala through `scripts/outline` first (`dev/outline`; also the `outline` MCP server). It
-answers from the compiler's TASTy, grouped by file with line numbers, in less text than a file
-read, and works in any worktree (`--root`; it runs from the checkout it is in).
+answers from the compiler's TASTy, in less text than a file read, and works in any worktree (`--root`; it runs from the checkout it is in).
 
-- `area <name>[,name…]` — a map of one part of grit: start here on an unfamiliar task. The names
-  and what each covers are in `.outline.conf`.
+- `area` — with no name, the areas and what each covers; `area <name>[,name…]`, a map of one
+  part of grit: start here on an unfamiliar task.
+- `find <pattern>` — when you don't know a name: `find '*Shelf*'`, `find '*.placed'`.
 - `show <Sym>[,Sym…]` — signatures and docs, the types they name traced a level, and the tests
   that exercise them; `--body <members>` for bodies. Several symbols per call.
 - `family <Trait>` — a trait and its implementations. `uses <Owner.member>` — every direct
@@ -81,7 +81,7 @@ read, and works in any worktree (`--root`; it runs from the checkout it is in).
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency.
 - It reads compiled output: compile the module first if its TASTy is stale. Bash reads remain
-  for what it can't answer.
+  for what it can't answer. Metals is for the editor ([`docs/editor-tooling.md`](docs/editor-tooling.md)).
 
 ## Style rules
 
@@ -122,56 +122,23 @@ in for. The `test-janitor` agent reviews test files against these rules.
 
 ## Build and format
 
-```bash
-scripts/check grit.core.topic.TopicsTests   # one suite, while iterating
-scripts/check grit.core                     # the module you touched
-./mill grit.core.compile                    # does it type-check
-./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
-scripts/check grit.core.durable.SeparationTests   # a probe suite a plan's capture section names
-scripts/check                               # the commit gate: unit, law, the probes a change reaches, format, clock, lint; once, last
-scripts/check --it                          # and the integration tier (below), for a change to grit.dbos or the live paths
-scripts/check --milestone                   # the gate, every probe and the integration tier; once per milestone
-./mill __.test                              # every unit suite rerun: a flake hunt
-bash scripts/fetch-scalafmt.sh              # once: the format tier's pinned native scalafmt, into tools/
-scripts/sql grit_agent "SELECT …"           # a read-only query on a local database
-```
-
-The procedure: the `grit-test-cycle` and `grit-local-db` skills.
+Build, test and gate with `scripts/check`: a suite or module while iterating
+(`scripts/check grit.core.topic.TopicsTests`), bare once at a commit; `./mill grit.<module>.compile`
+for whether it type-checks; format with `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll
+__.sources`. Everything else, and the procedure: the `grit-test-cycle` and `grit-local-db` skills.
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
-**Two tiers.** `test` modules need nothing outside the JVM. The live suites, which run
-against Postgres and DBOS, are in `it` modules (`grit.dbos.it`, `grit.app.it`,
-`grit.eval.it`, `grit.eval.harness.it`) and run through `scripts/it`: one throwaway Postgres shared by every `it`
-JVM (`TestPostgres`), built from the same `docker/postgres/Dockerfile` compose builds:
-`postgres:18` plus `pg_textsearch`
-([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).
-It needs Docker; there is no skip.
+**Three kinds of suite.** `test` modules need nothing outside the JVM; `it` modules run
+against Postgres and DBOS through `scripts/it`, which needs Docker, with no skip; `probes`
+modules pin what capture and separation checking reject.
 
-**Capture probes** (suites that compile probe sources against their module to pin what
-capture and separation checking reject) are a third kind, a `probes` module beside `test`
-(`grit.core.probes`, `grit.act.probes`, `grit.turn.probes`, `grit.tools.probes`,
-`grit.tui.probes`). The gate runs a module's when a change touches capture syntax in its main
-sources, or in a module it depends on; `--probes` and `--milestone` run every one.
+**Capture and separation checking:** [`docs/capture-checking.md`](docs/capture-checking.md)
+has every trap met so far, how to test that something does not compile, and the upgrade
+checklist: search it for the error when one appears.
 
-**Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
-has every trap met so far (symptom, cause, fix), how to test that something does not
-compile, and the Scala-upgrade checklist. The ones that bite most:
-
-- A step body may not mention the `Durable` at all, not even `d.workflowId`-style reads.
-  Compute what it needs before the step.
-- scalafmt parses `^` only because of `runner.dialectOverride.allowCaptureChecking = true`;
-  without it a file fails with *"`identifier` expected but `)` found"* and is silently skipped.
-- upickle's `derives ReadWriter` crashes; write codecs by hand over `ujson`.
-- `assertCompileError` never sees capture-checking errors; write a probe with
-  `Probes.batch`, in the module's `probes` tests (`SeparationTests` is the pattern).
-
-Every warning the build enables is an error (`-Werror`); `build.mill`'s `scalacOptions`
-lists the set in force, and a warning joins it in its own commit. `-Wunused:all` is on only
-in `scripts/check`'s lint tier.
-
-Metals spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
-[`docs/editor-tooling.md`](docs/editor-tooling.md).
+Every warning the build enables is an error (`-Werror`), and a warning joins the set in its
+own commit.
 
 ## The architecture gate (enola)
 
@@ -199,24 +166,6 @@ passes vacuously and `lint` still exits 0; `enola-law.sh` greps for that. A rule
 adopted until it has been watched failing on a planted breach. The known traps are
 commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
 
-## Metals
-
-Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) is for:
-
-- **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs` (for who uses X,
-  prefer `scripts/outline uses`, which works in any worktree);
-- **compiling or testing one module mid-edit, in this checkout** — `compile-module`,
-  `test`; it builds into `.bsp/out`, so it never blocks a CLI `./mill`. It serves this
-  checkout only (a worktree: the `grit-test-cycle` skill).
-
-Not for understanding a package's behaviour: use `scripts/outline area` and `show`, then the files. Metals hands context out one
-symbol at a time; in a measured comparison, file reads answered edge-case questions
-perfectly at a third fewer tokens and an eighth of the calls. Quirk: `inspect` ignores `module` —
-**always pass `fileInFocus`** (a source file in the symbol's module); without it the result
-is empty although its footer names the module you passed. For a generic class it lists
-only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure modes:
-[`docs/editor-tooling.md`](docs/editor-tooling.md#metals-for-grits-own-development).
-
 ## Working agreements
 
 - **Verify against the source, not the summary.** Three claims in this project's original
@@ -228,7 +177,7 @@ only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure mode
 - **A design decision that clears the ADR threshold gets a record** in
   [`docs/decisions/`](docs/decisions/README.md), the same turn it is made. Most don't clear
   it: their rationale belongs in a comment beside the code or in the commit message.
-- **Plan before implementing.** A roadmap item, or any change to a seam, a library API
+- **Plan before implementing.** A roadmap item, or any change to a core trait, a library API
   or behaviour a person sees, starts with a short plan and waits for Nick's go. The plan
   says what changes, the alternatives turned down, how it will be verified (including the
   real-use run below), and what is parked. It has an **Elision section**: every new or

@@ -23,6 +23,7 @@ the full logs are in `out/check/`. `scripts/check --help` has the options (`--ti
 `tail`/`grep` yourself: a pipe loses Mill's exit code, and a run a compile error or a timeout
 cut short prints a smaller total that looks green.
 
+- **A flake hunt**: `./mill __.test` reruns every unit suite, cached or not.
 - **While iterating**, run the suite or module you touched. When the only question is
   whether it type-checks, `./mill grit.<module>.compile` (or `grit.<module>.test.compile`)
   answers in about a second warm.
@@ -54,12 +55,17 @@ The rule and its reasons: [STYLE.md, Tests](../../../STYLE.md#tests). The proced
 A module's `probes` tests compile probe sources against it, through `Probes.batch`, to pin
 what capture and separation checking reject. The gate runs a module's probes when a change
 touches capture syntax (`^`, `caps.`, `SharedCapability`, `Pure`) in its main sources or a
-module it depends on, and every probe when `build.mill` or `.mill-version` changes. When a
+module it depends on (the probe modules: `grit.core.probes`, `grit.act.probes`,
+`grit.turn.probes`, `grit.tools.probes`, `grit.tui.probes`), and every probe when `build.mill` or `.mill-version` changes. When a
 plan's capture section names a probe, run its suite by name, red on its plant and green, and
 once more before the commit; `scripts/check --probes` runs them all.
 
 ## The integration tier (`--it`) and the milestone run (`--milestone`)
 
+The live suites, which run against Postgres and DBOS, are in `it` modules (`grit.dbos.it`,
+`grit.app.it`, `grit.eval.it`, `grit.eval.harness.it`) and run through `scripts/it`: one
+throwaway Postgres shared by every `it` JVM (`TestPostgres`), built from the same
+`docker/postgres/Dockerfile` compose builds, `postgres:18` plus `pg_textsearch` (ADR 0005).
 Run `--it` before committing a change to `grit.dbos`, `schema.sql`, an `it` module or the
 engine's live paths. It needs Docker; there is no skip. When a milestone closes, run
 `--milestone`: the gate, every probe and the integration tier.
