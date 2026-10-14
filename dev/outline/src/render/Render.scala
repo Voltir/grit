@@ -6,6 +6,16 @@ import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, TestCase, Use}
 import grit.outline.trace.Traced
 
+/** How much of `show`'s tests section prints: one line per named symbol, every test and helper listed, or nothing. */
+enum TestsShown {
+  case Summary, Listed, Dropped
+}
+
+/** What `show`'s tests line says of the named symbol `symbol`: how many tests in test sources hold a reference to it or to
+  * one of its members, how many suites hold one in a test or a helper, and the nearest of those suites, at most three.
+  */
+final case class TestsSummary(symbol: String, tests: Int, suites: Int, nearest: Vector[String])
+
 /** A trait's family: the trait, its implementations, and each contract with the suites extending it. */
 final case class Family(
     trait0: Defn,
@@ -48,7 +58,8 @@ object Render {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      exercising: Vector[Vector[String]] = Vector.empty
+      exercising: Vector[Vector[String]] = Vector.empty,
+      summaries: Vector[TestsSummary] = Vector.empty
   ): String = {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
@@ -106,16 +117,18 @@ object Render {
     val (exShown, exTruncated) =
       if (exercising.isEmpty) (Vector.empty, Vector.empty)
       else fit(exercising, exercising.size, budget)
-    val body = (before ++ exShown ++ exTruncated).map(_ + "\n").mkString
+    val body = (before ++ exShown ++ exTruncated ++ summaries.map(testsLine)).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
   private def pkgOf(fullName: String): String =
     fullName.split('.').takeWhile(s => s.nonEmpty && s.charAt(0).isLower).mkString(".")
 
-  private def ownerRelative(d: Defn): String = {
-    val pkg = pkgOf(d.fullName)
-    if (pkg.isEmpty) d.fullName else d.fullName.drop(pkg.length + 1)
+  private def ownerRelative(d: Defn): String = ownerRelativeName(d.fullName)
+
+  private def ownerRelativeName(fullName: String): String = {
+    val pkg = pkgOf(fullName)
+    if (pkg.isEmpty) fullName else fullName.drop(pkg.length + 1)
   }
 
   private def kindWord(k: Kind): String = k match {
@@ -347,6 +360,18 @@ object Render {
 
   /** One test or helper that holds a reference to a shown name, at `lines`; `label` is `Suite: test name` or `Suite: helper name`. */
   final case class Exercise(lines: Lines, label: String)
+
+  /** `s` as `show`'s tests line: `-- tests of <name>: N in M suites (nearest: A, B, C); --tests to list`, the name without
+    * its package; `-- tests of <name>: none` when no suite holds a reference to it.
+    */
+  def testsLine(s: TestsSummary): String = {
+    val name = ownerRelativeName(s.symbol)
+    if (s.suites == 0) s"-- tests of $name: none"
+    else {
+      val suites = if (s.suites == 1) "1 suite" else s"${s.suites} suites"
+      s"-- tests of $name: ${s.tests} in $suites (nearest: ${s.nearest.mkString(", ")}); --tests to list"
+    }
+  }
 
   /** The tests section of `show`, one chunk per file: the `## tests exercising <syms>` line leads the first, then each file's `== file  package` line and its entries as `NN-MM` then their label. Empty when no file has an entry. */
   def exercising(syms: String, files: Vector[Exercised]): Vector[Vector[String]] = {

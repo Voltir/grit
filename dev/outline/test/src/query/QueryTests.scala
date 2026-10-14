@@ -2,6 +2,7 @@ package grit.outline.query
 
 import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
+import grit.outline.render.TestsShown
 import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
@@ -207,7 +208,7 @@ object QueryTests extends TestSuite {
         bodies = Set.empty,
         withPrivate = false,
         cap = 80000,
-        withTests = false
+        tests = TestsShown.Dropped
       )
       assert(!answer.text.contains("not loaded"))
       assert(answer.status == Status.Found)
@@ -334,7 +335,8 @@ object QueryTests extends TestSuite {
           0,
           Set.empty,
           false,
-          80000
+          80000,
+          tests = TestsShown.Listed
         )
       val section = answer.text.linesIterator.dropWhile(!_.startsWith("## tests")).toVector
       assert(
@@ -403,6 +405,46 @@ object QueryTests extends TestSuite {
       assert(!shown("grit.outline.fixture.B").text.contains("val B."))
     }
 
+    test(
+      "show ends with one tests line per named symbol, its tests, suites and nearest suites, and lists none"
+    ) {
+      val (answer, _) =
+        Query.show(
+          root,
+          FixtureSuitesLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("Limits", "B"),
+          0,
+          Set.empty,
+          false,
+          80000
+        )
+      val lines = answer.text.linesIterator.toVector
+      assert(
+        lines.filter(_.startsWith("-- tests")) == Vector(
+          "-- tests of Limits: 2 in 2 suites (nearest: SampleTests, MoreTests); --tests to list",
+          "-- tests of B: 1 in 1 suite (nearest: SampleTests); --tests to list"
+        )
+      )
+      assert(!lines.exists(l => l.startsWith("## tests") || l.contains("SampleTests: ")))
+    }
+
+    test(
+      "the nearest suites are those in the symbol's own module first, then those holding the most references"
+    ) {
+      val ranked = Query.nearest(
+        "m/src/a/A.scala",
+        Vector(
+          Query.SuiteHits("Far", "n/test/src/FarTests.scala", 9),
+          Query.SuiteHits("Own", "m/test/src/OwnTests.scala", 1),
+          Query.SuiteHits("Busy", "m/test/src/BusyTests.scala", 3),
+          Query.SuiteHits("Farther", "x/test/src/FartherTests.scala", 2)
+        )
+      )
+      assert(ranked == Vector("Busy", "Own", "Far"))
+    }
+
     test("show --no-tests prints no tests section") {
       val (answer, _) =
         Query.show(
@@ -415,10 +457,11 @@ object QueryTests extends TestSuite {
           Set.empty,
           false,
           80000,
-          withTests = false
+          tests = TestsShown.Dropped
         )
       assert(answer.status == Status.Found)
       assert(!answer.text.contains("## tests exercising"))
+      assert(!answer.text.contains("-- tests"))
     }
 
     test("a site in a suite's helper is listed as that helper") {
@@ -432,7 +475,8 @@ object QueryTests extends TestSuite {
           0,
           Set.empty,
           false,
-          80000
+          80000,
+          tests = TestsShown.Listed
         )
       assert(answer.text.contains("\n  11-12 SampleTests: helper made\n"))
     }

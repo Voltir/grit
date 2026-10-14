@@ -6,7 +6,7 @@ import grit.outline.locate.{Layout, Locate, Root}
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, Staleness, TestCase, Use}
 import grit.outline.read.Read
-import grit.outline.render.{Family, Render}
+import grit.outline.render.{Family, Render, TestsShown, TestsSummary}
 import grit.outline.trace.Trace
 
 enum Status {
@@ -28,7 +28,7 @@ object Query {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      withTests: Boolean = true
+      tests: TestsShown = TestsShown.Summary
   ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val (answer, loaded) =
       showIn(
@@ -41,7 +41,7 @@ object Query {
         bodies,
         withPrivate,
         cap,
-        withTests
+        tests
       )
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
@@ -946,6 +946,54 @@ object Query {
       }
   }
 
+  /** A suite holding references to a shown symbol: its simple name, its file, and how many references it holds. */
+  final case class SuiteHits(name: String, file: String, sites: Int)
+
+  /** The names of the suites nearest the symbol defined in `file`, at most three: suites under the symbol's own module
+    * directory (the path before its last `src` segment, else its directory) first, then those holding the most
+    * references, then by name.
+    */
+  private[query] def nearest(file: String, suites: Vector[SuiteHits]): Vector[String] = {
+    val segments = file.split('/').toVector
+    val home = segments.lastIndexOf("src") match {
+      case -1 => segments.dropRight(1)
+      case i => segments.take(i)
+    }
+    def own(s: SuiteHits): Boolean = s.file.split('/').toVector.startsWith(home)
+    suites.sortBy(s => (!own(s), -s.sites, s.name)).map(_.name).distinct.take(3)
+  }
+
+  /** A reference in a test source to a shown symbol: the suite holding it, and its test or helper as `show` lists it. */
+  private final case class Hit(site: Use, suite: Defn, entry: Render.Exercise, inTest: Boolean)
+
+  /** `hits` by file, as `show`'s tests section lists them: each test or helper once, in line order. */
+  private def listing(hits: Vector[Hit]): Vector[Render.Exercised] =
+    hits.map(_.site.file).distinct.map { file =>
+      val here = hits.filter(_.site.file == file)
+      Render.Exercised(
+        file,
+        here.map(_.suite.fullName).distinct,
+        here.map(_.entry).distinct.sortBy(e => (e.lines.start, e.lines.end, e.label))
+      )
+    }
+
+  /** One summary per distinct full name among `tops`, in their order, counting the `hits` on it or its members. */
+  private def summaries(tops: Vector[Defn], hits: Vector[Hit]): Vector[TestsSummary] =
+    tops.map(_.fullName).distinct.map { name =>
+      val same = tops.filter(_.fullName == name)
+      val names = same.flatMap(d => d.fullName +: d.members.map(_.fullName)).toSet
+      val on = hits.filter(h => names.contains(h.site.target))
+      val suites = on.groupBy(h => (h.site.file, h.suite.fullName)).toVector.map {
+        case ((file, _), hs) => SuiteHits(hs.headOption.fold("")(_.suite.name), file, hs.size)
+      }
+      TestsSummary(
+        name,
+        on.filter(_.inTest).map(h => (h.site.file, h.entry)).distinct.size,
+        suites.size,
+        nearest(same.headOption.fold("")(_.file), suites)
+      )
+    }
+
   /** The tests in test sources that hold a reference to `tops` or to one of their members, by file: each test by its line range, or a suite's helper where a reference lies outside every test. Notes name a tasty that could not be read; the cache after. */
   private def exercisedBy(
       root: Root,
@@ -954,7 +1002,7 @@ object Query {
       tops: Vector[Defn],
       seen: Vector[Defn],
       in: Loaded
-  ): (Vector[Render.Exercised], Vector[String], Loaded) = {
+  ): (Vector[Hit], Vector[String], Loaded) = {
     val testClasses = layout.classesDirs(root).filter(layout.isTest)
     val names = tops.flatMap(d => d.fullName +: d.members.map(_.fullName)).toSet
     val searches = searchesFor(tops.flatMap(d => d +: d.members), seen ++ tops)
@@ -973,48 +1021,46 @@ object Query {
           Loaded.defns(root, layout, tasty, found) match {
             case Left(message) => (Vector.empty, Vector(message), found)
             case Right((defns, next, _)) =>
-              val files = fileNames.map { file =>
+              val hits = fileNames.flatMap { file =>
                 exercisedIn(root, config, file, defns, sites.filter(_.file == file))
               }
-              (files.filter(_.entries.nonEmpty), Vector.empty, next)
+              (hits, Vector.empty, next)
           }
       }
     }
   }
 
-  /** One file's entries for the sites in it: each site's test by line range, else the suite's helper it lies in, sorted and named once. Reads the file's source; `defns` are its tasty's definitions. */
+  /** One file's hits for the sites in it: each site's test by line range, else the suite's helper it lies in; a site in no suite has none. Reads the file's source; `defns` are its tasty's definitions. */
   private def exercisedIn(
       root: Root,
       config: Config,
       file: String,
       defns: Vector[Defn],
       sites: Vector[Use]
-  ): Render.Exercised = {
+  ): Vector[Hit] = {
     val src = os.read(root.dir / os.RelPath(file))
     val suites =
       defns.filter(d => d.file == file && (d.kind == Kind.Class || d.kind == Kind.Object))
-    val entries = sites.flatMap { u =>
+    sites.flatMap { u =>
       suites.find(s => s.lines.start <= u.line && u.line <= s.lines.end).map { suite =>
         val (from, to) = TestCalls.within(src, suite.lines)
         TestCalls
           .find(src, from, to, config.testCall)
           .find(t => t.lines.start <= u.line && u.line <= t.lines.end) match {
-          case Some(t) => Render.Exercise(t.lines, s"${suite.name}: ${t.name}")
+          case Some(t) => Hit(u, suite, Render.Exercise(t.lines, s"${suite.name}: ${t.name}"), true)
           case None =>
             suite.members.find(m => m.lines.start <= u.line && u.line <= m.lines.end) match {
-              case Some(m) => Render.Exercise(m.lines, s"${suite.name}: helper ${m.name}")
+              case Some(m) =>
+                Hit(u, suite, Render.Exercise(m.lines, s"${suite.name}: helper ${m.name}"), false)
               case None =>
                 val enclosing = u.enclosing.split('.').last
-                Render.Exercise(Lines(u.line, u.line), s"${suite.name}: helper $enclosing")
+                val entry =
+                  Render.Exercise(Lines(u.line, u.line), s"${suite.name}: helper $enclosing")
+                Hit(u, suite, entry, false)
             }
         }
       }
     }
-    Render.Exercised(
-      file,
-      suites.map(_.fullName).distinct,
-      entries.distinct.sortBy(e => (e.lines.start, e.lines.end, e.label))
-    )
   }
 
   /** The note for each `--body` name that no shown definition has: `tops` and their members (those withPrivate
@@ -1046,7 +1092,7 @@ object Query {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      withTests: Boolean
+      tests: TestsShown
   ): (Answer, Loaded) = {
     val classes = layout.classesDirs(root)
     if (depth < 0 || depth > 2)
@@ -1120,9 +1166,10 @@ object Query {
           (Answer(noteText.stripSuffix("\n"), Status.NoMatch), state)
         case None =>
           val tops = matches.toVector.distinct
-          val (exercised, testNotes, afterTests) =
-            if (withTests) exercisedBy(root, layout, config, tops, companions.toVector, state)
-            else (Vector.empty, Vector.empty, state)
+          val (hits, testNotes, afterTests) = tests match {
+            case TestsShown.Dropped => (Vector.empty, Vector.empty, state)
+            case _ => exercisedBy(root, layout, config, tops, companions.toVector, state)
+          }
           state = afterTests
           val traced = Trace.trace(
             tops,
@@ -1143,7 +1190,14 @@ object Query {
             bodies = bodies,
             withPrivate = withPrivate,
             cap = cap,
-            exercising = Render.exercising(syms.mkString(","), exercised)
+            exercising = tests match {
+              case TestsShown.Listed => Render.exercising(syms.mkString(","), listing(hits))
+              case _ => Vector.empty
+            },
+            summaries = tests match {
+              case TestsShown.Summary => summaries(tops, hits)
+              case _ => Vector.empty
+            }
           )
           val bodyNotes =
             (bodyMisses(bodies, tops, withPrivate) ++ testNotes).map(_ + "\n").mkString

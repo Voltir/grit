@@ -49,7 +49,7 @@ object Help {
       "symbols to show, each Name, Name.member or fully qualified; comma-separated on the CLI."
     ),
     purpose =
-      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call. Each definition's NN-MM header, and each outline, ends with its size, `[N.N KB]`; a definition shown without its body ends with its closing lines, an anchor for an Edit adding code after it. After them, a Tests section lists the tests in test sources that exercise the symbols: a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper. Those lines are not file text.",
+      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call. Each definition's NN-MM header, and each outline, ends with its size, `[N.N KB]`; a definition shown without its body ends with its closing lines, an anchor for an Edit adding code after it. After them, one line per named symbol counts the tests in test sources that exercise it: `-- tests of <Sym>: N in M suites (nearest: A, B, C); --tests to list`, N the tests holding a reference to it or to a member, M the suites holding one in a test or a helper, and the nearest at most three of those suites, the ones under the symbol's own module directory first, then those holding the most references; `-- tests of <Sym>: none` when no suite holds one. With --tests, a Tests section lists them instead: a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a helper holding a reference itself. Those lines are not file text.",
     examples = Vector(
       Example("read one move's signature and doc", "show Moves.ask"),
       Example(
@@ -77,10 +77,16 @@ object Help {
         "include private members. Ask for them only to edit them or to understand an implementation; otherwise trust the public interface and referential transparency to understand the code. Name the members you need with --body; --private on a whole type with no --body lists every internal helper."
       ),
       Flag(
-        "--no-tests",
+        "--tests",
         "",
         Some("tests"),
-        "whether the Tests section lists the tests in test sources that exercise the named symbols; true by default, and --no-tests (MCP tests: false) drops it."
+        "list every test and helper exercising the named symbols, in place of the count line; --no-tests drops even the count. MCP tests: \"summary\" (the default, the count line), \"list\" or \"none\"."
+      ),
+      Flag(
+        "--no-tests",
+        "",
+        None,
+        "print neither the tests count line nor the list (MCP tests: \"none\")."
       )
     ) ++ common
   )

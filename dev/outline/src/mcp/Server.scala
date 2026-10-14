@@ -4,6 +4,7 @@ import scala.util.Try
 
 import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.query.{Config, Entry, Help, Query, Roots}
+import grit.outline.render.TestsShown
 
 /** The server between calls: each root's cache, and the root a call without one uses. */
 final case class State(roots: Roots, defaultRoot: Root)
@@ -50,7 +51,13 @@ object Server {
       prop(Help.show, "depth", "type" -> "integer", "minimum" -> 0, "maximum" -> 2, "default" -> 1),
       prop(Help.show, "body", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
       prop(Help.show, "private", "type" -> "boolean"),
-      prop(Help.show, "tests", "type" -> "boolean", "default" -> true),
+      prop(
+        Help.show,
+        "tests",
+        "type" -> "string",
+        "enum" -> ujson.Arr("summary", "list", "none"),
+        "default" -> "summary"
+      ),
       prop(Help.show, "root", "type" -> "string")
     ),
     Vector("symbols")
@@ -258,7 +265,7 @@ object Server {
       body: Set[String],
       withPrivate: Boolean,
       root: Option[Root],
-      withTests: Boolean
+      tests: TestsShown
   )
 
   private final case class FamilyArgs(
@@ -292,7 +299,7 @@ object Server {
             a.body,
             a.withPrivate,
             cap,
-            a.withTests
+            a.tests
           )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
@@ -358,9 +365,22 @@ object Server {
       depth <- depthArg(args)
       body <- stringList(args, "body", required = false)
       withPrivate <- flag(args, "private")
-      withTests <- flagOr(args, "tests", default = true)
+      tests <- testsArg(args)
       root <- rootArg(args)
-    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root, withTests)
+    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root, tests)
+
+  /** The `tests` argument of show: "summary" (the default), "list" or "none". */
+  private def testsArg(args: ujson.Value): Either[String, TestsShown] =
+    field(args, "tests") match {
+      case None => Right(TestsShown.Summary)
+      case Some(v) =>
+        v.strOpt match {
+          case Some("summary") => Right(TestsShown.Summary)
+          case Some("list") => Right(TestsShown.Listed)
+          case Some("none") => Right(TestsShown.Dropped)
+          case _ => Left("tests must be one of summary, list or none")
+        }
+    }
 
   private def parseFamily(args: ujson.Value): Either[String, FamilyArgs] =
     for {

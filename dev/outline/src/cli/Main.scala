@@ -5,6 +5,7 @@ import scala.annotation.tailrec
 import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.mcp.Server
 import grit.outline.query.{Answer, Config, Help, Query, Roots, Status}
+import grit.outline.render.TestsShown
 
 object Main {
 
@@ -35,13 +36,14 @@ object Main {
       withPrivate: Boolean,
       cap: Int,
       root: Option[String],
-      withTests: Boolean
+      tests: TestsShown
   )
 
   private def parse(rest: List[String], o: Options): Either[String, Options] = rest match {
     case Nil => Right(o)
     case "--private" :: tail => parse(tail, o.copy(withPrivate = true))
-    case "--no-tests" :: tail => parse(tail, o.copy(withTests = false))
+    case "--tests" :: tail => parse(tail, o.copy(tests = TestsShown.Listed))
+    case "--no-tests" :: tail => parse(tail, o.copy(tests = TestsShown.Dropped))
     case "--depth" :: value :: tail =>
       value.toIntOption match {
         case Some(n) => parse(tail, o.copy(depth = n))
@@ -103,7 +105,7 @@ object Main {
           withPrivate = false,
           cap = 80000,
           root = leadingRoot,
-          withTests = true
+          tests = TestsShown.Summary
         )
         parse(rest, defaults) match {
           case Left(message) => (2, s"$message\n${Help.usage(Help.show)}")
@@ -127,7 +129,7 @@ object Main {
                         o.bodies,
                         o.withPrivate,
                         o.cap,
-                        o.withTests
+                        o.tests
                       )
                     (exitCode(answer.status), answer.text)
                 }

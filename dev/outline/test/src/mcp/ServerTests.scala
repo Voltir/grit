@@ -231,33 +231,27 @@ object ServerTests extends TestSuite {
       assert(bad.flatMap(field(_, "id")) == Some(ujson.Null))
     }
 
-    test("show with tests false prints no tests section") {
-      val (on, warm) = reply(
-        call(
-          6,
-          "show",
-          ujson
-            .Obj("symbols" -> ujson.Arr("grit.outline.render.Render.oneLine"), "root" -> repoRoot)
-        ),
-        empty
-      )
-      assert(
-        textOf(on).exists(_.contains("## tests exercising grit.outline.render.Render.oneLine"))
-      )
-      val (off, _) = reply(
-        call(
-          7,
-          "show",
-          ujson.Obj(
-            "symbols" -> ujson.Arr("grit.outline.render.Render.oneLine"),
-            "tests" -> ujson.Bool(false),
-            "root" -> repoRoot
-          )
-        ),
-        warm
-      )
-      assert(textOf(off).exists(_.contains("def Render.oneLine")))
-      assert(textOf(off).exists(!_.contains("## tests exercising")))
+    test(
+      "show's tests argument counts the tests by default, lists them as list, and drops both as none"
+    ) {
+      def shown(id: Int, tests: Option[String], state: State): (String, State) = {
+        val args = ujson.Obj(
+          "symbols" -> ujson.Arr("grit.outline.render.Render.oneLine"),
+          "root" -> repoRoot
+        )
+        tests.foreach(t => args("tests") = t)
+        val (r, next) = reply(call(id, "show", args), state)
+        (textOf(r).getOrElse(""), next)
+      }
+      val (summary, warm) = shown(6, None, empty)
+      val (listed, warmer) = shown(7, Some("list"), warm)
+      val (none, _) = shown(8, Some("none"), warmer)
+      assert(summary.contains("\n-- tests of Render.oneLine: "))
+      assert(!summary.contains("## tests exercising"))
+      assert(listed.contains("## tests exercising grit.outline.render.Render.oneLine"))
+      assert(!listed.contains("-- tests of"))
+      assert(none.contains("def Render.oneLine"))
+      assert(!none.contains("## tests exercising") && !none.contains("-- tests of"))
     }
   }
 }

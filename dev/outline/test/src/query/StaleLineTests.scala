@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 
 import grit.outline.locate.{MillLayout, Root}
+import grit.outline.render.TestsShown
 
 import utest.*
 
@@ -77,7 +78,7 @@ object StaleLineTests extends TestSuite {
         bodies = Set.empty,
         withPrivate = false,
         cap = 80000,
-        withTests = false
+        tests = TestsShown.Dropped
       )
       assert(
         answer.text.linesIterator.toVector.lift(1) ==

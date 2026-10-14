@@ -16,13 +16,15 @@ In show and family, a definition printed without its body ends with its closing 
 Edit that adds code after it (File text, below).
 
 **show**: To read or call a definition: its signature and Scaladoc, with one-line outlines of the
-project types it names. Bodies only for members named with `--body`. After the definitions, a
-Tests section lists the tests in test sources that exercise the symbols (`--no-tests` drops it):
-a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries
-`NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper.
-Those lines are not file text.
+project types it names. Bodies only for members named with `--body`. After the definitions, one
+line per named symbol counts the tests in test sources that exercise it:
+`-- tests of Label: 41 in 12 suites (nearest: LabelTests, TxTests, InboxContract); --tests to list`.
+The nearest suites are those under the symbol's own module directory first, then those holding the
+most references. `--tests` lists them instead: a `## tests exercising <Sym>` line, then per file a
+`== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>`
+for a helper that itself holds a reference. `--no-tests` drops both. None of these lines is file text.
 
-    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--no-tests] [--cap BYTES] [--root DIR]
+    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--tests|--no-tests] [--cap BYTES] [--root DIR]
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
 `--member` narrows each to one member.
