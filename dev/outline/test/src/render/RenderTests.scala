@@ -100,6 +100,70 @@ object RenderTests extends TestSuite {
       assert(withBody.contains("else { Right(new Limits(asks, calls + hidden)) }"))
       assert(!withoutBody.contains("if (asks < 0"))
     }
+    test(
+      "a shown type's members print their doc's first sentence: its whole first line as file text, else a -- line ending in …"
+    ) {
+      val almanac = named(read, "grit.outline.fixture.Almanac")
+      val out = Render.show(almanac, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val lines = out.linesIterator.toVector
+      // A member's lines between its header and the next header.
+      def after(name: String): Vector[String] = {
+        val from = lines.indexWhere(_.contains(s" def Almanac.$name "))
+        lines.drop(from + 1).takeWhile(l => !l.matches("\\d+-\\d+ .*"))
+      }
+      assert(
+        lines.containsSlice(
+          Vector(
+            "/** An almanac, whose members' docs are cut to their first sentence when it is shown. The type's own doc",
+            "  * is printed whole.",
+            "  */",
+            "object Almanac {"
+          )
+        )
+      )
+      assert(
+        after("years") == Vector(
+          "  /** The years it covers, in order.",
+          "-- … 2 more doc lines",
+          "  def years: Vector[Int] = Vector.empty"
+        )
+      )
+      assert(
+        after("tides") == Vector(
+          "-- How many tides it lists, a count whose first sentence runs past its first line. …",
+          "  def tides: Int = 0"
+        )
+      )
+      assert(
+        after("moons") == Vector(
+          "  /** One line, two sentences. Both kept. */",
+          "  def moons: Int = 1"
+        )
+      )
+      assert(
+        after("stars") == Vector(
+          "-- Its first sentence ends here. …",
+          "  def stars: Int = 2"
+        )
+      )
+      assert(after("plain") == Vector("  def plain: Int = 3"))
+    }
+
+    test("--docs, or a member named in --body, prints a member's doc whole") {
+      val almanac = named(read, "grit.outline.fixture.Almanac")
+      val whole = Vector(
+        "  /** How many tides it lists, a count whose first sentence runs past",
+        "    * its first line. Then more.",
+        "    */",
+        "  def tides: Int = 0"
+      )
+      val docs =
+        Render.show(almanac, noTraced, read, Set.empty, Set.empty, false, 80000, fullDocs = true)
+      val body = Render.show(almanac, noTraced, read, Set.empty, Set("tides"), false, 80000)
+      assert(docs.linesIterator.toVector.containsSlice(whole))
+      assert(body.linesIterator.toVector.containsSlice(whole))
+    }
+
     test("a budget cuts whole entries, says so, and shortens the answer") {
       val a = named(read, "grit.outline.fixture.A")
       val full = Render.show(a, noTraced, read, Set.empty, Set.empty, false, 80000)

@@ -15,6 +15,7 @@ object HelpTests extends TestSuite {
       "--depth" -> true,
       "--body" -> true,
       "--private" -> false,
+      "--docs" -> false,
       "--tests" -> false,
       "--no-tests" -> false,
       "--max-kb" -> true,

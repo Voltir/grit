@@ -59,7 +59,8 @@ object Render {
       withPrivate: Boolean,
       cap: Int,
       exercising: Vector[Vector[String]] = Vector.empty,
-      summaries: Vector[TestsSummary] = Vector.empty
+      summaries: Vector[TestsSummary] = Vector.empty,
+      fullDocs: Boolean = false
   ): String = {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
@@ -74,6 +75,11 @@ object Render {
       headed(d) ++
         (if (bodies.contains(d.name) && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
+    // A member not named in --body: its doc cut to its first sentence, unless every doc prints whole.
+    def memberEntry(d: Defn): Vector[String] =
+      if (fullDocs || bodies.contains(d.name)) entry(d)
+      else headed(d).take(1) ++ briefHead(d) ++ closingLines(d)
+
     def namedEntry(d: Defn): Vector[String] = {
       val typeKind = d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
         d.kind == Kind.Object || d.kind == Kind.Enum
@@ -82,7 +88,7 @@ object Render {
         if (typeKind)
           d.members
             .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
-            .flatMap(entry)
+            .flatMap(memberEntry)
         else Vector.empty
       if (typeKind) headed(d) ++ members ++ closingLines(d) else entry(d)
     }
@@ -354,7 +360,12 @@ object Render {
   }
 
   /** The doc's first sentence: its text without the comment delimiters, whitespace collapsed, cut after the first `. ` and at 160 characters; none when the doc has no text. */
-  private def firstSentence(doc: Option[String]): Option[String] =
+  private def firstSentence(doc: Option[String]): Option[String] = sentenceOf(doc).map(_.take(160))
+
+  /** The doc's first sentence, uncut: its text without the comment delimiters, whitespace collapsed, through the first `. `;
+    * none when the doc has no text.
+    */
+  private def sentenceOf(doc: Option[String]): Option[String] =
     doc
       .map { d =>
         val text = collapse(
@@ -364,11 +375,10 @@ object Render {
             .map(_.trim.stripPrefix("*"))
             .mkString(" ")
         )
-        val sentence = text.indexOf(". ") match {
+        text.indexOf(". ") match {
           case -1 => text
           case i => text.take(i + 1)
         }
-        sentence.take(160)
       }
       .filter(_.nonEmpty)
 
@@ -451,6 +461,27 @@ object Render {
   }
 
   private def bytesOf(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** `d`'s head with its doc cut to its first sentence: when that sentence is the whole of the doc's first line, that line
+    * then a `-- … N more doc lines` line; otherwise a `-- <first sentence> …` line in place of the doc; then the head's
+    * lines after the doc. Whole when the doc is one line, when there is none, or when code follows the doc on its last line.
+    */
+  private def briefHead(d: Defn): Vector[String] = {
+    val head = d.head.linesIterator.toVector
+    val docLines = d.doc.fold(0)(_.linesIterator.size)
+    val endsClean = head.lift(docLines - 1).exists(_.trim.endsWith("*/"))
+    if (docLines <= 1 || head.size <= docLines || !endsClean) Vector(d.head)
+    else {
+      val sentence = sentenceOf(d.doc).getOrElse("")
+      val firstLine = head.headOption.getOrElse("")
+      val firstText = collapse(firstLine.trim.stripPrefix("/**"))
+      val doc =
+        if (firstText.nonEmpty && firstText == sentence)
+          Vector(firstLine, s"-- … ${docLines - 1} more doc lines")
+        else Vector(s"-- $sentence …")
+      doc ++ head.drop(docLines)
+    }
+  }
 
   /** `d`'s closing lines under an `NN-MM end of <name>` header, for a definition printed without its body; none when it has none. */
   private def closingLines(d: Defn): Vector[String] =

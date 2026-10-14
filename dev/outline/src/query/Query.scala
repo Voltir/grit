@@ -28,7 +28,8 @@ object Query {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      tests: TestsShown = TestsShown.Summary
+      tests: TestsShown = TestsShown.Summary,
+      fullDocs: Boolean = false
   ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val (answer, loaded) =
       showIn(
@@ -41,7 +42,8 @@ object Query {
         bodies,
         withPrivate,
         cap,
-        tests
+        tests,
+        fullDocs
       )
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
@@ -1094,7 +1096,8 @@ object Query {
       bodies: Set[String],
       withPrivate: Boolean,
       cap: Int,
-      tests: TestsShown
+      tests: TestsShown,
+      fullDocs: Boolean
   ): (Answer, Loaded) = {
     val classes = layout.classesDirs(root)
     if (depth < 0 || depth > 2)
@@ -1199,7 +1202,8 @@ object Query {
             summaries = tests match {
               case TestsShown.Summary => summaries(tops, hits)
               case _ => Vector.empty
-            }
+            },
+            fullDocs = fullDocs
           )
           val bodyNotes =
             (bodyMisses(bodies, tops, withPrivate) ++ testNotes).map(_ + "\n").mkString

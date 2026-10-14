@@ -19,7 +19,9 @@ In show and family, a definition printed without its body ends with its closing 
 Edit that adds code after it (File text, below).
 
 **show**: To read or call a definition: its signature and Scaladoc, with one-line outlines of the
-project types it names. Bodies only for members named with `--body`. After the definitions, one
+project types it names. Bodies only for members named with `--body`. A member of a shown type not
+named in `--body` prints its doc's first sentence only, its size tag saying how much more there is;
+`--docs` prints every doc whole (File text, below, says which of those lines are file text). After the definitions, one
 line per named symbol counts the tests in test sources that exercise it:
 `-- tests of Label: 41 in 12 suites (nearest: LabelTests, TxTests, InboxContract); --tests to list`.
 The nearest suites are those under the symbol's own module directory first, then those holding the
@@ -27,7 +29,7 @@ most references. `--tests` lists them instead: a `## tests exercising <Sym>` lin
 `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>`
 for a helper that itself holds a reference. `--no-tests` drops both. None of these lines is file text.
 
-    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--tests|--no-tests] [--max-kb N] [--root DIR]
+    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--docs] [--tests|--no-tests] [--max-kb N] [--root DIR]
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
 `--member` narrows each to one member.
@@ -71,7 +73,7 @@ that matches nothing suggests `find` with the name's last segment.
 
 MCP tool names: `show`, `family`, `uses`, `area`, `find`, `tests`.
 
-File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source, and an answer that read any such file says so after its ## root line, in a `-- stale since the last compile:` line naming each module, its stale files and the command that compiles them; a --max-kb budget cuts whole entries, never inside one; byte-exactness is tested for LF files only.
+File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In show, a member of a shown type not named in --body has its doc cut to its first sentence, unless --docs: a doc whose first sentence is its whole first line prints that line, file text, then a `-- … N more doc lines` line; any other cut doc prints as one `-- <first sentence> …` line in its place; a doc of one line prints whole; the member's lines after its doc, from its signature on, are file text. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source, and an answer that read any such file says so after its ## root line, in a `-- stale since the last compile:` line naming each module, its stale files and the command that compiles them; a --max-kb budget cuts whole entries, never inside one; byte-exactness is tested for LF files only.
 
 ## Running it
 

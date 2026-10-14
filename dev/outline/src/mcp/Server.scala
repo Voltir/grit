@@ -58,6 +58,7 @@ object Server {
       prop(Help.show, "depth", "type" -> "integer", "minimum" -> 0, "maximum" -> 2, "default" -> 1),
       prop(Help.show, "body", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
       prop(Help.show, "private", "type" -> "boolean"),
+      prop(Help.show, "docs", "type" -> "boolean"),
       prop(
         Help.show,
         "tests",
@@ -290,7 +291,8 @@ object Server {
       body: Set[String],
       withPrivate: Boolean,
       root: Option[Root],
-      tests: TestsShown
+      tests: TestsShown,
+      fullDocs: Boolean
   )
 
   private final case class FamilyArgs(
@@ -324,7 +326,8 @@ object Server {
             a.body,
             a.withPrivate,
             cap,
-            a.tests
+            a.tests,
+            a.fullDocs
           )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
@@ -394,8 +397,9 @@ object Server {
       body <- stringList(args, "body", required = false)
       withPrivate <- flag(args, "private")
       tests <- testsArg(args)
+      fullDocs <- flag(args, "docs")
       root <- rootArg(args)
-    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root, tests)
+    } yield ShowArgs(symbols, depth, body.toSet, withPrivate, root, tests, fullDocs)
 
   /** The `tests` argument of show: "summary" (the default), "list" or "none". */
   private def testsArg(args: ujson.Value): Either[String, TestsShown] =

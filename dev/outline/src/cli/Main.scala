@@ -43,13 +43,15 @@ object Main {
       withPrivate: Boolean,
       cap: Int,
       root: Option[String],
-      tests: TestsShown
+      tests: TestsShown,
+      fullDocs: Boolean
   )
 
   private def parse(rest: List[String], o: Options): Either[String, Options] = rest match {
     case Nil => Right(o)
     case "--private" :: tail => parse(tail, o.copy(withPrivate = true))
     case "--tests" :: tail => parse(tail, o.copy(tests = TestsShown.Listed))
+    case "--docs" :: tail => parse(tail, o.copy(fullDocs = true))
     case "--no-tests" :: tail => parse(tail, o.copy(tests = TestsShown.Dropped))
     case "--depth" :: value :: tail =>
       value.toIntOption match {
@@ -112,7 +114,8 @@ object Main {
           withPrivate = false,
           cap = Help.defaultMaxKb * 1024,
           root = leadingRoot,
-          tests = TestsShown.Summary
+          tests = TestsShown.Summary,
+          fullDocs = false
         )
         parse(rest, defaults) match {
           case Left(message) => (2, s"$message\n${Help.usage(Help.show)}")
@@ -136,7 +139,8 @@ object Main {
                         o.bodies,
                         o.withPrivate,
                         o.cap,
-                        o.tests
+                        o.tests,
+                        o.fullDocs
                       )
                     (exitCode(answer.status), answer.text)
                 }
