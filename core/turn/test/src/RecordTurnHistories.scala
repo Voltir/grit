@@ -425,8 +425,14 @@ object RecordTurnHistories {
         provider: grit.core.provider.Provider^,
         crash: Option[grit.core.store.Entry -> Boolean] = None,
         answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty,
-        gated: Boolean = false
+        gated: Boolean = false,
+        extracted: Option[ujson.Value] = None
     ): History = {
+      // The summary's pair answers an extraction with `extracted`, and is the stub otherwise.
+      val summarizer: grit.core.provider.Provider^ = extracted match {
+        case Some(answer) => answering(answer)
+        case None => new grit.models.StubProvider()
+      }
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val classifier = new CountingClassifier
@@ -443,7 +449,7 @@ object RecordTurnHistories {
               entries,
               provider,
               new InMemoryUsageLedger,
-              new grit.models.StubProvider(),
+              summarizer,
               classifier,
               ws,
               if (gated) gatedTools(ws) else tools(ws),
@@ -537,6 +543,14 @@ object RecordTurnHistories {
       // peek's result is hidden as h1, since reading it would withdraw post; read through
       // read_hidden, it is shown and withholds post, whose call is then answered withheld.
       "gated-hidden" -> looping(Vector("read and post"), hidingScript, gated = true),
+      // peek's result is hidden as h1 and asked a yes-or-no question through extract, whose
+      // answer is believed at the turn's level: post stays offered, and its call runs.
+      "gated-extracted" -> looping(
+        Vector("read and post"),
+        extractingScript,
+        gated = true,
+        extracted = Some(ujson.Bool(true))
+      ),
       "loop-approved" -> looping(
         Vector("poke a"),
         new TurnFixtures.Scripted((r, n) =>
