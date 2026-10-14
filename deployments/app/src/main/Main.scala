@@ -30,7 +30,9 @@ import grit.core.visibility.{
   Compartments,
   Group,
   GroupName,
+  Integrity,
   Label,
+  Output,
   Party,
   RoomLabels,
   Visibility
@@ -784,7 +786,8 @@ object Main {
     * workspace `slackIn` and `admins` named, the shipped one but for [[Administrators]],
     * declared as those users' accounts there (`slack:{team}/{id}`), who alone may lower a
     * room's label or label a public channel; otherwise [[Visibility.Shipped]], under which no
-    * one may, with `parties` cleared. A party named twice is refused.
+    * one may, with `parties` cleared. Either way its services' results are believed as
+    * [[Outputs]] declares. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
@@ -794,7 +797,14 @@ object Main {
     slackIn.filter(_ => admins.nonEmpty) match {
       case None =>
         Visibility
-          .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, parties)
+          .of(
+            Compartments.Shipped,
+            RoomLabels.Public,
+            Vector.empty,
+            Vector.empty,
+            parties,
+            outputs = Outputs
+          )
           .left
           .map(r => s"the deployment's clearances: $r")
       case Some(team) =>
@@ -812,12 +822,27 @@ object Main {
                 Vector(Group(Administrators, accounts)),
                 Vector.empty,
                 parties,
-                administrators = Some(Administrators)
+                administrators = Some(Administrators),
+                outputs = Outputs
               )
               .left
               .map(r => s"$AdminsVar: $r")
           )
     }
+
+  /** What the reference deployment believes its services' results at (ADR 0036): those of
+    * Slack's posting service ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's
+    * account of a post it made; GitHub's at `Untrusted`, since its token may reach repositories
+    * anyone may write in. Any other service's are `Untrusted`, undeclared.
+    */
+  private[main] val Outputs: Vector[Output] = Vector(
+    Output(SlackEdge.PostsAt, Integrity.Member),
+    // "github" is a service's name by Service.of's rule, so the Left is never taken.
+    Output(
+      Service.of("github").fold(why => throw new IllegalStateException(why), identity),
+      Integrity.Untrusted
+    )
+  )
 
   /** The reference deployment's clearances (ADR 0037), each at [[Compartments.Shipped]]'s top:
     * every pair `policy` pins that names its upstream ([[Party.of]]; grit's own deployment

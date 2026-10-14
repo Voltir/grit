@@ -6,7 +6,7 @@ import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
 import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
-import grit.core.visibility.Group
+import grit.core.visibility.{Group, Integrity}
 import grit.kit.deployment.Offered
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
@@ -96,6 +96,27 @@ object ServeChoiceTests extends TestSuite {
           .map(_.identities.realmsOf(SlackAccounts.Attester))
       (trusted(Some(TeamId("T0FAKE"))), trusted(None)) ==>
         (SlackAccounts.realm(TeamId("T0FAKE")).map(Set(_)), Right(Set.empty))
+    }
+
+    test(
+      "Slack's posting service's results are believed at member and GitHub's at untrusted, with admins named or not"
+    ) {
+      def outputs(env: Map[String, String], slackIn: Option[TeamId]) =
+        Main
+          .deployment(
+            env,
+            Offered.Read,
+            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
+            Vector.empty,
+            java.time.ZoneOffset.UTC,
+            slackIn
+          )
+          .map(d => d.visibility.outputs.map(o => (o.service.name, Integrity.written(o.integrity))))
+      val declared = Right(Vector(("slack", "member"), ("github", "untrusted")))
+      (
+        outputs(Map("GRIT_ADMINS" -> "U012AB34"), Some(TeamId("T0FAKE"))),
+        outputs(Map.empty, None)
+      ) ==> (declared, declared)
     }
 
     test(
