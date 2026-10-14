@@ -33,7 +33,11 @@ object Render {
 
   /** A file's `== file  package` header line, flagged when its source is newer than its tasty. */
   def fileLine(file: String, pkg: String, stale: Boolean): String =
-    s"== $file  $pkg" + (if (stale) "  [stale: source newer than .tasty]" else "")
+    s"== $file  $pkg" + staleTag(stale)
+
+  /** What a file's `==` line ends with when its source is newer than its tasty, so what is printed from it may not match it. */
+  private def staleTag(stale: Boolean): String =
+    if (stale) "  [stale: source newer than .tasty]" else ""
 
   /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; `stale` files' headers flagged; cut at `cap` bytes. */
   def show(
@@ -186,12 +190,13 @@ object Render {
   }
 
   /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
-  /** The `uses` answer, grouped by file under `== file`: each run of sites with one owner as an `in <owner>` line, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
+  /** The `uses` answer, grouped by file under `== file`, flagged as `show` flags it when the file is in `stale`: each run of sites with one owner as an `in <owner>` line, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
   def uses(
       sites: Vector[Use],
       overloaded: Set[String],
       cap: Int,
-      tests: Map[Use, String]
+      tests: Map[Use, String],
+      stale: Set[String]
   ): String = {
     def owner(u: Use): String = {
       val pkg = pkgOf(u.enclosing)
@@ -215,7 +220,7 @@ object Render {
       }
     val files = sites.map(_.file).distinct
     val chunks: Vector[Vector[String]] = files.map { f =>
-      s"== $f" +: runs(sites.filter(_.file == f)).flatMap(run =>
+      s"== $f${staleTag(stale.contains(f))}" +: runs(sites.filter(_.file == f)).flatMap(run =>
         run.headOption.map(u => s"  in ${owner(u)}").toVector ++ run.map(siteLine)
       )
     }

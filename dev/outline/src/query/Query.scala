@@ -213,7 +213,13 @@ object Query {
                   }
                   .toSet
                 Answer(
-                  Render.uses(kept, overloaded, cap, testsHolding(root, layout, config, kept)),
+                  Render.uses(
+                    kept,
+                    overloaded,
+                    cap,
+                    testsHolding(root, layout, config, kept),
+                    staleFiles(root, layout, kept.map(_.file))
+                  ),
                   Status.Found
                 )
               }
@@ -340,7 +346,7 @@ object Query {
       }
     }
 
-  /** The files among `files` whose source is newer than their newest `.tasty`, as `show` and `tests` tag them. */
+  /** The files among `files` whose source is newer than their newest `.tasty`, as `show`, `tests` and `uses` tag them. */
   private[query] def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] =
     files.distinct.filter { file =>
       val rel = os.RelPath(file)

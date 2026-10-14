@@ -216,6 +216,50 @@ object UsesTests extends TestSuite {
       assert(answer.text.linesIterator.exists(_.contains("new Limits(asks, calls + hidden)")))
     }
 
+    test("a site's file whose source is newer than its tasty is tagged stale on its == line") {
+      val dir = os.temp.dir(prefix = "outline-uses-stale-")
+      os.write(dir / "build.mill", "")
+      val src = dir / "src" / "p" / "S.scala"
+      os.write(
+        src,
+        "package p\nobject S { def f(a: Int): Int = a }\nobject T { def g: Int = S.f(1) }\n",
+        createFolders = true
+      )
+      val classes = dir / "out" / "m" / "compile.dest" / "classes"
+      os.makeDir.all(classes)
+      val reporter = dotty.tools.dotc.Main.process(
+        Array(
+          "-d",
+          classes.toString,
+          "-classpath",
+          System.getProperty("java.class.path"),
+          src.toString
+        )
+      )
+      assert(!reporter.hasErrors)
+      def query(): Answer =
+        Query
+          .uses(
+            Root(dir),
+            MillLayout,
+            Config.empty,
+            Roots.empty(6000),
+            Vector("p.S.f"),
+            None,
+            None,
+            80000
+          )
+          ._1
+      assert(query().text.linesIterator.contains("== src/p/S.scala"))
+      Files.setLastModifiedTime(
+        src.toNIO,
+        FileTime.fromMillis(os.mtime(classes / "p" / "S.tasty") + 10000)
+      )
+      assert(
+        query().text.linesIterator.contains("== src/p/S.scala  [stale: source newer than .tasty]")
+      )
+    }
+
     test(
       "the uses of Limits.of include the 2-argument overload's call on line 28, which targets the 3-argument of on line 31"
     ) {
