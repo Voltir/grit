@@ -1763,6 +1763,11 @@ object Turn {
     case Payload.Result(r, shown) => Payload.Result(r.copy(content = stub, isError = false), shown)
     case Payload.Message(reply: Message.Assistant) =>
       Payload.Message(reply.copy(blocks = Vector(AssistantBlock.Text(stub))))
+    // Its calls are kept so their results still pair, and their arguments, which may copy what
+    // that turn read, never carry a hidden item here: no exchange is ever hidden. An earlier
+    // turn's is not shown, so is no item (itemsOf); this turn's own is believed at the level
+    // the turn had when it was kept (record-call), which only falls after, so it dominates
+    // every later gate's level and is never listed.
     case Payload.Exchange(reply) =>
       Payload.Exchange(reply.copy(blocks = AssistantBlock.Text(stub) +: reply.blocks.collect {
         case call: AssistantBlock.ToolCall => call
