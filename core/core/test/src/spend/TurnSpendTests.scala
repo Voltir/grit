@@ -41,7 +41,7 @@ object TurnSpendTests extends TestSuite {
     }
 
     test(
-      "its line is the cost in millidollars, then the model at its upstream; the model alone with none reported; the cost alone with no answer"
+      "its line is the cost in cents, then the model at its upstream; the model alone with none reported; the cost alone with no answer"
     ) {
       val served = row(turn.replyId, Some("0.0042"), upstream = Some("Fireworks"))
       val unreported = row(turn.replyId, None)
@@ -51,9 +51,9 @@ object TurnSpendTests extends TestSuite {
         TurnSpend.of(turn, Vector(unreported, other)).line,
         TurnSpend.of(turn, Vector(other)).line
       ) ==> Vector(
-        "m$4.2 · test/model at Fireworks",
-        "≥ m$12 · test/model",
-        "m$12"
+        "0.42¢ · test/model at Fireworks",
+        "≥ 1.2¢ · test/model",
+        "1.2¢"
       )
       TurnSpend.of(turn, Vector(other)).served ==> None
     }

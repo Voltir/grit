@@ -32,7 +32,7 @@ private[report] object TurnLines {
         Structure.unjoined(turns, verdicts),
       Report.shapes(Shapes.of(turns)),
       "",
-      "Text-free: ids, counts, tokens and prices. A price is in millidollars, m$ ($0.001). " +
+      "Text-free: ids, counts, tokens and prices. A price is in cents, ¢ ($0.001 is 0.1¢). " +
         "A rate's interval is Wilson's at 95% on its " +
         "turns' effective number, clustered by conversation (a thread), and none under " +
         s"${Proportion.MinClusters} threads; a spread is mean / p50 / p90 by nearest rank.",
@@ -154,8 +154,8 @@ private[report] object TurnLines {
         "A ledger row with no cost adds nothing and is counted as unpriced.",
       ""
     ) ++ bySlice((paid.map(paidName) ++ Vector("total", "unpriced"))*)(st =>
-      paid.map(p => spread(st.cost.get(p), mills)) ++
-        Vector(spread(st.total, mills), s"${st.unpriced}")
+      paid.map(p => spread(st.cost.get(p), cents)) ++
+        Vector(spread(st.total, cents), s"${st.unpriced}")
     ) ++ Vector("")
 
     val roles = all.caching.paid.keys.toVector
@@ -297,7 +297,7 @@ private[report] object TurnLines {
       if (named.isEmpty) "—" else named.mkString(", "),
       t.window.fold("—")(w => s"${Tokens.value(w.tokens)}"),
       first.fold("—")(s => s"${Tokens.value(s.estimated)} / ${Tokens.value(s.usage.input)}"),
-      Cost.mills(c),
+      Cost.cents(c),
       t.window
         .map(w => Support.top(w.parts, 3))
         .filter(_.nonEmpty)
@@ -340,7 +340,7 @@ private[report] object TurnLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  private def mills(x: Double): String = Cost.mills(BigDecimal(x))
+  private def cents(x: Double): String = Cost.cents(BigDecimal(x))
 
   private def prob(x: Double): String = f"$x%.2f"
 }

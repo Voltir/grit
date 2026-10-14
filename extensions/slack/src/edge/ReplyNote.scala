@@ -14,7 +14,7 @@ enum ReplyNote(val word: String) derives CanEqual {
   case StrengthAndCost extends ReplyNote("strength-cost")
 
   /** The note for a reply whose turn spent `spend`: `strong · <model> at <upstream>`, with
-    * `StrengthAndCost` the spend between (`strong · m$4.2 · …`); `None` when this is `Off`, or
+    * `StrengthAndCost` the spend between (`strong · 0.42¢ · …`); `None` when this is `Off`, or
     * the answer was not made above [[ReplyNote.NotedAbove]].
     */
   def of(spend: TurnSpend): Option[String] =
@@ -24,7 +24,7 @@ enum ReplyNote(val word: String) derives CanEqual {
       shown <- this match {
         case Off => None
         case Strength => Some(Vector(grade.word, served))
-        case StrengthAndCost => Some(Vector(grade.word, spend.cost.inMills, served))
+        case StrengthAndCost => Some(Vector(grade.word, spend.cost.inCents, served))
       }
     } yield shown.mkString(" · ")
 }

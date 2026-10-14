@@ -407,7 +407,7 @@ object Main {
           _ = println(
             s"window-only cases: ${only.size}, withheld: $withheld; queries to write: " +
               s"${requests.distinct.size}, " +
-              s"estimated ${Cost.mills(estimated)}, cap ${Cost.mills(cap)}"
+              s"estimated ${Cost.cents(estimated)}, cap ${Cost.cents(cap)}"
           )
           budget <- Budget
             .of(cap, estimated)
@@ -435,7 +435,7 @@ object Main {
           Rebuild.report(rebuilt).foreach(println)
           println(
             s"queries: asked ${answered.asked}, cached ${answered.cached}, skipped " +
-              s"${answered.skipped}, failed ${answered.failed}; spent ${Cost.mills(answered.budget.spent)}"
+              s"${answered.skipped}, failed ${answered.failed}; spent ${Cost.cents(answered.budget.spent)}"
           )
           val built = windows.flatMap(_._2.toOption)
           println(
@@ -663,8 +663,8 @@ object Main {
               s"${asked.size}, not asked for want of a case id ${noCase.size}, not built " +
               s"${built.count(_._3.isLeft)}, asked and unanswered or skipped " +
               s"${asks.size - asked.size}",
-            s"Jev: calls ${calls.size}, estimated ${Cost.mills(estimated)}, cap " +
-              s"${Cost.mills(cap)}, spent ${Cost.mills(ran.budget.spent)}",
+            s"Jev: calls ${calls.size}, estimated ${Cost.cents(estimated)}, cap " +
+              s"${Cost.cents(cap)}, spent ${Cost.cents(ran.budget.spent)}",
             s"reference turns: ${reference.turns.size} (labelled ${Reference.labelled(labelled).turns.size})",
             s"windows rebuilt: ${windows.count(_._2.isRight)} of ${windows.size}"
           ) ++ exact ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
@@ -897,7 +897,7 @@ object Main {
       _ = changes(variant, rebuilt)
       _ = println(
         s"calls: ${calls.size} (${cases.size} cases × $repeats); estimated " +
-          s"${Cost.mills(estimated)}, cap ${Cost.mills(cap)}"
+          s"${Cost.cents(estimated)}, cap ${Cost.cents(cap)}"
       )
       budget <- Budget
         .of(cap, estimated)
@@ -948,7 +948,7 @@ object Main {
           .sum
       println(
         s"rows: ${ran.rows.size}; answered ${footer.answered} (cached ${footer.cached}), " +
-          s"failed ${footer.failed}, skipped ${footer.skipped}; spent ${Cost.mills(footer.spent)}"
+          s"failed ${footer.failed}, skipped ${footer.skipped}; spent ${Cost.cents(footer.spent)}"
       )
       println(s"input tokens of the calls asked: reported $reported, estimated $estimatedTokens")
       println(s"log: ${out.getFileName}")
@@ -1367,7 +1367,7 @@ object Main {
       def counted[A](log: Log[A]): String = {
         val footer = log.footer.getOrElse(Footer.of(BigDecimal(0), log.rows))
         s"${log.rows.size} rows: answered ${footer.answered}, failed ${footer.failed}; " +
-          s"spent ${Cost.mills(footer.spent)}"
+          s"spent ${Cost.cents(footer.spent)}"
       }
       println(
         s"live (${Pull.Kept}): questions " +
@@ -1519,7 +1519,7 @@ object Main {
     )
 
   private def refused(r: Budget.Refused): String =
-    s"refused: estimated ${Cost.mills(r.estimated)} is over the cap ${Cost.mills(r.cap)}"
+    s"refused: estimated ${Cost.cents(r.estimated)} is over the cap ${Cost.cents(r.cap)}"
 
   private def decimal(what: String)(v: String): Either[String, BigDecimal] =
     Try(BigDecimal(v)).toOption.filter(_ >= 0).toRight(s"--$what $v: not a non-negative number")

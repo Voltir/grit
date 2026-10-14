@@ -32,7 +32,7 @@ object ReplyNoteTests extends TestSuite {
       ReplyNote.values.toVector.map(_.of(spent(Some(Grade.Strong)))) ==> Vector(
         None,
         Some("strong · test/model at Fireworks"),
-        Some("strong · m$4.2 · test/model at Fireworks")
+        Some("strong · 0.42¢ · test/model at Fireworks")
       )
       ReplyNote.Strength.of(spent(Some(Grade.Strong), upstream = None)) ==>
         Some("strong · test/model")

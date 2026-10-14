@@ -44,7 +44,7 @@ object Cut {
 object SentMarkdown {
 
   /** `sent`, read from the database `from`, as markdown: a header (ids, room, when heard,
-    * models, calls, its cost in m$, and that the requests are its recorded inputs through this
+    * models, calls, its cost in ¢, and that the requests are its recorded inputs through this
     * build's code, the epoch it ran under beside this build's, flagged when they differ); how
     * it got there (stitch, triage, speech, retrieval, every ledger row); the request (the
     * system prompt as sent, the tools offered, the last call's messages numbered by role);
@@ -63,7 +63,7 @@ object SentMarkdown {
     val cost = sent.spent.map(_._2.usage.costUsd)
     val total =
       if (cost.isEmpty || cost.exists(_.isEmpty)) "unpriced"
-      else Cost.mills(cost.flatten.sum)
+      else Cost.cents(cost.flatten.sum)
     val models = sent.spent.map(_._2.model).distinct
     add(
       s"# Turn ${TurnSeq.value(sent.turn.turnSeq)} of ${ConversationId.value(sent.turn.conversationId)}: the context it was sent",
@@ -209,7 +209,7 @@ object SentMarkdown {
       }
       val usage = row.fold("")(s =>
         s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cachedInput)} cached), " +
-          s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Cost.mills)}; "
+          s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Cost.cents)}; "
       )
       val tools = request.use match {
         case grit.core.provider.ToolUse.Auto => "tools on"
@@ -476,6 +476,6 @@ object SentMarkdown {
     }
     s"| `${EntryId.value(entry)}` | $role | `${s.model}` | ${Tokens.value(s.usage.input)} | " +
       s"${Tokens.value(s.usage.cachedInput)} | ${Tokens.value(s.usage.output)} | " +
-      s"${s.usage.costUsd.fold("unpriced")(Cost.mills)} | ${Tokens.value(s.estimated)} |"
+      s"${s.usage.costUsd.fold("unpriced")(Cost.cents)} | ${Tokens.value(s.estimated)} |"
   }
 }

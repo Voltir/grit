@@ -1108,7 +1108,7 @@ object SlackEdgeTests extends TestSuite {
       }
       notes ==> Vector(
         Vector(("hi", Some("strong · test/model at Fireworks"))),
-        Vector(("hi", Some("strong · m$4.2 · test/model at Fireworks")))
+        Vector(("hi", Some("strong · 0.42¢ · test/model at Fireworks")))
       )
     }
 

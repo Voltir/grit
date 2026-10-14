@@ -35,7 +35,7 @@ private[report] object RecipeLines {
       "",
       "Each variant against shipped, paired on the same turns, shipped's window rebuilt as of " +
         "the turn's assembly like the variant's. Text-free: ids, counts, tokens and prices (in " +
-        "millidollars, m$, $0.001). A rate's " +
+        "cents, ¢: $0.001 is 0.1¢). A rate's " +
         "interval is Wilson's at 95% on its effective number, clustered by conversation (a " +
         s"thread), and none under ${Proportion.MinClusters} threads; a per-turn figure is a mean.",
       ""
@@ -102,8 +102,8 @@ private[report] object RecipeLines {
         f"${p.tokens}%.0f",
         if (p.rawCalls == 0) "none"
         else s"${p.raw} estimated in ${p.rawCalls} call${if (p.rawCalls == 1) "" else "s"}",
-        mills(p.effective),
-        s"${p.cached.fold("—")(mills)} to ${mills(p.uncached)}",
+        cents(p.effective),
+        s"${p.cached.fold("—")(cents)} to ${cents(p.uncached)}",
         cut(p, p.effective),
         p.cached.fold("—")(cut(p, _)),
         s"${p.unpriced}"
@@ -242,7 +242,7 @@ private[report] object RecipeLines {
     Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
       rows.map(_.mkString("| ", " | ", " |"))
 
-  private def mills(usd: Double): String = Cost.mills(BigDecimal(usd))
+  private def cents(usd: Double): String = Cost.cents(BigDecimal(usd))
 
   /** A per-token rate in USD as m$ per 1000 tokens, four significant digits. */
   private def perThousand(usd: Double): String = f"${usd * 1e6}%.4g"

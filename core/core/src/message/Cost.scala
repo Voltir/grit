@@ -27,10 +27,10 @@ enum Cost {
     case AtLeast(usd) => s"≥ ${Cost.plain(usd)}"
   }
 
-  /** As [[Cost.mills]] shows its `usd`; `≥ ` first when some call was not priced. */
-  def inMills: String = this match {
-    case Exact(usd) => Cost.mills(usd)
-    case AtLeast(usd) => s"≥ ${Cost.mills(usd)}"
+  /** As [[Cost.cents]] shows its `usd`; `≥ ` first when some call was not priced. */
+  def inCents: String = this match {
+    case Exact(usd) => Cost.cents(usd)
+    case AtLeast(usd) => s"≥ ${Cost.cents(usd)}"
   }
 }
 
@@ -42,21 +42,21 @@ object Cost {
 
   def total(usages: Iterable[Usage]): Cost = usages.foldLeft(Zero)(_ + of(_))
 
-  /** `usd` in millidollars, thousandths of a dollar, written `m$`: two significant digits, but
-    * never fewer than its whole millidollars, trailing zeros dropped, a half rounded away from
-    * zero: `m$2.9` for $0.0029, `m$0.03` for $0.00003, `m$12` for $0.0124, `m$126` for $0.1256,
-    * `m$0`; below 0 with its minus sign first, `-m$2.9`. For display alone: an amount is kept and
-    * summed in exact USD.
+  /** `usd` in cents, written `¢` after the figure: two significant digits, but never fewer than
+    * its whole cents, trailing zeros dropped, a half rounded away from zero: `0.29¢` for $0.0029,
+    * `0.003¢` for $0.00003, `1.2¢` for $0.0124, `13¢` for $0.1256, `126¢` for $1.256, `0¢`; below
+    * 0 with its minus sign first, `-0.29¢`. For display alone: an amount is kept and summed in
+    * exact USD.
     */
-  def mills(usd: BigDecimal): String = {
-    val mills = (usd * 1000).bigDecimal
+  def cents(usd: BigDecimal): String = {
+    val cents = (usd * 100).bigDecimal
     val rounded =
-      if (mills.abs.compareTo(java.math.BigDecimal.TEN) >= 0)
-        mills.setScale(0, RoundingMode.HALF_UP)
-      else mills.round(new MathContext(2, RoundingMode.HALF_UP))
-    if (rounded.signum == 0) "m$0"
-    else if (rounded.signum < 0) s"-m$$${rounded.negate.stripTrailingZeros.toPlainString}"
-    else s"m$$${rounded.stripTrailingZeros.toPlainString}"
+      if (cents.abs.compareTo(java.math.BigDecimal.TEN) >= 0)
+        cents.setScale(0, RoundingMode.HALF_UP)
+      else cents.round(new MathContext(2, RoundingMode.HALF_UP))
+    if (rounded.signum == 0) "0¢"
+    else if (rounded.signum < 0) s"-${rounded.negate.stripTrailingZeros.toPlainString}¢"
+    else s"${rounded.stripTrailingZeros.toPlainString}¢"
   }
 
   private def plain(usd: BigDecimal): String =

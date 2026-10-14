@@ -182,7 +182,7 @@ object Report {
 
   /** A recipes run over `capture`: `notes` (lines on how it ran) first; then each of
     * `variants` against shipped on tools offered (called-tool recall first among them), what
-    * the tools withheld are worth (tokens saved, their effective price in m$ with the range
+    * the tools withheld are worth (tokens saved, their effective price in ¢ with the range
     * from every token cached to none, the hit rate beside it, and how far the cache moves it)
     * and the `prices` they were reckoned with (each model's scale from grit's estimate to the
     * provider's tokens and its rates, each with how it was read, or why it has none); window tokens by part, used-section recall (stated undefined when no reply used a
@@ -408,7 +408,7 @@ object Report {
     Vector(
       s"## Spend and latency${if (which.isEmpty) "" else s": $which"}",
       "",
-      s"spent: ${s.spent.fold("no footer")(MessageCost.mills)}; rows ${s.rows}: answered " +
+      s"spent: ${s.spent.fold("no footer")(MessageCost.cents)}; rows ${s.rows}: answered " +
         s"${s.counts.answered} (cached ${s.counts.cached}), failed ${s.counts.failed}, " +
         s"skipped ${s.counts.skipped}",
       s"tokens of the rows answered: input ${s.input}, output ${s.output}",
@@ -699,7 +699,7 @@ object Report {
   private def size(run: String, s: Size): String = {
     def per(p: Option[PerCall], f: Double => String) =
       p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
-    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => MessageCost.mills(BigDecimal(x)))} |"
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => MessageCost.cents(BigDecimal(x)))} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"

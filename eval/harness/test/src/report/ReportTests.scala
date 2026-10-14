@@ -130,11 +130,11 @@ object ReportTests extends TestSuite {
     test("a turns report's lines run most costly first, each with its top parts by support") {
       val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
       report.dropWhile(_ != "## Turns by cost").drop(6) ==> Vector(
-        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 62 | 100 / 80 | m$6 | — |",
-        "| w4 | slack | addressed | open | replied 90 | 0 | — | 84 | 200 / 100 | m$4.5 | recent 0.20, recalled 0.00 |",
-        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 66 | 50 / 0 | m$2 | open 0.50, closed 0.10 |",
-        "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | m$0 | — |",
-        "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | m$0 | — |"
+        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 62 | 100 / 80 | 0.6¢ | — |",
+        "| w4 | slack | addressed | open | replied 90 | 0 | — | 84 | 200 / 100 | 0.45¢ | recent 0.20, recalled 0.00 |",
+        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 66 | 50 / 0 | 0.2¢ | open 0.50, closed 0.10 |",
+        "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | 0¢ | — |",
+        "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | 0¢ | — |"
       )
     }
 
@@ -256,8 +256,8 @@ object ReportTests extends TestSuite {
       report.slice(size + 2, size + 6) ==> Vector(
         "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
         "|---|---|---|---|---|---|",
-        "| A | 4 | 700 | 700 | m$0.04 | m$0.04 |",
-        "| B | 4 | 900 | 900 | m$0.04 | m$0.04 |"
+        "| A | 4 | 700 | 700 | 0.004¢ | 0.004¢ |",
+        "| B | 4 | 900 | 900 | 0.004¢ | 0.004¢ |"
       )
     }
 

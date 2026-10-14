@@ -940,17 +940,17 @@ object ChatScreenTests extends TestSuite {
       )
       val again = summarised.message(Msg.Spent(TurnSeq(0), spend("0.0051")))
       Vector(rows(spent), rows(again)) ==> Vector(
-        Vector("▌ᛗ one", "▌ᚨ first reply", "m$4.2 · test/model at Fireworks", "▌ᛗ two"),
+        Vector("▌ᛗ one", "▌ᚨ first reply", "0.42¢ · test/model at Fireworks", "▌ᛗ two"),
         Vector(
           "▌ᛗ one",
           "▌ᚨ first reply",
-          "m$5.1 · test/model at Fireworks",
+          "0.51¢ · test/model at Fireworks",
           "ᛚ said one",
           "▌ᛗ two"
         )
       )
-      val at = again.screen.indexWhere(_.contains("m$5.1"))
-      val col = again.screen.lift(at).map(_.indexOf("m$5.1")).getOrElse(0)
+      val at = again.screen.indexWhere(_.contains("0.51¢"))
+      val col = again.screen.lift(at).map(_.indexOf("0.51¢")).getOrElse(0)
       again.painted._1.surface.at(at, col).style.fg ==> Some(Theme.Default.faint)
     }
 

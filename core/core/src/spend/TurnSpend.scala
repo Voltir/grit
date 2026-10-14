@@ -16,8 +16,8 @@ final case class TurnSpend private (cost: Cost, answer: Option[UsageLedger.Row])
   def served: Option[String] =
     answer.map(row => row.model + row.upstream.fold("")(u => s" at $u"))
 
-  /** `m$4.2 · <served>` ([[Cost.inMills]]); the cost alone when the turn gave no answer. */
-  def line: String = (cost.inMills +: served.toVector).mkString(" · ")
+  /** `0.42¢ · <served>` ([[Cost.inCents]]); the cost alone when the turn gave no answer. */
+  def line: String = (cost.inCents +: served.toVector).mkString(" · ")
 
   /** Whether the answer was made at a grade above `grade`; false with no answer, or one
     * recorded with no grade.
