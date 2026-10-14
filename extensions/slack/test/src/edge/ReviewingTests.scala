@@ -127,6 +127,7 @@ object ReviewingTests extends TestSuite {
         new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
       ),
       Some(Review),
+      grit.slack.edge.ReplyNote.Off,
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )

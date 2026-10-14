@@ -8,7 +8,7 @@ import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
 import grit.core.visibility.Group
 import grit.kit.deployment.Offered
-import grit.slack.edge.{Backfill, SlackAccounts, SlackCommand, SlackEdge}
+import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
 
 import utest.*
@@ -88,7 +88,7 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             Map.empty,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Backfill.Default)),
+            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -126,7 +126,7 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             env,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Backfill.Default)),
+            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -181,6 +181,19 @@ object ServeChoiceTests extends TestSuite {
         Right("/acme"),
         Left("GRIT_SLACK_COMMAND: acme: a slash command is / then 1 to 32 of a-z, 0-9, - and _")
       )
+    }
+
+    test(
+      "the reply note is GRIT_SLACK_REPLY_NOTE, strength when unset, each word its note, any other refused naming the words"
+    ) {
+      Vector(None, Some("off"), Some(" strength-cost "), Some("cost"))
+        .map(v => Main.replyNote(v.fold(Map.empty)(w => Map("GRIT_SLACK_REPLY_NOTE" -> w)))) ==>
+        Vector(
+          Right(ReplyNote.Strength),
+          Right(ReplyNote.Off),
+          Right(ReplyNote.StrengthAndCost),
+          Left("GRIT_SLACK_REPLY_NOTE is one of off, strength, strength-cost, not 'cost'")
+        )
     }
 
     test(

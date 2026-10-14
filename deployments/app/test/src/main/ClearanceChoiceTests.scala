@@ -4,7 +4,7 @@ import grit.core.model.{Policy, Upstream}
 import grit.core.visibility.{Cleared, Compartments, Party}
 import grit.kit.deployment.Offered
 import grit.models.{JevClassifier, OpenRouterConfig, Seed, StubClassifier, StubModels}
-import grit.slack.edge.{Backfill, SlackCommand, SlackEdge}
+import grit.slack.edge.{Backfill, ReplyNote, SlackCommand, SlackEdge}
 import grit.slack.event.TeamId
 
 import utest.*
@@ -47,7 +47,7 @@ object ClearanceChoiceTests extends TestSuite {
           .deployment(
             env,
             Offered.Read,
-            Vector(SlackEdge.serving(grit, Backfill.Default)),
+            Vector(SlackEdge.serving(grit, Backfill.Default, ReplyNote.Off)),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn

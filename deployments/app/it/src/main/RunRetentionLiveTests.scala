@@ -164,6 +164,7 @@ object RunRetentionLiveTests extends TestSuite {
             new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
           ),
           None,
+          grit.slack.edge.ReplyNote.Off,
           clock,
           _ => ()
         )

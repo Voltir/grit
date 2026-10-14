@@ -65,6 +65,7 @@ private[slack] object Served {
       backfill: Backfill,
       posting: Option[Rate],
       review: Option[SlackReview],
+      note: ReplyNote,
       connect: Connect^,
       start: Backfilling.Start
   ): ServedEdge^{connect} = new ServedEdge {
@@ -96,7 +97,7 @@ private[slack] object Served {
                 )
               )
             case Right(self) =>
-              val edge = new SlackEdge(slack, self, stores, review, clock, log)
+              val edge = new SlackEdge(slack, self, stores, review, note, clock, log)
               edge.reconcile() match {
                 case Left(why) =>
                   slack.close()
@@ -249,7 +250,7 @@ private[slack] object Served {
                 slack.close()
                 Left(refusedToken(e))
               case Right(self) =>
-                val edge = new SlackEdge(slack, self, stores, None, clock, log)
+                val edge = new SlackEdge(slack, self, stores, None, ReplyNote.Off, clock, log)
                 val from = clock.now().minus(Duration.ofDays(days.toLong))
                 val sorted = edge.reconcile() match {
                   case Left(why) => Left(EdgeRefusal.Refused(why))

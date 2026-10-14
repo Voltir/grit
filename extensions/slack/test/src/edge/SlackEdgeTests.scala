@@ -31,7 +31,8 @@ import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
-import grit.core.spend.{Budget, DailyCap}
+import grit.core.model.Grade
+import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{
   Compartments,
@@ -63,6 +64,21 @@ object SlackEdgeTests extends TestSuite {
         TestTx.fake
       )
   }
+
+  /** Spending whose every read fails, as a database that is down does. */
+  private object Unspendable extends Spending {
+    private val down = StoreError.DatabaseError("down")
+    def on(day: Day)(using Tx^): Either[StoreError, Spend] = Left(down)
+    def conversation(id: grit.core.id.ConversationId)(using Tx^): Either[StoreError, Spend] =
+      Left(down)
+    def turn(turn: TurnRef)(using Tx^): Either[StoreError, TurnSpend] = Left(down)
+  }
+
+  /** The text of `post`'s note, when its last block is one. */
+  private def noteOf(post: grit.slack.text.Post): Option[String] =
+    post.blocks.value.lastOption
+      .filter(_.obj.get("type").map(_.str).contains("context"))
+      .map(_("elements")(0)("text").str)
 
   private val C = ChannelId("C123ABC456")
 
@@ -99,7 +115,9 @@ object SlackEdgeTests extends TestSuite {
       budget: Budget = Budget(ZoneOffset.UTC, None),
       staff: Boolean = false,
       review: Option[SlackReview] = None,
-      reconciled: Boolean = true
+      reconciled: Boolean = true,
+      note: ReplyNote = ReplyNote.Off,
+      spendReadable: Boolean = true
   ) {
     val slack = new FakeSlack
     private val voucher =
@@ -120,6 +138,21 @@ object SlackEdgeTests extends TestSuite {
         "m",
         None,
         None,
+        usage,
+        Tokens(1)
+      )(using TestTx.fake)
+    }
+
+    /** Records `turn`'s reply as costing `usd`, made by `test/model` at Fireworks at `grade`. */
+    def answered(turn: TurnRef, grade: Option[Grade], usd: String): Unit = {
+      val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(usd)))
+      val _ = inbox.ledger.record(
+        turn.replyId,
+        turn,
+        turn.workflowId,
+        "test/model",
+        Some("Fireworks"),
+        grade,
         usage,
         Tokens(1)
       )(using TestTx.fake)
@@ -147,7 +180,7 @@ object SlackEdgeTests extends TestSuite {
           joins,
           inbox.principals,
           deliveries,
-          inbox.ledger,
+          if (spendReadable) inbox.ledger else Unspendable,
           acknowledgements,
           InMemoryReviews.over(inbox),
           FakeJot,
@@ -155,6 +188,7 @@ object SlackEdgeTests extends TestSuite {
           new Attesting(voucher, FakeJot, _ => ())
         ),
         review,
+        note,
         Stopped,
         s => logged = logged :+ s
       )
@@ -1058,6 +1092,53 @@ object SlackEdgeTests extends TestSuite {
         (Ts("1.0"), "one"),
         (Ts("2.0"), "two")
       )
+    }
+
+    test(
+      "a reply answered above standard is noted as the deployment chose: its strength, or its strength and spend"
+    ) {
+      val notes = Vector(ReplyNote.Strength, ReplyNote.StrengthAndCost).map { chosen =>
+        val w = new World(note = chosen)
+        w.slack.deliver(mention("1.0"))
+        val t = w.turn("1.0", "1.0")
+        w.answered(t, Some(Grade.Strong), "0.0042")
+        w.inbox.finish(t, Some(reply("hi")), "replied")
+        w.first.deliver() ==> Right(1)
+        w.slack.posts.map(p => (p.post.fallback, noteOf(p.post)))
+      }
+      notes ==> Vector(
+        Vector(("hi", Some("strong · test/model at Fireworks"))),
+        Vector(("hi", Some("strong · m$4.2 · test/model at Fireworks")))
+      )
+    }
+
+    test("a reply answered at standard, with no grade recorded, or with the note off is not noted") {
+      val cases = Vector(
+        ReplyNote.StrengthAndCost -> Some(Grade.Standard),
+        ReplyNote.StrengthAndCost -> None,
+        ReplyNote.Off -> Some(Grade.Strong)
+      )
+      cases.map { (chosen, grade) =>
+        val w = new World(note = chosen)
+        w.slack.deliver(mention("1.0"))
+        val t = w.turn("1.0", "1.0")
+        w.answered(t, grade, "0.0042")
+        w.inbox.finish(t, Some(reply("hi")), "replied")
+        w.first.deliver() ==> Right(1)
+        w.slack.posts.map(p => noteOf(p.post))
+      } ==> Vector.fill(3)(Vector(None))
+    }
+
+    test("a reply whose spend cannot be read is posted without its note, which is said") {
+      val w = new World(note = ReplyNote.StrengthAndCost, spendReadable = false)
+      w.slack.deliver(mention("1.0"))
+      val t = w.turn("1.0", "1.0")
+      w.answered(t, Some(Grade.Strong), "0.0042")
+      w.inbox.finish(t, Some(reply("hi")), "replied")
+      w.logged = Vector.empty
+      w.first.deliver() ==> Right(1)
+      w.slack.posts.map(p => (p.post.fallback, noteOf(p.post))) ==> Vector(("hi", None))
+      w.logged.filter(_.contains("without its note")).size ==> 1
     }
 
     test("a post Slack refuses leaves its part posting, and the next pass finishes it") {

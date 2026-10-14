@@ -58,7 +58,7 @@ import grit.models.{
   StubProvider
 }
 import grit.remind.Reminders
-import grit.slack.edge.{Backfill, SlackAccounts, SlackCommand, SlackEdge}
+import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
@@ -124,7 +124,9 @@ import grit.turn.{Turn, TurnLoop}
   *     the join, for at most `GRIT_BACKFILL_JOINS_PER_DAY` (default 10) joins a day, and none
   *     while the day's spend is over `GRIT_DAILY_USD` ([[backfill]], [[Backfill]]). It answers the slash command
   *     `GRIT_SLACK_COMMAND` names (default `/grit`, as registered for the Slack app) to its
-  *     asker alone ([[SlackEdge.command]]); the Slack users `GRIT_ADMINS` names (ids,
+  *     asker alone ([[SlackEdge.command]]), and notes under a reply answered above standard what
+  *     `GRIT_SLACK_REPLY_NOTE` says ([[replyNote]]: `off`, `strength` by default, or
+  *     `strength-cost`); the Slack users `GRIT_ADMINS` names (ids,
   *     comma-separated) administer ([[visibility]]), and with none it says at start that no one
   *     can lower a room's label or label a public channel. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
@@ -181,7 +183,13 @@ object Main {
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
       (if (slack)
-         Vector(SlackEdge.serving(exitOnLeft(slackCommand(env)), exitOnLeft(backfill(env))))
+         Vector(
+           SlackEdge.serving(
+             exitOnLeft(slackCommand(env)),
+             exitOnLeft(backfill(env)),
+             exitOnLeft(replyNote(env))
+           )
+         )
        else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
@@ -725,6 +733,23 @@ object Main {
     */
   private[main] def slackCommand(env: Map[String, String]): Either[String, SlackCommand] =
     SlackCommand.of(env.getOrElse(CommandVar, "/grit")).left.map(why => s"$CommandVar: $why")
+
+  /** The variable naming what `grit serve`'s Slack edge notes under a reply ([[ReplyNote]]). */
+  private val NoteVar = "GRIT_SLACK_REPLY_NOTE"
+
+  /** The note `env` names ([[NoteVar]]), [[ReplyNote.Default]] when unset; why not, naming the
+    * variable and the words, when it names none.
+    */
+  private[main] def replyNote(env: Map[String, String]): Either[String, ReplyNote] =
+    env.get(NoteVar) match {
+      case None => Right(ReplyNote.Default)
+      case Some(raw) =>
+        ReplyNote
+          .named(raw.trim)
+          .toRight(
+            s"$NoteVar is one of ${ReplyNote.values.map(_.word).mkString(", ")}, not '$raw'"
+          )
+    }
 
   /** The variable naming the Slack users who administer grit: their ids, comma-separated. */
   private val AdminsVar = "GRIT_ADMINS"

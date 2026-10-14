@@ -31,6 +31,24 @@ object RichText extends Renderer[Vector[Post]] {
   def render(doc: Doc): Vector[Post] =
     posts(doc.blocks.flatMap(block).flatMap(fit))
 
+  /** `posts` with `line` as a context block, in plain text, after the last post's blocks; in a
+    * post of its own, whose plain text it is, when the last has [[MaxBlocks]]; `posts` as they
+    * are when empty. A post's plain text (its notification) is otherwise unchanged.
+    */
+  def noted(posts: Vector[Post], line: String): Vector[Post] = {
+    val note = ujson.Obj(
+      "type" -> "context",
+      "elements" -> ujson.Arr(ujson.Obj("type" -> "plain_text", "text" -> line))
+    )
+    posts.lastOption match {
+      case None => posts
+      case Some(last) if last.blocks.value.size >= MaxBlocks =>
+        posts :+ Post(ujson.Arr(note), escaped(line))
+      case Some(last) =>
+        posts.init :+ last.copy(blocks = ujson.Arr.from(last.blocks.value :+ note))
+    }
+  }
+
   /** `text` with `&`, `<` and `>` written as Slack's mrkdwn escapes them, so a message's
     * plain text reads as written: nothing in it becomes a mention, a broadcast or a link.
     */

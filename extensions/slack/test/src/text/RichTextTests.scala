@@ -175,6 +175,23 @@ object RichTextTests extends TestSuite {
       assert(posts.forall(_.fallback.length <= RichText.MaxChars))
     }
 
+    test(
+      "a noted reply ends with the line as a plain-text context block in its last post; in a post of its own when that one is full; no posts, none added"
+    ) {
+      val note = ujson.Obj(
+        "type" -> "context",
+        "elements" -> ujson.Arr(ujson.Obj("type" -> "plain_text", "text" -> "strong · <m>"))
+      )
+      val two = RichText.render(Doc(Vector.fill(RichText.MaxBlocks + 1)(para("x"))))
+      val noted = RichText.noted(two, "strong · <m>")
+      (noted.map(_.blocks.value.size), noted.last.blocks.value.last, noted.map(_.fallback)) ==>
+        (Vector(RichText.MaxBlocks, 2), note, two.map(_.fallback))
+      val full = RichText.render(Doc(Vector.fill(RichText.MaxBlocks)(para("x"))))
+      RichText.noted(full, "strong · <m>").map(_.blocks.value.toVector) ==>
+        Vector(full.head.blocks.value.toVector, Vector(note))
+      RichText.noted(Vector.empty, "strong · <m>") ==> Vector.empty
+    }
+
     test("an empty reply is no post") {
       RichText.render(Doc.empty) ==> Vector.empty
     }

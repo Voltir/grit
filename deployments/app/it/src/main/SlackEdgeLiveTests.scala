@@ -63,6 +63,7 @@ object SlackEdgeLiveTests extends TestSuite {
         new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
       ),
       None,
+      grit.slack.edge.ReplyNote.Off,
       grit.core.clock.Clock.system(),
       _ => ()
     )
@@ -132,6 +133,7 @@ object SlackEdgeLiveTests extends TestSuite {
         new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
       ),
       None,
+      grit.slack.edge.ReplyNote.Off,
       grit.core.clock.Clock.system(),
       _ => ()
     )

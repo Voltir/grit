@@ -168,6 +168,7 @@ object SlackCommandingTests extends TestSuite {
           new Attesting(voucher, FakeJot, _ => ())
         ),
         None,
+        grit.slack.edge.ReplyNote.Off,
         Stopped,
         s => logged = logged :+ s
       )

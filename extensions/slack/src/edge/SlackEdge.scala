@@ -37,14 +37,16 @@ import grit.slack.text.{Incoming, Post, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
   * the stores alone; grit being `self` in the workspace, answering `review` when one is
-  * given; `clock` dates the marks it puts up and takes down. `said` is told what it did that a
-  * person running it may want to read.
+  * given, and noting under each reply it delivers what `note` says ([[ReplyNote]]); `clock`
+  * dates the marks it puts up and takes down. `said` is told what it did that a person running
+  * it may want to read.
   */
 final class SlackEdge(
     slack: Slack,
     self: Self,
     stores: EdgeStores^,
     review: Option[SlackReview],
+    note: ReplyNote,
     clock: Clock^,
     said: String => Unit
 ) {
@@ -1030,6 +1032,7 @@ final class SlackEdge(
     * scheduled run's is not, its start being the clock's ([[InboxError.SlotRun]]). Each
     * finished turn has its reply posted to its thread, in as many messages as [[RichText]]
     * makes of it (one line saying grit could not answer, and why, when it ended with none),
+    * its note after the last ([[ReplyNote.of]]; none, and said, when its spend cannot be read),
     * and `:eyes:` removed from the message it answers, which clears its acknowledgement. A part
     * left posting by a crash is looked for by its tag first, and posted only when Slack does
     * not have it. A part Slack refuses stays posting, for the next pass. How many turns it
@@ -1055,6 +1058,19 @@ final class SlackEdge(
       }
     }
 
+  /** `parts` with `p`'s note after them when its reply is noted ([[ReplyNote.of]]); as they are
+    * when it has no reply, or its turn's spend cannot be read, which is said.
+    */
+  private def noted(p: Pending, reply: Option[Message.Assistant], parts: Vector[Post]): Vector[Post] =
+    if (reply.isEmpty || note == ReplyNote.Off) parts
+    else
+      stores.jot.write(Subject.Turn(p.turn))(stores.spending.turn(p.turn)) match {
+        case Right(spend) => note.of(spend).fold(parts)(RichText.noted(parts, _))
+        case Left(e) =>
+          said(s"slack: ${WorkflowId.value(p.turn.workflowId)} posted without its note: $e")
+          parts
+      }
+
   /** Posts `p`'s reply, part by part; whether all of it is posted and the turn delivered. */
   private def post(p: Pending, reply: Option[Message.Assistant], outcome: String): Boolean =
     Address.read(p.to) match {
@@ -1064,7 +1080,7 @@ final class SlackEdge(
         )
         false
       case Some(to) =>
-        val parts = posts(reply, outcome)
+        val parts = noted(p, reply, posts(reply, outcome))
         val all = parts.zipWithIndex.forall { (part, i) =>
           val tag = Tag.Reply(WorkflowId.value(p.turn.workflowId), i)
           val there: Either[SlackError, Boolean] = p.parts.get(i) match {
@@ -1131,10 +1147,11 @@ object SlackEdge {
     * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a
     * deployment trusts it there, it says who each account is as Slack states it
     * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
-    * the workspace's users once when any account is due.
+    * the workspace's users once when any account is due. Each reply it delivers is noted as
+    * `note` says ([[ReplyNote]]).
     */
-  def serving(command: SlackCommand, backfill: Backfill): ServedEdge =
-    serving(command, backfill, None, None)
+  def serving(command: SlackCommand, backfill: Backfill, note: ReplyNote): ServedEdge =
+    serving(command, backfill, None, None, note)
 
   /** As [[serving]], posting when `posting` is given, and answering `review` when given.
     * With `posting`, it serves `slack_post` at [[PostsAt]]'s place, in every channel its bot is
@@ -1155,9 +1172,10 @@ object SlackEdge {
       command: SlackCommand,
       backfill: Backfill,
       posting: Option[Rate],
-      review: Option[SlackReview]
+      review: Option[SlackReview],
+      note: ReplyNote
   ): ServedEdge =
-    Served.serving(command, backfill, posting, review, Socket, Backfilling.Virtual)
+    Served.serving(command, backfill, posting, review, note, Socket, Backfilling.Virtual)
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].

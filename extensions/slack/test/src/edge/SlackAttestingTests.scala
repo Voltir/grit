@@ -97,6 +97,7 @@ object SlackAttestingTests extends TestSuite {
           new Attesting(voucher, FakeJot, r => reported = reported :+ r)
         ),
         None,
+        grit.slack.edge.ReplyNote.Off,
         grit.core.clock.Clock.system(),
         s => logged = logged :+ s
       )
