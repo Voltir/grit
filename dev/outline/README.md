@@ -27,7 +27,8 @@ Those lines are not file text.
 
 **uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
 filter by path prefix. `X.apply` (or `X.new`), for a class with no `apply` in source, finds its
-construction sites: `X(…)` and `new X(…)`.
+construction sites: `X(…)` and `new X(…)`. Sites are grouped by file (`== file`), then by the
+definition holding them: an `in <owner>` line, then each site as its line number and source line.
 
     scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]
 

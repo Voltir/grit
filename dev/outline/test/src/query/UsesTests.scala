@@ -72,6 +72,21 @@ object UsesTests extends TestSuite {
     }
 
     test(
+      "uses names an owner once, then each of its sites: StoreSuite.run's two gets under one line"
+    ) {
+      val (answer, _) = uses(s"$storePackage.Store.get")
+      val lines = answer.text.linesIterator.toVector
+      assert(lines.count(_ == "  in StoreSuite.run") == 1)
+      val at = lines.indexOf("  in StoreSuite.run")
+      assert(
+        lines.slice(at + 1, at + 3) == Vector(
+          "    70  assert(fresh().put(\"k\", \"v\").get(\"k\") == Some(\"v\"))",
+          "    73  assert(fresh().get(\"x\").isEmpty)"
+        )
+      )
+    }
+
+    test(
       "a call split across lines is a site on its name's line: its text is that line, and its enclosing definition is Caller.split"
     ) {
       val storeTasty = Locate.inPackageOf(
@@ -163,8 +178,15 @@ object UsesTests extends TestSuite {
       "the uses of Limits.of include the 2-argument overload's call on line 28, which targets the 3-argument of on line 31"
     ) {
       val (answer, _) = uses("grit.outline.fixture.Limits.of")
-      assert(answer.text.linesIterator.exists(_.contains("28  in Limits.of")))
-      assert(answer.text.contains("[→ of :31]"))
+      val lines = answer.text.linesIterator.toVector
+      assert(
+        lines.containsSlice(
+          Vector(
+            "  in Limits.of",
+            "    28 [→ of :31]  def of(asks: Int, calls: Int): Either[String, Limits] = of(asks, calls, 0)"
+          )
+        )
+      )
     }
 
     test(
