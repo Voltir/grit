@@ -104,7 +104,7 @@ object Read {
         SourceText(
           if (path.startsWith(prefix)) os.read(os.Path(path))
           else {
-            foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+            foreign += s"a source file recorded at '$path' is outside ${root.dir}: $builtElsewhere"
             ""
           }
         )
@@ -553,7 +553,7 @@ object Read {
         }
         for (tasty <- tastys) {
           if (!tasty.ast.pos.sourceFile.path.startsWith(prefix))
-            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+            foreign += s"${tasty.path} records its source at ${tasty.ast.pos.sourceFile.path}, outside ${root.dir}: $builtElsewhere"
         }
         if (wantDefns) {
           val (kept, failed) = traverseUnits(tastys.toVector, unit)
@@ -691,6 +691,12 @@ object Read {
   }
 
   /** The start of the head of a definition whose span runs past the end of its current source: a `--` line, so not file text. */
+  /** How a read's failure ends when the build output was written in another checkout, a failure of every file alike. */
+  val builtElsewhere: String = "this out/ was built in another checkout; rebuild it here"
+
+  /** `text` without terminal colour and cursor codes, as the compiler's reporter writes them. */
+  def plain(text: String): String = text.replaceAll("\u001b\\[[0-9;?]*[A-Za-z]", "")
+
   private[read] val pastTheEndNote = "-- not file text, past the end of the source: "
 
   /** A source file's text, with where each of its lines starts, so that a line is found without rescanning the text. */
@@ -795,7 +801,11 @@ object Read {
   /** What the inspector printed is never shown: its first three non-blank lines, each cut to 200 characters, name the failure. */
   private def complaint(captured: ByteArrayOutputStream, files: Int): String = {
     val lines =
-      captured.toString.linesIterator.filter(_.trim.nonEmpty).take(3).map(_.take(200)).toVector
+      plain(captured.toString).linesIterator
+        .filter(_.trim.nonEmpty)
+        .take(3)
+        .map(_.take(200))
+        .toVector
     s"the TASTy inspector could not read $files file(s): ${lines.mkString("\n")}"
   }
 }

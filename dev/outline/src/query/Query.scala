@@ -946,21 +946,7 @@ object Query {
     val (defns, next, failed) = bisect(root, layout, tasty, in)
     val remembered = Loaded.remembered(tasty, next)
     val named = tasty.filter(p => remembered.contains(p) || failed.exists(_._1 == p))
-    val notes =
-      if (named.isEmpty) Vector.empty
-      else {
-        val cause = failed.headOption.fold("") { case (_, complaint) =>
-          val line = captured(complaint)
-          if (line.isEmpty) "" else s" ($line)"
-        }
-        val files = named.map { p =>
-          val name = relativePath(root, layout, p)
-          next.unreadable.get(p).fold(name) { message =>
-            s"$name (${message.takeWhile(_ != '\n').take(160)})"
-          }
-        }
-        Vector(s"-- not loaded: ${files.mkString(", ")}$cause")
-      }
+    val notes = notLoaded(root, layout, named, next, failed.headOption.map(_._2)).toVector
     (defns, next, notes)
   }
 
@@ -983,6 +969,27 @@ object Query {
     }
 
   /** The first line the inspector captured, from a read's complaint, cut at 160 characters; empty when it captured none. */
+  /** The one line naming `files`, which the inspector could not read, each with the first line of its message in
+    * `loaded`, then `complaint`'s cause when there is one; none for no file.
+    */
+  private def notLoaded(
+      root: Root,
+      layout: Layout,
+      files: Vector[os.Path],
+      loaded: Loaded,
+      complaint: Option[String]
+  ): Option[String] =
+    Option.when(files.nonEmpty) {
+      val cause = complaint.map(captured).filter(_.nonEmpty).fold("")(line => s" ($line)")
+      val named = files.map { p =>
+        val name = relativePath(root, layout, p)
+        loaded.unreadable.get(p).fold(name) { message =>
+          s"$name (${Read.plain(message).takeWhile(_ != '\n').take(160)})"
+        }
+      }
+      s"-- not loaded: ${named.mkString(", ")}$cause"
+    }
+
   private def captured(complaint: String): String =
     complaint.takeWhile(_ != '\n').dropWhile(_ != ':').drop(1).trim.take(160)
 
@@ -1047,11 +1054,23 @@ object Query {
   ): (Answer, Roots) = {
     val (answer, next) =
       query(Roots.put(roots, root, Roots.of(roots, root).copy(consulted = Set.empty)))
-    staleLine(root, layout, Roots.of(next, root)) match {
-      case Some(line) if answer.text.startsWith("## root") =>
-        val (first, rest) = answer.text.span(_ != '\n')
-        (answer.copy(text = s"$first\n$line$rest"), next)
-      case _ => (answer, next)
+    val loaded = Roots.of(next, root)
+    // The files this query asked for that the inspector could not read, named once whichever query read them.
+    val unread =
+      if (answer.text.linesIterator.exists(_.startsWith("-- not loaded:"))) None
+      else
+        notLoaded(
+          root,
+          layout,
+          Loaded.remembered(loaded.consulted.toVector.sortBy(_.toString), loaded),
+          loaded,
+          None
+        )
+    val lines = staleLine(root, layout, loaded).toVector ++ unread
+    if (lines.isEmpty || !answer.text.startsWith("## root")) (answer, next)
+    else {
+      val (first, rest) = answer.text.span(_ != '\n')
+      (answer.copy(text = s"$first\n${lines.mkString("\n")}$rest"), next)
     }
   }
 

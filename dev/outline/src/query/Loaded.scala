@@ -29,7 +29,7 @@ object Loaded {
   /** The `.tasty` files one inspector run reads, for definitions and for `uses`: a run holds every tree it read until it ends. In runs of 800, `uses grit.core.model.UsageLedger.of` (resolved by last segment, so reading nearly every package) ran the CLI's 512 MB heap through full collections; in runs of 400 the qualified `grit.core.store.UsageLedger.of` needs none. */
   val readBatch: Int = 400
 
-  /** `tasty`'s definitions, reading (in runs of `readBatch` files) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
+  /** `tasty`'s definitions, reading (in runs of `readBatch` files) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. A file the inspector cannot read is left out and remembered as failed (`remembered`), the rest read. */
   def defns(
       root: Root,
       layout: Layout,
@@ -40,9 +40,7 @@ object Loaded {
     stale
       .grouped(readBatch)
       .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
-        acc.flatMap(state =>
-          Read.defnsByTasty(root, layout, batch).map(read => withDefns(state, batch, read))
-        )
+        acc.flatMap(state => splitting(batch, state)(Read.defnsByTasty(root, layout, _), withDefns))
       }
       .map { next =>
         val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
@@ -63,19 +61,19 @@ object Loaded {
     )
   }
 
-  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in runs of `readBatch` files) only files absent from the index or changed since they were indexed; each run reads those files' definitions too, cached as `defns` caches them; the new cache; how many files were read. */
+  /** Every reference in `tasty` to a member of a class or package defined in source under `root`, reading (in runs of `readBatch` files) only files absent from the index or changed since they were indexed; each run reads those files' definitions too, cached as `defns` caches them; the new cache; how many files were read. A file the inspector cannot read is left out and remembered as failed, as `defns` leaves it. */
   def uses(
       root: Root,
       layout: Layout,
       tasty: Vector[os.Path],
       in: Loaded
   ): Either[String, (Vector[Use], Loaded, Int)] = {
-    val stale = tasty.filter(p => !indexedAt(in, p))
+    val stale = tasty.filter(p => !(indexedAt(in, p) || failedAt(in, p)))
     stale
       .grouped(readBatch)
       .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
         acc.flatMap(state =>
-          Read.definitionsAndReferences(root, layout, batch).map(both => absorb(state, batch, both))
+          splitting(batch, state)(Read.definitionsAndReferences(root, layout, _), absorb)
         )
       }
       .map { next =>
@@ -91,6 +89,29 @@ object Loaded {
       index.updated(p, Indexed(os.mtime(p), both.uses.getOrElse(p, Vector.empty)))
     })
   }
+
+  /** `batch` read by `read` into `in` by `keep`, split in halves while a read of more than one file fails, so a file the
+    * inspector cannot read fails alone and the rest are kept; each such file is remembered as failed at its mtime, with
+    * its message in `unreadable`. `Left` only for a failure of every file alike (`Read.builtElsewhere`).
+    */
+  private def splitting[A](batch: Vector[os.Path], in: Loaded)(
+      read: Vector[os.Path] => Either[String, A],
+      keep: (Loaded, Vector[os.Path], A) => Loaded
+  ): Either[String, Loaded] =
+    read(batch) match {
+      case Right(a) => Right(keep(in, batch, a))
+      case Left(message) if message.contains(Read.builtElsewhere) => Left(message)
+      case Left(message) if batch.sizeIs <= 1 =>
+        val failed = withFailures(batch, in)
+        Right(
+          failed.copy(unreadable =
+            batch.foldLeft(failed.unreadable)(_.updated(_, Read.plain(message)))
+          )
+        )
+      case Left(_) =>
+        val (left, right) = batch.splitAt(batch.size / 2)
+        splitting(left, in)(read, keep).flatMap(splitting(right, _)(read, keep))
+    }
 
   /** The files of `tasty` that failed at their current mtime, so are not read again by `defns`. */
   def remembered(tasty: Vector[os.Path], in: Loaded): Vector[os.Path] =

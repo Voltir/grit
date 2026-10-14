@@ -219,7 +219,47 @@ object QueryTests extends TestSuite {
       val (defns, _, notes) = Query.loadAll(root, layout, tasty, Loaded.empty)
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
       assert(notes.size == 1)
-      assert(notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty")
+      assert(notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+    }
+
+    test(
+      "a .tasty the inspector cannot read fails no query: uses answers from the rest, naming it in one line"
+    ) {
+      val classes = os.temp.dir(prefix = "outline-unreadable-") / "classes"
+      os.copy(
+        root.dir / "out" / "grit" / "outline" / "fixture" / "compile.dest" / "classes",
+        classes,
+        createFolders = true
+      )
+      os.write(classes / "grit" / "outline" / "fixture" / "Bad.tasty", "not a tasty file")
+      val layout = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
+        def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def moduleOf(root: Root, classesDir: os.Path): String = "m"
+        def compile(modules: Vector[String]): String = "compile"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val (answer, _) = Query.uses(
+        root,
+        layout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("grit.outline.fixture.Limits.of"),
+        None,
+        None,
+        80000
+      )
+      assert(answer.status == Status.Found)
+      val notes = answer.text.linesIterator.filter(_.startsWith("-- not loaded:")).toVector
+      assert(
+        notes.size == 1,
+        notes.headOption.exists(
+          _.startsWith("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+        )
+      )
+      assert(!answer.text.contains("\u001b"))
     }
 
     test(
@@ -304,11 +344,15 @@ object QueryTests extends TestSuite {
       }
       val tasty = os.walk(classes).filter(_.ext == "tasty").toVector
       val (_, first, firstNotes) = Query.loadAll(root, layout, tasty, Loaded.empty)
-      assert(firstNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
+      assert(
+        firstNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+      )
       assert(first.failed.keySet == Set(bad))
       val (defns, second, secondNotes) = Query.loadAll(root, layout, tasty, first)
       assert(Loaded.defns(root, layout, tasty, second).map(_._3) == Right(0))
-      assert(secondNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
+      assert(
+        secondNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+      )
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
     }
 
@@ -339,7 +383,7 @@ object QueryTests extends TestSuite {
       )
       val (_, next, notes) = Query.loadAll(root, layout, tasty, first)
       assert(next.failed.get(bad) == Some(touched))
-      assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
+      assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)"))
     }
 
     test("show of a test suite's name shows it from test sources, under a note naming it") {

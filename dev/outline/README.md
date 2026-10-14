@@ -127,6 +127,9 @@ The launcher is built on first use, without a daemon in its own Mill output dire
   package's `.tasty` headers only for a source newer than one of them. The tags and the line judge alike.
   A definition that ran past where its source now ends is shown by the compiler's signature, on a
   `-- not file text` line, with its lines as compiled and no doc or body.
+- A `.tasty` the inspector cannot read, such as one left by a test source whose last compile failed, fails no
+  query: it is left out, the rest are read, and the answer names each such file it needed in one `-- not loaded:`
+  line, with the first line of the inspector's message, colour codes stripped. It is not read again until it changes.
 - Nothing compiles on its own. With no compiled classes, the answer says how to compile the
   root, and the tool does not run the build.
 
