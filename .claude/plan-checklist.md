@@ -26,4 +26,9 @@ that applies in its plan; a reviewer checks each against the plan and says which
   test.
 - **A person sees it**: a real-use run with the real model, a restart mid-turn, and a person's
   waiting time.
+- **Prior art.** Each new trait, type or public function names what already does something like
+  it, found through `scripts/outline` (`area` of the package it joins, `find` on its key words,
+  `family` of any trait it resembles, `uses` of the nearest candidate), and says why that is not
+  reused or extended. Two of a thing that differ only in a type, a failure type or a name are one
+  thing; a word already meaning something else in grit is not reused for a new idea.
 - **Park, don't widen.** What surfaced and is not in scope is listed as parked, not folded in.
