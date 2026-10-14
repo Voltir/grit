@@ -35,6 +35,12 @@ cut short prints a smaller total that looks green.
   if `tools/` lacks scalafmt), clock, docs (`scripts/doc-length`) and, last, **lint**: the modules holding a changed Scala
   source and every module depending on one, compiled with `-Wunused:all` in their own output
   directory. An unused import passes a targeted run and fails lint.
+- **The unused pass may run after the commit, in the background**, when the manager says so: the
+  builder ends with `scripts/check --no-unused` (every other tier), and the manager then runs
+  `scripts/check --only-unused` as a background shell command, not a subagent, while it reviews
+  and writes the next brief. Nothing needs its result until the next build, so the next builder
+  starts only after it finishes, and any failure goes into that builder's brief. It is still one
+  JVM-heavy job at a time.
 - **A cached suite can miss a file it reads**: a file a test reads by path is not an input
   unless `build.mill` makes its content one (`grit.turn.test`'s `histories` is the pattern).
 

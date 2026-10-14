@@ -48,7 +48,8 @@ You build exactly one task in grit, from the brief you are given, and commit it.
 
 ## Checks cost real time
 While iterating, run only the one suite you're changing: red, then green. Run the brief's module
-check once, when the task's edits are done, before committing. Rerun it only if code changed after
+check once, when the task's edits are done, before committing. When the brief says the manager
+runs the unused-warnings pass, the end-of-task gate is `scripts/check --no-unused`. Rerun it only if code changed after
 it passed; a format pass or a doc edit doesn't need it. No polling loops on a log: run the command
 in the foreground, with its timeout. A new unit test runs in well under 5 s: test over a small
 fixture, not the whole repository.
