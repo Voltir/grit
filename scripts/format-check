@@ -16,7 +16,7 @@ scalafmt=tools/scalafmt
 
 mapfile -t files < <(find core extensions kit deployments eval dev -path '*/out' -prune -o \
   -path '*/src/*' -name '*.scala' -print | sort)
-log=$("$scalafmt" --test --non-interactive --config .scalafmt.conf "${files[@]}" 2>&1)
+log=$("$scalafmt" --test --non-interactive --respect-project-filters --config .scalafmt.conf "${files[@]}" 2>&1)
 rc=$?
 mapfile -t skipped < <(grep -oE '^[^ ]+\.scala:[0-9]+: error:' <<<"$log" | sed -E 's/:[0-9]+: error:$//' | sort -u)
 for f in "${skipped[@]}"; do

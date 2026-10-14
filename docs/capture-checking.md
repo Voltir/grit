@@ -355,6 +355,10 @@ touches capture syntax in it or a module it depends on, and `scripts/check --pro
   reformatAll and checkFormatAll exit 0 over a file they skipped, and a warm Mill daemon
   passes it unseen the next time; `scripts/check`'s format tier (`scripts/format-check`)
   fails on it, by name.
+- **scalafmt cannot parse `update def`**, a stateful class's mutator (*"`;` expected but `def`
+  found"*), and no dialect override reads it. A file declaring one is listed by name in
+  `.scalafmt.conf`'s `project.excludePaths`, which reformatAll and `scripts/format-check` both
+  respect; keep such a class small, since nothing formats it.
 - **upickle's `derives ReadWriter` crashes** with a `MatchError` on
   `caps.internal.inferred` in its macro (upickle 4.4.3). Write codecs by hand over `ujson`,
   or with `readwriter[ujson.Value].bimap`, which compiles under both checkers.
