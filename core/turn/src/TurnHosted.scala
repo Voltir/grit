@@ -75,8 +75,9 @@ object TurnHosted {
     * none, is kept by `tool:n:j` through `settling`; once the edge rang, that step reads the
     * answer from the request ([[Calling.answer]]); a call not sent, it reads whether the turn
     * has an asker, to say why. It is sent as `pins` says ([[dispatch]]), and every read of its
-    * answer, or of why there is none, runs only while the turn knows no more than it was routed
-    * for (`pins.known`): after a rise the turn fails, saying to ask again, and keeps no answer.
+    * answer, or of why there is none, its wait's included, runs only while the turn knows no
+    * more than it was routed for (`pins.known`): after a rise the turn fails, saying to ask
+    * again, keeps no answer, and calls no model again.
     */
   private[turn] def settle(
       hosting: TurnHosting,
@@ -133,8 +134,11 @@ object TurnHosted {
       case Waited.Phase(Awaited.Known(o)) =>
         d.step(slot.step)(() => settling.answer(slot, call, shown, o, clock.now()))
       case Waited.Phase(Awaited.Unread(failure)) =>
+        // A wait refused after a rise is unread too: the turn fails here, before its next call.
         d.step(slot.step)(() =>
-          settling.answer(slot, call, shown, unreadable(failure), clock.now())
+          settling.answerFrom(slot, call, shown, clock.now())(
+            pins.known.map(_ => unreadable(failure))
+          )
         )
       case Waited.Phase(Awaited.Rung(cs)) =>
         d.step(slot.step)(() =>

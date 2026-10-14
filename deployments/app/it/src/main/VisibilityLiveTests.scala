@@ -35,6 +35,7 @@ import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{DocumentPosting, Documents, Needs, Plugin}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Entry, Nearby, Origin, Payload, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
@@ -365,9 +366,9 @@ object VisibilityLiveTests extends TestSuite {
           )
       )
       val tools = ok("tools")(
-        Toolbox.of[caps.CapSet^{store, desk}](
+        Toolbox.of[caps.CapSet^{desk}](
           Digest.RecentActivity.described
-            .calling((n, at) => recent.run(n, at, store.as(Subject.Turn(at.turn)), desk))
+            .reading((n, at, reads) => recent.run(n, at, reads, desk))
         )
       )
 
@@ -407,8 +408,17 @@ object VisibilityLiveTests extends TestSuite {
           AssistantBlock.ToolCall(ToolCallId("recent"), "recent_activity", ujson.Obj()),
           Repairs.All
         ) match {
-          case Right(free: Bound.Free) => free(slot)
-          case other => throw new java.lang.AssertionError(s"not free: $other")
+          // Run as the turn runs it: through reads for its turn, bounded by its routing.
+          case Right(reading: Bound.Reading) =>
+            ok("routing")(
+              Routed.reading(store, Subject.Turn(turn))((_, reads) =>
+                reading.through(reads) match {
+                  case free: Bound.Free => free(slot)
+                  case gated => throw new java.lang.AssertionError(s"not free: $gated")
+                }
+              )
+            )
+          case other => throw new java.lang.AssertionError(s"not reading: $other")
         }
         (turn, Asked(shown(turn, window), outcome))
       }

@@ -34,6 +34,7 @@ import grit.core.plugin.{
   Plugin,
   PostRef
 }
+import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.Subject
@@ -200,21 +201,29 @@ object PluginLiveTests extends TestSuite {
           )
           .fold(u => sys.error(s"$u"), identity)
         val tools = Toolbox
-          .of[caps.CapSet^{store, desk}](
+          .of[caps.CapSet^{desk}](
             Digest.RecentActivity.described
-              .calling((n, at) => recent.run(n, at, store.as(Subject.Turn(at.turn)), desk))
+              .reading((n, at, reads) => recent.run(n, at, reads, desk))
           )
           .fold(d => sys.error(s"$d"), identity)
         tools.bind(
           AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()),
           Repairs.All
         ) match {
-          case Right(free: Bound.Free) =>
-            free(TestCallSlots.First) ==> Outcome.Done(
-              "2026-09-22 10:00 UTC · tui plugins · resolved · Period 2.\n" +
-                "2026-09-21 10:00 UTC · tui plugins · resolved · Period 1."
+          // Run as the turn runs it: through reads for its turn, bounded by its routing.
+          case Right(reading: Bound.Reading) =>
+            Routed.reading(store, Subject.Turn(TestCallSlots.First.turn))((_, reads) =>
+              reading.through(reads) match {
+                case free: Bound.Free => free(TestCallSlots.First)
+                case gated => Outcome.Failed(s"not free: $gated")
+              }
+            ) ==> Right(
+              Outcome.Done(
+                "2026-09-22 10:00 UTC · tui plugins · resolved · Period 2.\n" +
+                  "2026-09-21 10:00 UTC · tui plugins · resolved · Period 1."
+              )
             )
-          case other => sys.error(s"not free: $other")
+          case other => sys.error(s"not reading: $other")
         }
       } finally engine.close()
     }
