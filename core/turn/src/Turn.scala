@@ -46,6 +46,15 @@ import grit.core.visibility.{Classification, Label, Subject}
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
 
+// Where this is going: each step below is written in place, and each change to them is kept
+// replayable by a patch of its own. The intent is a turn built from composable steps: a step as
+// a value (its recorded name, its output's encoding, the capabilities it holds, whether it can
+// end the turn, its patch), with combinators for sequence, patch-gated insertion, the tool loop
+// and waits. A deployment or extension could then add a step at a declared point, and the step
+// list, its doc and the replay checks would follow from one description. Until then, a new step
+// takes one line in the doc below and puts its detail on its own type, and a design that adds a
+// step says how it would fit that shape.
+
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
   * resumed after a crash never calls a model twice. A step that fails returns a
   * [[TurnFailure]], recorded like any other output, so a rerun ends the same way without
