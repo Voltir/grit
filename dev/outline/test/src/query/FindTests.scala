@@ -77,6 +77,13 @@ object FindTests extends TestSuite {
       )
     }
 
+    test(
+      "a segment matches a whole name segment, never part of one: imits.of and Lim*.o are NoMatch"
+    ) {
+      assert(find("imits.of").status == Status.NoMatch)
+      assert(find("Lim*.o").status == Status.NoMatch)
+    }
+
     test("a case class's constructor val is listed as its member: note finds B.note on B's line") {
       val answer = find("note")
       assert(names(answer) == Vector("grit.outline.fixture.B.note"))
