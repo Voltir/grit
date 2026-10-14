@@ -143,47 +143,43 @@ final class SlackEdge(
   }
 
   /** One Events API payload. A person's message in a channel grit's bot is a member of (never
-    * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
-    * its thread's conversation, in the person's words ([[Incoming]]), written through their
-    * account in their own team ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them, its turn started, its reply
-    * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
-    * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
-    * with [[Budget.Refusal]]. A message not addressed is heard
-    * ([[grit.core.inbox.Inbox.hear]]) in the same words under the same name, with no mark, its
-    * thread kept as where a reply would go and whom it names besides grit
-    * ([[grit.core.speech.Reach]]): grit replies there only when it drafts a reply and the
-    * draft is posted (ADR 0022).
-    * A person's direct message to grit ([[Event.Told]]) is recorded as an addressed message is,
-    * as a turn of its thread's conversation in its author's direct room
-    * ([[grit.core.store.Origin.Direct]]); one the inbox refuses as
-    * sealed is answered once in its thread with [[InboxError.SealedReply]], and one refused
-    * over the cap as a channel's is. A group direct message is ignored.
-    * A message from a channel not recorded a member of, as when it races its channel's join,
-    * asks Slack once whether grit's bot is in it ([[Slack.kind]]): when it is, the join is
-    * recorded first, as of the message, then the message is taken; when not, it is ignored.
-    * grit's bot joining a channel ([[Event.Joined]]) is recorded with the channel's access as
-    * Slack reports it, and its inviter's account, checked first ([[Attesting.before]]), so a
+    * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose
+    * root did. Addressed, it is recorded as a turn of its thread's conversation, in the person's
+    * words ([[Incoming]]), written through their account in their own team
+    * ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them; its turn is
+    * started, its reply awaited, and the message marked `:eyes:` until the reply is posted. A new
+    * message the inbox refuses over the day's cap is not recorded, and is answered once, in its
+    * thread, with [[Budget.Refusal]]. Not addressed, it is heard ([[grit.core.inbox.Inbox.hear]])
+    * in the same words under the same name, unmarked, its thread kept as where a reply would go
+    * and whom it names besides grit ([[grit.core.speech.Reach]]): grit replies there only when
+    * it drafts a reply and the draft is posted (ADR 0022). A direct message to grit
+    * ([[Event.Told]]) is recorded as an addressed one is, in its author's direct room
+    * ([[grit.core.store.Origin.Direct]]); one the inbox refuses as sealed is answered once in its
+    * thread with [[InboxError.SealedReply]], and one over the cap as a channel's is. A group
+    * direct message is ignored. A message from a channel not recorded a member of, as when it
+    * races its channel's join, asks Slack once whether grit's bot is in it ([[Slack.kind]]): if
+    * so, the join is recorded first, as of the message, and the message is taken; if not, it is
+    * ignored. The bot joining a channel ([[Event.Joined]]) is recorded with the channel's access
+    * as Slack reports it, and its inviter's account, checked first ([[Attesting.before]]), so a
     * join whose inviter is no full member skips its backfill, which is said; leaving or being
-    * removed from one ([[Event.Left]]) is recorded, and nothing said there after is heard. Each
-    * is ordered by when it happened ([[grit.core.edge.Joins]]); the review's channel is never
-    * recorded a member, and a join Slack says the bot is no longer in is not recorded.
-    * A message recorded or heard that begins its conversation as a reply in a thread whose root
-    * grit's bot posted with `slack_post` ([[Tag.Sent]]) first records that post as the
-    * conversation's opening ([[grit.core.inbox.Inbox.posted]]), in its text as Slack gives it,
-    * made by the call its tag names; when Slack cannot be asked for the root, the message is
-    * recorded without it, and that is said.
-    * A reaction the review's rater adds to a prompt grit posted keeps it as the prompt's
-    * verdict, replacing the one standing, and removing the reaction that stands withdraws it:
-    * `:+1:` welcome, `:-1:` an interruption, `:bust_in_silhouette:` meant for someone in
-    * particular, a skin tone ignored. Everything else is ignored, any other reaction included.
+    * removed ([[Event.Left]]) is recorded, and nothing said there after is heard. Each is ordered
+    * by when it happened ([[grit.core.edge.Joins]]); the review's channel is never recorded a
+    * member, and a join Slack says the bot is no longer in is not recorded. A message recorded
+    * or heard that begins its conversation as a reply in a thread whose root the bot posted with
+    * `slack_post` ([[Tag.Sent]]) first records that post, as Slack gives its text, as the
+    * conversation's opening made by the call its tag names ([[grit.core.inbox.Inbox.posted]]);
+    * when Slack cannot be asked for the root, the message is recorded without it, which is said.
+    * A reaction the review's rater adds to a prompt grit posted keeps the verdict it gives
+    * ([[ReviewPrompt.verdict]]) as the prompt's, replacing the one standing; removing the
+    * reaction that stands withdraws it. Everything else is ignored, any other reaction included.
     * Before a message is recorded or heard, its author's account is checked
     * ([[Attesting.before]]): Slack is asked who they are ([[Slack.member]]) unless it answered
     * for them within [[Attesting.Fresh]], so the turn the message starts opens under that
     * answer; one Slack cannot answer for and never has is not recorded. A change Slack reports
-    * to a user ([[Event.UserChanged]]) asks Slack again ([[Attesting.changed]]).
-    * `true` once that is done or needs no doing (a redelivery included), so the payload may be
-    * acknowledged; `false` when Slack or the database could not be asked, so Slack sends it
-    * again (a message racing its channel's join included, so the join wins on a later try).
+    * to a user ([[Event.UserChanged]]) asks Slack again ([[Attesting.changed]]). `true` once
+    * that is done or needs no doing (a redelivery included), so the payload may be acknowledged;
+    * `false` when Slack or the database could not be asked, so Slack sends it again (a message
+    * racing its channel's join included, so the join wins on a later try).
     */
   def receive(payload: String): Boolean =
     Events.read(payload, self.bot) match {

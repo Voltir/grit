@@ -38,56 +38,44 @@ import grit.core.store.{
 import grit.core.visibility.Subject
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
-  * written query finds: the period's earlier turns and, when the settings' scope holds other
-  * conversations' places (the conversation's room read from its origin,
-  * [[grit.core.store.Origin.room]]), the turns of their open periods and their kept
-  * closings. The
-  * closing is paid first and the recent tail next, as in [[LinearAssembler]] (the tail is
-  * `tail` tokens, or what is left when less). `models` then writes one query
-  * ([[QueryWriter]]), under `request.query`'s pin alone, and `search` ranks each kind of candidate against it, `hits` of each.
-  * They rank in one pool, the turn's own scores multiplied by the settings' weight (a tie
-  * goes to the turn's own), and fill the rest of `budget`, best first, one that does not
-  * fit passed over for the next.
-  * Own turns join the window in conversation order, each recalled one charged a gap line
-  * ([[Shown.Gap]]) besides its own cost, and a tail that leaves turns out one more. Turns from elsewhere form one section
-  * per conversation ([[Nearby]], shown as [[Shown.section]] and costed so), in the order of
-  * their best candidate, each section's turns in its conversation's order. A conversation
-  * elsewhere whose closings match is one candidate, shown as its newest kept closing's record
-  * ([[Shown.recorded]]), unless any of its open turns is a candidate: then those alone are
-  * its section. The conversation's own closing is paid first, never a candidate. A person's
-  * message is costed with its author's name line ([[Shown.of]]), as it is sent.
+  * written query finds: the period's earlier turns; the open periods' turns and kept closings
+  * of other conversations at places the settings' scope holds (the conversation's room read
+  * from its origin, [[grit.core.store.Origin.room]]); and, with the enabled plugins' terms
+  * ([[DocumentSearch.declared]]), the documents current at the turn's root entry's time (its
+  * earliest entry's; none for a turn with no entries) at those places.
   *
-  * With the enabled plugins' terms ([[DocumentSearch.declared]]), the documents current at the
-  * turn's root entry's time (its earliest entry's) at places its scope holds are candidates
-  * too (a turn with no entries, as in a conversation with none, has none), searched through
-  * `documents` with the same query, `hits` of them, each score multiplied by its plugin's
-  * weight, in the same pool and budget; a packed one is costed as [[Shown.document]] shows
-  * it, and the window holds the packed ones in rank order (a tie goes to the turn's own, then
-  * to entries elsewhere). A conversation with a document in scope writes a query even when
-  * nothing else is to search.
+  * The closing is paid first and the recent tail next, as in [[LinearAssembler]] (`tail`
+  * tokens, or what is left when less). `models` writes one query ([[QueryWriter]]) under
+  * `request.query`'s pin alone; `search` and `documents` rank each kind of candidate against
+  * it, `hits` of each, in one pool: the turn's own scores times the settings' weight, a
+  * document's times its plugin's, a tie going to the turn's own, then to entries elsewhere.
+  * They fill the rest of `budget`, best first, one that does not fit passed over for the next,
+  * each costed as it is shown: a recalled own turn with a gap line ([[Shown.Gap]]), as is a
+  * tail that leaves turns out; a section as [[Shown.section]]; a document as
+  * [[Shown.document]]; a person's message with its author's name line ([[Shown.of]]).
   *
+  * Own turns join the window in conversation order; packed documents in rank order. Turns from
+  * elsewhere form one section per conversation ([[Nearby]]), in the order of its best
+  * candidate, its turns in its own order. A conversation whose closings match is one
+  * candidate, shown as its newest kept closing's record ([[Shown.recorded]]), unless any of its
+  * open turns is one: then those alone are its section. The own closing is never a candidate.
   * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches` in the
   * scope in force, from `tuning.horizon` before its first message until before the turn) is
-  * shown the strand as one [[Nearby.Along]] section per other member, after any sections from
-  * afar: its root's opening message, then the messages nearest the turn, newest first while
-  * they fit, at most `tuning.windowTokens` together, paid after the closing and before the
-  * tail. A member whose first message is gone is shown by its newest kept closing's record.
-  * Strand members are never also candidates.
+  * shown one [[Nearby.Along]] section per other member, after any from afar: its root's
+  * opening message, then the messages nearest the turn, newest first while they fit in
+  * `tuning.windowTokens`, paid after the closing and before the tail; a member whose first
+  * message is gone, by its newest kept closing's record. A conversation that begins with
+  * grit's post ([[grit.core.store.ConversationStore.postedBy]]) is shown first, whatever the
+  * scope, the turn that asked for it as one [[Nearby.Asked]] section, while the turn's period is
+  * the conversation's first and both conversations are colleagues' ([[Audience.Colleagues]]):
+  * its person's messages and grit's reply from the first, as many as fit in the strand's
+  * allowance, paid from it before the strand. Neither a strand member nor the asking
+  * conversation is ever also a candidate.
   *
-  * A conversation that begins with grit's post
-  * ([[grit.core.store.ConversationStore.postedBy]]) is shown the turn that asked for it as
-  * one [[Nearby.Asked]] section, first, while the turn's period is the conversation's first
-  * and both conversations are colleagues' ([[Audience.Colleagues]]), whatever the scope: its
-  * person's messages and grit's reply, from the first, as many as fit in the strand's
-  * allowance, which it is paid from before the strand. That conversation is then never also
-  * a candidate.
-  *
-  * No query is written when there is nothing to search: the linear window of `budget` holds
-  * every earlier turn of the period, and no other conversation's open period or closing, and
-  * no document, is in scope. When the request names no query pin, or the writer fails or
-  * writes nothing, the window is that linear one, with a note saying why, and nothing from
-  * elsewhere and no document.
-  * `AssemblyError.Store` when a store fails or the turn's conversation is gone.
+  * No query is written when the linear window of `budget` holds every earlier turn of the
+  * period and nothing elsewhere and no document is in scope; with no query pin, or a writer
+  * that fails or writes nothing, the window is that linear one alone, with a note saying why.
+  * `AssemblyError.Store` when a store fails or the conversation is gone.
   */
 final class RetrievalAssembler(
     entries: EntryStore,

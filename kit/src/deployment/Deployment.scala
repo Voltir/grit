@@ -111,7 +111,7 @@ enum Requirer {
 /** Why [[Deployment.of]] refused. */
 enum DeploymentRefusal {
 
-  /** The offer asks a person first, and `edges` cannot answer an ask. */
+  /** The offer asks a person first ([[Offered.All]]), and `edges` cannot answer an ask. */
   case AsksUnanswered(edges: Vector[EdgeName])
 
   /** Two edges are named `name`. */
@@ -131,15 +131,17 @@ enum DeploymentRefusal {
   case SpeechUnread(reading: Reading)
 
   /** Live triage ([[Deployment.triage]]) does not ask [[Earning.Durable]] as a yes/no,
-    * so every period it heard would earn a written closing.
+    * so every period it heard would earn a written closing: a build's mistake, refused for
+    * every deployment of it.
     */
   case DurableUnasked
 
   /** Two shadows are named `name`. */
   case ShadowRepeated(name: ShadowName)
 
-  /** Shadows are declared, but topics are placed with no classifier, so none could be asked.
-    * `topics` says why there is none.
+  /** Shadows are declared, but topics are placed with no classifier, so none could be asked:
+    * each shadow asks the topics' classifier, Jev of the shadow's own model when it names one,
+    * or the stub. `topics` says why there is none.
     */
   case ShadowsUnasked(topics: String)
 
@@ -188,8 +190,8 @@ enum DeploymentRefusal {
     */
   case PluginUnmet(plugin: PluginName, needed: PluginName)
 
-  /** Two of the tools every turn may be offered, among the plugins' and grit's own, are named
-    * `name`.
+  /** Two of the tools every turn may be offered, every plugin's and grit's own
+    * ([[grit.tools.Names.all]] and the turn's `topic`), are named `name`.
     */
   case ToolRepeated(name: ToolName)
 
@@ -363,59 +365,8 @@ object Deployment {
   /** The deployment of these; call it with named arguments. `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL) holds
     * until the next start. What `speaking` spends is counted in `budget` as well as against its
-    * own cap ([[grit.core.speech.Limits.spend]]). Refused, with one of these when it holds:
-    *   - [[DeploymentRefusal.AsksUnanswered]]: `offer` asks first ([[Offered.All]]) and an edge
-    *     cannot answer an ask;
-    *   - [[DeploymentRefusal.EdgeRepeated]]: two edges share a name;
-    *   - [[DeploymentRefusal.SweepTooOften]]: `sweep` is under a second;
-    *   - [[DeploymentRefusal.DurableUnasked]]: live triage does not ask what earning reads (a
-    *     build's mistake, refused for every deployment of it);
-    *   - [[DeploymentRefusal.SpeaksUnjudged]]: it speaks (`speaking` not Off) with `topics`
-    *     Off;
-    *   - [[DeploymentRefusal.SpeechUnread]]: speaking's gate reads a question live triage does
-    *     not ask;
-    *   - [[DeploymentRefusal.ShadowRepeated]]: two of `shadows` share a name;
-    *   - [[DeploymentRefusal.ShadowsUnasked]]: a shadow is declared with `topics` Off (each
-    *     shadow asks the topics' classifier, Jev of the shadow's own model when it names one,
-    *     or the stub);
-    *   - [[DeploymentRefusal.ReviewUngated]]: `review` names no declared shadow;
-    *   - [[DeploymentRefusal.ReviewUnspoken]]: `review` is declared with `speaking` Off;
-    *   - [[DeploymentRefusal.ReviewUnposted]]: `review` is declared and not exactly one of
-    *     `edges` posts its prompts ([[ServedEdge.reviewsAt]]);
-    *   - [[DeploymentRefusal.RecipeUnweighed]]: `recipe` offers a service by source with
-    *     `topics` Off;
-    *   - [[DeploymentRefusal.RecipeUnsourced]]: `recipe` offers a service by source and no
-    *     source of `knowledge` supplies one;
-    *   - [[DeploymentRefusal.RecipeUnread]]: `recipe` offers a service by a gate reading what
-    *     live triage does not ask;
-    *   - [[DeploymentRefusal.OffersUnlinked]]: a source of `knowledge` supplies a service no
-    *     `worksIn` or `reaches` link offers;
-    *   - [[DeploymentRefusal.Widens]]: `recipe` draws a window wider than `assembly`'s;
-    *   - [[DeploymentRefusal.PluginRepeated]]: two of `plugins` share a name;
-    *   - [[DeploymentRefusal.PluginUnmet]]: a plugin needs one not among `plugins`;
-    *   - [[DeploymentRefusal.ToolRepeated]]: two of the tools a turn may be offered (every
-    *     plugin's, and grit's own: [[grit.tools.Names.all]] and the turn's `topic`) share a
-    *     name;
-    *   - [[DeploymentRefusal.ToolUnneeded]]: a plugin's tool asks for a plugin its own does not
-    *     need;
-    *   - [[DeploymentRefusal.JobUnowned]]: a plugin's tool books a job not its plugin's;
-    *   - [[DeploymentRefusal.KeepsUnshelved]]: a plugin's keeping job, and the plugin keeps no
-    *     documents;
-    *   - [[DeploymentRefusal.JobRepeated]]: two of the jobs, every plugin's and `jobs`, share a
-    *     name;
-    *   - [[DeploymentRefusal.ScheduleUnowned]]: a plugin declares a schedule of a job not its
-    *     own;
-    *   - [[DeploymentRefusal.ScheduleRepeated]]: two declared schedules share an id;
-    *   - [[DeploymentRefusal.ScheduleJobless]]: a declared schedule holds a job other than the
-    *     deployment's job of its name;
-    *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
-    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare;
-    *   - [[DeploymentRefusal.AttesterTwice]]: two of `edges` say they are one attester
-    *     ([[ServedEdge.attester]]);
-    *   - [[DeploymentRefusal.AttesterUnserved]]: `identities` trusts an attester for a realm,
-    *     and none of `edges` is that attester;
-    *   - [[DeploymentRefusal.RealmUnvouched]]: a group of `visibility` names a realm `identities`
-    *     trusts no attester for.
+    * own cap ([[grit.core.speech.Limits.spend]]). Refused with the first [[DeploymentRefusal]]
+    * that holds.
     */
   def of(
       edges: Vector[ServedEdge],
