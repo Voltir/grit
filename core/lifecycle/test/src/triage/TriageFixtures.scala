@@ -107,6 +107,7 @@ object TriageFixtures {
 
   /** The requests a classifier was sent, kept by [[recording]]. */
   final class Requests {
+    // Written and read only on the test's own thread, through the calls the classifier makes.
     @caps.unsafe.untrackedCaptures
     var sent: Vector[Request] = Vector.empty
   }
@@ -196,6 +197,7 @@ object TriageFixtures {
         .fold(e => sys.error(e.toString), _.id)
 
     /** The turns started, in order. */
+    // Replaced whole by the fake's own methods, which the test calls on its one thread.
     @caps.unsafe.untrackedCaptures
     var started = Vector.empty[TurnRef]
 
@@ -285,6 +287,7 @@ object TriageFixtures {
       )
 
     /** The openings whose placements a triage waited for, in order. */
+    // Replaced whole by the fake's own methods, which the test calls on its one thread.
     @caps.unsafe.untrackedCaptures
     var awaited = Vector.empty[Opening]
 

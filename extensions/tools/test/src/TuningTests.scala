@@ -20,6 +20,7 @@ object TuningTests extends TestSuite {
 
   /** A book keeping every setting it is given, or refusing all with `refuse`. */
   final class Book(refuse: Option[String] = None) extends ModelSettings {
+    // Replaced whole by the book's own methods, which the test calls on its one thread.
     @caps.unsafe.untrackedCaptures
     var kept = Vector.empty[ModelSetting]
 

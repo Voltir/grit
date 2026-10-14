@@ -53,6 +53,7 @@ object PoolReadTests extends TestSuite {
     given Tx = TestTx.fake
     val entries = new InMemoryEntryStore
     val principals = new InMemoryPrincipals
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
     @caps.unsafe.untrackedCaptures
     var origins = Map.empty[ConversationId, Origin]
     private def originOf(c: ConversationId): Origin =

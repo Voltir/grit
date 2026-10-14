@@ -27,6 +27,7 @@ object ProbesTests extends TestSuite {
     * reasoning; the checks after the strict one ride on `count`.
     */
   final class Quirky extends Provider {
+    // Replaced whole by complete, on the test's one thread; read only by the test's assertions.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
@@ -53,6 +54,7 @@ object ProbesTests extends TestSuite {
 
   /** Models whose every pin is answered by `answer`, keeping the pins asked for. */
   final class Probed(answer: Provider^) extends Models {
+    // Replaced whole by the calls the test makes on its one thread; read only by its assertions.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Pinned]
     def catalog(): Either[String, Catalog] = Left("unused")

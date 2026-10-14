@@ -312,6 +312,7 @@ object SlackEdgeLiveTests extends TestSuite {
           // deliver the test waits on; neither the closure nor what it writes outlives the test.
           val inbox = new Watched(
             engine.inbox,
+            // Called only by the edge's receive, on the test's thread, inside that deliver.
             caps.unsafe.unsafeAssumePure {
               case Right(turn) =>
                 opened = opened :+ engine.jot
@@ -345,6 +346,7 @@ object SlackEdgeLiveTests extends TestSuite {
           // on; neither the closure nor what it writes outlives the test.
           val inbox = new Watched(
             engine.inbox,
+            // Called only by the backfill, on the test's thread, inside the wait it makes.
             caps.unsafe.unsafeAssumePure {
               case Left(by) => standing = standing :+ member(config, by)
               case Right(_) => ()

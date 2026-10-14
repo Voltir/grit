@@ -23,6 +23,7 @@ private object ByChar extends TokenEstimator {
 
 /** Placements whose every bounded wait returns `outcome`, each wait's bound kept. */
 private final class Waits(outcome: Either[Placements.Unplaced, String]) extends Placements {
+  // Written and read only on the test's own thread, through the waits the triage makes on it.
   @caps.unsafe.untrackedCaptures
   var within = Vector.empty[FiniteDuration]
   def awaited(opening: Opening): Either[String, String] = outcome.left.map(_.toString)

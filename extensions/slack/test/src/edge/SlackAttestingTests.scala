@@ -72,6 +72,7 @@ object SlackAttestingTests extends TestSuite {
     val voucher = new InMemoryVoucher(trusted, Set.empty, Visibility.Shipped)
 
     /** What the checks reported, in order. */
+    // Replaced whole by the fake's own calls, which the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var reported = Vector.empty[Attesting.Report]
 

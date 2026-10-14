@@ -36,6 +36,7 @@ object ClassifyTests extends TestSuite {
     * questions.
     */
   private final class Canned(answers: Answer*) extends Classifier {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var state: ujson.Value = ujson.Null
     @caps.unsafe.untrackedCaptures

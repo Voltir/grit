@@ -14,6 +14,7 @@ object InMemoryDurableTests extends DurableContract {
   final class InMemoryRuntime extends DurableRuntime {
     private val durable = new InMemoryDurable
 
+    // A counter only the runtime's own calls read, on the test's own thread.
     @caps.unsafe.untrackedCaptures
     private var issued = 0
 

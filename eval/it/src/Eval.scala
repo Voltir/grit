@@ -162,6 +162,7 @@ object Eval {
 
   /** `underlying`, asked each distinct request once: the budgets of one case share a query. */
   final class Once(underlying: Provider^) extends Provider {
+    // Replaced whole by complete, which the cases call one after another, each waited on.
     @caps.unsafe.untrackedCaptures
     private var answered = Map.empty[ModelRequest, Either[ProviderError, Message.Assistant]]
 

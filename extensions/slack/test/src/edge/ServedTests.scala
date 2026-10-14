@@ -138,6 +138,7 @@ object ServedTests extends TestSuite {
       )
 
     /** What opening logged, in order. */
+    // Replaced whole by the fake's own calls, which the test's engine makes and it waits on.
     @caps.unsafe.untrackedCaptures
     var logged: Vector[String] = Vector.empty
 
@@ -195,6 +196,7 @@ object ServedTests extends TestSuite {
   private final class DatedAcknowledgements(under: InMemoryAcknowledgements)
       extends Acknowledgements {
 
+    // Replaced whole by the fake's own calls, which the test's engine makes and it waits on.
     @caps.unsafe.untrackedCaptures
     var shownAt = Vector.empty[Instant]
 

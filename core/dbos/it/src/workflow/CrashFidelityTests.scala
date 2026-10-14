@@ -74,6 +74,7 @@ object CrashFidelityTests extends TestSuite {
     }
 
   final class Counts {
+    // Counters only the test's assertions read; the steps bump them on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var a = 0
     @caps.unsafe.untrackedCaptures

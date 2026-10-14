@@ -163,6 +163,7 @@ object RunFixtures {
     * process dies once just after the first write commits.
     */
   final class FakeJot(crashAfter: Boolean = false) extends Jot {
+    // Cleared by the first write that dies, on the test's one thread; nothing else reads it.
     @caps.unsafe.untrackedCaptures
     private var armed = crashAfter
     def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {

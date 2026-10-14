@@ -79,6 +79,7 @@ object TestPostgres {
     container
   }
 
+  // A count only this object's own calls read, on the one thread that starts containers.
   @caps.unsafe.untrackedCaptures
   private var created = 0
 

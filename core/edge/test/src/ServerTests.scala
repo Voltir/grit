@@ -38,6 +38,7 @@ object ServerTests extends TestSuite {
 
   /** Tools that answer with the directory they ran over, and count their runs. */
   private final class Counting extends Tools {
+    // Replaced whole by the tool's own call, on the test's one thread; read only by the test.
     @caps.unsafe.untrackedCaptures
     var runs = Vector.empty[String]
     def note(key: String): Unit = runs = runs :+ key
@@ -56,6 +57,7 @@ object ServerTests extends TestSuite {
 
   /** What a server said, in order. */
   private final class Said {
+    // Replaced whole by hear, on the test's one thread; read only by the test's assertions.
     @caps.unsafe.untrackedCaptures
     var lines = Vector.empty[String]
     def hear(line: String): Unit = lines = lines :+ line

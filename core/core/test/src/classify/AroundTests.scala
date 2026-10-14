@@ -18,6 +18,7 @@ object AroundTests extends TestSuite {
 
   /** Answers yes at `p` to its one question, keeping each request it was sent. */
   private final class Inner(p: Double) extends Classifier {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var sent: Vector[(ujson.Value, Vector[Question])] = Vector.empty
 
@@ -32,6 +33,7 @@ object AroundTests extends TestSuite {
 
   /** The requests `around`'s function was handed. */
   private final class Seen {
+    // Written and read only on the test's own thread, by the function `around` is handed.
     @caps.unsafe.untrackedCaptures
     var requests: Vector[Request] = Vector.empty
   }

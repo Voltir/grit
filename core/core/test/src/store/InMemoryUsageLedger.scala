@@ -14,6 +14,7 @@ import grit.core.spend.{Day, Spend, Spending, TurnSpend}
 final class InMemoryUsageLedger extends UsageLedger, Spending {
 
   /** When the rows recorded from now on are recorded. */
+  // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   var now: Instant = Instant.EPOCH
 
@@ -37,6 +38,7 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   private def spent(of: Vector[(EntryId, WorkflowId, String, Usage, Tokens, TurnRef)]): Spend =
     of.foldLeft(Spend.Zero)((s, row) => s + Spend(1, grit.core.message.Cost.of(row._4)))
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var rows = Vector.empty[(EntryId, WorkflowId, String, Usage, Tokens, TurnRef)]
 

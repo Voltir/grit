@@ -31,6 +31,7 @@ final class FakeMcpServer private (val token: String) {
   // each under `lock`, and no capability is reached through any of it.
   private val lock = new Object
 
+  // Each var is read and written only inside `lock.synchronized`, which the test and server share.
   @caps.unsafe.untrackedCaptures
   private var tools = Vector.empty[ujson.Obj]
 

@@ -45,6 +45,7 @@ object StitchFixtures {
 
   /** Answers every request with `answer` (or fails), keeping the states it was sent. */
   final class Scripted(answer: Option[Answer]) extends Classifier {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var states: Vector[ujson.Value] = Vector.empty
 

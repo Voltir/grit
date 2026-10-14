@@ -30,6 +30,7 @@ object MovesFixtures {
       calling: Int = 1,
       upstream: Option[String] = None
   ) extends Models {
+    // Written and read only on the test's own thread, through the calls the moves make on it.
     @caps.unsafe.untrackedCaptures
     var calls = 0
     @caps.unsafe.untrackedCaptures
@@ -82,6 +83,7 @@ object MovesFixtures {
     */
   final class Judging(script: Vector[Either[ClassifierError, Answers]] = Vector())
       extends Classifier {
+    // Written and read only on the test's own thread, through the calls the moves make on it.
     @caps.unsafe.untrackedCaptures
     var calls = 0
     @caps.unsafe.untrackedCaptures

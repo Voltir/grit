@@ -81,6 +81,7 @@ object RetrievalAssemblerTests extends TestSuite {
   /** Answers every request with `answer`, or fails; keeps what it was sent. */
   private final class Writer(answer: Option[String], upstream: Option[String] = None)
       extends Provider {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
@@ -121,6 +122,7 @@ object RetrievalAssemblerTests extends TestSuite {
     // What nearby answers: each conversation's hits, as (conversation, id, score), best
     // first, ids as `{name}:t{turn}:{seq}`, only those from its open period's first turn on;
     // and every nearby search it was asked for, as the periods and query.
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
     @caps.unsafe.untrackedCaptures
     var near = Vector.empty[(ConversationId, String, Double)]
     @caps.unsafe.untrackedCaptures
@@ -171,6 +173,7 @@ object RetrievalAssemblerTests extends TestSuite {
     // What closings answers: closing entries as (conversation, id, score), best first, only
     // those of the conversations asked, at most `limit`; and every closings search, as its
     // conversations.
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
     @caps.unsafe.untrackedCaptures
     var closed = Vector.empty[(ConversationId, String, Double)]
     @caps.unsafe.untrackedCaptures
@@ -204,6 +207,7 @@ object RetrievalAssemblerTests extends TestSuite {
     * test's. Keeps every search it was asked for.
     */
   private final class ScriptedDocs(val under: InMemoryDocuments) extends DocumentSearch {
+    // Replaced whole by the test's own calls, on its one thread; nothing else reads it.
     @caps.unsafe.untrackedCaptures
     var scores = Map.empty[String, Double]
     // Only ever holds immutable vectors; nothing reads it but the test that owns it.

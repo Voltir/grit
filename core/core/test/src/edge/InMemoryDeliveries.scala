@@ -8,6 +8,7 @@ final class InMemoryDeliveries extends Deliveries {
 
   private final case class Row(pending: Pending, delivered: Boolean)
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[Row]
 

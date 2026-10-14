@@ -16,6 +16,7 @@ object InMemoryStitchTests extends StitchContract {
 
   private val store = new InMemoryEntryStore
 
+  // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   private var origins = Map.empty[ConversationId, Origin]
 

@@ -12,6 +12,7 @@ import grit.dbos.sql.{LiveDb, SqlDeliveries, TestPostgres}
   */
 object SqlDeliveriesTests extends DeliveriesContract {
 
+  // Set once, by the suite's setup, to an immutable config; read only by its tests.
   @caps.unsafe.untrackedCaptures
   private var config: Option[grit.dbos.sql.DbConfig] = None
 

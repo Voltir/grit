@@ -7,6 +7,7 @@ import grit.dbos.sql.TestTx
 /** The principals contract, kept by the in-memory fake. */
 object InMemoryPrincipalsTests extends PrincipalsContract {
 
+  // A counter only the contract's own calls read, on the test's one thread.
   @caps.unsafe.untrackedCaptures
   private var n = 0
 

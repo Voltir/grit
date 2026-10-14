@@ -15,6 +15,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
     extends SpeechStore {
 
   /** Each turn's reach, with its heard entry, which it goes with (the SQL row cascades). */
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var reaches = Map.empty[TurnRef, (EntryId, Reach)]
 

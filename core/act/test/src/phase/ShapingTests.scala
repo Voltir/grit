@@ -56,6 +56,7 @@ object ShapingTests extends TestSuite {
   /** A provider that answers each call with the next of `script`, keeping each request. */
   private final class Scripted(script: Vector[Either[ProviderError, Message.Assistant]])
       extends Provider {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
     def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {

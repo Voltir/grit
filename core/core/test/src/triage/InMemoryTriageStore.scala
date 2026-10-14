@@ -12,6 +12,7 @@ import grit.core.store.{InMemoryEntryStore, PeriodStore, StoreError, Tx}
 final class InMemoryTriageStore(entries: InMemoryEntryStore, periods: PeriodStore)
     extends TriageStore {
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[EntryId, (Tags, Instant)]
 

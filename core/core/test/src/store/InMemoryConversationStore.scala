@@ -16,6 +16,7 @@ import grit.core.visibility.Label
 final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None)
     extends ConversationStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var all = Vector.empty[Conversation]
 
@@ -53,6 +54,7 @@ final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None
     read(all.find(_.id == id))
 
   /** The call each conversation's opening post was made by, as an inbox keeps it. */
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var posts = Map.empty[ConversationId, CallSlot]
 

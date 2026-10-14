@@ -5,6 +5,7 @@ import grit.core.tool.{ToolSet, ToolSetId, ToolSets}
 /** An in-memory [[ToolSets]] for tests, keeping [[StoreContract]]. It ignores the `Tx`. */
 final class InMemoryToolSets extends ToolSets {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var sets = Vector.empty[ToolSet]
 

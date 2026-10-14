@@ -32,6 +32,7 @@ final class InMemoryReviews(
 ) extends ReviewStore {
   import InMemoryReviews.{Fate, Row}
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[EntryId, Row]
 

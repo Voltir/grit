@@ -18,6 +18,7 @@ object ClearedClassifierTests extends TestSuite {
 
   /** Answers yes to every call, counting them. */
   private final class Counting extends Classifier {
+    // A counter only the test's assertions read; the classifier bumps it on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var calls = 0
     protected def answer(

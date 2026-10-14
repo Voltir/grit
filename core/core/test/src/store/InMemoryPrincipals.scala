@@ -9,6 +9,7 @@ import grit.core.identity.Account
   */
 final class InMemoryPrincipals extends Principals {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var names = Map.empty[Account, String]
 

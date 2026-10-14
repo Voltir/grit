@@ -109,6 +109,7 @@ abstract class DurableContract extends TestSuite {
 
   /** Step bodies, and the workflow body around them, that count their own executions. */
   final class Counts {
+    // Counters only the test's assertions read; the steps and the workflow bump them on its thread.
     @caps.unsafe.untrackedCaptures
     var body = 0
     @caps.unsafe.untrackedCaptures

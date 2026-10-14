@@ -24,6 +24,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       claimedBy: Option[(EdgeId, Int)]
   )
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var rows = Vector.empty[Row]
 

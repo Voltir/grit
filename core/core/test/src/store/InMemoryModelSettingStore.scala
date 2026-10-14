@@ -7,6 +7,7 @@ import grit.core.model.Profile
 /** An in-memory [[ModelSettingStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`. */
 final class InMemoryModelSettingStore extends ModelSettingStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var kept = Vector.empty[ModelSettingStore.Kept]
 

@@ -13,6 +13,7 @@ final class InMemoryTombstones(owner: DocumentVersion -> Option[PluginName] = _ 
     extends Tombstones {
   import InMemoryTombstones.Row
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[Target, Row]
 

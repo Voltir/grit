@@ -8,6 +8,7 @@ import grit.core.model.{TurnProfile, TurnProfileId}
   */
 final class InMemoryModelProfileStore extends ModelProfileStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var profiles = Vector.empty[TurnProfile]
 

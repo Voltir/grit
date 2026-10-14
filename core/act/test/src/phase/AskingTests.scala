@@ -32,6 +32,7 @@ object AskingTests extends TestSuite {
   /** A provider that answers each call with the next of `script`, the last again after. */
   private final class Scripted(script: Vector[Either[ProviderError, Message.Assistant]])
       extends Provider {
+    // Written and read only on the test's own thread, through the calls it makes.
     @caps.unsafe.untrackedCaptures
     var calls = 0
     def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
@@ -43,6 +44,7 @@ object AskingTests extends TestSuite {
 
   /** A hearing that keeps what each attempt, by its index, was told, and which were done. */
   private final class Kept extends Hearing {
+    // Written and read only on the test's own thread, through the attempts it runs and their asks.
     @caps.unsafe.untrackedCaptures
     var told = Vector.empty[(Int, Delta)]
     @caps.unsafe.untrackedCaptures

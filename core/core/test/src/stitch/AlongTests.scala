@@ -29,6 +29,7 @@ object AlongTests extends TestSuite {
 
   private final class World {
     val store = new InMemoryEntryStore
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
     @caps.unsafe.untrackedCaptures
     var origins = Map.empty[ConversationId, Origin]
     val periods = new InMemoryPeriodStore(store, c => origins(c))

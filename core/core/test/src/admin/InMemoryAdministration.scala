@@ -19,6 +19,7 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
   private val records: InMemoryRecorded = voucher.records
 
   /** Every audit row, oldest first. */
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var kept = Vector.empty[AdministrationContract.Kept]
 

@@ -15,6 +15,7 @@ import grit.core.store.{Entry, InMemoryEntryStore, Origin, Payload, StoreError, 
 final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: ConversationId -> Origin)
     extends StitchStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[(EntryId, ConversationId, Placed)]
 

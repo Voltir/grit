@@ -32,6 +32,8 @@ final class FakeSlack extends Slack {
 
   final case class Posted(channel: ChannelId, thread: Ts, post: Post, tag: Tag, ts: Ts)
 
+  // Written by a call the test or its edge makes and waits on; the closures are read only by the
+  // test's own deliver and command, and the posts are immutable values replaced whole.
   @caps.unsafe.untrackedCaptures
   var handler: Option[String -> Boolean] = None
 
@@ -162,6 +164,7 @@ final class FakeSlack extends Slack {
     // is the only caller of deliver and command, and it outlives neither the handlers nor
     // the fake.
     handler = Some(caps.unsafe.unsafeAssumePure(events))
+    // Likewise: the commander is read only by command, on the test's own thread.
     commander = Some(caps.unsafe.unsafeAssumePure(commands))
     Right(())
   }
@@ -230,6 +233,7 @@ final class FakeSlack extends Slack {
     }
 
   /** The workspace's Slack domain, which a permalink names. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   var domain = "fake"
 
@@ -316,6 +320,7 @@ final class FakeSlack extends Slack {
   }
 
   /** What each slash command was answered, oldest first: its url and the words. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   var responses = Vector.empty[(ResponseUrl, String)]
 
@@ -339,6 +344,7 @@ final class FakeSlack extends Slack {
     }
 
   /** When set, `channels` fails so, and nothing else does. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   var unlisted: Option[SlackError] = None
 

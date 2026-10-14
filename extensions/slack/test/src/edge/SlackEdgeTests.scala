@@ -167,6 +167,7 @@ object SlackEdgeTests extends TestSuite {
     val acknowledgements = new InMemoryAcknowledgements
 
     /** What the edges said, in order. */
+    // Replaced whole by the fake's own calls, which the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var logged: Vector[String] = Vector.empty
 

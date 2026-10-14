@@ -6,6 +6,7 @@ import grit.core.prompt.{Fragment, FragmentId, SystemPrompt}
 /** An in-memory [[PromptStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`. */
 final class InMemoryPromptStore extends PromptStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var fragments = Vector.empty[Fragment]
 

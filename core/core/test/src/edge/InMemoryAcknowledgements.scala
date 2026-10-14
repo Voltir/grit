@@ -12,6 +12,7 @@ final class InMemoryAcknowledgements extends Acknowledgements {
 
   private final case class Row(ack: Acknowledgement, cleared: Boolean)
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[Row]
 

@@ -17,6 +17,7 @@ final class InMemoryEntryStore(
     room: Option[ConversationId -> Option[Place]] = None
 ) extends EntryStore {
 
+  // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var entries = Vector.empty[Entry]
 

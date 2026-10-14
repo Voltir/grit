@@ -61,6 +61,7 @@ object RoutedTests extends TestSuite {
     * `from`th on (counting from 0) fails with `fails` when given.
     */
   private final class At(floor: Label, fails: Option[StoreError] = None, from: Int = 0) extends Db {
+    // Counters only the test's assertions read; the reads bump them on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var ran = 0
     @caps.unsafe.untrackedCaptures
@@ -77,6 +78,7 @@ object RoutedTests extends TestSuite {
 
   /** Reads at internal first, at restricted after, under [[visibility]]. */
   private final class Rising extends Db {
+    // A counter only the test's assertions read; the reads bump it on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var reads = 0
     def read[A](s: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {
@@ -119,6 +121,7 @@ object RoutedTests extends TestSuite {
     test("a read bounded by a routing that knows more than it was routed for runs nothing") {
       val r = routedAt(internal)
       val (above, at) = (new At(restricted), new At(internal))
+      // A counter only the test's assertions read; the bodies bump it on the test's own thread.
       @caps.unsafe.untrackedCaptures
       var bodies = 0
       val reads = Vector(
@@ -139,6 +142,7 @@ object RoutedTests extends TestSuite {
       routedThenRead ==> Right((internal, Right(true)))
       db.ran ==> 2
       val failed = new At(internal, Some(StoreError.Invalid("down")))
+      // A counter only the test's assertions read; the bodies bump it on the test's own thread.
       @caps.unsafe.untrackedCaptures
       var bodies = 0
       Routed.reading(failed, subject)((_, _) => bodies = bodies + 1) ==>

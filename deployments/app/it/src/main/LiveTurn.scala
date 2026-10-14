@@ -37,6 +37,7 @@ import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling
 object LiveTurn {
 
   /** The session a launched engine's turns are in: in the checkout it was launched over. */
+  // Written once, by the launch, before any turn reads it; volatile, so each turn sees that write.
   @volatile @caps.unsafe.untrackedCaptures
   private var session: Origin = Origin.Task("live", "unlaunched")
 
@@ -49,6 +50,7 @@ object LiveTurn {
 
   /** The stub provider, counting its calls through either entry point. */
   final class CountingProvider extends Provider {
+    // A counter only the test's assertions read; the provider's two entry points bump it.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 

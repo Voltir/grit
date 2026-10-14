@@ -83,6 +83,7 @@ final class InMemoryInbox(
   val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger)
 
   /** The turns started, oldest first; a turn started twice is here once. */
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   var started = Vector.empty[TurnRef]
 

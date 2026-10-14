@@ -53,6 +53,7 @@ object ShadowFixtures {
 
   /** A clock stopped at `time` whose milliseconds go on `step` each time they are read. */
   final class Ticking(time: Instant, step: Long) extends Clock {
+    // A counter only the test's assertions read; the clock's reads bump it on the test's thread.
     @caps.unsafe.untrackedCaptures
     private var read = 0L
     def now(): Instant = time

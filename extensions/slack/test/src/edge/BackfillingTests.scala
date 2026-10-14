@@ -14,6 +14,7 @@ object BackfillingTests extends TestSuite {
 
   /** Runs nothing: counts the bodies it is given, each alive until a test ends it. */
   private final class Held extends Backfilling.Start {
+    // Counters only the test's assertions read; the held bodies bump them on the test's thread.
     @caps.unsafe.untrackedCaptures
     var started = 0
 

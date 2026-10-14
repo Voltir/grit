@@ -24,6 +24,7 @@ object CodingTests extends TestSuite {
   ) extends Workspace,
         Edits,
         Shell {
+    // Replaced whole by the tools' own calls, which the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var log = Vector.empty[String]
 

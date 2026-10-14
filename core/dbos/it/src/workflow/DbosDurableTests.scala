@@ -96,11 +96,13 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
     (dbos, registered)
   }
 
+  // Replaced whole only when the test relaunches, on its one thread; read only by its calls.
   @caps.unsafe.untrackedCaptures
   private var current: (DBOS, RegisteredWorkflow) = launched()
 
   private def dbos: DBOS = current._1
 
+  // A counter only the test's assertions read; the workflow's calls bump it on the test's thread.
   @caps.unsafe.untrackedCaptures
   private var issued = 0
 

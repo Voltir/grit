@@ -12,6 +12,7 @@ import grit.core.store.{InMemoryEntryStore, StoreError, Tx}
 final class InMemoryTriageShadows(entries: InMemoryEntryStore, triage: TriageStore)
     extends TriageShadows {
 
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[(EntryId, ShadowName), (Shadowed, Instant)]
 

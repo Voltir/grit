@@ -15,6 +15,7 @@ object DurableTests extends TestSuite {
 
   /** Step bodies that count their own executions. */
   final class Counts {
+    // Counters only the test's assertions read; the steps bump them on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var a = 0
     @caps.unsafe.untrackedCaptures
@@ -68,6 +69,7 @@ object DurableTests extends TestSuite {
     }
 
     test("replay: a recorded error rethrows without running, with a message or without") {
+      // A counter only the test's assertions read; the step bumps it on the test's own thread.
       @caps.unsafe.untrackedCaptures
       var runs = 0
       def wf(using d: Durable^): String = d.step("boom") { () => runs += 1; "ran" }
@@ -109,6 +111,7 @@ object DurableTests extends TestSuite {
 
     test("replay: a recorded recv returns its message, and receives nothing more") {
       val durable = new InMemoryDurable
+      // Written and read only on the test's own thread, by the test's two runs of its body.
       @caps.unsafe.untrackedCaptures
       var crash = true
       def body(using d: Durable^): String = {

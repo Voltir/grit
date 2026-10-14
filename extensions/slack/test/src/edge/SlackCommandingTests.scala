@@ -128,6 +128,7 @@ object SlackCommandingTests extends TestSuite {
     }
 
     /** The room each command was handed to the administration in, in order. */
+    // Replaced whole by the fake's own calls, which the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var rooms = Vector.empty[Place]
 
@@ -147,6 +148,7 @@ object SlackCommandingTests extends TestSuite {
       )
 
     /** What the edge said, in order. */
+    // Replaced whole by the fake's own calls, which the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var logged = Vector.empty[String]
 

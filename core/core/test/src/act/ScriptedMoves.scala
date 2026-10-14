@@ -82,7 +82,7 @@ class ScriptedMoves(
     }
   }
 
-  // As `made`.
+  // As `made`: replaced whole by the test's own calls, on its one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   private var kinds: Map[MoveName, MoveKind] = Map.empty
 }
