@@ -463,6 +463,7 @@ object Close {
                 attempt.workflowId,
                 c.model,
                 c.upstream,
+                None,
                 c.usage,
                 c.estimate
               )

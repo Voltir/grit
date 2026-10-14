@@ -6,6 +6,7 @@ import grit.core.act.Allowance
 import grit.core.clock.SetClock
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
 import grit.core.store.{InMemoryUsageLedger, StoreError, Tx, UsageLedger}
@@ -101,10 +102,10 @@ object AskingTests extends TestSuite {
       val daily = Allowance.Daily(budget("0.02"))
       val before = Asking.admits(daily, ledger, start)
       val _ =
-        ledger.record(EntryId("a"), turn, turn.workflowId, "m", None, answer("a").usage, Tokens(1))
+        ledger.record(EntryId("a"), turn, turn.workflowId, "m", None, None, answer("a").usage, Tokens(1))
       val under = Asking.admits(daily, ledger, start)
       val _ =
-        ledger.record(EntryId("b"), turn, turn.workflowId, "m", None, answer("b").usage, Tokens(1))
+        ledger.record(EntryId("b"), turn, turn.workflowId, "m", None, None, answer("b").usage, Tokens(1))
       val at = Asking.admits(daily, ledger, start)
       val tomorrow = Asking.admits(daily, ledger, start.plus(1, java.time.temporal.ChronoUnit.DAYS))
       (before, under, at, tomorrow) ==> (Right(true), Right(true), Right(false), Right(true))
@@ -118,14 +119,14 @@ object AskingTests extends TestSuite {
     }
 
     test(
-      "a cost is recorded once, an ask's as its reply's, who served it included, and a call's as its model's and usage, each beside its estimate; again, DuplicateId"
+      "a cost is recorded once, an ask's as its reply's, who served it and its pin's grade included, and a call's as its model's and usage, with no grade, each beside its estimate; again, DuplicateId"
     ) {
       val ledger = new InMemoryUsageLedger
       given Tx = TestTx.fake
       val reply = answer("hi").copy(upstream = Some("Fireworks"))
       val usage = Usage(Tokens(30), Tokens(4), Tokens(10), Some(BigDecimal("0.002")))
-      val first = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
-      val second = Asking.spent(ledger, EntryId("e"), turn, reply, Tokens(7))
+      val first = Asking.spent(ledger, EntryId("e"), turn, reply, Some(Grade.Strong), Tokens(7))
+      val second = Asking.spent(ledger, EntryId("e"), turn, reply, Some(Grade.Strong), Tokens(7))
       val call = Asking.cost(ledger, EntryId("f"), turn, "judge", None, usage, Tokens(28))
       (first, second, call, ledger.of(turn.workflowId)) ==>
         (
@@ -134,8 +135,15 @@ object AskingTests extends TestSuite {
           Right(()),
           Right(
             Vector(
-              UsageLedger.Row(EntryId("e"), "m", Some("Fireworks"), reply.usage, Tokens(7)),
-              UsageLedger.Row(EntryId("f"), "judge", None, usage, Tokens(28))
+              UsageLedger.Row(
+                EntryId("e"),
+                "m",
+                Some("Fireworks"),
+                Some(Grade.Strong),
+                reply.usage,
+                Tokens(7)
+              ),
+              UsageLedger.Row(EntryId("f"), "judge", None, None, usage, Tokens(28))
             )
           )
         )

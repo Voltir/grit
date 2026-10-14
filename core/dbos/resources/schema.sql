@@ -410,6 +410,9 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     model               TEXT NOT NULL,
     -- Who served it, as its provider reported (Message.Assistant.upstream); NULL when none was.
     upstream            TEXT,
+    -- The grade of the pin the call was made under (grit.core.model.Grade's word); NULL when
+    -- it was made under none.
+    grade               TEXT CHECK (grade IN ('light', 'standard', 'strong')),
     input_tokens        BIGINT NOT NULL,
     output_tokens       BIGINT NOT NULL,
     cached_input_tokens BIGINT NOT NULL,

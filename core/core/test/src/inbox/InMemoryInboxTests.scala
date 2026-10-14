@@ -50,7 +50,7 @@ object InMemoryInboxTests extends InboxContract {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
       val turn = TurnRef(ConversationId("elsewhere"), TurnSeq.First)
       val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
-      val _ = inbox.ledger.record(entry, turn, turn.workflowId, "m", None, usage, Tokens(1))(using
+      val _ = inbox.ledger.record(entry, turn, turn.workflowId, "m", None, None, usage, Tokens(1))(using
         TestTx.fake
       )
     }

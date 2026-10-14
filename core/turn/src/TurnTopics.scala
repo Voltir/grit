@@ -14,6 +14,7 @@ import grit.core.classify.{
 }
 import grit.core.id.{EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.provider.TokenEstimator
 import grit.core.route.Routed
 import grit.core.store.{Db, Entry, EntryStore, EntryTopics, Payload, StoreError, Tx, UsageLedger}
@@ -272,12 +273,14 @@ object TurnTopics {
       placedId(turn),
       classification.events,
       classification.cost.map((model, usage, estimate) => (model, upstream, usage, estimate)),
+      None,
       at
     )
 
   /** Records `events` as `turn`'s entry `id`, dated `at`, after everything in the
     * conversation, with `cost` (a model, who served it, its usage and the estimated input) in
-    * the ledger beside it. No events, no entry: `id` is returned all the same.
+    * the ledger beside it, at `grade`, the grade of the pin its calls were made under (`None`:
+    * none). No events, no entry: `id` is returned all the same.
     */
   private[turn] def writeEvents(
       entries: EntryStore,
@@ -286,6 +289,7 @@ object TurnTopics {
       id: EntryId,
       events: Vector[TopicEvent],
       cost: Option[(String, Option[String], Usage, Tokens)],
+      grade: Option[Grade],
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     if (events.isEmpty) Right(id)
@@ -304,7 +308,7 @@ object TurnTopics {
           )
         )
         _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, upstream, usage, estimate) =>
-          ledger.record(id, turn, turn.workflowId, model, upstream, usage, estimate)
+          ledger.record(id, turn, turn.workflowId, model, upstream, grade, usage, estimate)
         }
       } yield id).left.map(e => TurnFailure.Store(describe(e)))
 

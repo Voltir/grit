@@ -13,6 +13,7 @@ import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{
   AfterToolResult,
+  Grade,
   Pinned,
   StrictSchemas,
   ToolGuidance,
@@ -687,6 +688,7 @@ object Turn {
             turn.workflowId,
             tags.model,
             upstream,
+            None,
             tags.usage,
             estimate
           )
@@ -1025,6 +1027,7 @@ object Turn {
             turn.workflowId,
             c.model,
             env.classifier.upstream,
+            None,
             c.usage,
             c.estimated
           )
@@ -1213,6 +1216,7 @@ object Turn {
                 turn,
                 window,
                 a.reply,
+                pins.turn.grade,
                 shape(_),
                 recorded,
                 env.clock.now()
@@ -1306,6 +1310,7 @@ object Turn {
                 seen,
                 round,
                 reply,
+                pins.turn.grade,
                 shaped,
                 env.clock.now()
               )
@@ -1410,6 +1415,7 @@ object Turn {
                   TurnVerdict
                     .events(TurnVerdict.of(c, first), TurnVerdict.anomaly(replies), c, turn),
                   None,
+                  None,
                   env.clock.now()
                 )
               ).left
@@ -1425,6 +1431,7 @@ object Turn {
                   turn,
                   seen,
                   l.answer,
+                  pins.turn.grade,
                   shaped,
                   recorded,
                   env.clock.now()
@@ -1482,6 +1489,7 @@ object Turn {
       window: Window,
       round: Round,
       reply: Message.Assistant,
+      grade: Grade,
       shape: ModelRequest -> ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
@@ -1505,7 +1513,10 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      _ <- Asking.spent(ledger, id, turn, reply, estimator.request(sent)).left.map(storeFailure)
+      _ <- Asking
+        .spent(ledger, id, turn, reply, Some(grade), estimator.request(sent))
+        .left
+        .map(storeFailure)
     } yield id
   }
 
@@ -1571,7 +1582,7 @@ object Turn {
     }
     val round = TurnVerdict.round(c, first, further)
     val recorded = d.transact(Step.RecordVerdict, Subject.Turn(turn))(
-      recordVerdict(offer.system, env.records, turn, seen, c, round, env.clock.now())
+      recordVerdict(offer.system, env.records, turn, seen, c, round, pins.turn.grade, env.clock.now())
     )
     Ran(round.answer, recorded.left.toOption)
   }
@@ -1587,6 +1598,7 @@ object Turn {
       window: Window,
       c: TurnTopics.Classification,
       round: TurnVerdict.Round,
+      grade: Grade,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
@@ -1601,6 +1613,7 @@ object Turn {
         TurnVerdict.cost(
           round.spent.map(r => r.reply -> records.estimator.request(base.shaped(r.shape(_))))
         ),
+        Some(grade),
         at
       )
     } yield id
@@ -1645,8 +1658,10 @@ object Turn {
             )
           )
       }
+      // Right whenever `message` is: the summarise step made its call under this pin.
+      grade <- pins.summary.map(_.grade)
       appended <- d.transact(Step.AppendSummary, Subject.Turn(turn))(
-        appendSummary(env.records, turn, answered, message, placing, env.clock.now())
+        appendSummary(env.records, turn, answered, message, grade, placing, env.clock.now())
       )
     } yield appended
   }
@@ -1678,6 +1693,7 @@ object Turn {
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
+      grade: Grade,
       placing: Placing,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
@@ -1707,7 +1723,7 @@ object Turn {
         .left
         .map(storeFailure)
       estimate = estimator.request(summaryRequest(all, turn, placing))
-      _ <- Asking.spent(ledger, id, turn, message, estimate).left.map(storeFailure)
+      _ <- Asking.spent(ledger, id, turn, message, Some(grade), estimate).left.map(storeFailure)
       described = topicOf(all, turn, placing).toVector.flatMap(TurnTopics.described(_, read))
       _ <- TurnTopics.writeEvents(
         entries,
@@ -1715,6 +1731,7 @@ object Turn {
         turn,
         TurnTopics.describedId(turn),
         described,
+        None,
         None,
         at
       )
@@ -1860,6 +1877,7 @@ object Turn {
       turn: TurnRef,
       window: Window,
       message: Message.Assistant,
+      grade: Grade,
       shape: ModelRequest -> ModelRequest,
       recorded: WindowRecord,
       at: Instant
@@ -1892,7 +1910,10 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      _ <- Asking.spent(ledger, id, turn, message, estimator.request(sent)).left.map(storeFailure)
+      _ <- Asking
+        .spent(ledger, id, turn, message, Some(grade), estimator.request(sent))
+        .left
+        .map(storeFailure)
       followed = Pointer.followedIn(showing.documents.map(_._1), callsOf(showing.mine))
       _ <- records.documents.followed(followed, at).left.map(storeFailure)
       _ <- offer.root match {
@@ -1981,7 +2002,7 @@ object Turn {
             entries
               .insert(entry)
               .flatMap(_ =>
-                ledger.record(qid, turn, turn.workflowId, q.model, q.upstream, q.usage, q.estimate)
+                ledger.record(qid, turn, turn.workflowId, q.model, q.upstream, None, q.usage, q.estimate)
               )
               .left
               .map(storeFailure)

@@ -11,10 +11,12 @@ enum Effort {
 final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort]) derives CanEqual
 
 /** How strong a pair a call is made with, least first: a ladder's rungs are graded by it, and
-  * a turn's effort stage asks for one.
+  * a turn's effort stage asks for one. `word` is how grit writes it (the catalog, the ledger).
   */
-enum Grade derives CanEqual {
-  case Light, Standard, Strong
+enum Grade(val word: String) derives CanEqual {
+  case Light extends Grade("light")
+  case Standard extends Grade("standard")
+  case Strong extends Grade("strong")
 }
 
 /** A pair a role may use, at `grade`. */

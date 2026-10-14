@@ -5,6 +5,7 @@ import scala.util.control.NonFatal
 
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.spend.{Day, Spend, Spending}
 import grit.core.store.{StoreError, Tx, UsageLedger}
 
@@ -51,6 +52,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
       workflow: WorkflowId,
       model: String,
       upstream: Option[String],
+      grade: Option[Grade],
       usage: Usage,
       estimatedInput: Tokens
   )(using tx: Tx^): Either[StoreError, Unit] = {
@@ -62,8 +64,8 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         conn.prepareStatement(
           """INSERT INTO grit.usage_ledger
             |  (entry_id, workflow_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |   estimated_input_tokens, conversation_id, turn_seq, upstream)
-            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?)""".stripMargin
+            |   estimated_input_tokens, conversation_id, turn_seq, upstream, grade)
+            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?, ?)""".stripMargin
         )
       ) { ps =>
         ps.setString(1, EntryId.value(entry))
@@ -77,6 +79,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         ps.setString(9, ConversationId.value(turn.conversationId))
         ps.setLong(10, TurnSeq.value(turn.turnSeq))
         ps.setString(11, upstream.orNull)
+        ps.setString(12, grade.map(_.word).orNull)
         ps.executeUpdate()
       }
       conn.releaseSavepoint(savepoint)
@@ -95,14 +98,18 @@ final class SqlUsageLedger extends UsageLedger, Spending {
       Using.resource(
         conn.prepareStatement(
           """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |       estimated_input_tokens, upstream
+            |       estimated_input_tokens, upstream, grade
             |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
         )
       ) { ps =>
         ps.setString(1, WorkflowId.value(workflow))
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[UsageLedger.Row]
+          var unknown = Option.empty[String]
           while (rs.next()) {
+            val word = Option(rs.getString(9))
+            val grade = word.flatMap(w => Grade.values.find(_.word == w))
+            if (grade.isEmpty) unknown = unknown.orElse(word)
             val usage = Usage(
               Tokens(rs.getLong(3)),
               Tokens(rs.getLong(4)),
@@ -113,11 +120,14 @@ final class SqlUsageLedger extends UsageLedger, Spending {
               EntryId(rs.getString(1)),
               rs.getString(2),
               Option(rs.getString(8)),
+              grade,
               usage,
               Tokens(rs.getLong(7))
             )
           }
-          Right(rows.result())
+          unknown.fold(Right(rows.result()))(w =>
+            Left(StoreError.Invalid(s"a ledger row's grade is '$w', which names no grade"))
+          )
         }
       }
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }

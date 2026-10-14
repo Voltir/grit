@@ -57,6 +57,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
+import grit.core.model.Grade
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Clearance,
@@ -383,12 +384,13 @@ object RunFixtures {
         workflow: WorkflowId,
         model: String,
         upstream: Option[String],
+        grade: Option[Grade],
         usage: Usage,
         estimatedInput: Tokens
     )(using Tx^): Either[StoreError, Unit] =
       if (switches.recordArmed) { switches.recordArmed = false; throw new InMemoryDurable.Crash }
       else if (failing) Left(StoreError.DatabaseError("the ledger is down"))
-      else ledger.record(entry, turn, workflow, model, upstream, usage, estimatedInput)
+      else ledger.record(entry, turn, workflow, model, upstream, grade, usage, estimatedInput)
     def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
       ledger.of(workflow)
     def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using

@@ -23,7 +23,7 @@ object InMemorySpendingTests extends SpendingContract {
   ): Unit = {
     memory.now = at
     val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, usd.map(BigDecimal(_)))
-    val _ = memory.record(entry, turn, workflow, "m", None, usage, Tokens(1))(using TestTx.fake)
+    val _ = memory.record(entry, turn, workflow, "m", None, None, usage, Tokens(1))(using TestTx.fake)
   }
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)

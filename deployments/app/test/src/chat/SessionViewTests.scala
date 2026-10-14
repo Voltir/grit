@@ -38,6 +38,7 @@ object SessionViewTests extends TestSuite {
       EntryId(s"e$seq"),
       model,
       None,
+      None,
       Usage(Tokens(in), Tokens(out), Tokens.Zero, usd.map(BigDecimal(_))),
       Tokens(in)
     )

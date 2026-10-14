@@ -349,6 +349,7 @@ object CollectorLiveTests extends TestSuite {
           workflow,
           "m",
           None,
+          None,
           usage,
           Tokens(1)
         )

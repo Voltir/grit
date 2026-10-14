@@ -19,7 +19,7 @@ import grit.core.model.{
 }
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Uncleared
-import grit.core.store.{Db, InMemoryEntryStore, Payload, StoreError, Tx}
+import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Subject, Visibility}
 import grit.dbos.sql.TestTx
@@ -283,6 +283,39 @@ object TurnRouteTests extends TestSuite {
         summarizer.requests.size
       ) ==> (false, Vector(Some(pinOf(open, _.pin.query))), 1, 1)
       assert(ran.startsWith("replied:"))
+    }
+
+    test(
+      "a turn's reply and summary record the grade of the pin each was made under"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "hello")
+      val ledger = new InMemoryUsageLedger
+      def graded(g: Grade, r: ModelRef): Ladder =
+        Ladder.of(Vector(Rung(g, Assignment(r, 100, None)))).getOrElse(throw new java.lang.AssertionError())
+      val strong = Catalog.of(
+        Policy(graded(Grade.Strong, flash), graded(Grade.Light, flash), ladder(open), ladder(flash)),
+        Vector.empty
+      )
+      val ran = new InMemoryDurable().run(turn.workflowId)(
+        routedBody(
+          entries,
+          new RecordingProvider,
+          new RecordingProvider,
+          new Asking,
+          LabelledDb(Clearance.of(internal), flashCleared),
+          strong,
+          ledger = ledger
+        )
+      )
+      assert(ran.startsWith("replied:"))
+      ledger.of(turn.workflowId)(using TestTx.fake).map(_.map(r => r.entry -> r.grade)) ==>
+        Right(
+          Vector(
+            turn.replyId -> Some(Grade.Strong),
+            TurnSummary.id(turn) -> Some(Grade.Light)
+          )
+        )
     }
   }
 }

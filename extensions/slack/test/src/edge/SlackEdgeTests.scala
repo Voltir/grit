@@ -119,6 +119,7 @@ object SlackEdgeTests extends TestSuite {
         turn.workflowId,
         "m",
         None,
+        None,
         usage,
         Tokens(1)
       )(using TestTx.fake)

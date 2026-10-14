@@ -166,14 +166,7 @@ object CatalogJson {
       case ToolGuidance.SystemLines => "system-lines"
     }
   )
-  private val GradeWords: Words[Grade] = Words(
-    Grade.values.toVector,
-    {
-      case Grade.Light => "light"
-      case Grade.Standard => "standard"
-      case Grade.Strong => "strong"
-    }
-  )
+  private val GradeWords: Words[Grade] = Words(Grade.values.toVector, _.word)
   private val EffortWords: Words[Effort] = Words(
     Effort.values.toVector,
     {

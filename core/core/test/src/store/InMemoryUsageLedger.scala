@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.spend.{Day, Spend, Spending}
 
 /** An in-memory [[UsageLedger]] for tests, keeping [[StoreContract]], and the [[Spending]]
@@ -40,12 +41,17 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   @caps.unsafe.untrackedCaptures
   private var upstreams = Map.empty[EntryId, String]
 
+  /** The grade of the pin each row's call was made under, by its entry, when it had one. */
+  @caps.unsafe.untrackedCaptures
+  private var grades = Map.empty[EntryId, Grade]
+
   def record(
       entry: EntryId,
       turn: TurnRef,
       workflow: WorkflowId,
       model: String,
       upstream: Option[String],
+      grade: Option[Grade],
       usage: Usage,
       estimatedInput: Tokens
   )(using Tx^): Either[StoreError, Unit] =
@@ -53,6 +59,7 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
     else {
       rows = rows :+ (entry, workflow, model, usage, estimatedInput, turn)
       upstreams = upstream.fold(upstreams)(u => upstreams.updated(entry, u))
+      grades = grade.fold(grades)(g => grades.updated(entry, g))
       recordedAt = recordedAt.updated(entry, now)
       Right(())
     }
@@ -60,7 +67,7 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
     Right(rows.collect {
       case (entry, w, model, usage, estimate, _) if w == workflow =>
-        UsageLedger.Row(entry, model, upstreams.get(entry), usage, estimate)
+        UsageLedger.Row(entry, model, upstreams.get(entry), grades.get(entry), usage, estimate)
     })
 
   def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using

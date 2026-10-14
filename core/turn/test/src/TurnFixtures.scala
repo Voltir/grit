@@ -1103,13 +1103,14 @@ object TurnFixtures {
       db: Db^,
       catalog: Catalog,
       speech: TurnSpeech = quiet(),
-      tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools
+      tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools,
+      ledger: UsageLedger = new InMemoryUsageLedger
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
         TurnRecords(
           entries,
-          new InMemoryUsageLedger,
+          ledger,
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals,
