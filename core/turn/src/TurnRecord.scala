@@ -33,10 +33,8 @@ object TurnRecord {
   }
 
   /** What the `judge` step recorded of the draft of a turn whose root is `root`; `None`
-    * unless `root` is [[TurnOffer.Root.Heard]] and the step recorded a judgement. A named
-    * turn that judged its draft before [[Turn.Patches.NamedUnjudged]] recorded only the
-    * call's cost, which is not read here. `Left` naming the step when its output does not
-    * read.
+    * unless `root` is [[TurnOffer.Root.Heard]] and the step recorded a judgement. `Left`
+    * naming the step when its output does not read.
     */
   def judged(
       steps: Vector[StepRecord],
@@ -68,10 +66,9 @@ object TurnRecord {
     * that ran the turn. `Calls(Vector.empty, None, _)` for a turn whose first call's reply is
     * not kept yet.
     *
-    * `Left` naming what does not read: a turn recorded before the tool loop (its `tools`
-    * patch), a step whose output does not read, a prompt, tool set or profile not kept, a
-    * call's reply entry no longer kept, or a window naming entries since deleted, with their
-    * seqs. A nearby entry or document since deleted, a plugin since disabled or a person since
+    * `Left` naming what does not read: a step whose output does not read, a prompt, tool set
+    * or profile not kept, a call's reply entry no longer kept, or a window naming entries
+    * since deleted, with their seqs. A nearby entry or document since deleted, a plugin since disabled or a person since
     * renamed rebuilds as it is now, not as sent: each call's ledger row keeps the estimate of
     * what was sent to compare with.
     */

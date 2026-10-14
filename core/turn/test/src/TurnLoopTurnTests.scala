@@ -15,7 +15,7 @@ import grit.models.StubProvider
 import utest.*
 import TurnFixtures.Scripted
 
-/** The tool loop inside the durable turn ([[Turn.Patches.Tools]]), over core's in-memory
+/** The tool loop inside the durable turn ([[TurnLoop]]), over core's in-memory
   * durability and store: which steps it records, what each model call is shown, what the
   * store keeps, and what a crash in a tool's step runs again.
   */
@@ -88,8 +88,7 @@ object TurnLoopTurnTests extends TestSuite {
       val turn = say(entries, "read them")
       looped(durable, entries, entries, turn, provider, ws, ledger, summarizer) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "DBOS.patch-tools") ==> Vector(
-        "DBOS.patch-tools",
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "call-model") ==> Vector(
         "call-model",
         "record-call:0",
         "tool:0:0",

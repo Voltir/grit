@@ -1,0 +1,27 @@
+{
+  "workflow": "turn",
+  "id": "c1:1",
+  "epoch": "2026-10-14",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":\"65e98389206b6006\"}"
+    },
+    {
+      "name": "weigh",
+      "output": "null"
+    },
+    {
+      "name": "route",
+      "output": "{\"failed\":\"uncleared\",\"reason\":\"internal\"}"
+    },
+    {
+      "name": "DBOS.patch-record-failure"
+    },
+    {
+      "name": "record-failure",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

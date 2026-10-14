@@ -111,10 +111,9 @@ object LifecycleReplayTests extends TestSuite {
       assert(failures.isEmpty)
     }
 
-    test(
-      "every recorded shadow row of the epoch reads, and the epoch holds a wording's and a question set's"
-    ) {
-      // A shadow in flight reads back its ask step: today's reader must read both forms.
+    test("every recorded shadow row of the epoch reads, and the epoch holds a question set's") {
+      // A shadow in flight reads back its ask step: today's reader must read what this epoch
+      // records. A shadow asks a question set; a stored wording's row is ShadowedJsonTests'.
       val rows = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector
           .filter(_.workflow == "shadow")
@@ -134,14 +133,15 @@ object LifecycleReplayTests extends TestSuite {
           case ShadowAnswers.Named(_) => "named"
         }
       }
-      answered.distinct.sorted ==> Vector("named", "worded")
+      answered.distinct.sorted ==> Vector("named")
     }
 
     test(
-      "the epoch holds a triage tagged with v1's four probabilities, one with named answers, and one held unasked"
+      "the epoch holds a triage tagged with named answers, one with a source's, one drafting and one held at the gate"
     ) {
-      // A triage in flight across a deploy reads back its ask: replay above reads every form
-      // recorded; these say both forms are recorded, and the in-flight one's hold.
+      // A triage in flight across a deploy reads back its ask and its decision: replay above
+      // reads every form recorded; these say each is recorded. Stored tags of an earlier set
+      // are TagsJsonTests'.
       val triages = histories.flatMap { case (_, parsed) =>
         parsed.toOption.toVector.filter(_.workflow == "triage").flatMap(_.steps)
       }
@@ -152,23 +152,37 @@ object LifecycleReplayTests extends TestSuite {
             case _ => None
           }
       }.flatten
-      val tags = output("ask").flatMap(_.objOpt).flatMap(_.get("tags")).flatMap(_.objOpt)
-      val held = output("consider").flatMap(_.objOpt).flatMap(_.get("held")).flatMap(_.objOpt)
+      val named = output("ask")
+        .flatMap(_.objOpt)
+        .flatMap(_.get("tags"))
+        .flatMap(_.objOpt)
+        .flatMap(_.get("answers"))
+        .map(_.arr.flatMap(_.obj.get("name")).flatMap(_.strOpt).toVector)
+      val considered = output("consider").flatMap(_.objOpt)
       (
-        tags.exists(_.contains("kind")),
-        tags.exists(_.contains("answers")),
-        held.exists(_.get("kind").exists(_.strOpt.contains("unasked")))
-      ) ==> (true, true, true)
+        named.exists(_.contains("gap")),
+        named.exists(_.exists(_.startsWith("source:"))),
+        considered.exists(_.contains("drafting")),
+        considered
+          .flatMap(_.get("held"))
+          .flatMap(_.objOpt)
+          .exists(_.get("kind").exists(_.strOpt.contains("gated")))
+      ) ==> (true, true, true, true)
     }
 
-    test("the epoch holds a job's run's close, replied and unreplied, taken by the patch") {
-      // Without them the gate above never replays the patched branch of the close.
+    test("the epoch holds a job's run's close, replied and unreplied") {
+      // Without them the gate above never replays a close checked due as a run.
       val ran = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector
           .filter(h =>
-            h.steps.headOption
-              .map(_.name)
-              .contains(InMemoryDurable.patchMarker(Close.Patches.RunClose))
+            h.steps.exists(s =>
+              s.name == Close.Step.Check && (s.outcome match {
+                case InMemoryDurable.Outcome.Output(text) =>
+                  ujson.read(text).obj.get("ok").flatMap(_.obj.get("due")).flatMap(_.strOpt) ==
+                    Some("ran")
+                case _ => false
+              })
+            )
           )
           .flatMap(_.steps.collect {
             case s if s.name == "summarise" =>

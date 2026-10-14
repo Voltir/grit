@@ -307,14 +307,10 @@ object TurnTopicsTests extends TestSuite {
       durable
         .recordedSteps(turn.workflowId) ==> Vector(
         "pin-models",
-        "DBOS.patch-weigh",
         "weigh",
-        "DBOS.patch-route",
         "route",
         "offer",
-        "DBOS.patch-stitch-in-room-order",
         "stitched",
-        "DBOS.patch-topics",
         "classify"
       )
       runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)

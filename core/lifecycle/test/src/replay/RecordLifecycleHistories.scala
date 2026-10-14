@@ -51,7 +51,7 @@ object RecordLifecycleHistories {
   def main(args: Array[String]): Unit = {
     val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
     os.makeDir.all(dir)
-    for ((name, history) <- shapes(dir)) {
+    for ((name, history) <- shapes) {
       val file = dir / s"$name.json"
       if (os.exists(file)) println(s"kept    $file")
       else {
@@ -70,7 +70,7 @@ object RecordLifecycleHistories {
   )
 
   /** Each shape, by name, recorded by running the close over a fresh world. */
-  private def shapes(dir: os.Path): Vector[(String, History)] = {
+  private def shapes: Vector[(String, History)] = {
     def record(name: String, origin: grit.core.store.Origin = Session)(
         run: (World, InMemoryDurable) => grit.core.id.WorkflowId
     ): (String, History) = {
@@ -140,7 +140,7 @@ object RecordLifecycleHistories {
     )
 
     /** Speaking within the suggested limits, by live triage's gate. */
-    def speaksV2 = grit.core.speech.Speaking.Within(
+    def speaks = grit.core.speech.Speaking.Within(
       grit.core.speech.Limits.suggested(
         grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
         grit.lifecycle.triage.TriageQuestions.ShippedSpeak
@@ -155,15 +155,24 @@ object RecordLifecycleHistories {
       val id = run(new TriageFixtures.World, durable)
       name -> History("triage", id, Turn.Epoch, "recorded", durable.history(id))
     }
+    // Live triage's set, v4: gap's four keys, then its yes/nos (open, to, to-grit, durable,
+    // anchor, anchor-record) and one per source covering the conversation.
+    def decided = new TriageFixtures.Scripted(
+      Vector(0.0, 0.125, 0.75, 0.125),
+      Vector(0.125, 0.25, 0.125, 0.875, 0.25, 0.375, 0.5)
+    )
+    def asking =
+      new TriageFixtures.Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.125, 0.125))
     val triages = Vector(
       triaged("triage-tagged") { (w, d) =>
         val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
-        val decided =
-          new TriageFixtures.Scripted(
-            Vector(0.125, 0.0, 0.75, 0.125, 0.0),
-            Vector(0.125, 0.875, 0.25)
-          )
         d.run(t.workflowId)(w.body(decided, 5))
+        t.workflowId
+      },
+      triaged("triage-tagged-sourced") { (w, d) =>
+        // A question for the one catalog source covering the conversation's.
+        val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
+        d.run(t.workflowId)(w.body(decided, 5, sources = ShadowFixtures.Catalog))
         t.workflowId
       },
       triaged("triage-unanswered") { (w, d) =>
@@ -174,8 +183,8 @@ object RecordLifecycleHistories {
       triaged("triage-ignored") { (w, d) =>
         val t = w.hear("lunch?", "Ana", 0)
         val purging = new TriageFixtures.Scripted(
-          Vector(0, 0, 0, 0, 1),
-          Vector(0.1, 0.1, 0.1),
+          Vector(0, 0, 0, 1),
+          Vector(0.1, 0.1, 0.1, 0.1, 0.1, 0.1),
           () => w.purge(grit.core.id.TurnRef(TriageFixtures.c, t.turn))
         )
         d.run(t.workflowId)(w.body(purging, 5))
@@ -183,30 +192,27 @@ object RecordLifecycleHistories {
       },
       triaged("triage-drafting") { (w, d) =>
         val t = w.hear("what did we decide about the refi page?", "Ana", 0)
-        val asking = new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
-        val within = grit.core.speech.Speaking.Within(
-          grit.core.speech.Limits.suggested(
-            grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-            grit.lifecycle.triage.TriageQuestions.V1.speak
-          )
-        )
-        d.run(t.workflowId)(w.body(asking, 1, within))
+        d.run(t.workflowId)(w.body(asking, 1, speaks))
         t.workflowId
       },
-      triaged("triage-stitched") { (w, d) =>
-        w.hear("where did we land on the Engine contract term?", "Nick", 0)
-        val t = w.hear("Is this a real question", "David", 1, in = w.thread("2.0"))
-        val following =
-          new TriageFixtures.Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
-        d.run(t.workflowId)(w.body(following, 2))
+      triaged("triage-held-gated") { (w, d) =>
+        // Held at the gate: gap leaves nothing open, and nothing is open.
+        val t = w.hear("thanks all!", "Ana", 0)
+        val thanks = new TriageFixtures.Scripted(
+          Vector(0, 0, 0, 1),
+          Vector(0.25, 0.125, 0.125, 0.5, 0.125, 0.125)
+        )
+        d.run(t.workflowId)(w.body(thanks, 1, speaks))
         t.workflowId
       },
       triaged("triage-stitched-in-order") { (w, d) =>
         // A first message: its placement waited for, a workflow of its own.
         w.hear("where did we land on the Engine contract term?", "Nick", 0)
         val t = w.hear("Is this a real question", "David", 1, in = w.thread("2.0"))
-        val following =
-          new TriageFixtures.Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+        val following = new TriageFixtures.Scripted(
+          Vector(0.9, 0.1, 0, 0),
+          Vector(0.1, 0.1, 0.2, 0.5, 0.125, 0.125)
+        )
         d.run(t.workflowId)(w.body(following, 2))
         t.workflowId
       },
@@ -214,7 +220,6 @@ object RecordLifecycleHistories {
         // A reply: no placement waited for.
         w.hear("where did we land on the Engine contract term?", "Nick", 0)
         val t = w.hear("the twelve-month one", "Ana", 1)
-        val asking = new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
         d.run(t.workflowId)(w.body(asking, 2))
         t.workflowId
       },
@@ -223,52 +228,6 @@ object RecordLifecycleHistories {
         val id = grit.core.id.TriageRef(TriageFixtures.p1, said.turnSeq).workflowId
         d.run(id)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))
         id
-      },
-      triaged("triage-tagged-v2") { (w, d) =>
-        // V2's answers, and the one catalog source covering the conversation's.
-        val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
-        val asked = new TriageFixtures.Scripted(
-          Vector(0.75, 0.125, 0.0, 0.125),
-          Vector(0.875, 0.25, 0.125, 0.0, 0.5)
-        )
-        d.run(t.workflowId)(w.body(asked, 5, sources = ShadowFixtures.Catalog))
-        t.workflowId
-      },
-      triaged("triage-held-gated") { (w, d) =>
-        // Held at V2's gate: gap leaves nothing open, and nothing is open.
-        val t = w.hear("thanks all!", "Ana", 0)
-        val thanks = new TriageFixtures.Scripted(
-          Vector(0.0, 0.0, 0.125, 0.875),
-          Vector(0.125, 0.25, 0.0, 0.5)
-        )
-        d.run(t.workflowId)(w.body(thanks, 1, speaksV2))
-        t.workflowId
-      },
-      triaged("triage-drafting-v2") { (w, d) =>
-        val t = w.hear("what did we decide about the refi page?", "Ana", 0)
-        val asking = new TriageFixtures.Scripted(
-          Vector(1.0, 0.0, 0.0, 0.0),
-          Vector(0.9, 0.125, 0.5, 0.125)
-        )
-        d.run(t.workflowId)(w.body(asking, 1, speaksV2))
-        t.workflowId
-      },
-      triaged("triage-held-unasked") { (w, d) =>
-        // In flight across the switch to V2: asked v1 by the build before it (that build's
-        // recorded ask, from triage-reply-in-order), then recorded and considered by today's,
-        // whose gate reads V2's names, so held unasked.
-        w.hear("where did we land on the Engine contract term?", "Nick", 0)
-        val t = w.hear("the twelve-month one", "Ana", 1)
-        val earlier = os
-          .list(dir)
-          .find(_.last == "triage-reply-in-order.json")
-          .toRight("no triage-reply-in-order.json")
-          .flatMap(file => History.read(ujson.read(os.read(file))))
-          .fold(why => sys.error(why), _.steps.take(3))
-        d.replay(t.workflowId, earlier)(
-          w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 2, speaksV2)
-        ).fold(why => sys.error(why), identity)
-        t.workflowId
       }
     )
     def placed(

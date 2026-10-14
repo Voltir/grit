@@ -2,7 +2,6 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.core.durable.InMemoryDurable
 import grit.core.id.EntryId
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.period.Probability
@@ -165,40 +164,16 @@ object TurnWeighTests extends TestSuite {
       (down.weighed, down.offered) ==> (Some("""{"failed":"message"}"""), Vector("github_search"))
     }
 
-    test("a turn that recorded its offer before the weigh step shipped replays without weighing") {
-      val before = new Sourced.Thread(
-        heard = true,
-        Some(Sourced.repoReads(0.1)),
-        unpatched = Set(Turn.Patches.Weigh)
-      )
-      before.run()
-      val history = before.durable.history(before.turn.workflowId)
-      assert(!history.exists(_.name == Turn.Step.Weigh))
-      // Before the patch, nothing was withheld.
-      before.offered ==> Vector("github_search")
-      val today = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
-      today.durable
-        .replay(today.turn.workflowId, history)(today.body(today.triage))
-        .isRight ==> true
-      today.durable.recordedSteps(today.turn.workflowId) ==> history.map(_.name)
-    }
-
     test("a turn resumed after only its pinned models weighs, then offers, both fresh") {
-      val before = new Sourced.Thread(
-        heard = true,
-        Some(Sourced.repoReads(0.1)),
-        unpatched = Set(Turn.Patches.Weigh)
-      )
-      before.run()
-      val pinned = before.durable.history(before.turn.workflowId).take(1)
+      val first = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
+      first.run()
+      val pinned = first.durable.history(first.turn.workflowId).take(1)
       pinned.map(_.name) ==> Vector(Turn.Step.PinModels)
       val today = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
       today.durable.replay(today.turn.workflowId, pinned)(today.body(today.triage)).isRight ==> true
-      today.durable.recordedSteps(today.turn.workflowId).take(6) ==> Vector(
+      today.durable.recordedSteps(today.turn.workflowId).take(4) ==> Vector(
         Turn.Step.PinModels,
-        InMemoryDurable.patchMarker(Turn.Patches.Weigh),
         Turn.Step.Weigh,
-        InMemoryDurable.patchMarker(Turn.Patches.Route),
         Turn.Step.Route,
         Turn.Step.Offer
       )

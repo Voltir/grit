@@ -13,8 +13,7 @@ signatures do not say.
   citation's line label is its ground (ADR 0018). Imports nothing else in lifecycle.
 - **`close`**: one attempt to close a period on its deadline, on the turns' queue under its
   conversation. A period that did not earn a written closing closes with no classifier or model
-  call; a job's run's period closes with its opening as its prose (behind
-  `Close.Patches.RunClose`). With nothing new, or when the model fails, the per-turn summaries
+  call; a job's run's period closes with its opening as its prose. With nothing new, or when the model fails, the per-turn summaries
   are the prose. A period grit only heard is written as reported speech, and nothing resting
   only on heard lines is kept as Standing. Sealing marks its raw entries, the closing it
   replaces and a conversation going quiet for deletion (ADR 0014). ← `transcript`

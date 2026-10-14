@@ -260,7 +260,7 @@ object Look {
     def step(name: String): String = Step.family(name).getOrElse(name) match {
       case Step.Classify => "ᛈ placing"
       case Step.Assemble => "ᛟ assembling"
-      case Step.CallModel | Step.CallModelAgain | Step.CallModelPlain => "ᚨ answering"
+      case Step.CallModel => "ᚨ answering"
       case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.RecordCall |
           Step.Append | Step.AppendSummary =>
         "ᛃ recording"

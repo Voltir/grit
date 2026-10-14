@@ -148,7 +148,7 @@ object TurnReplayTests extends TestSuite {
         j.decode(text).map(j.encode) == Right(text)
       def kind(name: String): Option[String] =
         if (
-          Set(Step.CallModel, Step.CallModelAgain, Step.CallModelPlain)(name) ||
+          name == Step.CallModel ||
           name.startsWith(s"${Step.CallModel}:")
         )
           Some(Step.CallModel)

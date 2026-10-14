@@ -44,10 +44,6 @@ object RecordTurnHistories {
 
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.
-    *
-    * Builders that now run the same turn (`replied`, `summarised` and `windowFirst`;
-    * `crashedBeforeAppend` and `crashedBeforeAppendWindowFirst`) are kept apart because each
-    * name's file was written by an earlier build, and is replayed as it was written.
     */
   private def shapes: Vector[(String, History)] = {
 
@@ -87,29 +83,6 @@ object RecordTurnHistories {
           w.ledger,
           new Judge(Some((0.9, 0.9))),
           TurnSpeech(speaking, w.store, w.deliveries)
-        )
-      )
-      recorded(durable, w.turn)
-    }
-
-    /** A turn rooted on a heard message triage read as put to grit by name, under Within;
-      * any question it asks answered yes at 0.9.
-      */
-    def named: History = {
-      val w = speechWorld()
-      val durable = new InMemoryDurable
-      durable.run(w.turn.workflowId)(
-        turnBodyWith(
-          w.entries,
-          new RecordingProvider,
-          new Before(w.entries),
-          w.ledger,
-          new AnswersYes(0.9),
-          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
-          weighing = TurnWeighing(
-            directed(w),
-            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
-          )
         )
       )
       recorded(durable, w.turn)
@@ -165,14 +138,6 @@ object RecordTurnHistories {
       recorded(durable, w.turn)
     }
 
-    /** [[named]] cut just after its `judge` step, as recorded before named drafts went
-      * unjudged: in flight across that change.
-      */
-    def namedBeforeSpeech: History = {
-      val h = named
-      val judged = h.steps.indexWhere(_.name == Turn.Step.Judge)
-      inFlight(h, if (judged < 0) h.steps.size else judged + 1)
-    }
     val replied = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -204,13 +169,6 @@ object RecordTurnHistories {
           turnBody(new CrashOnInsert(store, isReply), new RecordingProvider)
         )
       catch { case _: InMemoryDurable.Crash => "" }
-      recorded(durable, turn)
-    }
-    val summarised = {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val turn = say(entries, "hello")
-      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
       recorded(durable, turn)
     }
     val summaryFailed = {
@@ -392,30 +350,12 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
-    val windowFirst = {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val turn = say(entries, "hello")
-      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
-      recorded(durable, turn)
-    }
     val crashedRecordingWindow = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val turn = say(store, "hello")
       val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Window])
       try durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
-      catch { case _: InMemoryDurable.Crash => "" }
-      recorded(durable, turn)
-    }
-    val crashedBeforeAppendWindowFirst = {
-      val store = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val turn = say(store, "hello")
-      try
-        durable.run(turn.workflowId)(
-          turnBody(new CrashOnInsert(store, isReply), new RecordingProvider)
-        )
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
@@ -655,25 +595,16 @@ object RecordTurnHistories {
         new RecordingProvider,
         summary = "Summary: Asked about knots.\nTopic: Knots\nAbout: which knot holds."
       ),
-      "window-first" -> windowFirst,
       "crashed-recording-window" -> crashedRecordingWindow,
-      "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,
       "nearby" -> nearby,
       "nearby-closed" -> nearbyClosed,
       "documented" -> documented,
       "recalled" -> recalled,
       "queried" -> queried,
-      "summarised" -> summarised,
       "summary-failed" -> summaryFailed,
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
       "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
-      // A named turn, judged on whether its draft answers (recorded before named drafts went
-      // unjudged), and the same in flight between its judge and its record-speech.
-      "named-judged" -> named,
-      "named-judged-before-speech" -> namedBeforeSpeech,
-      // A named turn since its drafts went unjudged: its patch's marker, no judge step.
-      "named-posted" -> named,
       // A heard message triage answered as said to grit: an addressed turn's steps, and, its
       // model failing, its failure kept in record-speech.
       "by-name-replied" -> byName(fail = false),
@@ -681,13 +612,6 @@ object RecordTurnHistories {
       // A heard turn whose offer failed: its failure kept in record-failure.
       "heard-failed-at-offer" -> heardFailedAtOffer,
       "replied" -> replied,
-      "stitched-first" -> {
-        val ch = new StitchChannel(
-          Payload.Message(grit.core.message.Message.User("@grit is this a real question?"))
-        )
-        val (durable, _) = ch.run(new FirstOption)
-        recorded(durable, ch.turn)
-      },
       "stitched-first-in-order" -> {
         // Its placement waited for, a workflow of its own.
         val ch = new StitchChannel(
@@ -724,36 +648,6 @@ object RecordTurnHistories {
         )
         t.run()
         recorded(t.durable, t.turn)
-      },
-      // As recorded before a failed weighing kept why: its weigh step recorded null.
-      "addressed-unweighed" -> {
-        val t = new Sourced.Thread(
-          heard = false,
-          None,
-          addressed = grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2)),
-          asked = Left(grit.core.triage.Weighing.Unweighed.PlacementLate)
-        )
-        t.run()
-        recorded(t.durable, t.turn)
-      },
-      // In flight across the weigh step's patch: it had offered (unweighed), or only pinned.
-      "offered-before-weigh" -> {
-        val t = new Sourced.Thread(
-          heard = true,
-          Some(Sourced.repoReads(0.1)),
-          unpatched = Set(Turn.Patches.Weigh)
-        )
-        t.run()
-        inFlight(recorded(t.durable, t.turn), 2)
-      },
-      "pinned-before-weigh" -> {
-        val t = new Sourced.Thread(
-          heard = true,
-          Some(Sourced.repoReads(0.1)),
-          unpatched = Set(Turn.Patches.Weigh)
-        )
-        t.run()
-        inFlight(recorded(t.durable, t.turn), 1)
       },
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,

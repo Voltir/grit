@@ -7,19 +7,25 @@ import grit.core.tool.ToolSetId
 
 import utest.*
 
-/** A turn read after the fact from what it recorded: the current epoch's recorded histories,
-  * real step outputs, read through [[TurnRecord]].
+/** A turn read after the fact from what it recorded: recorded histories, real step outputs,
+  * read through [[TurnRecord]]. A reader meets turns of every epoch, so shapes only an earlier
+  * epoch could record are read from its directory ([[Earlier]]).
   */
 object TurnRecordTests extends TestSuite {
 
-  private def history(name: String): History =
+  /** The epoch whose histories hold the shapes the current one no longer records. */
+  private val Earlier = "2026-10-02"
+
+  private def history(name: String, epoch: String): History =
     History
-      .read(ujson.read(os.read(os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch / s"$name.json")))
+      .read(ujson.read(os.read(os.Path(sys.env("GRIT_HISTORIES")) / epoch / s"$name.json")))
       .fold(why => throw new java.lang.AssertionError(s"$name: $why"), identity)
 
-  /** `name`'s steps as a reader of DBOS sees them: a marker or a throw records no output. */
-  private def steps(name: String): Vector[StepRecord] =
-    history(name).steps.map(s =>
+  /** `name`'s steps, recorded under `epoch`, as a reader of DBOS sees them: a marker or a
+    * throw records no output.
+    */
+  private def steps(name: String, epoch: String = Turn.Epoch): Vector[StepRecord] =
+    history(name, epoch).steps.map(s =>
       StepRecord(
         s.name,
         s.outcome match {
@@ -84,8 +90,8 @@ object TurnRecordTests extends TestSuite {
     }
 
     test("a heard turn's judgement reads from its judge step; a named or replied turn has none") {
-      def scores(name: String, root: TurnOffer.Root) = TurnRecord
-        .judged(steps(name), root)
+      def scores(name: String, root: TurnOffer.Root, epoch: String = Turn.Epoch) = TurnRecord
+        .judged(steps(name, epoch), root)
         .map(_.map {
           case TurnJudge.Judgement.Scored(j, estimated) =>
             (
@@ -97,7 +103,7 @@ object TurnRecordTests extends TestSuite {
         })
       Vector(
         scores("heard-posted", TurnOffer.Root.Heard),
-        scores("named-judged", TurnOffer.Root.Named),
+        scores("named-posted", TurnOffer.Root.Named, Earlier),
         scores("by-name-replied", TurnOffer.Root.ByName)
       ) ==> Vector(Right(Some((0.9, 0.9, 63L))), Right(None), Right(None))
     }
@@ -120,7 +126,7 @@ object TurnRecordTests extends TestSuite {
     test(
       "a named turn's record-speech, recorded with the named judge's score, reads as posted unjudged"
     ) {
-      TurnRecord.speech(steps("named-judged")) ==>
+      TurnRecord.speech(steps("named-judged", Earlier)) ==>
         Right(Some(Outcome.Posted(grit.core.speech.Cleared.Named)))
     }
 
@@ -139,8 +145,8 @@ object TurnRecordTests extends TestSuite {
     test(
       "what a turn's root was weighed with reads from its weigh step: kept, asked, failed and why, or nothing; a turn with no weigh step is told from one that weighed nothing"
     ) {
-      def model(name: String) = TurnRecord
-        .weighed(steps(name))
+      def model(name: String, epoch: String = Turn.Epoch) = TurnRecord
+        .weighed(steps(name, epoch))
         .map {
           case TurnRecord.Weigh.Unrecorded => "no step"
           case TurnRecord.Weigh.Recorded(w) =>
@@ -152,12 +158,12 @@ object TurnRecordTests extends TestSuite {
             }
         }
       Vector(
-        "heard-withheld",
-        "addressed-weighed",
-        "addressed-unweighed",
-        "addressed-failed",
-        "pinned-before-weigh"
-      ).map(model) ==> Vector(
+        model("heard-withheld"),
+        model("addressed-weighed"),
+        model("addressed-unweighed", Earlier),
+        model("addressed-failed"),
+        model("pinned-before-weigh", Earlier)
+      ) ==> Vector(
         Right("kept"),
         Right("asked jev 321"),
         // Recorded before a failure was kept: read as not weighed, as it was written.

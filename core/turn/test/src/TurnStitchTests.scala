@@ -42,15 +42,6 @@ object TurnStitchTests extends TestSuite {
       ch.stitches.placed(ch.root.id)(using TestTx.fake) ==> Right(Some(kept))
       jev.calls ==> 0
     }
-
-    test("a turn that passed the change before it shipped places its first message itself") {
-      val ch = new StitchChannel(Payload.Message(Message.User("@grit is this a real question?")))
-      val jev = new FirstOption
-      val (durable, _) = ch.run(jev, Set(Turn.Patches.StitchInRoomOrder))
-      ran(durable, ch).take(3) ==> Vector("stitch", "record-stitch", "classify")
-      ch.waited ==> Vector.empty
-      ch.stitches.links(Vector(ch.b))(using TestTx.fake) ==> Right(Vector(Link(ch.b, ch.a)))
-    }
   }
 
   /** A placement kept already: beginning something new, shown nothing. */

@@ -63,15 +63,11 @@ object TurnTests extends TestSuite {
       "offer",
       "record-failure",
       "stitched",
-      "stitch",
-      "record-stitch",
       "classify",
       "record-topic",
       "assemble",
       "record-window",
       "call-model",
-      "call-model-again",
-      "call-model-plain",
       "record-verdict",
       "append",
       "judge",
@@ -83,15 +79,8 @@ object TurnTests extends TestSuite {
   /** The steps every turn takes. */
   private val Always: Vector[String] = AllSteps.filterNot(Turn.Step.optional.contains)
 
-  /** What a turn records: its steps, each patch's marker before the steps it brought. */
-  private val Recorded: Vector[String] =
-    Always
-      .patch(1, Vector("DBOS.patch-weigh"), 0)
-      .patch(3, Vector("DBOS.patch-route"), 0)
-      .patch(6, Vector("DBOS.patch-stitch-in-room-order"), 0)
-      .patch(8, Vector("DBOS.patch-topics"), 0)
-      .patch(12, Vector("DBOS.patch-record-window"), 0)
-      .patch(14, Vector("DBOS.patch-tools"), 0)
+  /** What a turn records: the steps every turn takes. */
+  private val Recorded: Vector[String] = Always
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -102,7 +91,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 11
+  private val Placing = 7
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -156,31 +145,30 @@ object TurnTests extends TestSuite {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"
       Turn.running(Vector("pin-models")) ==> "weigh"
-      Turn.running(Vector("pin-models", "DBOS.patch-weigh", "weigh")) ==> "route"
-      Turn.running(Vector("pin-models", "weigh", "DBOS.patch-route", "route")) ==> "offer"
+      Turn.running(Vector("pin-models", "weigh")) ==> "route"
+      Turn.running(Vector("pin-models", "weigh", "route")) ==> "offer"
       Turn.running(Vector("pin-models", "offer")) ==> "stitched"
       Turn.running(Vector("pin-models", "offer", "stitched")) ==> "classify"
-      Turn.running(Vector("pin-models", "offer", "stitch")) ==> "classify"
-      Turn.running(Vector("DBOS.patch-topics", "classify")) ==> "record-topic"
-      Turn.running(Vector("DBOS.patch-topics", "classify", "record-topic")) ==> "assemble"
+      Turn.running(Vector("classify")) ==> "record-topic"
+      Turn.running(Vector("classify", "record-topic")) ==> "assemble"
       Turn.running(Vector("assemble")) ==> "record-window"
-      Turn.running(Vector("assemble", "DBOS.patch-record-window", "record-window")) ==>
-        "call-model"
+      Turn.running(Vector("assemble", "record-window")) ==> "call-model"
+      // A name that is none of the turn's steps, such as DBOS's own, is skipped.
       Turn.running(Vector("assemble", "DBOS.patch", "call-model", "append")) ==> "summarise"
       Turn.running(AllSteps) ==> "append-summary"
       // A step only some turns take is never named before it is recorded.
       Turn.running(Vector("assemble", "record-window", "call-model")) ==> "append"
-      Turn.running(Vector("call-model", "call-model-again")) ==> "append"
+      Turn.running(Vector("call-model", "record-verdict")) ==> "append"
     }
 
     test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
       val round1 = TurnLoop.Round.First.next
       (round1.step, Turn.Step.recordCall(round1), Turn.Step.tool(round1, 2)) ==>
         ("call-model:1", "record-call:1", "tool:1:2")
-      Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.patch-tools", "tool:x:1")
+      Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.sleep", "tool:x:1")
         .map(Turn.Step.family) ==>
         Vector(Some("call-model"), Some("record-call"), Some("tool"), None, None)
-      val loop = Vector("record-window", "DBOS.patch-tools", "call-model")
+      val loop = Vector("record-window", "call-model")
       Turn.running(loop :+ "record-call:0") ==> "tool:0:0"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0")) ==> "call-model:1"
       // Waiting for a person: DBOS records the wait's end as it begins, which is no step, so
@@ -249,7 +237,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       val turn = say(store, "hello")
       assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 3)
       runTurn(durable, entries, provider, turn) ==> Done
       provider.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -327,7 +315,7 @@ object TurnTests extends TestSuite {
         summarizer = new RecordingProvider(fail = true)
       )
       out ==> "replied: reply:c1:0; no summary: Model(down (after 3 tries))"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
     }
 
@@ -440,7 +428,7 @@ object TurnTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       )
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer) ==> Done
       summarizer.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -782,7 +770,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider(fail = true)
       val turn = say(entries, "hello")
       runTurn(durable, entries, provider, turn) ==> "failed: Model(down (after 3 tries))"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 3)
       texts(entries) ==> Vector("user: hello")
     }
 

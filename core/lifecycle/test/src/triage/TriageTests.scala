@@ -84,9 +84,6 @@ object TriageTests extends TestSuite {
   private val Decided =
     "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, anchor 0.25, anchor-record 0.375 (jev-1.13.0)"
 
-  /** The marker a triage records as it takes the room-order patch. */
-  private val Marker = InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder)
-
   /** What a triage logs of the placement of a room's first opening, which nothing is offered. */
   private val Unoffered = "placed: nothing asked; "
 
@@ -166,7 +163,7 @@ object TriageTests extends TestSuite {
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
         Unoffered + Decided + """; held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
-        (1, Vector(Marker, "stitched", "ask", "record", "consider"))
+        (1, Vector("stitched", "ask", "record", "consider"))
       w.tags(t) ==> Some(decision)
     }
 
@@ -175,7 +172,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
       val first = new InMemoryDurable
       first.run(t.workflowId)(w.body(decided, 5))
-      val history = first.history(t.workflowId).take(3)
+      val history = first.history(t.workflowId).take(2)
       // Resumed after the ask was recorded: a classifier that now answers otherwise is not called.
       val again = new World
       val t2 = again.hear("standup moves to 10:00 from Monday", "Ana", 0)
@@ -243,8 +240,7 @@ object TriageTests extends TestSuite {
       val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 2))
-      durable.recordedSteps(t.workflowId).take(3) ==>
-        Vector(InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder), "stitched", "ask")
+      durable.recordedSteps(t.workflowId).take(2) ==> Vector("stitched", "ask")
       w.awaited.map(_.ref.turn) ==> Vector(TurnRef(b, t.turn))
       classifier.states.lastOption.map(_("thread").str) ==>
         Some("Nick: where did we land on the Engine contract term?")
@@ -260,23 +256,8 @@ object TriageTests extends TestSuite {
       durable.run(reply.workflowId)(
         w.body(new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2)), 2)
       )
-      durable.recordedSteps(reply.workflowId).take(3) ==>
-        Vector(InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder), "stitched", "ask")
+      durable.recordedSteps(reply.workflowId).take(2) ==> Vector("stitched", "ask")
       w.awaited ==> Vector.empty
-    }
-
-    test("a triage that passed the change before it shipped places its first message itself") {
-      val w = new World
-      w.hear("where did we land on the Engine contract term?", "Nick", 0)
-      val b = w.thread("2.0")
-      val t = w.hear("Is this a real question", "David", 1, in = b)
-      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
-      val durable = new InMemoryDurable(Set(Triage.Patches.StitchInRoomOrder))
-      durable.run(t.workflowId)(w.body(classifier, 2))
-      durable.recordedSteps(t.workflowId).take(3) ==> Vector("stitch", "record-stitch", "ask")
-      w.awaited ==> Vector.empty
-      w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
-        Right(Vector(grit.core.stitch.Link(b, c)))
     }
 
     test("a kept placement's seen state is what offered shows for its message now") {
@@ -377,7 +358,7 @@ object TriageTests extends TestSuite {
       val history = durable.history(t.workflowId)
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
-      history.map(_.name) ==> Vector(Marker, "stitched", "ask", "record", "consider", "start")
+      history.map(_.name) ==> Vector("stitched", "ask", "record", "consider", "start")
     }
 
     test("a message failing the gate is kept held on every bound it failed, and no turn starts") {
@@ -401,7 +382,7 @@ object TriageTests extends TestSuite {
             )
           )
         ),
-        Vector(Marker, "stitched", "ask", "record", "consider")
+        Vector("stitched", "ask", "record", "consider")
       )
     }
 

@@ -5,7 +5,7 @@ import grit.core.durable.Durable
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.speech.{Decision, SpeechJson}
-import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
+import grit.core.stitch.{Opening, StitchReads}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
@@ -18,9 +18,7 @@ import grit.core.visibility.Subject
   *   1. `stitched` — when the heard message is an [[Opening]], its placement waited for
   *      ([[grit.core.stitch.Placements.awaited]]), so the message is asked about with its
   *      strand, and only once every opening heard before it in its room is placed; nothing is
-  *      waited for otherwise. A triage that passed this point before it shipped took
-  *      `stitch` ([[Stitching.turn]]) and `record-stitch` instead, placing the opening itself
-  *      ([[Patches.StitchInRoomOrder]]).
+  *      waited for otherwise.
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
   *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per corpus covering its
@@ -43,22 +41,10 @@ object Triage {
   /** The triage's steps, as DBOS records their names, in the order they run. */
   object Step {
     val Stitched = "stitched"
-    val Stitch = "stitch"
-    val RecordStitch = "record-stitch"
     val Ask = "ask"
     val Record = "record"
     val Consider = "consider"
     val Start = "start"
-  }
-
-  /** The patches the triage's steps have taken within this epoch (ADR 0004). */
-  object Patches {
-
-    /** A heard opening is placed by a workflow of its own, in its room's order, which the
-      * triage waits for in `stitched`, not by the triage in `stitch` and `record-stitch`
-      * (2026-10-03).
-      */
-    val StitchInRoomOrder = "stitch-in-room-order"
   }
 
   /** The triage workflow's body, for the heard message whose workflow id is `workflowId`.
@@ -70,27 +56,11 @@ object Triage {
       case Some(triage) =>
         import TriageJournal.given
         val subject = Subject.Conversation(triage.period.conversationId)
-        val kept =
-          if (d.patch(Patches.StitchInRoomOrder))
-            d.step(Step.Stitched)(() => placed(env, triage)) match {
-              case Right(Some(what)) => s"placed: $what; "
-              case Right(None) => ""
-              case Left(why) => s"not placed: $why; "
-            }
-          else
-            d.step(Step.Stitch)(() => stitch(env, triage)) match {
-              case Right(Some((root, placed))) =>
-                val at = env.clock.now()
-                val stitches = env.records.stitches
-                d.transact(Step.RecordStitch, subject)(
-                  stitches.record(root, placed, at).left.map(describe)
-                ) match {
-                  case Right(_) => s"stitched: ${StitchJson.kindOf(placed)}; "
-                  case Left(why) => s"stitch not kept: $why; "
-                }
-              case Right(None) => ""
-              case Left(why) => s"not stitched: $why; "
-            }
+        val kept = d.step(Step.Stitched)(() => placed(env, triage)) match {
+          case Right(Some(what)) => s"placed: $what; "
+          case Right(None) => ""
+          case Left(why) => s"not placed: $why; "
+        }
         val asked = d.step(Step.Ask)(() => ask(env, triage))
         kept + (asked match {
           case Left(why) => s"failed: $why"
@@ -145,28 +115,6 @@ object Triage {
         case None => Right(None)
         case Some(opening) => env.placements.awaited(opening).map(Some(_))
       }
-  }
-
-  /** The `stitch` step: where the heard message that is `triage`'s turn goes among its
-    * room's exchanges, when it is its conversation's first message ([[Stitching.turn]]);
-    * `None` when it is not, is gone, or nothing was asked. Why not, when the store cannot be
-    * read.
-    */
-  private def stitch(
-      env: TriageEnv^,
-      triage: TriageRef
-  ): Either[String, Option[(EntryId, Placed)]] = {
-    val r = env.records
-    Stitching
-      .turn(
-        env.classifier,
-        StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
-        env.db.as(Subject.Conversation(triage.period.conversationId)),
-        TurnRef(triage.period.conversationId, triage.turn),
-        env.tuning
-      )
-      .left
-      .map(e => s"room unread: ${describe(e)}")
   }
 
   /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made

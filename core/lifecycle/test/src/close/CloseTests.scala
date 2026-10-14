@@ -99,9 +99,6 @@ object CloseTests extends TestSuite {
   /** Weighed as chatter, not worth keeping. */
   private val chatter = tags(Kind.Chatter, 0.1)
 
-  /** The step DBOS records for the close's patch [[Close.Patches.RunClose]]. */
-  private val runClose = InMemoryDurable.patchMarker(Close.Patches.RunClose)
-
   private val remind = JobName.of("remind").fold(sys.error, identity)
 
   /** A run of the deployment's `standup` schedule, due at the close's start. */
@@ -233,7 +230,7 @@ object CloseTests extends TestSuite {
         Right(
           Vector(("closing:c1:1", "summariser", summaryUsage, Chars.request(summary.requests(0))))
         )
-      durable.recordedSteps(id) ==> Vector(runClose, "check", "gate", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
     }
 
     test(
@@ -333,7 +330,7 @@ object CloseTests extends TestSuite {
       durable.run(id)(w.bodyOver(g, models, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; unearned"
       (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
-      durable.recordedSteps(id) ==> Vector(runClose, "check", "gate", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
         (reason, c.flows.prose, c.flows.outcome)
       } ==> Some((CloseReason.Unearned, "Heard 2 messages; nothing kept.", None))

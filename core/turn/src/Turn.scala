@@ -25,7 +25,7 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
-import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
+import grit.core.stitch.{Along, Opening, Strand}
 import grit.core.store.{
   Db,
   Entry,
@@ -40,12 +40,10 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
-import grit.core.topic.Topic
 import grit.core.triage.{Tags, Weighing}
 import grit.core.visibility.{Classification, Label, Subject}
 
 import TurnLoop.{Pending, Round}
-import TurnVerdict.Shape
 
 // Where this is going: each step below is written in place, and each change to them is kept
 // replayable by a patch of its own. The intent is a turn built from composable steps: a step as
@@ -76,8 +74,6 @@ import TurnVerdict.Shape
   *      is replied [[Uncleared.reply]].
   *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
   *      Never fails the turn.
-  *   1. `stitch`, `record-stitch` — only a turn that passed [[Patches.StitchInRoomOrder]] before
-  *      it shipped.
   *   1. `classify`, `record-topic` — the message placed among its conversation's topics, and that
   *      placement recorded ([[TurnTopics]]).
   *   1. `assemble` — a fresh window over what came before the turn, at its offer's width.
@@ -85,8 +81,6 @@ import TurnVerdict.Shape
   *      edge sees what the model will see.
   *   1. `call-model` — the window, then the turn's own messages, sent to the provider, its reply
   *      told to edges as it arrives ([[TurnStream]]).
-  *   1. `call-model-again`, `call-model-plain` — only a turn that passed [[Patches.Tools]] before
-  *      it shipped.
   *   1. The tool loop ([[TurnLoop]]): `record-call:n`, `ask:n:j`, `tool:n:j`, `dispatch:n`,
   *      `reach:n:{place}`, `dispatch:n:j`, `expire:n:j`, `abandon:n:j` and `call-model:n`, each
   *      named in [[Step]], until a reply calls no tool or the budget's last call.
@@ -108,7 +102,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-10-02"
+  val Epoch = "2026-10-14"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
@@ -118,15 +112,11 @@ object Turn {
     val Offer = "offer"
     val RecordFailure = "record-failure"
     val Stitched = "stitched"
-    val Stitch = "stitch"
-    val RecordStitch = "record-stitch"
     val Classify = "classify"
     val RecordTopic = "record-topic"
     val Assemble = "assemble"
     val RecordWindow = "record-window"
     val CallModel = "call-model"
-    val CallModelAgain = "call-model-again"
-    val CallModelPlain = "call-model-plain"
     val RecordVerdict = "record-verdict"
     val Append = "append"
     val Judge = "judge"
@@ -134,20 +124,13 @@ object Turn {
     val Summarise = "summarise"
     val AppendSummary = "append-summary"
 
-    /** The steps only some turns take: `stitch`, a turn that passed the room-order patch
-      * before it shipped, and `record-stitch`, one of those whose first message was stitched;
-      * `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose model was
-      * asked about its topic; `judge`, an unprompted turn (and a named one before
-      * [[Patches.NamedUnjudged]]), and `record-speech`, a turn rooted on a heard message;
-      * `record-failure`, a turn that failed before its offer was made or read.
+    /** The steps only some turns take: `record-verdict`, a turn whose model was asked about
+      * its topic; `judge`, an unprompted turn, and `record-speech`, a turn rooted on a heard
+      * message; `record-failure`, a turn that failed before its offer was made or read.
       */
     val optional: Vector[String] =
       Vector(
         RecordFailure,
-        Stitch,
-        RecordStitch,
-        CallModelAgain,
-        CallModelPlain,
         RecordVerdict,
         Judge,
         RecordSpeech
@@ -161,15 +144,11 @@ object Turn {
         Offer,
         RecordFailure,
         Stitched,
-        Stitch,
-        RecordStitch,
         Classify,
         RecordTopic,
         Assemble,
         RecordWindow,
         CallModel,
-        CallModelAgain,
-        CallModelPlain,
         RecordVerdict,
         Append,
         Judge,
@@ -328,61 +307,15 @@ object Turn {
     }
   }
 
-  /** The patches the turn's steps have taken within this epoch (ADR 0004). */
+  /** The patches the turn's steps take within this epoch (ADR 0004). */
   object Patches {
 
-    /** The window and its queries are recorded in their own step before the model call,
-      * not with the reply (2026-09-24). A turn that passed this point before it shipped
-      * records both in `append`, and counts no document placed.
-      */
-    val RecordWindow = "record-window"
-
-    /** The turn's message is placed among the conversation's topics before its window is
-      * assembled (2026-09-24). A turn that passed this point before it shipped takes neither
-      * `classify` nor `record-topic`.
-      */
-    val Topics = "topics"
-
-    /** A turn whose classifier was unsure offers its model the `topic` tool, and records
-      * its verdict (2026-09-24).
-      */
-    val Verdict = "verdict"
-
-    /** The model's reply is a tool loop ([[TurnLoop]]): each model call a step of its own,
-      * and each tool call too, the verdict read from the first call's reply
-      * (2026-09-25). A turn offered `topic` that passed this point before it shipped takes
-      * `call-model-again` and `call-model-plain` instead ([[TurnVerdict]]): the model called
-      * again after its call to the tool, then a plain call if that does not answer.
-      */
-    val Tools = "tools"
-
-    /** A turn's opening is placed by a workflow of its own, in its room's order, which the
-      * turn waits for in `stitched`, not by the turn in `stitch` and `record-stitch`
-      * (2026-10-03).
-      */
-    val StitchInRoomOrder = "stitch-in-room-order"
-
-    /** A turn's root is weighed in `weigh` before its offer, which the answers shape
-      * (2026-10-03). A turn that passed this point before it shipped offers unweighed.
-      */
-    val Weigh = "weigh"
-
-    /** A named turn's draft is settled with no `judge` step (2026-10-04). A named turn that
-      * passed this point before it shipped takes `judge`.
-      */
-    val NamedUnjudged = "named-unjudged"
-
-    /** A turn that fails at `pin-models` or `offer` keeps its heard message's failure in
-      * `record-failure` (2026-10-05). A turn whose offer is read back and fails on a rerun
-      * has recorded later steps there, and takes none.
+    /** A turn that fails at `pin-models`, `route` or `offer` keeps its failure in
+      * `record-failure`. Never retired: a rerun whose `pin-models` or `offer` output is read
+      * back and then fails to load has recorded later steps at this point, does not take it,
+      * and records nothing more.
       */
     val RecordFailure = "record-failure"
-
-    /** A turn's calls are routed in `route`, after `weigh` and before `offer`, to pairs cleared
-      * for its classification (2026-10-13). A turn that passed this point before it shipped
-      * makes each role's calls on its first pin.
-      */
-    val Route = "route"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -433,21 +366,13 @@ object Turn {
           .flatMap(profileOf(env, _)) match {
           case Left(failure) => failedEarly(env, turn, failure)
           case Right(profile) =>
-            // Taken by every turn that had not offered when it shipped, whatever the recipe, so
-            // a recovery under another deployment's configuration replays the same steps.
-            val weighed =
-              if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, tooling, turn))
-              else None
+            // Taken by every turn, whatever the recipe, so a recovery under another
+            // deployment's configuration replays the same steps.
+            val weighed = d.step(Step.Weigh)(() => weigh(env, tooling, turn))
             // Taken as weigh is, so a recovery under another deployment's clearances replays it.
-            val routed =
-              if (d.patch(Patches.Route))
-                d.step(Step.Route)(() => routeOf(env, turn, profile))
-                  .map(Some(_))
-              else Right(None)
-            routed match {
+            d.step(Step.Route)(() => routeOf(env, turn, profile)) match {
               case Left(failure) => failedEarly(env, turn, failure)
-              case Right(r) =>
-                offered(env, tooling, turn, weighed, r)(using Picked.of(profile, r), d)
+              case Right(r) => offered(env, tooling, turn, weighed, r)(using Picked.of(r), d)
             }
         }
     }
@@ -460,7 +385,7 @@ object Turn {
       tooling: TurnTooling[C]^,
       turn: TurnRef,
       weighed: Option[TurnWeighing.Weighed],
-      routed: Option[Route]
+      routed: Route
   )(using pins: Picked, d: Durable^): String = {
     import TurnJournal.recordedOffer
     val hosting = env.hosting
@@ -635,10 +560,10 @@ object Turn {
       ledger: UsageLedger,
       upstream: Option[String],
       turn: TurnRef,
-      routed: Option[Route]
+      routed: Route
   )(using Tx^): Either[TurnFailure, Unit] =
-    routed.map(_.task) match {
-      case Some(Route.Task.Read(asked)) =>
+    routed.task match {
+      case Route.Task.Read(asked) =>
         ledger
           .record(
             Route.id(turn),
@@ -652,7 +577,7 @@ object Turn {
           )
           .left
           .map(storeFailure)
-      case Some(Route.Task.Skipped | Route.Task.Unanswered(_)) | None => Right(())
+      case Route.Task.Skipped | Route.Task.Unanswered(_) => Right(())
     }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
@@ -789,60 +714,25 @@ object Turn {
   ): String = {
     import TurnJournal.given
     val records = env.records
-    val stitching = env.stitching
-    val reads = StitchReads(
-      records.entries,
-      env.hosting.conversations,
-      stitching.lifecycle,
-      stitching.stitches,
-      stitching.search,
-      records.principals
-    )
-    val stitched =
-      if (d.patch(Patches.StitchInRoomOrder))
-        d.step(Step.Stitched)(() => placed(env, turn)) match {
-          case Right(_) => ""
-          case Left(failure) => s"; not placed: $failure"
-        }
-      else
-        d.step(Step.Stitch) { () =>
-          Stitching
-            .turn(env.classifier, reads, env.db.as(Subject.Turn(turn)), turn, stitching.tuning)
-            .left
-            .map(storeFailure)
-        } match {
-          case Right(Some((root, placed))) =>
-            val at = env.clock.now()
-            d.transact(Step.RecordStitch, Subject.Turn(turn))(
-              stitching.stitches.record(root, placed, at).left.map(storeFailure)
-            ) match {
-              case Right(_) => ""
-              case Left(failure) => s"; stitch not kept: $failure"
-            }
-          case Right(None) => ""
-          case Left(failure) => s"; not stitched: $failure"
-        }
-    val placing =
-      if (d.patch(Patches.Topics))
-        Placing.Placed(d.step(Step.Classify) { () =>
-          TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
-        })
-      else Placing.Unplaced
-    val topicFailure = placing match {
-      case Placing.Placed(c) =>
-        d.transact(Step.RecordTopic, Subject.Turn(turn))(
-          TurnTopics.record(
-            records.entries,
-            records.ledger,
-            env.classifier.upstream,
-            turn,
-            c,
-            env.clock.now()
-          )
-        ).left
-          .toOption
-      case Placing.Unplaced => None
+    val stitched = d.step(Step.Stitched)(() => placed(env, turn)) match {
+      case Right(_) => ""
+      case Left(failure) => s"; not placed: $failure"
     }
+    val placing = d.step(Step.Classify) { () =>
+      TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
+    }
+    val topicFailure =
+      d.transact(Step.RecordTopic, Subject.Turn(turn))(
+        TurnTopics.record(
+          records.entries,
+          records.ledger,
+          env.classifier.upstream,
+          turn,
+          placing,
+          env.clock.now()
+        )
+      ).left
+        .toOption
     val ran = run(turn, placing, tooling)(using env, pins, offer, d)
     val topics = stitched + topicFailure.fold("")(f => s"; topics not recorded: $f") +
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
@@ -861,13 +751,7 @@ object Turn {
         s"failed: $failure$topics${settled.fold(f => s"; not recorded: $f", _ => "")}"
       case (Right(draft), root @ (TurnOffer.Root.Heard | TurnOffer.Root.Named)) =>
         val settling = root match {
-          case TurnOffer.Root.Named =>
-            if (d.patch(Patches.NamedUnjudged)) Settling.Named(None)
-            else
-              // A named turn that judged its draft before the patch replays that step, the
-              // call's cost kept for its record-speech. The body runs only if it was never
-              // recorded, when no judge call was made.
-              Settling.Named(d.step(Step.Judge)(() => Option.empty[TurnJudge.Call]))
+          case TurnOffer.Root.Named => Settling.Named
           case _ => Settling.Judged(d.step(Step.Judge)(() => judgeDraft(env, turn)))
         }
         val at = env.clock.now()
@@ -877,7 +761,7 @@ object Turn {
           case Left(failure) => s"drafted: ${EntryId.value(draft)}; not settled: $failure$topics"
           case Right(Outcome.Posted(_)) =>
             val summary =
-              summarise(turn, turn.replyId, placing)(using env, pins, d) match {
+              summarise(turn, turn.replyId)(using env, pins, d) match {
                 case Right(id) => s"summarised: ${EntryId.value(id)}"
                 case Left(failure) => s"no summary: $failure"
               }
@@ -887,7 +771,7 @@ object Turn {
         }
       case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
         val summary =
-          summarise(turn, reply, placing)(using env, pins, d) match {
+          summarise(turn, reply)(using env, pins, d) match {
             case Right(id) => s"summarised: ${EntryId.value(id)}"
             case Left(failure) => s"no summary: $failure"
           }
@@ -989,11 +873,11 @@ object Turn {
     } yield read
 
   /** How a heard-rooted turn's draft is settled: an unprompted one by its `judgement`; a named
-    * one unjudged, with the judge call it made before named drafts went unjudged, if any.
+    * one unjudged.
     */
   private enum Settling {
     case Judged(judgement: TurnJudge.Judgement)
-    case Named(judged: Option[TurnJudge.Call])
+    case Named
   }
 
   /** The `record-speech` step: what becomes of `turn`'s draft, as `settling` and the
@@ -1040,7 +924,7 @@ object Turn {
             Speech.post(speaking, Left(why))
           case Settling.Judged(TurnJudge.Judgement.Scored(j, _)) =>
             Speech.post(speaking, Right(j))
-          case Settling.Named(_) =>
+          case Settling.Named =>
             TurnJudge.said(draft).fold(Outcome.Passed)(_ => Speech.postNamed(speaking))
         })
       outcome = (judged, reach.flatMap(_.replyTo)) match {
@@ -1050,8 +934,7 @@ object Turn {
       called = settling match {
         case Settling.Judged(TurnJudge.Judgement.Scored(j, estimated)) =>
           Some(TurnJudge.Call(j.model, j.usage, estimated))
-        case Settling.Judged(_) => None
-        case Settling.Named(judged) => judged
+        case Settling.Judged(_) | Settling.Named => None
       }
       _ <- called.fold[Either[TurnFailure, Unit]](Right(()))(c =>
         ledger
@@ -1106,8 +989,7 @@ object Turn {
   /** The pin each role's calls are made under, the classification each read whose content a
     * model is sent is bounded by, and the turn loop's calls: a routed turn's [[Route]], its
     * allotment laid over its turn pin's effort and its calls, a summary uncleared failing
-    * `Uncleared`; or, for a turn that passed `route` before it shipped ([[Patches.Route]]),
-    * each role's first pin, no bound and the deployment's calls.
+    * `Uncleared`.
     */
   private[turn] final case class Picked(
       turn: Pinned,
@@ -1133,70 +1015,21 @@ object Turn {
   }
 
   private[turn] object Picked {
-    def of(profile: TurnProfile, route: Option[Route]): Picked = route match {
-      case Some(r) =>
-        Picked(
-          r.turn.copy(assignment =
-            r.turn.assignment.copy(effort = r.allotment.reasoning.over(r.turn.assignment.effort))
-          ),
-          r.summary.toRight(TurnFailure.Uncleared(r.classification)),
-          r.query,
-          Some(r.classification),
-          r.allotment.calls
-        )
-      case None =>
-        Picked(
-          profile.turn.first,
-          Right(profile.summary.first),
-          Some(profile.query.first),
-          None,
-          Allotment.Calls.Default
-        )
-    }
+    def of(r: Route): Picked =
+      Picked(
+        r.turn.copy(assignment =
+          r.turn.assignment.copy(effort = r.allotment.reasoning.over(r.turn.assignment.effort))
+        ),
+        r.summary.toRight(TurnFailure.Uncleared(r.classification)),
+        r.query,
+        Some(r.classification),
+        r.allotment.calls
+      )
   }
 
-  /** Whether `turn`'s message was placed among its conversation's topics
-    * ([[Patches.Topics]]).
-    */
-  private enum Placing {
-
-    /** Placed: `c` is what the `classify` step decided. */
-    case Placed(c: TurnTopics.Classification)
-
-    /** Not placed: the turn passed `classify` before topics existed. */
-    case Unplaced
-  }
-
-  /** Where a turn records its window and the queries that chose it
-    * ([[Patches.RecordWindow]]).
-    */
-  private enum WindowRecord {
-
-    /** In the `record-window` step, before the model is called. */
-    case OwnStep
-
-    /** With the reply, in `append`: the turn passed `record-window` before it existed. */
-    case WithReply
-  }
-
-  /** The classification the model is to be asked about: `placing`'s, when the classifier
-    * was unsure and the turn takes the verdict patch. The patch is consulted only for an
-    * unsure placement ([[Patches.Verdict]]).
-    */
-  private def asking(placing: Placing)(using d: Durable^): Option[TurnTopics.Classification] =
-    placing match {
-      case Placing.Placed(c) => asked(c, d.patch(Patches.Verdict))
-      case Placing.Unplaced => None
-    }
-
-  /** `c`, when the classifier was unsure and the turn takes the verdict patch (`verdict`,
-    * consulted only when it was unsure): the classification the model is asked about.
-    */
-  private def asked(
-      c: TurnTopics.Classification,
-      verdict: => Boolean
-  ): Option[TurnTopics.Classification] =
-    Option.when(c.uncertain && verdict)(c)
+  /** `c`, when the classifier was unsure: the classification the model is asked about. */
+  private def asked(c: TurnTopics.Classification): Option[TurnTopics.Classification] =
+    Option.when(c.uncertain)(c)
 
   /** What steps came to, `result`, and the verdict's record when it failed without failing
     * the turn.
@@ -1211,7 +1044,7 @@ object Turn {
     */
   private def run[C^](
       turn: TurnRef,
-      placing: Placing,
+      placing: TurnTopics.Classification,
       tooling: TurnTooling[C]^
   )(using env: TurnEnv^, pins: Picked, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
@@ -1225,57 +1058,18 @@ object Turn {
             TurnFailure.Assembly(describe(error))
           }
       }
-      recorded =
-        if (d.patch(Patches.RecordWindow)) WindowRecord.OwnStep else WindowRecord.WithReply
-      _ <- recorded match {
-        case WindowRecord.OwnStep =>
-          d.transact(Step.RecordWindow, Subject.Turn(turn))(
-            recordWindow(env.records, turn, window, env.clock.now())
-          )
-        case WindowRecord.WithReply => Right(windowId(turn))
-      }
-    } yield (window, recorded)
+      _ <- d.transact(Step.RecordWindow, Subject.Turn(turn))(
+        recordWindow(env.records, turn, window, env.clock.now())
+      )
+    } yield window
     prepared match {
       case Left(failure) => Ran(Left(failure), None)
-      case Right((window, recorded)) =>
-        val asked = asking(placing)
-        if (d.patch(Patches.Tools)) loop(heard, turn, window, recorded, asked, tooling)
-        else {
-          val answered = d.step(Step.CallModel) { () =>
-            callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
-          } match {
-            case Left(failure) => Ran(Left(failure), None)
-            case Right(message) =>
-              asked match {
-                case None => Ran(Right(TurnVerdict.Replied(message, Shape.Plain)), None)
-                case Some(c) => verdictRound(heard, turn, window, c, message)
-              }
-          }
-          val appended = answered.result.flatMap { a =>
-            val shape = a.shape
-            d.transact(Step.Append, Subject.Turn(turn))(
-              append(
-                offer,
-                env.records,
-                env.speech.store,
-                turn,
-                window,
-                a.reply,
-                pins.turn.grade,
-                shape(_),
-                recorded,
-                env.clock.now()
-              )
-            )
-          }
-          Ran(appended, answered.verdictUnrecorded)
-        }
+      case Right(window) => loop(heard, turn, window, asked(placing), tooling)
     }
   }
 
-  /** The steps from the first model call to `append` under the tool loop
-    * ([[Patches.Tools]]): each call of the loop, `call-model` then `call-model:n`, offered
-    * the turn's tools, and `topic` too when `asked` holds the classification the model is
+  /** The steps from the first model call to `append`, the tool loop: each call of the loop,
+    * `call-model` then `call-model:n`, offered the turn's tools, and `topic` too when `asked` holds the classification the model is
     * asked about; each reply that called tools kept by `record-call:n`, and each of its
     * calls settled by `tool:n:j` ([[TurnTools]]); then `record-verdict` when `asked`, and
     * the answer appended as `turn`'s reply entry. The tools are `tooling`'s.
@@ -1284,7 +1078,6 @@ object Turn {
       heard: StreamWriter^,
       turn: TurnRef,
       seen: Window,
-      recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
       tooling: TurnTooling[C]^
   )(using env: TurnEnv^, pins: Picked, offer: TurnOffer, d: Durable^): Ran[EntryId] =
@@ -1292,7 +1085,6 @@ object Turn {
       heard,
       turn,
       seen,
-      recorded,
       asked,
       TurnOffer.toolbox(tooling, offer),
       tooling.jot,
@@ -1310,7 +1102,6 @@ object Turn {
       heard: StreamWriter^,
       turn: TurnRef,
       seen: Window,
-      recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
       own: Toolbox[C],
       jot: Jot^,
@@ -1478,7 +1269,6 @@ object Turn {
                   l.answer,
                   pins.turn.grade,
                   shaped,
-                  recorded,
                   env.clock.now()
                 )
               )
@@ -1566,23 +1356,9 @@ object Turn {
   }
 
   /** The request built from `turn`'s `window` and shaped by `shape`, sent to the provider,
-    * whose reply is told to edges as it arrives, as a fresh attempt each time this runs:
-    * a rerun's pieces follow a crashed run's.
-    */
-  private def callModel(
-      heard: StreamWriter^,
-      turn: TurnRef,
-      window: Window,
-      shape: Shape
-  )(using
-      env: TurnEnv^,
-      pins: Picked,
-      offer: TurnOffer
-  ): Either[TurnFailure, Message.Assistant] =
-    callShaped(heard, turn, window, shape(_))
-
-  /** As [[callModel]], the request shaped by `shape`, asked as [[Asking.reply]] says: each try
-    * a fresh attempt on the stream ([[TurnStream.hearing]]); its failure fails the call.
+    * whose reply is told to edges as it arrives, asked as [[Asking.reply]] says: each try a
+    * fresh attempt on the stream ([[TurnStream.hearing]]), so a rerun's pieces follow a
+    * crashed run's; its failure fails the call.
     */
   private def callShaped(
       heard: StreamWriter^,
@@ -1602,84 +1378,13 @@ object Turn {
         .map(TurnFailure.Model(_))
     }
 
-  /** After a first call that offered the `topic` tool for `c` ([[TurnVerdict.round]]): the
-    * reply that answers the turn, its further calls made as the `call-model-again` and
-    * `call-model-plain` steps and its verdict recorded as `record-verdict`.
-    */
-  private def verdictRound(
-      heard: StreamWriter^,
-      turn: TurnRef,
-      seen: Window,
-      c: TurnTopics.Classification,
-      first: Message.Assistant
-  )(using
-      env: TurnEnv^,
-      pins: Picked,
-      offer: TurnOffer,
-      d: Durable^
-  ): Ran[TurnVerdict.Replied] = {
-    import TurnJournal.given
-    val further = new TurnVerdict.Calls {
-      def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant] =
-        d.step(Step.CallModelAgain) { () => callModel(heard, turn, seen, shape) }
-      def plain(): Either[TurnFailure, Message.Assistant] =
-        d.step(Step.CallModelPlain) { () => callModel(heard, turn, seen, Shape.Plain) }
-    }
-    val round = TurnVerdict.round(c, first, further)
-    val recorded = d.transact(Step.RecordVerdict, Subject.Turn(turn))(
-      recordVerdict(
-        offer.system,
-        env.records,
-        turn,
-        seen,
-        c,
-        round,
-        pins.turn.grade,
-        env.clock.now()
-      )
-    )
-    Ran(round.answer, recorded.left.toOption)
-  }
-
-  /** The `record-verdict` step: where `round`'s verdict places `turn`'s message, recorded
-    * as its entry [[TurnVerdict.verdictId]], dated `at`, with the round's anomaly, and what
-    * the replies it spent cost in the ledger beside it.
-    */
-  private def recordVerdict(
-      system: String,
-      records: TurnRecords,
-      turn: TurnRef,
-      window: Window,
-      c: TurnTopics.Classification,
-      round: TurnVerdict.Round,
-      grade: Grade,
-      at: Instant
-  )(using Tx^): Either[TurnFailure, EntryId] =
-    for {
-      showing <- shown(records, turn, window).left.map(storeFailure)
-      base <- requestOf(system, showing, turn, window)
-      id <- TurnTopics.writeEvents(
-        records.entries,
-        records.ledger,
-        turn,
-        TurnVerdict.verdictId(turn),
-        TurnVerdict.events(round.verdict, round.anomaly, c, turn),
-        TurnVerdict.cost(
-          round.spent.map(r => r.reply -> records.estimator.request(base.shaped(r.shape(_))))
-        ),
-        Some(grade),
-        at
-      )
-    } yield id
-
   /** The last two steps: the summary of `turn`, whose reply is `answered`, with the name
-    * and description of its message's topic when `placing` placed it, asked again while the
-    * summarizer is unavailable, as a reply is ([[Asking.reply]]).
+    * and description of its message's topic, asked again while the summarizer is
+    * unavailable, as a reply is ([[Asking.reply]]).
     */
   private def summarise(
       turn: TurnRef,
-      answered: EntryId,
-      placing: Placing
+      answered: EntryId
   )(using env: TurnEnv^, pins: Picked, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
@@ -1692,7 +1397,7 @@ object Turn {
               .left
               .map(storeFailure)
               .flatMap { all =>
-                val request = summaryRequest(all, turn, placing)
+                val request = summaryRequest(all, turn)
                 Asking
                   .reply(env.models.provider(pin), request, Hearing.silent(), env.clock)
                   .left
@@ -1716,32 +1421,22 @@ object Turn {
       // Right whenever `message` is: the summarise step made its call under this pin.
       grade <- pins.summary.map(_.grade)
       appended <- d.transact(Step.AppendSummary, Subject.Turn(turn))(
-        appendSummary(env.records, turn, answered, message, grade, placing, env.clock.now())
+        appendSummary(env.records, turn, answered, message, grade, env.clock.now())
       )
     } yield appended
   }
 
   /** The summary request for `turn`, from `all` of its conversation's entries: asking after
-    * its topic too when `placing` placed it and it has one.
+    * its topic too when it has one.
     */
-  private def summaryRequest(all: Vector[Entry], turn: TurnRef, placing: Placing): ModelRequest =
-    TurnSummary.request(own(all, turn), topicOf(all, turn, placing))
-
-  /** The topic `turn`'s message is in, as `all` of its conversation's entries leave it, when
-    * `placing` placed it.
-    */
-  private def topicOf(all: Vector[Entry], turn: TurnRef, placing: Placing): Option[Topic] =
-    placing match {
-      case Placing.Placed(_) => TurnTopics.topicOf(all, turn)
-      case Placing.Unplaced => None
-    }
+  private def summaryRequest(all: Vector[Entry], turn: TurnRef): ModelRequest =
+    TurnSummary.request(own(all, turn), TurnTopics.topicOf(all, turn))
 
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation; and what it cost in the
     * ledger beside the estimate of the request that produced it, rebuilt as [[append]]
     * rebuilds its own.
-    * What it says of the topic `placing` placed the message in is recorded after it
-    * ([[TurnTopics.describedId]]).
+    * What it says of the message's topic is recorded after it ([[TurnTopics.describedId]]).
     */
   private def appendSummary(
       records: TurnRecords,
@@ -1749,16 +1444,13 @@ object Turn {
       answered: EntryId,
       message: Message.Assistant,
       grade: Grade,
-      placing: Placing,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
     val TurnRecords(entries, ledger, estimator, _, _, _) = records
     for {
-      read <- (placing match {
-        case Placing.Placed(_) => TurnSummary.read(message)
-        case Placing.Unplaced => TurnSummary.text(message).map(TurnSummary.Read(_, None))
-      })
+      read <- TurnSummary
+        .read(message)
         .toRight(TurnFailure.Model(s"the summary has no text (stop: ${message.stop})"))
       text = read.summary
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
@@ -1777,9 +1469,9 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      estimate = estimator.request(summaryRequest(all, turn, placing))
+      estimate = estimator.request(summaryRequest(all, turn))
       _ <- Asking.spent(ledger, id, turn, message, Some(grade), estimate).left.map(storeFailure)
-      described = topicOf(all, turn, placing).toVector.flatMap(TurnTopics.described(_, read))
+      described = TurnTopics.topicOf(all, turn).toVector.flatMap(TurnTopics.described(_, read))
       _ <- TurnTopics.writeEvents(
         entries,
         ledger,
@@ -1934,7 +1626,6 @@ object Turn {
       message: Message.Assistant,
       grade: Grade,
       shape: ModelRequest -> ModelRequest,
-      recorded: WindowRecord,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val (id, payload) = offer.root match {
@@ -1947,10 +1638,6 @@ object Turn {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
       sent <- requestOf(offer.system, showing, turn, window).map(_.shaped(shape))
-      replySeq <- recorded match {
-        case WindowRecord.OwnStep => Right(next.seq)
-        case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
-      }
       _ <- entries
         .insert(
           Entry(
@@ -1958,7 +1645,7 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            replySeq,
+            next.seq,
             payload,
             at
           )
@@ -2116,16 +1803,10 @@ object Turn {
       recorded[A](name).flatMap(_.toRight(s"$workflow recorded no $name step"))
     def kept[A](what: String, read: Either[StoreError, A]): Either[String, A] =
       read.left.map(e => s"$what of $workflow unread: ${describe(e)}")
-    def took(patch: String): Boolean = steps.exists(_.name == StepRecord.marker(patch))
     // The rounds whose replies called tools, by the record-call:n steps that kept them.
     val looped: Vector[(Round, String)] =
       steps.flatMap(s => Loop.of(s.name).collect { case Loop.Record(n) => Round.at(n) -> s.name })
     for {
-      _ <- Either.cond(
-        took(Patches.Tools),
-        (),
-        s"$workflow was recorded before the tool loop: its requests are not rebuilt"
-      )
       offer <- needed[TurnOffer.Recorded](Step.Offer)
       profileId <- needed[TurnProfileId](Step.PinModels)
       window <- needed[Window](Step.Assemble)
@@ -2146,8 +1827,7 @@ object Turn {
       routed <- recorded[Route](Step.Route)
       settings = routed.fold(profile.turn.first)(_.turn).settings
       strict = settings.strict == StrictSchemas.Enforced
-      // As asking decided it live, the verdict patch read from its marker.
-      asking = classified.flatMap(asked(_, took(Patches.Verdict)))
+      asking = classified.flatMap(asked)
       // The set as recorded, each tool as a turn reads one its build no longer has: its schema
       // is what a typed tool sends when not strict (Tool.entry records args.schema(false)).
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)

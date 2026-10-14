@@ -52,12 +52,6 @@ object TurnSpeechTests extends TestSuite {
       )
     )
 
-  /** The current epoch's recorded history `name`. */
-  private def recorded(name: String): grit.core.durable.History =
-    grit.core.durable.History
-      .read(ujson.read(os.read(os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch / s"$name.json")))
-      .fold(why => throw new java.lang.AssertionError(s"$name: $why"), identity)
-
   private def outcome(w: SpeechWorld): Option[Outcome] = w.store.outcomes.get(w.turn).map(_._1)
 
   private def awaited(w: SpeechWorld): Vector[(TurnRef, String)] =
@@ -151,63 +145,6 @@ object TurnSpeechTests extends TestSuite {
         (outcome(w).map(SpeechJson.outcomeName), done.startsWith("failed:")) ==>
           (Some("failed"), true)
       }
-    }
-
-    test(
-      "a named turn resumed after the judge step it took before named drafts went unjudged posts unjudged, the judge's call in the ledger"
-    ) {
-      val history = recorded("named-judged-before-speech")
-      keepAll(history.kept).fold(e => throw new java.lang.AssertionError(e), identity)
-      val w = speechWorld()
-      // What its replayed append wrote: the draft.
-      {
-        given grit.core.store.Tx = TestTx.fake
-        val next = w.entries.lockNext(conversation).getOrElse(sys.error("store"))
-        w.entries.insert(
-          grit.core.store.Entry(
-            w.turn.draftId,
-            conversation,
-            w.turn.turnSeq,
-            None,
-            next.seq,
-            Payload.Draft(said("It moved to Thursday.")),
-            java.time.Instant.EPOCH
-          )
-        )
-      }.isRight ==> true
-      val judge = new AnswersYes(0.1)
-      new InMemoryDurable().replay(history.id, history.steps)(
-        turnBodyWith(
-          w.entries,
-          new Scripted((_, _) => Right(said("unused"))),
-          new Before(w.entries),
-          w.ledger,
-          judge,
-          TurnSpeech(Speaking.Within(speechLimits), w.store, w.deliveries),
-          weighing = TurnWeighing(
-            directed(w),
-            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
-          )
-        )
-      ) match {
-        case Left(why) => throw new java.lang.AssertionError(why)
-        case Right(_) => ()
-      }
-      (
-        history.id == w.turn.workflowId,
-        outcome(w),
-        judge.asked,
-        w.ledger.rows.collect {
-          case (id, _, model, _, _, _) if id == TurnJudge.id(w.turn) => model
-        },
-        awaited(w)
-      ) ==> (
-        true,
-        Some(Outcome.Posted(Cleared.Named)),
-        Vector.empty,
-        Vector("jev"),
-        Vector((w.turn, "C/1"))
-      )
     }
 
     test(

@@ -1,24 +1,16 @@
 package grit.turn
 
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ToolUse}
+import grit.core.message.{AssistantBlock, Message}
+import grit.core.provider.ModelRequest
 import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 /** The main model asked where a message went, when the classifier was unsure
-  * ([[TurnTopics.Classification.uncertain]]). Its request carries the `topic` tool and a
-  * one-line note on the user's message; a call to the tool is its verdict, answered
-  * "noted", and the model is called again for the reply. At most one more round: if that
-  * round calls a tool again and says nothing, or fails, a plain call with neither tool nor
-  * exchange answers instead. The exchange stays in the journal and the verdict's record,
-  * never among the conversation's messages. Pure, but for [[round]], whose calls the turn
-  * makes through [[Calls]].
-  *
-  * That round is for turns that passed the tool loop's patch before it shipped
-  * ([[Turn.Patches.Tools]]). Under the loop, `topic` is one of the loop's tools ([[tool]]),
-  * the tag asks for it on the first call only, and the verdict is that call's reply's
-  * ([[of]]).
+  * ([[TurnTopics.Classification.uncertain]]): `topic` is one of the tool loop's tools
+  * ([[tool]]), a one-line note on the user's message ([[tag]]) asks for it on the first call
+  * only, and the verdict is that call's reply's ([[of]]). The exchange stays in the journal
+  * and the verdict's record, never among the conversation's messages.
   */
 object TurnVerdict {
 
@@ -104,10 +96,6 @@ object TurnVerdict {
       "as usual, without mentioning topics, this note or the tool.]"
   }
 
-  /** `base` with the tool offered and [[tag]] after its last user message. */
-  def offer(base: ModelRequest, c: TurnTopics.Classification): ModelRequest =
-    tagged(base, c).copy(tools = Vector(topic(c).schema(strict = false)), use = ToolUse.Auto)
-
   /** `base` with [[tag]] after its last user message, and nothing else changed. */
   def tagged(base: ModelRequest, c: TurnTopics.Classification): ModelRequest = {
     val last = base.messages.lastIndexWhere {
@@ -138,117 +126,9 @@ object TurnVerdict {
     case Verdict.Unreadable(why) => s"unreadable: $why"
   }
 
-  /** How a request is built from the turn's plain one. */
-  enum Shape {
-
-    /** The plain request, unchanged. */
-    case Plain
-
-    /** The plain request with the tool offered for `c` ([[offer]]). */
-    case Offered(c: TurnTopics.Classification)
-
-    /** The second round's: the offer for `c`, then `first`, its reply ([[again]]). */
-    case Again(c: TurnTopics.Classification, first: Message.Assistant)
-
-    /** `base`, shaped. */
-    def apply(base: ModelRequest): ModelRequest = this match {
-      case Plain => base
-      case Offered(c) => offer(base, c)
-      case Again(c, first) => again(offer(base, c), c, first)
-    }
-  }
-
-  /** A model's `reply` to the request `shape` built. */
-  final case class Replied(reply: Message.Assistant, shape: Shape)
-
-  /** What a round came to: the reply that answers the turn, or why none does; the verdict
-    * of its first reply; what went wrong that the turn survived; and the replies spent on
-    * the verdict alone, the answer aside.
-    */
-  final case class Round(
-      answer: Either[TurnFailure, Replied],
-      verdict: Verdict,
-      anomaly: Option[String],
-      spent: Vector[Replied]
-  )
-
-  /** The model calls a round may make after its first reply. */
-  trait Calls {
-
-    /** The model's reply to the request `shape` builds. */
-    def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant]
-
-    /** The model's reply to the plain request. */
-    def plain(): Either[TurnFailure, Message.Assistant]
-  }
-
-  /** The round after `first`, the reply to the request offered for `c`: `further` makes
-    * each call the round needs, at most once each, `again` before `plain`. The answer
-    * fails only when the plain call does.
-    */
-  def round(c: TurnTopics.Classification, first: Message.Assistant, further: Calls^): Round = {
-    val verdict = of(c, first)
-    val offered = Replied(first, Shape.Offered(c))
-    if (calls(first).isEmpty) Round(Right(offered), verdict, None, Vector.empty)
-    else {
-      val shape = new Shape.Again(c, first)
-      val second = further.again(shape)
-      second.toOption.flatMap(answer) match {
-        case Some(answered) =>
-          val dropped = Option.when(second.exists(m => calls(m).nonEmpty))(
-            "the second call called a tool again; its calls were dropped"
-          )
-          Round(Right(Replied(answered, shape)), verdict, dropped, Vector(offered))
-        case None =>
-          val why = second match {
-            case Left(failure) => s"the second call failed ($failure)"
-            case Right(_) => "the second call called a tool again and said nothing"
-          }
-          Round(
-            further.plain().map(Replied(_, Shape.Plain)),
-            verdict,
-            Some(s"$why; a plain call answered"),
-            offered +: second.toOption.map(Replied(_, shape)).toVector
-          )
-      }
-    }
-  }
-
   /** The tool calls in `reply`, in order. */
   def calls(reply: Message.Assistant): Vector[AssistantBlock.ToolCall] =
     reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
-
-  /** The second round's request: `offered` (the offer for `c`), then the first round's
-    * `reply` and a result for each of its calls, the tool no longer callable.
-    */
-  def again(
-      offered: ModelRequest,
-      c: TurnTopics.Classification,
-      reply: Message.Assistant
-  ): ModelRequest =
-    offered.copy(messages = offered.messages ++ (reply +: results(c, reply)), use = ToolUse.Off)
-
-  /** A result for each call in `reply`, the tool offered for `c`: the first `topic` call is
-    * noted, or refused with [[ArgsError.message]] when its arguments cannot be read; a later
-    * one already noted; any other tool unknown.
-    */
-  def results(
-      c: TurnTopics.Classification,
-      reply: Message.Assistant
-  ): Vector[Message.ToolResult] = {
-    val first = calls(reply).find(_.name == ToolName.value(Name)).map(_.id)
-    calls(reply).map { call =>
-      if (call.name != ToolName.value(Name))
-        Message.ToolResult(call.id, s"There is no tool named ${call.name}.", true)
-      else if (!first.contains(call.id)) Message.ToolResult(call.id, "Already noted.", false)
-      else
-        read(c, call.arguments) match {
-          case Left(error) =>
-            Message.ToolResult(call.id, s"${error.message} Answer the message now.", true)
-          case Right(_) => Message.ToolResult(call.id, Noted, false)
-        }
-    }
-  }
 
   /** What went wrong with the `topic` calls in `replies`, a loop's reply to each round, the
     * first first, that the verdict survived: no call in the first reply, a call only in a
@@ -294,18 +174,6 @@ object TurnVerdict {
   def read(c: TurnTopics.Classification, arguments: ujson.Value): Either[ArgsError, Verdict] =
     topic(c).args.read(arguments)
 
-  /** `reply` with its tool calls dropped; `None` when no text is left. */
-  def answer(reply: Message.Assistant): Option[Message.Assistant] = {
-    val kept = reply.blocks.filter {
-      case AssistantBlock.ToolCall(_, _, _) => false
-      case _ => true
-    }
-    Option.when(kept.exists {
-      case AssistantBlock.Text(t) => t.trim.nonEmpty
-      case _ => false
-    })(reply.copy(blocks = kept))
-  }
-
   /** Where `verdict` places `turn`'s message: the current topic, the earlier one whose key
     * it names, or a new topic, opened (also for an earlier key that is none of `c`'s); an
     * unreadable verdict leaves the classifier's placement standing. `anomaly` goes on the
@@ -331,19 +199,4 @@ object TurnVerdict {
         c.placed.toVector.map(p => TopicEvent.Placed(turn.turnSeq, p.weights, by))
     }
   }
-
-  /** What the calls made for the verdict cost, the reply's own call aside: their model, who
-    * served the first, summed usage, and the estimated input of their requests.
-    */
-  def cost(
-      spent: Vector[(Message.Assistant, Tokens)]
-  ): Option[(String, Option[String], Usage, Tokens)] =
-    spent.headOption.map { (first, _) =>
-      (
-        first.model,
-        first.upstream,
-        Usage.total(spent.map(_._1.usage)),
-        spent.map(_._2).foldLeft(Tokens.Zero)(_ + _)
-      )
-    }
 }

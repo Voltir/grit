@@ -552,31 +552,6 @@ object TurnRouteTests extends TestSuite {
         (0, true, true)
     }
 
-    test("a turn that offered before routing shipped makes each role's calls on its first pin") {
-      val entries = new InMemoryEntryStore
-      val turn = say(entries, "hello")
-      val (provider, summarizer, assembler) =
-        (new RecordingProvider, new RecordingProvider, new Asking)
-      val durable = new InMemoryDurable(unpatched = Set(Turn.Patches.Route))
-      val ran = durable.run(turn.workflowId)(
-        routedBody(
-          entries,
-          provider,
-          summarizer,
-          assembler,
-          LabelledDb(Clearance.of(restricted), flashCleared),
-          catalog
-        )
-      )
-      (
-        durable.recordedSteps(turn.workflowId).contains(Turn.Step.Route),
-        assembler.asked.map(_.query),
-        provider.requests.size,
-        summarizer.requests.size
-      ) ==> (false, Vector(Some(pinOf(open, _.pin.query))), 1, 1)
-      assert(ran.startsWith("replied:"))
-    }
-
     test(
       "a turn's reply and summary record the grade of the pin each was made under"
     ) {

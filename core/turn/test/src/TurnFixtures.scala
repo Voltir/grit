@@ -1731,13 +1731,10 @@ object TurnFixtures {
     var waited: Vector[grit.core.stitch.Opening] = Vector.empty
 
     /** The turn run, asking `classifier`, its placements made at once as its own workflow
-      * would make them; a patch in `unpatched` is not taken.
+      * would make them.
       */
-    def run(
-        classifier: Classifier^,
-        unpatched: Set[String] = Set.empty
-    ): (InMemoryDurable, String) = {
-      val durable = new InMemoryDurable(unpatched)
+    def run(classifier: Classifier^): (InMemoryDurable, String) = {
+      val durable = new InMemoryDurable
       val placements = new grit.core.stitch.InMemoryPlacements(
         classifier,
         grit.core.stitch
@@ -1824,7 +1821,6 @@ object TurnFixtures {
     final class Thread(
         heard: Boolean,
         kept: Option[Tags],
-        unpatched: Set[String] = Set.empty,
         addressed: Offering = TurnRecipe.Shipped.addressed.offering,
         asked: Either[grit.core.triage.Weighing.Unweighed, grit.core.triage.Weighing.Weighed] =
           Right(
@@ -1833,7 +1829,7 @@ object TurnFixtures {
         sources: Corpora = knowledge
     ) {
       val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable(unpatched)
+      val durable = new InMemoryDurable
       val turn: TurnRef =
         if (heard) hear(entries, "someone should look at the repo") else say(entries, "look at it")
       val root =

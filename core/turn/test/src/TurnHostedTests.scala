@@ -180,29 +180,51 @@ object TurnHostedTests extends TestSuite {
       entries: InMemoryEntryStore,
       provider: Scripted,
       edge: Served,
-      there: Served
+      there: Served,
+      room: Option[LabelledRoom] = None
   )(id: grit.core.id.WorkflowId)(using grit.core.durable.Durable^): String =
-    hostedBody(
-      entries,
-      provider,
-      edge,
-      reaches = Vector(Reaches(Place.Everywhere, elsewhere)),
-      reached = Vector(there)
-    )(id)
+    room match {
+      case Some(r) =>
+        hostedBody(
+          entries,
+          provider,
+          edge,
+          reaches = Vector(Reaches(Place.Everywhere, elsewhere)),
+          reached = Vector(there),
+          db = r.db,
+          catalog = RoutedCatalog
+        )(id)
+      case None =>
+        hostedBody(
+          entries,
+          provider,
+          edge,
+          reaches = Vector(Reaches(Place.Everywhere, elsewhere)),
+          reached = Vector(there)
+        )(id)
+    }
 
-  /** A durable whose every transaction is the fixture's TUI room, labelled confidential
-    * {trial}, for an asker cleared at `asker`, under a deployment placing elsewhere as
-    * `elsewhereAt` says and nothing else but the room. Its turns take no `route` step: no
-    * fixture pair is cleared above public, and what they are offered is the question here.
+  /** The fixture's TUI room, labelled confidential {trial}, for an asker cleared at `asker`,
+    * under a deployment placing elsewhere as `elsewhereAt` says and nothing else but the room,
+    * with every pair of [[RoutedCatalog]] cleared at the room's label.
     */
-  private def labelledRoom(asker: Label, elsewhereAt: Option[Label]): InMemoryDurable = {
-    val room = Place.of(checkout)
-    val roomLabel = Label.at(Level.Confidential, trial)
-    new InMemoryDurable(
-      unpatched = Set(Turn.Patches.Route),
-      resolve = _ => Clearance.inRoom(room, roomLabel, asker),
-      visibility = labelling(Vector(room -> roomLabel) ++ elsewhereAt.map(elsewhere.place -> _))
+  private final case class LabelledRoom(asker: Label, elsewhereAt: Option[Label]) {
+    private val room = Place.of(checkout)
+    private val roomLabel = Label.at(Level.Confidential, trial)
+    private val clearance = Clearance.inRoom(room, roomLabel, asker)
+    private val visibility = labelling(
+      Vector(room -> roomLabel) ++ elsewhereAt.map(elsewhere.place -> _),
+      Vector(RoutedOpen, RoutedFlash, RoutedSummary, RoutedQuery).flatMap(r =>
+        grit.core.visibility.Party.of(r).map(grit.core.visibility.Cleared(_, roomLabel))
+      )
     )
+
+    /** A durable whose every transaction is in the room. */
+    def durable: InMemoryDurable =
+      new InMemoryDurable(resolve = _ => clearance, visibility = visibility)
+
+    /** Reads in the room, as the turn's `route` makes them. */
+    def db: grit.core.store.Db = grit.core.act.MovesFixtures.FakeDb(clearance, visibility)
   }
 
   val tests = Tests {
@@ -496,11 +518,14 @@ object TurnHostedTests extends TestSuite {
     ) {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "post it")
-      val durable = labelledRoom(Label.at(Level.Internal), None)
+      val room = LabelledRoom(Label.at(Level.Internal), None)
+      val durable = room.durable
       val edge = served(durable, _ => Serve.Never)
       val there = atElsewhere(edge.edges, durable, _ => Serve.Now(Outcome.Done("posted")))
       val provider = model(("t1", "post_x", "hi"))
-      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      durable.run(turn.workflowId)(
+        reachingBody(entries, provider, edge, there, Some(room))
+      ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
       durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty
@@ -512,7 +537,8 @@ object TurnHostedTests extends TestSuite {
     ) {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "post it")
-      val durable = labelledRoom(Label.at(Level.Internal), Some(Label.at(Level.Internal)))
+      val room = LabelledRoom(Label.at(Level.Internal), Some(Label.at(Level.Internal)))
+      val durable = room.durable
       val edge = served(durable, _ => Serve.Never)
       val there = atElsewhere(
         edge.edges,
@@ -521,7 +547,9 @@ object TurnHostedTests extends TestSuite {
         Some(toGeneral)
       )
       val provider = posting(ujson.Obj("to" -> "general", "text" -> "hi"))
-      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      durable.run(turn.workflowId)(
+        reachingBody(entries, provider, edge, there, Some(room))
+      ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
       durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty

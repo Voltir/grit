@@ -71,13 +71,6 @@ object Close {
     val Seal = "seal"
   }
 
-  /** The close's changes since its epoch began, each the name its `Durable.patch` takes. */
-  object Patches {
-
-    /** A job's run's period closes `Ran`, its closing written without a model (2026-10-06). */
-    val RunClose = "run-close"
-  }
-
   /** What `check` found. */
   enum Checked {
 
@@ -117,9 +110,8 @@ object Close {
       case Some(attempt) =>
         import CloseJournal.given
         val records = env.records
-        val runs = d.patch(Patches.RunClose)
         d.transact(Step.Check, Subject.Conversation(attempt.period.conversationId))(
-          check(records, attempt, runs)
+          check(records, attempt)
         ) match {
           case Left(why) => s"failed: $why"
           case Right(Checked.Closed) => "already closed"
@@ -159,8 +151,8 @@ object Close {
         }
     }
 
-  /** The `check` step; a run's period is `Ran` only when `runs` (the patch is taken). */
-  private def check(records: CloseRecords, attempt: CloseRef, runs: Boolean)(using
+  /** The `check` step. */
+  private def check(records: CloseRecords, attempt: CloseRef)(using
       Tx^
   ): Either[String, Checked] =
     (for {
@@ -186,12 +178,9 @@ object Close {
       tags <- records.triage.of(own.collect { case e @ Entry(_, _, _, _, _, Payload.Heard(_), _) =>
         e.id
       })
-      ran <-
-        if (!runs) Right(false)
-        else
-          records.conversations
-            .get(attempt.period.conversationId)
-            .map(_.flatMap(c => Slot.of(c.origin)).isDefined)
+      ran <- records.conversations
+        .get(attempt.period.conversationId)
+        .map(_.flatMap(c => Slot.of(c.origin)).isDefined)
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
         val current = a.attempt(settings)
