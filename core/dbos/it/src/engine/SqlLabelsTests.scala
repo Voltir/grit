@@ -97,8 +97,12 @@ object SqlLabelsTests extends TestSuite {
       val config = TestPostgres.freshDatabase("labels_made_under")
       LiveEngine.open(config, "test", visibility = declaring("trial")).close()
       LiveEngine.open(config, "test", visibility = declaring("trial", "acme")).close()
-      val id = rows(config, "SELECT grit.intern_label(ROW(1, '{acme}')::grit.label)")
-      rows(config, s"SELECT made_under FROM grit.labels WHERE id = ${id.mkString}") ==> Vector("2")
+      val id =
+        rows(config, "SELECT grit.intern_classification(ROW(1, '{acme}')::grit.classification)")
+      rows(
+        config,
+        s"SELECT made_under FROM grit.classifications WHERE id = ${id.mkString}"
+      ) ==> Vector("2")
     }
   }
 }

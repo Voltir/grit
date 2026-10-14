@@ -7,26 +7,26 @@ import scala.util.Using
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Compartment, Compartments, Label, LabelParts}
 
-/** Labels as `grit.labels` holds them (ADR 0030), and the compartment sets this database has
+/** Labels as `grit.classifications` holds them (ADR 0030), and the compartment sets this database has
   * run under (`grit.compartments`). LabelParts is the one translation between a [[Label]] and
   * its stored form; every statement that writes or reads a label goes through here.
   */
 private[dbos] object SqlLabels {
   import SqlEntryStore.attempt
 
-  /** A label as a statement's argument, of type `grit.label`: two parameters, which [[bind]]
+  /** A label as a statement's argument, of type `grit.classification`: two parameters, which [[bind]]
     * sets.
     */
   val Arg: String =
     "ROW(?::smallint, ARRAY(SELECT e FROM jsonb_array_elements_text(?::jsonb) " +
-      "WITH ORDINALITY AS t(e, i) ORDER BY i))::grit.label"
+      "WITH ORDINALITY AS t(e, i) ORDER BY i))::grit.classification"
 
-  /** An [[Arg]]'s id in `grit.labels`, interned on first use (`grit.intern_label`, the table's
+  /** An [[Arg]]'s id in `grit.classifications`, interned on first use (`grit.intern_classification`, the table's
     * one writer).
     */
-  val Interned: String = s"grit.intern_label($Arg)"
+  val Interned: String = s"grit.intern_classification($Arg)"
 
-  /** `label`'s id in `grit.labels`, interned on first use: for a statement that must then read
+  /** `label`'s id in `grit.classifications`, interned on first use: for a statement that must then read
     * the row back, which one that interns it in passing cannot (its snapshot predates the row).
     */
   def intern(label: Label)(using tx: Tx^): Either[StoreError, Int] = {
@@ -48,7 +48,7 @@ private[dbos] object SqlLabels {
     ps.setString(at + 1, ujson.Arr.from(LabelParts.compartments(label).map(ujson.Str(_))).render())
   }
 
-  /** The columns that select the `grit.labels` row aliased `alias` for [[read]]. */
+  /** The columns that select the `grit.classifications` row aliased `alias` for [[read]]. */
   def columns(alias: String): String =
     s"$alias.level AS label_level, to_jsonb($alias.compartments)::text AS label_compartments"
 

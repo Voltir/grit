@@ -92,8 +92,8 @@ object LabelsInForceLiveTests extends TestSuite {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(
             conn.prepareStatement(
-              """INSERT INTO grit.rooms (place_id, label_id) VALUES (?::uuid, ?)
-                |ON CONFLICT (place_id) DO UPDATE SET label_id = EXCLUDED.label_id""".stripMargin
+              """INSERT INTO grit.rooms (place_id, classification_id) VALUES (?::uuid, ?)
+                |ON CONFLICT (place_id) DO UPDATE SET classification_id = EXCLUDED.classification_id""".stripMargin
             )
           ) { ps =>
             ps.setString(1, place)

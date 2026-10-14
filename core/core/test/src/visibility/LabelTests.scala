@@ -71,7 +71,7 @@ object LabelTests extends TestSuite {
     }
 
     test("a label is stored as its level's rank from public's 0 and its compartments, sorted") {
-      // The stored form (grit.labels): pinned, since a change re-reads every stored label.
+      // The stored form (grit.classifications): pinned, since a change re-reads every stored label.
       val stored = Label.at(Level.Confidential, trial, acme)
       (LabelParts.rank(stored), LabelParts.compartments(stored)) ==> (2, Vector("acme", "trial"))
       (LabelParts.rank(Label.Public), LabelParts.compartments(Label.Public)) ==> (0, Vector.empty)

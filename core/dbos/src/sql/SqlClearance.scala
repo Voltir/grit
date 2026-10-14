@@ -18,17 +18,17 @@ private[sql] object SqlClearance {
     * own room's `grit.places` id (`room`, NULL when it has none, or the place was never
     * recorded), and the ids of the places under `direct` (`direct`), whose rows the everywhere
     * branch never reads, none when the transaction is maintenance's. Dominance is
-    * `grit.label_dominates` over `grit.labels`, run with the statement, so a label interned
+    * `grit.classification_dominates` over `grit.classifications`, run with the statement, so a label interned
     * earlier in the same transaction is covered.
     */
   val With: String =
     s"""clearance AS (
-       |  SELECT ARRAY(SELECT l.id FROM grit.labels l
-       |                WHERE grit.label_dominates(${SqlLabels.Arg},
-       |                                           ROW(l.level, l.compartments)::grit.label)) AS everywhere,
-       |         ARRAY(SELECT l.id FROM grit.labels l
-       |                WHERE grit.label_dominates(${SqlLabels.Arg},
-       |                                           ROW(l.level, l.compartments)::grit.label)) AS own,
+       |  SELECT ARRAY(SELECT l.id FROM grit.classifications l
+       |                WHERE grit.classification_dominates(${SqlLabels.Arg},
+       |                                           ROW(l.level, l.compartments)::grit.classification)) AS everywhere,
+       |         ARRAY(SELECT l.id FROM grit.classifications l
+       |                WHERE grit.classification_dominates(${SqlLabels.Arg},
+       |                                           ROW(l.level, l.compartments)::grit.classification)) AS own,
        |         (SELECT p.id FROM grit.places p
        |           WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))) AS room,
        |         ARRAY(SELECT p.id FROM grit.places p
@@ -57,10 +57,10 @@ private[sql] object SqlClearance {
     * ([[grit.core.visibility.Item.InRoom]] of its conversation's room).
     */
   def entry(e: String): String =
-    s"""(($e.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($e.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
        |   AND $e.conversation_id NOT IN (SELECT dc.id FROM grit.conversations dc
        |                                   WHERE dc.room_id = ANY ((SELECT direct FROM clearance)::uuid[])))
-       |  OR ($e.label_id = ANY ((SELECT own FROM clearance)::smallint[])
+       |  OR ($e.classification_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $e.conversation_id IN (SELECT rc.id FROM grit.conversations rc
        |                                  WHERE rc.room_id = (SELECT room FROM clearance))))""".stripMargin
 
@@ -68,17 +68,17 @@ private[sql] object SqlClearance {
     * entries, every one kept at its label, and where it happens.
     */
   def conversation(c: String): String =
-    s"""(($c.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($c.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
        |   AND $c.room_id <> ALL ((SELECT direct FROM clearance)::uuid[]))
-       |  OR ($c.label_id = ANY ((SELECT own FROM clearance)::smallint[])
+       |  OR ($c.classification_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $c.room_id = (SELECT room FROM clearance)))""".stripMargin
 
   /** Whether the transaction reads the `grit.documents`, `grit.plugin_docs` or `grit.schedules`
     * row aliased `d` ([[grit.core.visibility.Item.Kept]] in its `room_id`, NULL for none).
     */
   def kept(d: String): String =
-    s"""(($d.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+    s"""(($d.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
        |   AND ($d.room_id IS NULL OR $d.room_id <> ALL ((SELECT direct FROM clearance)::uuid[])))
-       |  OR ($d.label_id = ANY ((SELECT own FROM clearance)::smallint[])
+       |  OR ($d.classification_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $d.room_id = (SELECT room FROM clearance)))""".stripMargin
 }

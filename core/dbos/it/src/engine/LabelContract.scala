@@ -14,7 +14,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 
 import utest.*
 
-/** The lattice twice, as Scala's [[Label]] and as `schema.sql`'s `grit.label` functions, bound
+/** The lattice twice, as Scala's [[Label]] and as `schema.sql`'s `grit.classification` functions, bound
   * over one generated case set: whatever one says of a case, the other says too.
   */
 object LabelContract extends TestSuite {
@@ -49,9 +49,9 @@ object LabelContract extends TestSuite {
   /** `l` as an SQL expression over its JSON form at `at`. */
   private def label(at: String): String =
     s"ROW(($at ->> 0)::smallint, ARRAY(SELECT e FROM jsonb_array_elements_text($at -> 1) " +
-      "WITH ORDINALITY AS t(e, i) ORDER BY i))::grit.label"
+      "WITH ORDINALITY AS t(e, i) ORDER BY i))::grit.classification"
 
-  /** `l`'s parts read back from a `grit.label` column pair: its level and its compartments as
+  /** `l`'s parts read back from a `grit.classification` column pair: its level and its compartments as
     * JSON text.
     */
   private def parts(rank: Int, compartments: String): (Int, Vector[String]) =
@@ -97,9 +97,9 @@ object LabelContract extends TestSuite {
     ) {
       val pairs = for { a <- labels; b <- labels } yield (a, b)
       val sql =
-        s"""SELECT ord, grit.label_dominates(a, b),
-           |       (grit.label_join(a, b)).level, to_jsonb((grit.label_join(a, b)).compartments)::text,
-           |       (grit.label_meet(a, b)).level, to_jsonb((grit.label_meet(a, b)).compartments)::text
+        s"""SELECT ord, grit.classification_dominates(a, b),
+           |       (grit.classification_join(a, b)).level, to_jsonb((grit.classification_join(a, b)).compartments)::text,
+           |       (grit.classification_meet(a, b)).level, to_jsonb((grit.classification_meet(a, b)).compartments)::text
            |  FROM (SELECT ord, ${label("c -> 0")} AS a, ${label("c -> 1")} AS b
            |          FROM jsonb_array_elements(?::jsonb) WITH ORDINALITY AS t(c, ord)) AS cases
            | ORDER BY ord""".stripMargin
@@ -118,14 +118,14 @@ object LabelContract extends TestSuite {
         None
     }
 
-    test("label_join_agg is Label's join folded from public, over no labels included") {
+    test("classification_join_agg is Label's join folded from public, over no labels included") {
       // Runs of 0 to 4 labels from across the case set.
       val lists = (0 until 200).toVector.map(i =>
         (0 until i % 5).toVector.map(j => labels((i * 7 + j * 31) % labels.size))
       )
       val sql =
         s"""SELECT ord, (agg).level, to_jsonb((agg).compartments)::text
-           |  FROM (SELECT ord, grit.label_join_agg(${label(
+           |  FROM (SELECT ord, grit.classification_join_agg(${label(
             "e"
           )}) FILTER (WHERE e IS NOT NULL) AS agg
            |          FROM jsonb_array_elements(?::jsonb) WITH ORDINALITY AS t(list, ord)
@@ -163,7 +163,7 @@ object LabelContract extends TestSuite {
     ) {
       def insert(level: String, compartments: String): Option[String] =
         refusal(
-          s"INSERT INTO grit.labels (level, compartments) VALUES ($level, '$compartments')"
+          s"INSERT INTO grit.classifications (level, compartments) VALUES ($level, '$compartments')"
         )
       Vector(
         insert("1", "{trial,acme}"),
@@ -174,23 +174,25 @@ object LabelContract extends TestSuite {
         insert("-1", "{}"),
         insert("0", "{}")
       ) ==> Vector(
-        Some("labels_compartments_check"),
-        Some("labels_compartments_check"),
-        Some("labels_compartments_check"),
-        Some("labels_compartments_check"),
-        Some("labels_level_check"),
-        Some("labels_level_check"),
-        Some("labels_level_compartments_key")
+        Some("classifications_compartments_check"),
+        Some("classifications_compartments_check"),
+        Some("classifications_compartments_check"),
+        Some("classifications_compartments_check"),
+        Some("classifications_level_check"),
+        Some("classifications_level_check"),
+        Some("classifications_level_compartments_key")
       )
     }
 
     test(
-      "intern_label gives public id 1, the same id for the same label, and refuses a label not canonical"
+      "intern_classification gives public id 1, the same id for the same label, and refuses a label not canonical"
     ) {
       def intern(level: Int, compartments: String): Either[String, Int] =
         try
           Right(
-            query(s"SELECT grit.intern_label(ROW($level, '$compartments')::grit.label)")(_ => ())(
+            query(
+              s"SELECT grit.intern_classification(ROW($level, '$compartments')::grit.classification)"
+            )(_ => ())(
               _.getInt(1)
             ).headOption.getOrElse(-1)
           )
@@ -198,13 +200,15 @@ object LabelContract extends TestSuite {
       val first = intern(2, "{acme,trial}")
       (intern(0, "{}"), intern(2, "{acme,trial}") == first, intern(1, "{acme}") == first) ==>
         (Right(1), true, false)
-      assert(intern(2, "{trial,acme}").left.exists(_.contains("labels_compartments_check")))
+      assert(
+        intern(2, "{trial,acme}").left.exists(_.contains("classifications_compartments_check"))
+      )
     }
 
     test(
       "two transactions interning one new label at once get one row, the second waiting on the first"
     ) {
-      val sql = "SELECT grit.intern_label(ROW(3, '{b1}')::grit.label)"
+      val sql = "SELECT grit.intern_classification(ROW(3, '{b1}')::grit.classification)"
       def interned(conn: Connection): Int =
         Using.resource(conn.createStatement()) { st =>
           Using.resource(st.executeQuery(sql)) { rs =>
@@ -235,7 +239,7 @@ object LabelContract extends TestSuite {
         (
           Await.result(secondId, 10.seconds),
           query(
-            "SELECT count(*) FROM grit.labels WHERE level = 3 AND compartments = '{b1}'"
+            "SELECT count(*) FROM grit.classifications WHERE level = 3 AND compartments = '{b1}'"
           )(_ => ())(_.getInt(1))
         ) ==> (firstId, Vector(1))
       }

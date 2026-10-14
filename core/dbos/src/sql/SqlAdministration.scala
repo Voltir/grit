@@ -67,16 +67,16 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
           place <- SqlPlaces.id(room)
           id <- SqlLabels.intern(label)
           n <- update(
-            """INSERT INTO grit.rooms (place_id, label_id) VALUES (?::uuid, ?)
-              |ON CONFLICT (place_id) DO UPDATE SET label_id = EXCLUDED.label_id
-              | WHERE grit.rooms.label_id IS DISTINCT FROM EXCLUDED.label_id""".stripMargin
+            """INSERT INTO grit.rooms (place_id, classification_id) VALUES (?::uuid, ?)
+              |ON CONFLICT (place_id) DO UPDATE SET classification_id = EXCLUDED.classification_id
+              | WHERE grit.rooms.classification_id IS DISTINCT FROM EXCLUDED.classification_id""".stripMargin
           ) { ps =>
             ps.setString(1, place)
             ps.setInt(2, id)
           }
         } yield n > 0
       case Change.Relabel(room, _, Change.To.Default(_)) =>
-        atRoom(room, "label_id = NULL", "r.label_id IS NOT NULL")
+        atRoom(room, "classification_id = NULL", "r.classification_id IS NOT NULL")
       case Change.Quiet(room, true) =>
         SqlPlaces.id(room).flatMap { place =>
           update(

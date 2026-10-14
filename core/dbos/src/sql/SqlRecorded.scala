@@ -100,7 +100,7 @@ private[dbos] object SqlRecorded {
        |       ${SqlLabels.columns("l")}, NULL::text AS group_name, NULL::text AS account
        |  FROM grit.rooms r
        |  JOIN grit.places p ON p.id = r.place_id
-       |  LEFT JOIN grit.labels l ON l.id = r.label_id
+       |  LEFT JOIN grit.classifications l ON l.id = r.classification_id
        |UNION ALL
        |SELECT NULL, NULL, NULL, NULL, NULL, NULL, m.group_name, m.account
        |  FROM grit.group_members m""".stripMargin

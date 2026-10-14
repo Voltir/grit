@@ -268,7 +268,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
     rows(
       config,
       """SELECT d.pointer->'arguments'->>'path', l.level::text, d.pointer->>'tool'
-        |FROM grit.documents d JOIN grit.labels l ON l.id = d.label_id
+        |FROM grit.documents d JOIN grit.classifications l ON l.id = d.classification_id
         |WHERE d.plugin = 'knowledge' AND d.superseded_at IS NULL AND d.body IS NOT NULL
         |ORDER BY d.pointer->'arguments'->>'path' COLLATE "C"""".stripMargin
     )

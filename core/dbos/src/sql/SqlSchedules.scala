@@ -97,7 +97,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         case None =>
           update(
             s"""INSERT INTO grit.schedules
-               |  (id, source, job, rule, params, principal, report, created_at, next_at, label_id)
+               |  (id, source, job, rule, params, principal, report, created_at, next_at, classification_id)
                |VALUES (?, 'declared', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ${SqlLabels.Interned})""".stripMargin
           ) { ps =>
             ps.setString(1, ScheduleId.value(id))
@@ -120,7 +120,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
                |       next_at = CASE WHEN ? THEN next_at ELSE ? END,
                |       ended = CASE WHEN ? THEN NULL ELSE ended END,
                |       ended_at = CASE WHEN ? THEN NULL ELSE ended_at END,
-               |       label_id = ${SqlLabels.Interned}
+               |       classification_id = ${SqlLabels.Interned}
                | WHERE id = ?""".stripMargin
           ) { ps =>
             ps.setString(1, JobName.value(d.job.name))
@@ -518,7 +518,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
     val room = Tx.clearance(tx).own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     update(
       s"""INSERT INTO grit.schedules
-         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, label_id,
+         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, classification_id,
          |   room_id)
          |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned},
          |        ${SqlDocuments.RoomId})""".stripMargin
@@ -582,7 +582,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
 private[dbos] object SqlSchedules {
 
   /** A schedule's row and its label's, as [[Selected]] reads them. */
-  private val Labelled = "grit.schedules s JOIN grit.labels l ON l.id = s.label_id"
+  private val Labelled =
+    "grit.schedules s JOIN grit.classifications l ON l.id = s.classification_id"
 
   /** What [[stored]] reads, of [[Labelled]]. */
   private val Selected =

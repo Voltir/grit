@@ -155,7 +155,7 @@ private[dbos] final class Opener(visibility: Visibility) {
           s"""SELECT c.origin::text AS origin, ${SqlLabels.columns("l")},
              |       e.id AS first_entry, a.principal_id, a.kind, h.held::text AS held
              |  FROM grit.conversations c
-             |  JOIN grit.labels l ON l.id = c.label_id
+             |  JOIN grit.classifications l ON l.id = c.classification_id
              |  LEFT JOIN LATERAL (SELECT id FROM grit.entries
              |                      WHERE conversation_id = c.id AND turn_seq = ?
              |                      ORDER BY seq LIMIT 1) e ON true

@@ -103,7 +103,7 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
       Using.resource(
         conn.prepareStatement(
           s"""SELECT r.place_id::text, array_to_json(p.path)::text, r.joined_at, r.left_at,
-             |       r.backfilled_join, r.label_id IS NOT NULL OR r.quiet OR r.baseline IS NOT NULL
+             |       r.backfilled_join, r.classification_id IS NOT NULL OR r.quiet OR r.baseline IS NOT NULL
              |         AS decided
              |  FROM grit.rooms r JOIN grit.places p ON p.id = r.place_id
              | WHERE $where${if (lock) " FOR UPDATE OF r" else ""}""".stripMargin

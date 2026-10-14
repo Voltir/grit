@@ -117,7 +117,7 @@ object Label {
   private[visibility] def compartments(l: Label): Vector[Compartment] = l.compartments.toVector
 }
 
-/** A label as the level and compartments it is stored as (`grit.labels`), for the code that
+/** A label as the level and compartments it is stored as (`grit.classifications`), for the code that
   * stores and checks labels (`grit.core.visibility`, `grit.dbos`) and for nothing else
   * (enola-intent.yaml).
   */

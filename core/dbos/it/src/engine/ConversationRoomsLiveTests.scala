@@ -99,7 +99,7 @@ object ConversationRoomsLiveTests extends TestSuite {
       } ==> Right(())
       rows(
         s"""SELECT l.level, array_to_string(l.compartments, ',') FROM grit.entries e
-           |  JOIN grit.labels l ON l.id = e.label_id
+           |  JOIN grit.classifications l ON l.id = e.classification_id
            | WHERE e.conversation_id = '${ConversationId.value(c)}'""".stripMargin
       ) ==> Vector("1|trial")
     }
@@ -250,7 +250,7 @@ object ConversationRoomsLiveTests extends TestSuite {
         try
           Right(
             rows(
-              s"""INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, label_id)
+              s"""INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, classification_id)
                  |VALUES ('digest', 'room:labelled', '{}', 'lines', now(), now(), $label)
                  |RETURNING version""".stripMargin
             ).size
@@ -263,7 +263,8 @@ object ConversationRoomsLiveTests extends TestSuite {
                 .fold("other")(_ => "idx_documents_current")
             )
         }
-      val other = rows("SELECT grit.intern_label(ROW(1, '{trial}')::grit.label)").mkString
+      val other =
+        rows("SELECT grit.intern_classification(ROW(1, '{trial}')::grit.classification)").mkString
       (write("1"), write(other), write("1")) ==> (Right(1), Right(1), Left("idx_documents_current"))
     }
 
@@ -296,7 +297,7 @@ object ConversationRoomsLiveTests extends TestSuite {
       rows(
         s"""SELECT d.body IS NULL, l.compartments::text, array_to_string(r.path, '/')
            |  FROM grit.documents d
-           |  JOIN grit.labels l ON l.id = d.label_id
+           |  JOIN grit.classifications l ON l.id = d.classification_id
            |  LEFT JOIN grit.places r ON r.id = d.room_id
            | WHERE d.plugin = 'rooms' ORDER BY d.version""".stripMargin
       ) ==> Vector("f|{trial}|slack/T/withdrawn", "t|{trial}|slack/T/withdrawn")

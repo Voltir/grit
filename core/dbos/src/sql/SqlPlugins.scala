@@ -58,11 +58,11 @@ final class SqlCacheDocs(plugin: PluginName, source: CloseOrdinal) extends Cache
     val clearance = Tx.clearance(tx)
     val room = clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     update(
-      s"""INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, label_id, room_id)
+      s"""INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, classification_id, room_id)
          |VALUES (?, $Generation, ?, ?::jsonb, ?, ${SqlLabels.Interned}, ${SqlDocuments.RoomId})
          |ON CONFLICT (plugin, generation, key)
          |  DO UPDATE SET doc = EXCLUDED.doc, source = EXCLUDED.source,
-         |                label_id = EXCLUDED.label_id, room_id = EXCLUDED.room_id""".stripMargin
+         |                classification_id = EXCLUDED.classification_id, room_id = EXCLUDED.room_id""".stripMargin
     ) { ps =>
       ps.setString(1, PluginName.value(plugin))
       ps.setString(2, PluginName.value(plugin))

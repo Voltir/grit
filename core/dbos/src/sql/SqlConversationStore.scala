@@ -53,7 +53,7 @@ final class SqlConversationStore extends ConversationStore {
       _ <- attempt {
         Using.resource(
           conn.prepareStatement(
-            """INSERT INTO grit.conversations (origin, place_id, room_id, created_by, label_id)
+            """INSERT INTO grit.conversations (origin, place_id, room_id, created_by, classification_id)
               |VALUES (?::jsonb, ?::uuid, ?::uuid, ?, ?)
               |ON CONFLICT (origin) DO NOTHING""".stripMargin
           )
@@ -114,7 +114,7 @@ final class SqlConversationStore extends ConversationStore {
       Using.resource(
         conn.prepareStatement(
           s"""SELECT c.origin::text AS origin, c.created_by, c.created_at, ${SqlLabels.columns("l")}
-             |  FROM grit.conversations c JOIN grit.labels l ON l.id = c.label_id
+             |  FROM grit.conversations c JOIN grit.classifications l ON l.id = c.classification_id
              | WHERE c.id = ?::uuid""".stripMargin
         )
       ) { ps =>

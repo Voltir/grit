@@ -156,7 +156,7 @@ private[sql] object SqlDocuments {
     * to select [[Columns]] from.
     */
   val Labelled: String =
-    s"(SELECT d.*, ${SqlLabels.columns("l")} FROM grit.documents d JOIN grit.labels l ON l.id = d.label_id)"
+    s"(SELECT d.*, ${SqlLabels.columns("l")} FROM grit.documents d JOIN grit.classifications l ON l.id = d.classification_id)"
 
   /** A version's columns, as [[document]] reads them, from [[Labelled]]. */
   val Columns: String =
@@ -166,7 +166,7 @@ private[sql] object SqlDocuments {
 
   /** A label's id: the parameters of [[SqlLabels.Arg]], looked up without interning it. */
   val LabelId: String =
-    s"(SELECT l.id FROM grit.labels l WHERE ROW(l.level, l.compartments)::grit.label = ${SqlLabels.Arg})"
+    s"(SELECT l.id FROM grit.classifications l WHERE ROW(l.level, l.compartments)::grit.classification = ${SqlLabels.Arg})"
 
   /** A room's `grit.places` id, its path one JSON array parameter; NULL for none. */
   val RoomId: String =
@@ -328,7 +328,7 @@ private[sql] object SqlDocuments {
       cleared(
         s"""WITH ${SqlClearance.With}
            |SELECT $Columns FROM $Labelled d
-           | WHERE plugin = ? AND key = ? AND label_id = $LabelId
+           | WHERE plugin = ? AND key = ? AND classification_id = $LabelId
            |   AND superseded_at IS NULL AND body IS NOT NULL AND ${SqlClearance.kept(
             "d"
           )}""".stripMargin
@@ -381,7 +381,7 @@ private[sql] object SqlDocuments {
             |        AND data = ?::jsonb
             |        AND pointer IS NOT DISTINCT FROM ?::jsonb) AS same
             |  FROM grit.documents
-            | WHERE plugin = ? AND key = ? AND label_id = ? AND superseded_at IS NULL
+            | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
             |   FOR UPDATE""".stripMargin
         ) { ps =>
           ps.setString(1, DocText.value(text))
@@ -404,7 +404,7 @@ private[sql] object SqlDocuments {
                   written <- rows(
                     s"""INSERT INTO grit.documents
                       |       (plugin, key, place, body, data, pointer, written_at, last_placed,
-                      |        label_id, room_id)
+                      |        classification_id, room_id)
                       |VALUES (?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?::jsonb,
                       |        ?::jsonb, ?, ?, ?, $RoomId)
                       |RETURNING version""".stripMargin
@@ -444,7 +444,7 @@ private[sql] object SqlDocuments {
     ): Either[StoreError, Option[DocumentVersion]] =
       rows(
         """SELECT version FROM grit.documents
-          | WHERE plugin = ? AND key = ? AND label_id = ? AND superseded_at IS NULL
+          | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
           |   AND body IS NOT NULL
           |   FOR UPDATE""".stripMargin
       ) { ps =>
@@ -460,8 +460,8 @@ private[sql] object SqlDocuments {
               _ <- supersede(current, at)
               written <- rows(
                 """INSERT INTO grit.documents
-                  |       (plugin, key, place, body, written_at, last_placed, label_id, room_id)
-                  |SELECT plugin, key, place, NULL, ?, ?, label_id, room_id FROM grit.documents
+                  |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id)
+                  |SELECT plugin, key, place, NULL, ?, ?, classification_id, room_id FROM grit.documents
                   | WHERE version = ?
                   |RETURNING version""".stripMargin
               ) { ps =>
@@ -498,14 +498,14 @@ private[sql] object SqlDocuments {
     ): Either[StoreError, Vector[(DocKey, Label, Int)]] =
       rows(
         s"""WITH holding AS (
-          |  SELECT d.key, d.last_placed, d.label_id, d.label_level, d.label_compartments,
+          |  SELECT d.key, d.last_placed, d.classification_id, d.label_level, d.label_compartments,
           |         concat_ws('+', VARIADIC (ARRAY[(ARRAY['public', 'internal', 'confidential',
           |                                               'restricted'])[d.label_level + 1]]
           |                                  || l.compartments)) AS written
-          |    FROM $Labelled d JOIN grit.labels l ON l.id = d.label_id
+          |    FROM $Labelled d JOIN grit.classifications l ON l.id = d.classification_id
           |   WHERE d.plugin = ? AND d.superseded_at IS NULL AND d.body IS NOT NULL
-          |     AND NOT (d.key = ? AND d.label_id = ?))
-          |SELECT key, label_id, label_level, label_compartments FROM holding
+          |     AND NOT (d.key = ? AND d.classification_id = ?))
+          |SELECT key, classification_id, label_level, label_compartments FROM holding
           | ORDER BY last_placed, key COLLATE "C", written COLLATE "C"
           | LIMIT greatest((SELECT count(*) FROM holding) + 1 - ?, 0)""".stripMargin
       ) { ps =>
@@ -514,7 +514,9 @@ private[sql] object SqlDocuments {
         ps.setInt(3, label)
         ps.setInt(4, terms.bound)
       }(rs =>
-        DocKey.of(rs.getString("key")).map(k => (k, SqlLabels.read(rs), rs.getInt("label_id")))
+        DocKey
+          .of(rs.getString("key"))
+          .map(k => (k, SqlLabels.read(rs), rs.getInt("classification_id")))
       )
   }
 

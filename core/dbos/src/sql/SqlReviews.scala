@@ -48,14 +48,14 @@ final class SqlReviews extends ReviewStore {
             |       t.answers::text AS answers
             |  FROM grit.reviews r
             |  JOIN grit.conversations c ON c.id = r.conversation_id
-            |  JOIN grit.labels cl ON cl.id = c.label_id
+            |  JOIN grit.classifications cl ON cl.id = c.classification_id
             |  JOIN grit.entries e ON e.id = r.entry_id
             |  JOIN grit.speech s ON s.conversation_id = e.conversation_id
             |                    AND s.turn_seq = e.turn_seq
             |  JOIN grit.triage_shadows t ON t.entry_id = r.entry_id AND t.name = r.shadow
             | WHERE r.picked_at IS NOT NULL AND r.address IS NULL AND r.dropped_at IS NULL
             |   AND t.failure IS NULL
-            |   AND grit.label_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.label)
+            |   AND grit.classification_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.classification)
             | ORDER BY r.picked_at, r.entry_id""".stripMargin
         )
       ) { ps =>
@@ -183,14 +183,14 @@ final class SqlReviews extends ReviewStore {
             |  FROM grit.triage_shadows t
             |  JOIN grit.entries e ON e.id = t.entry_id
             |  JOIN grit.conversations c ON c.id = e.conversation_id
-            |  JOIN grit.labels cl ON cl.id = c.label_id
+            |  JOIN grit.classifications cl ON cl.id = c.classification_id
             |  JOIN grit.speech s ON s.conversation_id = e.conversation_id
             |                    AND s.turn_seq = e.turn_seq
             | WHERE t.name = ? AND t.failure IS NULL AND (t.answers -> 0 ->> 'name') IS NOT NULL
             |   AND e.created_at >= ?
             |   AND (NOT s.drafting OR s.outcome IS NOT NULL)
             |   AND NOT EXISTS (SELECT 1 FROM grit.reviews r WHERE r.entry_id = e.id)
-            |   AND grit.label_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.label)
+            |   AND grit.classification_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.classification)
             | ORDER BY e.created_at, e.id
             | LIMIT ?""".stripMargin
         )
