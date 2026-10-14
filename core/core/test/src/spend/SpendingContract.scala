@@ -5,6 +5,7 @@ import java.util.UUID
 
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
+import grit.core.model.Grade
 import grit.core.store.{Tx, UsageLedger}
 
 import utest.*
@@ -19,14 +20,16 @@ abstract class SpendingContract extends TestSuite {
   protected def ledger: UsageLedger & Spending
 
   /** Records a call that cost `usd` (unpriced when none) for `turn` from `workflow`, as
-    * held by `entry`, at `at`.
+    * held by `entry`, at `at`, served at `upstream` under a pin of `grade`.
     */
   protected def recordAt(
       entry: EntryId,
       turn: TurnRef,
       workflow: WorkflowId,
       usd: Option[String],
-      at: Instant
+      at: Instant,
+      upstream: Option[String],
+      grade: Option[Grade]
   ): Unit
 
   /** Runs `body` in one transaction, committed when it returns. */
@@ -48,7 +51,9 @@ abstract class SpendingContract extends TestSuite {
       turn,
       WorkflowId(s"$workflow:${ConversationId.value(c)}"),
       usd,
-      Instant.parse(at)
+      Instant.parse(at),
+      None,
+      None
     )
   }
 
@@ -93,12 +98,30 @@ abstract class SpendingContract extends TestSuite {
         turn,
         turn.workflowId,
         Some("0.001"),
-        at
+        at,
+        Some("Together"),
+        Some(Grade.Light)
       )
-      recordAt(turn.replyId, turn, turn.workflowId, Some("0.002"), at)
-      recordAt(other.replyId, other, other.workflowId, Some("0.1"), at)
-      transaction(ledger.turn(turn)).map(s => (s.cost, s.answer.map(_.entry))) ==>
-        Right((Cost.Exact(BigDecimal("0.003")), Some(turn.replyId)))
+      recordAt(
+        turn.replyId,
+        turn,
+        turn.workflowId,
+        Some("0.002"),
+        at,
+        Some("Fireworks"),
+        Some(Grade.Strong)
+      )
+      recordAt(other.replyId, other, other.workflowId, Some("0.1"), at, None, None)
+      // The answer's upstream and grade are what a reply's note shows.
+      transaction(ledger.turn(turn)).map(s =>
+        (s.cost, s.answer.map(r => (r.entry, r.upstream, r.grade)))
+      ) ==>
+        Right(
+          (
+            Cost.Exact(BigDecimal("0.003")),
+            Some((turn.replyId, Some("Fireworks"), Some(Grade.Strong)))
+          )
+        )
       val none = TurnRef(c, TurnSeq(2))
       transaction(ledger.turn(none)).map(s => (s.cost, s.answer)) ==> Right((Cost.Zero, None))
     }

@@ -97,7 +97,7 @@ object VisibilityLiveTests extends TestSuite {
         .map(_.toString)
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  /** Writes every query as `zephyr`, the word every thread and document below holds. */
+  /** The pin a query is written under, its model `q/q`. */
   private val QueryPin: Pinned = {
     val a = Assignment(ModelRef(ModelId.of("q/q").getOrElse(sys.error("q/q")), None), 100, None)
     Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin.query.first
@@ -109,6 +109,7 @@ object VisibilityLiveTests extends TestSuite {
     def provider(pinned: Pinned): Provider^ = Query
   }
 
+  /** Writes every query as `zephyr`, the word every thread and document below holds. */
   private object Query extends Provider {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
       Right(

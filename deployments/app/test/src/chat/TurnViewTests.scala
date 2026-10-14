@@ -509,7 +509,9 @@ object TurnViewTests extends TestSuite {
         .models ==> None
     }
 
-    test("settled once it has stopped with its summary recorded; not while either is missing") {
+    test(
+      "settled once it has stopped with its summary or its failure recorded; not while either is missing"
+    ) {
       def of(steps: Vector[String], running: Boolean) = TurnView.of(
         turn2,
         entries,
@@ -524,8 +526,9 @@ object TurnViewTests extends TestSuite {
       of(summarised, running = false).settled ==> true
       // Still running, though its last step is recorded.
       of(summarised, running = true).settled ==> false
-      // Stopped short of the summary, as a failed turn does.
+      // Stopped short of the summary, its failure not recorded.
       of(summarised.dropRight(1), running = false).settled ==> false
+      of(Vector("assemble", Turn.Step.RecordFailure), running = false).settled ==> true
     }
 
     test("a person's wait is its own step, timed from the ask to the answer") {

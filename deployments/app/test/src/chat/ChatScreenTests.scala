@@ -294,7 +294,9 @@ object ChatScreenTests extends TestSuite {
       assert(!shown(Tokens.Zero).exists(_.contains("documents")))
     }
 
-    test("the panel's window, for a turn that failed before assembling one, says it was not") {
+    test(
+      "a turn that failed before assembling a window is done, not finishing, and its panel says it was not assembled"
+    ) {
       def shown(steps: Vector[String]) =
         Headless
           .start(new ChatScreen.App("test-model", Theme.Default, Tokens(1000)), Size(30, 110))
@@ -315,35 +317,14 @@ object ChatScreenTests extends TestSuite {
           )
           .screen
       val failed = shown(Vector(Turn.Step.PinModels, Turn.Step.Route, Turn.Step.RecordFailure))
+      assert(failed.exists(_.contains("TURN 1  · done")))
+      assert(!failed.exists(_.contains("finishing")))
       assert(failed.exists(_.contains("window   not assembled: it failed")))
       assert(!failed.exists(_.contains("recorded with the reply")))
-      assert(
-        shown(Vector(Turn.Step.PinModels)).exists(_.contains("window   recorded with the reply"))
-      )
-    }
-
-    test("a turn that failed before assembly is done, not finishing") {
-      val screen = Headless
-        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(1000)), Size(30, 110))
-        .message(Msg.Opened)
-        .message(
-          Msg.Turn(
-            TurnView(
-              TurnSeq(0),
-              "when is the freeze?",
-              None,
-              Vector(Turn.Step.PinModels, Turn.Step.Route, Turn.Step.RecordFailure)
-                .map(TurnView.Step(_, Some(3L))),
-              None,
-              None,
-              None,
-              None
-            )
-          )
-        )
-        .screen
-      assert(screen.exists(_.contains("TURN 1  · done")))
-      assert(!screen.exists(_.contains("finishing")))
+      // The same turn before it failed: not yet done.
+      val unfailed = shown(Vector(Turn.Step.PinModels))
+      assert(unfailed.exists(_.contains("finishing")))
+      assert(unfailed.exists(_.contains("window   recorded with the reply")))
     }
 
     test("the panel's tabs are pills across its top; ctrl-t and a click switch them") {

@@ -6,6 +6,7 @@ import scala.util.Using
 
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.spend.SpendingContract
 import grit.core.store.Tx
 import grit.dbos.sql.{LiveDb, SqlUsageLedger, TestPostgres}
@@ -29,12 +30,14 @@ object SqlSpendingTests extends SpendingContract {
       turn: TurnRef,
       workflow: WorkflowId,
       usd: Option[String],
-      at: Instant
+      at: Instant,
+      upstream: Option[String],
+      grade: Option[Grade]
   ): Unit =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, usd.map(BigDecimal(_)))
       sql
-        .record(entry, turn, workflow, "m", None, None, usage, Tokens(1))
+        .record(entry, turn, workflow, "m", upstream, grade, usage, Tokens(1))
         .fold(e => sys.error(e.toString), identity)
       // A row is recorded at the transaction's time; the contract needs chosen ones.
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)

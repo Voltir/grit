@@ -1,7 +1,7 @@
 package grit.app.main
 
 import grit.core.model.{Policy, Upstream}
-import grit.core.visibility.{Cleared, Compartments, Party}
+import grit.core.visibility.{Cleared, Compartments, Label, Party}
 import grit.kit.deployment.Offered
 import grit.models.{JevClassifier, OpenRouterConfig, Seed, StubClassifier, StubModels}
 import grit.slack.edge.{Backfill, ReplyNote, SlackCommand, SlackEdge}
@@ -40,8 +40,15 @@ object ClearanceChoiceTests extends TestSuite {
       )
     }
 
-    test("serve's visibility carries the clearances, with administrators named or not") {
+    test(
+      "serve's visibility carries the clearances of the policy its environment names, with administrators named or not"
+    ) {
       val grit = SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity)
+      val acme = Party.Model(
+        seed.turn.first.assignment.ref.model,
+        Upstream.of("acme").getOrElse(throw new java.lang.AssertionError("acme"))
+      )
+      val parties = always.map(_.party) :+ acme
       def clearances(env: Map[String, String], slackIn: Option[TeamId]) =
         Main
           .deployment(
@@ -52,11 +59,13 @@ object ClearanceChoiceTests extends TestSuite {
             java.time.ZoneOffset.UTC,
             slackIn
           )
-          .map(d => always.map(c => d.visibility.clearances.of(c.party)))
+          .map(d => parties.map(d.visibility.clearances.of))
+      val seeded = Right(always.map(_.clearance) :+ Label.Public)
       (
         clearances(Map.empty, None),
-        clearances(Map("GRIT_ADMINS" -> "U012AB34"), Some(TeamId("T0FAKE")))
-      ) ==> (Right(always.map(_.clearance)), Right(always.map(_.clearance)))
+        clearances(Map("GRIT_ADMINS" -> "U012AB34"), Some(TeamId("T0FAKE"))),
+        clearances(Map(OpenRouterConfig.KeyVar -> "sk-test", "GRIT_PROVIDER" -> "acme"), None)
+      ) ==> (seeded, seeded, Right(always.map(_.clearance) :+ top))
     }
 
     test(

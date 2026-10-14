@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.store.{InMemoryUsageLedger, Tx}
 import grit.dbos.sql.TestTx
 
@@ -19,12 +20,16 @@ object InMemorySpendingTests extends SpendingContract {
       turn: TurnRef,
       workflow: WorkflowId,
       usd: Option[String],
-      at: Instant
+      at: Instant,
+      upstream: Option[String],
+      grade: Option[Grade]
   ): Unit = {
     memory.now = at
     val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, usd.map(BigDecimal(_)))
     val _ =
-      memory.record(entry, turn, workflow, "m", None, None, usage, Tokens(1))(using TestTx.fake)
+      memory.record(entry, turn, workflow, "m", upstream, grade, usage, Tokens(1))(using
+        TestTx.fake
+      )
   }
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)

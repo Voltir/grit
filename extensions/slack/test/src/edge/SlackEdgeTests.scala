@@ -168,7 +168,7 @@ object SlackEdgeTests extends TestSuite {
 
     /** What the edges said, in order. */
     @caps.unsafe.untrackedCaptures
-    var logged = Vector.empty[String]
+    var logged: Vector[String] = Vector.empty
 
     def edge(): SlackEdge^{this} =
       new SlackEdge(
@@ -1112,23 +1112,14 @@ object SlackEdgeTests extends TestSuite {
       )
     }
 
-    test(
-      "a reply answered at standard, with no grade recorded, or with the note off is not noted"
-    ) {
-      val cases = Vector(
-        ReplyNote.StrengthAndCost -> Some(Grade.Standard),
-        ReplyNote.StrengthAndCost -> None,
-        ReplyNote.Off -> Some(Grade.Strong)
-      )
-      cases.map { (chosen, grade) =>
-        val w = new World(note = chosen)
-        w.slack.deliver(mention("1.0"))
-        val t = w.turn("1.0", "1.0")
-        w.answered(t, grade, "0.0042")
-        w.inbox.finish(t, Some(reply("hi")), "replied")
-        w.first.deliver() ==> Right(1)
-        w.slack.posts.map(p => noteOf(p.post))
-      } ==> Vector.fill(3)(Vector(None))
+    test("a reply answered above standard with the note off is not noted") {
+      val w = new World(note = ReplyNote.Off)
+      w.slack.deliver(mention("1.0"))
+      val t = w.turn("1.0", "1.0")
+      w.answered(t, Some(Grade.Strong), "0.0042")
+      w.inbox.finish(t, Some(reply("hi")), "replied")
+      w.first.deliver() ==> Right(1)
+      w.slack.posts.map(p => (p.post.fallback, noteOf(p.post))) ==> Vector(("hi", None))
     }
 
     test("a reply whose spend cannot be read is posted without its note, which is said") {
@@ -1140,7 +1131,7 @@ object SlackEdgeTests extends TestSuite {
       w.logged = Vector.empty
       w.first.deliver() ==> Right(1)
       w.slack.posts.map(p => (p.post.fallback, noteOf(p.post))) ==> Vector(("hi", None))
-      w.logged.filter(_.contains("without its note")).size ==> 1
+      w.logged ==> Vector("slack: c1:0 posted without its note: DatabaseError(down)")
     }
 
     test("a post Slack refuses leaves its part posting, and the next pass finishes it") {
