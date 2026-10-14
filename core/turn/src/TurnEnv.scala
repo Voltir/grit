@@ -90,7 +90,9 @@ object TurnWeighing {
     }
   }
 
-  /** The id `turn`'s asking of its root is kept under in the usage ledger; no entry has it. */
+  /** The id `turn`'s asking of its root is kept under in the usage ledger, in its `offer`
+    * step's transaction; no entry has it.
+    */
   def id(turn: TurnRef): EntryId = EntryId(s"weigh:${WorkflowId.value(turn.workflowId)}")
 }
 

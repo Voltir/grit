@@ -47,107 +47,47 @@ import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
 
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
-  * resumed after a crash never calls a model twice.
+  * resumed after a crash never calls a model twice. A step that fails returns a
+  * [[TurnFailure]], recorded like any other output, so a rerun ends the same way without
+  * calling anything. A failure before the reply ends the turn; a failed summary leaves the
+  * reply standing, and the turn without a summary. Topics never fail a turn.
   *
-  *   1. `pin-models` — the catalog in force, pinned as the turn's profile, kept by its id
-  *      and recorded by id; a rerun reads it back, so it runs under the profile it started
-  *      with.
-  *   1. `weigh` — the answers its root was weighed with: the tags live triage kept for the
-  *      heard message it answers; for a message said to grit, live triage's set asked of it
-  *      when its recipe's addressed offering would read the answers ([[TurnOffer.weighs]]),
-  *      once its opening's placement has ended ([[TurnWeighing.said]]); or none. Never fails
-  *      the turn: a weighing that fails records why, by kind, and offers everything. Turns that passed this point before it
-  *      shipped offer unweighed ([[Patches.Weigh]]).
-  *   1. `route` — the pin each role's calls are made under ([[Route]]): the first of its pins
-  *      whose pair is cleared for what the turn's transaction knows ([[grit.core.route.Routing.cleared]]), read
-  *      once. With no turn pin cleared it fails `Uncleared`; with no summary or query pin, that
-  *      call is not made. Every later read whose content a model is sent is bounded by the
-  *      classification it routed for ([[grit.core.store.Db.within]]). Turns that passed this
-  *      point before it shipped make each role's calls on its first pin ([[Patches.Route]]).
-  *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
-  *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
-  *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
-  *      recorded by id; a rerun reads them back, so it is offered what it first was. Its
-  *      deployment's recipe ([[grit.core.recipe.TurnRecipe]]) shapes it by its root: the
-  *      width its window is drawn at, and which services' tools it is offered, all recorded
-  *      as its [[TurnShape]]; an offer recorded before shapes is drawn as deployed. A root
-  *      `weigh` asked about has its call's cost recorded in the ledger in the same
-  *      transaction ([[TurnWeighing.id]]). Its root is `ByName` when triage decided to answer
-  *      its heard message as said to grit ([[grit.core.speech.SpeechStore.answering]]).
-  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn:
-  *      a heard message's turn keeps `Failed` as what became of it ([[failedEarly]]), and one
-  *      said to grit that no turn pin is cleared for is replied [[Uncleared.reply]].
-  *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
-  *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
-  *      every opening heard before it in its room is placed; nothing waited for otherwise.
-  *      Never fails the turn. Turns that passed this point before it shipped took `stitch`
-  *      ([[grit.core.stitch.Stitching.turn]]) and `record-stitch` instead, placing the opening
-  *      themselves ([[Patches.StitchInRoomOrder]]).
-  *   1. `classify` — where the turn's message goes among the conversation's topics
-  *      ([[TurnTopics]]). Never fails the turn.
-  *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
-  *      Turns that passed this point before topics existed have neither step
-  *      ([[Patches.Topics]]).
-  *   1. `assemble` — a fresh window over what came before the turn, at the width its offer
-  *      recorded.
-  *   1. `record-window` — the window recorded as an entry, after any search query
-  *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
-  *      sees what the model will see while it answers, and, in the same transaction, each
-  *      document it holds counted as placed ([[grit.core.document.DocumentStore.placed]]).
-  *      Turns that passed this point before the step existed record both in `append`
-  *      instead, counting no placement ([[Patches]]).
-  *   1. `call-model` — the window (its sections, documents, own entries), then the turn's
-  *      own messages, sent to the provider,
-  *      whose reply is told to edges as it arrives ([[TurnStream]]), offering the turn's
-  *      tools ([[TurnTooling]]), and `topic` too when the classifier was unsure
-  *      ([[TurnVerdict]]).
-  *   1. `record-call:n`, `tool:n:j`, `call-model:n` — the tool loop ([[TurnLoop]]): a reply
-  *      that called tools kept as an entry, each of its calls settled in its own step
-  *      ([[TurnTools]]), and the model called again, until a reply calls no tool or the
-  *      budget's last call, made with tools off and told so ([[TurnLoop.LastCall]]). A call a person approves first is asked about in `ask:n:j`, an
-  *      entry an edge shows, then waits up to [[TurnTooling.answerWithin]] for the answer
-  *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
-  *      its `tool:n:j`; unanswered, it is denied. A call to a hosted tool is a request an
-  *      edge runs ([[TurnHosted]], ADR 0017): a round's free ones sent together in
-  *      `dispatch:n`, those to a reached service's tools in `reach:n:{place}`, a gated one
-  *      in `dispatch:n:j` once approved; its answer waited for,
-  *      then `expire:n:j` when none came and, if an edge had claimed it, `abandon:n:j`
-  *      when none came again; the outcome kept by `tool:n:j`.
-  *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply, and
-  *      what went wrong with the loop's `topic` calls ([[TurnVerdict.anomaly]]).
-  *   1. Turns that passed the loop's patch before it shipped ([[Patches.Tools]]) took
-  *      `call-model-again` and `call-model-plain` instead, when `topic` was offered: the
-  *      model called again after its call to the tool, a plain call if that does not
-  *      answer, then `record-verdict` ([[Step.optional]]).
-  *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
-  *      beside the estimate of its request, atomically with the step; for a heard message
-  *      answered as said to grit ([[TurnOffer.Root.ByName]]), with its speech row's outcome,
-  *      [[grit.core.speech.Outcome.Replied]], its edge awaiting the reply since triage decided
-  *      to answer it. A turn rooted on a heard message it drafts a reply to
-  *      ([[TurnOffer.Root.Heard]] or `Named`, as its `offer` recorded) records its answer as a
-  *      draft instead ([[grit.core.store.Payload.Draft]]). Either way, each document of the
-  *      window whose pointer one of the turn's calls followed is counted as followed
-  *      ([[grit.core.document.DocumentStore.followed]]), in the same transaction; then:
-  *   1. `judge` — an unprompted ([[TurnOffer.Root.Heard]]) turn's draft scored against its
-  *      thread and what its window recalled ([[TurnJudge]]); nothing asked when it passes or
-  *      nothing was recalled. A named turn's draft is not judged; one that passed this point
-  *      before [[Patches.NamedUnjudged]] shipped took the step.
-  *   1. `record-speech` — what becomes of the draft ([[grit.core.speech.Speech.post]], or
-  *      [[grit.core.speech.Speech.postNamed]] for a named one that does not pass),
-  *      held when the assistant already replied after its root ([[Speech.spoken]]): a posted one written as the
-  *      turn's reply and awaited at its heard message's address, in one transaction with
-  *      the judge's cost and the outcome kept. A heard-rooted turn, `ByName` among them,
-  *      that failed before its draft or reply records only `Failed` here. Only a posted draft
-  *      goes on to the summary.
-  *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]),
-  *      asked again while it is unavailable, as a reply is ([[Asking.reply]]).
-  *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
-  *      its cost in the ledger as in `append`.
-  *
-  * A step that fails returns a [[TurnFailure]], recorded like any other output, so a rerun
-  * ends the same way without calling anything. A failure before the reply ends the turn;
-  * a failed summary leaves the reply standing, and the turn without a summary. Topics
-  * never fail a turn.
+  * Its steps, as [[Step]] names them, in order:
+  *   1. `pin-models` — the catalog in force, pinned as the turn's profile, which a rerun runs
+  *      under.
+  *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
+  *      the turn.
+  *   1. `route` — the pin each role's calls are made under ([[Route]]); `Uncleared` when no turn
+  *      pin is cleared for the turn.
+  *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing.
+  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
+  *      ([[failedEarly]]): a heard message's turn keeps `Failed`; an uncleared one said to grit
+  *      is replied [[Uncleared.reply]].
+  *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
+  *      Never fails the turn.
+  *   1. `stitch`, `record-stitch` — only a turn that passed [[Patches.StitchInRoomOrder]] before
+  *      it shipped.
+  *   1. `classify`, `record-topic` — the message placed among its conversation's topics, and that
+  *      placement recorded ([[TurnTopics]]).
+  *   1. `assemble` — a fresh window over what came before the turn, at its offer's width.
+  *   1. `record-window` — the window and its queries recorded before the model is called, so an
+  *      edge sees what the model will see.
+  *   1. `call-model` — the window, then the turn's own messages, sent to the provider, its reply
+  *      told to edges as it arrives ([[TurnStream]]).
+  *   1. `call-model-again`, `call-model-plain` — only a turn that passed [[Patches.Tools]] before
+  *      it shipped.
+  *   1. The tool loop ([[TurnLoop]]): `record-call:n`, `ask:n:j`, `tool:n:j`, `dispatch:n`,
+  *      `reach:n:{place}`, `dispatch:n:j`, `expire:n:j`, `abandon:n:j` and `call-model:n`, each
+  *      named in [[Step]], until a reply calls no tool or the budget's last call.
+  *   1. `record-verdict` — when the classifier was unsure, the model's verdict ([[TurnVerdict]]).
+  *   1. `append` — the reply recorded as the turn's entry, or as a draft when its root is a
+  *      heard message it drafts a reply to ([[TurnOffer.Root]]).
+  *   1. `judge` — an unprompted turn's draft scored against its thread ([[TurnJudge]]).
+  *   1. `record-speech` — what becomes of a heard-rooted turn's draft
+  *      ([[grit.core.speech.Speech]]), or `Failed` when the turn failed before it. Only a posted
+  *      draft goes on.
+  *   1. `summarise`, `append-summary` — the turn's summary ([[TurnSummary]]), recorded after the
+  *      reply.
   */
 object Turn {
 
@@ -381,12 +321,14 @@ object Turn {
   object Patches {
 
     /** The window and its queries are recorded in their own step before the model call,
-      * not with the reply (2026-09-24).
+      * not with the reply (2026-09-24). A turn that passed this point before it shipped
+      * records both in `append`, and counts no document placed.
       */
     val RecordWindow = "record-window"
 
     /** The turn's message is placed among the conversation's topics before its window is
-      * assembled (2026-09-24).
+      * assembled (2026-09-24). A turn that passed this point before it shipped takes neither
+      * `classify` nor `record-topic`.
       */
     val Topics = "topics"
 
@@ -397,7 +339,9 @@ object Turn {
 
     /** The model's reply is a tool loop ([[TurnLoop]]): each model call a step of its own,
       * and each tool call too, the verdict read from the first call's reply
-      * (2026-09-25).
+      * (2026-09-25). A turn offered `topic` that passed this point before it shipped takes
+      * `call-model-again` and `call-model-plain` instead ([[TurnVerdict]]): the model called
+      * again after its call to the tool, then a plain call if that does not answer.
       */
     val Tools = "tools"
 
@@ -408,11 +352,13 @@ object Turn {
     val StitchInRoomOrder = "stitch-in-room-order"
 
     /** A turn's root is weighed in `weigh` before its offer, which the answers shape
-      * (2026-10-03).
+      * (2026-10-03). A turn that passed this point before it shipped offers unweighed.
       */
     val Weigh = "weigh"
 
-    /** A named turn's draft is settled with no `judge` step (2026-10-04). */
+    /** A named turn's draft is settled with no `judge` step (2026-10-04). A named turn that
+      * passed this point before it shipped takes `judge`.
+      */
     val NamedUnjudged = "named-unjudged"
 
     /** A turn that fails at `pin-models` or `offer` keeps its heard message's failure in
@@ -1628,7 +1574,8 @@ object Turn {
     } yield id
 
   /** The last two steps: the summary of `turn`, whose reply is `answered`, with the name
-    * and description of its message's topic when `placing` placed it.
+    * and description of its message's topic when `placing` placed it, asked again while the
+    * summarizer is unavailable, as a reply is ([[Asking.reply]]).
     */
   private def summarise(
       turn: TurnRef,
