@@ -51,10 +51,11 @@ dot-separated segments match the last segments of a full name, each whole, `*` s
 of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. When main
 sources hold no match, test sources' matches follow a `-- no definition in main sources matches` note;
 when neither does, a renaming import giving the name (`import a.X as Y`, read from source text) is named,
-with `X`'s definition. A `show`
+with `X`'s definition. `--private` lists private members too; without it, a pattern only private names match says how many, in a
+`-- N private matches: add --private` note. A `show`
 that matches nothing suggests `find` with the name's last segment.
 
-    scripts/outline find pattern [--cap BYTES] [--root DIR]
+    scripts/outline find pattern [--private] [--cap BYTES] [--root DIR]
 
 **tests**: To add or change a test in a suite: its helpers and its tests' names with line ranges.
 `--test NAME` prints the verbatim body of each test whose name starts with NAME; `--body h[,h…]` prints each named helper's own lines.

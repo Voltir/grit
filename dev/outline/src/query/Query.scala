@@ -46,13 +46,14 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
-  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). Private members and `config.hidden` sources are left out. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
+  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
   def find(
       root: Root,
       layout: Layout,
       config: Config,
       roots: Roots,
       pattern: String,
+      withPrivate: Boolean,
       cap: Int
   ): (Answer, Roots) = {
     val segments = pattern.split("\\.", -1).toVector
@@ -69,15 +70,16 @@ object Query {
     else {
       def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
       def visible(ds: Vector[Defn]): Vector[Defn] =
-        ds.filterNot(_.isPrivate).flatMap(d => d +: visible(d.members))
+        ds.filter(d => withPrivate || !d.isPrivate).flatMap(d => d +: visible(d.members))
 
-      // The visible definitions in `scope` whose names match `globs`, read from the packages of `files`.
+      // The visible definitions in `scope` whose names match `globs`, read from the packages of `files`, and how many
+      // definitions left out as private, or inside a private one, match them too.
       def matching(
           globs: Vector[scala.util.matching.Regex],
           scope: Scope,
           files: Vector[os.RelPath],
           in: Loaded
-      ): (Vector[Defn], Loaded, Vector[String]) = {
+      ): (Vector[Defn], Loaded, Vector[String], Int) = {
         def matches(d: Defn): Boolean = {
           val names = d.fullName.split('.').toVector
           names.size >= globs.size &&
@@ -101,25 +103,30 @@ object Query {
           .filter(d => matches(d) && !hidden(d))
           .distinct
           .sortBy(d => (d.fullName, d.file, d.lines.start))
-        (found, loaded, notes)
+        val all = everyDefnOf(defns).filter(d => matches(d) && !hidden(d)).distinct
+        (found, loaded, notes, all.size - found.size)
       }
 
       // A definition's name is a word of its source, so only the packages holding one are read.
       val word = wordPattern(segments.last)
       val files = Locate.holding(root, word)
-      val (inMain, afterMain, mainNotes) =
+      val (inMain, afterMain, mainNotes, mainPrivate) =
         matching(segments.map(segmentGlob), Scope.Main, files, Roots.of(roots, root))
+      def privateNote(n: Int): Vector[String] =
+        if (n == 0) Vector.empty
+        else Vector(s"-- $n private match${if (n == 1) "" else "es"}: add --private")
       val (found, loaded, notes, lead) =
         if (inMain.nonEmpty) (inMain, afterMain, mainNotes, Vector.empty[String])
         else {
-          val (inTests, afterTests, testNotes) =
+          val (inTests, afterTests, testNotes, testPrivate) =
             matching(segments.map(segmentGlob), Scope.WithTests, files, afterMain)
           if (inTests.nonEmpty)
             (
               inTests,
               afterTests,
               mainNotes ++ testNotes,
-              Vector(s"-- no definition in main sources matches $pattern; in test sources:")
+              privateNote(mainPrivate) ++
+                Vector(s"-- no definition in main sources matches $pattern; in test sources:")
             )
           else {
             val renamings = renamingImports(root, files, word)
@@ -130,7 +137,7 @@ object Query {
                 .foldLeft((Vector.empty[Defn], afterTests, testNotes)) {
                   case ((ds, state, ns), target) =>
                     val exact = target.split('.').toVector.map(java.util.regex.Pattern.quote(_).r)
-                    val (more, next, moreNotes) = matching(
+                    val (more, next, moreNotes, _) = matching(
                       exact,
                       Scope.WithTests,
                       Locate.holding(root, wordPattern(target.split('.').last)),
@@ -142,7 +149,7 @@ object Query {
               targets.distinct,
               afterTargets,
               mainNotes ++ targetNotes,
-              renamings.map(r =>
+              privateNote(testPrivate) ++ renamings.map(r =>
                 s"-- ${r.alias} is a renaming import of ${r.target} at ${r.file}:${r.line}"
               )
             )

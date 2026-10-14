@@ -21,8 +21,8 @@ object FindTests extends TestSuite {
 
   private lazy val root: Root = Root(repoRoot)
 
-  private def find(pattern: String): Answer =
-    Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, 80000)._1
+  private def find(pattern: String, withPrivate: Boolean = false): Answer =
+    Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, withPrivate, 80000)._1
 
   /** The full names an answer lists, one per match line. */
   private def names(answer: Answer): Vector[String] =
@@ -95,7 +95,7 @@ object FindTests extends TestSuite {
       // Exactly the first two entries' bytes, each with its newline.
       val cap = all.take(2).map(l => l.getBytes("UTF-8").length + 1).sum
       val answer =
-        Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), "*Store*", cap)._1
+        Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), "*Store*", false, cap)._1
       assert(names(answer) == all.take(2).map(_.takeWhile(_ != ' ')))
       assert(
         answer.text.linesIterator.contains(
@@ -125,7 +125,7 @@ object FindTests extends TestSuite {
       "a name only test sources define is listed after a note saying none in main sources matches"
     ) {
       val (answer, _) =
-        Query.find(root, FixtureTestLayout, Config.empty, Roots.empty(6000), "Nested", 80000)
+        Query.find(root, FixtureTestLayout, Config.empty, Roots.empty(6000), "Nested", false, 80000)
       assert(answer.status == Status.Found)
       assert(
         answer.text.linesIterator.contains(
@@ -152,6 +152,20 @@ object FindTests extends TestSuite {
           "grit.outline.fixture.store.StoreSuite  dev/outline/fixture/src/store/Store.scala:61-76  object StoreSuite  [0.4 KB]"
         )
       )
+    }
+
+    test("with --private, a private member is listed: hidd* finds Limits.hidden") {
+      val answer = find("hidd*", withPrivate = true)
+      assert(answer.status == Status.Found)
+      assert(names(answer) == Vector("grit.outline.fixture.Limits.hidden"))
+    }
+
+    test(
+      "a pattern only private names match is NoMatch, under a note counting them and saying to add --private"
+    ) {
+      val answer = find("hidd*")
+      assert(answer.status == Status.NoMatch)
+      assert(answer.text.linesIterator.contains("-- 1 private match: add --private"))
     }
 
     test("a private member is not listed, and a pattern nothing matches is NoMatch saying so") {

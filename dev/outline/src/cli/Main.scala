@@ -285,7 +285,7 @@ object Main {
         }
     }
 
-  private final case class FindOptions(cap: Int, root: Option[String])
+  private final case class FindOptions(cap: Int, root: Option[String], withPrivate: Boolean)
 
   private def parseFind(rest: List[String], o: FindOptions): Either[String, FindOptions] =
     rest match {
@@ -296,6 +296,7 @@ object Main {
           case None => Left(s"--cap takes a number of bytes, not $value")
         }
       case "--root" :: value :: tail => parseFind(tail, o.copy(root = Some(value)))
+      case "--private" :: tail => parseFind(tail, o.copy(withPrivate = true))
       case flag :: _ => Left(s"unknown argument $flag")
     }
 
@@ -305,7 +306,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseFind(rest, FindOptions(80000, leadingRoot)) match {
+    parseFind(rest, FindOptions(80000, leadingRoot, withPrivate = false)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.find)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -321,6 +322,7 @@ object Main {
                     config,
                     Roots.empty(6000),
                     pattern,
+                    o.withPrivate,
                     o.cap
                   )
                 (exitCode(answer.status), answer.text)

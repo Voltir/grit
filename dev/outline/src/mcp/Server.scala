@@ -92,6 +92,7 @@ object Server {
     Help.find,
     Vector(
       prop(Help.find, "pattern", "type" -> "string"),
+      prop(Help.find, "private", "type" -> "boolean"),
       prop(Help.find, "root", "type" -> "string")
     ),
     Vector("pattern")
@@ -438,13 +439,22 @@ object Server {
   private def find(args: ujson.Value, state: State): (ujson.Value, State) =
     (for {
       pattern <- reqText(args, "pattern")
+      withPrivate <- flag(args, "private")
       root <- rootArg(args)
-    } yield (pattern, root.getOrElse(state.defaultRoot))) match {
+    } yield (pattern, withPrivate, root.getOrElse(state.defaultRoot))) match {
       case Left(problem) => (toolResult(s"bad arguments for find: $problem", isError = true), state)
-      case Right((pattern, root)) =>
+      case Right((pattern, withPrivate, root)) =>
         configured(root, state) { config =>
           val (answer, roots) =
-            Query.find(root, new MemoLayout(MillLayout), config, state.roots, pattern, cap)
+            Query.find(
+              root,
+              new MemoLayout(MillLayout),
+              config,
+              state.roots,
+              pattern,
+              withPrivate,
+              cap
+            )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
     }

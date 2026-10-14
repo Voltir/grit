@@ -171,9 +171,15 @@ object Help {
       "To find a definition when you don't know its name: one line per definition in main sources, members and constructor vals included, with its full name, file, lines, collapsed signature and size, `[N.N KB]`. When main sources hold no match, test sources' matches follow a note saying so; when neither does, a renaming import (import a.X as Y) giving the name is named, with X's definition.",
     examples = Vector(
       Example("find every type whose name holds Shelf", "find '*Shelf*'"),
-      Example("find the member placed of any owner", "find '*.placed'")
+      Example("find the member placed of any owner", "find '*.placed'"),
+      Example("find a private helper whose name holds Source", "find '*Source*' --private")
     ),
-    flags = common
+    flags = Flag(
+      "--private",
+      "",
+      Some("private"),
+      "include private members. Without it, a pattern only private names match says how many, under a `-- N private matches: add --private` note."
+    ) +: common
   )
 
   val tests: Entry = Entry(
