@@ -1,5 +1,8 @@
 package grit.outline.fixture
 
+import scala.collection.immutable.VectorMap
+import scala.util.Try
+
 /** Pattern and construction sites, each on a line of its own. */
 object Matches {
 
@@ -28,4 +31,16 @@ object Matches {
 
   /** A [[B]], built: a construction, not a pattern. */
   def built: B = B(made, "n")
+}
+
+// A comment between two top-level definitions.
+
+/** Numbers read from text. */
+object Parsed {
+
+  /** `s` as a number, or none. */
+  def number(s: String): Option[Int] = Try(s.toInt).toOption
+
+  /** None read yet. */
+  def none: VectorMap[String, Int] = VectorMap.empty
 }

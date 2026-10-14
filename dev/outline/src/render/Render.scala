@@ -406,6 +406,79 @@ object Render {
       }
       .filter(_.nonEmpty)
 
+  /** The `file` answer for `file`, whose source is `src` and whose top-level definitions are `tops`: its `== file` line,
+    * flagged when `stale`, with its line count and size; then, in line order, each run of lines outside every top-level
+    * definition (`loose`) and each top-level definition as `NN-MM <kind> <name>` and its size tag, with its members one
+    * level down and the loose lines inside it among them; then its last lines under an `NN-MM end of file` line, its last
+    * line or its last two when the last holds only closing brackets. Cut at `cap` bytes between top-level definitions.
+    */
+  def file(file: String, tops: Vector[Defn], src: String, stale: Boolean, cap: Int): String = {
+    val lines = src.split("\n", -1).toVector.reverse.dropWhile(_.isEmpty).reverse
+    val ordered = tops.filter(_.kind != Kind.Param).sortBy(_.lines.start)
+    val pkg = ordered.headOption.fold("")(d => pkgOf(d.fullName))
+    val heading =
+      s"${fileLine(file, pkg, stale)}  ${lines.size} lines${sizeTag(Some(bytesOf(src)))}"
+
+    def placed(d: Defn, depth: String): String =
+      s"$depth${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${d.name}${sizeTag(d.size)}"
+
+    // A type's members, one level down, among the loose lines inside it: those after its head and before its last line.
+    def withMembers(d: Defn): Vector[String] = {
+      val members = d.members.filter(_.kind != Kind.Param).sortBy(_.lines.start)
+      val headEnd = d.lines.start + d.head.linesIterator.size - 1
+      val inside =
+        if (!isType(d) || d.closing.isEmpty) Vector.empty
+        else
+          loose(lines, headEnd + 1, d.lines.end - 1, members.map(_.lines)).map(b =>
+            (b._1, b._2, "  ")
+          )
+      val entries =
+        members.map(m => m.lines.start -> Vector(placed(m, "  "))) ++
+          inside.map { case (from, to, depth) => from -> looseBlock(lines, from, to, depth) }
+      Vector(placed(d, "")) ++ entries.sortBy(_._1).flatMap(_._2)
+    }
+
+    val last = lines.size
+    val endFrom =
+      if (last > 1 && lines.lift(last - 1).exists(_.trim.matches("""[)}\]]+"""))) last - 1 else last
+    val outside = loose(lines, 1, last, ordered.map(_.lines))
+    val body: Vector[(Int, Vector[String])] =
+      ordered.map(d => d.lines.start -> withMembers(d)) ++
+        outside.map { case (from, to) => from -> looseBlock(lines, from, to, "") }
+    val chunks = body.sortBy(_._1).map(_._2) :+
+      (Vector(s"$endFrom-$last end of file") ++ lines.slice(endFrom - 1, last))
+    val (kept, truncated) = fit(chunks.headOption.map(heading +: _).toVector ++ chunks.drop(1), cap)
+    val text = (kept ++ truncated).map(_ + "\n").mkString
+    text + s"[${kilobytes(bytesOf(text))} KB]"
+  }
+
+  /** The runs of `lines` (1-based) from `from` to `to` that no range of `covered` holds, each trimmed of its leading and
+    * trailing blank lines, its inner ones kept, as first and last line numbers; a run of blank lines alone is none.
+    */
+  def loose(
+      lines: Vector[String],
+      from: Int,
+      to: Int,
+      covered: Vector[Lines]
+  ): Vector[(Int, Int)] = {
+    val free = (from to to).filterNot(n => covered.exists(r => r.start <= n && n <= r.end)).toVector
+    val runs = free.foldLeft(Vector.empty[Vector[Int]]) { (acc, n) =>
+      acc.lastOption match {
+        case Some(run) if run.lastOption.contains(n - 1) => acc.dropRight(1) :+ (run :+ n)
+        case _ => acc :+ Vector(n)
+      }
+    }
+    def blank(n: Int): Boolean = lines.lift(n - 1).forall(_.trim.isEmpty)
+    runs.flatMap { run =>
+      val kept = run.dropWhile(blank).reverse.dropWhile(blank).reverse
+      kept.headOption.zip(kept.lastOption)
+    }
+  }
+
+  /** The loose lines `from` to `to` of `lines`, under their `NN-MM` line at `depth`, the lines themselves verbatim. */
+  private def looseBlock(lines: Vector[String], from: Int, to: Int, depth: String): Vector[String] =
+    s"$depth$from-$to" +: lines.slice(from - 1, to)
+
   /** One file of `show`'s tests section: the full names of its suites, and its entries in line order. */
   final case class Exercised(file: String, suites: Vector[String], entries: Vector[Exercise])
 

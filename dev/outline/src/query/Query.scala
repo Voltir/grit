@@ -2,7 +2,7 @@ package grit.outline.query
 
 import scala.collection.mutable
 
-import grit.outline.locate.{Layout, Locate, Root}
+import grit.outline.locate.{Layout, Locate, Root, TastySource}
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, Staleness, TestCase, Use}
 import grit.outline.read.Read
@@ -594,6 +594,89 @@ object Query {
       .zip(judged)
       .collect { case (file, Staleness.Stale(_, _)) => file }
       .toSet
+  }
+
+  /** The `file` answer for `target`, a repo-relative path, a unique path suffix or a definition's name: the file's loose
+    * lines (outside every top-level definition) as file text, each top-level definition and its members as a header line,
+    * and its end lines. `NoMatch` when nothing or several files match, naming them; `Failed` when the file has no `.tasty`;
+    * cut at `cap` bytes.
+    */
+  def file(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      roots: Roots,
+      target: String,
+      cap: Int
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+    val classes = layout.classesDirs(root)
+    if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
+    else {
+      val start = Roots.of(roots, root)
+      // A path names its file; a name is resolved as show resolves it, main sources first, then test sources.
+      val found: Either[String, (Vector[String], Vector[String], Loaded)] =
+        if (target.contains('/') || target.endsWith(".scala"))
+          Right((Locate.endingWith(root, target).map(_.toString), Vector.empty, start))
+        else
+          Resolve
+            .resolve(root, layout, config, Scope.Main, target, start)
+            .flatMap { inMain =>
+              if (inMain.defns.nonEmpty) Right(inMain)
+              else Resolve.resolve(root, layout, config, Scope.WithTests, target, inMain.loaded)
+            }
+            .map(r => (r.defns.map(_.file).distinct, r.notes, r.loaded))
+      found match {
+        case Left(message) => (Answer(message, Status.Failed), roots)
+        case Right((files, notes, loaded)) =>
+          val head = (Vector(header(root)) ++ notes).mkString("\n")
+          files match {
+            case Vector(file) =>
+              val rel = os.RelPath(file)
+              val tasty = Locate
+                .inPackageOf(root, layout, rel)
+                .filter(t => TastySource.of(t).exists(_.isOf(rel)))
+              if (tasty.isEmpty) {
+                val modules = Locate
+                  .inPackageOf(root, layout, rel)
+                  .flatMap(t => classes.find(t.startsWith))
+                  .distinct
+                  .map(layout.moduleOf(root, _))
+                val how = if (modules.isEmpty) layout.notCompiled(root) else layout.compile(modules)
+                (
+                  Answer(s"$head\nno .tasty records $file: compile it first: $how", Status.Failed),
+                  Roots.put(roots, root, loaded)
+                )
+              } else
+                Loaded.defns(root, layout, tasty, loaded) match {
+                  case Left(message) =>
+                    (Answer(message, Status.Failed), Roots.put(roots, root, loaded))
+                  case Right((defns, next, _)) =>
+                    val src = os.read(root.dir / rel)
+                    val stale = staleFiles(root, layout, Vector(file)).nonEmpty
+                    (
+                      Answer(
+                        s"$head\n${Render.file(file, defns.filter(_.file == file), src, stale, cap)}",
+                        Status.Found
+                      ),
+                      Roots.put(roots, root, next)
+                    )
+                }
+            case Vector() =>
+              (
+                Answer(s"$head\nno file matches $target", Status.NoMatch),
+                Roots.put(roots, root, loaded)
+              )
+            case several =>
+              (
+                Answer(
+                  s"$head\n-- $target matches ${several.size} files; name one: ${several.mkString(", ")}",
+                  Status.NoMatch
+                ),
+                Roots.put(roots, root, loaded)
+              )
+          }
+      }
+    }
   }
 
   /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */

@@ -93,6 +93,15 @@ object Server {
     Vector("suite")
   )
 
+  private val fileTool: ujson.Value = tool(
+    Help.file,
+    Vector(
+      prop(Help.file, "target", "type" -> "string"),
+      prop(Help.file, "root", "type" -> "string")
+    ),
+    Vector("target")
+  )
+
   private val areaTool: ujson.Value = tool(
     Help.area,
     Vector(
@@ -190,7 +199,7 @@ object Server {
                 Right(
                   ujson.Obj(
                     "tools" -> ujson
-                      .Arr(showTool, familyTool, usesTool, areaTool, findTool, testsTool)
+                      .Arr(showTool, familyTool, usesTool, areaTool, findTool, testsTool, fileTool)
                   )
                 ),
                 state,
@@ -281,6 +290,9 @@ object Server {
         (Right(result), next, Some(name))
       case "find" =>
         val (result, next) = find(args, state, cap)
+        (Right(result), next, Some(name))
+      case "file" =>
+        val (result, next) = file(args, state, cap)
         (Right(result), next, Some(name))
       case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
     }
@@ -507,6 +519,20 @@ object Server {
               withPrivate,
               cap
             )
+          (toolResult(answer.text, isError = false), state.copy(roots = roots))
+        }
+    }
+
+  private def file(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
+    (for {
+      target <- reqText(args, "target")
+      root <- rootArg(args)
+    } yield (target, root.getOrElse(state.defaultRoot))) match {
+      case Left(problem) => (toolResult(s"bad arguments for file: $problem", isError = true), state)
+      case Right((target, root)) =>
+        configured(root, state) { config =>
+          val (answer, roots) =
+            Query.file(root, new MemoLayout(MillLayout), config, state.roots, target, cap)
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
     }

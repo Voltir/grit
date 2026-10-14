@@ -158,6 +158,8 @@ object Main {
         area("", rest, cwd, leadingRoot)
       case "find" :: pattern :: rest if !pattern.startsWith("--") =>
         find(pattern, rest, cwd, leadingRoot)
+      case "file" :: target :: rest if !target.startsWith("--") =>
+        file(target, rest, cwd, leadingRoot)
       case other :: _ =>
         (2, Help.entry(other).fold(s"unknown query $other\n${Help.summary}")(Help.usage))
     }
@@ -342,6 +344,50 @@ object Main {
                     Roots.empty(6000),
                     pattern,
                     o.withPrivate,
+                    o.cap
+                  )
+                (exitCode(answer.status), answer.text)
+            }
+        }
+    }
+
+  /** A query's budget and root, the only flags `file` takes. */
+  private final case class Common(cap: Int, root: Option[String])
+
+  @tailrec private def parseCommon(rest: List[String], o: Common): Either[String, Common] =
+    rest match {
+      case Nil => Right(o)
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseCommon(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
+        }
+      case "--root" :: value :: tail => parseCommon(tail, o.copy(root = Some(value)))
+      case flag :: _ => Left(s"unknown argument $flag")
+    }
+
+  private def file(
+      target: String,
+      rest: List[String],
+      cwd: os.Path,
+      leadingRoot: Option[String]
+  ): (Int, String) =
+    parseCommon(rest, Common(Help.defaultMaxKb * 1024, leadingRoot)) match {
+      case Left(message) => (2, s"$message\n${Help.usage(Help.file)}")
+      case Right(o) =>
+        rootDir(o.root, cwd) match {
+          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.file)}")
+          case Some(d) =>
+            Config.read(Root(d)) match {
+              case Left(message) => (2, message)
+              case Right(config) =>
+                val (answer, _) =
+                  Query.file(
+                    Root(d),
+                    new MemoLayout(MillLayout),
+                    config,
+                    Roots.empty(6000),
+                    target,
                     o.cap
                   )
                 (exitCode(answer.status), answer.text)

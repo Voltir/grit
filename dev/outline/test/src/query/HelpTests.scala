@@ -31,7 +31,8 @@ object HelpTests extends TestSuite {
     ),
     "area" -> Vector("--level" -> true, "--max-kb" -> true, "--root" -> true),
     "find" -> Vector("--private" -> false, "--max-kb" -> true, "--root" -> true),
-    "tests" -> Vector("--test" -> true, "--max-kb" -> true, "--root" -> true)
+    "tests" -> Vector("--test" -> true, "--max-kb" -> true, "--root" -> true),
+    "file" -> Vector("--max-kb" -> true, "--root" -> true)
   )
 
   /** A directory with no build output: a flag that parses reaches the root check and fails there, not as an unknown argument. */
