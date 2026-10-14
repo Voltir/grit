@@ -302,9 +302,9 @@ object UsesTests extends TestSuite {
       assert(searches == Right(Vector(Query.Search("of", Some("Limits")))))
       val inFixture = Query
         .candidates(root, Vector(Query.Search("of", Some("Limits"))))
-        .filter(_.startsWith(os.RelPath("dev/outline/fixture")))
+        .filter(_.startsWith(os.RelPath("dev/outline/fixture/src")))
       val mentioningOf =
-        Locate.mentioning(root, "of").filter(_.startsWith(os.RelPath("dev/outline/fixture")))
+        Locate.mentioning(root, "of").filter(_.startsWith(os.RelPath("dev/outline/fixture/src")))
       assert(inFixture == Vector(os.RelPath("dev/outline/fixture/src/Sample.scala")))
       assert(mentioningOf.size > inFixture.size)
     }

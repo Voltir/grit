@@ -2,7 +2,7 @@ package grit.outline.query
 
 import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
-import grit.outline.testing.{FixtureLayout, OutlineLayout}
+import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
 
@@ -327,24 +327,24 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          OutlineLayout,
+          FixtureSuitesLayout,
           Config.empty,
           Roots.empty(6000),
-          Vector("Render.oneLine"),
-          1,
+          Vector("Limits"),
+          0,
           Set.empty,
           false,
           80000
         )
-      assert(answer.text.contains("\n## tests exercising Render.oneLine\n"))
+      val section = answer.text.linesIterator.dropWhile(!_.startsWith("## tests")).toVector
       assert(
-        answer.text.contains(
-          "\n== dev/outline/test/src/render/OneLineTests.scala  grit.outline.render\n"
-        )
-      )
-      assert(
-        answer.text.contains(
-          "\n  69-78 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
+        section == Vector(
+          "## tests exercising Limits",
+          "== dev/outline/fixture/suites/src/MoreTests.scala  grit.outline.fixture.suites",
+          "  9-11 MoreTests: limits of nothing",
+          "== dev/outline/fixture/suites/src/SampleTests.scala  grit.outline.fixture.suites",
+          "  18-20 SampleTests: limits are built through of, with two limits or three",
+          section.last
         )
       )
     }
@@ -425,16 +425,16 @@ object QueryTests extends TestSuite {
       val (answer, _) =
         Query.show(
           root,
-          OutlineLayout,
+          FixtureSuitesLayout,
           Config.empty,
           Roots.empty(6000),
-          Vector("grit.outline.model.Defn"),
+          Vector("grit.outline.fixture.C"),
           0,
           Set.empty,
           false,
           80000
         )
-      assert(answer.text.contains("\n  10-37 OneLineTests: helper defn\n"))
+      assert(answer.text.contains("\n  11-12 SampleTests: helper made\n"))
     }
   }
 }

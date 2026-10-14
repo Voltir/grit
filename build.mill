@@ -555,10 +555,18 @@ object grit extends Module {
     /* Sources whose TASTy the tests read: capture syntax, docs, overloads, a type chain. Both checkers on. */
     object fixture extends GritModule with Placed {
       def folder = os.sub / "dev" / "outline" / "fixture"
+      /* Test sources the tests read as a suite's, with lines no other change moves; nothing runs them. */
+      object suites extends GritModule with Placed {
+        def folder = os.sub / "dev" / "outline" / "fixture" / "suites"
+        def moduleDeps = Seq(fixture)
+      }
     }
     object test extends GritTests {
       def forkEnv = Task {
-        super.forkEnv() ++ Map("OUTLINE_FIXTURE_CLASSES" -> fixture.compile().classes.path.toString)
+        super.forkEnv() ++ Map(
+          "OUTLINE_FIXTURE_CLASSES" -> fixture.compile().classes.path.toString,
+          "OUTLINE_FIXTURE_SUITES_CLASSES" -> fixture.suites.compile().classes.path.toString
+        )
       }
     }
   }
