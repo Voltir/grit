@@ -28,16 +28,11 @@ In dependency order, each with the core packages it imports:
   and of the parties grit sends to (ADR 0037), and what a transaction is opened for. `Label` is
   opaque, never taken apart; `LabelParts`, its stored form, may be named only here and in
   `grit.dbos` (enola-intent.yaml). ← `id`, `place`, `identity`, `model`
-- **`route`**: which of a role's pairs a call is made with (ADR 0037): the pins cleared for what
-  a transaction knows, and what a turn says when none is. ← `model`, `visibility`
 - **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
   first, for a provider's prompt cache. ← `id`
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`
 - **`schema`**: the JSON Schemas a reply is held to, in the subset every provider's strict mode
   accepts. ← `model`
-- **`classify`**: the `Classifier` trait (Jev's shape: closed questions answered with a
-  probability per option) and the pure readers of its answers. Above the packages that record
-  what a classifier answered. ← `id`, `message`
 - **`topic`**: a conversation's topics as recorded events and the pure fold over them. ← `id`
 - **`period`**: a conversation's time as periods that close (ADRs 0011, 0012, 0018): the one
   definition of each deadline, and the closing a closed period leaves. ← `id`
@@ -46,11 +41,22 @@ In dependency order, each with the core packages it imports:
   at the clearance it resolves to (ADRs 0030, 0031); the stores, each a trait `grit.dbos`
   implements. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`,
   `retention`, `prompt`
+- **`route`**: which of a role's pairs a call is made with (ADR 0037): the pins cleared for what
+  a transaction knows, the pin a wanted grade picks among them, and what a turn says when none
+  is. ← `model`, `store`, `visibility`
+- **`classify`**: the `Classifier` trait (Jev's shape: closed questions answered with a
+  probability per option), the pure readers of its answers, and the deployment's classifier
+  behind its clearance check. Above the packages that record what a classifier answered.
+  ← `id`, `message`, `place`, `visibility`, `route`
 - **`spend`**: what grit spends on model calls, read back (a day's, a conversation's, a turn's),
   and the daily budget. ← `id`, `message`, `model`, `store`
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates
   over their answers, shadow variants, and the corpora that could supply what a message asks
   for. ← `id`, `message`, `place`, `period`, `store`, `spend`, `classify`
+- **`allot`**: what effort a turn's root calls for (ADR 0037's stages after safety): the task
+  questions' features, the day's headroom, and the router that allots a grade, reasoning
+  effort and calls from them. Not in `route`, which `classify` imports. ← `id`, `message`,
+  `model`, `period`, `spend`, `classify`, `triage`
 - **`speech`**: whether grit speaks where it was not addressed (ADR 0022). ← `id`, `message`,
   `period`, `place`, `spend`, `store`, `triage`
 - **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a

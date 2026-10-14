@@ -37,9 +37,19 @@ object RoutingTests extends TestSuite {
     Catalog.of(Policy(ladder, ladder, ladder, ladder), Vector.empty).pin.turn
   }
 
+  private def pinsOf(rungs: (Grade, ModelRef)*): Pins = {
+    val ladder = Ladder
+      .of(rungs.toVector.map((g, r) => Rung(g, Assignment(r, 100, None))))
+      .getOrElse(throw new java.lang.AssertionError())
+    Catalog.of(Policy(ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+  }
+
   private val clearances = Clearances
     .of(Vector(Cleared(party(flash), internal), Cleared(party(strong), confidential)))
     .fold(p => throw new java.lang.AssertionError(p.toString), identity)
+
+  private def atMostRefs(p: Pins, ceiling: Grade): Vector[ModelRef] =
+    Routing.atMost(p, ceiling).all.map(_.assignment.ref)
 
   private def refs(p: Option[Pins]): Option[Vector[ModelRef]] = p.map(_.all.map(_.assignment.ref))
 
@@ -59,6 +69,33 @@ object RoutingTests extends TestSuite {
       refs(Routing.cleared(pins, clearances, Classification(Label.Public))) ==>
         Some(Vector(open, flash, strong))
       refs(Routing.cleared(pins, Clearances.Empty, Classification(internal))) ==> None
+    }
+
+    test(
+      "pick takes the first of the least grade at or above the one wanted, else the first of the greatest below"
+    ) {
+      Routing.pick(pins, Grade.Strong).assignment.ref ==> strong
+      Routing.pick(pins, Grade.Standard).assignment.ref ==> open
+      Routing.pick(pins, Grade.Light).assignment.ref ==> flash
+      val twoStandard =
+        pinsOf(Grade.Light -> flash, Grade.Standard -> open, Grade.Standard -> strong)
+      Routing.pick(twoStandard, Grade.Strong).assignment.ref ==> open
+      Routing
+        .pick(pinsOf(Grade.Strong -> strong, Grade.Light -> flash), Grade.Standard)
+        .assignment
+        .ref ==> strong
+    }
+
+    test("atMost keeps the pins at or below the ceiling in order, and all of them when none is") {
+      atMostRefs(pins, Grade.Standard) ==> Vector(open, flash)
+      atMostRefs(pins, Grade.Strong) ==> Vector(open, flash, strong)
+      atMostRefs(pinsOf(Grade.Strong -> strong, Grade.Strong -> open), Grade.Standard) ==>
+        Vector(strong, open)
+    }
+
+    test("atMost at standard narrows a light and strong ladder to its light pin alone") {
+      atMostRefs(pinsOf(Grade.Light -> flash, Grade.Strong -> strong), Grade.Standard) ==>
+        Vector(flash)
     }
 
     test("the fixed reply names the classification it could not be routed for") {
