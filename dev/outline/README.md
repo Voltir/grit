@@ -39,8 +39,11 @@ for a helper that itself holds a reference. `--no-tests` drops both. None of the
     scripts/outline family Trait [--member m] [--body] [--max-kb N] [--root DIR]
 
 **uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
-filter by path prefix. `X.apply` (or `X.new`), for a class with no `apply` in source, finds its
-construction sites: `X(…)` and `new X(…)`. Sites are grouped by file (`== file`), then by the
+filter by path prefix. `X.apply` (or `X.new`), for a class or enum case with no `apply` in source, finds its
+construction sites: `X(…)` and `new X(…)`. `X.unapply`, for a class or enum case with no `unapply` in source, finds
+its pattern sites: `case X(…)` and `case _: X` (for a trait or a plain class, `case _: X` alone). `uses X` includes
+`case X(…)` patterns and `X(…)` calls with its other uses. A name `X.apply` or `X.unapply` whose `X` is neither says
+so in one line. Sites are grouped by file (`== file`), then by the
 definition holding them: an `in <owner>` line (the member around the site, or `Suite: test name` for
 a site in a test), then each site as its line number and source line. Over 20 sites in all, each file
 prints as `== file  N sites` and each owner once with its count, with no site lines, and the answer ends

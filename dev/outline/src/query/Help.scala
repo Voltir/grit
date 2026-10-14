@@ -132,7 +132,7 @@ object Help {
     operand = Operand(
       "Sym[,Sym…]",
       "symbols",
-      "symbols whose references to find: Name, Name.member or fully qualified; a Name with no qualifier shorter than 4 characters, such as of or get, is refused: qualify it with at least its owner, as in MoveLimits.of; comma-separated on the CLI. X.apply or X.new, for a class X with no apply in source, finds X's construction sites, X(…) and new X(…)."
+      "symbols whose references to find: Name, Name.member or fully qualified; a Name with no qualifier shorter than 4 characters, such as of or get, is refused: qualify it with at least its owner, as in MoveLimits.of; comma-separated on the CLI. X.apply or X.new, for a class or enum case X with no apply in source, finds X's construction sites, X(…) and new X(…). X.unapply, for a class or enum case X with no unapply in source, finds its pattern sites, case X(…) and case _: X (a trait or a plain class: case _: X alone). X alone includes case X(…) patterns and X(…) calls with its other uses."
     ),
     purpose =
       "To find who calls or names a definition before changing it. Sites are grouped by file (`== file`), then by the definition holding them: an `in <owner>` line (the member around the site, or `<Suite>: <test name>` for a site in a test) ending with the owner's size, `[N.N KB]`, then each site as `<line>  <source line>`, and last `[N sites in M files]`. Over 20 sites in all, each file prints as `== file  N sites` and each owner once as `in <owner>  N sites`, with no site lines, ending `-- N sites in M files; --sites to list them all, or --in/--outside to narrow`.",

@@ -213,7 +213,7 @@ object Query {
   /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
   val shortestBare: Int = 4
 
-  /** The `uses` answer: the direct references to `syms`, grouped by file and owner (a site inside a test call in a test source is owned by its test), filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming the class. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
+  /** The `uses` answer: the direct references to `syms`, grouped by file and owner (a site inside a test call in a test source is owned by its test), filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class or an enum case, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming it. A name `X.unapply` that resolves to nothing, where `X` resolves to a class, an enum case or a trait, stands for `X`'s pattern sites: `case X(…)` for a case class or an enum case, and `case _: X`, under a note naming it. Where `X` resolves to something else, the answer is `NoMatch` under one note naming what `X` is. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
   def uses(
       root: Root,
       layout: Layout,
@@ -244,25 +244,45 @@ object Query {
       }
       // The classes whose construction sites a name like `X.apply` asks for, when `X` has no apply of its own in source.
       val constructed = mutable.ListBuffer.empty[Defn]
+      // The classes whose pattern sites a name like `X.unapply` asks for, when `X` has no unapply of its own in source.
+      val matched = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
           case Left(message) => failure = Some(message)
-          case Right(resolved) if resolved.defns.isEmpty && constructorOwner(sym).nonEmpty =>
-            val owner = constructorOwner(sym).getOrElse(sym)
+          case Right(resolved) if resolved.defns.isEmpty && sitesOf(sym).nonEmpty =>
+            val (owner, wanted) = sitesOf(sym).getOrElse((sym, Sites.Built))
             Resolve.resolve(root, layout, config, Scope.WithTests, owner, resolved.loaded) match {
               case Left(message) => failure = Some(message)
               case Right(classes) =>
                 state = classes.loaded
-                val built =
-                  classes.defns.filter(d => d.kind == Kind.CaseClass || d.kind == Kind.Class)
-                seen ++= resolved.seen ++ classes.seen
-                if (built.isEmpty) notes ++= resolved.notes
-                else {
-                  constructed ++= built
-                  notes ++= built.map(c =>
-                    s"-- $sym is ${c.fullName}'s constructor: its apply and new sites"
-                  )
+                val kinds = wanted match {
+                  case Sites.Built => Set(Kind.CaseClass, Kind.Class, Kind.EnumCase)
+                  case Sites.Matched => Set(Kind.CaseClass, Kind.Class, Kind.EnumCase, Kind.Trait)
                 }
+                val sited = classes.defns.filter(d => kinds.contains(d.kind))
+                seen ++= resolved.seen ++ classes.seen
+                if (classes.defns.isEmpty) notes ++= resolved.notes
+                else if (sited.isEmpty)
+                  notes ++= classes.defns.map(d =>
+                    s"-- $sym: ${d.fullName} is ${article(kindName(d.kind))}; X.apply and X.unapply find a class's or an enum case's construction and pattern sites"
+                  )
+                else
+                  wanted match {
+                    case Sites.Built =>
+                      constructed ++= sited
+                      notes ++= sited.map(c =>
+                        s"-- $sym is ${c.fullName}'s constructor: its apply and new sites"
+                      )
+                    case Sites.Matched =>
+                      matched ++= sited
+                      notes ++= sited.map { c =>
+                        val extractor =
+                          if (c.kind == Kind.CaseClass || c.kind == Kind.EnumCase)
+                            s"case ${c.name}(…) and "
+                          else ""
+                        s"-- $sym is ${c.fullName}'s pattern sites: ${extractor}case _: ${c.name}"
+                      }
+                  }
             }
           case Right(resolved) =>
             state = resolved.loaded
@@ -274,7 +294,7 @@ object Query {
 
       val names = (targets.toVector.map(_.fullName) ++ constructed.toVector.flatMap(c =>
         Vector(s"${c.fullName}.apply", s"${c.fullName}.<init>")
-      )).distinct.toSet
+      ) ++ matched.toVector.map(c => s"${c.fullName}.unapply")).distinct.toSet
       val (read, unsearched, next) = referencesIn(
         root,
         layout,
@@ -282,11 +302,11 @@ object Query {
         classes,
         if (failure.nonEmpty) Set.empty else names,
         // With no target, the search by each name's last segment still names the files not compiled.
-        if (targets.isEmpty && constructed.isEmpty)
+        if (targets.isEmpty && constructed.isEmpty && matched.isEmpty)
           syms.map(sym => Search(sym.split('.').last, None)).distinct
         else
           searchesFor(targets.toVector, seen.toVector) ++
-            constructed.toVector.map(c => Search(c.name, None)).distinct,
+            (constructed ++ matched).toVector.map(c => Search(c.name, None)).distinct,
         _ => true,
         state
       )
@@ -383,12 +403,31 @@ object Query {
     }.toMap
   }
 
-  /** The class `sym` names the construction of, as `X.apply` or `X.new`: `X`, or none for any other name. */
-  private def constructorOwner(sym: String): Option[String] =
-    Vector(".apply", ".new").collectFirst {
-      case suffix if sym.endsWith(suffix) && sym.length > suffix.length =>
-        sym.dropRight(suffix.length)
-    }
+  /** What a name `X.apply` or `X.new` (construction) or `X.unapply` (patterns) asks for of a class `X`. */
+  private enum Sites {
+    case Built, Matched
+  }
+
+  /** The class `sym` names the construction or the pattern sites of, as `X.apply`, `X.new` or `X.unapply`: `X` and which,
+    * or none for any other name.
+    */
+  private def sitesOf(sym: String): Option[(String, Sites)] =
+    Vector(".apply" -> Sites.Built, ".new" -> Sites.Built, ".unapply" -> Sites.Matched)
+      .collectFirst {
+        case (suffix, sites) if sym.endsWith(suffix) && sym.length > suffix.length =>
+          (sym.dropRight(suffix.length), sites)
+      }
+
+  private def kindName(k: Kind): String = k match {
+    case Kind.CaseClass => "case class"
+    case Kind.EnumCase => "enum case"
+    case Kind.TypeAlias => "type alias"
+    case Kind.Opaque => "opaque type"
+    case other => other.toString.toLowerCase
+  }
+
+  private def article(word: String): String =
+    if (word.headOption.exists("aeiou".contains(_))) s"an $word" else s"a $word"
 
   /** The `area` answer for the named areas `names`, declared in `config`; with no names, one line per declared area, its name and its purpose. For names: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `Failed` for a level outside 0..1; cut at `cap` bytes. A name no area declares stands for what `standFor` gives, under its note, and is `NoMatch` when that is `Left`. */
   def area(

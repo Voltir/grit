@@ -222,6 +222,68 @@ object UsesTests extends TestSuite {
       )
     }
 
+    test(
+      "B.unapply lists B's extractor patterns and not its constructions: case B(c, _) in Matches.cOf"
+    ) {
+      val (answer, _) = uses("B.unapply")
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.exists(_.contains("case B(c, _) => c")))
+      assert(!answer.text.contains("B(made, \"n\")"))
+      assert(
+        answer.text.contains(
+          "-- B.unapply is grit.outline.fixture.B's pattern sites: case B(…) and case _: B"
+        )
+      )
+    }
+    test("C.unapply lists C's typed patterns: case _: C in Matches.isC") {
+      val (answer, _) = uses("C.unapply")
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.exists(_.contains("case _: C => true")))
+      assert(!answer.text.contains("new C(1)"))
+    }
+    test(
+      "an enum case's unapply lists its extractor patterns, and its apply its constructions: Colour.Mix"
+    ) {
+      val (patterns, _) = uses("Colour.Mix.unapply")
+      assert(patterns.text.linesIterator.exists(_.contains("case Colour.Mix(w) => w")))
+      assert(!patterns.text.contains("Colour.Mix(1.0)"))
+      val (built, _) = uses("Colour.Mix.apply")
+      assert(built.status == Status.Found)
+      assert(built.text.linesIterator.exists(_.contains("Colour.Mix(1.0)")))
+      assert(!built.text.contains("case Colour.Mix(w)"))
+    }
+    test(
+      "a class with no pattern sites has no uses of its unapply, under its one note line: Limits.unapply"
+    ) {
+      val (answer, _) = uses("Limits.unapply")
+      assert(answer.status == Status.NoMatch)
+      // A search names the files it could not read, such as this suite's own source; any other note is this one.
+      val notes =
+        answer.text.linesIterator
+          .filter(l => l.startsWith("--") && !l.startsWith("-- not compiled"))
+          .toVector
+      assert(
+        notes == Vector(
+          "-- Limits.unapply is grit.outline.fixture.Limits's pattern sites: case Limits(…) and case _: Limits"
+        )
+      )
+    }
+    test(
+      "a name X.apply where X is no class or enum case is no match under one note line: fixture.Quiver.apply"
+    ) {
+      val (answer, _) = uses("grit.outline.fixture.Quiver.apply")
+      assert(answer.status == Status.NoMatch)
+      // A search names the files it could not read, such as this suite's own source; any other note is this one.
+      val notes =
+        answer.text.linesIterator
+          .filter(l => l.startsWith("--") && !l.startsWith("-- not compiled"))
+          .toVector
+      assert(
+        notes == Vector(
+          "-- grit.outline.fixture.Quiver.apply: grit.outline.fixture.Quiver is a trait; X.apply and X.unapply find a class's or an enum case's construction and pattern sites"
+        )
+      )
+    }
     test("a case class's apply counts its new sites: Limits.apply lists new Limits in Limits.of") {
       val (answer, _) = uses("grit.outline.fixture.Limits.apply")
       assert(answer.status == Status.Found)

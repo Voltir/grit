@@ -577,9 +577,14 @@ object Read {
             // The named definitions around the tree being walked, innermost first.
             private var enclosing: List[String] = Nil
 
-            private def record(ref: Tree): Unit = {
-              val sym = ref.symbol
-              val name = cleanFullName(sym.fullName)
+            // Whether the tree being walked is a case's pattern.
+            private var inPattern = false
+
+            private def record(ref: Tree): Unit = recordAs(ref, ref.symbol, "")
+
+            // A site of `sym` at `ref`'s position, its target `sym`'s full name and `suffix`.
+            private def recordAs(ref: Tree, sym: Symbol, suffix: String): Unit = {
+              val name = cleanFullName(sym.fullName) + suffix
               val ownName = sym.pos.exists(p =>
                 p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
               )
@@ -618,6 +623,16 @@ object Read {
               case ref @ (_: Ident | _: Select) =>
                 record(ref)
                 super.traverseTree(tree)(owner)
+              case CaseDef(pattern, guard, rhs) =>
+                inPattern = true
+                traverseTree(pattern)(owner)
+                inPattern = false
+                guard.foreach(traverseTree(_)(owner))
+                traverseTree(rhs)(owner)
+              // A typed pattern, `case _: X`, is a pattern site of X, kept as X.unapply's as an extractor's is.
+              case TypedOrTest(inner, tpt) if inPattern =>
+                recordAs(tpt, tpt.tpe.typeSymbol, ".unapply")
+                traverseTree(inner)(owner)
               case _ => super.traverseTree(tree)(owner)
             }
           }
