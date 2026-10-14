@@ -160,6 +160,63 @@ object QueryTests extends TestSuite {
     }
 
     test(
+      "a source cut shorter than its tasty's positions is shown stale, each definition past its end as its TASTy signature under a line saying it is not file text"
+    ) {
+      val dir = os.temp.dir(prefix = "outline-shortened-")
+      val src = dir / "src" / "q" / "Shelf.scala"
+      os.write(
+        src,
+        "package q\n\n/** A shelf. */\ntrait Shelf {\n\n  /** The first. */\n  def first: Int\n\n  /** The last, far down. */\n  def last(x: Int): String\n}\n",
+        createFolders = true
+      )
+      val classes = dir / "classes"
+      os.makeDir.all(classes)
+      val compiled = dotty.tools.dotc.Main.process(
+        Array(
+          "-d",
+          classes.toString,
+          "-classpath",
+          System.getProperty("java.class.path"),
+          src.toString
+        )
+      )
+      assert(!compiled.hasErrors)
+      os.write.over(src, "package q\n\n/** A shelf. */\ntrait Shelf {\n}\n")
+      os.mtime.set(src, os.mtime(classes / "q" / "Shelf.tasty") + 3600 * 1000)
+      val layout = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
+        def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val (_, _, notes) =
+        Query.loadAll(Root(dir), layout, Vector(classes / "q" / "Shelf.tasty"), Loaded.empty)
+      assert(notes.isEmpty)
+      val (answer, _) = Query.show(
+        Root(dir),
+        layout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("q.Shelf"),
+        depth = 0,
+        bodies = Set.empty,
+        withPrivate = false,
+        cap = 80000,
+        withTests = false
+      )
+      assert(!answer.text.contains("not loaded"))
+      assert(answer.status == Status.Found)
+      val lines = answer.text.linesIterator.toVector
+      assert(lines.contains("== src/q/Shelf.scala  q  [stale: source newer than .tasty]"))
+      assert(
+        lines.contains("-- not file text, past the end of the source: def last(x: Int): String")
+      )
+      assert(lines.contains("-- not file text, past the end of the source: trait Shelf"))
+      assert(lines.contains("-- not file text, past the end of the source: def first: Int"))
+    }
+
+    test(
       "a file the inspector failed on is remembered, so a second load reads no files and still names it"
     ) {
       val classes = os.temp.dir(prefix = "outline-remember-") / "classes"

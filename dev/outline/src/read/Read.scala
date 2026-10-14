@@ -317,6 +317,79 @@ object Read {
             parents: Vector[String]
         ): Defn = {
           val text = sourceText(p.sourceFile.path)
+          if (p.end > text.text.length) pastTheEnd(tree, sym, p, members, refs, parents)
+          else fromSource(tree, sym, p, cut, hasBody, members, refs, parents, text)
+        }
+
+        // A definition whose span runs past the end of its source, which was cut shorter since this TASTy was written: its
+        // signature is the compiler's, under a `--` line, since no file text holds it, and it has no doc or body.
+        def pastTheEnd(
+            tree: Tree,
+            sym: Symbol,
+            p: Position,
+            members: Vector[Defn],
+            refs: Vector[grit.outline.model.Ref],
+            parents: Vector[String]
+        ): Defn = {
+          val signature = tastySignature(tree, sym)
+          val flags = sym.flags
+          Defn(
+            kind = kindOf(tree, sym),
+            name = nameOf(sym),
+            fullName = fullNameOf(sym),
+            file = slice(p.sourceFile.path, prefix.length, p.sourceFile.path.length),
+            lines = Lines(p.startLine + 1, p.endLine + 1),
+            doc = None,
+            signature = signature,
+            head = s"$pastTheEndNote$signature",
+            body = None,
+            members = members,
+            refs = refs,
+            parents = parents,
+            isPrivate = flags.is(Flags.Private) || sym.privateWithin.isDefined,
+            isAbstract =
+              flags.is(Flags.Deferred) || flags.is(Flags.Abstract) || flags.is(Flags.Trait)
+          )
+        }
+
+        // The definition as the compiler prints it, on one line, without its body: a class as its keyword, name and
+        // parents. Its name alone when the printer throws.
+        def tastySignature(tree: Tree, sym: Symbol): String = {
+          val printed =
+            try {
+              tree match {
+                case d: DefDef =>
+                  DefDef
+                    .copy(d)(d.name, d.paramss, d.returnTpt, None)
+                    .show(using Printer.TreeShortCode)
+                case v: ValDef =>
+                  ValDef.copy(v)(v.name, v.tpt, None).show(using Printer.TreeShortCode)
+                case c: ClassDef =>
+                  val parents = c.parents
+                    .flatMap(treeSymbols)
+                    .map(fullNameOf)
+                    .filterNot(classParentsLeftOut.contains)
+                    .map(_.split('.').last)
+                  val extending =
+                    if (parents.isEmpty) "" else parents.mkString(" extends ", " with ", "")
+                  s"${classKeyword(kindOf(c, sym))} ${nameOf(sym)}$extending"
+                case other => other.show(using Printer.TreeShortCode)
+              }
+            } catch { case NonFatal(_) => nameOf(sym) }
+          printed.replaceAll("\\s+", " ").trim
+        }
+
+        def fromSource(
+            tree: Tree,
+            sym: Symbol,
+            p: Position,
+            cut: Int,
+            hasBody: Boolean,
+            members: Vector[Defn],
+            refs: Vector[grit.outline.model.Ref],
+            parents: Vector[String],
+            text: SourceText
+        ): Defn = {
           val src = text.text
           // A cut outside the definition's own span (a pattern-bound val's right-hand side starts before it) leaves its
           // whole source line as the signature, and no body.
@@ -571,6 +644,21 @@ object Read {
         else Left(complaint(captured, tasty.size))
     }
   }
+
+  // The parents a class's TASTy signature leaves out, since every class or case class has them.
+  private val classParentsLeftOut =
+    Set("java.lang.Object", "scala.Any", "scala.AnyRef", "scala.Product", "java.io.Serializable")
+
+  private def classKeyword(kind: Kind): String = kind match {
+    case Kind.CaseClass => "case class"
+    case Kind.Trait => "trait"
+    case Kind.Object => "object"
+    case Kind.Enum => "enum"
+    case _ => "class"
+  }
+
+  /** The start of the head of a definition whose span runs past the end of its current source: a `--` line, so not file text. */
+  private[read] val pastTheEndNote = "-- not file text, past the end of the source: "
 
   /** A source file's text, with where each of its lines starts, so that a line is found without rescanning the text. */
   private[read] final class SourceText(val text: String) {

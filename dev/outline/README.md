@@ -79,6 +79,8 @@ The launcher is built on first use, without a daemon in its own Mill output dire
 - A query reads only that root's build output, and refuses any TASTy whose sources lie outside
   the root.
 - A source newer than its `.tasty` is flagged as stale: the definition reflects an earlier compile.
+  A definition that ran past where its source now ends is shown by the compiler's signature, on a
+  `-- not file text` line, with its lines as compiled and no doc or body.
 - Nothing compiles on its own. With no compiled classes, the answer says how to compile the
   root, and the tool does not run the build.
 
