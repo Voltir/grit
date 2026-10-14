@@ -4,7 +4,7 @@
 # commit message can quote. The full output of each tier is kept in out/check/<tier>.log.
 #
 #   scripts/check                                  # the commit gate: unit, law, probes a change
-#                                                  # reaches, format, clock, docs, lint
+#                                                  # reaches, format, clock, unsafe, docs, lint
 #   scripts/check --it                             # the same, and the integration tier
 #   scripts/check --probes                         # the same, and every capture probe
 #   scripts/check --milestone                      # the gate, every probe, the integration tier
@@ -33,6 +33,9 @@
 #   clock scripts/clock-check: no main source reads the JVM's time or randomness outside
 #         grit.core.clock (Instant.now, Clock.system, nanoTime, randomUUID, ...) unless marked
 #         `clock-check: <why>`, each named as file:line. --no-lint skips it.
+#   unsafe  scripts/unsafe-check: every caps.unsafe use in a tracked source (tests too) has its
+#         proof beside it (STYLE.md rule 11), each without one named as file:line. It shows a
+#         proof is there, not that it is sound. --no-lint skips it.
 #   docs  scripts/doc-length: no Scaladoc over 60 lines unless a comment above it says why
 #         (`doc-length: <why>`), each named as file:line. --no-lint skips it.
 #   lint  the modules a change reaches (`reach`, below: each holding a changed .scala file and
@@ -41,8 +44,9 @@
 #         so neither cache invalidates the other. Its Mill daemon is shut down when the tier
 #         ends. --no-lint or --no-unused skips it; --only-unused runs it alone, over every
 #         module; with targets, each target's module and its tests and nested modules.
-# A target runs just that: no law, no format, no clock, no docs, no lint, unless --only-unused runs
-# lint for its modules. --it, --probes or --milestone with a target is a usage error.
+# A target runs just that: no law, no format, no clock, no unsafe, no docs, no lint, unless
+# --only-unused runs lint for its modules. --it, --probes or --milestone with a target is a
+# usage error.
 # --only-unused runs lint alone, so it conflicts with --no-lint, --no-unused, --it, --probes
 # and --milestone.
 #
@@ -368,6 +372,7 @@ if [ ${#targets[@]} -eq 0 ]; then
     if $lint; then
       run_tier format out "" -- scripts/format-check
       run_tier clock out "" -- scripts/clock-check
+      run_tier unsafe out "" -- scripts/unsafe-check
       run_tier docs out "" -- scripts/doc-length
     fi
   fi

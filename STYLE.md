@@ -201,6 +201,10 @@ tracking something. Each use states, beside it, why the untracked effect cannot 
 observed — the proof obligation the compiler was told to skip. This is the one kind of
 comment a type can never replace.
 
+`scripts/check`'s unsafe tier (`scripts/unsafe-check`, whose header says where a proof
+sits) refuses a use with no comment beside it. It sees that a proof is there, never that
+it is sound.
+
 ---
 
 ## Tests

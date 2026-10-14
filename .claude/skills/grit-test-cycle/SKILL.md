@@ -12,7 +12,7 @@ scripts/check grit.core.speech.SpeechTests   # one suite, while iterating
 scripts/check grit.core                      # one module's unit tests
 scripts/check grit.dbos.it                   # an it module or suite (Docker)
 scripts/check grit.core.durable.SeparationTests  # a probe suite
-scripts/check                                # the commit gate: unit, law, probes a change reaches, format, clock, lint
+scripts/check                                # the commit gate: unit, law, probes a change reaches, format, clock, unsafe, docs, lint
 scripts/check --it                           # the gate and the integration tier
 scripts/check --milestone                    # the gate, every probe and the integration tier
 ```
@@ -32,7 +32,8 @@ cut short prints a smaller total that looks green.
   a module's suites rerun only when their inputs changed; a failure is never cached), the
   law (`scripts/enola-law.sh`; `bash scripts/fetch-enola.sh` first if `tools/` lacks enola),
   the capture probes a change reaches (below), format (`bash scripts/fetch-scalafmt.sh` first
-  if `tools/` lacks scalafmt), clock, docs (`scripts/doc-length`) and, last, **lint**: the modules holding a changed Scala
+  if `tools/` lacks scalafmt), clock, unsafe (`scripts/unsafe-check`: each `caps.unsafe` use
+  has its proof beside it), docs (`scripts/doc-length`) and, last, **lint**: the modules holding a changed Scala
   source and every module depending on one, compiled with `-Wunused:all` in their own output
   directory. An unused import passes a targeted run and fails lint.
 - **The unused pass may run after the commit, in the background**, when the manager says so: the

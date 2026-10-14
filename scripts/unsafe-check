@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Every escape hatch carries its proof (STYLE.md rule 11): refuses each `caps.unsafe` use
+# (`untrackedCaptures`, `unsafeAssumePure`, imported or spelled out) in every Scala source the
+# checkout tracks (main, test, it and probes) that has no comment beside it, naming each as
+# file:line. A proof is a comment on the use's line, or a comment line directly above it (no
+# blank line between). One proof covers a run of annotated declarations: each `@untrackedCaptures`
+# at the indentation of the first, with no unannotated line at that indentation or shallower
+# between them (blank lines, comments and a declaration's deeper continuation lines do not end
+# the run). An `unsafeAssumePure` is a call, never part of a run: each needs its own.
+#
+#   // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
+#   @caps.unsafe.untrackedCaptures
+#   var sent = Vector.empty[Post]
+#
+# It shows a proof is there, never that it is sound: that is review's. An import is not a use, a
+# comment line is never checked, and a use inside a string literal (a probe's source) counts.
+#
+#   scripts/unsafe-check                       # as scripts/check's lint tier runs it
+set -uo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# The files this checkout tracks: never a nested worktree's, nor a build's output.
+git ls-files -- '*/src/*.scala' |
+  sort |
+  xargs awk '
+    function indent(s) { match(s, /^[ \t]*/); return RLENGTH }
+    FNR == 1 { above = 0; run = 0; inblock = 0; pending = 0 }
+    {
+      if (inblock) {
+        above = 1
+        if ($0 ~ /\*\//) inblock = 0
+        next
+      }
+      if ($0 ~ /^[[:space:]]*$/) { above = 0; next }
+      if ($0 ~ /^[[:space:]]*(\/\/|\/\*|\*)/) {
+        above = 1
+        if ($0 ~ /^[[:space:]]*\/\*/ && $0 !~ /\*\//) inblock = 1
+        next
+      }
+      code = $0
+      beside = 0
+      if (index(code, "//") > 0) { code = substr(code, 1, index(code, "//") - 1); beside = 1 }
+      at = indent($0)
+      use = (code ~ /caps\.unsafe\.|untrackedCaptures|unsafeAssumePure/ && code !~ /^[[:space:]]*import[[:space:]]/)
+      annotation = (code ~ /@(caps\.unsafe\.)?untrackedCaptures/)
+      if (run && at < runat) run = 0
+      if (use) {
+        proven = beside || above || (annotation && run && at == runat)
+        if (!proven) {
+          line = $0
+          sub(/^[[:space:]]+/, "", line)
+          printf "unsafe-check: %s:%d is a caps.unsafe use with no proof beside it (STYLE.md rule 11): %s\n", FILENAME, FNR, line
+          found = 1
+        }
+        if (annotation && proven) {
+          if (!(run && at == runat)) { run = 1; runat = at }
+          # An annotation alone on its line: the next line is the declaration it annotates.
+          pending = (code ~ /untrackedCaptures[[:space:]]*$/)
+        } else if (!(run && at > runat)) run = 0
+      } else if (pending) {
+        pending = 0
+      } else if (run && at == runat) {
+        run = 0
+      }
+      above = 0
+    }
+    END { exit found }
+  '
+[ "${PIPESTATUS[2]}" -eq 0 ] || exit 1
