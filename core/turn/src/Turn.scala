@@ -1188,7 +1188,7 @@ object Turn {
               .getOrElse(tools)
           }
         def shapeAs(round: Round, use: ToolUse): ModelRequest -> ModelRequest = {
-          val (shown, line) = gatedOffer(gates.toMap, round, schemas, strict)
+          val (shown, line) = gatedOffer(gates.toMap, round, offering, schemas, strict)
           loopShape(asked, round, use, shown, after, guidance, line)
         }
         def shape(round: Round): ModelRequest -> ModelRequest =
@@ -1210,7 +1210,7 @@ object Turn {
             gated.flatMap { _ =>
               val shaped = shapeAs(round, use)
               d.step(round.step) { () =>
-                callShaped(heard, turn, seen, stubsAt(gates.toMap, round), shaped)
+                callShaped(heard, turn, seen, stubsAt(gates.toMap, round, offering), shaped)
               }
             }
           }
@@ -1227,7 +1227,7 @@ object Turn {
                 env.records,
                 turn,
                 seen,
-                stubsAt(gates.toMap, round),
+                stubsAt(gates.toMap, round, offering),
                 round,
                 reply,
                 pins.turn.grade,
@@ -1356,7 +1356,7 @@ object Turn {
                   env.speech.store,
                   turn,
                   seen,
-                  stubsAt(gates.toMap, l.round),
+                  stubsAt(gates.toMap, l.round, offering),
                   l.answer,
                   pins.turn.grade,
                   shaped,
@@ -1397,12 +1397,13 @@ object Turn {
     * round's gate by its index, say: those its gate withholds left out, after read_hidden and
     * extract from the first round whose gate hid an item on ([[ReadHidden]], [[Extract]],
     * `strict` as `schemas` are), and
-    * the withdrawal its gate makes against the round before's ([[TurnGate.withdrawn]]); all of
-    * `schemas` and no line for a round with no gate.
+    * the withdrawal its gate makes against the round before's, its tools as `offered` says them
+    * ([[TurnGate.withdrawn]]); all of `schemas` and no line for a round with no gate.
     */
   private def gatedOffer(
       gates: Map[Int, Gated],
       round: Round,
+      offered: ToolSet,
       schemas: Vector[ToolSchema],
       strict: Boolean
   ): (Vector[ToolSchema], Option[String]) =
@@ -1413,7 +1414,7 @@ object Turn {
           Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict))
             .filter(_ => hidSince(gates, round)) ++
             schemas.filterNot(s => now.withheld.exists(w => ToolName.value(w.tool) == s.name)),
-          gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now))
+          gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
         )
     }
 
@@ -1899,12 +1900,19 @@ object Turn {
   }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
-    * in `gates` hid them ([[TurnGate.stub]]); none for a round with no gate.
+    * in `gates` hid them, their tools as `offered` says them ([[TurnGate.stub]]); none for a
+    * round with no gate.
     */
-  private def stubsAt(gates: Map[Int, Gated], round: Round): Map[ItemRef, String] =
+  private def stubsAt(
+      gates: Map[Int, Gated],
+      round: Round,
+      offered: ToolSet
+  ): Map[ItemRef, String] =
     gates
       .get(round.index)
-      .fold(Map.empty)(_.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h)).toMap)
+      .fold(Map.empty)(
+        _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered)).toMap
+      )
 
   /** `turn`'s own entries, from `all` of its conversation's. */
   private def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
@@ -2283,13 +2291,13 @@ object Turn {
           case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
-            val (shown, line) = gatedOffer(gates, round, schemas, strict)
+            val (shown, line) = gatedOffer(gates, round, tools.set, schemas, strict)
             requestOf(
               prompt.render,
               showing.copy(mine = before),
               turn,
               window,
-              stubsAt(gates, round)
+              stubsAt(gates, round, tools.set)
             )
               .map(
                 _.shaped(

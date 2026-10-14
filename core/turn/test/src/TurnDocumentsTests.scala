@@ -286,11 +286,12 @@ object TurnDocumentsTests extends TestSuite {
         Vector("read_hidden", "extract", "post") -> Vector(
           Message.User(
             "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
-              "Hidden here as h1: something from Cards, believed only at [integrity: untrusted]. " +
-              "Reading it would withdraw post for the rest of this turn; to read it, call " +
-              "read_hidden with name h1. To ask it a question answered yes or no, by a number, " +
-              "a date, one of options you list or a short token, without reading it, call " +
-              "extract with name h1."
+              "Hidden here as h1: something from Cards, which people outside the team can " +
+              "write in. If your answer needs what it says, read it: call read_hidden with name " +
+              "h1. After that you can't use post until you've answered. To ask it a short " +
+              "question instead, answered yes or no, with a whole number, a date, one of " +
+              "options you list or a short code, call extract with name h1: that never stops " +
+              "you doing anything."
           ),
           Message.User("one")
         )

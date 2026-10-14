@@ -65,14 +65,16 @@ object TurnGateTurnTests extends TestSuite {
     }
 
   /** The stub peek's result `t1` is shown as while hidden. */
-  private val peekStub = "Hidden here as h1: something from peek, believed only at " +
-    "[integrity: untrusted]. Reading it would withdraw post for the rest of this turn; to read " +
-    s"it, call read_hidden with name h1.${asking("h1")}"
+  private val peekStub =
+    stub("h1", "a result from a place people outside the team can write in")
 
-  /** What a stub named `name` says of extract, after how to read it. */
-  private def asking(name: String): String =
-    " To ask it a question answered yes or no, by a number, a date, one of options you list " +
-      s"or a short token, without reading it, call extract with name $name."
+  /** The stub named `name` of an item said as `described`, whose reading would cost post. */
+  private def stub(name: String, described: String): String =
+    s"Hidden here as $name: $described. If your answer needs what it says, read it: call " +
+      s"read_hidden with name $name. After that you can't use post until you've answered. To " +
+      "ask it a short question instead, answered yes or no, with a whole number, a date, one " +
+      s"of options you list or a short code, call extract with name $name: that never stops " +
+      "you doing anything."
 
   /** `turn` answered by `provider` with [[gatedTools]] offered over `files`. */
   private def gatedRun(durable: InMemoryDurable, entries: InMemoryEntryStore, turn: TurnRef)(
@@ -149,8 +151,8 @@ object TurnGateTurnTests extends TestSuite {
         Vector(None, Some(peekStub), Some("alpha"), Some("alpha"))
       provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==>
         Some("h1 is shown in full in its place from your next request on.")
-      val withdrawn = "Withdrawn for the rest of this turn: post, which requires " +
-        "[integrity: member], since you read peek [integrity: untrusted]."
+      val withdrawn = "From now until you answer, you can't use post, because you read a " +
+        "result from a place people outside the team can write in."
       provider.requests.map(_.system.endsWith(s"\n\n$withdrawn")) ==>
         Vector(false, false, true, false)
     }
@@ -240,9 +242,7 @@ object TurnGateTurnTests extends TestSuite {
       // as h2, costs nothing once post is withheld, and is shown in the third.
       val provider = hidingScript
       gatedRun(new InMemoryDurable, entries, turn)(provider)
-      val guestStub = "Hidden here as h1: something from someone, believed only at " +
-        "[integrity: outside]. Reading it would withdraw post for the rest of this turn; to " +
-        s"read it, call read_hidden with name h1.${asking("h1")}"
+      val guestStub = stub("h1", "something from someone, written from outside the team")
       provider.requests.map(_.messages.headOption) ==> Vector(
         Some(Message.User(guestStub)),
         Some(Message.User(guestStub)),
@@ -307,19 +307,17 @@ object TurnGateTurnTests extends TestSuite {
       new InMemoryDurable().run(turn.workflowId)(
         turnBodyWith(entries, provider, opening, new InMemoryUsageLedger, tools = posting)
       )
-      def stub(name: String, source: String) =
-        s"Hidden here as $name: something from $source, believed only at " +
-          "[integrity: outside]. Reading it would withdraw post for the rest of this turn; to " +
-          s"read it, call read_hidden with name $name.${asking(name)}"
+      def stubOf(name: String, source: String) =
+        stub(name, s"something from $source, written from outside the team")
       provider.requests.headOption.map(_.messages.take(2)) ==> Some(
         Vector(
           Message.User(
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
-              s"User: ${stub("h1", "someone")}"
+              s"User: ${stubOf("h1", "someone")}"
           ),
           Message.User(
             "[afar] another conversation's record, written by grit when it closed on " +
-              s"1970-01-01, at slack:T1/C1/2.0: ${stub("h2", "a closing record")}"
+              s"1970-01-01, at slack:T1/C1/2.0: ${stubOf("h2", "a closing record")}"
           )
         )
       )
@@ -356,9 +354,7 @@ object TurnGateTurnTests extends TestSuite {
         Vector(
           Message.User(
             "[record] this conversation so far, written by grit (closed 1970-01-01): " +
-              "Hidden here as h1: something from a closing record, believed only at " +
-              "[integrity: outside]. Reading it would withdraw post for the rest of this turn; " +
-              s"to read it, call read_hidden with name h1.${asking("h1")}"
+              stub("h1", "something from a closing record, written from outside the team")
           ),
           Message.User("two")
         )

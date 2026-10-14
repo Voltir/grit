@@ -129,6 +129,12 @@ object ToolSetTests extends TestSuite {
       peek.plainly ==> "use peek"
     }
 
+    test("a set says a tool plainly as its entry does, and one it lacks as use and its name") {
+      val acting = set(peek.copy(action = Some("peek at things")), post)
+      Vector(ToolName("peek"), ToolName("post"), ToolName("poke")).map(acting.plainly) ==>
+        Vector("peek at things", "use post", "use poke")
+    }
+
     test("a set reads back from its stored form, and a set differing in retry has another id") {
       val asking = peek.copy(asks = true, retry = Retry.Interrupt)
       ToolSet.read(ToolSet.write(set(peek, asking.copy(name = ToolName("poke"))))) ==>

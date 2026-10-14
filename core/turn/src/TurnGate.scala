@@ -110,41 +110,74 @@ object TurnGate {
     Gated(level, decided, withheldAt(level).map(t => Withheld(t.name, t.requires)))
   }
 
-  /** What the model is shown in `item`'s place when `hidden` hides it: its name, its source and
-    * level, the tools reading it would withdraw, that `read_hidden` reads it ([[ReadHidden]]),
-    * and that `extract` asks it a bounded question ([[Extract]]). Pure; not recorded, since a
-    * request is never replayed (only its reply is).
+  /** What the model is shown in `item`'s place when `hidden` hides it, in words it may repeat
+    * to a person: its name, where it comes from ([[described]]), what reading it costs until
+    * the reply, each tool as `offered` says it ([[ToolSet.plainly]]), that `read_hidden` reads
+    * it ([[ReadHidden]]), and that `extract` asks it a bounded question ([[Extract]]), said to
+    * cost nothing: no tool requires above [[Integrity.Member]], where extracting leaves a turn
+    * ([[Extract.tool]]). Pure; not recorded, since a request is never replayed (only its reply
+    * is).
     */
-  def stub(item: Item, hidden: Fate.Hidden): String = {
+  def stub(item: Item, hidden: Fate.Hidden, offered: ToolSet): String = {
     val name = HiddenName.value(hidden.name)
-    s"Hidden here as $name: something from ${item.source}, believed only at " +
-      s"${Integrity.shown(item.integrity)}. Reading it would withdraw " +
-      s"${hidden.costs.map(ToolName.value).mkString(", ")} for the rest of this turn; to read " +
-      s"it, call ${ToolName.value(ReadHidden.Name)} with name $name. To ask it a question " +
-      "answered yes or no, by a number, a date, one of options you list or a short token, " +
-      s"without reading it, call ${ToolName.value(Extract.Name)} with name $name."
+    s"Hidden here as $name: ${described(item)}. If your answer needs what it says, read it: " +
+      s"call ${ToolName.value(ReadHidden.Name)} with name $name. After that you can't " +
+      s"${actions(hidden.costs, offered)} until you've answered. To ask it a short question " +
+      "instead, answered yes or no, with a whole number, a date, one of options you list or a " +
+      s"short code, call ${ToolName.value(Extract.Name)} with name $name: that never stops you " +
+      "doing anything."
   }
 
   /** The line a round's request adds to its system prompt when its gate, `now`, withholds a
-    * tool the round before's, `before`, did not: each such tool, what it requires, and the
-    * first item `now` lowered for whose integrity does not dominate that (never one it hid);
-    * `None` when `now` withdrew nothing.
+    * tool the round before's, `before`, did not, in words the model may repeat to a person:
+    * what it can't do until it answers, each tool as `offered` says it ([[ToolSet.plainly]]),
+    * because of the first item `now` lowered for whose integrity does not dominate what the tool
+    * requires (never one it hid), as [[described]] says it; tools costing the same item said
+    * together, in the order they are offered. `None` when `now` withdrew nothing.
     */
-  def withdrawn(before: Gated, now: Gated): Option[String] =
+  def withdrawn(before: Gated, now: Gated, offered: ToolSet): Option[String] =
     now.withheld.filterNot(before.withheld.contains) match {
       case none if none.isEmpty => None
       case withdrawn =>
-        val each = withdrawn.map { w =>
-          val cost = now.decided
-            .find {
-              case Decided(item, Fate.Lowered) => !item.integrity.dominates(w.requires)
-              case _ => false
-            }
-            .fold("")(d =>
-              s", since you read ${d.item.source} ${Integrity.shown(d.item.integrity)}"
-            )
-          s"${ToolName.value(w.tool)}, which requires ${Integrity.shown(w.requires)}$cost"
+        val costs = withdrawn.map { w =>
+          w.tool -> now.decided.collectFirst {
+            case Decided(item, Fate.Lowered) if !item.integrity.dominates(w.requires) => item
+          }
         }
-        Some(s"Withdrawn for the rest of this turn: ${each.mkString("; ")}.")
+        val each = costs.map(_._2).distinct.map { cost =>
+          val lost = actions(costs.collect { case (tool, c) if c == cost => tool }, offered)
+          s"you can't $lost" + cost.fold("")(item => s", because you read ${described(item)}")
+        }
+        Some(s"From now until you answer, ${each.mkString("; and ")}.")
+    }
+
+  /** `item` as a person would follow it, by whom its integrity says it comes from: below
+    * [[Integrity.Outside]] people outside the team can write there, below [[Integrity.Member]]
+    * it was written from outside the team, and otherwise (lacking a compartment) it is not
+    * trusted to steer this. A tool's result is "a result from" a place, someone or a source;
+    * anything else "something from" its source, then a clause saying which.
+    */
+  private def described(item: Item): String = {
+    val untrusted = !item.integrity.dominates(Integrity.Outside)
+    val outside = !item.integrity.dominates(Integrity.Member)
+    item.ref match {
+      case ItemRef.Result(_) =>
+        if (untrusted) "a result from a place people outside the team can write in"
+        else if (outside) "a result from someone outside the team"
+        else "a result from a source not trusted to steer this"
+      case _ =>
+        val which =
+          if (untrusted) "which people outside the team can write in"
+          else if (outside) "written from outside the team"
+          else "which isn't trusted to steer this"
+        s"something from ${item.source}, $which"
+    }
+  }
+
+  /** `tools` as `offered` says each ([[ToolSet.plainly]]): "a", "a or b", "a, b or c". */
+  private def actions(tools: Vector[ToolName], offered: ToolSet): String =
+    tools.map(offered.plainly) match {
+      case init :+ last if init.nonEmpty => s"${init.mkString(", ")} or $last"
+      case said => said.mkString
     }
 }

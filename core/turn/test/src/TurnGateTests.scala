@@ -12,8 +12,8 @@ object TurnGateTests extends TestSuite {
   private val team: Compartment =
     Compartment.of("team").getOrElse(throw new java.lang.AssertionError("team is a compartment"))
 
-  private def entry(name: ToolName, requires: Integrity): ToolSet.Entry =
-    ToolSet.Entry(name, "does", ujson.Obj(), false, Retry.Rerun, None, requires, None)
+  private def entry(name: ToolName, requires: Integrity, action: Option[String]): ToolSet.Entry =
+    ToolSet.Entry(name, "does", ujson.Obj(), false, Retry.Rerun, None, requires, action)
 
   private def set(entries: ToolSet.Entry*): ToolSet =
     ToolSet.of(entries.toVector).getOrElse(throw new java.lang.AssertionError("distinct names"))
@@ -24,9 +24,9 @@ object TurnGateTests extends TestSuite {
 
   private val offered =
     set(
-      entry(post, Integrity.Member),
-      entry(read, Integrity.Untrusted),
-      entry(note, Integrity.Outside)
+      entry(post, Integrity.Member, Some("post to channels")),
+      entry(read, Integrity.Untrusted, None),
+      entry(note, Integrity.Outside, None)
     )
 
   private val version: DocumentVersion =
@@ -80,22 +80,21 @@ object TurnGateTests extends TestSuite {
     test("a tool withheld now and offered the round before is named, with the item that cost it") {
       val before = unread(Integrity.Member, offered, Vector.empty)
       val now = reading(Integrity.Member, offered, Vector(issue), issue)
-      TurnGate.withdrawn(before, now) ==> Some(
-        "Withdrawn for the rest of this turn: slack_post, which requires [integrity: member], " +
-          "since you read github_get_issue [integrity: untrusted]; note, which requires " +
-          "[integrity: outside], since you read github_get_issue [integrity: untrusted]."
+      TurnGate.withdrawn(before, now, offered) ==> Some(
+        "From now until you answer, you can't post to channels or use note, because you read " +
+          "a result from a place people outside the team can write in."
       )
       // Withheld already, it is not withdrawn again; nothing newly withheld says nothing.
-      TurnGate.withdrawn(now, unread(Integrity.Untrusted, offered, Vector(guest))) ==> None
+      TurnGate.withdrawn(now, unread(Integrity.Untrusted, offered, Vector(guest)), offered) ==> None
     }
 
     test("the item named is the first whose integrity does not dominate the tool's requirement") {
       val before = unread(Integrity.Member, offered, Vector.empty)
       val now = reading(Integrity.Member, offered, Vector(guest, issue), guest, issue)
-      TurnGate.withdrawn(before, now) ==> Some(
-        "Withdrawn for the rest of this turn: slack_post, which requires [integrity: member], " +
-          "since you read a guest [integrity: outside]; note, which requires " +
-          "[integrity: outside], since you read github_get_issue [integrity: untrusted]."
+      TurnGate.withdrawn(before, now, offered) ==> Some(
+        "From now until you answer, you can't post to channels, because you read something " +
+          "from a guest, written from outside the team; and you can't use note, because you read a " +
+          "result from a place people outside the team can write in."
       )
     }
 
@@ -147,21 +146,28 @@ object TurnGateTests extends TestSuite {
         Set(named("h1")),
         Map(guest.ref -> named("h1"))
       )
-      TurnGate.withdrawn(before, now) ==> Some(
-        "Withdrawn for the rest of this turn: slack_post, which requires [integrity: member], " +
-          "since you read a guest [integrity: outside]."
+      TurnGate.withdrawn(before, now, offered) ==> Some(
+        "From now until you answer, you can't post to channels, because you read something " +
+          "from a guest, written from outside the team."
       )
     }
 
     test(
-      "a stub names the item, its source and level, what reading it withdraws, how, and how to ask it"
+      "a stub says where the item comes from, what reading it costs, how to read it, and how to ask it"
     ) {
-      TurnGate.stub(issue, Fate.Hidden(named("h1"), Vector(post, note))) ==>
-        "Hidden here as h1: something from github_get_issue, believed only at " +
-        "[integrity: untrusted]. Reading it would withdraw slack_post, note for the rest of " +
-        "this turn; to read it, call read_hidden with name h1. To ask it a question answered " +
-        "yes or no, by a number, a date, one of options you list or a short token, without " +
-        "reading it, call extract with name h1."
+      TurnGate.stub(issue, Fate.Hidden(named("h1"), Vector(post, note)), offered) ==>
+        "Hidden here as h1: a result from a place people outside the team can write in. If " +
+        "your answer needs what it says, read it: call read_hidden with name h1. After that " +
+        "you can't post to channels or use note until you've answered. To ask it a short " +
+        "question instead, answered yes or no, with a whole number, a date, one of options " +
+        "you list or a short code, call extract with name h1: that never stops you doing " +
+        "anything."
+      TurnGate.stub(guest, Fate.Hidden(named("h2"), Vector(post)), offered) ==>
+        "Hidden here as h2: something from a guest, written from outside the team. If your " +
+        "answer needs what it says, read it: call read_hidden with name h2. After that you " +
+        "can't post to channels until you've answered. To ask it a short question instead, " +
+        "answered yes or no, with a whole number, a date, one of options you list or a short " +
+        "code, call extract with name h2: that never stops you doing anything."
     }
 
     test("a hidden item's name is h and a number from 1, with no leading zero") {

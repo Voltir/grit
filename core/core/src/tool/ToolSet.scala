@@ -18,6 +18,12 @@ final case class ToolSet private (tools: Vector[ToolSet.Entry]) {
 
   /** The entry for the tool named `name`; `None` when the set has no such tool. */
   def named(name: ToolName): Option[ToolSet.Entry] = tools.find(_.name == name)
+
+  /** What a person can no longer have done when the calls of the tool named `name` are
+    * withheld: its entry's ([[ToolSet.Entry.plainly]]), else "use" and the name, as for an entry
+    * declaring none.
+    */
+  def plainly(name: ToolName): String = named(name).fold(ToolSet.used(name))(_.plainly)
 }
 
 object ToolSet {
@@ -42,7 +48,7 @@ object ToolSet {
     /** What a person can no longer have done when its calls are withheld, in words that follow
       * "you can't": its `action`, else "use" and its name ("use note").
       */
-    def plainly: String = action.getOrElse(s"use ${ToolName.value(name)}")
+    def plainly: String = action.getOrElse(used(name))
 
     /** This entry as a call may reach it from a transaction that `sends` its arguments to the
       * service it runs at, or not: one that declares no destination only when it does; one
@@ -77,6 +83,9 @@ object ToolSet {
   }
 
   val Empty: ToolSet = ToolSet(Vector.empty)
+
+  /* What a tool declaring no action is said as. */
+  private def used(name: ToolName): String = s"use ${ToolName.value(name)}"
 
   /** `entries` as a set, in this order; `Left` naming the first name repeated. */
   def of(entries: Vector[Entry]): Either[DuplicateName, ToolSet] = {
