@@ -4,7 +4,15 @@ import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
-import grit.core.id.{CorpusName, EntryId, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  CorpusName,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{CatalogJson, Grade, TurnProfileId}
 import grit.core.period.Probability
@@ -16,7 +24,7 @@ import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`, an uncleared turn's reason its classification's
@@ -806,6 +814,133 @@ private[turn] object TurnJournal {
   /** A `record-speech` step's output: what became of the draft ([[SpeechJson.writeOutcome]]). */
   given speechSettled: Journaled[Either[TurnFailure, Outcome]] =
     outcome(SpeechJson.writeOutcome, SpeechJson.readOutcome)
+
+  /** A `gate:n` step's output: `{"level", "decided": [{"item", "fate"}], "withheld": [{"tool",
+    * "requires"}]}`, each integrity written ([[Integrity.written]]); an item
+    * `{"ref", "integrity", "source"}`, its ref `{"kind": "own", "seq"}`,
+    * `{"kind": "nearby", "conversation", "seq"}`, `{"kind": "document", "version"}` or
+    * `{"kind": "result", "call"}`; a fate `{"kind": "lowered"}` or
+    * `{"kind": "hidden", "name", "costs": [tool names]}`.
+    */
+  given gated: Journaled[Either[TurnFailure, Gated]] =
+    outcome(writeGated, readGated)
+
+  private def writeGated(g: Gated): ujson.Value =
+    ujson.Obj(
+      "level" -> Integrity.written(g.level),
+      "decided" -> ujson.Arr.from(g.decided.map { d =>
+        val ref = d.item.ref match {
+          case ItemRef.Own(seq) =>
+            ujson.Obj("kind" -> "own", "seq" -> ujson.Num(EntrySeq.value(seq).toDouble))
+          case ItemRef.Nearby(conversation, seq) =>
+            ujson.Obj(
+              "kind" -> "nearby",
+              "conversation" -> ConversationId.value(conversation),
+              "seq" -> ujson.Num(EntrySeq.value(seq).toDouble)
+            )
+          case ItemRef.Document(version) =>
+            ujson.Obj(
+              "kind" -> "document",
+              "version" -> ujson.Num(DocumentVersion.value(version).toDouble)
+            )
+          case ItemRef.Result(call) =>
+            ujson.Obj("kind" -> "result", "call" -> ToolCallId.value(call))
+        }
+        val fate = d.fate match {
+          case Fate.Lowered => ujson.Obj("kind" -> "lowered")
+          case Fate.Hidden(name, costs) =>
+            ujson.Obj(
+              "kind" -> "hidden",
+              "name" -> HiddenName.value(name),
+              "costs" -> ujson.Arr.from(costs.map(ToolName.value))
+            )
+        }
+        ujson.Obj(
+          "item" -> ujson.Obj(
+            "ref" -> ref,
+            "integrity" -> Integrity.written(d.item.integrity),
+            "source" -> d.item.source
+          ),
+          "fate" -> fate
+        )
+      }),
+      "withheld" -> ujson.Arr.from(g.withheld.map { w =>
+        ujson.Obj("tool" -> ToolName.value(w.tool), "requires" -> Integrity.written(w.requires))
+      })
+    )
+
+  private def readGated(v: ujson.Value): Either[String, Gated] = {
+    def field(o: collection.Map[String, ujson.Value], key: String): Either[String, ujson.Value] =
+      o.get(key).toRight(s"gate: no $key")
+    def obj(v: ujson.Value, what: String): Either[String, collection.Map[String, ujson.Value]] =
+      v.objOpt.toRight(s"gate: $what is not an object")
+    def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
+      field(o, key).flatMap(_.strOpt.toRight(s"gate: $key is not a string"))
+    def long(o: collection.Map[String, ujson.Value], key: String): Either[String, Long] =
+      field(o, key).flatMap(
+        _.numOpt.filter(n => n.isWhole).map(_.toLong).toRight(s"gate: $key is not a whole number")
+      )
+    def integrity(o: collection.Map[String, ujson.Value], key: String): Either[String, Integrity] =
+      str(o, key).flatMap(Integrity.read)
+    def tool(text: String): Either[String, ToolName] = ToolName.of(text)
+    def arr(
+        o: collection.Map[String, ujson.Value],
+        key: String
+    ): Either[String, Vector[ujson.Value]] =
+      field(o, key).flatMap(_.arrOpt.map(_.toVector).toRight(s"gate: $key is not an array"))
+    def ref(v: ujson.Value): Either[String, ItemRef] =
+      obj(v, "a ref").flatMap { o =>
+        str(o, "kind").flatMap {
+          case "own" => long(o, "seq").map(s => ItemRef.Own(EntrySeq(s)))
+          case "nearby" =>
+            for {
+              c <- str(o, "conversation")
+              s <- long(o, "seq")
+            } yield ItemRef.Nearby(ConversationId(c), EntrySeq(s))
+          case "document" =>
+            long(o, "version").flatMap(n =>
+              DocumentVersion.of(n).map(ItemRef.Document(_)).toRight(s"gate: version $n")
+            )
+          case "result" => str(o, "call").map(c => ItemRef.Result(ToolCallId(c)))
+          case other => Left(s"gate: no ref kind $other")
+        }
+      }
+    def fate(v: ujson.Value): Either[String, Fate] =
+      obj(v, "a fate").flatMap { o =>
+        str(o, "kind").flatMap {
+          case "lowered" => Right(Fate.Lowered)
+          case "hidden" =>
+            for {
+              name <- str(o, "name").flatMap(HiddenName.read)
+              costs <- arr(o, "costs").flatMap(cs =>
+                sequence(cs.map(_.strOpt.toRight("gate: a cost is not a string").flatMap(tool)))
+              )
+            } yield Fate.Hidden(name, costs)
+          case other => Left(s"gate: no fate kind $other")
+        }
+      }
+    def decided(v: ujson.Value): Either[String, Decided] =
+      for {
+        o <- obj(v, "a decided item")
+        i <- field(o, "item").flatMap(obj(_, "an item"))
+        r <- field(i, "ref").flatMap(ref)
+        at <- integrity(i, "integrity")
+        source <- str(i, "source")
+        f <- field(o, "fate").flatMap(fate)
+      } yield Decided(Item(r, at, source), f)
+    def withheld(v: ujson.Value): Either[String, Withheld] =
+      for {
+        o <- obj(v, "a withheld tool")
+        t <- str(o, "tool").flatMap(tool)
+        requires <- integrity(o, "requires")
+      } yield Withheld(t, requires)
+    for {
+      o <- obj(v, "the gate")
+      level <- integrity(o, "level")
+      ds <- arr(o, "decided").flatMap(ds => sequence(ds.map(decided)))
+      ws <- arr(o, "withheld").flatMap(ws => sequence(ws.map(withheld)))
+    } yield Gated(level, ds, ws)
+  }
 
   private def outcome[A](
       write: A -> ujson.Value,

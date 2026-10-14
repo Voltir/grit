@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
@@ -405,6 +405,38 @@ object TurnJournalTests extends TestSuite {
       j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
         .map(_.map(_.shaped)) ==>
         Right(Right(None))
+    }
+
+    test("a gate is recorded in its pinned form, hidden items and every ref kind among it") {
+      // The recorded form of gate:n, which every later build of the epoch must read back.
+      val j = summon[Journaled[Either[TurnFailure, Gated]]]
+      val pinned =
+        """{"ok":{"level":"member","decided":[""" +
+          """{"item":{"ref":{"kind":"result","call":"c1"},"integrity":"untrusted","source":"github_get_issue"},""" +
+          """"fate":{"kind":"hidden","name":"h1","costs":["slack_post"]}},""" +
+          """{"item":{"ref":{"kind":"own","seq":41},"integrity":"outside","source":"a guest"},""" +
+          """"fate":{"kind":"lowered"}},""" +
+          """{"item":{"ref":{"kind":"nearby","conversation":"c2","seq":4},"integrity":"outside","source":"Ann"},""" +
+          """"fate":{"kind":"lowered"}},""" +
+          """{"item":{"ref":{"kind":"document","version":3},"integrity":"authority","source":"notes"},""" +
+          """"fate":{"kind":"lowered"}}],""" +
+          """"withheld":[{"tool":"slack_post","requires":"member"}]}}"""
+      val three =
+        DocumentVersion.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
+      val gated = j.decode(pinned)
+      gated.map(_.map(_.decided.map(_.item.ref))) ==> Right(
+        Right(
+          Vector(
+            ItemRef.Result(ToolCallId("c1")),
+            ItemRef.Own(EntrySeq(41)),
+            ItemRef.Nearby(ConversationId("c2"), EntrySeq(4)),
+            ItemRef.Document(three)
+          )
+        )
+      )
+      gated.map(j.encode) ==> Right(pinned)
+      assert(j.decode(pinned.replace("\"kind\":\"own\"", "\"kind\":\"mine\"")).isLeft)
+      assert(j.decode(pinned.replace("\"name\":\"h1\"", "\"name\":\"h0\"")).isLeft)
     }
 
     test("a record in neither shape is rejected") {
