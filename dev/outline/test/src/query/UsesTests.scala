@@ -188,6 +188,21 @@ object UsesTests extends TestSuite {
     }
 
     test(
+      "a constructor val read in its case class's own explicit method is a site: MemStore.values in MemStore.get"
+    ) {
+      val (answer, _) = uses(s"$storePackage.MemStore.values")
+      val lines = answer.text.linesIterator.toVector
+      assert(
+        lines.containsSlice(
+          Vector(
+            "  in MemStore.get",
+            "    15  def get(key: String): Option[String] = values.get(key)"
+          )
+        )
+      )
+    }
+
+    test(
       "the uses of a case class's synthetic apply are its construction sites: Nested.apply lists Nested(n) in Nested.of"
     ) {
       val (answer, _) = uses("Nested.apply")
