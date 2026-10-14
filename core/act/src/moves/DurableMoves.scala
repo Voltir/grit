@@ -21,6 +21,7 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
+import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{NameRepair, Pinned}
@@ -30,7 +31,7 @@ import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Integrity, Label, Subject}
 
 /** A planner's moves as durable steps ([[MoveSteps]]), over [[Asking]] and [[Calling]]. */
 object DurableMoves {
@@ -347,7 +348,7 @@ object DurableMoves {
             subject,
             None
           ) match {
-            case Awaited.Rung(_) | Awaited.Known(Outcome.Done(_)) =>
+            case Awaited.Rung(_) | Awaited.Known(Outcome.Done(_, _)) =>
               d.transact(MoveSteps.answer(name), subject)((tx: Tx^) ?=>
                 Calling.answer[String](requests, cs).map(called(_, Tx.floor(tx)))
               ).left
@@ -537,10 +538,13 @@ object DurableMoves {
     Hosted.advertised(entry) match {
       case None => Left(failed(Calling.unapproved(entry.name)))
       case Some(offered) =>
-        // A planner's arguments are its code's, not a model's: nothing is repaired.
+        // A planner's arguments are its code's, not a model's: nothing is repaired, and they
+        // are stamped as grit's own, above every requirement that names no compartment.
         val asSent = Repairs(NameRepair.AsSent, Set.empty)
-        val sent: AssistantBlock.ToolCall =
-          AssistantBlock.ToolCall(ToolCallId(cs.key), ToolName.value(entry.name), arguments)
+        val sent = Mint.tainted[AssistantBlock.ToolCall](
+          AssistantBlock.ToolCall(ToolCallId(cs.key), ToolName.value(entry.name), arguments),
+          Integrity.Authority
+        )
         Toolbox
           .of[{}](offered)
           .left
@@ -554,7 +558,7 @@ object DurableMoves {
 
   /** What an outcome is to a planner, its answer holding nothing above `at`. */
   private def called(o: Outcome, at: Label): Called = o match {
-    case Outcome.Done(text) => Called.Done(text, at)
+    case Outcome.Done(text, _) => Called.Done(text, at)
     case Outcome.Interrupted => Called.Interrupted
     case other => Called.Failed(failed(other))
   }

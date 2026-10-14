@@ -1,6 +1,7 @@
 package grit.core.edge
 
 import grit.core.tool.Outcome
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -12,6 +13,8 @@ object OutcomeJsonTests extends TestSuite {
     test("each outcome is written in its stored form and read back") {
       val all = Vector(
         Outcome.Done("ok") -> """{"kind":"done","text":"ok"}""",
+        Outcome.Done("ok", Some(Integrity.Member)) ->
+          """{"kind":"done","text":"ok","integrity":"member"}""",
         Outcome.Failed("no") -> """{"kind":"failed","why":"no"}""",
         Outcome.Declined(Some("not now")) -> """{"kind":"denied","reason":"not now"}""",
         Outcome.Declined(None) -> """{"kind":"denied","reason":null}""",

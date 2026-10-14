@@ -9,6 +9,7 @@ import scala.util.Using
 import grit.core.clock.{Clock, SetClock}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
+import grit.core.flow.TestTainted
 import grit.core.id.{
   CloseRef,
   DocKey,
@@ -209,7 +210,9 @@ object PluginLiveTests extends TestSuite {
           )
           .fold(d => sys.error(s"$d"), identity)
         tools.bind(
-          AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()),
+          TestTainted.authority(
+            AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj())
+          ),
           Repairs.All
         ) match {
           // Run as the turn runs it: through reads for its turn, bounded by its routing.

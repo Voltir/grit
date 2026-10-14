@@ -1,9 +1,15 @@
 package grit.core.tool
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.approval.Approval
+import grit.core.flow.{Tainted, TestTainted}
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{ArgRepair, NameRepair}
+import grit.core.place.Place
+import grit.core.visibility.Integrity
+import grit.core.visibility.TestLabels.place
 
 import utest.*
 
@@ -34,8 +40,9 @@ object ToolboxTests extends TestSuite {
     t => Outcome.Done(t.toUpperCase)
   )
 
-  private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
-    AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
+  /** A call of `name` with `args`, stamped above every requirement here. */
+  private def call(name: String, args: ujson.Value): Tainted[AssistantBlock.ToolCall] =
+    TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), name, args))
 
   private val box = Toolbox.of(echo, shout) match {
     case Right(b) => b
@@ -101,6 +108,63 @@ object ToolboxTests extends TestSuite {
       boxed.bind(call("github_search", ujson.Str("x")), Repairs.All).map(_.tool) ==>
         Left(CallError.BadArgs(ToolName("github_search"), ArgsError.NotAnObject("\"x\""), "x"))
       Hosted.advertised(entry.copy(asks = true)).map(_.entry) ==> None
+    }
+
+    test(
+      "a call stamped below its tool's requirement is withheld, naming both levels; one at or above it binds"
+    ) {
+      val guarded = Toolbox
+        .of(new Hosted(echo.spec, Gate.Free, (t: String) => t).requiring(Integrity.Member).over {
+          t => Outcome.Done(t)
+        })
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val sent: AssistantBlock.ToolCall =
+        AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
+      def stamped(at: Integrity) = guarded.bind(TestTainted.at(sent, at), Repairs.All)
+      stamped(Integrity.Outside).map(_.tool) ==>
+        Left(CallError.Withheld(ToolName("echo"), Integrity.Member, Integrity.Outside))
+      stamped(Integrity.Outside).left.map(_.message) ==> Left(
+        "The call to `echo` was not run: it needs what this turn has read believed at " +
+          "[integrity: member] or above, and this turn has read something believed only at " +
+          "[integrity: outside]."
+      )
+      stamped(Integrity.Member).map(_.tool) ==> Right(ToolName("echo"))
+      stamped(Integrity.Authority).map(_.tool) ==> Right(ToolName("echo"))
+      // A tool requiring nothing binds a call stamped at the least.
+      box.bind(TestTainted.at(sent, Integrity.Untrusted), Repairs.All).map(_.tool) ==>
+        Right(ToolName("echo"))
+    }
+
+    test("a request an edge was sent binds unstamped, whatever its tool requires") {
+      val guarded = Toolbox
+        .of(new Hosted(echo.spec, Gate.Free, (t: String) => t).requiring(Integrity.Member).over {
+          t => Outcome.Done(t)
+        })
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val sent: AssistantBlock.ToolCall =
+        AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
+      guarded.requested(sent, Repairs.All, None).map(_.tool) ==> Right(ToolName("echo"))
+    }
+
+    test("a tool requires member when it writes and nothing otherwise, unless it declares more") {
+      val writes = Writes
+        .of[Place](VectorMap("general" -> place("slack:T/C1")), p => p, "The channel.")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val writing = Hosted
+        .writing(echo.spec, Gate.Free, (t: String) => t, writes)
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      (
+        echo.entry.requires,
+        writing.entry.requires,
+        writing.over((t, _) => Outcome.Done(t)).entry.requires,
+        new Hosted(echo.spec, Gate.Free, (t: String) => t)
+          .requiring(Integrity.Member)
+          .entry
+          .requires
+      ) ==> (Integrity.Untrusted, Integrity.Member, Integrity.Member, Integrity.Member)
+      // A recorded tool this build lacks keeps what it required.
+      val required = echo.entry.copy(requires = Integrity.Member)
+      Tool.gone(required).entry ==> required
     }
 
     test("a free call binds with nothing to ask, and runs") {

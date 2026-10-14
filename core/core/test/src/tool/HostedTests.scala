@@ -2,6 +2,7 @@ package grit.core.tool
 
 import scala.collection.immutable.VectorMap
 
+import grit.core.flow.{Tainted, TestTainted}
 import grit.core.id.ToolCallId
 import grit.core.message.AssistantBlock
 import grit.core.place.Place
@@ -42,8 +43,9 @@ object HostedTests extends TestSuite {
       case none => throw new java.lang.AssertionError(s"not offered: $none")
     }
 
-  private def call(args: ujson.Value): AssistantBlock.ToolCall =
-    AssistantBlock.ToolCall(ToolCallId("c1"), "post", args)
+  /** A call of `post` with `args`, stamped above what it requires. */
+  private def call(args: ujson.Value): Tainted[AssistantBlock.ToolCall] =
+    TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "post", args))
 
   val tests = Tests {
     test(

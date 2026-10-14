@@ -12,6 +12,7 @@ import grit.core.clock.{Clock, SetClock}
 import grit.core.context.{AssemblyRequest, Window}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
+import grit.core.flow.TestTainted
 import grit.core.id.{
   CallSlot,
   CloseRef,
@@ -409,7 +410,9 @@ object VisibilityLiveTests extends TestSuite {
           ok("assembling")(assembler.assemble(AssemblyRequest(turn, Some(QueryPin)))(using store))
         val slot = CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError("slot"))
         val outcome = tools.bind(
-          AssistantBlock.ToolCall(ToolCallId("recent"), "recent_activity", ujson.Obj()),
+          TestTainted.authority(
+            AssistantBlock.ToolCall(ToolCallId("recent"), "recent_activity", ujson.Obj())
+          ),
           Repairs.All
         ) match {
           // Run as the turn runs it: through reads for its turn, bounded by its routing.

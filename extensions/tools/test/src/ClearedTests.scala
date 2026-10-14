@@ -1,5 +1,6 @@
 package grit.tools
 
+import grit.core.flow.TestTainted
 import grit.core.id.{TestCallSlots, ToolCallId, TurnRef}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.message.AssistantBlock
@@ -56,7 +57,7 @@ object ClearedTests extends TestSuite {
       .of(Cleared.tool(danaAsks))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
-        AssistantBlock.ToolCall(ToolCallId("c1"), "clearance", ujson.Obj()),
+        TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "clearance", ujson.Obj())),
         Repairs.All
       ) match {
       case Right(r: Bound.Reading) =>
@@ -69,7 +70,7 @@ object ClearedTests extends TestSuite {
   }
 
   private def text(o: Outcome): String = o match {
-    case Outcome.Done(t) => t
+    case Outcome.Done(t, _) => t
     case other => throw new java.lang.AssertionError(s"not done: $other")
   }
 

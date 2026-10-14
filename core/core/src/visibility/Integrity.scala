@@ -55,6 +55,9 @@ object Integrity {
   /** [[Level.Member]], no compartment. */
   val Member: Integrity = at(Level.Member)
 
+  /** [[Level.Authority]], no compartment. */
+  val Authority: Integrity = at(Level.Authority)
+
   /** grit's own text: [[Level.Authority]] in every one of `compartments`; the meet's identity. */
   def top(compartments: Compartments): Integrity =
     at(Level.Authority, compartments.declared.toVector*)

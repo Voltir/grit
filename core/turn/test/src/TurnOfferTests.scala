@@ -7,6 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.Answer
 import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
+import grit.core.flow.TestTainted
 import grit.core.id.{
   ConversationId,
   CorpusName,
@@ -827,7 +828,9 @@ object TurnOfferTests extends TestSuite {
       val rebuilt = TurnOffer.toolbox(tooling, offer)
       def bound(name: String): String =
         rebuilt.bind(
-          AssistantBlock.ToolCall(ToolCallId("c1"), name, ujson.Obj("q" -> "grit")),
+          TestTainted.authority(
+            AssistantBlock.ToolCall(ToolCallId("c1"), name, ujson.Obj("q" -> "grit"))
+          ),
           Repairs.All
         ) match {
           case Right(h: Bound.Hosted) => s"hosted ${h.shown}"

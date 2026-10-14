@@ -1,6 +1,7 @@
 package grit.tools
 
 import grit.core.context.SectionTag
+import grit.core.flow.TestTainted
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.persona.Persona
@@ -24,7 +25,10 @@ object AboutTests extends TestSuite {
     Toolbox
       .of(loaded(persona))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
-      .bind(AssistantBlock.ToolCall(ToolCallId("c1"), "about", args), Repairs.All) match {
+      .bind(
+        TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "about", args)),
+        Repairs.All
+      ) match {
       case Right(b: Bound.Free) => b(TestCallSlots.First)
       case other => throw new java.lang.AssertionError(s"not free: $other")
     }

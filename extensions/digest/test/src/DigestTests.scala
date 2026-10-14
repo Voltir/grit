@@ -6,6 +6,7 @@ import scala.util.chaining.*
 
 import grit.core.clock.SetClock
 import grit.core.document.{DocText, Document, DocumentKeeper, InMemoryDocuments}
+import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, TestCallSlots, ToolCallId}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.AssistantBlock
@@ -130,7 +131,9 @@ object DigestTests extends TestSuite {
       )
       .fold(d => sys.error(d.toString), identity)
       .bind(
-        AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args)),
+        TestTainted.authority(
+          AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args))
+        ),
         Repairs.All
       ) match {
       case Right(free: Bound.Free) => free(TestCallSlots.First)

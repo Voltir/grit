@@ -1,6 +1,7 @@
 package grit.tools
 
 import grit.core.approval.Approval
+import grit.core.flow.TestTainted
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.model.{
@@ -52,7 +53,7 @@ object TuningTests extends TestSuite {
       val box = Toolbox
         .of[caps.CapSet^{book}](Tuning.propose(book))
         .fold(d => sys.error(d.toString), identity)
-      box.bind(call(asSent*), Repairs.All) match {
+      box.bind(TestTainted.authority(call(asSent*)), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
           gated.ask ==> "Keep a model setting for deepseek/deepseek-v4.1-flash-20260910 @ fireworks: " +
             "names = as-sent, held in 4 of 5 runs of tool-probe."
@@ -76,7 +77,7 @@ object TuningTests extends TestSuite {
         .of[caps.CapSet^{book}](Tuning.propose(book))
         .fold(d => sys.error(d.toString), identity)
       def refused(args: (String, ujson.Value)*) =
-        box.bind(call(args*), Repairs.All).left.map(_.message)
+        box.bind(TestTainted.authority(call(args*)), Repairs.All).left.map(_.message)
       val sent = asSent.toMap
       refused((sent + ("value" -> ujson.Str("sometimes"))).toSeq*) ==> Left(
         "The call to `propose_model_setting` was not run: `value` takes one of as-sent, harmony-cut, not \"sometimes\"." +
@@ -99,7 +100,7 @@ object TuningTests extends TestSuite {
       val box = Toolbox
         .of[caps.CapSet^{book}](Tuning.propose(book))
         .fold(d => sys.error(d.toString), identity)
-      box.bind(call(asSent*), Repairs.All) match {
+      box.bind(TestTainted.authority(call(asSent*)), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
           gated(Approval.Approved, TestCallSlots.First) ==> Outcome.Failed(
             "Not kept: the database is down"

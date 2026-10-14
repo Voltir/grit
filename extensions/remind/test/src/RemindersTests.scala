@@ -7,6 +7,7 @@ import scala.util.chaining.*
 import grit.core.act.{MoveError, MoveLimits, ScriptedMoves}
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
+import grit.core.flow.TestTainted
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -85,7 +86,9 @@ object RemindersTests extends TestSuite {
         )
         .fold(e => sys.error(e.toString), identity)
         .bind(
-          AssistantBlock.ToolCall(ToolCallId("c1"), ToolNameOf(tool), ujson.Obj.from(args)),
+          TestTainted.authority(
+            AssistantBlock.ToolCall(ToolCallId("c1"), ToolNameOf(tool), ujson.Obj.from(args))
+          ),
           Repairs.All
         ) match {
         case Right(free: Bound.Free) => free(at)

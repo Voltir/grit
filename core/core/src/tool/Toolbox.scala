@@ -1,12 +1,14 @@
 package grit.core.tool
 
 import grit.core.approval.Approval
+import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.CallSlot
 import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
 import grit.core.store.Reads
+import grit.core.visibility.Integrity
 
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[caps.CapSet^{ws}]` cannot edit or run a command unless `ws`
@@ -38,13 +40,26 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
   /** The tool named `name`; `None` when none here has it. */
   def tool(name: ToolName): Option[Tool.Offered^{C}] = tools.find(_.name == name)
 
-  /** `call` read against the tool it names ([[Toolbox.named]]), with `repairs`, ready to
-    * run; or why it cannot be: no tool has that name, or its arguments do not read.
+  /** `call`, as the model stamped it, read against the tool it names ([[Toolbox.named]]) with
+    * `repairs`, ready to run; or why not: no tool has that name, it is stamped below the
+    * tool's `requires` ([[CallError.Withheld]], naming both levels), or its arguments do not
+    * read.
     */
-  def bind(call: AssistantBlock.ToolCall, repairs: Repairs): Either[CallError, Bound^{C}] =
-    tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name, repairs.names)) match {
-      case None => Left(CallError.Unknown(call.name, names))
-      case Some(tool) => tool.bind(call, repairs.args)
+  def bind(call: Tainted[AssistantBlock.ToolCall], repairs: Repairs): Either[CallError, Bound^{C}] =
+    // Every integrity dominates Untrusted, so this check passes: it reads the name sent.
+    Trusted.check(call, Integrity.Untrusted) match {
+      case Left(_) => Left(CallError.Unknown("", names))
+      case Right(read) =>
+        val sent = read.extract
+        tools.find(t => ToolName.value(t.name) == Toolbox.named(sent.name, repairs.names)) match {
+          case None => Left(CallError.Unknown(sent.name, names))
+          case Some(tool) =>
+            val requires = tool.entry.requires
+            Trusted.check(call, requires) match {
+              case Left(below) => Left(CallError.Withheld(tool.name, requires, below.integrity))
+              case Right(checked) => tool.bind(checked.extract, repairs.args)
+            }
+        }
     }
 
   /** `call`, sent to an edge as a request whose destination is `destination`
@@ -114,12 +129,19 @@ sealed trait Bound {
 object Bound {
 
   /** A call that runs here: [[Free]] or [[Gated]]. */
-  sealed trait Runs extends Bound
+  sealed trait Runs extends Bound {
+
+    /** What its results are believed at when its outcome does not say: its tool's
+      * ([[Tool.Offered.output]]).
+      */
+    def output: Integrity
+  }
 
   /** A call of a tool that runs without asking. */
   final class Free private[tool] (
       val tool: ToolName,
       val shown: String,
+      val output: Integrity,
       run: CallSlot => Outcome
   ) extends Runs {
 
@@ -134,6 +156,7 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       val ask: String,
+      val output: Integrity,
       run: CallSlot => Outcome
   ) extends Runs {
 
@@ -157,13 +180,14 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       ask: Option[String],
+      output: Integrity,
       run: (CallSlot, Reads^) => Outcome
   ) extends Bound {
 
     /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
     def through(reads: Reads^): Runs^{this, reads} = ask match {
-      case None => new Free(tool, shown, at => run(at, reads))
-      case Some(shownFirst) => new Gated(tool, shown, shownFirst, at => run(at, reads))
+      case None => new Free(tool, shown, output, at => run(at, reads))
+      case Some(shownFirst) => new Gated(tool, shown, shownFirst, output, at => run(at, reads))
     }
   }
 
@@ -177,7 +201,8 @@ object Bound {
     * sent them, to be read again under `repairs` by the edge; `ask` is what a person is shown
     * first when the tool asks, `None` when it runs without asking; `retry` is its tool's;
     * `destination`, the place a writing tool's call named ([[Writing]]), which `arguments` no
-    * longer hold, `None` for a tool that declares none.
+    * longer hold, `None` for a tool that declares none; `output`, its tool's
+    * ([[Tool.Offered.output]]), what its results are believed at when it runs at no service.
     */
   final class Hosted private[tool] (
       val tool: ToolName,
@@ -186,7 +211,8 @@ object Bound {
       val arguments: ujson.Value,
       val repairs: Set[grit.core.model.ArgRepair],
       val retry: Retry,
-      val destination: Option[Place]
+      val destination: Option[Place],
+      val output: Integrity
   ) extends Bound
 
 }

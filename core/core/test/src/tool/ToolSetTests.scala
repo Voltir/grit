@@ -8,6 +8,7 @@ import grit.core.visibility.TestLabels.place
 import grit.core.visibility.{
   Clearance,
   Compartments,
+  Integrity,
   Label,
   Labelled,
   Level,
@@ -84,6 +85,35 @@ object ToolSetTests extends TestSuite {
         """{"tools":[{"name":"peek","does":"Peeks.","parameters":{"type":"object"},"asks":false,"retry":"rerun"}]}"""
       ujson.write(ToolSet.write(set(peek))) ==> form
       ToolSetId.value(set(peek).id) ==> "bc2b04f8a749b4ea"
+    }
+
+    test("an entry requires member when it writes, and nothing otherwise") {
+      (peek.requires, post.requires) ==> (Integrity.Untrusted, Integrity.Member)
+    }
+
+    test("a set requiring only what its entries' shapes do keeps the form and id it had before") {
+      // Pinned: a set recorded before requirements were stored holds none, and keeps its id.
+      // The hash was computed outside grit: printf '%s' '<the form>' | sha256sum | cut -c1-16.
+      val form =
+        """{"tools":[{"name":"peek","does":"Peeks.","parameters":{"type":"object"},"asks":false,""" +
+          """"retry":"rerun"},{"name":"post","does":"Posts.","parameters":{"type":"object",""" +
+          """"properties":{"text":{}}},"asks":false,"retry":"interrupt","writes":{"describe":""" +
+          """"The channel.","to":[{"name":"general","place":"slack:T/C1"},{"name":"#general",""" +
+          """"place":"slack:T/C1"},{"name":"random","place":"slack:T/C2"}]}}]}"""
+      ujson.write(ToolSet.write(set(peek, post))) ==> form
+      ToolSetId.value(set(peek, post).id) ==> "bebdd30f1ab234cf"
+      ToolSet.read(ujson.read(form)) ==> Right(set(peek, post))
+    }
+
+    test("a requirement off its shape's is stored, read back, and gives the set another id") {
+      val declared = set(
+        peek.copy(requires = Integrity.Member),
+        post.copy(requires = Integrity.Untrusted)
+      )
+      ToolSet.write(declared)("tools").arr.map(_.obj.get("requires").map(_.str)).toVector ==>
+        Vector(Some("member"), Some("untrusted"))
+      ToolSet.read(ToolSet.write(declared)) ==> Right(declared)
+      assert(declared.id != set(peek, post).id)
     }
 
     test("a set reads back from its stored form, and a set differing in retry has another id") {

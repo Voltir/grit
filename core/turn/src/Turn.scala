@@ -1166,7 +1166,8 @@ object Turn {
                   tools,
                   pending,
                   repairs,
-                  pins.reads(env.db).as(Subject.Turn(turn))
+                  pins.reads(env.db).as(Subject.Turn(turn)),
+                  TurnTools.Ungated
                 ) match {
                   case Right(h: Bound.Hosted) if h.ask.isEmpty =>
                     for {
@@ -1204,12 +1205,20 @@ object Turn {
                 tools,
                 pending,
                 repairs,
-                pins.reads(env.db).as(Subject.Turn(turn))
+                pins.reads(env.db).as(Subject.Turn(turn)),
+                TurnTools.Ungated
               ) match {
                 case Left(outcome) =>
                   val named = pending.call.name
                   d.step(slot.step) { () =>
-                    settling.answer(slot, call, named, outcome, None, clock.now())
+                    settling.answer(
+                      slot,
+                      call,
+                      named,
+                      outcome,
+                      Left(Integrity.Untrusted),
+                      clock.now()
+                    )
                   }
                 case Right(free: Bound.Free) =>
                   d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }

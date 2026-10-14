@@ -13,7 +13,7 @@ import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
 import grit.core.tool.{CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
-import grit.core.visibility.{Clearance, Label, Level}
+import grit.core.visibility.{Clearance, Integrity, Label, Level}
 
 import utest.*
 
@@ -242,6 +242,29 @@ object TurnHostedTests extends TestSuite {
         (TestCallSlots.at(turn, index = 1), Permit.Free)
       )
       results(provider).map(_.content) ==> Vector("read a.txt", "read b.txt")
+    }
+
+    test(
+      "a hosted call at a directory, which is no service, is believed at its tool's output, whatever the edge's outcome says"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val trusted = hostedFetch.believed(Integrity.Member)
+      val edge = new Served(
+        new InMemoryEdges,
+        durable,
+        _ => Serve.Now(Outcome.Done("read", Some(Integrity.Authority)))
+      )
+      edge.advertise(Vector(trusted))
+      val provider = model(("t1", "fetch", "a.txt"))
+      durable.run(turn.workflowId)(
+        hostedBody(entries, provider, edge, hosted = Vector(trusted))
+      ) ==> Done
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
+      entries
+        .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
+        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Member))
     }
 
     test("a turn's request records its asker") {

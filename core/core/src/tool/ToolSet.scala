@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.ShortHash
 import grit.core.place.Place
 import grit.core.store.Tx
-import grit.core.visibility.Classification
+import grit.core.visibility.{Classification, Integrity}
 
 /** A tool set as offered to one turn: each tool's name, description, schema, whether it asks
   * a person first, and its retry, in the order offered. Equal sets have equal ids
@@ -24,7 +24,9 @@ object ToolSet {
 
   /** One tool of a set: `parameters` is its schema as the model is shown it, not strict, less
     * [[Writes.Field]]; `writes`, where its calls write outside grit, `None` for a tool that
-    * declares no such destination (its arguments still go to the service it runs at).
+    * declares no such destination (its arguments still go to the service it runs at);
+    * `requires`, the integrity a call must be stamped at to be bound ([[Toolbox.bind]]), by
+    * default its shape's ([[Entry.byShape]]).
     */
   final case class Entry(
       name: ToolName,
@@ -32,7 +34,8 @@ object ToolSet {
       parameters: ujson.Value,
       asks: Boolean,
       retry: Retry,
-      writes: Option[Writes[Place]] = None
+      writes: Option[Writes[Place]],
+      requires: Integrity
   ) {
 
     /** This entry as a call may reach it from a transaction that `sends` its arguments to the
@@ -45,6 +48,25 @@ object ToolSet {
         case None => Option.when(sends)(this)
         case Some(w) => w.narrowed(Tx.writesTo(_, at)).map(n => copy(writes = Some(n)))
       }
+  }
+
+  object Entry {
+
+    /** An entry requiring what its shape does ([[byShape]]). */
+    def apply(
+        name: ToolName,
+        does: String,
+        parameters: ujson.Value,
+        asks: Boolean,
+        retry: Retry,
+        writes: Option[Writes[Place]] = None
+    ): Entry = Entry(name, does, parameters, asks, retry, writes, byShape(writes))
+
+    /** What a tool requires unless it declares otherwise: [[Integrity.Member]] for one that
+      * writes outside grit (`writes` is some), nothing ([[Integrity.Untrusted]]) otherwise.
+      */
+    def byShape(writes: Option[Writes[Place]]): Integrity =
+      writes.fold(Integrity.Untrusted)(_ => Integrity.Member)
   }
 
   val Empty: ToolSet = ToolSet(Vector.empty)
@@ -60,9 +82,10 @@ object ToolSet {
 
   /** The stored form: `{"tools":[{"name","does","parameters","asks","retry"}, …]}`, in the
     * set's order, an entry with writes also holding `"writes": {"describe", "to": [{"name",
-    * "place"}, …]}`, each place written. `"writes"` only on an entry that has some, so a set
-    * without any keeps the form, and the id, it had before. The id hashes it, so a change here
-    * changes every set's id.
+    * "place"}, …]}`, each place written, and one whose `requires` is not its shape's
+    * ([[Entry.byShape]]) holding `"requires"`, written ([[Integrity.written]]). Each only on
+    * an entry that has it, so a set without any keeps the form, and the id, it had before.
+    * The id hashes it, so a change here changes every set's id.
     */
   def write(set: ToolSet): ujson.Value =
     ujson.Obj(
@@ -82,12 +105,15 @@ object ToolSet {
             )
           )
         }
+        if (e.requires != Entry.byShape(e.writes))
+          stored("requires") = Integrity.written(e.requires)
         stored
       })
     )
 
   /** The set stored as `v` ([[write]]'s form), or why it is none; why not, also, when an
-    * entry's parameters declare [[Writes.Field]].
+    * entry's parameters declare [[Writes.Field]]. An entry holding no `"requires"` requires
+    * what its shape does ([[Entry.byShape]]).
     */
   def read(v: ujson.Value): Either[String, ToolSet] = {
     def field(o: collection.Map[String, ujson.Value], key: String): Either[String, ujson.Value] =
@@ -108,7 +134,12 @@ object ToolSet {
           s"the tool $name's parameters declare ${Writes.Field}, which only its writes may name"
         )
         writes <- o.get("writes").fold(Right(None))(w => stored(w).map(Some(_)))
-      } yield Entry(named, does, parameters, asks, retry, writes)
+        requires <- o
+          .get("requires")
+          .fold[Either[String, Integrity]](Right(Entry.byShape(writes)))(r =>
+            r.strOpt.toRight("a tool's requires is not a string").flatMap(Integrity.read)
+          )
+      } yield Entry(named, does, parameters, asks, retry, writes, requires)
     def stored(w: ujson.Value): Either[String, Writes[Place]] =
       for {
         o <- w.objOpt.toRight("a tool's writes is not an object")

@@ -1,6 +1,7 @@
 package grit.core.tool
 
 import grit.core.place.Place
+import grit.core.visibility.Integrity
 
 /** Why a tool call cannot be run. `message` is what the model reads as the call's result. */
 enum CallError {
@@ -25,6 +26,11 @@ enum CallError {
     */
   case Misdirected(tool: ToolName, destination: Option[Place])
 
+  /** It was stamped at `at`, below what `tool` requires, `requires`: this turn read something
+    * believed less than the tool needs, and it does not run.
+    */
+  case Withheld(tool: ToolName, requires: Integrity, at: Integrity)
+
   /** What is wrong, then the tools there are, or what was sent. */
   def message: String = this match {
     case Unknown(name, offered) =>
@@ -41,6 +47,10 @@ enum CallError {
       destination.fold(s"${ToolName.value(tool)} was told no place to write to; it did not run.")(
         at => s"${ToolName.value(tool)} does not write to ${at.written} here; it did not run."
       )
+    case Withheld(tool, requires, at) =>
+      s"The call to `${ToolName.value(tool)}` was not run: it needs what this turn has read " +
+        s"believed at ${Integrity.shown(requires)} or above, and this turn has read something " +
+        s"believed only at ${Integrity.shown(at)}."
   }
 
   /** This error as the call's outcome: [[Outcome.Failed]] with [[message]]. */

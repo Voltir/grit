@@ -124,8 +124,9 @@ object TurnHosted {
           }
       }
     val (requests, askers) = (hosting.requests, hosting.askers)
-    // The service the call went to, whose declared output its result is believed at.
-    val from = place.flatMap(_.service)
+    // The service the call went to, whose declared output its result is believed at; at no
+    // service (a directory, this machine), its tool's.
+    val from = place.flatMap(_.service).toRight(hosted.output)
     outcome.flatMap {
       case Waited.Unsent =>
         d.step(slot.step)(() =>

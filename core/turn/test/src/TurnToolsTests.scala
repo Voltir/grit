@@ -8,7 +8,19 @@ import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
-import grit.core.tool.{Bound, Outcome, Repairs}
+import grit.core.tool.{
+  Args,
+  Bound,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Repairs,
+  Tool,
+  ToolName,
+  ToolSpec,
+  Toolbox
+}
 import grit.core.visibility.{Compartments, Integrity, Output, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -39,9 +51,10 @@ object TurnToolsTests extends TestSuite {
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
     val settling = new TurnTools.Settling(new FakeJot, entries)
-    TurnTools.read(tools(ws), pending, Repairs.All, PublicReads) match {
+    TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, TurnTools.Ungated) match {
       case Left(outcome) =>
-        settling.answer(slot, id, pending.call.name, outcome, None, Instant.EPOCH)
+        val unrun = Left(Integrity.Untrusted)
+        settling.answer(slot, id, pending.call.name, outcome, unrun, Instant.EPOCH)
       case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>
         settling.decide(slot, id, gated, approval, Instant.EPOCH)
@@ -54,13 +67,38 @@ object TurnToolsTests extends TestSuite {
 
   private def isResult(e: Entry): Boolean = EntryId.value(e.id).startsWith("result:")
 
+  /** What a call of `tool`, free and pure, is kept believed at, settled as the turn settles it. */
+  private def ranAt(tool: Tool[String]): Either[TurnFailure, Option[Integrity]] = {
+    val entries = new InMemoryEntryStore
+    val turn = say(entries, "go")
+    val slot = TurnTools.Slot(TestCallSlots.at(turn))
+    val settling = new TurnTools.Settling(new FakeJot, entries)
+    val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
+    val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
+    TurnTools.read(box, sent, Repairs.All, PublicReads, TurnTools.Ungated) match {
+      case Right(free: Bound.Free) =>
+        settling
+          .run(slot, ToolCallId("c"), free, Instant.EPOCH)
+          .map(_ => believed(entries, slot.resultId))
+      case other => throw new java.lang.AssertionError(s"not free: $other")
+    }
+  }
+
+  /** `said`, free, answering `outcome`, its results believed at [[Integrity.Member]]. */
+  private def said(outcome: Outcome): Tool[String] =
+    new Hosted(
+      ToolSpec(ToolName("said"), "Says.", Args.of((p = Field.text("What."))).map(_.p)),
+      Gate.Free,
+      (p: String) => p
+    ).believed(Integrity.Member).over(_ => outcome)
+
   /** What a kept entry is believed at. */
   private def believed(entries: InMemoryEntryStore, id: EntryId): Option[Integrity] =
     entries.get(id)(using TestTx.fake).toOption.flatten.map(_.integrity)
 
   val tests = Tests {
     test(
-      "a hosted call's result is believed at its service's declared output; an own tool's at untrusted"
+      "a hosted call's result is believed at its service's declared output, else at the integrity given"
     ) {
       val github = Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
       val declaring = Visibility
@@ -81,16 +119,30 @@ object TurnToolsTests extends TestSuite {
           slot,
           ToolCallId("c"),
           "issue_read",
-          Outcome.Done("an issue"),
-          Some(github),
+          Outcome.Done("an issue", Some(Integrity.Authority)),
+          Right(github),
           Instant.EPOCH
         )
       hosted.map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Member))
-      val own = new InMemoryEntryStore
-      val ownTurn = say(own, "go")
-      val ran = settle(own, new Files(files), ownTurn, call("peek"))
-      val ownSlot = TurnTools.Slot(TestCallSlots.at(ownTurn))
-      ran.map(_ => believed(own, ownSlot.resultId)) ==> Right(Some(Integrity.Untrusted))
+      val other = new InMemoryEntryStore
+      val otherTurn = say(other, "go")
+      val otherSlot = TurnTools.Slot(TestCallSlots.at(otherTurn))
+      new TurnTools.Settling(new FakeJot, other)
+        .answer(
+          otherSlot,
+          ToolCallId("c"),
+          "read",
+          Outcome.Done("a file"),
+          Left(Integrity.Member),
+          Instant.EPOCH
+        )
+        .map(_ => believed(other, otherSlot.resultId)) ==> Right(Some(Integrity.Member))
+    }
+
+    test("an own tool's result is believed at what its outcome says, else at its tool's") {
+      ranAt(said(Outcome.Done("x"))) ==> Right(Some(Integrity.Member))
+      ranAt(said(Outcome.Done("x", Some(Integrity.Outside)))) ==> Right(Some(Integrity.Outside))
+      ranAt(said(Outcome.Failed("no"))) ==> Right(Some(Integrity.Member))
     }
 
     test("a free call runs, and its result is kept under its fixed id") {

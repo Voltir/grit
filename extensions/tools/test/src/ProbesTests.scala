@@ -1,6 +1,7 @@
 package grit.tools
 
 import grit.core.approval.Approval
+import grit.core.flow.TestTainted
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
@@ -19,7 +20,7 @@ object ProbesTests extends TestSuite {
       "m"
     )
 
-  private def call(name: String, args: ujson.Value): AssistantBlock =
+  private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("p1"), name, args)
 
   /** A pair that ignores strict, leaks harmony tokens, quotes numbers, takes its reasoning
@@ -76,7 +77,10 @@ object ProbesTests extends TestSuite {
       val box = Toolbox
         .of[caps.CapSet^{models}](Probes.probe(models))
         .fold(d => sys.error(d.toString), identity)
-      box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args), Repairs.All) match {
+      box.bind(
+        TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args)),
+        Repairs.All
+      ) match {
         case Right(gated: Bound.Gated) =>
           gated.ask ==> "Probe deepseek/deepseek-v4.1-flash-20260910 @ fireworks: 2 runs, " +
             "about 8 model calls at up to 300 output tokens each."
@@ -110,7 +114,10 @@ object ProbesTests extends TestSuite {
       val box = Toolbox
         .of[caps.CapSet^{models}](Probes.probe(models))
         .fold(d => sys.error(d.toString), identity)
-      box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args), Repairs.All) match {
+      box.bind(
+        TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args)),
+        Repairs.All
+      ) match {
         case Right(gated: Bound.Gated) =>
           gated(Approval.Approved, TestCallSlots.First) ==> Outcome.Failed(
             "No check was answered in 2 runs; the last error: HTTP 503"
@@ -134,7 +141,10 @@ object ProbesTests extends TestSuite {
         .of[caps.CapSet^{models}](Probes.probe(models))
         .fold(d => sys.error(d.toString), identity)
       val one = ujson.Obj("model" -> "x/plain", "runs" -> 1)
-      box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", one), Repairs.All) match {
+      box.bind(
+        TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", one)),
+        Repairs.All
+      ) match {
         case Right(gated: Bound.Gated) =>
           gated(Approval.Approved, TestCallSlots.First) ==> Outcome.Done(
             """Probed x/plain, 1 runs:

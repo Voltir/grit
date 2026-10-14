@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
+import grit.core.flow.TestTainted
 import grit.core.id.{JobName, PluginName, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.identity.Principal
 import grit.core.job.{InMemorySchedules, ScheduleDesk}
@@ -104,7 +105,9 @@ object PluginToolsTests extends TestSuite {
         .fold(d => sys.error(d.toString), identity)
       val outcomes = Vector("book", "book_more").map(tool =>
         box.bind(
-          AssistantBlock.ToolCall(ToolCallId(tool), tool, ujson.Obj("n" -> 1)),
+          TestTainted.authority(
+            AssistantBlock.ToolCall(ToolCallId(tool), tool, ujson.Obj("n" -> 1))
+          ),
           Repairs.All
         ) match {
           case Right(r: Bound.Reading) =>
