@@ -42,6 +42,13 @@ object Routing {
       .getOrElse(cleared.first)
   }
 
+  /** For `picked` = `pick(pins, g)`, `pick(pins, g max floor)`: `picked` when its grade is at or
+    * above `floor`, otherwise the pin [[pick]] gives `floor` among `pins`. Never a pin outside
+    * `pins` but `picked`.
+    */
+  def floored(pins: Pins, picked: Pinned, floor: Grade): Pinned =
+    if (picked.grade.ordinal >= floor.ordinal) picked else pick(pins, floor)
+
   /** `pins` at or below `ceiling`, in order; all of `pins` when none is. */
   def atMost(pins: Pins, ceiling: Grade): Pins =
     Pins.of(pins.all.filter(_.grade.ordinal <= ceiling.ordinal)).getOrElse(pins)

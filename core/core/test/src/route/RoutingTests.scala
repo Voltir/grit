@@ -86,6 +86,38 @@ object RoutingTests extends TestSuite {
         .ref ==> strong
     }
 
+    test("floored keeps a pin at or above the floor, else takes the pin pick gives the floor") {
+      Routing.floored(pins, Routing.pick(pins, Grade.Strong), Grade.Standard).assignment.ref ==>
+        strong
+      Routing.floored(pins, pins.first, Grade.Standard).assignment.ref ==> open
+      Routing.floored(pins, Routing.pick(pins, Grade.Light), Grade.Standard).assignment.ref ==>
+        open
+      Routing.floored(pins, Routing.pick(pins, Grade.Light), Grade.Strong).assignment.ref ==>
+        strong
+      val lowOnly = pinsOf(Grade.Light -> flash, Grade.Standard -> open)
+      Routing.floored(lowOnly, lowOnly.first, Grade.Strong).assignment.ref ==> open
+    }
+
+    test(
+      "floored over pick is pick at the greater of the wanted grade and the floor, for every ladder of up to three rungs"
+    ) {
+      val refs = Vector(flash, open, strong)
+      val grades = Grade.values.toVector
+      val ladders = (1 to 3).flatMap { n =>
+        (1 until n)
+          .foldLeft(grades.map(Vector(_)))((ls, _) => ls.flatMap(l => grades.map(l :+ _)))
+          .map(gs => pinsOf(gs.zip(refs)*))
+      }
+      val wrong = for {
+        p <- ladders
+        wanted <- grades
+        floor <- grades
+        greater = if (floor.ordinal > wanted.ordinal) floor else wanted
+        if Routing.floored(p, Routing.pick(p, wanted), floor) != Routing.pick(p, greater)
+      } yield (p.all.map(_.grade), wanted, floor)
+      (ladders.size, wrong) ==> (39, Vector.empty)
+    }
+
     test("atMost keeps the pins at or below the ceiling in order, and all of them when none is") {
       atMostRefs(pins, Grade.Standard) ==> Vector(open, flash)
       atMostRefs(pins, Grade.Strong) ==> Vector(open, flash, strong)
