@@ -68,7 +68,7 @@ File text: in show and family, each definition's lines after its NN-MM header ar
 
       {"outline": {"command": "<checkout>/scripts/outline", "args": ["mcp"]}}
 
-The launcher is built on first use, without a daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never disturbed), and rebuilt when a source under `dev/outline/src` is newer.
+The launcher is built on first use, without a daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never disturbed), and rebuilt when a source under `dev/outline/src` is newer; either build first says so on stderr, in one `outline: building` line.
 
 ## Roots and freshness
 

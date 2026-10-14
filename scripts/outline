@@ -30,6 +30,9 @@ if [ -f "$launcher" ]; then
   newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
 fi
 if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ] || [ -n "$newer" ]; then
+  # On stderr, so an MCP client's stdout stays JSON-RPC; the build is otherwise silent for its first minute or two.
+  if [ -n "$newer" ]; then why="${newer#"$here"/} is newer than it"; else why="it is not built yet"; fi
+  echo "outline: building the query tool first, since $why; a cold build takes a minute or two" >&2
   build_mill grit.outline.launcher >&2
   # Mill rewrites the launcher only when a source's content changed; a source merely touched (a checkout,
   # a branch switch) would otherwise stay newer than it and send every query back through Mill.
