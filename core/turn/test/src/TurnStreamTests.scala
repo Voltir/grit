@@ -13,6 +13,8 @@ object TurnStreamTests extends TestSuite {
 
   /** A stream that keeps what is written. */
   final class Kept extends StreamWriter {
+    // Replaced whole by `write`, which the writer under test calls on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var pieces: Vector[String] = Vector.empty
     def write(piece: String): Unit = pieces = pieces :+ piece
@@ -20,6 +22,7 @@ object TurnStreamTests extends TestSuite {
 
   /** A clock that reads `at`, moved by the test. */
   final class Clock {
+    // Moved by the test and read by the writer under test, both on the test's one thread.
     @caps.unsafe.untrackedCaptures
     var at = 0L
   }

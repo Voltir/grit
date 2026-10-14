@@ -50,9 +50,9 @@ private[engine] final class DbosPlacements(client: DBOSClient) extends Placement
 
   /** `opening`'s placement queued under its workflow id, unless it is already. */
   private def enqueue(opening: Opening): Unit = {
-    // The array is empty and DBOS only reads it; separation checking treats arrays as mutable.
     client.enqueueWorkflow[String, Exception](
       Stitches.enqueueOptions(opening),
+      // The array is empty and DBOS only reads it; separation checking treats arrays as mutable.
       caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
     )
     ()

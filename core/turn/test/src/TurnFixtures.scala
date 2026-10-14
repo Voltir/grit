@@ -165,6 +165,7 @@ object TurnFixtures {
     * a database error, "down".
     */
   def readsAskers(reads: Vector[Either[StoreError, Option[Principal]]]): Askers = new Askers {
+    // Replaced whole by `of`, which the turn under test calls on the test's one thread.
     @caps.unsafe.untrackedCaptures
     private var left = reads
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = {
@@ -317,6 +318,8 @@ object TurnFixtures {
 
   /** The stub provider, keeping every request it was sent. */
   final class RecordingProvider(fail: Boolean = false) extends Provider {
+    // Replaced whole by the fake's own calls, which the turn under test makes on the test's
+    // one thread; read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
@@ -328,6 +331,8 @@ object TurnFixtures {
 
   /** The system's time, with waits that return at once, each kept in `waited`. */
   final class NoWait extends Clock {
+    // Replaced whole by `sleep`, which the turn under test calls on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var waited = Vector.empty[scala.concurrent.duration.FiniteDuration]
 
@@ -341,6 +346,8 @@ object TurnFixtures {
     * with `error`, as an upstream that drops the stream does.
     */
   final class Flaky(failures: Int, error: ProviderError) extends Provider {
+    // Counted by the fake's own calls, which the turn under test makes on the test's one
+    // thread; read by those calls and the test's assertions alone.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -362,6 +369,8 @@ object TurnFixtures {
     */
   final class Scripted(script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant])
       extends Provider {
+    // Replaced whole by the fake's own calls, which the turn under test makes on the test's
+    // one thread; read by those calls and the test's assertions alone.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
@@ -399,6 +408,8 @@ object TurnFixtures {
 
   /** The stub, noting as it is called whether `entries` already hold a window record. */
   final class Peeking(entries: EntryStore) extends Provider {
+    // Replaced whole by the fake's own calls, which the turn under test makes on the test's
+    // one thread; read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var sawWindow: Vector[Boolean] = Vector.empty
 
@@ -412,6 +423,8 @@ object TurnFixtures {
     * as a crashed process would, mid-stream.
     */
   final class DiesMidStream(before: Int) extends Provider {
+    // Counted by the fake's own calls, which the turn under test makes on the test's one
+    // thread; read by those calls and the test's assertions alone.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -493,6 +506,8 @@ object TurnFixtures {
     * nothing.
     */
   final class Files(files: Map[String, String]) extends Workspace {
+    // Counted by `read`, which the turn's tools call on the test's one thread; read by the
+    // test's assertions after.
     @caps.unsafe.untrackedCaptures
     var reads = 0
 
@@ -600,6 +615,8 @@ object TurnFixtures {
 
     val registration: Registration = edges.register(Set(at))
 
+    // Replaced whole by `take` and `resume`, which the turn under test reaches through
+    // dispatch and settle on the test's one thread; `sent` is read by the test's assertions.
     @caps.unsafe.untrackedCaptures
     var sent = Vector.empty[ToolRequest]
 
@@ -1347,6 +1364,8 @@ object TurnFixtures {
 
   /** The stub classifier, counting the questions it was asked, call by call. */
   final class CountingClassifier(fail: Boolean = false) extends Classifier {
+    // Counted and replaced whole by `answer`, which the turn under test calls on the test's
+    // one thread; read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -1414,6 +1433,8 @@ object TurnFixtures {
     * when `answers` is `None`, unreadable when asked any other number of questions.
     */
   final class Judge(answers: Option[(Double, Double)]) extends Classifier {
+    // Counted by `answer`, which the turn under test calls on the test's one thread; read by
+    // the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -1440,6 +1461,8 @@ object TurnFixtures {
 
   /** Answers every yes/no question `yes`, at the judge's usage, keeping the questions asked. */
   final class AnswersYes(yes: Double) extends Classifier {
+    // Replaced whole by `answer`, which the turn under test calls on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Question]
 
@@ -1688,6 +1711,8 @@ object TurnFixtures {
 
   /** Answers every choice with its first option at 0.9, counting its calls. */
   final class FirstOption extends Classifier {
+    // Counted by `answer`, which the turn under test calls on the test's one thread; read by
+    // the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -1751,6 +1776,7 @@ object TurnFixtures {
     val principals = new grit.core.store.InMemoryPrincipals
 
     /** The openings whose placements the last [[run]] waited for. */
+    // Replaced whole by `run`, which the test calls on its one thread; read by its assertions.
     @caps.unsafe.untrackedCaptures
     var waited: Vector[grit.core.stitch.Opening] = Vector.empty
 

@@ -69,6 +69,8 @@ object TurnRouteTests extends TestSuite {
     * `before` runs first, as a change landing while the turn assembles.
     */
   private final class Asking(before: () => Unit = () => ()) extends ContextAssembler {
+    // Replaced whole by `assemble`, which the turn under test calls on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[AssemblyRequest]
     def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
@@ -82,6 +84,8 @@ object TurnRouteTests extends TestSuite {
 
   /** Reads at internal, under `visibility`, until [[rise]]; at restricted after. */
   private final class Rising(visibility: Visibility) extends Db {
+    // Set once by `rise` and read by `read`, both called on the test's one thread, so each
+    // read sees the floor as the calls before it left it.
     @caps.unsafe.untrackedCaptures
     var risen = false
     def rise(): Unit = risen = true
@@ -547,6 +551,7 @@ object TurnRouteTests extends TestSuite {
         .fold(d => throw new java.lang.AssertionError(d.toString), identity)
       // The floor rises as the model calls the tool.
       val provider = new Provider {
+        // Counted by `complete`, which the turn under test calls on the test's one thread.
         @caps.unsafe.untrackedCaptures
         var calls = 0
         def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {

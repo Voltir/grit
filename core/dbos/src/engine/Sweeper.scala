@@ -286,11 +286,11 @@ private[engine] final class Sweeper(
   /** A variant's shadows to enqueue, and those passed over as stuck. */
   private final case class Due(fresh: Vector[ShadowRef], stuck: Vector[ShadowRef])
 
-  // A repeated enqueue of the same id is a no-op. The array is empty and DBOS only reads
-  // it; separation checking treats arrays as mutable.
+  // A repeated enqueue of the same id is a no-op.
   private def enqueue(attempt: CloseRef): Unit = {
     val _ = client.enqueueWorkflow[String, Exception](
       Closes.enqueueOptions(attempt),
+      // The array is empty and DBOS only reads it; separation checking treats arrays as mutable.
       caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
     )
   }

@@ -43,6 +43,8 @@ object TurnLoopTests extends TestSuite {
       replies: Vector[Either[TurnFailure, Message.Assistant]],
       recorded: Either[TurnFailure, Unit] = Right(())
   ) extends TurnLoop.Moves {
+    // Replaced whole by `call`, which the loop under test makes on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var made = Vector.empty[String]
 

@@ -564,10 +564,10 @@ final class SqlInbox(
   /** Enqueues the workflow `options` names, with no arguments. */
   private def enqueue(options: EnqueueOptions): Either[InboxError, Unit] =
     try {
-      // A repeated enqueue of the same id is a no-op (`ON CONFLICT (workflow_uuid)`). The
-      // array is empty and DBOS only reads it; separation checking treats arrays as mutable.
+      // A repeated enqueue of the same id is a no-op (`ON CONFLICT (workflow_uuid)`).
       client.enqueueWorkflow[String, Exception](
         options,
+        // The array is empty and DBOS only reads it; separation checking treats arrays as mutable.
         caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
       )
       Right(())

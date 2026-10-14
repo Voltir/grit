@@ -51,6 +51,9 @@ object TurnStream {
     */
   final class Writer(out: StreamWriter, attempt: String, now: () => Long) {
 
+    // Private, each an immutable value replaced whole. A writer serves one attempt, whose
+    // deltas a provider tells in order on the thread running the step (Provider.stream calls
+    // onDelta before it returns), then flushes: no two of its calls overlap.
     @caps.unsafe.untrackedCaptures
     private var pending: Option[Delta] = None
 

@@ -37,8 +37,11 @@ object TurnModelsTests extends TestSuite {
     */
   final class Switching(
       calls: Provider^,
+      // Replaced whole by the test between runs, on its one thread, never during one.
       @caps.unsafe.untrackedCaptures var now: Either[String, Catalog]
   ) extends Models {
+    // Replaced whole by `provider`, which the turn under test calls on the test's one thread;
+    // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Pinned]
 

@@ -44,6 +44,8 @@ object TurnTests extends TestSuite {
 
   /** A provider failing its first call with `error`, answering as the stub after. */
   private final class FailsOnce(error: ProviderError) extends Provider {
+    // Counted by `complete`, which the turn under test calls on the test's one thread; read by
+    // those calls and the test's assertions alone.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 

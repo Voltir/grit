@@ -49,6 +49,8 @@ final class InMemoryDurable(
     case Marker
   }
 
+  // Each of the fake's fields below is private, an immutable value replaced whole by the
+  // fake's own calls, which its test makes on one thread; nothing outside the fake holds one.
   @untrackedCaptures
   private var journals = Map.empty[WorkflowId, Vector[(String, Recorded)]]
 
@@ -173,6 +175,8 @@ final class InMemoryDurable(
 
   private final class Run(workflowId: WorkflowId) extends Durable {
 
+    // Made fresh for one call of `run` or `replay` and advanced only by its own steps, on the
+    // test's thread, inside that call.
     @untrackedCaptures
     private var next = 0
 
