@@ -65,6 +65,10 @@ In dependency order, each with the core packages it imports:
 - **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a
   day; kept after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`, `speech`
 - **`durable`**: steps that survive a crash, and waits for a message. ← `id`, `store`
+- **`flow`**: values that carry the integrity they are believed at (ADR 0036): unchecked
+  (`Tainted`) or checked (`Trusted`), raised only by an endorser holding `Endorse`, and a turn's
+  cell, which only falls. Raw values become these only through `Mint`, which only `grit.turn`,
+  `grit.act` and `grit.kit` may name (enola-intent.yaml). ← `visibility`, `durable`
 - **`approval`**: a person's answer to a gated tool call. ← `id`
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
 - **`stitch`**: a Slack thread's first message joined to an exchange in its room (ADR 0023).
