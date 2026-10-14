@@ -4,7 +4,8 @@ import grit.core.id.{ConversationId, WorkflowId}
 import grit.eval.harness.capture.Part
 import grit.eval.harness.reply.Judged
 import grit.eval.harness.score.{Priced, Prices, Rates, Recipe, Shift}
-import grit.eval.harness.stats.{Mills, Proportion}
+import grit.core.message.Cost
+import grit.eval.harness.stats.Proportion
 
 /** One variant of a recipes run: its name, its [[Recipe]] against shipped, and each reference
   * turn judged under it, with the turn's conversation, in the reference's order.
@@ -241,7 +242,7 @@ private[report] object RecipeLines {
     Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
       rows.map(_.mkString("| ", " | ", " |"))
 
-  private def mills(usd: Double): String = Mills.figure(BigDecimal(usd))
+  private def mills(usd: Double): String = Cost.mills(BigDecimal(usd))
 
   /** A per-token rate in USD as m$ per 1000 tokens, four significant digits. */
   private def perThousand(usd: Double): String = f"${usd * 1e6}%.4g"

@@ -4,6 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
+import grit.core.message.Cost as MessageCost
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Bound, Earning, Gate, Reading}
@@ -44,7 +45,7 @@ import grit.eval.harness.score.{
   Tag,
   Target
 }
-import grit.eval.harness.stats.{Estimate, Mills, Proportion}
+import grit.eval.harness.stats.{Estimate, Proportion}
 
 /** A run to report on: its log's file `name`, the log, its capture's cases, and the labels in
   * force.
@@ -407,7 +408,7 @@ object Report {
     Vector(
       s"## Spend and latency${if (which.isEmpty) "" else s": $which"}",
       "",
-      s"spent: ${s.spent.fold("no footer")(Mills.figure)}; rows ${s.rows}: answered " +
+      s"spent: ${s.spent.fold("no footer")(MessageCost.mills)}; rows ${s.rows}: answered " +
         s"${s.counts.answered} (cached ${s.counts.cached}), failed ${s.counts.failed}, " +
         s"skipped ${s.counts.skipped}",
       s"tokens of the rows answered: input ${s.input}, output ${s.output}",
@@ -698,7 +699,7 @@ object Report {
   private def size(run: String, s: Size): String = {
     def per(p: Option[PerCall], f: Double => String) =
       p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
-    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => Mills.figure(BigDecimal(x)))} |"
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => MessageCost.mills(BigDecimal(x)))} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"

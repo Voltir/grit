@@ -26,8 +26,8 @@ the rules each package keeps that its signatures cannot state.
 Packages, each importing only those above it:
 
 - **`stats`**: estimates and proportions with their intervals, clustered, over Student's t and
-  Wilson's interval; and `Mills`, a USD amount as every report shows a price (`m$2.9`). Pure,
-  naming nothing of grit's.
+  Wilson's interval. Pure, naming nothing of grit's. A report shows a price as core's
+  `Cost.mills` writes it (`m$2.9`).
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt

@@ -1,12 +1,12 @@
 package grit.eval.harness.report
 
 import grit.core.id.WorkflowId
-import grit.core.message.Tokens
+import grit.core.message.{Cost, Tokens}
 import grit.core.tool.ToolName
 import grit.eval.harness.capture.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.score.{Calls, Paid, Quantiles, Shapes, Slice, Structure, Unreplied, Where}
-import grit.eval.harness.stats.{Mills, Proportion}
+import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 
 /** [[Report.turns]]'s sections. */
@@ -297,7 +297,7 @@ private[report] object TurnLines {
       if (named.isEmpty) "—" else named.mkString(", "),
       t.window.fold("—")(w => s"${Tokens.value(w.tokens)}"),
       first.fold("—")(s => s"${Tokens.value(s.estimated)} / ${Tokens.value(s.usage.input)}"),
-      Mills.figure(c),
+      Cost.mills(c),
       t.window
         .map(w => Support.top(w.parts, 3))
         .filter(_.nonEmpty)
@@ -340,7 +340,7 @@ private[report] object TurnLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  private def mills(x: Double): String = Mills.figure(BigDecimal(x))
+  private def mills(x: Double): String = Cost.mills(BigDecimal(x))
 
   private def prob(x: Double): String = f"$x%.2f"
 }

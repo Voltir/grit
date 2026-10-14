@@ -14,7 +14,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.message.{AssistantBlock, Cost, Message, Tokens}
 import grit.core.period.Probability
 import grit.core.speech.SpeechJson
 import grit.core.stitch.{Offered, Placed}
@@ -22,7 +22,6 @@ import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
 import grit.eval.harness.capture.Spent
-import grit.eval.harness.stats.Mills
 import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
 
 /** How long a tool result the file shows may be. */
@@ -64,7 +63,7 @@ object SentMarkdown {
     val cost = sent.spent.map(_._2.usage.costUsd)
     val total =
       if (cost.isEmpty || cost.exists(_.isEmpty)) "unpriced"
-      else Mills.figure(cost.flatten.sum)
+      else Cost.mills(cost.flatten.sum)
     val models = sent.spent.map(_._2.model).distinct
     add(
       s"# Turn ${TurnSeq.value(sent.turn.turnSeq)} of ${ConversationId.value(sent.turn.conversationId)}: the context it was sent",
@@ -210,7 +209,7 @@ object SentMarkdown {
       }
       val usage = row.fold("")(s =>
         s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cachedInput)} cached), " +
-          s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Mills.figure)}; "
+          s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Cost.mills)}; "
       )
       val tools = request.use match {
         case grit.core.provider.ToolUse.Auto => "tools on"
@@ -477,6 +476,6 @@ object SentMarkdown {
     }
     s"| `${EntryId.value(entry)}` | $role | `${s.model}` | ${Tokens.value(s.usage.input)} | " +
       s"${Tokens.value(s.usage.cachedInput)} | ${Tokens.value(s.usage.output)} | " +
-      s"${s.usage.costUsd.fold("unpriced")(Mills.figure)} | ${Tokens.value(s.estimated)} |"
+      s"${s.usage.costUsd.fold("unpriced")(Cost.mills)} | ${Tokens.value(s.estimated)} |"
   }
 }
