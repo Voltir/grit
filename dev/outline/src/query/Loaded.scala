@@ -25,10 +25,10 @@ final case class Loaded(
 object Loaded {
   val empty: Loaded = Loaded(Map.empty)
 
-  /** The `.tasty` files one inspector run reads for `uses`. One run over 1600 files exhausted the CLI's 512 MB heap in the inspector's tree walk, and the 1573 candidates of `grit.core.act.MoveLimits.of` complete in runs of 800. */
-  val readBatch: Int = 800
+  /** The `.tasty` files one inspector run reads, for definitions and for `uses`: a run holds every tree it read until it ends. In runs of 800, `uses grit.core.model.UsageLedger.of` (resolved by last segment, so reading nearly every package) ran the CLI's 512 MB heap through full collections; in runs of 400 the qualified `grit.core.store.UsageLedger.of` needs none. */
+  val readBatch: Int = 400
 
-  /** `tasty`'s definitions, reading (in one inspector run) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
+  /** `tasty`'s definitions, reading (in runs of `readBatch` files) only files absent or changed and not failed at their current mtime; the new cache; how many files were read. */
   def defns(
       root: Root,
       layout: Layout,
@@ -36,14 +36,17 @@ object Loaded {
       in: Loaded
   ): Either[String, (Vector[Defn], Loaded, Int)] = {
     val stale = tasty.filter(p => !(cachedAt(in, p) || failedAt(in, p)))
-    val read: Either[String, Read.Batch] =
-      if (stale.isEmpty) Right(Read.Batch(Map.empty, Vector.empty))
-      else Read.defnsByTasty(root, layout, stale)
-    read.map { batch =>
-      val next = withDefns(in, stale, batch)
-      val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
-      (all, next, stale.size)
-    }
+    stale
+      .grouped(readBatch)
+      .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
+        acc.flatMap(state =>
+          Read.defnsByTasty(root, layout, batch).map(read => withDefns(state, batch, read))
+        )
+      }
+      .map { next =>
+        val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
+        (all, next, stale.size)
+      }
   }
 
   /** `in` with each of `files` cached at its current mtime as `batch` read it, and each file `batch` could not read remembered as failed. */

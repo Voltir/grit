@@ -90,20 +90,26 @@ object Read {
     val byFile = mutable.Map.empty[os.Path, Vector[Use]]
     val found = mutable.ListBuffer.empty[Use]
     val classes = layout.classesDirs(root)
-    val sources = mutable.Map[String, String]()
+    val sources = mutable.Map[String, SourceText]()
+    // One copy of each repeated string a run's references hold (targets, files, owners, lines), kept for the run.
+    val shared = mutable.HashMap.empty[String, String]
+    def one(s: String): String = shared.getOrElseUpdate(s, s)
     val inRepoByTop = mutable.Map[String, Boolean]()
     val foreign = mutable.ListBuffer.empty[String]
     val unreadable = mutable.ListBuffer.empty[(os.Path, String)]
     val prefix = root.dir.toString + "/"
-    def source(path: String): String =
+    def sourceText(path: String): SourceText =
       sources.getOrElseUpdate(
         path,
-        if (path.startsWith(prefix)) os.read(os.Path(path))
-        else {
-          foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
-          ""
-        }
+        SourceText(
+          if (path.startsWith(prefix)) os.read(os.Path(path))
+          else {
+            foreign += s"a source file recorded at '$path' is outside ${root.dir}: this out/ was built in another checkout; rebuild it here"
+            ""
+          }
+        )
       )
+    def source(path: String): String = sourceText(path).text
     val inspector = new Inspector {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*
@@ -155,16 +161,9 @@ object Read {
           if (j == 0 || src(j - 1) == '\n') j else i
         }
 
-        /** The 1-based line holding offset `i`. */
-        def lineOf(src: String, i: Int): Int = src.take(i).count(_ == '\n') + 1
-
         /** The index of the last non-space character at or before `i`, or 0 when there is none. */
         def lastNonSpace(src: String, i: Int): Int =
           if (i > 0 && src(i).isWhitespace) lastNonSpace(src, i - 1) else math.max(i, 0)
-
-        /** The whole lines `from` to `to`, 1-based and both included, as the file has them: joined by newlines, nothing trimmed. */
-        def wholeLines(src: String, from: Int, to: Int): String =
-          src.split("\n", -1).slice(from - 1, to).mkString("\n")
 
         // The offset of the doc comment opening that ends just before `start`, and the offset after its close.
         def docOf(src: String, start: Int): Option[(Int, Int)] = {
@@ -317,7 +316,8 @@ object Read {
             refs: Vector[grit.outline.model.Ref],
             parents: Vector[String]
         ): Defn = {
-          val src = source(p.sourceFile.path)
+          val text = sourceText(p.sourceFile.path)
+          val src = text.text
           // A cut outside the definition's own span (a pattern-bound val's right-hand side starts before it) leaves its
           // whole source line as the signature, and no body.
           val inSpan = p.start <= cut && cut <= p.end
@@ -345,16 +345,16 @@ object Read {
           val docText = doc.map { case (open, closeEnd) =>
             slice(src, lineStart(src, open), closeEnd)
           }
-          val firstLine = lineOf(src, docStart)
-          val lastLine = lineOf(src, p.end - 1)
+          val firstLine = text.lineOf(docStart)
+          val lastLine = text.lineOf(p.end - 1)
           // The head ends on the line of the signature's last character, before the cut; the body is the whole lines after it.
           val headEnd =
-            if (inSpan) lineOf(src, math.max(p.start, lastNonSpace(src, cut - 1)))
-            else lineOf(src, p.start)
-          val head = wholeLines(src, firstLine, headEnd)
+            if (inSpan) text.lineOf(math.max(p.start, lastNonSpace(src, cut - 1)))
+            else text.lineOf(p.start)
+          val head = text.wholeLines(firstLine, headEnd)
           val body =
             if (hasBody && inSpan && headEnd < lastLine)
-              Some(wholeLines(src, headEnd + 1, lastLine))
+              Some(text.wholeLines(headEnd + 1, lastLine))
             else None
           val flags = sym.flags
           Defn(
@@ -505,15 +505,13 @@ object Read {
                   case _: Select => ref.pos.endLine + 1
                   case _ => ref.pos.startLine + 1
                 }
-                val text =
-                  source(path).linesIterator.drop(line - 1).nextOption().map(_.trim).getOrElse("")
                 found += Use(
-                  target = name,
+                  target = one(name),
                   targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
-                  file = path.stripPrefix(prefix),
+                  file = one(path.stripPrefix(prefix)),
                   line = line,
                   enclosing = enclosing.headOption.getOrElse(""),
-                  text = text
+                  text = one(sourceText(path).line(line).trim)
                 )
               }
             }
@@ -524,7 +522,7 @@ object Read {
                   if d.symbol.flags.is(Flags.Synthetic) && d.symbol.maybeOwner.isClassDef =>
                 ()
               case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
-                enclosing = cleanFullName(d.symbol.fullName) :: enclosing
+                enclosing = one(cleanFullName(d.symbol.fullName)) :: enclosing
                 super.traverseTree(tree)(owner)
                 enclosing = enclosing.tail
               case ref @ (_: Ident | _: Select) =>
@@ -572,6 +570,49 @@ object Read {
           )
         else Left(complaint(captured, tasty.size))
     }
+  }
+
+  /** A source file's text, with where each of its lines starts, so that a line is found without rescanning the text. */
+  private[read] final class SourceText(val text: String) {
+    // The offset of each '\n', ascending.
+    private val newlines: Array[Int] = {
+      val found = Array.newBuilder[Int]
+      var at = text.indexOf('\n')
+      while (at >= 0) {
+        found += at
+        at = text.indexOf('\n', at + 1)
+      }
+      found.result()
+    }
+
+    /** The 1-based line holding offset `i`: one more than the newlines before it, `i` clamped into the text. */
+    def lineOf(i: Int): Int = {
+      val at = i.max(0).min(text.length)
+      // The count of newlines at offsets below `at`.
+      @scala.annotation.tailrec
+      def below(lo: Int, hi: Int): Int =
+        if (lo >= hi) lo
+        else {
+          val mid = (lo + hi) >>> 1
+          if (newlines(mid) < at) below(mid + 1, hi) else below(lo, mid)
+        }
+      below(0, newlines.length) + 1
+    }
+
+    /** The whole lines `from` to `to`, 1-based and both included, as the file has them, newlines between and none after; lines outside the file are left out. */
+    def wholeLines(from: Int, to: Int): String = {
+      val first = from.max(1)
+      val last = to.min(newlines.length + 1)
+      if (last < first) "" else text.substring(startOf(first), endOf(last))
+    }
+
+    /** Line `n`, 1-based, without its line ending; empty when the file has no such line. */
+    def line(n: Int): String =
+      if (n < 1 || n > newlines.length + 1) ""
+      else text.substring(startOf(n), endOf(n)).stripSuffix("\r")
+
+    private def startOf(n: Int): Int = if (n == 1) 0 else newlines(n - 2) + 1
+    private def endOf(n: Int): Int = if (n > newlines.length) text.length else newlines(n - 1)
   }
 
   /** A full name without the `$` suffixes of modules and classes, and without package object segments. */
