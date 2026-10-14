@@ -21,7 +21,9 @@ In show and family, a class, trait, object or enum printed without its body ends
 anchor for an Edit that adds a member to it (File text, below); no other definition has one.
 
 **show**: To read or call a definition: its signature and Scaladoc, with one-line outlines of the
-project types it names. Bodies only for members named with `--body`. A member of a shown type not
+project types it names. Bodies only for members named with `--body`; a path there (`--body Settling.began`) reaches
+a nested member, and a bare name a type's own members lack is looked for in its nested owners, printed from one owner
+or named with each when several have it. A member of a shown type not
 named in `--body` prints its doc's first sentence only, its size tag saying how much more there is;
 `--docs` prints every doc whole (File text, below, says which of those lines are file text). After the definitions, one
 line per named symbol counts the tests in test sources that exercise it:

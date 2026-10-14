@@ -1302,8 +1302,15 @@ object Query {
     val shown = tops.flatMap(d => d +: d.members.filter(m => withPrivate || !m.isPrivate))
     val names = shown.map(_.name).distinct.sorted
     val privateNames = tops.flatMap(_.members.filter(_.isPrivate)).map(_.name).toSet
-    bodies.toVector.sorted
-      .filterNot(name => names.contains(name))
+    val nested = tops.map(Render.nestedBodies(_, bodies, withPrivate))
+    // A bare name or a path a nested member answers, or one several nested owners hold, which its own note names.
+    val reached = nested.flatMap(_._1).flatMap(m => Vector(m.name, m.fullName)).toSet
+    val several = nested.flatMap(_._2)
+    def answered(name: String): Boolean =
+      reached.contains(name) || reached.exists(_.endsWith("." + name)) ||
+        several.exists(_.startsWith(s"-- --body $name is in several owners"))
+    several ++ bodies.toVector.sorted
+      .filterNot(name => names.contains(name) || answered(name))
       .map { name =>
         if (privateNames.contains(name)) s"-- --body $name is private: add --private"
         else s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"

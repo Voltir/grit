@@ -50,7 +50,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut; a type's members named in `bodies` follow its head, before its other members, and they, that head and a named definition in `bodies` print whatever `cap`. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body, and the nested members `nestedBodies` picks for it print whole, under their owner-qualified names), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut; a type's members named in `bodies` follow its head, before its other members, and they, that head and a named definition in `bodies` print whatever `cap`. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -70,6 +70,10 @@ object Render {
     def headed(d: Defn, inContext: Boolean): Vector[String] =
       Vector(headerLine(d, inContext), d.head)
 
+    // A definition named by a path below the shown type: its header names it, and its text prints whole.
+    def entryWhole(d: Defn): Vector[String] =
+      headed(d, inContext = false) ++ (if (d.body.nonEmpty) d.body.toVector else closingLines(d))
+
     def entry(d: Defn, inContext: Boolean): Vector[String] =
       headed(d, inContext) ++
         (if (bodies.contains(d.name) && d.body.nonEmpty) d.body.toVector else closingLines(d))
@@ -85,12 +89,16 @@ object Render {
       val topLevel = !ownerRelative(d).contains('.')
       if (isType(d)) {
         // A constructor val's lines are the type's own head, already shown.
-        val (asked, others) = d.members
+        val (askedOwn, others) = d.members
           .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
-          .map(m => Piece(memberEntry(m), ownerRelative(m), asked = bodies.contains(m.name)))
-          .partition(_.asked)
+          .partition(m => bodies.contains(m.name))
+        // A nested member --body names is printed whole under its owner-qualified name.
+        val (deeper, _) = nestedBodies(d, bodies, withPrivate)
+        val asked = (askedOwn.map(m => (m, memberEntry(m))) ++ deeper.map(m => (m, entryWhole(m))))
+          .sortBy(_._1.lines.start)
+          .map { case (m, lines) => Piece(lines, ownerRelative(m), asked = true) }
         // What --body names comes first, so a budget spends on it before the rest.
-        val members = asked ++ others
+        val members = asked ++ others.map(m => Piece(memberEntry(m), ownerRelative(m)))
         val head = Piece(headed(d, topLevel), ownerRelative(d), asked = asked.nonEmpty)
         val closing = closingLines(d)
         if (members.size <= 1)
@@ -171,6 +179,50 @@ object Render {
     case Kind.Given => "given"
     case Kind.TypeAlias => "type"
     case Kind.Opaque => "opaque type"
+  }
+
+  /** What `bodies` names below `d`'s own members: `picked`, the members a dotted path from `d` names (`Inner.deep`, or
+    * `Outer.Inner.deep` from `Outer`), or that a bare name names when none of `d`'s own members has it and the members of
+    * one nested owner do; `several`, a note for each bare name the members of more than one nested owner have, naming
+    * them. Private members only `withPrivate`.
+    */
+  def nestedBodies(
+      d: Defn,
+      bodies: Set[String],
+      withPrivate: Boolean
+  ): (Vector[Defn], Vector[String]) = {
+    def visible(ds: Vector[Defn]): Vector[Defn] = ds.filter(m => withPrivate || !m.isPrivate)
+    def below(ds: Vector[Defn]): Vector[Defn] =
+      ds.flatMap(m => visible(m.members) ++ below(visible(m.members)))
+    val own = visible(d.members)
+    val nested = below(own)
+    val picks = bodies.toVector.sorted.map { name =>
+      val path = name.split('.').toVector match {
+        case first +: rest if first == d.name && rest.nonEmpty => rest
+        case all => all
+      }
+      if (path.size > 1)
+        Left(path.drop(1).foldLeft(own.filter(_.name == path.headOption.getOrElse(""))) {
+          (owners, segment) =>
+            owners.flatMap(o => visible(o.members).filter(_.name == segment))
+        })
+      else if (own.exists(_.name == name)) Left(Vector.empty)
+      else {
+        val found = nested.filter(_.name == name)
+        val owners = found
+          .map(m => ownerRelativeName(m.fullName).split('.').dropRight(1).mkString("."))
+          .distinct
+        if (owners.size > 1)
+          Right(
+            s"-- --body $name is in several owners: ${owners.map(o => s"$o.$name").mkString(", ")}; name one as Owner.$name"
+          )
+        else Left(found)
+      }
+    }
+    (
+      picks.collect { case Left(ms) => ms }.flatten.distinct,
+      picks.collect { case Right(note) => note }
+    )
   }
 
   /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. The trait ends with its closing lines, and so does each member it shows without its body that is itself a type. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */

@@ -71,7 +71,7 @@ object Help {
         "--body",
         "m[,m…]",
         Some("body"),
-        "member names, comma-separated, of the definitions shown (their simple names); there is no `all` or `full`."
+        "member names, comma-separated, of the definitions shown (their simple names); there is no `all` or `full`. A path reaches a nested member (`Settling.began`), printed whole under its owner-qualified name; a bare name none of a shown type's own members has is looked for in its nested owners, printed when one owner has it and named with each owner when several do."
       ),
       Flag(
         "--private",

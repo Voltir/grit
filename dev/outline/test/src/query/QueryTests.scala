@@ -23,6 +23,24 @@ object QueryTests extends TestSuite {
 
   private lazy val root: Root = Root(repoRoot)
 
+  /** The `show` answer's text for `sym` over the fixture, with `bodies` and private members. */
+  private def shownWith(sym: String, bodies: Set[String]): String =
+    Query
+      .show(
+        root,
+        FixtureLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector(sym),
+        0,
+        bodies,
+        true,
+        80000,
+        TestsShown.Dropped
+      )
+      ._1
+      .text
+
   def tests = Tests {
     test("show A.keep at depth 1 is Found, with its signature and the B it traces to") {
       val (answer, _) =
@@ -136,6 +154,30 @@ object QueryTests extends TestSuite {
           80000
         )
       assert(!withPrivate.text.contains("--body hidden is private"))
+    }
+
+    test("--body takes a path to a nested member and prints its body: Outer --body Inner.deep") {
+      val text = shownWith("Outer", Set("Inner.deep"))
+      assert(text.linesIterator.contains("      val doubled = x * 2"))
+      assert(!text.contains("matches nothing shown"))
+    }
+
+    test("a bare --body name only one nested owner defines prints from there: Outer --body deep") {
+      val text = shownWith("Outer", Set("deep"))
+      assert(text.linesIterator.contains("      val doubled = x * 2"))
+      assert(!text.contains("matches nothing shown"))
+    }
+
+    test(
+      "a bare --body name several nested owners define is named with each owner, and none prints"
+    ) {
+      val text = shownWith("Nests", Set("same"))
+      assert(
+        text.linesIterator.contains(
+          "-- --body same is in several owners: Nests.Left.same, Nests.Right.same; name one as Owner.same"
+        )
+      )
+      assert(!text.contains("def Nests.Left.same"), !text.contains("def Nests.Right.same"))
     }
 
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
