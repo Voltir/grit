@@ -27,7 +27,9 @@ object TurnSpendTests extends TestSuite {
     )
 
   val tests = Tests {
-    test("a turn's spend is every row its workflow recorded, its answer the reply's row, else the draft's") {
+    test(
+      "a turn's spend is every row its workflow recorded, its answer the reply's row, else the draft's"
+    ) {
       val query = row(EntryId("query"), Some("0.001"))
       val draft = row(turn.draftId, Some("0.002"))
       val reply = row(turn.replyId, Some("0.003"))

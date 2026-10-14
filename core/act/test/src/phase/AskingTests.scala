@@ -104,10 +104,28 @@ object AskingTests extends TestSuite {
       val daily = Allowance.Daily(budget("0.02"))
       val before = Asking.admits(daily, ledger, start)
       val _ =
-        ledger.record(EntryId("a"), turn, turn.workflowId, "m", None, None, answer("a").usage, Tokens(1))
+        ledger.record(
+          EntryId("a"),
+          turn,
+          turn.workflowId,
+          "m",
+          None,
+          None,
+          answer("a").usage,
+          Tokens(1)
+        )
       val under = Asking.admits(daily, ledger, start)
       val _ =
-        ledger.record(EntryId("b"), turn, turn.workflowId, "m", None, None, answer("b").usage, Tokens(1))
+        ledger.record(
+          EntryId("b"),
+          turn,
+          turn.workflowId,
+          "m",
+          None,
+          None,
+          answer("b").usage,
+          Tokens(1)
+        )
       val at = Asking.admits(daily, ledger, start)
       val tomorrow = Asking.admits(daily, ledger, start.plus(1, java.time.temporal.ChronoUnit.DAYS))
       (before, under, at, tomorrow) ==> (Right(true), Right(true), Right(false), Right(true))

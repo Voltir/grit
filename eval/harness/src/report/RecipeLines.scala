@@ -1,10 +1,10 @@
 package grit.eval.harness.report
 
 import grit.core.id.{ConversationId, WorkflowId}
+import grit.core.message.Cost
 import grit.eval.harness.capture.Part
 import grit.eval.harness.reply.Judged
 import grit.eval.harness.score.{Priced, Prices, Rates, Recipe, Shift}
-import grit.core.message.Cost
 import grit.eval.harness.stats.Proportion
 
 /** One variant of a recipes run: its name, its [[Recipe]] against shipped, and each reference

@@ -278,7 +278,9 @@ abstract class SpeechContract extends TestSuite {
             Tokens(10)
           )
         )
-        right(ledger.record(held.replyId, held, held.workflowId, "m", None, None, usage, Tokens(10)))
+        right(
+          ledger.record(held.replyId, held, held.workflowId, "m", None, None, usage, Tokens(10))
+        )
       }
       transaction(speech.spentOn(today)) ==>
         Right(before + Spend(2, Cost.Exact(BigDecimal("0.002"))))

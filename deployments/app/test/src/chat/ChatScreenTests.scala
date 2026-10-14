@@ -932,7 +932,11 @@ object ChatScreenTests extends TestSuite {
           .takeWhile(!_.startsWith("ᚠ"))
       val spent = talked.message(Msg.Spent(TurnSeq(0), spend("0.0042")))
       val summarised = spent.message(
-        Msg.Arrived(Vector(), Some("call-model"), Vector(ChatScreen.Summarised(TurnSeq(0), "said one")))
+        Msg.Arrived(
+          Vector(),
+          Some("call-model"),
+          Vector(ChatScreen.Summarised(TurnSeq(0), "said one"))
+        )
       )
       val again = summarised.message(Msg.Spent(TurnSeq(0), spend("0.0051")))
       Vector(rows(spent), rows(again)) ==> Vector(

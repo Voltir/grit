@@ -338,7 +338,15 @@ object ServedTests extends TestSuite {
       val review = reviewAt(Team, "C0REVIEW1")
       (
         Served
-          .serving(Grit, Backfill.Default, None, Some(review), ReplyNote.Off, new World().connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            Some(review),
+            ReplyNote.Off,
+            new World().connect,
+            Inline
+          )
           .reviewsAt,
         Served
           .serving(
@@ -417,7 +425,8 @@ object ServedTests extends TestSuite {
 
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
-      val edge = Served.serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+      val edge =
+        Served.serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
       def refused(env: Map[String, String]) = refusal(edge.open(w.stores, env, w.clock, _ => ()))
       refused(Map("SLACK_APP_TOKEN" -> "xapp-1")) ==>
         Some(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN")))
@@ -612,7 +621,9 @@ object ServedTests extends TestSuite {
     test("serving and backfill each say they are the Slack attester") {
       val w = new World
       (
-        Served.serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline).attester,
+        Served
+          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .attester,
         Served.backfill(1, w.connect).attester
       ) ==>
         (Some(SlackAccounts.Attester), Some(SlackAccounts.Attester))

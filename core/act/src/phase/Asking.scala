@@ -74,7 +74,16 @@ object Asking {
       grade: Option[Grade],
       estimate: Tokens
   )(using Tx^): Either[StoreError, Unit] =
-    ledger.record(entry, turn, turn.workflowId, reply.model, reply.upstream, grade, reply.usage, estimate)
+    ledger.record(
+      entry,
+      turn,
+      turn.workflowId,
+      reply.model,
+      reply.upstream,
+      grade,
+      reply.usage,
+      estimate
+    )
 
   /** As [[spent]], for any model's call made under no pin: `usage` of the call made by `model`,
     * served by `upstream` as its provider reported, recorded for `turn` under `entry` beside

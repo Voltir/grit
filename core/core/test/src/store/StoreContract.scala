@@ -6,8 +6,8 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq, Workfl
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{
   Assignment,
-  Grade,
   Catalog,
+  Grade,
   Known,
   ModelId,
   ModelRef,

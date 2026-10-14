@@ -1061,7 +1061,11 @@ final class SlackEdge(
   /** `parts` with `p`'s note after them when its reply is noted ([[ReplyNote.of]]); as they are
     * when it has no reply, or its turn's spend cannot be read, which is said.
     */
-  private def noted(p: Pending, reply: Option[Message.Assistant], parts: Vector[Post]): Vector[Post] =
+  private def noted(
+      p: Pending,
+      reply: Option[Message.Assistant],
+      parts: Vector[Post]
+  ): Vector[Post] =
     if (reply.isEmpty || note == ReplyNote.Off) parts
     else
       stores.jot.write(Subject.Turn(p.turn))(stores.spending.turn(p.turn)) match {

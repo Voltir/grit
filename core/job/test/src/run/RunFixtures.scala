@@ -42,6 +42,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
 import grit.core.job.{Declared, JobRun, Jobs, KeepingJob, Owned, PlainJob, Schedule, SlotRule, When}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
@@ -57,7 +58,6 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.core.model.Grade
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Clearance,

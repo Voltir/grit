@@ -38,7 +38,8 @@ object ChatHostTests extends TestSuite {
         )
       val replied = Vector(row(EntryId("query"), "0.001"), row(at(0).replyId, "0.002"))
       val unanswered = Vector(row(EntryId("query:1"), "0.001"))
-      val first = ChatHost.spends(c, Map(TurnSeq(0) -> replied, TurnSeq(1) -> unanswered), Map.empty)
+      val first =
+        ChatHost.spends(c, Map(TurnSeq(0) -> replied, TurnSeq(1) -> unanswered), Map.empty)
       val same = ChatHost.spends(c, Map(TurnSeq(0) -> replied), first)
       val summarised = replied :+ row(EntryId("summary"), "0.003")
       val later = ChatHost.spends(c, Map(TurnSeq(0) -> summarised), first)

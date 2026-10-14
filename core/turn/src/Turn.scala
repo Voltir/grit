@@ -1582,7 +1582,16 @@ object Turn {
     }
     val round = TurnVerdict.round(c, first, further)
     val recorded = d.transact(Step.RecordVerdict, Subject.Turn(turn))(
-      recordVerdict(offer.system, env.records, turn, seen, c, round, pins.turn.grade, env.clock.now())
+      recordVerdict(
+        offer.system,
+        env.records,
+        turn,
+        seen,
+        c,
+        round,
+        pins.turn.grade,
+        env.clock.now()
+      )
     )
     Ran(round.answer, recorded.left.toOption)
   }
@@ -2002,7 +2011,16 @@ object Turn {
             entries
               .insert(entry)
               .flatMap(_ =>
-                ledger.record(qid, turn, turn.workflowId, q.model, q.upstream, None, q.usage, q.estimate)
+                ledger.record(
+                  qid,
+                  turn,
+                  turn.workflowId,
+                  q.model,
+                  q.upstream,
+                  None,
+                  q.usage,
+                  q.estimate
+                )
               )
               .left
               .map(storeFailure)

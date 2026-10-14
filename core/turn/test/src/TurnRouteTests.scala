@@ -292,9 +292,16 @@ object TurnRouteTests extends TestSuite {
       val turn = say(entries, "hello")
       val ledger = new InMemoryUsageLedger
       def graded(g: Grade, r: ModelRef): Ladder =
-        Ladder.of(Vector(Rung(g, Assignment(r, 100, None)))).getOrElse(throw new java.lang.AssertionError())
+        Ladder
+          .of(Vector(Rung(g, Assignment(r, 100, None))))
+          .getOrElse(throw new java.lang.AssertionError())
       val strong = Catalog.of(
-        Policy(graded(Grade.Strong, flash), graded(Grade.Light, flash), ladder(open), ladder(flash)),
+        Policy(
+          graded(Grade.Strong, flash),
+          graded(Grade.Light, flash),
+          ladder(open),
+          ladder(flash)
+        ),
         Vector.empty
       )
       val ran = new InMemoryDurable().run(turn.workflowId)(

@@ -29,9 +29,9 @@ import grit.core.identity.{Account, Realm, Standing, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, InboxError}
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Grade
 import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
-import grit.core.model.Grade
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{
@@ -1112,7 +1112,9 @@ object SlackEdgeTests extends TestSuite {
       )
     }
 
-    test("a reply answered at standard, with no grade recorded, or with the note off is not noted") {
+    test(
+      "a reply answered at standard, with no grade recorded, or with the note off is not noted"
+    ) {
       val cases = Vector(
         ReplyNote.StrengthAndCost -> Some(Grade.Standard),
         ReplyNote.StrengthAndCost -> None,

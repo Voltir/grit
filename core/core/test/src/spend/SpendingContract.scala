@@ -88,7 +88,13 @@ abstract class SpendingContract extends TestSuite {
       val turn = TurnRef(c, TurnSeq.First)
       val other = TurnRef(c, TurnSeq(1))
       val at = Instant.parse("2031-09-16T12:00:00Z")
-      recordAt(EntryId(s"query:${ConversationId.value(c)}"), turn, turn.workflowId, Some("0.001"), at)
+      recordAt(
+        EntryId(s"query:${ConversationId.value(c)}"),
+        turn,
+        turn.workflowId,
+        Some("0.001"),
+        at
+      )
       recordAt(turn.replyId, turn, turn.workflowId, Some("0.002"), at)
       recordAt(other.replyId, other, other.workflowId, Some("0.1"), at)
       transaction(ledger.turn(turn)).map(s => (s.cost, s.answer.map(_.entry))) ==>
