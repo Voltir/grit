@@ -126,6 +126,8 @@ object TurnReplayTests extends TestSuite {
         })
       }
       assert(outputs.exists(_._1 == "gated-withheld.json"))
+      // One that hid an item, and kept its name until it was read.
+      assert(outputs.exists(_._1 == "gated-hidden.json"))
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))
             if j.decode(text).map(j.encode) != Right(text) =>

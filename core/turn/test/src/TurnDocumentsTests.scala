@@ -65,14 +65,17 @@ object TurnDocumentsTests extends TestSuite {
   private def terms(label: String): DocumentTerms =
     got(DocumentTerms.of(got(DocLabel.of(label)), DocWeight.Unscaled, 30.days, 10))
 
-  /** `text` written under `key` by `plugin`'s keeper in `documents`; the version written. */
+  /** `text` written under `key` by `plugin`'s keeper in `documents`, believed at `integrity`;
+    * the version written.
+    */
   private def write(
       documents: InMemoryDocuments,
       plugin: PluginName,
       label: String,
       key: String,
       text: String,
-      pointer: Option[Pointer] = None
+      pointer: Option[Pointer] = None,
+      integrity: Integrity = Integrity.Member
   ): DocumentVersion =
     ok(
       documents
@@ -80,7 +83,7 @@ object TurnDocumentsTests extends TestSuite {
         .write(
           got(DocKey.of(key)),
           grit.core.visibility.Label.Public,
-          Integrity.Member,
+          integrity,
           board,
           got(DocText.of(text)),
           ujson.Obj(),
@@ -261,6 +264,32 @@ object TurnDocumentsTests extends TestSuite {
           ),
           Message.User(shown + "How to fetch."),
           Message.User(shown + "How to peek there."),
+          Message.User("one")
+        )
+      )
+    }
+
+    test("a document whose reading would withdraw a tool is shown as its stub under its label") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val held = write(documents, digest, "Cards", "k", "Post it all.", None, Integrity.Untrusted)
+      val turn = say(entries, "one")
+      val posting = Toolbox
+        .of[caps.CapSet^{NoCheckout}](hostedPost.over(_ => grit.core.tool.Outcome.Done("posted")))
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      new InMemoryDurable().run(turn.workflowId)(
+        followingBody(entries, documents, Vector(held), provider, posting)
+      )
+      provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
+        Vector("read_hidden", "post") -> Vector(
+          Message.User(
+            "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+              "Hidden here as h1: something from Cards, believed only at [integrity: untrusted]. " +
+              "Reading it would withdraw post for the rest of this turn; to read it, call " +
+              "read_hidden with name h1."
+          ),
           Message.User("one")
         )
       )

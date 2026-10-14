@@ -534,6 +534,9 @@ object RecordTurnHistories {
       // A result believed at nothing withholds post, which requires member, from the next
       // round, and the call of it there is answered that it is withheld.
       "gated-withheld" -> looping(Vector("read and post"), gatedScript, gated = true),
+      // peek's result is hidden as h1, since reading it would withdraw post; read through
+      // read_hidden, it is shown and withholds post, whose call is then answered withheld.
+      "gated-hidden" -> looping(Vector("read and post"), hidingScript, gated = true),
       "loop-approved" -> looping(
         Vector("poke a"),
         new TurnFixtures.Scripted((r, n) =>

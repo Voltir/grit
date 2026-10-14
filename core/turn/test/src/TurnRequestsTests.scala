@@ -211,6 +211,28 @@ object TurnRequestsTests extends TestSuite {
       calls.map(sent(_, off = false)) ==> Right(provider.requests)
     }
 
+    test("a turn's hidden items are rebuilt as sent: stubs in their places until read") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = hidingScript
+      val turn = say(entries, "read and post")
+      val ws = new Files(files)
+      durable.run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new grit.models.StubProvider(),
+          NoClassifier,
+          ws,
+          gatedTools(ws),
+          5
+        )
+      )
+      val calls = TurnRecord.requests(turn, steps(durable, turn.workflowId), reads(entries))
+      calls.map(sent(_, off = false)) ==> Right(provider.requests)
+    }
+
     test("a turn's budget's last call is rebuilt as sent with tools off") {
       val entries = new InMemoryEntryStore
       val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))

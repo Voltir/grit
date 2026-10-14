@@ -593,6 +593,24 @@ object TurnFixtures {
     })
   )
 
+  /** Four rounds over [[gatedTools]]: `peek` a.txt (`t1`), whose result the next round hides
+    * as `h1`; then read it through `read_hidden` (`t2`); then `post` it (`t3`); then the answer.
+    */
+  def hidingScript: Scripted = new Scripted((_, n) =>
+    Right(n match {
+      case 0 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj("path" -> "a.txt")))
+      case 1 =>
+        said(
+          "",
+          AssistantBlock.ToolCall(ToolCallId("t2"), "read_hidden", ujson.Obj("name" -> "h1"))
+        )
+      case 2 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t3"), "post", ujson.Obj("path" -> "a.txt")))
+      case _ => said("done")
+    })
+  )
+
   /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
   val hostedFetch: Hosted[String] =
     new Hosted(ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun), Gate.Free, p => p)
