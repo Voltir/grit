@@ -12,6 +12,15 @@ import utest.*
 
 object UsesTests extends TestSuite {
 
+  /** The fixture's layout with every source counted as a test source, so its test calls name its sites. */
+  private object FixtureTestLayout extends Layout {
+    def classesDirs(root: Root): Vector[os.Path] = FixtureLayout.classesDirs(root)
+    def libraryJars(root: Root): Vector[os.Path] = FixtureLayout.libraryJars(root)
+    def notCompiled(root: Root): String = FixtureLayout.notCompiled(root)
+    def isTest(classesDir: os.Path): Boolean = false
+    def isTestSource(file: os.RelPath): Boolean = true
+  }
+
   /** The worktree root: the nearest directory at or above the test's working directory that holds `build.mill`. */
   private def repoRoot: os.Path = {
     def up(dir: os.Path): os.Path =
@@ -84,6 +93,39 @@ object UsesTests extends TestSuite {
           "    73  assert(fresh().get(\"x\").isEmpty)"
         )
       )
+    }
+
+    test("a site in a local val's right-hand side is owned by the member around it, Local.read") {
+      val (answer, _) = uses(s"$storePackage.Store.get")
+      val lines = answer.text.linesIterator.toVector
+      val at = lines.indexWhere(_.contains("val held = s.get"))
+      assert(at > 0)
+      assert(lines(at - 1) == "  in Local.read")
+    }
+
+    test("a site inside a test call in a test source is owned by its suite and the test's name") {
+      val (answer, _) = Query.uses(
+        root,
+        FixtureTestLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector(s"$storePackage.Store.get"),
+        None,
+        None,
+        80000
+      )
+      val lines = answer.text.linesIterator.toVector
+      assert(
+        lines.containsSlice(
+          Vector(
+            "  in StoreSuite: put then get returns the value",
+            "    70  assert(fresh().put(\"k\", \"v\").get(\"k\") == Some(\"v\"))",
+            "  in StoreSuite: get of an absent key is None",
+            "    73  assert(fresh().get(\"x\").isEmpty)"
+          )
+        )
+      )
+      assert(lines.contains("  in Caller.all"))
     }
 
     test(

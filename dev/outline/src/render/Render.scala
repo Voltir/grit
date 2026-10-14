@@ -186,11 +186,17 @@ object Render {
   }
 
   /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
-  /** The `uses` answer, grouped by file under `== file`: each run of sites in one enclosing definition as an `in <owner>` line, then each site as `<line>  <text>`; then the site and file counts. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
-  def uses(sites: Vector[Use], overloaded: Set[String], cap: Int): String = {
+  /** The `uses` answer, grouped by file under `== file`: each run of sites with one owner as an `in <owner>` line, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
+  def uses(
+      sites: Vector[Use],
+      overloaded: Set[String],
+      cap: Int,
+      tests: Map[Use, String]
+  ): String = {
     def owner(u: Use): String = {
       val pkg = pkgOf(u.enclosing)
-      if (pkg.isEmpty) u.enclosing else u.enclosing.drop(pkg.length + 1)
+      val member = if (pkg.isEmpty) u.enclosing else u.enclosing.drop(pkg.length + 1)
+      tests.get(u).fold(member)(name => s"${member.takeWhile(_ != '.')}: $name")
     }
     def siteLine(u: Use): String = {
       val marker =
@@ -202,7 +208,7 @@ object Render {
     def runs(inFile: Vector[Use]): Vector[Vector[Use]] =
       inFile.foldLeft(Vector.empty[Vector[Use]]) { (acc, u) =>
         acc.lastOption match {
-          case Some(run) if run.headOption.exists(_.enclosing == u.enclosing) =>
+          case Some(run) if run.headOption.exists(first => owner(first) == owner(u)) =>
             acc.init :+ (run :+ u)
           case _ => acc :+ Vector(u)
         }

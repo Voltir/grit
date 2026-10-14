@@ -79,3 +79,11 @@ object StoreSuite {
 trait Quiver
 
 object Twin
+
+/** Reads through a local val, so a site's enclosing member is not the local. */
+object Local {
+  def read(s: Store): Option[String] = {
+    val held = s.get("k")
+    held
+  }
+}

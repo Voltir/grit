@@ -116,7 +116,7 @@ object Query {
   /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
   val shortestBare: Int = 4
 
-  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming the class. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
+  /** The `uses` answer: the direct references to `syms`, grouped by file and owner (a site inside a test call in a test source is owned by its test), filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming the class. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
   def uses(
       root: Root,
       layout: Layout,
@@ -212,7 +212,10 @@ object Query {
                     case (name, ds) if ds.size > 1 => name
                   }
                   .toSet
-                Answer(Render.uses(kept, overloaded, cap), Status.Found)
+                Answer(
+                  Render.uses(kept, overloaded, cap, testsHolding(root, layout, config, kept)),
+                  Status.Found
+                )
               }
           }
       }
@@ -220,6 +223,32 @@ object Query {
       (answer.copy(text = s"${header(root)}\n$noteText${answer.text}"), nextRoots)
     }
   }
+
+  /** The name of the innermost test call holding each of `sites` that lies in a test source, read from its file's source text. */
+  private def testsHolding(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      sites: Vector[Use]
+  ): Map[Use, String] =
+    sites
+      .groupBy(_.file)
+      .toVector
+      .flatMap { case (file, here) =>
+        val path = root.dir / os.RelPath(file)
+        if (!layout.isTestSource(os.RelPath(file)) || !os.isFile(path)) Vector.empty
+        else {
+          val src = os.read(path)
+          val calls = TestCalls.find(src, 0, src.length, config.testCall)
+          here.flatMap { u =>
+            calls
+              .filter(t => t.lines.start <= u.line && u.line <= t.lines.end)
+              .maxByOption(_.lines.start)
+              .map(t => u -> t.name)
+          }
+        }
+      }
+      .toMap
 
   /** The class `sym` names the construction of, as `X.apply` or `X.new`: `X`, or none for any other name. */
   private def constructorOwner(sym: String): Option[String] =

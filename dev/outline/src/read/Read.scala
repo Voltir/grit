@@ -473,8 +473,15 @@ object Read {
           unreadable ++= failed.map { case (tasty, message) => os.Path(tasty.path) -> message }
         }
         if (wantUses) {
+          // A definition inside a def or a val, such as a local val, whose full name the compiler mangles (`_$held`).
+          def local(sym: Symbol): Boolean = {
+            val owner = sym.maybeOwner
+            owner != Symbol.noSymbol && !owner.isPackageDef && (owner.isTerm || local(owner))
+          }
+
           def named(sym: Symbol): Boolean =
-            !(sym.flags.is(Flags.Synthetic) || sym.isClassConstructor || sym.name.startsWith("$"))
+            !(sym.flags.is(Flags.Synthetic) || sym.isClassConstructor || sym.name.startsWith("$") ||
+              local(sym))
 
           val walk = new TreeTraverser {
             // The named definitions around the tree being walked, innermost first.
@@ -578,7 +585,8 @@ object Read {
   /** The references in `tasty` to any of `targets` (full names), sorted by file and line, each with the definition holding it.
     *
     * A reference is the compiler's own resolution, so a different method of the same name never matches. The enclosing definition
-    * is the innermost named `def`, `val` or class around it; lambdas and anonymous classes are passed over. `targetLine` is the line
+    * is the innermost named `def`, `val` or class around it that is a member of a class or package; lambdas, anonymous
+    * classes and local definitions are passed over. `targetLine` is the line
     * where the referenced symbol's definition starts, 0 when it has no position. Only references in source under `root.dir` are
     * kept. `Left` carries the same complaints as `defns`.
     */
