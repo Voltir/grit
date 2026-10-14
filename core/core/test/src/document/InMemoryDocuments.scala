@@ -6,7 +6,7 @@ import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
-import grit.core.visibility.{Item, Label}
+import grit.core.visibility.{Integrity, Item, Label}
 
 /** An in-memory [[DocumentStore]], with each plugin's [[DocumentKeeper]], for tests, keeping
   * [[DocumentContract]]. Versions are numbered by one counter across every plugin. It marks
@@ -54,6 +54,7 @@ final class InMemoryDocuments extends DocumentStore {
       def write(
           key: DocKey,
           label: Label,
+          integrity: Integrity,
           place: Place,
           text: DocText,
           data: ujson.Value,
@@ -65,7 +66,7 @@ final class InMemoryDocuments extends DocumentStore {
         head(plugin, key, kept) match {
           case Some((v, r))
               if r.text.contains(text) && r.place == place && r.data == data &&
-                r.pointer == pointer =>
+                r.pointer == pointer && r.integrity == integrity =>
             Right(Written.Unchanged(version(v), kept))
           case before =>
             for {
@@ -75,6 +76,7 @@ final class InMemoryDocuments extends DocumentStore {
                   plugin,
                   key,
                   kept,
+                  integrity,
                   clearance.own.map(_.room),
                   place,
                   Some(text),
@@ -162,7 +164,7 @@ final class InMemoryDocuments extends DocumentStore {
       else
         rows.toVector
           .collect {
-            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _, _, _))
+            case (v, r @ Row(plugin, _, _, _, _, place, Some(text), _, _, _, _, _, _))
                 if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
               val found = InMemoryDocuments.words(DocText.value(text))
               val score = words.map(w => found.count(_ == w)).sum.toDouble
@@ -284,6 +286,7 @@ final class InMemoryDocuments extends DocumentStore {
       r.plugin,
       r.key,
       r.label,
+      r.integrity,
       r.place,
       text,
       r.data,
@@ -296,11 +299,14 @@ final class InMemoryDocuments extends DocumentStore {
 
 object InMemoryDocuments {
 
-  /** One version's row: `label` and `room` as it is kept; `text` `None` for a withdrawal. */
+  /** One version's row: `label`, `integrity` and `room` as it is kept; `text` `None` for a
+    * withdrawal.
+    */
   private final case class Row(
       plugin: PluginName,
       key: DocKey,
       label: Label,
+      integrity: Integrity,
       room: Option[Place],
       place: Place,
       text: Option[DocText],

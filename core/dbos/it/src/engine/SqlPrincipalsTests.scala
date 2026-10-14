@@ -7,6 +7,7 @@ import grit.core.id.{EntryId, EntrySeq, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Entry, Origin, Payload, Principals, PrincipalsContract, Tx}
+import grit.core.visibility.Integrity
 import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPrincipals, TestPostgres}
 
 /** The principals contract, kept by the SQL store against a real Postgres. */
@@ -44,7 +45,8 @@ object SqlPrincipalsTests extends PrincipalsContract {
             None,
             EntrySeq(0),
             Payload.Message(Message.User("hi")),
-            java.time.Instant.EPOCH
+            java.time.Instant.EPOCH,
+            Integrity.Member
           )
         )
         .fold(e => sys.error(s"arranging an entry: $e"), identity)

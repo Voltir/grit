@@ -6,6 +6,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnRef, Tur
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.store.{Entry, Focus, Nearby, Payload, Speakers}
+import grit.core.visibility.Integrity
 import grit.dbos.engine.Build
 import grit.eval.harness.capture.{CaseId, Ended, Part, Parts, Said, Support, TurnCase}
 import grit.turn.{Turn, TurnOffer, TurnRecord}
@@ -46,7 +47,8 @@ object Fixtures {
       None,
       EntrySeq(seq),
       p,
-      at
+      at,
+      Integrity.Member
     )
 
   /** `c1`'s turn 1, then its turn `seq`, `root`, which replies [[replied]] from a window of

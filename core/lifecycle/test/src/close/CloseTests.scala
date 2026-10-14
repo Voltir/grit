@@ -35,6 +35,7 @@ import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, Payload, Speakers, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.core.triage.{Kind, Tags}
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.lifecycle.transcript.PeriodTranscript
 
@@ -129,7 +130,8 @@ object CloseTests extends TestSuite {
           None,
           EntrySeq(0),
           Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
-          at(0)
+          at(0),
+          Integrity.Member
         )
       )
       w.entries.insert(
@@ -140,7 +142,8 @@ object CloseTests extends TestSuite {
           None,
           EntrySeq(1),
           Payload.Message(replyOf("Pin TZ=UTC in the test JVM.")),
-          at(0)
+          at(0),
+          Integrity.Member
         )
       )
       val ops = grit.core.id.ConversationId("ops")
@@ -161,7 +164,8 @@ object CloseTests extends TestSuite {
               balance(freeze)
             )
           ),
-          at(0)
+          at(0),
+          Integrity.Member
         )
       )
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)

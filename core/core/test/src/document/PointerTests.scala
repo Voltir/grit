@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
 import grit.core.tool.{ToolName, Writes}
+import grit.core.visibility.Integrity
 import grit.core.visibility.Label
 
 import utest.*
@@ -36,6 +37,7 @@ object PointerTests extends TestSuite {
       PluginName.of("cards").fold(sys.error, identity),
       DocKey.of(s"k$n").fold(sys.error, identity),
       Label.Public,
+      Integrity.Member,
       Place.Everywhere,
       DocText.of(s"card $n").fold(sys.error, identity),
       ujson.Obj(),

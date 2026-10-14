@@ -21,6 +21,7 @@ import grit.core.id.{
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -92,7 +93,8 @@ abstract class TriageShadowsContract extends TestSuite {
       None,
       next.seq,
       Payload.Heard(text),
-      At
+      At,
+      Integrity.Member
     )
     right(entries.insert(e))
     e

@@ -23,6 +23,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground}
 import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 
 /** A case as written, or with [[Variant.FillerPerGap]] filler turns after each of its turns. */
@@ -326,7 +327,8 @@ object Load {
                       None,
                       r.seq,
                       Payload.Message(Layout.message(r.line)),
-                      Instant.EPOCH
+                      Instant.EPOCH,
+                      Integrity.Member
                     )
                   )
                 )
@@ -374,6 +376,7 @@ object Load {
               keeper.write(
                 d.key,
                 grit.core.visibility.Label.Public,
+                Integrity.Member,
                 d.place,
                 d.text,
                 ujson.Obj(),

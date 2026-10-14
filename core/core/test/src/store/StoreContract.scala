@@ -21,6 +21,7 @@ import grit.core.model.{
 }
 import grit.core.prompt.{Fragment, FragmentId, Layer, SystemPrompt}
 import grit.core.tool.{Retry, ToolName, ToolSet, ToolSetId, ToolSets}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -78,7 +79,8 @@ abstract class StoreContract extends TestSuite {
       parent.map(EntryId(_)),
       EntrySeq(seq),
       Payload.Message(Message.User(id)),
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   private def ids(listed: Either[StoreError, Vector[Entry]]): Either[StoreError, Vector[String]] =

@@ -142,7 +142,7 @@ object TurnView {
   /** The latest turn in `entries`: the one its last user message started. */
   def latest(entries: Vector[Entry]): Option[TurnRef] =
     entries.reverseIterator
-      .collectFirst { case e @ Entry(_, _, _, _, _, Payload.Message(Message.User(_)), _) => e }
+      .collectFirst { case e @ Entry(_, _, _, _, _, Payload.Message(Message.User(_)), _, _) => e }
       .map(e => TurnRef(e.conversationId, e.turnSeq))
 
   /** `turn`, from every entry of its conversation, whose person's messages `speakers` names,
@@ -169,7 +169,7 @@ object TurnView {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
     val window =
-      own.collectFirst { case Entry(_, _, _, _, _, w: Payload.Window, _) => w }.map { w =>
+      own.collectFirst { case Entry(_, _, _, _, _, w: Payload.Window, _, _) => w }.map { w =>
         val seen = w.entries.flatMap(bySeq.get)
         val (closings, turns) = seen.partition(isClosed)
         val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
@@ -198,17 +198,17 @@ object TurnView {
         )
       }
     val reply = own.collectFirst {
-      case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _) => m
+      case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _) => m
     }
     val spent = Option.when(costs.nonEmpty)(Cost.total(costs.map(_.usage)))
     TurnView(
       turn.turnSeq,
       own
-        .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
+        .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _, _) => t }
         .getOrElse(""),
       Option.when(running)(Turn.running(steps.map(_.name))),
       timed(steps),
-      own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _) => q },
+      own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _, _) => q },
       window,
       spent,
       reply.map(_.usage.input),

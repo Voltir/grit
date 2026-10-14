@@ -6,6 +6,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.spend.Spend
 import grit.core.store.{Entry, Payload, UsageLedger}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -15,7 +16,16 @@ object SessionViewTests extends TestSuite {
   private val c = ConversationId("c")
 
   private def entry(seq: Long, turn: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, EntrySeq(seq), payload, Instant.EPOCH)
+    Entry(
+      EntryId(s"e$seq"),
+      c,
+      TurnSeq(turn),
+      None,
+      EntrySeq(seq),
+      payload,
+      Instant.EPOCH,
+      Integrity.Member
+    )
 
   private def user(seq: Long, turn: Long) =
     entry(seq, turn, Payload.Message(Message.User(s"question $turn")))

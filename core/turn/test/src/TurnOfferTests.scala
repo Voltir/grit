@@ -51,6 +51,7 @@ import grit.core.tool.{
   Writes
 }
 import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -95,7 +96,18 @@ object TurnOfferTests extends TestSuite {
       persona = persona
     )
     val entries = new InMemoryEntryStore
-    entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
+    entries.insert(
+      Entry(
+        EntryId("root"),
+        c,
+        TurnSeq.First,
+        None,
+        EntrySeq(0),
+        root,
+        Instant.EPOCH,
+        Integrity.Member
+      )
+    )
     TurnOffer
       .decide(
         hosting,
@@ -304,7 +316,18 @@ object TurnOfferTests extends TestSuite {
       knowledge = knowledge
     )
     val log = new InMemoryEntryStore
-    log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
+    log.insert(
+      Entry(
+        EntryId("root"),
+        c,
+        TurnSeq.First,
+        None,
+        EntrySeq(0),
+        root,
+        Instant.EPOCH,
+        Integrity.Member
+      )
+    )
     TurnOffer
       .decide(
         hosting,
@@ -463,7 +486,8 @@ object TurnOfferTests extends TestSuite {
         None,
         EntrySeq(0),
         Payload.Message(Message.User("go")),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
     )
     TurnOffer

@@ -44,6 +44,7 @@ import grit.core.place.{Directory, Locality, Namespace, Place}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Subject}
 import grit.dbos.sql.{
   DbConfig,
@@ -466,7 +467,7 @@ object CollectorLiveTests extends TestSuite {
     texts.toVector.map { t =>
       val text = DocText.of(t).getOrElse(sys.error("text"))
       LiveDb.transaction(config, Clearance.of(Label.Public))(
-        keeper.write(key, Label.Public, here, text, ujson.Obj(), None, at)
+        keeper.write(key, Label.Public, Integrity.Member, here, text, ujson.Obj(), None, at)
       ) match {
         case Right(Written.Versioned(v, _, _)) => v
         case other => sys.error(s"writing $t: $other")

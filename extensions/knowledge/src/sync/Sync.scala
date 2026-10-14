@@ -10,7 +10,7 @@ import grit.core.durable.Journaled
 import grit.core.id.{CorpusName, DocumentVersion, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
@@ -143,7 +143,7 @@ object Sync {
               (
                 kept(
                   moves.keep(CardMoves.of(Phase.Write, card.key))((keeper, now) =>
-                    replace(keeper, card, label, at, replacing, now)
+                    replace(keeper, card, label, source.service, at, replacing, now)
                   ),
                   s"keeping the card of ${card.path}"
                 ),
@@ -220,26 +220,37 @@ object Sync {
         .map(hs => Holding(Tx.floor(tx), hs.sortBy(c => CardKey.value(c.key))))
     }
 
-  /** `card` kept at `label` at `place`, `now`, its copy at `replacing` withdrawn first, in this
-    * one transaction.
+  /** `card` kept at `label` at `place`, `now`, believed as what `service`, its source, returns
+    * is ([[grit.core.visibility.Visibility.outputOf]]), its copy at `replacing` withdrawn
+    * first, in this one transaction.
     */
   private def replace(
       keeper: DocumentKeeper,
       card: Card,
       label: Label,
+      service: Service,
       place: Place,
       replacing: Option[Label],
       now: Instant
-  )(using Tx^): Either[StoreError, Kept] =
+  )(using tx: Tx^): Either[StoreError, Kept] =
     for {
       // Withdrawn before the write, so the old copy never counts against the bound beside it.
       old <- replacing.fold[Either[StoreError, Option[DocumentVersion]]](Right(None))(
         keeper.withdraw(card.docKey, _, now)
       )
-      w <- keeper.write(card.docKey, label, place, card.text, card.data, Some(card.pointer), now)
+      w <- keeper.write(
+        card.docKey,
+        label,
+        Tx.visibility(tx).outputOf(service),
+        place,
+        card.text,
+        card.data,
+        Some(card.pointer),
+        now
+      )
     } yield Kept(old.size, Some(w.kept))
 
-  /** The card under `key` at `from` copied to `floor` at `place`, `now`, and withdrawn at
+  /** The card under `key` at `from` copied, believed as it was, to `floor` at `place`, `now`, and withdrawn at
     * `from`, in this one transaction. Refused when no card is kept there.
     */
   private def relabel(
@@ -257,7 +268,7 @@ object Sync {
       case Some(d) =>
         for {
           old <- keeper.withdraw(doc, from, now)
-          w <- keeper.write(doc, floor, place, d.text, d.data, d.pointer, now)
+          w <- keeper.write(doc, floor, d.integrity, place, d.text, d.data, d.pointer, now)
         } yield Kept(old.size, Some(w.kept))
     }
   }

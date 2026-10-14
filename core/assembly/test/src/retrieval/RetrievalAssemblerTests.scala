@@ -62,6 +62,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
@@ -262,6 +263,7 @@ object RetrievalAssemblerTests extends TestSuite {
       .write(
         got(DocKey.of(key)),
         grit.core.visibility.Label.Public,
+        Integrity.Member,
         place,
         got(DocText.of(text)),
         ujson.Obj(),
@@ -441,7 +443,16 @@ object RetrievalAssemblerTests extends TestSuite {
       val at = Instant.EPOCH.minusSeconds(ago)
       val _ = world.periods.openFor(c, next.turnSeq, at)
       val _ = world.entries.insert(
-        Entry(EntryId(s"$name:$i"), c, next.turnSeq, None, next.seq, Payload.Heard(text), at)
+        Entry(
+          EntryId(s"$name:$i"),
+          c,
+          next.turnSeq,
+          None,
+          next.seq,
+          Payload.Heard(text),
+          at,
+          Integrity.Member
+        )
       )
     }
     c
@@ -498,7 +509,8 @@ object RetrievalAssemblerTests extends TestSuite {
         None,
         first.seq,
         Payload.Message(Message.User(said)),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
     )
     val period = PeriodRef(c, PeriodSeq.of(n).getOrElse(sys.error("period")))
@@ -567,7 +579,8 @@ object RetrievalAssemblerTests extends TestSuite {
           None,
           reopened.seq,
           Payload.Message(Message.User("still flaky")),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       )(using TestTx.fake)
       val open = s"api:t${TurnSeq.value(reopened.turnSeq)}:${reopened.seq}"
@@ -1220,7 +1233,16 @@ object RetrievalAssemblerTests extends TestSuite {
 
     test("the query model is shown the turn's own messages, one line each, and nothing else") {
       def entry(seq: Long, payload: Payload) =
-        Entry(EntryId(s"t6:$seq"), c1, TurnSeq(6), None, EntrySeq(seq), payload, Instant.EPOCH)
+        Entry(
+          EntryId(s"t6:$seq"),
+          c1,
+          TurnSeq(6),
+          None,
+          EntrySeq(seq),
+          payload,
+          Instant.EPOCH,
+          Integrity.Member
+        )
       QueryWriter.request(
         Vector(
           entry(13, Payload.Message(Message.User("Where should my probe point?"))),
@@ -1245,7 +1267,8 @@ object RetrievalAssemblerTests extends TestSuite {
             None,
             EntrySeq(16),
             Payload.Heard("is the freeze still on?"),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
       ) ==> ModelRequest(

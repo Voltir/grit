@@ -16,6 +16,7 @@ import grit.core.document.{
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
 import grit.core.store.Tx
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -44,6 +45,7 @@ object AsOfTests extends TestSuite {
       .write(
         key,
         grit.core.visibility.Label.Public,
+        Integrity.Member,
         where,
         got(DocText.of(text)),
         ujson.Obj(),

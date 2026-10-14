@@ -7,9 +7,10 @@ import scala.concurrent.duration.*
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.place.Service
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
 
@@ -86,6 +87,7 @@ object TurnTools {
     val turn = slot.turn
     (for {
       next <- entries.lockNext(turn.conversationId)
+      level <- entries.believed(turn)
       _ <- entries.insert(
         Entry(
           slot.askId,
@@ -94,7 +96,8 @@ object TurnTools {
           None,
           next.seq,
           Payload.Ask(call, shown),
-          at
+          at,
+          level
         )
       )
     } yield slot.askId).left.map(storeFailure)
@@ -124,7 +127,10 @@ object TurnTools {
   /** Where a turn keeps what its tool calls came to: in `entries`, written through `jot` from
     * inside each call's step. Each method settles the call at a [[Slot]], whose id is `call`,
     * and keeps its result as a [[Payload.Result]] entry at [[Slot.resultId]], dated `at`,
-    * after everything in the conversation, with the call as it is shown ([[Bound.shown]]). A
+    * after everything in the conversation, with the call as it is shown ([[Bound.shown]]),
+    * believed at the declared output of the service it went to, `from`
+    * ([[grit.core.visibility.Visibility.outputOf]]); one of grit's own tools', or a call to no
+    * service, at [[Integrity.Untrusted]]. A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     */
@@ -138,18 +144,19 @@ object TurnTools {
         call: ToolCallId,
         named: String,
         outcome: Outcome,
+        from: Option[Service],
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, at)(() => Right(outcome))
+      settle(slot, call, named, from, at)(() => Right(outcome))
 
     /** The call answered, unrun, with what `read` finds in the store, in a transaction of its
       * own, shown as `named`; `read` runs only when no result is kept, and when it fails, so
       * does the settling, keeping nothing.
       */
-    def answerFrom(slot: Slot, call: ToolCallId, named: String, at: Instant)(
+    def answerFrom(slot: Slot, call: ToolCallId, named: String, from: Option[Service], at: Instant)(
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, at)(() =>
+      settle(slot, call, named, from, at)(() =>
         jot.write(Subject.Turn(slot.turn))(read).left.map(storeFailure)
       )
 
@@ -160,7 +167,7 @@ object TurnTools {
         free: Bound.Free^,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, at)(() => Right(free(slot.call)))
+      settle(slot, call, free.shown, None, at)(() => Right(free(slot.call)))
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -173,7 +180,7 @@ object TurnTools {
         approval: Approval,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, at)(() =>
+      settle(slot, call, gated.shown, None, at)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -184,7 +191,13 @@ object TurnTools {
         }
       )
 
-    private def settle(slot: Slot, call: ToolCallId, shown: String, at: Instant)(
+    private def settle(
+        slot: Slot,
+        call: ToolCallId,
+        shown: String,
+        from: Option[Service],
+        at: Instant
+    )(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
       jot
@@ -195,7 +208,7 @@ object TurnTools {
           case Some(kept) => settledBy(kept)
           case None =>
             outcome().flatMap { o =>
-              keep(slot.turn, slot.resultId, Payload.Result(o.result(call), shown), at)
+              keep(slot.turn, slot.resultId, Payload.Result(o.result(call), shown), from, at)
                 .flatMap(settledBy)
             }
         }
@@ -211,8 +224,9 @@ object TurnTools {
           case None =>
             for {
               next <- entries.lockNext(turn.conversationId)
+              level <- entries.believed(turn)
               _ <- entries.insert(
-                Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, marker, at)
+                Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, marker, at, level)
               )
             } yield false
         }
@@ -223,18 +237,21 @@ object TurnTools {
     }
 
     /** `payload` kept as `turn`'s entry `id`, dated `at`, after everything in the
-      * conversation; the entry already there when one has that id.
+      * conversation, believed at the declared output of the service `from` it came from; the
+      * entry already there when one has that id.
       */
     private def keep(
         turn: TurnRef,
         id: EntryId,
         payload: Payload,
+        from: Option[Service],
         at: Instant
     ): Either[TurnFailure, Entry] = {
-      def write(using Tx^): Either[StoreError, Entry] =
+      def write(using tx: Tx^): Either[StoreError, Entry] =
         for {
           next <- entries.lockNext(turn.conversationId)
-          entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at)
+          output = from.fold(Integrity.Untrusted)(Tx.visibility(tx).outputOf)
+          entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
           _ <- entries.insert(entry)
         } yield entry
       jot.write(Subject.Turn(turn))(write) match {

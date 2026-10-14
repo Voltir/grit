@@ -15,6 +15,7 @@ import grit.core.store.{
   Origin,
   Payload
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
@@ -51,7 +52,8 @@ object AlongTests extends TestSuite {
         None,
         next.seq,
         Payload.Heard(text),
-        at
+        at,
+        Integrity.Member
       )
       entries(store.insert(e))
       e

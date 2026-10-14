@@ -41,6 +41,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Corpora, InMemoryTriageStore}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
@@ -208,7 +209,8 @@ object TriageFixtures {
       val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
       periods.openFor(in, next.turnSeq, at(minutes))
       val id = if (in == c) s"e${next.seq}" else s"${ConversationId.value(in)}:e${next.seq}"
-      val e = Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, at(minutes))
+      val e =
+        Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, at(minutes), Integrity.Member)
       entries.insert(e)
       by.foreach { (id, name) =>
         principals.name(TestAccounts.account(id), name)

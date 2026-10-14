@@ -17,6 +17,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -527,7 +528,8 @@ object RecordLifecycleHistories {
             None,
             next.seq,
             Payload.Message(Message.User("hi")),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
         val closing = TestClosings.prose(s"p$i")

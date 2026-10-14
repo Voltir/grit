@@ -10,6 +10,7 @@ import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
 import grit.core.stitch.{Said, Strand}
 import grit.core.store.{Entry, Nearby, Payload, Speakers}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -23,7 +24,8 @@ object TurnJudgeTests extends TestSuite {
       None,
       EntrySeq(n),
       payload,
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   private val record =
@@ -79,7 +81,8 @@ object TurnJudgeTests extends TestSuite {
           None,
           EntrySeq(0),
           payload,
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       val decided = other(
         1,
@@ -128,7 +131,8 @@ object TurnJudgeTests extends TestSuite {
           None,
           EntrySeq(n),
           Payload.Heard(text),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       )
       val opening = said(0, "where did we land on the Engine contract term?")
@@ -181,7 +185,8 @@ object TurnJudgeTests extends TestSuite {
         None,
         EntrySeq(0),
         Payload.Message(Message.User("post the open issues")),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
       TurnJudge
         .state(

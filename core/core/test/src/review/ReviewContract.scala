@@ -23,6 +23,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Bound, Gate, Kind, Reading, ShadowAnswers, Shadowed, Tags, TriageShadows}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Compartment,
   Compartments,
@@ -125,7 +126,11 @@ abstract class ReviewContract extends TestSuite {
     val turn = transaction {
       val n = right(entries.lockNext(c))
       right(periods.openFor(c, n.turnSeq, at))
-      right(entries.insert(Entry(entry, c, n.turnSeq, None, n.seq, Payload.Heard("hm"), at)))
+      right(
+        entries.insert(
+          Entry(entry, c, n.turnSeq, None, n.seq, Payload.Heard("hm"), at, Integrity.Member)
+        )
+      )
       TurnRef(c, n.turnSeq)
     }
     val heard = Heard(

@@ -44,7 +44,7 @@ object Follow {
   ): (Follow, Vector[ChatScreen.Msg]) = {
     val fresh = entries.filter(e => state.lastSeq.forall(_ < e.seq))
     val said = fresh.flatMap(said1)
-    val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _) =>
+    val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _, _) =>
       ChatScreen.Summarised(t, text)
     }
     val replied = entries.collect { case e if isReply(e) => e.turnSeq }.toSet
@@ -86,7 +86,7 @@ object Follow {
       }
     }.toSet
     own.collectFirst {
-      case Entry(_, _, _, _, _, Payload.Ask(call, shown), _) if !moved.contains(call) =>
+      case Entry(_, _, _, _, _, Payload.Ask(call, shown), _, _) if !moved.contains(call) =>
         ChatScreen.Asked(turn.workflowId, call, shown)
     }
   }

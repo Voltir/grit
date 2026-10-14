@@ -28,7 +28,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
   def heard(turn: TurnRef, reach: Reach)(using Tx^): Either[StoreError, Unit] =
     entries.list(turn.conversationId).flatMap { all =>
       all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq) match {
-        case Some(first @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
+        case Some(first @ Entry(_, _, _, _, _, Payload.Heard(_), _, _)) =>
           if (!reaches.contains(turn)) reaches = reaches.updated(turn, (first.id, reach))
           Right(())
         case _ => Left(StoreError.Invalid(s"${turn.workflowId} is not a heard message's turn"))

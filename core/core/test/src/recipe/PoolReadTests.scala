@@ -29,6 +29,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
@@ -81,7 +82,8 @@ object PoolReadTests extends TestSuite {
         None,
         next.seq,
         payload,
-        at
+        at,
+        Integrity.Member
       )
       right(entries.insert(e))
       by.foreach(principals.authored(e.id, _))

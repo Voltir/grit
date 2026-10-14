@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
+import grit.core.visibility.{Integrity, Room}
 
 import org.postgresql.util.PSQLException
 
@@ -18,14 +19,17 @@ final class SqlEntryStore extends EntryStore {
   def insert(entry: Entry)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"""INSERT INTO grit.entries ($columns, classification_id)
+      s"""INSERT INTO grit.entries ($columns, classification_id, integrity_id)
          |VALUES (?, ?::uuid, ?, ?, ?, ?::jsonb, ?,
-         |        (SELECT classification_id FROM grit.conversations WHERE id = ?::uuid))""".stripMargin
+         |        (SELECT classification_id FROM grit.conversations WHERE id = ?::uuid),
+         |        ${SqlIntegrity.Interned})""".stripMargin
     // A failed statement aborts the whole transaction, and a `transact` step records its
     // output on the same connection afterwards. Rolling back to the savepoint keeps the
     // transaction usable, so `DuplicateId` can be recorded as the step's value.
     val savepoint = conn.setSavepoint()
     try {
+      // Met here with the room's cap, so no writer can forget it (ADR 0036).
+      val believed = capOf(entry.conversationId).fold(entry.integrity)(entry.integrity.meet(_))
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, EntryId.value(entry.id))
         ps.setString(2, ConversationId.value(entry.conversationId))
@@ -35,6 +39,7 @@ final class SqlEntryStore extends EntryStore {
         ps.setString(6, PayloadJson.write(entry.payload).render())
         ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
         ps.setString(8, ConversationId.value(entry.conversationId))
+        SqlIntegrity.bind(ps, 9, believed)
         ps.executeUpdate()
       }
       // Past this entry, so its positions are not taken again once it is purged.
@@ -64,7 +69,7 @@ final class SqlEntryStore extends EntryStore {
   def get(id: EntryId)(using tx: Tx^): Either[StoreError, Option[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql = s"""WITH ${SqlClearance.With}
-                 |SELECT $columns FROM grit.entries e
+                 |SELECT $columns, ${SqlIntegrity.columns("e.integrity_id")} FROM grit.entries e
                  | WHERE e.id = ? AND ${SqlClearance.entry("e")}""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
@@ -83,7 +88,7 @@ final class SqlEntryStore extends EntryStore {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
       s"""WITH ${SqlClearance.With}
-         |SELECT $columns FROM grit.entries e
+         |SELECT $columns, ${SqlIntegrity.columns("e.integrity_id")} FROM grit.entries e
          | WHERE e.conversation_id = ?::uuid AND ${SqlClearance.entry("e")}
          | ORDER BY e.seq""".stripMargin
     attempt {
@@ -107,7 +112,7 @@ final class SqlEntryStore extends EntryStore {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
       s"""WITH ${SqlClearance.With}
-         |SELECT $columns FROM grit.entries e
+         |SELECT $columns, ${SqlIntegrity.columns("e.integrity_id")} FROM grit.entries e
          | WHERE e.conversation_id = ?::uuid AND e.seq = ANY (?::bigint[])
          |   AND ${SqlClearance.entry("e")}
          | ORDER BY e.seq""".stripMargin
@@ -132,7 +137,7 @@ final class SqlEntryStore extends EntryStore {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
       s"""WITH ${SqlClearance.With}
-         |SELECT $columns FROM grit.entries e
+         |SELECT $columns, ${SqlIntegrity.columns("e.integrity_id")} FROM grit.entries e
          | WHERE e.conversation_id = ?::uuid AND e.turn_seq = ? AND ${SqlClearance.entry("e")}
          | ORDER BY e.seq""".stripMargin
     attempt {
@@ -198,6 +203,30 @@ private[dbos] object SqlEntryStore {
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =
     StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString))
 
+  /** The cap of `conversation`'s room, as the deployment declares it for the room with its
+    * reported access ([[Tx.access]]); `None` when it has none, or there is no such conversation
+    * (whose insert then fails). Throws as the driver does.
+    */
+  private def capOf(conversation: ConversationId)(using tx: Tx^): Option[Integrity] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    val path = Using.resource(
+      conn.prepareStatement(
+        """SELECT array_to_json(p.path)::text FROM grit.conversations c
+          |  JOIN grit.places p ON p.id = c.room_id
+          | WHERE c.id = ?::uuid""".stripMargin
+      )
+    ) { ps =>
+      ps.setString(1, ConversationId.value(conversation))
+      Using.resource(ps.executeQuery())(rs => Option.when(rs.next())(rs.getString(1)))
+    }
+    path.flatMap { p =>
+      SqlPlaces.read(p) match {
+        case Right(room) => Tx.visibility(tx).capOf(Room(room, Tx.access(room)))
+        case Left(why) => throw new IllegalStateException(s"unreadable room: $why")
+      }
+    }
+  }
+
   private[sql] def readEntry(rs: ResultSet): Entry =
     Entry(
       id = EntryId(rs.getString("id")),
@@ -211,6 +240,7 @@ private[dbos] object SqlEntryStore {
         case Right(p) => p
         case Left(why) => throw new IllegalStateException(s"undecodable payload: $why")
       },
-      createdAt = rs.getObject("created_at", classOf[OffsetDateTime]).toInstant
+      createdAt = rs.getObject("created_at", classOf[OffsetDateTime]).toInstant,
+      integrity = SqlIntegrity.read(rs)
     )
 }

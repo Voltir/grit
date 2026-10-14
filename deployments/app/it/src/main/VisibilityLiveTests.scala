@@ -38,6 +38,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Entry, Nearby, Origin, Payload, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Compartments,
   Grant,
@@ -246,7 +247,8 @@ object VisibilityLiveTests extends TestSuite {
                 None,
                 next.seq,
                 payload,
-                Instant.now()
+                Instant.now(),
+                Integrity.Member
               )
             )
           } yield ()
@@ -328,6 +330,7 @@ object VisibilityLiveTests extends TestSuite {
             _ <- keeper.write(
               k,
               label,
+              Integrity.Member,
               Place.under(Namespace.Task, Vector("notes")),
               t,
               ujson.Obj(),
@@ -429,7 +432,7 @@ object VisibilityLiveTests extends TestSuite {
       val (_, clearedInB) = asked("b-cleared", thread("b", "3"), Cleared)
       val resultRead = ok("reading as the uncleared asker")(
         store.read(Subject.Turn(unclearedTurn))(engine.entries.list(budget.conversationId))
-      ).collect { case Entry(_, _, _, _, _, Payload.Result(r, _), _) => r.content }
+      ).collect { case Entry(_, _, _, _, _, Payload.Result(r, _), _, _) => r.content }
       Seen(unclearedInA, clearedInA, clearedInB, resultRead)
     } finally engine.close()
   }

@@ -26,7 +26,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Label}
+import grit.core.visibility.{Clearance, Integrity, Label}
 
 /** [[DocumentStore]] over `grit.documents` and `grit.document_terms`, reading as
   * [[SqlDocumentSearch]] does, marking in `tombstones` the versions its keepers leave for
@@ -156,13 +156,14 @@ private[sql] object SqlDocuments {
     * to select [[Columns]] from.
     */
   val Labelled: String =
-    s"(SELECT d.*, ${SqlLabels.columns("l")} FROM grit.documents d JOIN grit.classifications l ON l.id = d.classification_id)"
+    s"(SELECT d.*, ${SqlLabels.columns("l")}, ${SqlIntegrity.columns("d.integrity_id")} " +
+      "FROM grit.documents d JOIN grit.classifications l ON l.id = d.classification_id)"
 
   /** A version's columns, as [[document]] reads them, from [[Labelled]]. */
   val Columns: String =
     "version, plugin, key, array_to_json(place)::text AS place, body, data::text AS data, " +
       "pointer::text AS pointer, written_at, placed, last_placed, followed, last_followed, " +
-      "label_level, label_compartments"
+      "label_level, label_compartments, integrity_level, integrity_compartments"
 
   /** A label's id: the parameters of [[SqlLabels.Arg]], looked up without interning it. */
   val LabelId: String =
@@ -261,6 +262,7 @@ private[sql] object SqlDocuments {
       plugin,
       key,
       SqlLabels.read(rs),
+      SqlIntegrity.read(rs),
       place,
       text,
       ujson.read(rs.getString("data")),
@@ -363,6 +365,7 @@ private[sql] object SqlDocuments {
     def write(
         key: DocKey,
         label: Label,
+        integrity: Integrity,
         place: Place,
         text: DocText,
         data: ujson.Value,
@@ -375,11 +378,12 @@ private[sql] object SqlDocuments {
         ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
       SqlLabels.intern(kept).flatMap { id =>
         rows(
-          """SELECT version,
+          s"""SELECT version,
             |       (body IS NOT DISTINCT FROM ?
             |        AND place = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
             |        AND data = ?::jsonb
-            |        AND pointer IS NOT DISTINCT FROM ?::jsonb) AS same
+            |        AND pointer IS NOT DISTINCT FROM ?::jsonb
+            |        AND integrity_id = ${SqlIntegrity.Interned}) AS same
             |  FROM grit.documents
             | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
             |   FOR UPDATE""".stripMargin
@@ -388,9 +392,10 @@ private[sql] object SqlDocuments {
           ps.setString(2, path(place).render())
           ps.setString(3, data.render())
           ps.setString(4, pointer.map(pointerJson).orNull)
-          ps.setString(5, PluginName.value(plugin))
-          ps.setString(6, DocKey.value(key))
-          ps.setInt(7, id)
+          SqlIntegrity.bind(ps, 5, integrity)
+          ps.setString(7, PluginName.value(plugin))
+          ps.setString(8, DocKey.value(key))
+          ps.setInt(9, id)
         }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
           // The parameter's type written out: inferred, it is Vector's array-holding refinement.
           (head: Vector[(DocumentVersion, Boolean)]) =>
@@ -404,9 +409,9 @@ private[sql] object SqlDocuments {
                   written <- rows(
                     s"""INSERT INTO grit.documents
                       |       (plugin, key, place, body, data, pointer, written_at, last_placed,
-                      |        classification_id, room_id)
+                      |        classification_id, room_id, integrity_id)
                       |VALUES (?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?::jsonb,
-                      |        ?::jsonb, ?, ?, ?, $RoomId)
+                      |        ?::jsonb, ?, ?, ?, $RoomId, ${SqlIntegrity.Interned})
                       |RETURNING version""".stripMargin
                   ) { ps =>
                     ps.setString(1, PluginName.value(plugin))
@@ -419,6 +424,7 @@ private[sql] object SqlDocuments {
                     ps.setObject(8, utc(at))
                     ps.setInt(9, id)
                     ps.setString(10, room)
+                    SqlIntegrity.bind(ps, 11, integrity)
                   }(versionOf)
                   version <- written.headOption.toRight(
                     StoreError.Invalid("a write returned no version")
@@ -460,8 +466,10 @@ private[sql] object SqlDocuments {
               _ <- supersede(current, at)
               written <- rows(
                 """INSERT INTO grit.documents
-                  |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id)
-                  |SELECT plugin, key, place, NULL, ?, ?, classification_id, room_id FROM grit.documents
+                  |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id,
+                  |        integrity_id)
+                  |SELECT plugin, key, place, NULL, ?, ?, classification_id, room_id, integrity_id
+                  |  FROM grit.documents
                   | WHERE version = ?
                   |RETURNING version""".stripMargin
               ) { ps =>

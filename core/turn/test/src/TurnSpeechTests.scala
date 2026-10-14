@@ -9,6 +9,7 @@ import grit.core.provider.ProviderError
 import grit.core.speech.{Cleared, Judged, Outcome, Speaking, SpeechJson}
 import grit.core.store.Payload
 import grit.core.triage.InMemoryTriageStore
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -204,7 +205,8 @@ object TurnSpeechTests extends TestSuite {
           None,
           next.seq,
           Payload.Message(said("Thursday, as before.")),
-          java.time.Instant.EPOCH
+          java.time.Instant.EPOCH,
+          Integrity.Member
         )
         w.entries.insert(e)
         e

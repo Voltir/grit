@@ -7,6 +7,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{Entry, EntryStore, Origin, Payload, PeriodStore, StoreError, Tx}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -70,7 +71,8 @@ abstract class StitchContract extends TestSuite {
       None,
       next.seq,
       payload,
-      At.plusSeconds(seconds)
+      At.plusSeconds(seconds),
+      Integrity.Member
     )
     right(entries.insert(e))
     e

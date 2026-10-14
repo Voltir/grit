@@ -54,15 +54,21 @@ final class SqlCacheDocs(plugin: PluginName, source: CloseOrdinal) extends Cache
   import SqlPlugins.*
 
   def put(key: String, doc: ujson.Value)(using tx: Tx^): Either[StoreError, Unit] = {
-    // Kept at the transaction's floor, in its own room: never a label or room a plugin names.
+    // Kept at the transaction's floor, in its own room: never a label or room a plugin names;
+    // believed as its closing is, untrusted (id 1) when there is none to be read.
     val clearance = Tx.clearance(tx)
     val room = clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     update(
-      s"""INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, classification_id, room_id)
-         |VALUES (?, $Generation, ?, ?::jsonb, ?, ${SqlLabels.Interned}, ${SqlDocuments.RoomId})
+      s"""INSERT INTO grit.plugin_docs
+         |       (plugin, generation, key, doc, source, classification_id, room_id, integrity_id)
+         |VALUES (?, $Generation, ?, ?::jsonb, ?, ${SqlLabels.Interned}, ${SqlDocuments.RoomId},
+         |        coalesce((SELECT e.integrity_id FROM grit.periods p
+         |                    JOIN grit.entries e ON e.id = p.closing_id
+         |                   WHERE p.close_ordinal = ?), 1))
          |ON CONFLICT (plugin, generation, key)
          |  DO UPDATE SET doc = EXCLUDED.doc, source = EXCLUDED.source,
-         |                classification_id = EXCLUDED.classification_id, room_id = EXCLUDED.room_id""".stripMargin
+         |                classification_id = EXCLUDED.classification_id, room_id = EXCLUDED.room_id,
+         |                integrity_id = EXCLUDED.integrity_id""".stripMargin
     ) { ps =>
       ps.setString(1, PluginName.value(plugin))
       ps.setString(2, PluginName.value(plugin))
@@ -71,6 +77,7 @@ final class SqlCacheDocs(plugin: PluginName, source: CloseOrdinal) extends Cache
       ps.setLong(5, CloseOrdinal.value(source))
       SqlLabels.bind(ps, 6, clearance.floor)
       ps.setString(8, ujson.Arr.from(room).render())
+      ps.setLong(9, CloseOrdinal.value(source))
     }.map(_ => ())
   }
 }

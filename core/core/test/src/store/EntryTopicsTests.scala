@@ -6,6 +6,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing, Edit, Flows, Section, TestClosings}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
+import grit.core.visibility.Integrity
 
 import TestClosings.{balance, line}
 import utest.*
@@ -16,7 +17,7 @@ object EntryTopicsTests extends TestSuite {
   private val at = Instant.parse("2026-09-20T10:00:00Z")
 
   private def entry(id: String, turn: Long, seq: Long, payload: Payload): Entry =
-    Entry(EntryId(id), c, TurnSeq(turn), None, EntrySeq(seq), payload, at)
+    Entry(EntryId(id), c, TurnSeq(turn), None, EntrySeq(seq), payload, at, Integrity.Member)
 
   private val photo = line(Section.Topics, "Photo Rename", 1, 1, Some("renaming photos"))
   private val backup = line(Section.Topics, "Laptop Backup", 1, 2)

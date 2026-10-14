@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, TurnRef, TurnSeq}
 import grit.core.period.{Activity, Balance, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.place.Place
+import grit.core.visibility.Integrity
 
 /** A conversation's periods: which is open, closing one, and deleting what a closed one no
   * longer needs. Each writing method takes the conversation's lock itself
@@ -45,8 +46,9 @@ trait PeriodStore {
   def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]]
 
   /** Closes `attempt.period` at `at` for `reason`, with `closing` recorded as its closing
-    * entry after everything in the conversation, if it is open and its newest turn is still
-    * `attempt.last`; `Abandoned` otherwise, with nothing written. It takes the next
+    * entry after everything in the conversation, believed at the meet of the integrity of the
+    * period's entries, what its writer was shown ([[grit.core.visibility.Integrity.Untrusted]]
+    * when it has none), if it is open and its newest turn is still `attempt.last`; `Abandoned` otherwise, with nothing written. It takes the next
     * [[CloseOrdinal]], and no seal commits before one that took an earlier ordinal.
     */
   def seal(attempt: CloseRef, reason: CloseReason, closing: Closing, at: Instant)(using
@@ -151,12 +153,15 @@ enum Sealed {
   case Abandoned
 }
 
-/** A closed period as a plugin sees it: never its raw entries. */
+/** A closed period as a plugin sees it: never its raw entries. `integrity` is its closing's:
+  * what anything made from it is believed at, at most.
+  */
 final case class ClosedPeriod(
     ref: PeriodRef,
     origin: Origin,
     reason: CloseReason,
     closing: Closing,
     at: Instant,
-    order: CloseOrdinal
+    order: CloseOrdinal,
+    integrity: Integrity
 )

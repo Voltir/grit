@@ -47,6 +47,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Clearance,
   Cleared,
@@ -292,7 +293,8 @@ object CloseFixtures {
           None,
           next.seq,
           Payload.Message(Message.User(text)),
-          at(minutes)
+          at(minutes),
+          Integrity.Member
         )
       )
       TurnRef(c, next.turnSeq)
@@ -306,7 +308,18 @@ object CloseFixtures {
       val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
       periods.openFor(c, next.turnSeq, at(minutes))
       val id = EntryId(s"heard:$text")
-      entries.insert(Entry(id, c, next.turnSeq, None, next.seq, Payload.Heard(text), at(minutes)))
+      entries.insert(
+        Entry(
+          id,
+          c,
+          next.turnSeq,
+          None,
+          next.seq,
+          Payload.Heard(text),
+          at(minutes),
+          Integrity.Member
+        )
+      )
       val by = TestAccounts.account(s"test:$name")
       principals.name(by, name)
       principals.authored(id, by)
@@ -318,7 +331,18 @@ object CloseFixtures {
       given Tx = TestTx.fake
       val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
       val _ =
-        entries.insert(Entry(EntryId(id), c, turn.turnSeq, None, next.seq, payload, at(minutes)))
+        entries.insert(
+          Entry(
+            EntryId(id),
+            c,
+            turn.turnSeq,
+            None,
+            next.seq,
+            payload,
+            at(minutes),
+            Integrity.Member
+          )
+        )
     }
 
     /** A turn of `question`, its reply and its summary, all at `minutes`. */

@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.store.{Entry, Payload}
 import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Verdict, Weights}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -22,7 +23,8 @@ object TopicsViewTests extends TestSuite {
       None,
       EntrySeq(seq),
       Payload.Topic(events.toVector),
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   private def whole(turn: Long, t: TopicId, by: Placement) =

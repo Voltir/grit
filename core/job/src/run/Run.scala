@@ -129,6 +129,7 @@ object Run {
               case Planned.Says(text) =>
                 for {
                   next <- records.entries.lockNext(turn.conversationId)
+                  level <- records.entries.believed(turn)
                   _ <- records.entries.insert(
                     Entry(
                       turn.replyId,
@@ -137,7 +138,8 @@ object Run {
                       None,
                       next.seq,
                       Payload.Message(saying(text, read)),
-                      now
+                      now,
+                      level
                     )
                   )
                   _ <- awaited(records, turn, read.report)

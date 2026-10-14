@@ -16,6 +16,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
@@ -77,7 +78,8 @@ object AssemblyFixtures {
               None,
               next.seq,
               payload,
-              Instant.EPOCH
+              Instant.EPOCH,
+              Integrity.Member
             )
           )
         }
@@ -120,7 +122,8 @@ object AssemblyFixtures {
             None,
             next.seq,
             payload,
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
       }

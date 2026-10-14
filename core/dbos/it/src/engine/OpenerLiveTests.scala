@@ -9,6 +9,7 @@ import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Clearance,
   Compartment,
@@ -85,7 +86,8 @@ object OpenerLiveTests extends TestSuite {
             None,
             next.seq,
             Payload.Posted("posted"),
-            Instant.parse("2026-10-07T08:00:00Z")
+            Instant.parse("2026-10-07T08:00:00Z"),
+            Integrity.Member
           )
         )
       }

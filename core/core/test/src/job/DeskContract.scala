@@ -8,7 +8,7 @@ import grit.core.id.{CallSlot, EdgeName, JobName, PluginName, ScheduleId, TestCa
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.Origin
-import grit.core.visibility.{Label, TestLabels}
+import grit.core.visibility.{Integrity, Label, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -79,7 +79,8 @@ abstract class DeskContract extends TestSuite {
           Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
           SlotRule.Once(at("09:30"), hour),
           None,
-          Label.Public
+          Label.Public,
+          Integrity.Member
         )
       )
       u.due("09:30") ==> Vector(id)

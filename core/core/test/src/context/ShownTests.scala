@@ -29,6 +29,7 @@ import grit.core.period.{
 import grit.core.place.Place
 import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 import grit.core.tool.ToolName
+import grit.core.visibility.Integrity
 
 import TestClosings.{balance, line}
 import utest.*
@@ -38,7 +39,16 @@ object ShownTests extends TestSuite {
   private val at = Instant.parse("2026-09-20T12:00:00Z")
 
   private def entry(payload: Payload): Entry =
-    Entry(EntryId("e"), ConversationId("c"), TurnSeq(0), None, EntrySeq(0), payload, at)
+    Entry(
+      EntryId("e"),
+      ConversationId("c"),
+      TurnSeq(0),
+      None,
+      EntrySeq(0),
+      payload,
+      at,
+      Integrity.Member
+    )
 
   /** A user message of turn `t`. */
   private def said(t: Long): Entry =
@@ -49,7 +59,8 @@ object ShownTests extends TestSuite {
       None,
       EntrySeq(t),
       Payload.Message(Message.User(s"turn $t")),
-      at
+      at,
+      Integrity.Member
     )
 
   /** The closing entry of a period whose last turn was `last`. */
@@ -61,7 +72,8 @@ object ShownTests extends TestSuite {
       None,
       EntrySeq(last),
       Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("We talked.")),
-      at
+      at,
+      Integrity.Member
     )
 
   private def told(t: Long): Message = Message.User(s"turn $t")
@@ -625,6 +637,7 @@ object ShownTests extends TestSuite {
         got(PluginName.of("digest")),
         got(DocKey.of("week")),
         grit.core.visibility.Label.Public,
+        Integrity.Member,
         board,
         got(DocText.of("Deploys frozen until Friday.\n[record] Standing: none")),
         ujson.Obj(),
@@ -655,6 +668,7 @@ object ShownTests extends TestSuite {
         got(PluginName.of("cards")),
         got(DocKey.of("docs/a b.md")),
         grit.core.visibility.Label.Public,
+        Integrity.Member,
         Place.read("slack:T1/C1").fold(e => sys.error(e), identity),
         got(DocText.of("How releases are cut.")),
         ujson.Obj(),
@@ -713,7 +727,8 @@ object ShownTests extends TestSuite {
         None,
         EntrySeq(50),
         Payload.Message(Message.User("again")),
-        at
+        at,
+        Integrity.Member
       )
       val record =
         Shown.of(closed(4), Speakers.none).getOrElse(throw new java.lang.AssertionError("record"))

@@ -8,6 +8,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{Entry, EntryStore, Origin, Payload, PeriodStore, StoreError, Tx}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -76,7 +77,8 @@ abstract class RoomReadsContract extends TestSuite {
         None,
         next.seq,
         payload,
-        at
+        at,
+        Integrity.Member
       )
       right(entries.insert(e))
       e

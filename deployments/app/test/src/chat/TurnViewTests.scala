@@ -33,6 +33,7 @@ import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, UsageLedger}
+import grit.core.visibility.Integrity
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
@@ -48,7 +49,16 @@ object TurnViewTests extends TestSuite {
     Some(SystemPrompt.of(Vector(Fragment(Layer.Base, Fragment.Grit, text))))
 
   private def entry(seq: Long, turn: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, EntrySeq(seq), payload, Instant.EPOCH)
+    Entry(
+      EntryId(s"e$seq"),
+      c,
+      TurnSeq(turn),
+      None,
+      EntrySeq(seq),
+      payload,
+      Instant.EPOCH,
+      Integrity.Member
+    )
 
   private def user(seq: Long, turn: Long, text: String) =
     entry(seq, turn, Payload.Message(Message.User(text)))
@@ -266,7 +276,8 @@ object TurnViewTests extends TestSuite {
           None,
           EntrySeq(seq),
           Payload.Message(Message.User(text)),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       val fromApi = Vector(their("a0", api, 3, 0, "flaky?"), their("a1", api, 3, 1, "TZ"))
       val fromWeb = Vector(their("w0", web, 5, 0, "the login page is blank"))
@@ -335,7 +346,8 @@ object TurnViewTests extends TestSuite {
             Balance.empty
           )
         ),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
       val asked = Vector(
         user(0, 0, "when is the freeze?"),
@@ -375,6 +387,7 @@ object TurnViewTests extends TestSuite {
         got(PluginName.of("digest")),
         got(DocKey.of(s"week-$version")),
         grit.core.visibility.Label.Public,
+        Integrity.Member,
         board,
         got(DocText.of(text)),
         ujson.Obj(),
@@ -450,7 +463,7 @@ object TurnViewTests extends TestSuite {
         )
         .pin
       val served = entries.map {
-        case e @ Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _)
+        case e @ Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _)
             if e.turnSeq == TurnSeq(2) =>
           e.copy(payload = Payload.Message(m.copy(upstream = Some("Cerebras"))))
         case e => e
@@ -580,8 +593,8 @@ object TurnViewTests extends TestSuite {
   private def msg(text: String): Tokens =
     entries
       .collectFirst {
-        case Entry(_, _, _, _, _, Payload.Message(m @ Message.User(`text`)), _) => m: Message
-        case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _)
+        case Entry(_, _, _, _, _, Payload.Message(m @ Message.User(`text`)), _, _) => m: Message
+        case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _)
             if m.blocks == Vector(AssistantBlock.Text(text)) =>
           m: Message
       }

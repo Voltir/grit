@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.Message
 import grit.core.place.Place
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -27,7 +28,8 @@ object NearbyTests extends TestSuite {
             None,
             EntrySeq(seq),
             Payload.Message(Message.User("hi")),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         ) ==> Right(())
       }

@@ -259,7 +259,7 @@ object SlackEdgeTests extends TestSuite {
         val names = inbox.principals
           .speakers(all.map(_.id))(using TestTx.fake)
           .getOrElse(grit.core.store.Speakers.none)
-        all.collect { case e @ grit.core.store.Entry(_, _, _, _, _, Payload.Heard(text), _) =>
+        all.collect { case e @ grit.core.store.Entry(_, _, _, _, _, Payload.Heard(text), _, _) =>
           (text, names.of(e.id))
         }
       }

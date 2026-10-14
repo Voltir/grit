@@ -8,7 +8,7 @@ import grit.core.identity.{Account, TestAccounts}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
-import grit.core.visibility.{Clearance, InMemoryRecorded, Item, Label, Visibility}
+import grit.core.visibility.{Clearance, InMemoryRecorded, Integrity, Item, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
@@ -34,7 +34,7 @@ final class InMemorySchedules(
   // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, its room, and
   // its conversation's label.
   @caps.unsafe.untrackedCaptures
-  private var turns = Map.empty[TurnRef, (Account, Option[Destination], Place, Label)]
+  private var turns = Map.empty[TurnRef, (Account, Option[Destination], Place, Label, Integrity)]
 
   /** `turn`, of `from`'s conversation, created at `label`, recorded as rooted on a message `by`
     * wrote, its reply posted at `address`, or nowhere: what the database holds of a turn as its
@@ -45,19 +45,25 @@ final class InMemorySchedules(
       from: Origin,
       by: Account,
       address: Option[String],
-      label: Label = Label.Public
+      label: Label = Label.Public,
+      believed: Integrity = Integrity.Member
   ): Unit =
-    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), from.room, label))
+    turns = turns.updated(
+      turn,
+      (by, address.map(Destination(from.edge, _)), from.room, label, believed)
+    )
 
   /** `turn`'s asker, where its reply is posted, and the clearance a transaction opened for it
     * now holds; `None` for a turn never recorded.
     */
-  private def asker(turn: TurnRef): Option[(PrincipalId, Option[Destination], Place, Clearance)] =
-    turns.get(turn).map { (by, to, room, label) =>
+  private def asker(
+      turn: TurnRef
+  ): Option[(PrincipalId, Option[Destination], Place, Clearance, Integrity)] =
+    turns.get(turn).map { (by, to, room, label, believed) =>
       // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
       val cleared =
         Tx.clearanceOf(TestAccounts.principal(by))(using TestTx.inForce(visibility, records.now))
-      (TestAccounts.principalId(by), to, room, Clearance.inRoom(room, label, cleared))
+      (TestAccounts.principalId(by), to, room, Clearance.inRoom(room, label, cleared), believed)
     }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
@@ -74,11 +80,13 @@ final class InMemorySchedules(
     */
   def held(
       id: ScheduleId
-  ): Option[(JobName, SlotRule, Option[Instant], Option[(Instant, Option[Int])], Label)] =
+  ): Option[
+    (JobName, SlotRule, Option[Instant], Option[(Instant, Option[Int])], Label, Integrity)
+  ] =
     rows
       .get(id)
       .filter(_.ended.isEmpty)
-      .map(r => (r.job, r.rule, r.next, r.started.map(_ -> r.running), r.label))
+      .map(r => (r.job, r.rule, r.next, r.started.map(_ -> r.running), r.label, r.integrity))
 
   /** `id`'s run in flight ended without a reply, at `at`: a once schedule ends failed; a
     * recurrence lets it go and keeps its next slot.
@@ -123,7 +131,7 @@ final class InMemorySchedules(
     }
 
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using
-      Tx^
+      tx: Tx^
   ): Either[StoreError, Unit] = {
     val wanted = declared.map((by, d) => d.id(by) -> d)
     val ids = wanted.map(_._1).toSet
@@ -137,7 +145,8 @@ final class InMemorySchedules(
             Report.Kept,
             d.rule,
             d.rule.first(now).map(Slot.kept),
-            d.clearance
+            d.clearance,
+            Integrity.top(Tx.visibility(tx).compartments)
           )
         case Some(r) =>
           val ended = r.ended.filterNot(_ == Ending.Undeclared)
@@ -198,7 +207,9 @@ final class InMemorySchedules(
     Right(
       rows
         .get(id)
-        .map(r => Schedule(r.job, r.params, r.principal, r.report, r.rule, r.ended, r.label))
+        .map(r =>
+          Schedule(r.job, r.params, r.principal, r.report, r.rule, r.ended, r.label, r.integrity)
+        )
     )
 
   /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s. */
@@ -218,7 +229,7 @@ final class InMemorySchedules(
             case Some(r) => kept(id, r, booking.job)
             case None =>
               asker(call.turn) match {
-                case Some((by, Some(to), room, clearance)) =>
+                case Some((by, Some(to), room, clearance, believed)) =>
                   val now = clock.now()
                   val at = Slot.kept(when.from(now))
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
@@ -237,6 +248,7 @@ final class InMemorySchedules(
                         SlotRule.Once(at, grace),
                         Some(at),
                         clearance.floor,
+                        believed,
                         asked = Some(room)
                       )
                     )
@@ -255,7 +267,7 @@ final class InMemorySchedules(
         own(booking).map { _ =>
           val now = clock.now()
           val mine =
-            asker(call.turn).fold(Vector.empty)((by, _, _, c) => pendingOf(by).filter(read(c)))
+            asker(call.turn).fold(Vector.empty)((by, _, _, c, _) => pendingOf(by).filter(read(c)))
           Pending(
             now,
             mine
@@ -271,7 +283,7 @@ final class InMemorySchedules(
           rows
             .get(id)
             .filter(r =>
-              asking.exists((by, _, _, c) => r.principal == by && read(c)(id -> r))
+              asking.exists((by, _, _, c, _) => r.principal == by && read(c)(id -> r))
             ) match {
             case Some(r) if r.job == booking.job.name =>
               r.ended match {
@@ -333,6 +345,7 @@ object InMemorySchedules {
       rule: SlotRule,
       next: Option[Instant],
       label: Label,
+      integrity: Integrity,
       started: Option[Instant] = None,
       running: Option[Int] = None,
       ended: Option[Ending] = None,

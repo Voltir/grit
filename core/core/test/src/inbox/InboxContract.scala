@@ -26,6 +26,7 @@ import grit.core.visibility.{
   Compartments,
   Grant,
   Group,
+  Integrity,
   Label,
   Labelled,
   Level,
@@ -350,6 +351,28 @@ abstract class InboxContract extends TestSuite {
         ) ==> Right(())
         store.written(here) ==> Vector((Payload.Heard("standup moves to 10:00"), Some("Ana")))
         inbox.ingested(here, SourceId("m1")) ==> Right(None)
+      }
+    }
+
+    test("an inbound message is believed at its author's integrity met with its room's cap") {
+      val capped = Origin.Task("capped-room", "inbound")
+      val open = Origin.Task("inbox", "inbound")
+      val capping = Visibility
+        .of(
+          Compartments.Shipped,
+          Visibility.Shipped.rooms,
+          Vector.empty,
+          Vector.empty,
+          capped = room => Option.when(room.place == capped.room)(Integrity.Outside)
+        )
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      withInbox(Uncapped, capping) { (inbox, store) =>
+        val ana = TestAccounts.account("task:ana-inbound")
+        inbox.ingest(open, SourceId("m1"), said("from the operator"), Account.Local)
+        inbox.hear(open, SourceId("m2"), "from a person no realm vouches", ana, Said, Reach.Nowhere)
+        inbox.ingest(capped, SourceId("m1"), said("from the operator, capped"), Account.Local)
+        store.believed(open) ==> Vector(Integrity.at(Integrity.Level.Authority), Integrity.Outside)
+        store.believed(capped) ==> Vector(Integrity.Outside)
       }
     }
 
@@ -737,7 +760,8 @@ object InboxContract {
   /** What a test reads and writes of the store under an inbox: `spend` records a call that
     * cost that many dollars now; `exists`, whether a conversation from an origin exists;
     * `written`, the entries of an origin's conversation in order, each with the name its
-    * author's account is named; `dated`, when each of those entries is dated;
+    * author's account is named; `dated`, when each of those entries is dated; `believed`, what
+    * each is believed at;
     * `periods`, an origin's conversation's periods, oldest first; `close` seals the period a
     * turn is in, its last turn that one; `name` names an account; `reached`, the reach kept
     * for each of an origin's conversation's entries, in order (none for one not heard);
@@ -757,6 +781,7 @@ object InboxContract {
       exists: Origin => Boolean,
       written: Origin => Vector[(Payload, Option[String])],
       dated: Origin => Vector[Instant],
+      believed: Origin => Vector[Integrity],
       periods: Origin => Vector[Period],
       close: TurnRef => Unit,
       name: (Account, String) => Unit,

@@ -37,6 +37,7 @@ import grit.core.plugin.{
 import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
@@ -88,6 +89,7 @@ object PluginLiveTests extends TestSuite {
               .write(
                 key,
                 grit.core.visibility.Label.Public,
+                Integrity.Member,
                 Place.under(Namespace.Task, Vector("notes")),
                 text,
                 ujson.Obj(),

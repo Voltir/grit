@@ -47,7 +47,7 @@ object TriageInput {
         .map(e => s"thread unread: ${describe(e)}")
       heard <- all
         .collectFirst {
-          case e @ Entry(_, _, seq, _, _, Payload.Heard(_) | Payload.Message(Message.User(_)), _)
+          case e @ Entry(_, _, seq, _, _, Payload.Heard(_) | Payload.Message(Message.User(_)), _, _)
               if seq == turn.turnSeq =>
             e
         }

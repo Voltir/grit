@@ -59,6 +59,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Clearance,
   Cleared,
@@ -126,6 +127,7 @@ object RunFixtures {
                 .write(
                   key,
                   Label.Public,
+                  Integrity.Member,
                   Place.under(Namespace.Task, Vector("notes")),
                   text,
                   ujson.Obj(),

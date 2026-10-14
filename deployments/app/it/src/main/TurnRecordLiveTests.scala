@@ -81,6 +81,7 @@ object TurnRecordLiveTests extends TestSuite {
                   _,
                   _,
                   Payload.Result(grit.core.message.Message.ToolResult(_, content, isError), shown),
+                  _,
                   _
                 ) =>
               (content, isError, shown)

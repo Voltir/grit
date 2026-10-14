@@ -445,6 +445,9 @@ CREATE TABLE IF NOT EXISTS grit.entries (
     search_text     TEXT GENERATED ALWAYS AS (grit.entry_text(payload)) STORED,
     -- Its conversation's label, copied by the insert (SqlEntryStore.insert).
     classification_id        SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.classifications(id),
+    -- How far it may be believed (ADR 0036), fixed when written: what its writer gave, met with
+    -- its conversation's room's cap (SqlEntryStore.insert). No default: every writer says.
+    integrity_id    SMALLINT NOT NULL REFERENCES grit.integrity_labels(id),
     -- One entry per position. Writers allocate seq under the conversation's row lock
     -- (EntryStore.lockNext); this makes a writer that skipped the lock fail, not interleave.
     CONSTRAINT entries_conversation_seq UNIQUE (conversation_id, seq)
@@ -984,6 +987,8 @@ CREATE TABLE IF NOT EXISTS grit.plugin_docs (
     source     BIGINT NOT NULL,
     classification_id   SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.classifications(id),
     room_id    UUID REFERENCES grit.places(id),
+    -- How far it may be believed (ADR 0036): the closing it was posted from's.
+    integrity_id SMALLINT NOT NULL REFERENCES grit.integrity_labels(id),
     PRIMARY KEY (plugin, generation, key)
 );
 
@@ -1033,7 +1038,9 @@ CREATE TABLE IF NOT EXISTS grit.documents (
     followed      BIGINT NOT NULL DEFAULT 0,
     last_followed TIMESTAMPTZ,
     classification_id      SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.classifications(id),
-    room_id       UUID REFERENCES grit.places(id)
+    room_id       UUID REFERENCES grit.places(id),
+    -- How far it may be believed (ADR 0036), as its writer gave it; a withdrawal's, its document's.
+    integrity_id  SMALLINT NOT NULL REFERENCES grit.integrity_labels(id)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key, classification_id)
@@ -1088,6 +1095,9 @@ CREATE TABLE IF NOT EXISTS grit.schedules (
     ended_at    TIMESTAMPTZ,
     classification_id    SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.classifications(id),
     room_id     UUID REFERENCES grit.places(id),
+    -- What its runs start believed at (ADR 0036): an asked one's, its asking turn's then; a
+    -- declared one's, grit's own.
+    integrity_id SMALLINT NOT NULL REFERENCES grit.integrity_labels(id),
     CHECK ((source = 'asked') = (asked_in IS NOT NULL)),
     CONSTRAINT schedules_room_asked CHECK (source = 'asked' OR room_id IS NULL),
     CHECK ((ended IS NULL) = (ended_at IS NULL)),

@@ -2,17 +2,19 @@ package grit.core.store
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.place.Place
-import grit.core.visibility.{Item, Label}
+import grit.core.visibility.{Item, Label, Room}
 
 /** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]] and [[ClearanceContract]]:
   * `conversation` is each conversation as its row holds it, whose label an entry copies when
   * it is inserted, and whose room it is read in. Its reads return only what the `Tx`'s
   * clearance reads; otherwise it ignores the `Tx`: writes are never rolled back, and `lockNext`
   * locks nothing. Unlike Postgres it takes any conversation id, known or not: an unknown one's
-  * entries are public.
+  * entries are public. `room` is each conversation's room, whose cap an entry is met with
+  * (by default `conversation`'s), for a fake that keeps no label.
   */
 final class InMemoryEntryStore(
-    conversation: ConversationId -> Option[Conversation] = _ => None
+    conversation: ConversationId -> Option[Conversation] = _ => None,
+    room: Option[ConversationId -> Option[Place]] = None
 ) extends EntryStore {
 
   @caps.unsafe.untrackedCaptures
@@ -28,7 +30,7 @@ final class InMemoryEntryStore(
   @caps.unsafe.untrackedCaptures
   private var marks = Map.empty[ConversationId, (TurnSeq, EntrySeq)]
 
-  def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
+  def insert(entry: Entry)(using tx: Tx^): Either[StoreError, Unit] =
     if (entries.exists(_.id == entry.id)) {
       Left(StoreError.DuplicateId(entry.id))
     } else if (
@@ -36,7 +38,12 @@ final class InMemoryEntryStore(
     ) {
       Left(StoreError.DatabaseError(s"seq ${entry.seq} is taken in its conversation"))
     } else {
-      entries = entries :+ entry
+      // Met with its room's cap, as the SQL store meets it.
+      val at = room.fold(conversation(entry.conversationId).map(_.origin.room))(
+        _(entry.conversationId)
+      )
+      val cap = at.flatMap(r => Tx.visibility(tx).capOf(Room(r, Tx.access(r))))
+      entries = entries :+ cap.fold(entry)(c => entry.copy(integrity = entry.integrity.meet(c)))
       labels =
         labels.updated(entry.id, conversation(entry.conversationId).fold(Label.Public)(_.label))
       val (turn, seq) = marks.getOrElse(entry.conversationId, (TurnSeq.First, EntrySeq.First))

@@ -1,6 +1,7 @@
 package grit.core.store
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.visibility.Integrity
 
 /** Append-only entry store. Entries are never rewritten, and deleted only by the purge of
   * their closed period ([[PeriodStore.purge]]). Its reads return only the entries their
@@ -11,9 +12,10 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 trait EntryStore {
 
   /** Appends `entry`, kept at the label its conversation was created at
-    * ([[Conversation.label]]). Never overwrites: an id already taken is `DuplicateId`, and a
-    * `seq` already taken in its conversation is a `DatabaseError` (positions come from
-    * [[lockNext]]).
+    * ([[Conversation.label]]), and believed at `entry.integrity` met with its conversation's
+    * room's cap ([[grit.core.visibility.Visibility.capOf]]), never above it. Never overwrites: an
+    * id already taken is `DuplicateId`, and a `seq` already taken in its conversation is a
+    * `DatabaseError` (positions come from [[lockNext]]).
     */
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit]
 
@@ -37,6 +39,14 @@ trait EntryStore {
 
   /** `turn`'s entries its transaction reads, ascending by seq; empty when it has none. */
   def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]]
+
+  /** What `turn` is believed at so far, while nothing withholds from it what it reads: the meet
+    * of its entries' integrity ([[ofTurn]]), its trigger's and its results' among them;
+    * [[Integrity.Untrusted]] when its transaction reads none. What its own other rows are
+    * written at.
+    */
+  final def believed(turn: TurnRef)(using Tx^): Either[StoreError, Integrity] =
+    ofTurn(turn).map(_.map(_.integrity).reduceOption(_.meet(_)).getOrElse(Integrity.Untrusted))
 
   /** Locks `conversation` against other writers until the transaction ends, and returns the
     * positions after every entry ever recorded in it, purged ones included. Every writer of a

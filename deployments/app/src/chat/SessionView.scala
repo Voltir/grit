@@ -87,7 +87,7 @@ object SessionView {
         case _ => None
       }).map(e.id -> _)
     }.toMap
-    val windows = entries.collect { case Entry(_, _, _, _, _, w: Payload.Window, _) => w }
+    val windows = entries.collect { case Entry(_, _, _, _, _, w: Payload.Window, _, _) => w }
     val roles = Vector(Turn, Query, Summary, Classify, Verdict).flatMap { name =>
       val rows = costs.filter(r => roleOf.get(r.entry).contains(name))
       Option.when(rows.nonEmpty)(Role(name, rows.map(_.model).distinct, rows.size, spent(rows)))
@@ -114,7 +114,7 @@ object SessionView {
     * the last entry a turn writes, in the same transaction as its ledger row.
     */
   def unread(entries: Vector[Entry], settled: Set[TurnSeq]): (Vector[TurnSeq], Set[TurnSeq]) = {
-    val summarised = entries.collect { case Entry(_, _, t, _, _, Payload.Summary(_), _) => t }
+    val summarised = entries.collect { case Entry(_, _, t, _, _, Payload.Summary(_), _, _) => t }
     (entries.map(_.turnSeq).distinct.filterNot(settled), settled ++ summarised)
   }
 

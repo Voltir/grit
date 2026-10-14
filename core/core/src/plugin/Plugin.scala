@@ -92,7 +92,8 @@ trait CacheDocs {
 
   /** Keeps `doc` under `key`, replacing any there, as the period's, at its transaction's floor
     * ([[grit.core.visibility.Clearance.floor]]: under posting, the period's conversation's label)
-    * and in its own room, or in none: never a label or room the plugin names. A
+    * and in its own room, or in none: never a label or room the plugin names. Believed at the
+    * period's closing's integrity, what it was made from; untrusted when the closing is gone. A
     * `DatabaseError` when the plugin's cursor was never started.
     */
   def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit]

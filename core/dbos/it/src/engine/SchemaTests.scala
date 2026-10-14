@@ -74,7 +74,7 @@ object SchemaTests extends TestSuite {
           LiveDb.transaction(config)(
             execute(
               "INSERT INTO grit.schedules (id, job, rule, params, principal, report, created_at, " +
-                s"$columns) VALUES ('s', 'j', '{}', '{}', 'grit', '{}', now(), $values)"
+                s"integrity_id, $columns) VALUES ('s', 'j', '{}', '{}', 'grit', '{}', now(), 2, $values)"
             )
           )
           None

@@ -33,6 +33,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
@@ -333,6 +334,7 @@ object RebuildTests extends TestSuite {
             .write(
               right(DocKey.of("falcon")),
               grit.core.visibility.Label.Public,
+              Integrity.Member,
               Origin.Task("rebuild", "d").room,
               right(DocText.of("the Falcon budget is 4200")),
               ujson.Obj(),

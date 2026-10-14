@@ -9,6 +9,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, QuestionName, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -22,7 +23,8 @@ object EarningTests extends TestSuite {
       None,
       EntrySeq(n),
       payload,
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   private def heard(n: Long): Entry = entry(n, Payload.Heard(s"heard $n"))

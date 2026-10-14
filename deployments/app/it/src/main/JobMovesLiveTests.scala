@@ -35,6 +35,7 @@ import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Payload, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
@@ -191,6 +192,7 @@ object JobMovesLiveTests extends TestSuite {
               .write(
                 DocKey.of("k").fold(sys.error, identity),
                 Label.Public,
+                Integrity.Member,
                 Place.under(Namespace.Task, Vector("tallies")),
                 DocText.of(text).fold(sys.error, identity),
                 ujson.Obj(),

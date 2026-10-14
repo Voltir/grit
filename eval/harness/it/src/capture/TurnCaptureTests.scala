@@ -32,6 +32,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Db, Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
@@ -163,6 +164,7 @@ object TurnCaptureTests extends TestSuite {
           .write(
             right(DocKey.of(key)),
             grit.core.visibility.Label.Public,
+            Integrity.Member,
             Origin.Task("notes", key).room,
             right(DocText.of(s"$Marker the $key note")),
             ujson.Obj(),

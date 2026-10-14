@@ -6,6 +6,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.place.Directory
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level, TestLabels}
 
 import utest.*
@@ -75,7 +76,8 @@ abstract class ConversationContract extends TestSuite {
               None,
               next.seq,
               Payload.Message(Message.User("hi")),
-              Instant.EPOCH
+              Instant.EPOCH,
+              Integrity.Member
             )
           )
         }

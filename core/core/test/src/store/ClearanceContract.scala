@@ -18,6 +18,7 @@ import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.place.{Directory, Place}
 import grit.core.recipe.RoomReads
 import grit.core.stitch.StitchStore
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
@@ -107,7 +108,8 @@ abstract class ClearanceContract extends TestSuite {
             None,
             next.seq,
             Payload.Message(Message.User(prose)),
-            at(minute)
+            at(minute),
+            Integrity.Member
           )
         )
       )
@@ -120,7 +122,8 @@ abstract class ClearanceContract extends TestSuite {
             Some(message),
             next.seq.next,
             Payload.Message(Message.ToolResult(ToolCallId(s"$name:call"), prose, false)),
-            at(minute)
+            at(minute),
+            Integrity.Member
           )
         )
       )
@@ -146,7 +149,8 @@ abstract class ClearanceContract extends TestSuite {
               None,
               after.seq,
               Payload.Message(Message.User(s"$prose again")),
-              at(minute + 1)
+              at(minute + 1),
+              Integrity.Member
             )
           )
         )

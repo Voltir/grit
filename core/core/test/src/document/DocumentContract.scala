@@ -9,6 +9,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
@@ -89,7 +90,9 @@ abstract class DocumentContract extends TestSuite {
       pointer: Option[Pointer] = None
   ): DocumentVersion =
     transaction(
-      ok(k.write(key(name), Label.Public, where, text(body), data, pointer, at(m)))
+      ok(
+        k.write(key(name), Label.Public, Integrity.Member, where, text(body), data, pointer, at(m))
+      )
     ) match {
       case Written.Versioned(v, _, _) => v
       case w => throw new java.lang.AssertionError(s"$name: $w")
@@ -127,6 +130,37 @@ abstract class DocumentContract extends TestSuite {
       texts(hits(shelves, "second", 3).map(_.document)) ==> Vector("second words")
     }
 
+    test(
+      "a document is believed at the integrity its writer gave; the same words at another are a new version"
+    ) {
+      val p = name("doc-integrity")
+      val k = keeper(p, terms())
+      val endorsed = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+      def write(integrity: Integrity, m: Int) = transaction(
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            integrity,
+            place("here"),
+            text("words"),
+            Empty,
+            None,
+            at(m)
+          )
+        )
+      )
+      val first = write(endorsed, 1) match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      write(endorsed, 2) ==> Written.Unchanged(first, Label.Public)
+      assertMatch(write(Integrity.Untrusted, 3)) { case Written.Versioned(_, _, _) => }
+      transaction(ok(shelf(p).current(key("k"), Label.Public))).map(_.integrity) ==>
+        Some(Integrity.Untrusted)
+      transaction(ok(search.read(Vector(first)))).map(_.integrity) ==> Vector(endorsed)
+    }
+
     test("a withdrawn key holds nothing, its withdrawal is never read, and its old version is") {
       val p = name("doc-withdraw")
       val k = keeper(p, terms())
@@ -150,6 +184,7 @@ abstract class DocumentContract extends TestSuite {
           k.write(
             key("k"),
             Label.Public,
+            Integrity.Member,
             place("here"),
             text("same words"),
             ujson.Obj("n" -> 1),
@@ -213,6 +248,7 @@ abstract class DocumentContract extends TestSuite {
             k.write(
               key("k"),
               Label.Public,
+              Integrity.Member,
               place("here"),
               text("pointed words"),
               Empty,
@@ -250,6 +286,7 @@ abstract class DocumentContract extends TestSuite {
             k.write(
               key(name),
               Label.Public,
+              Integrity.Member,
               place("here"),
               text(s"words $name"),
               Empty,
@@ -308,7 +345,16 @@ abstract class DocumentContract extends TestSuite {
       transaction(ok(store.forget(gone)))
       val high = opened(Clearance.of(TestLabels.Trial))(
         ok(
-          k.write(key("high"), Label.Public, place("here"), text("high words"), Empty, None, at(1))
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("high words"),
+            Empty,
+            None,
+            at(1)
+          )
         )
       ) match {
         case Written.Versioned(v, _, _) => v
@@ -401,12 +447,41 @@ abstract class DocumentContract extends TestSuite {
       val undone = transaction {
         val inner = savepoints.atomic[Unit] {
           for {
-            _ <- k.write(key("k"), Label.Public, place("here"), text("two"), Empty, None, at(2))
-            _ <- k.write(key("new"), Label.Public, place("here"), text("new"), Empty, None, at(2))
+            _ <- k.write(
+              key("k"),
+              Label.Public,
+              Integrity.Member,
+              place("here"),
+              text("two"),
+              Empty,
+              None,
+              at(2)
+            )
+            _ <- k.write(
+              key("new"),
+              Label.Public,
+              Integrity.Member,
+              place("here"),
+              text("new"),
+              Empty,
+              None,
+              at(2)
+            )
             _ <- Left(StoreError.Invalid("refused"))
           } yield ()
         }
-        ok(k.write(key("after"), Label.Public, place("here"), text("after"), Empty, None, at(3)))
+        ok(
+          k.write(
+            key("after"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("after"),
+            Empty,
+            None,
+            at(3)
+          )
+        )
         inner
       }
       undone ==> Left(StoreError.Invalid("refused"))
@@ -420,8 +495,16 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val kept = transaction {
         savepoints.atomic[Unit](
-          k.write(key("k"), Label.Public, place("here"), text("kept"), Empty, None, at(1))
-            .map(_ => ())
+          k.write(
+            key("k"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("kept"),
+            Empty,
+            None,
+            at(1)
+          ).map(_ => ())
         )
       }
       kept ==> Right(())
@@ -503,7 +586,18 @@ abstract class DocumentContract extends TestSuite {
       put(k, "a", "words a", 1)
       put(k, "B", "words B", 1)
       transaction(
-        ok(k.write(key("c"), Label.Public, place("here"), text("words c"), Empty, None, at(2)))
+        ok(
+          k.write(
+            key("c"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("words c"),
+            Empty,
+            None,
+            at(2)
+          )
+        )
       ) match {
         case Written.Versioned(_, _, gone) => gone.map((k, _) => DocKey.value(k)) ==> Vector("B")
         case w => throw new java.lang.AssertionError(s"c: $w")
@@ -517,7 +611,18 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val floored = Clearance.of(TestLabels.Trial)
       opened(floored)(
-        ok(k.write(key("k"), Label.Public, place("here"), text("floored"), Empty, None, at(1)))
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("floored"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
       ) match {
         case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
         case w => throw new java.lang.AssertionError(s"$w")
@@ -541,7 +646,16 @@ abstract class DocumentContract extends TestSuite {
       put(k, "k", "public one", 1)
       opened(trialled)(
         ok(
-          k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, None, at(2))
+          k.write(
+            key("k"),
+            TestLabels.Trial,
+            Integrity.Member,
+            place("here"),
+            text("trial one"),
+            Empty,
+            None,
+            at(2)
+          )
         )
       )
       put(k, "k", "public two", 3)
@@ -559,7 +673,16 @@ abstract class DocumentContract extends TestSuite {
       put(k, "k", "public one", 1)
       opened(trialled)(
         ok(
-          k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, None, at(2))
+          k.write(
+            key("k"),
+            TestLabels.Trial,
+            Integrity.Member,
+            place("here"),
+            text("trial one"),
+            Empty,
+            None,
+            at(2)
+          )
         )
       )
       assert(opened(trialled)(ok(k.withdraw(key("k"), TestLabels.Trial, at(3)))).nonEmpty)
@@ -570,7 +693,16 @@ abstract class DocumentContract extends TestSuite {
       ) ==> Vector(Some("public one"), None)
       opened(trialled)(
         ok(
-          k.write(key("k"), TestLabels.Trial, place("here"), text("trial two"), Empty, None, at(4))
+          k.write(
+            key("k"),
+            TestLabels.Trial,
+            Integrity.Member,
+            place("here"),
+            text("trial two"),
+            Empty,
+            None,
+            at(4)
+          )
         )
       ) match {
         case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
@@ -589,6 +721,7 @@ abstract class DocumentContract extends TestSuite {
           k.write(
             key("high"),
             Label.Public,
+            Integrity.Member,
             place("here"),
             text("apple apple high"),
             Empty,
@@ -627,7 +760,16 @@ abstract class DocumentContract extends TestSuite {
       room(origin)
       opened(Clearance.inRoom(origin.room, TestLabels.Trial, TestLabels.Trial))(
         ok(
-          k.write(key("ours"), Label.Public, place("here"), text("our room's"), Empty, None, at(1))
+          k.write(
+            key("ours"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("our room's"),
+            Empty,
+            None,
+            at(1)
+          )
         )
       )
       opened(Clearance.inRoom(origin.room, TestLabels.Trial, Label.Public))(
@@ -650,6 +792,7 @@ abstract class DocumentContract extends TestSuite {
           k.write(
             key("theirs"),
             Label.Public,
+            Integrity.Member,
             place("here"),
             text("their room's"),
             Empty,
@@ -663,6 +806,7 @@ abstract class DocumentContract extends TestSuite {
           k.write(
             key("nobody's"),
             Label.Public,
+            Integrity.Member,
             place("here"),
             text("no room's"),
             Empty,

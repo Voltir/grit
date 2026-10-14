@@ -24,6 +24,7 @@ import grit.core.provider.ModelRequest
 import grit.core.schema.JsonSchema
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
 
 import utest.*
@@ -334,6 +335,7 @@ object MovesContract {
       .write(
         DocKey.of(k).fold(e => throw new java.lang.AssertionError(e), identity),
         label,
+        Integrity.Member,
         Here,
         DocText.of(k).fold(e => throw new java.lang.AssertionError(e), identity),
         ujson.Obj(),

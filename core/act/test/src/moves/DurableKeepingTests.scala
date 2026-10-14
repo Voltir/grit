@@ -9,6 +9,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.DocKey
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
 import grit.dbos.sql.TestTx
 
@@ -39,6 +40,7 @@ object DurableKeepingTests extends TestSuite {
     def write(
         k: DocKey,
         label: Label,
+        integrity: Integrity,
         place: Place,
         t: DocText,
         data: ujson.Value,
@@ -46,7 +48,7 @@ object DurableKeepingTests extends TestSuite {
         at: Instant
     )(using Tx^): Either[StoreError, Written] = {
       writes += 1
-      inner.write(k, label, place, t, data, pointer, at)
+      inner.write(k, label, integrity, place, t, data, pointer, at)
     }
   }
 

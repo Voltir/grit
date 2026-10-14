@@ -21,6 +21,7 @@ import grit.core.message.Message
 import grit.core.place.{Directory, Namespace, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Compartment, Label, Level}
 import grit.dbos.sql.{
   DbConfig,
@@ -92,7 +93,8 @@ object ConversationRoomsLiveTests extends TestSuite {
               None,
               next.seq,
               Payload.Message(Message.User("hi")),
-              Instant.EPOCH
+              Instant.EPOCH,
+              Integrity.Member
             )
           )
         }
@@ -143,7 +145,8 @@ object ConversationRoomsLiveTests extends TestSuite {
                 None,
                 next.seq,
                 Payload.Message(Message.User(name)),
-                Instant.EPOCH
+                Instant.EPOCH,
+                Integrity.Member
               )
             )(using tx)
           }
@@ -177,8 +180,9 @@ object ConversationRoomsLiveTests extends TestSuite {
       val store = new SqlConversationStore()
       val c = LiveDb.conversation(config, Origin.Slack("T", "kept", "1.0")).id
       rows(
-        """INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, room_id)
-          |SELECT 'digest', 'room:kept', '{}', 'lines', now(), now(), id
+        """INSERT INTO grit.documents
+          |       (plugin, key, place, body, written_at, last_placed, room_id, integrity_id)
+          |SELECT 'digest', 'room:kept', '{}', 'lines', now(), now(), id, 2
           |  FROM grit.places WHERE path = '{slack,T,kept}' RETURNING version""".stripMargin
       ).size ==> 1
       LiveDb.transaction(config)(store.remove(c)) ==> Right(())
@@ -189,8 +193,8 @@ object ConversationRoomsLiveTests extends TestSuite {
       val store = new SqlConversationStore()
       val c = LiveDb.conversation(config, Origin.Slack("T", "cached", "1.0")).id
       rows(
-        """INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, room_id)
-          |SELECT 'digest', 1, 'room:cached', '{}', 1, id
+        """INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, room_id, integrity_id)
+          |SELECT 'digest', 1, 'room:cached', '{}', 1, id, 2
           |  FROM grit.places WHERE path = '{slack,T,cached}' RETURNING key""".stripMargin
       ).size ==> 1
       LiveDb.transaction(config)(store.remove(c)) ==> Right(())
@@ -202,8 +206,9 @@ object ConversationRoomsLiveTests extends TestSuite {
       val c = LiveDb.conversation(config, Origin.Slack("T", "asked", "1.0")).id
       rows(
         """INSERT INTO grit.schedules
-          |  (id, source, job, rule, params, principal, report, asked_in, created_at, room_id)
-          |SELECT 'asked:rooms', 'asked', 'remind', '{}', '{}', 'local', '{}', 'tool:rooms', now(), id
+          |  (id, source, job, rule, params, principal, report, asked_in, created_at, room_id,
+          |   integrity_id)
+          |SELECT 'asked:rooms', 'asked', 'remind', '{}', '{}', 'local', '{}', 'tool:rooms', now(), id, 2
           |  FROM grit.places WHERE path = '{slack,T,asked}' RETURNING id""".stripMargin
       ).size ==> 1
       LiveDb.transaction(config)(store.remove(c)) ==> Right(())
@@ -250,8 +255,9 @@ object ConversationRoomsLiveTests extends TestSuite {
         try
           Right(
             rows(
-              s"""INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, classification_id)
-                 |VALUES ('digest', 'room:labelled', '{}', 'lines', now(), now(), $label)
+              s"""INSERT INTO grit.documents
+                 |       (plugin, key, place, body, written_at, last_placed, classification_id, integrity_id)
+                 |VALUES ('digest', 'room:labelled', '{}', 'lines', now(), now(), $label, 2)
                  |RETURNING version""".stripMargin
             ).size
           )
@@ -290,7 +296,16 @@ object ConversationRoomsLiveTests extends TestSuite {
       val writer = Clearance.inRoom(origin.room, trialLabel, trialLabel)
       LiveDb.transaction(config, writer)(
         for {
-          _ <- keeper.write(key, Label.Public, origin.place, text, ujson.Obj(), None, Instant.EPOCH)
+          _ <- keeper.write(
+            key,
+            Label.Public,
+            Integrity.Member,
+            origin.place,
+            text,
+            ujson.Obj(),
+            None,
+            Instant.EPOCH
+          )
           gone <- keeper.withdraw(key, trialLabel, Instant.EPOCH.plusSeconds(1))
         } yield gone.nonEmpty
       ) ==> Right(true)

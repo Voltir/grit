@@ -9,7 +9,7 @@ import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{InMemoryVoucher, Origin, Payload, StoreError}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Integrity, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -72,6 +72,14 @@ object InMemoryInboxTests extends InboxContract {
           inbox.entries.list(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
         }
         .map(_.createdAt)
+    def believed(origin: Origin): Vector[Integrity] =
+      inbox.conversations.all
+        .find(_.origin == origin)
+        .toVector
+        .flatMap { c =>
+          inbox.entries.list(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
+        }
+        .map(_.integrity)
     def periods(origin: Origin): Vector[Period] =
       inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
         inbox.periods.all(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
@@ -115,6 +123,7 @@ object InMemoryInboxTests extends InboxContract {
         o => inbox.conversations.all.exists(_.origin == o),
         written,
         dated,
+        believed,
         periods,
         close,
         name,

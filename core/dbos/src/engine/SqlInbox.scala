@@ -37,7 +37,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{Label, Visibility}
+import grit.core.visibility.{Integrity, Label, Visibility}
 import grit.dbos.sql.{SqlEntryStore, SqlIdentities, SqlRooms, SqlSchedules}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
@@ -100,6 +100,7 @@ final class SqlInbox(
                     Payload.Message(message),
                     by,
                     label,
+                    None,
                     now,
                     capped = true
                   )
@@ -113,6 +114,7 @@ final class SqlInbox(
                 Payload.Message(message),
                 by,
                 label,
+                None,
                 now,
                 capped = true
               )
@@ -153,7 +155,7 @@ final class SqlInbox(
     inTransaction(
       roomOf(origin)
         .flatMap(label =>
-          recorded(origin, source, Payload.Heard(text), by, label, at, capped = false)
+          recorded(origin, source, Payload.Heard(text), by, label, None, at, capped = false)
         )
         .flatMap {
           case Left(_) => Right(Heard(None, None))
@@ -231,9 +233,10 @@ final class SqlInbox(
     SqlRooms.label(origin)
 
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
-    * as the period it opens is, its conversation created at `label` if it is new: its existing
-    * turn when `source` was recorded before, else, when `capped`, refused over the cap of the
-    * day `at` falls on, else a new turn.
+    * as the period it opens is, its conversation created at `label` if it is new, believed at
+    * `believed`, else at what `by` is believed at ([[authored]]): its existing turn when `source`
+    * was recorded before, else, when `capped`, refused over the cap of the day `at` falls on,
+    * else a new turn.
     */
   private def recorded(
       origin: Origin,
@@ -241,6 +244,7 @@ final class SqlInbox(
       payload: Payload,
       by: Account,
       label: Label,
+      believed: Option[Integrity],
       at: Instant,
       capped: Boolean
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
@@ -262,7 +266,10 @@ final class SqlInbox(
         case (Some(entry), _) => Right(Right(TurnRef(entry.conversationId, entry.turnSeq)))
         case (None, Some(why)) => Right(Left(why))
         case (None, None) =>
-          periods.openFor(conversation.id, next.turnSeq, at).flatMap { _ =>
+          (for {
+            _ <- periods.openFor(conversation.id, next.turnSeq, at)
+            integrity <- believed.fold(authored(by))(Right(_))
+          } yield integrity).flatMap { integrity =>
             entries
               .insert(
                 Entry(
@@ -272,7 +279,8 @@ final class SqlInbox(
                   None,
                   next.seq,
                   payload,
-                  at
+                  at,
+                  integrity
                 )
               )
               .flatMap(_ => SqlInbox.authored(id, by))
@@ -318,6 +326,8 @@ final class SqlInbox(
                 val id = InboundId.of(conversation.id, source)
                 for {
                   _ <- periods.openFor(conversation.id, next.turnSeq, at)
+                  // grit's words, believed as the turn that posted them was then.
+                  posting <- entries.believed(request.turn)
                   _ <- entries.insert(
                     Entry(
                       id,
@@ -326,7 +336,8 @@ final class SqlInbox(
                       None,
                       next.seq,
                       Payload.Posted(text),
-                      at
+                      at,
+                      posting
                     )
                   )
                   _ <- SqlInbox.madeBy(id, conversation.id, request)
@@ -346,7 +357,7 @@ final class SqlInbox(
         case Some(c) =>
           entries
             .get(InboundId.of(c.id, source))
-            .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
+            .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _, _) =>
               TurnRef(e.conversationId, e.turnSeq)
             })
       }
@@ -426,7 +437,7 @@ final class SqlInbox(
               case Starting.Start(at, following, v, superseding) =>
                 val slot = Slot(schedule, at)
                 for {
-                  turn <- recordedRun(slot, waiting.job, waiting.label, v, now)
+                  turn <- recordedRun(slot, waiting.job, waiting.label, waiting.integrity, v, now)
                   opening <- openingOf(turn)
                   _ <- schedules.started(slot, v, following)
                 } yield Begun(
@@ -519,19 +530,33 @@ final class SqlInbox(
         }
     }
 
+  /** What `by`'s words are believed at as they enter grit, before their room's cap
+    * ([[Tx.integrityOf]] of whom it is linked to now); an account never seen is
+    * [[Integrity.Outside]], anyone else's.
+    */
+  private def authored(by: Account)(using Tx^): Either[StoreError, Integrity] =
+    SqlIdentities.person(by).map(_.fold(Integrity.Outside)(Tx.integrityOf(_)))
+
   /** `slot`'s run at `version`, `job`'s, recorded in the transaction open as a new turn of its
     * conversation (created by grit at its schedule's `label`), opened at `at` by grit with
-    * [[Slot.opening]]; the turn recorded before when there is one.
+    * [[Slot.opening]], believed at its schedule's `integrity`; the turn recorded before when
+    * there is one.
     */
-  private def recordedRun(slot: Slot, job: JobName, label: Label, version: Int, at: Instant)(using
-      Tx^
-  ): Either[StoreError, TurnRef] =
+  private def recordedRun(
+      slot: Slot,
+      job: JobName,
+      label: Label,
+      integrity: Integrity,
+      version: Int,
+      at: Instant
+  )(using Tx^): Either[StoreError, TurnRef] =
     recorded(
       slot.origin(job),
       Slot.source(version),
       Payload.Message(slot.opening(job)),
       Account.Grit,
       label,
+      Some(integrity),
       at,
       capped = false
     ).flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))

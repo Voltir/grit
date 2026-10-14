@@ -9,6 +9,7 @@ import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds, TurnRef
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, TestLabels, Visibility}
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
@@ -102,7 +103,8 @@ object LiveDb {
             None,
             next.seq,
             Payload.Message(Message.User("remind me")),
-            Instant.parse("2026-10-07T08:00:00Z")
+            Instant.parse("2026-10-07T08:00:00Z"),
+            Integrity.Member
           )
         )
         _ <- authored(id, by)

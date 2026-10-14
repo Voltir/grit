@@ -296,6 +296,7 @@ object TurnTopics {
     else
       (for {
         next <- entries.lockNext(turn.conversationId)
+        level <- entries.believed(turn)
         _ <- entries.insert(
           Entry(
             id,
@@ -304,7 +305,8 @@ object TurnTopics {
             None,
             next.seq,
             Payload.Topic(events),
-            at
+            at,
+            level
           )
         )
         _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, upstream, usage, estimate) =>

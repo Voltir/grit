@@ -85,12 +85,14 @@ object AskersLiveTests extends TestSuite {
     ) {
       engine("askers_edges") { (e, config) =>
         val posted = Origin.Slack("T1", "C-grit", "1.0")
+        // Made by a call of a recorded conversation's turn, as a real post is.
+        val asking = LiveDb.conversation(config, Origin.Task("askers", "posting")).id
         e.inbox.posted(
           posted,
           SourceId("1.0"),
           "a summary",
           java.time.Instant.EPOCH,
-          TestCallSlots.First,
+          TestCallSlots.at(TurnRef(asking, TurnSeq.First)),
           Account.Grit
         ) ==> Right(true)
         val begun = TurnRef(LiveDb.conversation(config, posted).id, TurnSeq.First)

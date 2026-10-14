@@ -23,7 +23,7 @@ final class KeptAsV1(store: TriageStore, entries: EntryStore, before: String => 
     tags match {
       case Tags.Weighed(_, model, usage) =>
         entries.get(entry).flatMap {
-          case Some(Entry(_, _, _, _, _, Payload.Heard(text), _)) if before(text) =>
+          case Some(Entry(_, _, _, _, _, Payload.Heard(text), _, _)) if before(text) =>
             val questions = TriageQuestions.V1.questions(Corpora.Empty)
             val answered = StubClassifier
               .answers(ujson.Obj("new_message" -> text), questions.values.toVector)

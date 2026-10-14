@@ -32,6 +32,7 @@ import grit.core.period.{
   Windows
 }
 import grit.core.place.{Locality, Scope, Weight}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -106,7 +107,16 @@ abstract class PeriodContract extends TestSuite {
     val id = EntryId(s"${ConversationId.value(c)}:say:${next.seq}")
     right(
       entries.insert(
-        Entry(id, c, next.turnSeq, None, next.seq, Payload.Message(Message.User("hi")), at(minute))
+        Entry(
+          id,
+          c,
+          next.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(Message.User("hi")),
+          at(minute),
+          Integrity.Member
+        )
       )
     )
     TurnRef(c, next.turnSeq)
@@ -125,7 +135,8 @@ abstract class PeriodContract extends TestSuite {
           None,
           next.seq,
           Payload.Message(Message.User("more")),
-          at(minute)
+          at(minute),
+          Integrity.Member
         )
       )
     )
@@ -192,7 +203,8 @@ abstract class PeriodContract extends TestSuite {
             None,
             EntrySeq(2),
             Payload.Closed(PeriodSeq.First, Resolved, closing("sealed")),
-            at(30)
+            at(30),
+            Integrity.Member
           )
         )
       )
@@ -344,7 +356,8 @@ abstract class PeriodContract extends TestSuite {
                   "m"
                 )
               ),
-              at(30)
+              at(30),
+              Integrity.Member
             )
           )
         )

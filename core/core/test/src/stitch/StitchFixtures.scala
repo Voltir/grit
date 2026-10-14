@@ -8,6 +8,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Integrity
 
 /** Messages in Slack channels, for the stitching tests. */
 object StitchFixtures {
@@ -35,7 +36,8 @@ object StitchFixtures {
         None,
         EntrySeq(seq),
         Payload.Heard(text),
-        Now.minusSeconds(secondsAgo)
+        Now.minusSeconds(secondsAgo),
+        Integrity.Member
       )
     )
 

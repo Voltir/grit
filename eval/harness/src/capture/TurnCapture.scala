@@ -389,7 +389,7 @@ object TurnCapture {
         .filter(e =>
           EntrySeq.value(e.seq) > EntrySeq.value(seq) && until.forall(EntrySeq.value(e.seq) < _)
         )
-        .collect { case Entry(_, _, _, _, _, Payload.Result(r, _), _) => r }
+        .collect { case Entry(_, _, _, _, _, Payload.Result(r, _), _, _) => r }
       val made = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
       Round(made.zipWithIndex.map { (c, j) =>
         val tool = Called.of(c.name, tools)

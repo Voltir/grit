@@ -23,6 +23,7 @@ import grit.core.message.Message
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.triage.Tags
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Compartment,
   Compartments,
@@ -84,7 +85,8 @@ object ReaderTests extends TestSuite {
             None,
             next.seq,
             Payload.Message(Message.User("hi")),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
       }

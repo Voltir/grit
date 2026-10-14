@@ -41,6 +41,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures.SetClock
@@ -114,7 +115,18 @@ object PostingTests extends TestSuite {
           } yield (key, text)) match {
             case Left(why) => Left(StoreError.Invalid(why))
             case Right((key, text)) =>
-              keeper.write(key, Label.Public, Here, text, ujson.Obj(), None, closed.at).map(_ => ())
+              keeper
+                .write(
+                  key,
+                  Label.Public,
+                  Integrity.Member,
+                  Here,
+                  text,
+                  ujson.Obj(),
+                  None,
+                  closed.at
+                )
+                .map(_ => ())
           }
       }
     })
@@ -175,7 +187,8 @@ object PostingTests extends TestSuite {
             None,
             next.seq,
             Payload.Message(Message.User("hi")),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
         val closing = TestClosings.prose(s"p$i")

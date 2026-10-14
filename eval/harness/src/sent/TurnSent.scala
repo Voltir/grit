@@ -159,9 +159,9 @@ object TurnSent {
       )
       def kept(entry: EntryId): Option[Entry] = mine.find(_.id == entry)
       val answer = kept(turn.draftId)
-        .collect { case Entry(_, _, _, _, _, Payload.Draft(m), _) => Answer(m, draft = true) }
+        .collect { case Entry(_, _, _, _, _, Payload.Draft(m), _, _) => Answer(m, draft = true) }
         .orElse(kept(turn.replyId).collect {
-          case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _) =>
+          case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _) =>
             Answer(m, draft = false)
         })
       TurnSent(
@@ -181,10 +181,12 @@ object TurnSent {
         spent,
         answer,
         kept(grit.turn.TurnSummary.id(turn)).collect {
-          case Entry(_, _, _, _, _, Payload.Summary(text), _) => text
+          case Entry(_, _, _, _, _, Payload.Summary(text), _, _) => text
         },
-        mine.collect { case Entry(_, _, _, _, _, Payload.Query(text), _) => text },
-        kept(Turn.windowId(turn)).collect { case Entry(_, _, _, _, _, w: Payload.Window, _) => w },
+        mine.collect { case Entry(_, _, _, _, _, Payload.Query(text), _, _) => text },
+        kept(Turn.windowId(turn)).collect { case Entry(_, _, _, _, _, w: Payload.Window, _, _) =>
+          w
+        },
         stitch,
         tags,
         speech,

@@ -41,7 +41,7 @@ import grit.core.job.{
 }
 import grit.core.retention.Target
 import grit.core.store.{Jot, StoreError, Tombstones, Tx}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Integrity, Label, Subject}
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the principal whose
@@ -86,10 +86,11 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
     } yield ()
   }
 
-  /** `d`, as `id`, made the stored one at `now`. */
+  /** `d`, as `id`, made the stored one at `now`, believed at grit's own integrity. */
   private def declareOne(id: ScheduleId, d: Declared[?], now: Instant)(using
       tx: Tx^
-  ): Either[StoreError, Unit] =
+  ): Either[StoreError, Unit] = {
+    val declared = Integrity.top(Tx.visibility(tx).compartments)
     many("SELECT rule, ended FROM grit.schedules WHERE id = ? FOR UPDATE")(
       _.setString(1, ScheduleId.value(id))
     )(rs => (SlotRuleJson.read(ujson.read(rs.getString(1))), Option(rs.getString(2))))
@@ -97,8 +98,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         case None =>
           update(
             s"""INSERT INTO grit.schedules
-               |  (id, source, job, rule, params, principal, report, created_at, next_at, classification_id)
-               |VALUES (?, 'declared', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ${SqlLabels.Interned})""".stripMargin
+               |  (id, source, job, rule, params, principal, report, created_at, next_at, classification_id,
+               |   integrity_id)
+               |VALUES (?, 'declared', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ${SqlLabels.Interned},
+               |        ${SqlIntegrity.Interned})""".stripMargin
           ) { ps =>
             ps.setString(1, ScheduleId.value(id))
             ps.setString(2, JobName.value(d.job.name))
@@ -109,6 +112,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setObject(7, utc(now))
             ps.setObject(8, d.rule.first(now).map(Slot.kept).map(utc).orNull)
             SqlLabels.bind(ps, 9, d.clearance)
+            SqlIntegrity.bind(ps, 11, declared)
           }
         case Some((rule, ended)) =>
           val revived = ended.contains(Ending.Undeclared.word)
@@ -120,7 +124,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
                |       next_at = CASE WHEN ? THEN next_at ELSE ? END,
                |       ended = CASE WHEN ? THEN NULL ELSE ended END,
                |       ended_at = CASE WHEN ? THEN NULL ELSE ended_at END,
-               |       classification_id = ${SqlLabels.Interned}
+               |       classification_id = ${SqlLabels.Interned},
+               |       integrity_id = ${SqlIntegrity.Interned}
                | WHERE id = ?""".stripMargin
           ) { ps =>
             ps.setString(1, JobName.value(d.job.name))
@@ -134,10 +139,12 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setBoolean(6, revived)
             ps.setBoolean(7, revived)
             SqlLabels.bind(ps, 8, d.clearance)
-            ps.setString(10, ScheduleId.value(id))
+            SqlIntegrity.bind(ps, 10, declared)
+            ps.setString(12, ScheduleId.value(id))
           }
       })
       .map(_ => ())
+  }
 
   def due(now: Instant, n: Int)(using tx: Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]] =
     named(
@@ -204,7 +211,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       tx: Tx^
   ): Either[StoreError, Option[SqlSchedules.Waiting]] =
     many(
-      s"""SELECT s.job, s.rule, s.next_at, s.started_at, s.running, ${SqlLabels.columns("l")}
+      s"""SELECT s.job, s.rule, s.next_at, s.started_at, s.running, ${SqlLabels.columns("l")},
+         |       ${SqlIntegrity.columns("s.integrity_id")}
          |  FROM $Labelled
          | WHERE s.id = ? AND s.ended IS NULL FOR UPDATE OF s""".stripMargin
     )(_.setString(1, ScheduleId.value(id))) { rs =>
@@ -223,7 +231,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         rule,
         Option(rs.getObject("next_at", classOf[OffsetDateTime])).map(_.toInstant),
         last,
-        SqlLabels.read(rs)
+        SqlLabels.read(rs),
+        SqlIntegrity.read(rs)
       )
     }.flatMap(_.headOption match {
       case None => Right(None)
@@ -516,25 +525,29 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
     // room are the transaction's, never ones a caller passes.
     val label = Tx.floor(tx)
     val room = Tx.clearance(tx).own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
-    update(
-      s"""INSERT INTO grit.schedules
+    // Its runs start believed as the asking turn is now (ADR 0036).
+    new SqlEntryStore().believed(call.turn).flatMap { believed =>
+      update(
+        s"""INSERT INTO grit.schedules
          |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, classification_id,
-         |   room_id)
+         |   room_id, integrity_id)
          |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned},
-         |        ${SqlDocuments.RoomId})""".stripMargin
-    ) { ps =>
-      ps.setString(1, ScheduleId.value(id))
-      ps.setString(2, JobName.value(job.name))
-      ps.setString(3, SlotRuleJson.write(SlotRule.Once(at, grace)).render())
-      ps.setString(4, job.write(params).render())
-      ps.setString(5, PrincipalId.value(by))
-      ps.setString(6, ReportJson.write(Report.Posted(to)).render())
-      ps.setString(7, call.key)
-      ps.setObject(8, utc(now))
-      ps.setObject(9, utc(at))
-      SqlLabels.bind(ps, 10, label)
-      ps.setString(12, ujson.Arr.from(room).render())
-    }.map(_ => ())
+         |        ${SqlDocuments.RoomId}, ${SqlIntegrity.Interned})""".stripMargin
+      ) { ps =>
+        ps.setString(1, ScheduleId.value(id))
+        ps.setString(2, JobName.value(job.name))
+        ps.setString(3, SlotRuleJson.write(SlotRule.Once(at, grace)).render())
+        ps.setString(4, job.write(params).render())
+        ps.setString(5, PrincipalId.value(by))
+        ps.setString(6, ReportJson.write(Report.Posted(to)).render())
+        ps.setString(7, call.key)
+        ps.setObject(8, utc(now))
+        ps.setObject(9, utc(at))
+        SqlLabels.bind(ps, 10, label)
+        ps.setString(12, ujson.Arr.from(room).render())
+        SqlIntegrity.bind(ps, 13, believed)
+      }.map(_ => ())
+    }
   }
 
   /** `id` ended `how` at `at`, with no slot left, and marked for deletion. */
@@ -587,20 +600,23 @@ private[dbos] object SqlSchedules {
 
   /** What [[stored]] reads, of [[Labelled]]. */
   private val Selected =
-    s"s.id, s.job, s.params, s.principal, s.report, s.rule, s.ended, s.source, ${SqlLabels.columns("l")}"
+    s"s.id, s.job, s.params, s.principal, s.report, s.rule, s.ended, s.source, ${SqlLabels.columns("l")}, " +
+      SqlIntegrity.columns("s.integrity_id")
 
   /** A stored schedule, and whether it was asked rather than declared. */
   private final case class Row(schedule: Schedule, asked: Boolean)
 
   /** A pending schedule as the inbox starts it: its job and rule, its next slot, the slot its
-    * last run started for, with that run's version while it is in flight, and its label.
+    * last run started for, with that run's version while it is in flight, its label, and what
+    * its runs start believed at.
     */
   final case class Waiting(
       job: JobName,
       rule: SlotRule,
       next: Option[Instant],
       last: Option[(Instant, Option[Int])],
-      label: Label
+      label: Label,
+      integrity: Integrity
   )
 
   private def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
@@ -625,7 +641,8 @@ private[dbos] object SqlSchedules {
       report,
       rule,
       ended,
-      SqlLabels.read(rs)
+      SqlLabels.read(rs),
+      SqlIntegrity.read(rs)
     )
 
   /** `rows`, each read by `f`, or the first reason one is not. */

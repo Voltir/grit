@@ -32,6 +32,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 
 /** [[PeriodStore]] over the `grit.periods` table and `entries`' own. */
 final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
@@ -190,6 +191,22 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
             // ordinal comes from a sequence, never the greatest kept: a dropped period's, or a
             // removed conversation's, is never taken again, so no cursor skips a new close.
             _ <- one("SELECT pg_advisory_xact_lock(?)")(_.setLong(1, OrdinalLock))(_ => ())
+            // What its writer was shown: the period's entries, met; none is untrusted.
+            shown <- one(
+              """SELECT (m).level AS integrity_level,
+                |       to_jsonb((m).compartments)::text AS integrity_compartments
+                |  FROM (SELECT grit.integrity_meet_agg(ROW(l.level, l.compartments)::grit.integrity) AS m
+                |          FROM grit.entries e
+                |          JOIN grit.periods p
+                |            ON p.conversation_id = e.conversation_id AND p.seq = ?
+                |          JOIN grit.integrity_labels l ON l.id = e.integrity_id
+                |         WHERE e.conversation_id = ?::uuid
+                |           AND e.turn_seq BETWEEN p.first_turn AND ?) met""".stripMargin
+            ) { ps =>
+              ps.setLong(1, PeriodSeq.value(period.seq))
+              ps.setString(2, ConversationId.value(period.conversationId))
+              ps.setLong(3, TurnSeq.value(attempt.last))
+            }(SqlIntegrity.read)
             _ <- entries.insert(
               Entry(
                 period.closingId,
@@ -198,7 +215,8 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
                 None,
                 next.seq,
                 Payload.Closed(period.seq, reason, closing),
-                at
+                at,
+                shown.getOrElse(Integrity.Untrusted)
               )
             )
             _ <- update(
@@ -302,7 +320,8 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   ): Either[StoreError, Vector[ClosedPeriod]] =
     cleared(
       s"""WITH ${SqlClearance.With}
-         |SELECT p.conversation_id, p.seq, p.reason, p.confidence, p.closed_at, p.close_ordinal, c.origin, e.payload
+         |SELECT p.conversation_id, p.seq, p.reason, p.confidence, p.closed_at, p.close_ordinal, c.origin, e.payload,
+         |       ${SqlIntegrity.columns("e.integrity_id")}
          |  FROM grit.periods p
          |  JOIN grit.conversations c ON c.id = p.conversation_id
          |  JOIN grit.entries e ON e.id = p.closing_id
@@ -326,7 +345,8 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
         reasonOf(rs),
         closing,
         instant(rs, "closed_at"),
-        ordinalOf(rs)
+        ordinalOf(rs),
+        SqlIntegrity.read(rs)
       )
     }
 

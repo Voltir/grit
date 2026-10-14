@@ -86,6 +86,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.triage.{Kind, Tags}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Cleared,
   Compartment,
@@ -918,7 +919,8 @@ object TurnFixtures {
         None,
         next.seq,
         Payload.Message(Message.User(text)),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
     )
     TurnRef(conversation, next.turnSeq)
@@ -938,7 +940,8 @@ object TurnFixtures {
         None,
         next.seq,
         Payload.Heard(text),
-        Instant.EPOCH
+        Instant.EPOCH,
+        Integrity.Member
       )
     )
     TurnRef(conversation, next.turnSeq)
@@ -975,7 +978,7 @@ object TurnFixtures {
 
   /** The records of the turns' windows, with their ids. */
   def windows(entries: EntryStore): Vector[(EntryId, Payload.Window)] =
-    all(entries).collect { case Entry(id, _, _, _, _, w: Payload.Window, _) => id -> w }
+    all(entries).collect { case Entry(id, _, _, _, _, w: Payload.Window, _, _) => id -> w }
 
   private def all(entries: EntryStore): Vector[Entry] =
     entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
@@ -1524,7 +1527,16 @@ object TurnFixtures {
         )
       else Payload.Heard("morning all")
     entries.insert(
-      Entry(EntryId("first"), conversation, next.turnSeq, None, next.seq, first, Instant.EPOCH)
+      Entry(
+        EntryId("first"),
+        conversation,
+        next.turnSeq,
+        None,
+        next.seq,
+        first,
+        Instant.EPOCH,
+        Integrity.Member
+      )
     )
     val turn = hear(entries, "is the freeze still on?")
     val store = new InMemorySpeechStore(entries, ledger)
@@ -1726,7 +1738,7 @@ object TurnFixtures {
     private def put(c: ConversationId, id: String, payload: Payload, at: Instant): Entry = {
       given grit.core.store.Tx = TestTx.fake
       val next = entries.lockNext(c).getOrElse(sys.error("store"))
-      val e = Entry(EntryId(id), c, next.turnSeq, None, next.seq, payload, at)
+      val e = Entry(EntryId(id), c, next.turnSeq, None, next.seq, payload, at, Integrity.Member)
       entries.insert(e)
       e
     }

@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload, Speakers}
+import grit.core.visibility.Integrity
 
 /** Entries of one period, as a transcript test writes them: `seq` orders them. */
 object TestTranscripts {
@@ -17,7 +18,8 @@ object TestTranscripts {
       None,
       EntrySeq(seq),
       payload,
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   /** The person's message `text`. */

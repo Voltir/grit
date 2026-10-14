@@ -15,6 +15,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Payload}
 import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -310,7 +311,16 @@ object SpeechTests extends TestSuite {
       "a person's reply does not hold a draft; the assistant's own reply after its root does, in its thread or its strand"
     ) {
       def entry(n: Long, payload: Payload, c: String = "c", at: Instant = now) =
-        Entry(EntryId(s"$c$n"), ConversationId(c), TurnSeq(n), None, EntrySeq(n), payload, at)
+        Entry(
+          EntryId(s"$c$n"),
+          ConversationId(c),
+          TurnSeq(n),
+          None,
+          EntrySeq(n),
+          payload,
+          at,
+          Integrity.Member
+        )
       val root = entry(10, Payload.Heard("where did we land?"))
       val reply = Payload.Message(
         Message.Assistant(

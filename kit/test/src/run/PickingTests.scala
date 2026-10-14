@@ -46,6 +46,7 @@ import grit.core.triage.{
   Shadowed,
   Tags
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Deployments, ShadowReview}
@@ -150,7 +151,18 @@ object PickingTests extends TestSuite {
       val n = right(entries.lockNext(conversation))
       right(periods.openFor(conversation, n.turnSeq, at))
       right(
-        entries.insert(Entry(entry, conversation, n.turnSeq, None, n.seq, Payload.Heard("hm"), at))
+        entries.insert(
+          Entry(
+            entry,
+            conversation,
+            n.turnSeq,
+            None,
+            n.seq,
+            Payload.Heard("hm"),
+            at,
+            Integrity.Member
+          )
+        )
       )
       val turn = TurnRef(conversation, n.turnSeq)
       val heard = Heard(

@@ -21,6 +21,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
@@ -106,7 +107,8 @@ object SettleFixtures {
           None,
           next.seq,
           Payload.Message(Message.User(text)),
-          at(minutes)
+          at(minutes),
+          Integrity.Member
         )
       )
       val reply = entries.lockNext(c).getOrElse(sys.error("in-memory"))
@@ -125,7 +127,8 @@ object SettleFixtures {
               "turn"
             )
           ),
-          at(minutes)
+          at(minutes),
+          Integrity.Member
         )
       )
       TurnRef(c, next.turnSeq)
@@ -143,7 +146,8 @@ object SettleFixtures {
           None,
           next.seq,
           Payload.Message(Message.User(text)),
-          at(minutes)
+          at(minutes),
+          Integrity.Member
         )
       )
     }

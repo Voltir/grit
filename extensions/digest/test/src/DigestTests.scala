@@ -14,6 +14,7 @@ import grit.core.place.{Directory, Place}
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
 import grit.dbos.sql.TestTx
 
@@ -46,7 +47,8 @@ object DigestTests extends TestSuite {
       reason,
       c,
       Instant.parse(at),
-      CloseOrdinal.of(n).getOrElse(throw new java.lang.AssertionError(n))
+      CloseOrdinal.of(n).getOrElse(throw new java.lang.AssertionError(n)),
+      Integrity.Member
     )
 
   private val home: Directory = Directory.of("/home/nick").fold(e => sys.error(e), identity)

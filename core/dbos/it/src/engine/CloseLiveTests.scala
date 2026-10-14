@@ -24,6 +24,7 @@ import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.place.Locality
 import grit.core.store.{Entry, Origin, Payload}
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.sql.{DbConfig, LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -184,7 +185,8 @@ object CloseLiveTests extends TestSuite {
                 None,
                 next.seq,
                 Payload.Summary("replied"),
-                replied
+                replied,
+                Integrity.Member
               )
             )
           } yield ()

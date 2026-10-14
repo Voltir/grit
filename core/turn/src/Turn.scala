@@ -41,6 +41,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
 import grit.core.triage.{Tags, Weighing}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Classification, Label, Subject}
 
 import TurnLoop.{Pending, Round}
@@ -472,6 +473,7 @@ object Turn {
     )
     for {
       next <- entries.lockNext(turn.conversationId)
+      level <- entries.believed(turn)
       _ <- entries.insert(
         Entry(
           turn.replyId,
@@ -480,7 +482,8 @@ object Turn {
           None,
           next.seq,
           Payload.Message(reply),
-          at
+          at,
+          level
         )
       )
     } yield true
@@ -601,7 +604,7 @@ object Turn {
           own <- entries.ofTurn(turn)
           conversation <- conversations.get(turn.conversationId)
           kept <- own.minByOption(_.seq) match {
-            case Some(root @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
+            case Some(root @ Entry(_, _, _, _, _, Payload.Heard(_), _, _)) =>
               triage.of(Vector(root.id)).map(_.get(root.id).map(TurnWeighing.Weighed.Kept(_)))
             case _ => Right(None)
           }
@@ -793,7 +796,7 @@ object Turn {
         for {
           all <- records.entries.list(turn.conversationId)
           window = all.collectFirst {
-            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, _), _)
+            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, _), _, _)
                 if id == windowId(turn) =>
               Window(entries, Vector.empty, nearby)
           }
@@ -811,7 +814,7 @@ object Turn {
         (
           all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),
           all.collectFirst {
-            case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m
+            case Entry(id, _, _, _, _, Payload.Draft(m), _, _) if id == turn.draftId => m
           }
         ) match {
           case (Some(_), Some(draft)) =>
@@ -903,7 +906,9 @@ object Turn {
         .minByOption(_.seq)
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no entries"))
       draft <- all
-        .collectFirst { case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m }
+        .collectFirst {
+          case Entry(id, _, _, _, _, Payload.Draft(m), _, _) if id == turn.draftId => m
+        }
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(storeFailure)
       // The strand after the root, to now: the assistant's reply there holds the draft too.
@@ -955,6 +960,7 @@ object Turn {
         case (Outcome.Posted(_), Some(to)) =>
           for {
             next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+            level <- entries.believed(turn).left.map(storeFailure)
             _ <- entries
               .insert(
                 Entry(
@@ -964,7 +970,8 @@ object Turn {
                   None,
                   next.seq,
                   Payload.Message(draft),
-                  at
+                  at,
+                  level
                 )
               )
               .left
@@ -1202,7 +1209,7 @@ object Turn {
                 case Left(outcome) =>
                   val named = pending.call.name
                   d.step(slot.step) { () =>
-                    settling.answer(slot, call, named, outcome, clock.now())
+                    settling.answer(slot, call, named, outcome, None, clock.now())
                   }
                 case Right(free: Bound.Free) =>
                   d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
@@ -1332,6 +1339,7 @@ object Turn {
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      level <- entries.believed(turn).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
       sent <- requestOf(system, showing, turn, window).map(_.shaped(shape))
       _ <- entries
@@ -1343,7 +1351,8 @@ object Turn {
             None,
             next.seq,
             Payload.Exchange(reply),
-            at
+            at,
+            level
           )
         )
         .left
@@ -1454,6 +1463,7 @@ object Turn {
         .toRight(TurnFailure.Model(s"the summary has no text (stop: ${message.stop})"))
       text = read.summary
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      level <- entries.believed(turn).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       _ <- entries
         .insert(
@@ -1464,7 +1474,8 @@ object Turn {
             Some(answered),
             next.seq,
             Payload.Summary(text),
-            at
+            at,
+            level
           )
         )
         .left
@@ -1636,6 +1647,7 @@ object Turn {
     val TurnRecords(entries, ledger, estimator, _, _, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      level <- entries.believed(turn).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
       sent <- requestOf(offer.system, showing, turn, window).map(_.shaped(shape))
       _ <- entries
@@ -1647,7 +1659,8 @@ object Turn {
             None,
             next.seq,
             payload,
-            at
+            at,
+            level
           )
         )
         .left
@@ -1706,19 +1719,21 @@ object Turn {
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       next <- records.entries.lockNext(turn.conversationId).left.map(storeFailure)
-      _ <- writeWindow(records, turn, window, next.seq, at)
+      level <- records.entries.believed(turn).left.map(storeFailure)
+      _ <- writeWindow(records, turn, window, next.seq, level, at)
       _ <- records.documents.placed(window.documents, at).left.map(storeFailure)
     } yield windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
-    * cost, then the window itself, as [[windowId]], from position `from`, dated `at`; the
-    * position after the last one written.
+    * cost, then the window itself, as [[windowId]], from position `from`, dated `at`, believed
+    * at `level`; the position after the last one written.
     */
   private def writeWindow(
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
       from: EntrySeq,
+      level: Integrity,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntrySeq] = {
     val TurnRecords(entries, ledger, _, _, _, _) = records
@@ -1739,7 +1754,8 @@ object Turn {
               None,
               seq,
               Payload.Query(q.query),
-              at
+              at,
+              level
             )
             entries
               .insert(entry)
@@ -1769,7 +1785,8 @@ object Turn {
             None,
             windowSeq,
             Payload.Window(window.entries, recalled, window.nearby, window.documents),
-            at
+            at,
+            level
           )
         )
         .left

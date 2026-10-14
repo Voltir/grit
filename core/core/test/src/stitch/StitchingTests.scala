@@ -6,6 +6,7 @@ import grit.core.message.Message
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Directory, Scope}
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
+import grit.core.visibility.Integrity
 import grit.core.visibility.Label
 
 import utest.*
@@ -39,7 +40,8 @@ object StitchingTests extends TestSuite {
           None,
           EntrySeq(i.toLong),
           p,
-          Now.plusSeconds(i.toLong)
+          Now.plusSeconds(i.toLong),
+          Integrity.Member
         )
       )
   }

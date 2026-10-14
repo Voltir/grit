@@ -6,6 +6,7 @@ import grit.core.id.{EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.models.StubClassifier
 
@@ -65,7 +66,8 @@ object TurnTopicsTests extends TestSuite {
               TestClosings.balance(photo)
             )
           ),
-          at
+          at,
+          Integrity.Member
         ),
         Entry(
           EntryId("u2"),
@@ -74,7 +76,8 @@ object TurnTopicsTests extends TestSuite {
           None,
           EntrySeq(6),
           Payload.Message(Message.User("more photos ~0.9")),
-          at
+          at,
+          Integrity.Member
         )
       )
       val placed = TurnTopics.place(
@@ -103,7 +106,8 @@ object TurnTopicsTests extends TestSuite {
           None,
           EntrySeq(0),
           Payload.Message(Message.User("photos")),
-          at
+          at,
+          Integrity.Member
         ),
         Entry(
           EntryId("h1"),
@@ -112,7 +116,8 @@ object TurnTopicsTests extends TestSuite {
           None,
           EntrySeq(1),
           Payload.Heard("more photos ~0.85"),
-          at
+          at,
+          Integrity.Member
         )
       )
       val opened = TopicEvent.Opened(TopicId.openedBy(TurnRef(conversation, TurnSeq(0))))
@@ -131,7 +136,8 @@ object TurnTopicsTests extends TestSuite {
             None,
             EntrySeq(0),
             Payload.Topic(Vector(opened, first)),
-            at
+            at,
+            Integrity.Member
           )
         ),
         0

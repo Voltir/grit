@@ -4,12 +4,14 @@ import java.time.Instant
 
 import grit.core.id.{Declarer, JobName, PrincipalId, ScheduleId}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** A stored schedule: its job, its parameters as kept, whom it runs for, where it reports, its
   * rule, how it ended (`None` while pending), and its label: what its runs read beyond their
   * own conversations, and are kept at (ADR 0030): an asked one's, its asking turn's floor
-  * ([[ScheduleDesk.ask]]); a declared one's, its [[Declared.clearance]].
+  * ([[ScheduleDesk.ask]]); a declared one's, its [[Declared.clearance]]. Its `integrity`, what
+  * its runs start believed at (ADR 0036): an asked one's, its asking turn's then; a declared
+  * one's, grit's own ([[Integrity.top]]).
   */
 final case class Schedule(
     job: JobName,
@@ -18,7 +20,8 @@ final case class Schedule(
     report: Report,
     rule: SlotRule,
     ended: Option[Ending],
-    label: Label
+    label: Label,
+    integrity: Integrity
 )
 
 /** The stored schedules, as the engine and its clock edge keep them. Every schedule ended is
@@ -28,7 +31,8 @@ trait ScheduleStore {
 
   /** Makes the stored declared schedules `declared`, by their declarers, as of `now`. A new one
     * is written with its first slot after `now` (a once slot at its instant, however past),
-    * kept as [[Slot.kept]] keeps it. A changed one (its job, parameters, rule or clearance) is
+    * kept as [[Slot.kept]] keeps it, believed at grit's own integrity ([[Integrity.top]] of
+    * the transaction's compartments). A changed one (its job, parameters, rule or clearance) is
     * rewritten in place, its next slot recomputed only when its rule changed. One ended undeclared is revived
     * with the first slot after `now`, as a new one is; one ended any other way stays ended.
     * Every pending declared one not among them is ended undeclared. An asked schedule is never

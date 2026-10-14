@@ -7,6 +7,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, TestLabels}
 import grit.dbos.sql.{LiveDb, SqlEntrySearch, SqlEntryStore, TestPostgres}
 
@@ -50,7 +51,8 @@ object SearchLiveTests extends TestSuite {
             None,
             EntrySeq(i.toLong),
             p,
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )
       }
@@ -287,7 +289,8 @@ object SearchLiveTests extends TestSuite {
                 None,
                 EntrySeq(i.toLong),
                 p,
-                t0.plusSeconds(secs)
+                t0.plusSeconds(secs),
+                Integrity.Member
               )
             )
           }

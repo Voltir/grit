@@ -107,7 +107,9 @@ object Digest {
               .left
               .map(StoreError.Invalid(_))
             newest = lines.headOption.fold(closed.at)(_.at)
-            _ <- keeper.write(key, label, room, text, Line.data(lines), None, newest)
+            // Made from the lines kept before and this closing: believed as the least of them.
+            believed = current.fold(closed.integrity)(_.integrity.meet(closed.integrity))
+            _ <- keeper.write(key, label, believed, room, text, Line.data(lines), None, newest)
           } yield ()
       }
   }

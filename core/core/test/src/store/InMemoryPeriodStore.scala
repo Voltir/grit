@@ -13,6 +13,7 @@ import grit.core.period.{
   PeriodState,
   Verdict
 }
+import grit.core.visibility.Integrity
 
 /** An in-memory [[PeriodStore]] for tests, keeping [[PeriodContract]] and
   * [[ClearanceContract]], over the entries of `entries`, which decides what a transaction reads;
@@ -139,6 +140,15 @@ final class InMemoryPeriodStore(
           if (next.turnSeq != attempt.last.next) Right(Sealed.Abandoned)
           else {
             val id = p.ref.closingId
+            // What its writer was shown, as the SQL store meets it: the period's entries.
+            val shown = everyEntryOf(p.ref.conversationId)
+              .filter(e =>
+                TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first) &&
+                  TurnSeq.value(e.turnSeq) <= TurnSeq.value(attempt.last)
+              )
+              .map(_.integrity)
+              .reduceOption(_.meet(_))
+              .getOrElse(Integrity.Untrusted)
             entries
               .insert(
                 Entry(
@@ -148,7 +158,8 @@ final class InMemoryPeriodStore(
                   None,
                   next.seq,
                   Payload.Closed(p.ref.seq, reason, closing),
-                  at
+                  at,
+                  shown
                 )
               )
               .map { _ =>
@@ -216,9 +227,10 @@ final class InMemoryPeriodStore(
         .filter(_._2.order.isAfter(after))
         .sortBy(pc => CloseOrdinal.value(pc._2.order))
         .flatMap { (p, c) =>
-          entriesOf(p.ref.conversationId).find(_.id == c.closing).map(_.payload).collect {
-            case Payload.Closed(_, _, closing) =>
-              ClosedPeriod(p.ref, origin(p.ref.conversationId), c.reason, closing, c.at, c.order)
+          entriesOf(p.ref.conversationId).find(_.id == c.closing).collect {
+            case e @ Entry(_, _, _, _, _, Payload.Closed(_, _, closing), _, _) =>
+              val at = origin(p.ref.conversationId)
+              ClosedPeriod(p.ref, at, c.reason, closing, c.at, c.order, e.integrity)
           }
         }
         .take(n max 0)

@@ -30,7 +30,8 @@ trait ScheduleDesk extends caps.SharedCapability {
   /** Schedules `booking`'s job `when`, with `params`, to run as late as `grace` after its
     * instant, kept as [[Slot.kept]] keeps it ([[Asked.at]]), at the asking turn's floor
     * ([[grit.core.store.Tx.floor]] of a transaction opened for that turn), its room's label:
-    * what its runs, and what they keep, are kept at. The same call asking again (a call
+    * what its runs, and what they keep, are kept at; and believed at what that turn is believed
+    * at then ([[grit.core.store.EntryStore.believed]]), what its runs start at. The same call asking again (a call
     * run twice after a crash) gets the schedule it first wrote, unchanged. Refused, writing
     * nothing:
     *   - [[DeskRefusal.Unaddressed]] when the turn's reply is posted nowhere (a TUI session, a

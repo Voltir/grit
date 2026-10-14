@@ -10,6 +10,7 @@ import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.id.{DocKey, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.StoreError
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.{LiveDb, SqlDocuments, SqlSavepoints, SqlTombstones, TestPostgres}
 
@@ -46,6 +47,7 @@ object SqlSavepointsTests extends TestSuite {
     keeper.write(
       got(DocKey.of(k)),
       Label.Public,
+      Integrity.Member,
       here,
       got(DocText.of(body)),
       ujson.Obj(),

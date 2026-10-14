@@ -124,25 +124,27 @@ object TurnHosted {
           }
       }
     val (requests, askers) = (hosting.requests, hosting.askers)
+    // The service the call went to, whose declared output its result is believed at.
+    val from = place.flatMap(_.service)
     outcome.flatMap {
       case Waited.Unsent =>
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, clock.now())(
+          settling.answerFrom(slot, call, shown, from, clock.now())(
             pins.known.map(_ => unsent(askers, slot.turn, place))
           )
         )
       case Waited.Phase(Awaited.Known(o)) =>
-        d.step(slot.step)(() => settling.answer(slot, call, shown, o, clock.now()))
+        d.step(slot.step)(() => settling.answer(slot, call, shown, o, from, clock.now()))
       case Waited.Phase(Awaited.Unread(failure)) =>
         // A wait refused after a rise is unread too: the turn fails here, before its next call.
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, clock.now())(
+          settling.answerFrom(slot, call, shown, from, clock.now())(
             pins.known.map(_ => unreadable(failure))
           )
         )
       case Waited.Phase(Awaited.Rung(cs)) =>
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, clock.now())(
+          settling.answerFrom(slot, call, shown, from, clock.now())(
             pins.known.map(_ =>
               Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
             )

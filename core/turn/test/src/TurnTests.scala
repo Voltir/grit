@@ -32,6 +32,7 @@ import grit.core.store.{
   Nearby,
   Payload
 }
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -482,7 +483,8 @@ object TurnTests extends TestSuite {
           None,
           EntrySeq(1),
           Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       )(using TestTx.fake)
       val api = ConversationId("api")
@@ -495,7 +497,8 @@ object TurnTests extends TestSuite {
             None,
             EntrySeq(seq),
             Payload.Message(message),
-            Instant.EPOCH
+            Instant.EPOCH,
+            Integrity.Member
           )
         )(using TestTx.fake)
       elsewhere("api:u", 0, Message.User("the invoice test is flaky"))
@@ -518,7 +521,8 @@ object TurnTests extends TestSuite {
           None,
           EntrySeq(0),
           Payload.Message(Message.User("the login page is blank")),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       )(using TestTx.fake)
       val ops = ConversationId("ops")
@@ -530,7 +534,8 @@ object TurnTests extends TestSuite {
           None,
           EntrySeq(5),
           Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Froze deploys.")),
-          Instant.parse("2026-09-27T10:00:00Z")
+          Instant.parse("2026-09-27T10:00:00Z"),
+          Integrity.Member
         )
       )(using TestTx.fake)
       val turn = say(entries, "two")

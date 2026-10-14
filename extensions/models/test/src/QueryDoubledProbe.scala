@@ -11,6 +11,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Message, Usage}
 import grit.core.provider.ProviderError
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Integrity
 
 /** Live probe: is the query role's text doubled (one text twice over), and where? The query
   * role's request as retrieval builds it ([[QueryWriter.request]]) for one message, sent
@@ -71,7 +72,8 @@ object QueryDoubledProbe {
       None,
       EntrySeq(0),
       if (heard) Payload.Heard(message) else Payload.Message(Message.User(message)),
-      Instant.EPOCH
+      Instant.EPOCH,
+      Integrity.Member
     )
 
   private def run(config: OpenRouterConfig, own: Entry): Unit = {

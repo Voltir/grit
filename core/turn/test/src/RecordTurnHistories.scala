@@ -6,6 +6,7 @@ import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{EntrySeq, TurnRef}
 import grit.core.model.{Grade, ModelRef}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level, Recorded}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
@@ -231,7 +232,8 @@ object RecordTurnHistories {
           None,
           EntrySeq(0),
           Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
-          java.time.Instant.EPOCH
+          java.time.Instant.EPOCH,
+          Integrity.Member
         )
       )(using grit.dbos.sql.TestTx.fake)
       val turn = say(entries, "which fix did I settle on?")
@@ -275,6 +277,7 @@ object RecordTurnHistories {
           .write(
             got(grit.core.id.DocKey.of(key)),
             grit.core.visibility.Label.Public,
+            Integrity.Member,
             board,
             got(grit.core.document.DocText.of(text)),
             ujson.Obj(),
@@ -325,7 +328,8 @@ object RecordTurnHistories {
             grit.core.period.CloseReason.Lapsed,
             grit.core.period.TestClosings.prose("Froze deploys until Friday.")
           ),
-          java.time.Instant.EPOCH
+          java.time.Instant.EPOCH,
+          Integrity.Member
         )
       )(using grit.dbos.sql.TestTx.fake)
       val turn = say(entries, "when does the freeze end?")

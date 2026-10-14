@@ -23,7 +23,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{InMemoryRecorded, Label, Visibility}
+import grit.core.visibility.{Clearance, InMemoryRecorded, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
@@ -67,6 +67,9 @@ final class InMemoryInbox(
     val _ = records.room(room)(_.copy(quiet = true))
   }
 
+  /** A transaction under `visibility` alone: what the entry store meets an entry's room's cap by. */
+  private def capping: Tx = TestTx.fake(Clearance.of(Label.Public), visibility)
+
   /** A transaction whose labels in force are `visibility`'s and what is recorded now. */
   private def inForce: Tx = TestTx.inForce(visibility, records.now)
 
@@ -104,6 +107,7 @@ final class InMemoryInbox(
   def finish(turn: TurnRef, reply: Option[Message.Assistant], outcome: String): Unit = inTx {
     reply.foreach { r =>
       val next = entries.lockNext(turn.conversationId).fold(e => sys.error(e.toString), identity)
+      val level = entries.believed(turn).fold(e => sys.error(e.toString), identity)
       val _ = entries.insert(
         Entry(
           turn.replyId,
@@ -112,7 +116,8 @@ final class InMemoryInbox(
           None,
           next.seq,
           Payload.Message(r),
-          java.time.Instant.EPOCH
+          java.time.Instant.EPOCH,
+          level
         )
       )
     }
@@ -152,6 +157,7 @@ final class InMemoryInbox(
           Payload.Message(message),
           by,
           labelOf(origin),
+          None,
           java.time.Instant.EPOCH,
           capped = true
         )
@@ -184,6 +190,7 @@ final class InMemoryInbox(
           Payload.Heard(text),
           by,
           Tx.roomLabel(origin.room)(using inForce),
+          None,
           at,
           capped = false
         )
@@ -206,6 +213,7 @@ final class InMemoryInbox(
       payload: Payload,
       by: Account,
       label: Label,
+      believed: Option[Integrity],
       at: java.time.Instant,
       capped: Boolean
   ): Either[InboxError, TurnRef] =
@@ -231,6 +239,7 @@ final class InMemoryInbox(
                 id = InboundId.of(conversation.id, source)
                 next <- entries.lockNext(conversation.id)
                 _ <- periods.openFor(conversation.id, next.turnSeq, at)
+                // As the SQL inbox: its author's integrity, met with its room's cap by the store.
                 _ <- entries.insert(
                   Entry(
                     id,
@@ -239,9 +248,10 @@ final class InMemoryInbox(
                     None,
                     next.seq,
                     payload,
-                    at
+                    at,
+                    believed.getOrElse(Tx.integrityOf(person(by))(using inForce))
                   )
-                )
+                )(using capping)
               } yield {
                 principals.authored(id, by)
                 Right(TurnRef(conversation.id, next.turnSeq))
@@ -302,6 +312,7 @@ final class InMemoryInbox(
               )
               next <- entries.lockNext(conversation.id)
               _ <- periods.openFor(conversation.id, next.turnSeq, at)
+              posting <- entries.believed(request.turn)
               _ <- entries.insert(
                 Entry(
                   InboundId.of(conversation.id, source),
@@ -310,7 +321,8 @@ final class InMemoryInbox(
                   None,
                   next.seq,
                   Payload.Posted(text),
-                  at
+                  at,
+                  posting
                 )
               )
             } yield {
@@ -334,7 +346,7 @@ final class InMemoryInbox(
             case Some(c) =>
               entries
                 .get(InboundId.of(c.id, source))
-                .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
+                .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _, _) =>
                   TurnRef(e.conversationId, e.turnSeq)
                 })
           }
@@ -371,7 +383,7 @@ final class InMemoryInbox(
     else
       schedules.held(schedule) match {
         case None => Right(Slotted.Idle)
-        case Some((job, rule, next, last, label)) =>
+        case Some((job, rule, next, last, label, integrity)) =>
           val flight = last.flatMap((slot, running) => running.map(slot -> _)).map { (slot, v) =>
             val turn = runOf(Slot(schedule, slot), job, v)
             val state = turn match {
@@ -402,6 +414,7 @@ final class InMemoryInbox(
                 Payload.Message(slot.opening(job)),
                 Account.Grit,
                 label,
+                Some(integrity),
                 now,
                 capped = false
               )
@@ -478,10 +491,13 @@ object InMemoryInbox {
       visibility: Visibility = Visibility.Shipped,
       person: Account -> Principal = TestAccounts.principal,
       records: InMemoryRecorded = new InMemoryRecorded()
-  ): InMemoryInbox =
+  ): InMemoryInbox = {
+    val conversations = new InMemoryConversationStore
     new InMemoryInbox(
-      new InMemoryConversationStore,
-      new InMemoryEntryStore,
+      conversations,
+      new InMemoryEntryStore(room =
+        Some(id => conversations.all.find(_.id == id).map(_.origin.room))
+      ),
       new InMemoryPrincipals,
       new InMemoryUsageLedger,
       budget,
@@ -489,4 +505,5 @@ object InMemoryInbox {
       person,
       records
     )
+  }
 }

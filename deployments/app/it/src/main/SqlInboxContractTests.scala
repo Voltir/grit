@@ -16,7 +16,7 @@ import grit.core.place.Place
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.{Integrity, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.turn.Turn
@@ -160,6 +160,18 @@ object SqlInboxContractTests extends InboxContract {
               )
           )
           .fold(e => sys.error(e.toString), _.map(_.createdAt))
+      def believed(origin: Origin): Vector[Integrity] =
+        engine.db
+          .read(Subject.Public)(
+            engine.conversations
+              .find(origin)
+              .flatMap(
+                _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+                  engine.entries.list(c.id)
+                )
+              )
+          )
+          .fold(e => sys.error(e.toString), _.map(_.integrity))
       def periods(origin: Origin): Vector[Period] =
         engine.db
           .read(Subject.Public)(
@@ -228,6 +240,7 @@ object SqlInboxContractTests extends InboxContract {
           exists,
           written,
           dated,
+          believed,
           periods,
           close,
           name,

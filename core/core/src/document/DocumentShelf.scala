@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersion}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** One plugin's documents as it reads them: the current ones, withdrawals left out, and only
   * those its transaction reads ([[grit.core.store.Tx.clearance]]): a document kept in the
@@ -31,14 +31,14 @@ trait DocumentKeeper extends DocumentShelf {
 
   /** Makes `text`, `data` and `pointer`, at `place`, the current document under `key` at `label`
     * joined with its transaction's floor ([[grit.core.visibility.Clearance.floor]]), written `at`:
-    * never below what its writer could read. It is kept in the transaction's own room, or in none
+    * never below what its writer could read. It is believed at `integrity`, as given. It is kept in the transaction's own room, or in none
     * when it has none, never a room the writer names. [[Written.kept]] says which label it was kept
     * at, and `current(key, kept)` finds it again. Under posting and a job's run the floor is
     * [[grit.core.store.Tx.cleared]], so that is `label join Tx.cleared(tx)`; a person's turn may
     * write above what it reads back. The version before under that key and label, if any, stops
     * being current and is marked for deletion ([[grit.core.retention.Target.Document]]); a document
     * under the key at another label is untouched. [[Written.Unchanged]] when the current version
-    * there holds the same place, text, data and pointer. Past the bound, counted over every label,
+    * there holds the same place, text, data, pointer and integrity. Past the bound, counted over every label,
     * the current documents placed least recently (ties by key, then label in its written form,
     * bytewise) are withdrawn as [[withdraw]] does, never the one written: a high variant few
     * readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at
@@ -48,6 +48,7 @@ trait DocumentKeeper extends DocumentShelf {
   def write(
       key: DocKey,
       label: Label,
+      integrity: Integrity,
       place: Place,
       text: DocText,
       data: ujson.Value,
@@ -56,7 +57,8 @@ trait DocumentKeeper extends DocumentShelf {
   )(using Tx^): Either[StoreError, Written]
 
   /** Withdraws the current document under `key` at exactly `label`, at `at`: a version holding
-    * nothing, kept at that label and in that document's room, becomes current there, and both
+    * nothing, kept at that label and in that document's room and believed as it was, becomes
+    * current there, and both
     * are marked for deletion. The withdrawal's version, or `None` when `key` had no current
     * document at `label`.
     */

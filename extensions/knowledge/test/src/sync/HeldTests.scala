@@ -6,6 +6,7 @@ import grit.core.document.{Document, Placement, Pointer}
 import grit.core.id.{CorpusName, DocKey, DocumentVersion, PluginName}
 import grit.core.place.Service
 import grit.core.tool.ToolName
+import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
 import grit.knowledge.card.{Card, CardSummary, Scope, UnitVersion}
 
@@ -31,6 +32,7 @@ object HeldTests extends TestSuite {
       right(PluginName.of("knowledge")),
       key,
       label,
+      Integrity.Member,
       right(Service.of("github")).place,
       card.text,
       data,

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** What a document says: not blank. */
 opaque type DocText = String
@@ -38,7 +38,8 @@ object Following {
 }
 
 /** A version holding something, of `plugin`'s document under `key` at `label`, the label it is
-  * kept at (ADR 0030): `text`, what a window shows and search ranks; `data`, its plugin's own,
+  * kept at (ADR 0030), believed at `integrity` (ADR 0036), as its writer gave it: `text`, what
+  * a window shows and search ranks; `data`, its plugin's own,
   * never shown or searched; `pointer`, the call that reads what it stands for, if any; kept at
   * `place`; current from `written`.
   */
@@ -47,6 +48,7 @@ final case class Document(
     plugin: PluginName,
     key: DocKey,
     label: Label,
+    integrity: Integrity,
     place: Place,
     text: DocText,
     data: ujson.Value,
@@ -61,8 +63,8 @@ final case class Document(
   */
 enum Written {
 
-  /** The current version already held the same place, text, data and pointer: nothing was
-    * written.
+  /** The current version already held the same place, text, data, pointer and integrity:
+    * nothing was written.
     */
   case Unchanged(current: DocumentVersion, kept: Label)
 

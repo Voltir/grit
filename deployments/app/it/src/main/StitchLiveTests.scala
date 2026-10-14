@@ -14,6 +14,7 @@ import grit.core.speech.{Limits, Reach, Speaking, Stage}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Link, Placed}
 import grit.core.store.{Entry, Nearby, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
@@ -184,7 +185,8 @@ object StitchLiveTests extends TestSuite {
                     "m"
                   )
                 ),
-                Now.minusSeconds(100)
+                Now.minusSeconds(100),
+                Integrity.Member
               )
               _ <- engine.entries.insert(e)
             } yield e

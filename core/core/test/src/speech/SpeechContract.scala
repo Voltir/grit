@@ -10,6 +10,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx, UsageLedger}
 import grit.core.triage.{Kind, Tags}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -55,7 +56,9 @@ abstract class SpeechContract extends TestSuite {
   /** An entry of `c`'s next turn holding `payload`: that turn. */
   private def next(c: ConversationId, payload: Payload, id: String): TurnRef = transaction {
     val n = right(entries.lockNext(c))
-    right(entries.insert(Entry(EntryId(id), c, n.turnSeq, None, n.seq, payload, At)))
+    right(
+      entries.insert(Entry(EntryId(id), c, n.turnSeq, None, n.seq, payload, At, Integrity.Member))
+    )
     TurnRef(c, n.turnSeq)
   }
 
@@ -120,7 +123,8 @@ abstract class SpeechContract extends TestSuite {
               None,
               n.seq,
               Payload.Heard("hi"),
-              At
+              At,
+              Integrity.Member
             )
           )
         )
@@ -170,7 +174,16 @@ abstract class SpeechContract extends TestSuite {
         val n = right(entries.lockNext(c))
         right(
           entries.insert(
-            Entry(posted.replyId, c, posted.turnSeq, None, n.seq, Payload.Message(reply), At)
+            Entry(
+              posted.replyId,
+              c,
+              posted.turnSeq,
+              None,
+              n.seq,
+              Payload.Message(reply),
+              At,
+              Integrity.Member
+            )
           )
         )
         n.seq
@@ -316,7 +329,16 @@ abstract class SpeechContract extends TestSuite {
         val n = right(entries.lockNext(c))
         right(
           entries.insert(
-            Entry(answering.replyId, c, answering.turnSeq, None, n.seq, Payload.Message(reply), At)
+            Entry(
+              answering.replyId,
+              c,
+              answering.turnSeq,
+              None,
+              n.seq,
+              Payload.Message(reply),
+              At,
+              Integrity.Member
+            )
           )
         )
       }

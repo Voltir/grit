@@ -42,6 +42,7 @@ import grit.core.store.{
   StoreError
 }
 import grit.core.tool.{ToolName, Toolbox}
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -79,6 +80,7 @@ object TurnDocumentsTests extends TestSuite {
         .write(
           got(DocKey.of(key)),
           grit.core.visibility.Label.Public,
+          Integrity.Member,
           board,
           got(DocText.of(text)),
           ujson.Obj(),
@@ -186,7 +188,8 @@ object TurnDocumentsTests extends TestSuite {
           None,
           EntrySeq(0),
           Payload.Message(Message.User("the login page is blank")),
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       )(using TestTx.fake)
       val nearby =

@@ -179,7 +179,8 @@ private object SqlStitchStore {
 
   /** An entry's columns, as [[SqlEntryStore]] reads them, and its conversation's origin. */
   val SaidColumns: String =
-    "e.id, e.conversation_id, e.turn_seq, e.parent_id, e.seq, e.payload, e.created_at, c.origin"
+    "e.id, e.conversation_id, e.turn_seq, e.parent_id, e.seq, e.payload, e.created_at, c.origin, " +
+      SqlIntegrity.columns("e.integrity_id")
 
   /** A person's message, to grit or heard, or grit's reply or post: what a strand is said in. */
   val Spoken: String =

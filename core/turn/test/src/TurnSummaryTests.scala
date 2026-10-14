@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -28,7 +29,8 @@ object TurnSummaryTests extends TestSuite {
           None,
           EntrySeq(seq),
           payload,
-          Instant.EPOCH
+          Instant.EPOCH,
+          Integrity.Member
         )
       val said = reply("It moved to Thursday.")
       TurnSummary

@@ -73,7 +73,7 @@ object ApprovalLiveTests extends TestSuite {
   /** The Ask entries of `turn`, once one is there. */
   private def asked(engine: Engine^, turn: TurnRef): Vector[Payload.Ask] = {
     val until = System.nanoTime() + 60.seconds.toNanos
-    def asks = own(engine, turn).collect { case Entry(_, _, _, _, _, a: Payload.Ask, _) => a }
+    def asks = own(engine, turn).collect { case Entry(_, _, _, _, _, a: Payload.Ask, _, _) => a }
     while (asks.isEmpty && System.nanoTime() < until) Thread.sleep(50)
     asks
   }
@@ -81,7 +81,7 @@ object ApprovalLiveTests extends TestSuite {
   /** What `turn`'s call came to, as the model read it. */
   private def results(engine: Engine^, turn: TurnRef): Vector[(String, Boolean)] =
     own(engine, turn).collect {
-      case Entry(_, _, _, _, _, Payload.Result(Message.ToolResult(_, content, failed), _), _) =>
+      case Entry(_, _, _, _, _, Payload.Result(Message.ToolResult(_, content, failed), _), _, _) =>
         (content, failed)
     }
 

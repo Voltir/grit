@@ -175,8 +175,9 @@ object Close {
             t >= TurnSeq.value(p.first) && t <= TurnSeq.value(attempt.last)
           })
       )
-      tags <- records.triage.of(own.collect { case e @ Entry(_, _, _, _, _, Payload.Heard(_), _) =>
-        e.id
+      tags <- records.triage.of(own.collect {
+        case e @ Entry(_, _, _, _, _, Payload.Heard(_), _, _) =>
+          e.id
       })
       ran <- records.conversations
         .get(attempt.period.conversationId)
@@ -389,10 +390,10 @@ object Close {
       known: Balance
   ): Option[Closing] = {
     val opening = entries.collectFirst {
-      case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
+      case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _, _) => text
     }
     val reply = entries.reverse.collectFirst {
-      case Entry(_, _, _, _, _, Payload.Message(Message.Assistant(blocks, _, _, _, _)), _) =>
+      case Entry(_, _, _, _, _, Payload.Message(Message.Assistant(blocks, _, _, _, _)), _, _) =>
         blocks.collect { case AssistantBlock.Text(t) => t }.mkString
     }
     opening
@@ -418,9 +419,9 @@ object Close {
       Some(s"Heard $heard message${if (heard == 1) "" else "s"}; nothing kept.")
     } else {
       val summaries =
-        entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _) => text }
+        entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _, _) => text }
       val asked = entries.collect {
-        case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
+        case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _, _) => text
       }
       val turns = TurnSeq.value(attempt.last) - TurnSeq.value(first) + 1
       Vector(
