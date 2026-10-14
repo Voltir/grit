@@ -10,12 +10,13 @@ final case class Cached(mtime: Long, defns: Vector[Defn])
 /** One `.tasty` file's references as of its mtime. */
 final case class Indexed(mtime: Long, uses: Vector[Use])
 
-/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. `unreadable` holds the message of each file in `failed` whose traversal threw. `refs` is the reference index `uses` reads from, by `.tasty` path and mtime, kept beside the definitions so that one root's cache bounds both. */
+/** The definitions read so far, by `.tasty` path; a file is read again only when its mtime changed. `failed` holds, by path, the mtime at which the inspector failed on a file; such a file is not read again until its mtime changes. `unreadable` holds the message of each file in `failed` whose traversal threw. `refs` is the reference index `uses` reads from, by `.tasty` path and mtime, kept beside the definitions so that one root's cache bounds both. `consulted` holds every file `defns` and `uses` have answered for, read or cached, since a query cleared it. */
 final case class Loaded(
     byTasty: Map[os.Path, Cached],
     failed: Map[os.Path, Long] = Map.empty,
     unreadable: Map[os.Path, String] = Map.empty,
-    refs: Map[os.Path, Indexed] = Map.empty
+    refs: Map[os.Path, Indexed] = Map.empty,
+    consulted: Set[os.Path] = Set.empty
 ) {
 
   /** The cached entries: one per `.tasty` file whose definitions are cached and one per file whose references are indexed. */
@@ -45,7 +46,7 @@ object Loaded {
       }
       .map { next =>
         val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
-        (all, next, stale.size)
+        (all, next.copy(consulted = next.consulted ++ tasty), stale.size)
       }
   }
 
@@ -79,7 +80,7 @@ object Loaded {
       }
       .map { next =>
         val all = tasty.flatMap(p => next.refs.get(p).map(_.uses).getOrElse(Vector.empty))
-        (all, next, stale.size)
+        (all, next.copy(consulted = next.consulted ++ tasty), stale.size)
       }
   }
 

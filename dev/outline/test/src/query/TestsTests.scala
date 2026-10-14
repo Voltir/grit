@@ -100,6 +100,8 @@ object TestsTests extends TestSuite {
           def classesDirs(root: Root) = Vector(root.dir / "out" / "classes")
           def libraryJars(root: Root) = Vector.empty
           def notCompiled(root: Root) = "not compiled"
+          def moduleOf(root: Root, classesDir: os.Path): String = "m"
+          def compile(modules: Vector[String]): String = "compile"
           def isTest(classesDir: os.Path) = false
           def isTestSource(file: os.RelPath) = false
         }

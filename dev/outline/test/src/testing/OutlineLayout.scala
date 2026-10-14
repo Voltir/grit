@@ -15,4 +15,6 @@ object OutlineLayout extends Layout {
   def notCompiled(root: Root): String = MillLayout.notCompiled(root)
   def isTest(classesDir: os.Path): Boolean = MillLayout.isTest(classesDir)
   def isTestSource(file: os.RelPath): Boolean = MillLayout.isTestSource(file)
+  def moduleOf(root: Root, classesDir: os.Path): String = MillLayout.moduleOf(root, classesDir)
+  def compile(modules: Vector[String]): String = MillLayout.compile(modules)
 }

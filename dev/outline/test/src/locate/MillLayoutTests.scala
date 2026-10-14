@@ -106,5 +106,17 @@ object MillLayoutTests extends TestSuite {
         MillLayout.isTestSource(os.RelPath("core/core/probes/src/durable/SeparationTests.scala"))
       )
     }
+
+    test(
+      "a classes dir's module is its path between out and compile.dest, and compile joins each module's compile with +"
+    ) {
+      val root = Root(os.temp.dir())
+      val classes = root.dir / "out" / "grit" / "core" / "test" / "compile.dest" / "classes"
+      assert(MillLayout.moduleOf(root, classes) == "grit.core.test")
+      assert(
+        MillLayout.compile(Vector("grit.core", "grit.dbos")) ==
+          "./mill grit.core.compile + grit.dbos.compile"
+      )
+    }
   }
 }

@@ -17,6 +17,12 @@ trait Layout {
 
   /** Whether the source file `file`, a path relative to the checkout, holds only tests' source. */
   def isTestSource(file: os.RelPath): Boolean
+
+  /** The name a person knows the module by whose compiled classes `classesDir`, one of `classesDirs(root)`, holds. */
+  def moduleOf(root: Root, classesDir: os.Path): String
+
+  /** The one command that compiles each of `modules`, named as `moduleOf` names them. */
+  def compile(modules: Vector[String]): String
 }
 
 /** Mill's layout: `out/**/compile.dest/classes`, and each module's `resolvedMvnDeps.json` beside its `compile.dest`. */
@@ -85,6 +91,14 @@ object MillLayout extends Layout {
 
   def notCompiled(root: Root): String =
     s"no compiled classes under ${root.dir / "out"}: run ./mill <module>.compile"
+
+  /** The module's segments between `out` and `compile.dest`, dot-separated, as `./mill` takes them. */
+  def moduleOf(root: Root, classesDir: os.Path): String =
+    classesDir.relativeTo(root.dir / "out").segments.dropRight(2).mkString(".")
+
+  /** `./mill` with each module's `compile`, joined by ` + `: Mill reads a second bare task as the first one's argument. */
+  def compile(modules: Vector[String]): String =
+    modules.map(m => s"$m.compile").mkString("./mill ", " + ", "")
 }
 
 /** `layout` with each root's `classesDirs` and `libraryJars` computed once and reused for this value's lifetime. A
@@ -104,4 +118,6 @@ final class MemoLayout(layout: Layout) extends Layout {
   def notCompiled(root: Root): String = layout.notCompiled(root)
   def isTest(classesDir: os.Path): Boolean = layout.isTest(classesDir)
   def isTestSource(file: os.RelPath): Boolean = layout.isTestSource(file)
+  def moduleOf(root: Root, classesDir: os.Path): String = layout.moduleOf(root, classesDir)
+  def compile(modules: Vector[String]): String = layout.compile(modules)
 }

@@ -268,6 +268,8 @@ object ReadTests extends TestSuite {
     def classesDirs(root: Root): Vector[os.Path] = Vector(classes)
     def libraryJars(root: Root): Vector[os.Path] = Vector.empty
     def notCompiled(root: Root): String = "not compiled"
+    def moduleOf(root: Root, classesDir: os.Path): String = "m"
+    def compile(modules: Vector[String]): String = "compile"
     def isTest(classesDir: os.Path): Boolean = false
   }
 

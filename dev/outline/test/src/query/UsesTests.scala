@@ -409,6 +409,8 @@ object UsesTests extends TestSuite {
         }
         def libraryJars(root: Root): Vector[os.Path] = FixtureLayout.libraryJars(root)
         def notCompiled(root: Root): String = FixtureLayout.notCompiled(root)
+        def moduleOf(root: Root, classesDir: os.Path): String = "m"
+        def compile(modules: Vector[String]): String = "compile"
         def isTest(classesDir: os.Path): Boolean = FixtureLayout.isTest(classesDir)
       }
       val candidates = Locate.mentioning(root, "get").size

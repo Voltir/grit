@@ -11,4 +11,6 @@ object FixtureTestLayout extends Layout {
   def notCompiled(root: Root): String = FixtureLayout.notCompiled(root)
   def isTest(classesDir: os.Path): Boolean = true
   def isTestSource(file: os.RelPath): Boolean = true
+  def moduleOf(root: Root, classesDir: os.Path): String = FixtureLayout.moduleOf(root, classesDir)
+  def compile(modules: Vector[String]): String = FixtureLayout.compile(modules)
 }

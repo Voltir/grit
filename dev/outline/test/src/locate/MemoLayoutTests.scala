@@ -17,6 +17,8 @@ object MemoLayoutTests extends TestSuite {
       Vector(root.dir / "lib.jar")
     }
     def notCompiled(root: Root): String = "not compiled"
+    def moduleOf(root: Root, classesDir: os.Path): String = "m"
+    def compile(modules: Vector[String]): String = "compile"
     def isTest(classesDir: os.Path): Boolean = false
     def isTestSource(file: os.RelPath): Boolean = false
   }

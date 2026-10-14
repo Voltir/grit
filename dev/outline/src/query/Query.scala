@@ -29,7 +29,7 @@ object Query {
       withPrivate: Boolean,
       cap: Int,
       withTests: Boolean = true
-  ): (Answer, Roots) = {
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val (answer, loaded) =
       showIn(
         root,
@@ -55,7 +55,7 @@ object Query {
       pattern: String,
       withPrivate: Boolean,
       cap: Int
-  ): (Answer, Roots) = {
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val segments = pattern.split("\\.", -1).toVector
     val classes = layout.classesDirs(root)
     if (segments.exists(_.isEmpty))
@@ -221,7 +221,7 @@ object Query {
       in: Option[String],
       outside: Option[String],
       cap: Int
-  ): (Answer, Roots) = {
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val bare = syms.filter(sym => !sym.contains('.') && sym.length < shortestBare)
     lazy val classes = layout.classesDirs(root)
     if (bare.nonEmpty)
@@ -395,7 +395,7 @@ object Query {
       names: Vector[String],
       level: Int,
       cap: Int
-  ): (Answer, Roots) =
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     if (level < 0 || level > 1)
       (Answer(s"level must be 0 or 1\n${Help.usage(Help.area)}", Status.Failed), roots)
     else if (names.isEmpty) {
@@ -481,6 +481,7 @@ object Query {
           }
       }
     }
+  }
 
   /** What an `area` name stands for: a declared area, or the `.tasty` files of whole packages, with the note saying which when the name is not declared. */
   private final case class Stand(area: Option[Area], tasty: Vector[os.Path], note: Option[String])
@@ -554,7 +555,7 @@ object Query {
       test: Option[String],
       bodies: Set[String],
       cap: Int
-  ): (Answer, Roots) =
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     if (layout.classesDirs(root).isEmpty)
       (Answer(layout.notCompiled(root), Status.Failed), roots)
     else
@@ -610,6 +611,7 @@ object Query {
               }
           }
       }
+  }
 
   /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */
   private def areaFamily(
@@ -649,7 +651,7 @@ object Query {
       member: Option[String],
       withBody: Boolean,
       cap: Int
-  ): (Answer, Roots) = {
+  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val (answer, loaded) =
       familyIn(root, layout, config, Roots.of(roots, root), name, member, withBody, cap)
     (answer, Roots.put(roots, root, loaded))
@@ -801,6 +803,62 @@ object Query {
               (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
           }
       }
+
+  /** `query`'s answer, run over `roots` with `root`'s consulted files cleared, and with `staleLine`'s line, when it gives
+    * one, after the answer's `## root` line.
+    */
+  private def staled(root: Root, layout: Layout, roots: Roots)(
+      query: Roots => (Answer, Roots)
+  ): (Answer, Roots) = {
+    val (answer, next) =
+      query(Roots.put(roots, root, Roots.of(roots, root).copy(consulted = Set.empty)))
+    staleLine(root, layout, Roots.of(next, root)) match {
+      case Some(line) if answer.text.startsWith("## root") =>
+        val (first, rest) = answer.text.span(_ != '\n')
+        (answer.copy(text = s"$first\n$line$rest"), next)
+      case _ => (answer, next)
+    }
+  }
+
+  /** Files a module's part of the stale line names before it counts the rest as `+N`. */
+  private val staleNamed: Int = 3
+
+  /** The line naming each module that holds a `.tasty` in `loaded.consulted` older than its source, with those sources'
+    * file names (`staleNamed` at most, then `+N`), and the command compiling every such module; none when no consulted
+    * file is stale. A file whose source is missing is not stale here.
+    */
+  private def staleLine(root: Root, layout: Layout, loaded: Loaded): Option[String] = {
+    val dirs = layout.classesDirs(root)
+    // Each consulted file's (module, source) with its compile time; a source's newest TASTy decides.
+    val compiled: Vector[((String, String), Long)] = loaded.consulted.toVector.flatMap { p =>
+      for {
+        cached <- loaded.byTasty.get(p)
+        d <- cached.defns.headOption
+        dir <- dirs.find(p.startsWith)
+      } yield (layout.moduleOf(root, dir), d.file) -> cached.mtime
+    }
+    val stale = compiled
+      .groupMapReduce(_._1)(_._2)(math.max)
+      .toVector
+      .collect {
+        case ((module, file), newest)
+            if os.isFile(root.dir / os.RelPath(file)) &&
+              os.mtime(root.dir / os.RelPath(file)) > newest =>
+          (module, file)
+      }
+    val byModule = stale.groupMap(_._1)(_._2).toVector.sortBy(_._1)
+    if (byModule.isEmpty) None
+    else {
+      val listed = byModule.map { case (module, files) =>
+        val names = files.distinct.sorted.map(_.split('/').last)
+        val more = if (names.size > staleNamed) s" +${names.size - staleNamed}" else ""
+        s"$module (${names.take(staleNamed).mkString(", ")}$more)"
+      }
+      Some(
+        s"-- stale since the last compile: ${listed.mkString(", ")}: ${layout.compile(byModule.map(_._1))}"
+      )
+    }
+  }
 
   /** `root`'s `## root` line: its directory, then its branch (or "detached") and HEAD. */
   private def header(root: Root): String = {

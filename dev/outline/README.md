@@ -64,7 +64,7 @@ that matches nothing suggests `find` with the name's last segment.
 
 MCP tool names: `show`, `family`, `uses`, `area`, `find`, `tests`.
 
-File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
+File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source, and an answer that read any such file says so after its ## root line, in a `-- stale since the last compile:` line naming each module, its stale files and the command that compiles them; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
 
 ## Running it
 
@@ -84,6 +84,10 @@ The launcher is built on first use, without a daemon in its own Mill output dire
 - A query reads only that root's build output, and refuses any TASTy whose sources lie outside
   the root.
 - A source newer than its `.tasty` is flagged as stale: the definition reflects an earlier compile.
+  The answer then says so on its second line, naming each module whose stale files it read, at most three
+  file names a module and `+N` for the rest, and the command that compiles them:
+  `-- stale since the last compile: grit.core (Label.scala, Tx.scala), grit.dbos (A.scala, B.scala, C.scala +2): ./mill grit.core.compile + grit.dbos.compile`.
+  Only the files the query read are checked, so the line costs one look at each of their sources.
   A definition that ran past where its source now ends is shown by the compiler's signature, on a
   `-- not file text` line, with its lines as compiled and no doc or body.
 - Nothing compiles on its own. With no compiled classes, the answer says how to compile the
@@ -119,5 +123,6 @@ One-way dependency order: model ← locate ← read; model ← trace ← render;
 - `mcp`: the JSON-RPC server over stdio, exposing the same queries as tools.
 
 `locate.Layout` is the trait where another build tool plugs in. It says where compiled classes
-and library jars are, what to tell a person when nothing is compiled, and which directories
-hold tests. Mill's implementation ships; another build tool supplies its own four methods.
+and library jars are, what to tell a person when nothing is compiled, which directories
+hold tests, what a person calls the module a classes directory belongs to, and the command that
+compiles modules. Mill's implementation ships; another build tool supplies its own methods.
