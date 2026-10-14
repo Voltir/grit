@@ -41,10 +41,14 @@ final case class TurnView(
     prompt: Vector[TurnView.Part] = Vector.empty
 ) {
 
-  /** Whether nothing more will change: finished, its last step recorded. A turn that
-    * failed short of it is read again, which costs a poll's queries and nothing more.
+  /** Whether nothing more will change: finished, its last step recorded, or its failure
+    * before assembly (`record-failure`). A turn that failed elsewhere short of its last step
+    * is read again, which costs a poll's queries and nothing more.
     */
-  def settled: Boolean = running.isEmpty && steps.exists(_.name == Turn.Step.AppendSummary)
+  def settled: Boolean =
+    running.isEmpty && steps.exists(s =>
+      s.name == Turn.Step.AppendSummary || s.name == Turn.Step.RecordFailure
+    )
 }
 
 object TurnView {

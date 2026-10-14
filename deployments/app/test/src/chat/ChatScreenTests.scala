@@ -319,6 +319,30 @@ object ChatScreenTests extends TestSuite {
       )
     }
 
+    test("a turn that failed before assembly is done, not finishing") {
+      val screen = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(1000)), Size(30, 110))
+        .message(Msg.Opened)
+        .message(
+          Msg.Turn(
+            TurnView(
+              TurnSeq(0),
+              "when is the freeze?",
+              None,
+              Vector(Turn.Step.PinModels, Turn.Step.Route, Turn.Step.RecordFailure)
+                .map(TurnView.Step(_, Some(3L))),
+              None,
+              None,
+              None,
+              None
+            )
+          )
+        )
+        .screen
+      assert(screen.exists(_.contains("TURN 1  · done")))
+      assert(!screen.exists(_.contains("finishing")))
+    }
+
     test("the panel's tabs are pills across its top; ctrl-t and a click switch them") {
       val wide = Headless
         .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
