@@ -539,15 +539,23 @@ object Query {
         }
     }
 
-  /** The files among `files` whose source is newer than their newest `.tasty`, as `show`, `tests` and `uses` tag them. */
-  private[query] def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] =
-    files.distinct.filter { file =>
-      val rel = os.RelPath(file)
-      Locate.staleness(root, rel, Locate.inPackageOf(root, layout, rel)) match {
-        case Staleness.Stale(_, _) => true
-        case _ => false
+  /** The files among `files` that `Locate.staleness` judges `Stale` against their packages' `.tasty` files: what every
+    * query's file tags and its stale line say.
+    */
+  private[query] def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] = {
+    val distinct = files.distinct
+    val judged = Locate.staleness(
+      root,
+      distinct.map { file =>
+        val rel = os.RelPath(file)
+        rel -> Locate.inPackageOf(root, layout, rel)
       }
-    }.toSet
+    )
+    distinct
+      .zip(judged)
+      .collect { case (file, Staleness.Stale(_, _)) => file }
+      .toSet
+  }
 
   /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
   def tests(
@@ -795,15 +803,7 @@ object Query {
           familyOf(defns, traitName, member, withBody) match {
             case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
             case Right(f) =>
-              val stale = files
-                .filter(file =>
-                  Locate.staleness(root, file, Locate.inPackageOf(root, layout, file)) match {
-                    case Staleness.Stale(_, _) => true
-                    case _ => false
-                  }
-                )
-                .map(_.toString)
-                .toSet
+              val stale = staleFiles(root, layout, files.map(_.toString))
               (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
           }
       }
@@ -827,29 +827,22 @@ object Query {
   /** Files a module's part of the stale line names before it counts the rest as `+N`. */
   private val staleNamed: Int = 3
 
-  /** The line naming each module that holds a `.tasty` in `loaded.consulted` older than its source, with those sources'
-    * file names (`staleNamed` at most, then `+N`), and the command compiling every such module; none when no consulted
-    * file is stale. A file whose source is missing is not stale here.
+  /** The line naming each module that holds a `.tasty` in `loaded.consulted` compiled from a source `staleFiles` judges
+    * stale, with those sources' file names (`staleNamed` at most, then `+N`), and the command compiling every such
+    * module; none when no consulted file is stale.
     */
   private def staleLine(root: Root, layout: Layout, loaded: Loaded): Option[String] = {
     val dirs = layout.classesDirs(root)
-    // Each consulted file's (module, source) with its compile time; a source's newest TASTy decides.
-    val compiled: Vector[((String, String), Long)] = loaded.consulted.toVector.flatMap { p =>
+    // Each consulted file's (module, source).
+    val compiled: Vector[(String, String)] = loaded.consulted.toVector.flatMap { p =>
       for {
         cached <- loaded.byTasty.get(p)
         d <- cached.defns.headOption
         dir <- dirs.find(p.startsWith)
-      } yield (layout.moduleOf(root, dir), d.file) -> cached.mtime
-    }
-    val stale = compiled
-      .groupMapReduce(_._1)(_._2)(math.max)
-      .toVector
-      .collect {
-        case ((module, file), newest)
-            if os.isFile(root.dir / os.RelPath(file)) &&
-              os.mtime(root.dir / os.RelPath(file)) > newest =>
-          (module, file)
-      }
+      } yield (layout.moduleOf(root, dir), d.file)
+    }.distinct
+    val staleSources = staleFiles(root, layout, compiled.map(_._2))
+    val stale = compiled.filter { case (_, file) => staleSources.contains(file) }
     val byModule = stale.groupMap(_._1)(_._2).toVector.sortBy(_._1)
     if (byModule.isEmpty) None
     else {
@@ -1185,7 +1178,6 @@ object Query {
             }
           )
           val loadedDefns = companions.toVector
-          // A file is stale when it is newer than the tasty it is read from, as the package's tasty files say.
           val stale = staleFiles(root, layout, loadedDefns.map(_.file))
           val rendered = Render.show(
             named = tops,

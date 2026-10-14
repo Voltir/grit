@@ -133,17 +133,41 @@ object Locate {
     ).sortBy(_.toString)
       .toVector
 
-  /** Whether `file` is newer than its newest `tasty`; `NoTasty` when `tasty` is empty, `NoSource` when `file` is missing. */
-  def staleness(root: Root, file: os.RelPath, tasty: Vector[os.Path]): Staleness =
-    tasty.map(p => os.mtime(p)).maxOption match {
-      case None => Staleness.NoTasty
-      case Some(_) if !os.exists(root.dir / file) => Staleness.NoSource
-      case Some(newest) =>
-        val source = os.mtime(root.dir / file)
-        if (source > newest)
-          Staleness.Stale(Instant.ofEpochMilli(source), Instant.ofEpochMilli(newest))
-        else Staleness.Fresh
+  /** Each of `files`, a source with the `.tasty` files of its package, judged against the `.tasty` compiled from it, in
+    * order. A source no newer than every one of them is `Fresh`, read no further. Otherwise it is `Fresh` when no newer
+    * than the newest `.tasty` compiled from it, or when its lines are as many and as long as that `.tasty` records, so a
+    * checkout that rewrites a file with the same content leaves it `Fresh`; else `Stale`. An edit that keeps every line's
+    * length reads `Fresh`. A source no `.tasty` records as its own is judged by the package's newest. `NoTasty` when its
+    * `.tasty` files are none, `NoSource` when the source is missing.
+    */
+  def staleness(root: Root, files: Vector[(os.RelPath, Vector[os.Path])]): Vector[Staleness] = {
+    // Each `.tasty` read once in a call: a package's files share one set.
+    val read = scala.collection.mutable.Map.empty[os.Path, Option[TastySource]]
+    def recorded(p: os.Path): Option[TastySource] = read.getOrElseUpdate(p, TastySource.of(p))
+    files.map { case (file, tasty) =>
+      val path = root.dir / file
+      val byAge = tasty.map(p => p -> os.mtime(p)).sortBy(-_._2)
+      byAge.headOption match {
+        case None => Staleness.NoTasty
+        case Some(_) if !os.isFile(path) => Staleness.NoSource
+        case Some((_, newest)) =>
+          val source = os.mtime(path)
+          def stale(tasty: Long) =
+            Staleness.Stale(Instant.ofEpochMilli(source), Instant.ofEpochMilli(tasty))
+          if (byAge.forall(_._2 >= source)) Staleness.Fresh
+          else
+            byAge.find { case (p, _) => recorded(p).exists(_.isOf(file)) } match {
+              case None => if (source > newest) stale(newest) else Staleness.Fresh
+              case Some((_, own)) if source <= own => Staleness.Fresh
+              case Some((p, own)) =>
+                val text = Try(os.read(path)).toOption
+                val same =
+                  recorded(p).exists(r => text.exists(t => r.lineSizes == TastySource.lineSizes(t)))
+                if (same) Staleness.Fresh else stale(own)
+            }
+      }
     }
+  }
 
   /** The package clause segments that lead a source file, in order; stops at the first line that is not a package clause, blank or a line comment. */
   private def packageOf(lines: Seq[String]): Vector[String] =

@@ -228,7 +228,7 @@ object UsesTests extends TestSuite {
       assert(answer.text.linesIterator.exists(_.contains("new Limits(asks, calls + hidden)")))
     }
 
-    test("a site's file whose source is newer than its tasty is tagged stale on its == line") {
+    test("a site's file edited since its tasty is tagged stale on its == line") {
       val dir = os.temp.dir(prefix = "outline-uses-stale-")
       os.write(dir / "build.mill", "")
       val src = dir / "src" / "p" / "S.scala"
@@ -263,6 +263,10 @@ object UsesTests extends TestSuite {
           )
           ._1
       assert(query().text.linesIterator.contains("== src/p/S.scala"))
+      os.write.over(
+        src,
+        "package p\nobject S { def f(a: Int): Int = a }\nobject T { def g: Int = S.f(10) }\n"
+      )
       Files.setLastModifiedTime(
         src.toNIO,
         FileTime.fromMillis(os.mtime(classes / "p" / "S.tasty") + 10000)

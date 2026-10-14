@@ -114,7 +114,7 @@ object LocateTests extends TestSuite {
     }
 
     test(
-      "staleness is Fresh while the tasty is newer, Stale once the source is later, and NoTasty with none"
+      "a source no tasty records as its own is Fresh while the newest tasty is newer, Stale once the source is later, and NoTasty with none"
     ) {
       val t0 = 1700000000000L
       val root = tree("core/x/src/A.scala", "out/a/compile.dest/classes/grit/core/x/A.tasty")
@@ -122,22 +122,31 @@ object LocateTests extends TestSuite {
       val tastyPath = at(root, "out/a/compile.dest/classes/grit/core/x/A.tasty")
       os.mtime.set(at(root, "core/x/src/A.scala"), t0)
       os.mtime.set(tastyPath, t0 + 1000)
-      assert(Locate.staleness(root, file, Vector(tastyPath)) == Staleness.Fresh)
-      os.mtime.set(at(root, "core/x/src/A.scala"), t0 + 5000)
       assert(
-        Locate.staleness(root, file, Vector(tastyPath)) == Staleness.Stale(
-          Instant.ofEpochMilli(t0 + 5000),
-          Instant.ofEpochMilli(t0 + 1000)
+        Locate.staleness(root, Vector(file -> Vector(tastyPath))).headOption == Some(
+          Staleness.Fresh
         )
       )
-      assert(Locate.staleness(root, file, Vector.empty) == Staleness.NoTasty)
+      os.mtime.set(at(root, "core/x/src/A.scala"), t0 + 5000)
+      assert(
+        Locate.staleness(root, Vector(file -> Vector(tastyPath))).headOption == Some(
+          Staleness.Stale(Instant.ofEpochMilli(t0 + 5000), Instant.ofEpochMilli(t0 + 1000))
+        )
+      )
+      assert(
+        Locate.staleness(root, Vector(file -> Vector.empty)).headOption == Some(Staleness.NoTasty)
+      )
     }
 
     test("a source file that is missing is NoSource, not an error") {
       val root = tree("out/a/compile.dest/classes/grit/core/x/A.tasty")
       val file = os.RelPath("core/x/src/A.scala")
       val tastyPath = at(root, "out/a/compile.dest/classes/grit/core/x/A.tasty")
-      assert(Locate.staleness(root, file, Vector(tastyPath)) == Staleness.NoSource)
+      assert(
+        Locate.staleness(root, Vector(file -> Vector(tastyPath))).headOption == Some(
+          Staleness.NoSource
+        )
+      )
     }
   }
 }

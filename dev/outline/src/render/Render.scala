@@ -42,11 +42,11 @@ object Render {
      else head + ": " + items.map(caseItem).mkString(" | ")) + sizeTag(d.size)
   }
 
-  /** A file's `== file  package` header line, flagged when its source is newer than its tasty. */
+  /** A file's `== file  package` header line, flagged when its source is stale. */
   def fileLine(file: String, pkg: String, stale: Boolean): String =
     s"== $file  $pkg" + staleTag(stale)
 
-  /** What a file's `==` line ends with when its source is newer than its tasty, so what is printed from it may not match it. */
+  /** What a file's `==` line ends with when its source is stale, so what is printed from it may not match it. */
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 

@@ -35,12 +35,18 @@ object StaleLineTests extends TestSuite {
     d
   }
 
-  /** Every source of the root set an hour after (`stale`) or before its compile. */
+  /** Every source of the root as compiled and set an hour before its compile, or (`stale`) given one more line and set an
+    * hour after it.
+    */
   private def touch(stale: Boolean): Unit = {
     val at = System.currentTimeMillis() + (if (stale) 3600000L else -3600000L)
     os.walk(dir)
       .filter(_.ext == "scala")
-      .foreach(p => Files.setLastModifiedTime(p.toNIO, FileTime.fromMillis(at)))
+      .foreach { p =>
+        val compiled = os.read(p).linesIterator.take(2).mkString("", "\n", "\n")
+        os.write.over(p, if (stale) compiled + "// edited\n" else compiled)
+        Files.setLastModifiedTime(p.toNIO, FileTime.fromMillis(at))
+      }
   }
 
   private def find(pattern: String): Answer =
@@ -84,6 +90,34 @@ object StaleLineTests extends TestSuite {
         answer.text.linesIterator.toVector.lift(1) ==
           Some("-- stale since the last compile: m (A.scala): ./mill m.compile")
       )
+    }
+
+    test(
+      "the stale line and the file tags judge alike: an edited file is on both though another file's tasty in its package is later"
+    ) {
+      touch(stale = true)
+      val laterTasty = dir / "out" / "m" / "compile.dest" / "classes" / "p" / "B.tasty"
+      val compiledAt = os.mtime(laterTasty)
+      os.mtime.set(laterTasty, System.currentTimeMillis() + 7200000L)
+      try {
+        val (answer, _) = Query.show(
+          Root(dir),
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("p.A"),
+          depth = 0,
+          bodies = Set.empty,
+          withPrivate = false,
+          cap = 80000,
+          tests = TestsShown.Dropped
+        )
+        val lines = answer.text.linesIterator.toVector
+        assert(
+          lines.lift(1) == Some("-- stale since the last compile: m (A.scala): ./mill m.compile")
+        )
+        assert(lines.contains("== m/src/p/A.scala  p  [stale: source newer than .tasty]"))
+      } finally os.mtime.set(laterTasty, compiledAt)
     }
   }
 }
