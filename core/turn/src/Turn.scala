@@ -1653,19 +1653,27 @@ object Turn {
             case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => rooted
           }
         }
-        TurnGate.decide(start, offered, itemsOf(showing), ReadHidden.read(showing.mine), named)
+        TurnGate.decide(
+          start,
+          offered,
+          itemsOf(showing, window),
+          ReadHidden.read(showing.mine),
+          named
+        )
       }
 
-  /** Each item `showing` holds that a request shows the model, in the order it shows them:
-    * the nearby entries, the documents, the window's entries, then the turn's own; an entry
-    * kept as a tool's result by the call it answers, named by its tool, and any other by its
-    * position, a person's named as [[Showing.named]] names them ("someone" when it does not),
-    * grit's as "an earlier reply" and a closing as "a closing record". Entries a request does
-    * not show (a window, a query, a summary, a topic, an ask) are none.
+  /** Each item a request over `window` shows the model of `showing`, in the order it shows
+    * them: the entries `window`'s nearby sections show, section by section ([[Shown.section]]),
+    * the documents, the window's entries [[Shown.own]] shows, then the turn's own entries
+    * [[Shown.turn]] shows; an entry kept as a tool's result by the call it answers, named by
+    * its tool, and any other by its position, a person's named as [[Showing.named]] names them
+    * ("someone" when it does not), grit's as "an earlier reply" and a closing as "a closing
+    * record". An entry the request does not show (an earlier turn's tool exchange or result, a
+    * window, a query, a summary, a topic, an ask, a message with no text nearby) is none.
     */
-  private def itemsOf(showing: Showing): Vector[Item] = {
-    val Showing(window, mine, near, named, documents) = showing
-    val tools: Map[ToolCallId, String] = (window ++ mine)
+  private def itemsOf(showing: Showing, window: Window): Vector[Item] = {
+    val Showing(shownWindow, mine, near, named, documents) = showing
+    val tools: Map[ToolCallId, String] = (shownWindow ++ mine)
       .flatMap(_.payload match {
         case Payload.Exchange(reply) =>
           reply.blocks.collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
@@ -1688,11 +1696,33 @@ object Turn {
       }
       source.map(Item(at, e.integrity, _))
     }
-    near.flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq))) ++
+    // Each entry as its section shows it alone: shown there exactly when it is shown alone.
+    val nearby = window.nearby.flatMap { section =>
+      section.names.flatMap { seq =>
+        near
+          .find(e => e.conversationId == section.conversation && e.seq == seq)
+          .filter(e => Shown.section(only(section, seq), Vector(e), named).isDefined)
+          .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
+      }
+    }
+    nearby ++
       documents.map((d, label) =>
         Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
       ) ++
-      (window ++ mine).flatMap(e => entry(e, ItemRef.Own(e.seq)))
+      shownWindow
+        .filter(e => Shown.of(e, named).isDefined)
+        .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
+      mine
+        .filter(e => Shown.turn(Vector(e), named).nonEmpty)
+        .flatMap(e => entry(e, ItemRef.Own(e.seq)))
+  }
+
+  /** `section` naming `seq` alone. */
+  private def only(section: Nearby, seq: EntrySeq): Nearby = section match {
+    case Nearby.Open(c, place, _) => Nearby.Open(c, place, Vector(seq))
+    case Nearby.Along(c, place, _) => Nearby.Along(c, place, Vector(seq))
+    case Nearby.Asked(c, place, _) => Nearby.Asked(c, place, Vector(seq))
+    case Nearby.Closed(c, place, _) => Nearby.Closed(c, place, seq)
   }
 
   /** `showing` with each item `stubs` names, by the ref [[itemsOf]] gives it, in its kind's
