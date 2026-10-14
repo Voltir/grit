@@ -9,3 +9,15 @@ object Nests {
     def same: Int = 2
   }
 }
+
+/** A trait an anonymous class implements. */
+trait Greeter {
+  def greet: String
+}
+
+/** A greeter as an anonymous class. */
+object Greeters {
+  val polite: Greeter = new Greeter {
+    def greet: String = "hello"
+  }
+}

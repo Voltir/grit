@@ -187,6 +187,17 @@ object QueryTests extends TestSuite {
       assert(text.linesIterator.contains("    /** A count, or why not: a negative `n`. */"))
     }
 
+    test(
+      "a --body name a val's anonymous class defines is named with its line, and the --body printing it whole"
+    ) {
+      val text = shownWith("Greeters.polite", Set("greet"))
+      assert(
+        text.linesIterator.contains(
+          "-- --body greet is defined in Greeters.polite's body, in an anonymous class or as a local, at line 21: --body polite prints it whole"
+        )
+      )
+    }
+
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
       val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
       os.copy(

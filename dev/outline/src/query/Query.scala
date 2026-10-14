@@ -1309,11 +1309,33 @@ object Query {
     def answered(name: String): Boolean =
       reached.contains(name) || reached.exists(_.endsWith("." + name)) ||
         several.exists(_.startsWith(s"-- --body $name is in several owners"))
+    // A definition in a named val's or def's body, in an anonymous class or local, which no .tasty lists: its first line,
+    // read from the body's text.
+    def anonymous(name: String): Option[String] = {
+      val defining =
+        raw"^\s*(?:override\s+)?(?:def|val|var|lazy\s+val)\s+${java.util.regex.Pattern.quote(name)}\b.*".r
+      tops
+        .filter(d => d.kind == Kind.Val || d.kind == Kind.Def)
+        .flatMap { d =>
+          val text = (d.head +: d.body.toVector).mkString("\n").split("\n", -1).toVector
+          Option(text.indexWhere(defining.matches))
+            .filter(_ >= 0)
+            .map(at => d -> (d.lines.start + at))
+        }
+        .headOption
+        .map { case (d, line) =>
+          val owner = d.fullName.split('.').dropWhile(_.headOption.exists(_.isLower)).mkString(".")
+          s"-- --body $name is defined in $owner's body, in an anonymous class or as a local, at line $line: --body ${d.name} prints it whole"
+        }
+    }
     several ++ bodies.toVector.sorted
       .filterNot(name => names.contains(name) || answered(name))
       .map { name =>
         if (privateNames.contains(name)) s"-- --body $name is private: add --private"
-        else s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"
+        else
+          anonymous(name).getOrElse(
+            s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"
+          )
       }
   }
 
