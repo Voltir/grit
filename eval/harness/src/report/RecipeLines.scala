@@ -130,8 +130,8 @@ private[report] object RecipeLines {
       "grit records no price, so each model's is read from the capture's ledger rows: least " +
         "squares over its priced rows of cost = input × (input − cached tokens) + cached × " +
         "cached tokens + output × output tokens, the cached rate left out where no row has a " +
-        "cached token. Off by: the most the rates misprice one of those rows. In m$ per " +
-        "1000 tokens, the same number as dollars per million.",
+        "cached token. Off by: the most the rates misprice one of those rows. In $/M tokens " +
+        "(dollars per million).",
       ""
     ) ++ (if (prices.rates.isEmpty) Vector("No ledger row.")
           else
@@ -140,9 +140,9 @@ private[report] object RecipeLines {
                 case (m, Right(r)) =>
                   Vector(
                     m,
-                    perThousand(r.input),
-                    r.cached.fold("—")(perThousand),
-                    perThousand(r.output),
+                    perMillion(r.input),
+                    r.cached.fold("—")(perMillion),
+                    perMillion(r.output),
                     s"${r.rows}",
                     s"${r.cachedRows}",
                     f"${r.worst * 100}%.1f%%"
@@ -244,8 +244,8 @@ private[report] object RecipeLines {
 
   private def cents(usd: Double): String = Cost.cents(BigDecimal(usd))
 
-  /** A per-token rate in USD as m$ per 1000 tokens, four significant digits. */
-  private def perThousand(usd: Double): String = f"${usd * 1e6}%.4g"
+  /** A per-token rate in USD as $/M tokens (dollars per million), four significant digits. */
+  private def perMillion(usd: Double): String = f"${usd * 1e6}%.4g"
 
   /** How much `price` is below the uncached price, as a share of it. */
   private def cut(p: Priced, price: Double): String =
