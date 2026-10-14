@@ -77,6 +77,33 @@ object FindTests extends TestSuite {
       )
     }
 
+    test("a last segment of * alone lists every visible member of its owner: Limits.*") {
+      assert(
+        names(find("Limits.*")) == Vector(
+          "grit.outline.fixture.Limits.asks",
+          "grit.outline.fixture.Limits.calls",
+          "grit.outline.fixture.Limits.of",
+          "grit.outline.fixture.Limits.of"
+        )
+      )
+    }
+
+    test(
+      "a cap cuts whole lines: the entries that fit it, one ending exactly at it included, then a line saying how many of how many"
+    ) {
+      val all = find("*Store*").text.linesIterator.drop(1).filterNot(_.startsWith("[")).toVector
+      // Exactly the first two entries' bytes, each with its newline.
+      val cap = all.take(2).map(l => l.getBytes("UTF-8").length + 1).sum
+      val answer =
+        Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), "*Store*", cap)._1
+      assert(names(answer) == all.take(2).map(_.takeWhile(_ != ' ')))
+      assert(
+        answer.text.linesIterator.contains(
+          s"[truncated: 2 of ${all.size} entries; narrow the query]"
+        )
+      )
+    }
+
     test(
       "a segment matches a whole name segment, never part of one: imits.of and Lim*.o are NoMatch"
     ) {
