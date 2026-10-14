@@ -11,6 +11,7 @@ import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.route.Routed
 import grit.core.store.Nearby
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -192,8 +193,10 @@ object Eval {
       strategy: Strategy,
       live: Provider^
   ): Either[String, Score] = {
-    // Every query is written by the strategy's writer, whatever pin it is asked under.
-    val request = AssemblyRequest(loaded.turn, Some(Writing.Pin))
+    // Every query is written by the strategy's writer, whatever pin it is asked under: the
+    // first of the writer's pins cleared for what the case's turn knows (ADR 0037).
+    val routed =
+      engine.db.read(Subject.Turn(loaded.turn))(Right(Routed.of)).left.map(e => s"eval: $e")
     // The settings are one row for the whole database: each run sets the case's scope, so
     // no case sees another's conversations, and its strategy's weight.
     val weight = strategy match {
@@ -222,11 +225,15 @@ object Eval {
       )
       .fold(e => sys.error(s"eval: $e"), identity)
     def assemble(assembler: ContextAssembler^): Either[String, Score] =
-      assembler
-        .assemble(request)(using engine.db)
-        .left
-        .map(e => s"${strategy.label}: $e")
-        .flatMap(w => held(engine, loaded, w).map(score(loaded, _, w.notes, w.documents)))
+      routed.flatMap { r =>
+        val request =
+          AssemblyRequest(loaded.turn, r.cleared(Writing.Catalog.pin.query).map(_.first))
+        assembler
+          .assemble(request)(using r.bound(engine.db))
+          .left
+          .map(e => s"${strategy.label}: $e")
+          .flatMap(w => held(engine, loaded, w).map(score(loaded, _, w.notes, w.documents)))
+      }
     strategy match {
       case Strategy.Linear(budget) =>
         assemble(
@@ -453,8 +460,5 @@ object Eval {
       )
       grit.core.model.Catalog.of(Policy.one(a, a, a, a), Vector.empty)
     }
-
-    /** The pin each query is asked under. */
-    val Pin: Pinned = Catalog.pin.query.first
   }
 }

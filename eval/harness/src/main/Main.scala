@@ -398,14 +398,16 @@ object Main {
           asked <- Fields.each(only)(w =>
             WindowOnly.asked(reader, w, assembled, Width.Deployed).map(w -> _)
           )
-          requests = asked.flatMap(_._2)
+          requests = asked.collect { case (_, WindowOnly.Query.Asked(Some(r))) => r }
+          withheld = asked.count(_._2 == WindowOnly.Query.Withheld)
           pins <- Seed.catalog.map(_.pin)
           // The writer's settings name its model, so they key its answers; the key itself is
           // read only when a write is to be asked.
           keyless = OpenRouterConfig.of("", pins.query.first)
           estimated = Queries.estimate(requests, keyless, store)
           _ = println(
-            s"window-only cases: ${only.size}; queries to write: ${requests.distinct.size}, " +
+            s"window-only cases: ${only.size}, withheld: $withheld; queries to write: " +
+              s"${requests.distinct.size}, " +
               s"estimated ${Mills.figure(estimated)}, cap ${Mills.figure(cap)}"
           )
           budget <- Budget

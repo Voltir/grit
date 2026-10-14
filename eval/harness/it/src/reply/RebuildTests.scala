@@ -20,6 +20,7 @@ import grit.core.id.{
   QuestionName,
   SourceId,
   TurnRef,
+  TurnSeq,
   WorkflowId
 }
 import grit.core.identity.Account
@@ -32,7 +33,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Level, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
@@ -260,9 +261,12 @@ object RebuildTests extends TestSuite {
       Reach(Some(s"C1/$ts/$ts"), Set.empty)
     ) ==> Right(())
 
+  /** The confidential task conversation [[world]] holds, with nothing said in it. */
+  private val Secret: Origin = Origin.Task("rebuild", "secret")
+
   /** Three task conversations, each asked one thing about the Falcon budget in turn, the first
-    * then closed, then two messages heard in Slack: one asking, one not; and the turns, in
-    * order.
+    * then closed, then two messages heard in Slack: one asking, one not; a confidential one
+    * ([[Secret]]); and the three turns, in order.
     */
   private lazy val world: (Reader, Vector[TurnRef]) = {
     val config = TestPostgres.freshDatabase("harness_rebuild")
@@ -286,6 +290,14 @@ object RebuildTests extends TestSuite {
           )
         )
       }
+      // A confidential task conversation: a turn there may write its query only to a pin
+      // cleared for confidential, which a reader clearing no party has none of.
+      val _ = right(
+        engine.jot.write(Subject.Public)(
+          engine.conversations
+            .findOrCreate(Secret, Account.Local, Label.at(Level.Confidential))
+        )
+      )
       // Asking, and not put to grit (~0.1): never answered, under Off.
       hear(engine, "3000.1", "Falcon budget, anyone? ~0.1 ~back:asks")
       hear(engine, "4000.1", "thanks all ~back:nothing")
@@ -426,6 +438,19 @@ object RebuildTests extends TestSuite {
     }
 
     test(
+      "a window-only case in a conversation no query pin is cleared for has its query withheld; its window is drawn without one"
+    ) {
+      val (reader, _) = world
+      val secret = right(reader.all.read(reader.conversations.find(Secret)))
+        .getOrElse(throw new java.lang.AssertionError("no confidential conversation"))
+      val w = WindowOnly(TurnRef(secret.id, TurnSeq.First), now())
+      (
+        right(WindowOnly.asked(reader, w, Assembled.Shipped, Width.Deployed)),
+        WindowOnly.window(reader, w, Assembled.Shipped, Map.empty, Width.Deployed).map(_.entries)
+      ) ==> (WindowOnly.Query.Withheld, Right(Vector.empty))
+    }
+
+    test(
       "a heard message triage read as asking, that no turn answered, gets a window; its query asked once"
     ) {
       val (reader, Vector(a, b, c)) = world: @unchecked
@@ -435,7 +460,12 @@ object RebuildTests extends TestSuite {
         right(reader.all.read(reader.conversations.get(w.turn.conversationId))).map(_.origin)
       ) ==> Vector(Some(Origin.Slack("T1", "C1", "3000.1")))
       val requests =
-        only.flatMap(w => right(WindowOnly.asked(reader, w, Assembled.Shipped, Width.Deployed)))
+        only.flatMap(w =>
+          right(WindowOnly.asked(reader, w, Assembled.Shipped, Width.Deployed)) match {
+            case WindowOnly.Query.Asked(request) => request
+            case WindowOnly.Query.Withheld => None
+          }
+        )
       requests.size ==> 1
       val config =
         OpenRouterConfig(

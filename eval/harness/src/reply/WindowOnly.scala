@@ -10,6 +10,7 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.triage.{Bound, Gate, Reading, Tags}
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
+import grit.models.Seed
 
 /** A heard message live triage read as asking (its `gap` question's most weighted key `asks`,
   * as triage's v2 asks it) that no turn answered: the turn it is the first message of, and
@@ -45,25 +46,50 @@ object WindowOnly {
       }
     }
 
-  /** The request the shipped assembler would send `w`'s query writer, `width` wide, read by
-    * rebuilding its window ([[Rebuild.window]]) over `reader`'s database as of `w.at` with a
-    * writer that answers nothing; `None` when it would ask none. `Left` naming what failed.
+  /** What a window-only case's query writer would be sent. */
+  enum Query {
+
+    /** Nothing: no pin of the seed's query role is cleared for what its turn knows
+      * (ADR 0037), so its query is withheld and its window drawn without one.
+      */
+    case Withheld
+
+    /** `request`; `None` when the assembler would ask none. */
+    case Asked(request: Option[ModelRequest])
+  }
+
+  /** What the shipped assembler would send `w`'s query writer, `width` wide, read by
+    * rebuilding its window ([[Rebuild.window]]) over `reader`'s database as of `w.at`, under
+    * the first of the seed's query pins cleared for what `w`'s turn knows ([[Rebuild.routed]];
+    * a reader clears no party, so that is the first for a public case alone), with a writer
+    * that answers nothing. `Left` naming what failed.
     */
   def asked(
       reader: Reader^,
       w: WindowOnly,
       assembled: Assembled,
       width: Width
-  ): Either[String, Option[ModelRequest]] = {
+  ): Either[String, Query] = {
     val listener = new Listener
-    Rebuild
-      .window(AsOf(reader, w.at), w.turn, assembled, listener, width)(using reader.db)
-      .map(_ => listener.request)
+    for {
+      seed <- Seed.catalog
+      routed <- Rebuild.routed(reader.db, w.turn)
+      query <- routed.cleared(seed.pin.query) match {
+        case None => Right(Query.Withheld)
+        case Some(pins) =>
+          Rebuild
+            .window(AsOf(reader, w.at), w.turn, assembled, listener, width, Some(pins.first))(using
+              routed.bound(reader.db)
+            )
+            .map(_ => Query.Asked(listener.request))
+      }
+    } yield query
   }
 
   /** `w`'s window, `width` wide, rebuilt over `reader`'s database as of `w.at`, its query the
-    * answer `answers` holds for its request; with none there, the assembler falls back as
-    * when its writer fails. `Left` naming what failed.
+    * answer `answers` holds for its request, under the pin [[asked]] asks under; with none
+    * there, the assembler falls back as when its writer fails, and with its query withheld it
+    * writes none. `Left` naming what failed.
     */
   def window(
       reader: Reader^,
@@ -72,9 +98,18 @@ object WindowOnly {
       answers: Map[ModelRequest, Message.Assistant],
       width: Width
   ): Either[String, Window] =
-    Rebuild.window(AsOf(reader, w.at), w.turn, assembled, new From(answers), width)(using
-      reader.db
-    )
+    for {
+      seed <- Seed.catalog
+      routed <- Rebuild.routed(reader.db, w.turn)
+      window <- Rebuild.window(
+        AsOf(reader, w.at),
+        w.turn,
+        assembled,
+        new From(answers),
+        width,
+        routed.cleared(seed.pin.query).map(_.first)
+      )(using routed.bound(reader.db))
+    } yield window
 
   /** The id a window-only case is printed by: its turn's workflow id, never its text. */
   def id(w: WindowOnly): String = WorkflowId.value(w.turn.workflowId)

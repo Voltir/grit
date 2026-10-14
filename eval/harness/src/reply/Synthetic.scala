@@ -14,6 +14,7 @@ import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Capture, Fields, Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
+import grit.models.Seed
 
 /** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in the
   * synthetic database `scripts/eval reference-build` writes ([[Layout]]), expected to hold its
@@ -151,12 +152,15 @@ object Synthetic {
       // Every row of the synthetic database is in the view: none is written after the end of
       // time.
       view = AsOf(reader, Instant.MAX).settled(settings)
+      seed <- Seed.catalog
+      // The writer replays the case's query, and sends nothing.
       drawn <- Rebuild.window(
         view,
         asked.turn,
         assembled,
         new Rebuild.Replayed(Some(asked.query)),
-        width
+        width,
+        Some(seed.pin.query.first)
       )(using reader.db)
       parts <- TurnCapture.costed(reader, asked.turn, drawn)
     } yield parts
