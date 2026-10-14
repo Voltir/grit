@@ -99,13 +99,13 @@ object TurnSentTests extends TestSuite {
       if (pinned.assignment == StubModels.Catalog.policy.turn.first.assignment) turn else rest
   }
 
-  /** Weighs nothing: a TUI turn's recipe reads no answers. */
   /** Asks a root no task questions: every turn routed as if asked nothing. */
   private object Untasked extends grit.core.allot.Tasking {
     def task(turn: TurnRef): Either[Weighing.Unweighed, grit.core.allot.Tasking.Asked] =
       Left(Weighing.Unweighed.Unread)
   }
 
+  /** Weighs nothing: a TUI turn's recipe reads no answers. */
   private object Unweighed extends Weighing {
     def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
       Left(Weighing.Unweighed.Unread)

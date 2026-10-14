@@ -46,43 +46,48 @@ object SqlJoinsTests extends JoinsContract {
     under(fresh0.voucher.vouch(Vouched(account, Standing.Full(None))))
       .fold(e => throw new java.lang.AssertionError(s"vouching: $e"), _ => ())
 
+  // The two hooks below write grit.rooms as SqlAdministration.keep does, not through it: its
+  // run answers only an administrator the deployment's visibility declares, and this
+  // contract's engine runs under Visibility.Shipped, which declares none. As there, turning
+  // quiet off or clearing a baseline updates a row already kept and makes none.
+
   protected def quiet(j: Joins, room: Place, on: Boolean): Unit =
-    under { (tx: Tx^) ?=>
-      SqlPlaces.id(room).flatMap { place =>
-        SqlEntryStore.attempt {
-          val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-          Using.resource(
-            conn.prepareStatement(
-              """INSERT INTO grit.rooms (place_id, quiet) VALUES (?::uuid, ?)
-                |ON CONFLICT (place_id) DO UPDATE SET quiet = EXCLUDED.quiet""".stripMargin
-            )
-          ) { ps =>
-            ps.setString(1, place)
-            ps.setBoolean(2, on)
-            ps.executeUpdate()
-          }
-        }
-      }
-    }.fold(e => throw new java.lang.AssertionError(s"quieting: $e"), _ => ())
+    rooms(
+      room,
+      if (on)
+        """INSERT INTO grit.rooms (place_id, quiet) VALUES (?::uuid, true)
+          |ON CONFLICT (place_id) DO UPDATE SET quiet = true""".stripMargin
+      else "UPDATE grit.rooms SET quiet = false WHERE place_id = ?::uuid",
+      Vector.empty
+    )
 
   protected def baseline(j: Joins, room: Place, to: Option[Grade]): Unit =
+    to match {
+      case Some(grade) =>
+        rooms(
+          room,
+          """INSERT INTO grit.rooms (place_id, baseline) VALUES (?::uuid, ?)
+            |ON CONFLICT (place_id) DO UPDATE SET baseline = EXCLUDED.baseline""".stripMargin,
+          Vector(grade.word)
+        )
+      case None =>
+        rooms(room, "UPDATE grit.rooms SET baseline = NULL WHERE place_id = ?::uuid", Vector.empty)
+    }
+
+  /** Runs `sql` on `room`'s row, its place id the first parameter and `rest` the others. */
+  private def rooms(room: Place, sql: String, rest: Vector[String]): Unit =
     under { (tx: Tx^) ?=>
       SqlPlaces.id(room).flatMap { place =>
         SqlEntryStore.attempt {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-          Using.resource(
-            conn.prepareStatement(
-              """INSERT INTO grit.rooms (place_id, baseline) VALUES (?::uuid, ?)
-                |ON CONFLICT (place_id) DO UPDATE SET baseline = EXCLUDED.baseline""".stripMargin
-            )
-          ) { ps =>
+          Using.resource(conn.prepareStatement(sql)) { ps =>
             ps.setString(1, place)
-            ps.setString(2, to.map(_.word).orNull)
+            rest.zipWithIndex.foreach((v, i) => ps.setString(i + 2, v))
             ps.executeUpdate()
           }
         }
       }
-    }.fold(e => throw new java.lang.AssertionError(s"setting a baseline: $e"), _ => ())
+    }.fold(e => throw new java.lang.AssertionError(s"writing $room's row: $e"), _ => ())
 
   protected def access(j: Joins, room: Place): Option[RoomAccess] =
     under { (tx: Tx^) ?=>

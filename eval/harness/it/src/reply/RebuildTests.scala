@@ -86,17 +86,18 @@ object RebuildTests extends TestSuite {
     "test/query"
   )
 
-  /** A query writer answering "Falcon budget", counting what it is asked. */
   /** The stub's models, every query written by a [[Writer]] of its own. */
   private object Writing extends Models {
     def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
     def provider(pinned: Pinned): Provider^ = new Writer
   }
 
+  /** A query writer answering "Falcon budget", counting what it is asked. */
   private final class Writer extends Provider {
-    // Untracked: a Writer is made by the one test that reads it, handed to the two answers it
-    // runs one after the other on its own thread, and read once both return; no other code
-    // holds it, so no write to it is seen elsewhere.
+    // Untracked: a Writer is either made by [[Writing]] for one call, its count read by no
+    // one, or made by the one test that reads it, handed to the two answers that test runs
+    // one after the other on its own thread, and read once both return. No other code holds
+    // either, so no write to it is seen elsewhere.
     @caps.unsafe.untrackedCaptures
     var asked: Int = 0
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
@@ -447,8 +448,13 @@ object RebuildTests extends TestSuite {
       val w = WindowOnly(TurnRef(secret.id, TurnSeq.First), now())
       (
         right(WindowOnly.asked(reader, w, Assembled.Shipped, Width.Deployed)),
-        WindowOnly.window(reader, w, Assembled.Shipped, Map.empty, Width.Deployed).map(_.entries)
-      ) ==> (WindowOnly.Query.Withheld, Right(Vector.empty))
+        WindowOnly
+          .window(reader, w, Assembled.Shipped, Map.empty, Width.Deployed)
+          .map(w => (w.entries, w.notes))
+      ) ==> (
+        WindowOnly.Query.Withheld,
+        Right((Vector.empty, Vector(AssemblyNote.FellBack(RetrievalAssembler.NoPin))))
+      )
     }
 
     test(

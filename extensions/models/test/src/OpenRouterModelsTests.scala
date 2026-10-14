@@ -37,13 +37,21 @@ object OpenRouterModelsTests extends TestSuite {
     }
 
     test("the stub answers the turn's pin with its delayed provider, every other role's with one") {
-      val stub = new StubModels(delayMs = 1)
+      val stub = new StubModels(delayMs = 200)
       val pins = StubModels.Catalog.pin
       val turn = stub.provider(pins.turn.first)
       val summary = stub.provider(pins.summary.first)
       val query = stub.provider(pins.query.first)
       val heard = stub.provider(StubModels.Catalog.heard.first)
       assert(summary ne turn, query eq summary, heard eq summary)
+      val hi = grit.core.provider.ModelRequest("s", Vector(grit.core.message.Message.User("hi")))
+      def waited(p: grit.core.provider.Provider^): Boolean = {
+        val start = System.nanoTime()
+        val _ = p.complete(hi)
+        System.nanoTime() - start >= 200_000_000L
+      }
+      // The delay is a floor on the turn's call; the others answer at once, far under it.
+      (waited(turn), waited(summary)) ==> (true, false)
     }
   }
 }
