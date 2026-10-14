@@ -219,8 +219,13 @@ object RenderTests extends TestSuite {
       assert(!lines.exists(_.contains("case Suit.Hearts")))
     }
 
-    test("a budget cuts whole entries, says so, and shortens the answer") {
-      val a = named(read, "grit.outline.fixture.A")
+    test(
+      "a budget cuts whole entries, a type of one member among them, says so, and shortens the answer"
+    ) {
+      val a =
+        named(read, "grit.outline.fixture.Defaulted").filter(
+          _.kind == grit.outline.model.Kind.Object
+        )
       val full = Render.show(a, noTraced, read, Set.empty, Set.empty, false, 80000)
       val capped = Render.show(a, noTraced, read, Set.empty, Set.empty, false, 200)
       assert(
@@ -229,6 +234,43 @@ object RenderTests extends TestSuite {
         )
       )
       assert(capped.length < full.length)
+    }
+
+    test(
+      "a budget cuts a type between its members: Limits's head and first of, then a line counting the members left"
+    ) {
+      val limits =
+        named(read, "grit.outline.fixture.Limits").filter(_.kind == grit.outline.model.Kind.Object)
+      val full = Render.show(limits, noTraced, read, Set.empty, Set.empty, true, 80000)
+      val fullLines = full.split("\n").toVector
+      // The budget holds the file line, the head and the first member's entry, and not the second's.
+      val shown = fullLines.takeWhile(!_.startsWith("30-33 "))
+      val cap = shown.map(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1).sum
+      val lines =
+        Render.show(limits, noTraced, read, Set.empty, Set.empty, true, cap).split("\n").toVector
+      val budget = (BigDecimal(cap) / 1024).setScale(1, BigDecimal.RoundingMode.HALF_UP)
+      assert(shown.exists(_.startsWith("27-28 ")))
+      assert(lines.take(shown.size) == shown)
+      assert(
+        lines.lift(shown.size) == Some(
+          s"-- cut at $budget KB after Limits.of: 2 more members, ~1 KB; rerun with --max-kb 1, or --body <member> for one"
+        )
+      )
+      assert(!lines.exists(_.startsWith("35-36 end of Limits")))
+      val withC = Render.show(
+        limits ++ named(read, "grit.outline.fixture.C"),
+        noTraced,
+        read,
+        Set.empty,
+        Set.empty,
+        true,
+        cap
+      )
+      assert(
+        withC.linesIterator.contains(
+          s"-- cut at $budget KB after Limits.of: 2 more members and 1 more entry, ~1 KB; rerun with --max-kb 1, or --body <member> for one"
+        )
+      )
     }
     test("a stale file's group header is flagged") {
       val c = named(read, "grit.outline.fixture.C")

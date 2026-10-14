@@ -12,7 +12,9 @@ Each query has a CLI form and an MCP tool of the same name, taking the same argu
 `scripts/outline <query> --help` prints that query's full help: its examples and every flag.
 Every query takes `--max-kb N` (MCP `max_kb`), default 12: the answer is cut at N KB, between whole
 entries, and a cut answer ends with `-- cut at 12 KB: 7 more entries, ~31 KB; rerun with --max-kb 31 or narrow`,
-the KB every entry needs, so a rerun at that budget shows them all.
+the KB every entry needs, so a rerun at that budget shows them all. In show, a type of two members or more is
+cut between its members, its head first and its members in file order: `-- cut at 12 KB after Turn.route: 31 more members, ~14 KB; rerun with --max-kb 26, or --body <member> for one`,
+14 KB being what was cut; its closing lines print only when no member was cut.
 In show, family, find, tests and uses' owner lines, a line naming a definition ends with its size,
 `[N.N KB]`: the bytes of its whole text, doc included, to tell what a `--body` would cost.
 In show and family, a definition printed without its body ends with its closing lines, an anchor for an

@@ -50,7 +50,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; each definition printed without its body ends with its closing lines, a type's after its members; `stale` files' headers flagged; cut at `cap` bytes. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; each definition printed without its body ends with its closing lines, a type's after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -79,35 +79,47 @@ object Render {
       if (fullDocs || bodies.contains(d.name)) entry(d, inContext = true)
       else Vector(headerLine(d, inContext = true)) ++ briefHead(d) ++ closingLines(d)
 
-    def namedEntry(d: Defn): Vector[String] = {
-      val typeKind = d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
-        d.kind == Kind.Object || d.kind == Kind.Enum
-      val members =
-        // A constructor val's lines are the type's own head, already shown.
-        if (typeKind)
+    // A type with two members or more is its head's piece, then one piece per member, its closing lines riding on the
+    // last, so a budget cuts between members and prints the closing lines only when no member was cut.
+    def namedEntry(d: Defn): Vector[Piece] = {
+      val topLevel = !ownerRelative(d).contains('.')
+      if (isType(d)) {
+        val members =
+          // A constructor val's lines are the type's own head, already shown.
           d.members
             .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
-            .flatMap(memberEntry)
-        else Vector.empty
-      val topLevel = !ownerRelative(d).contains('.')
-      if (typeKind) headed(d, topLevel) ++ members ++ closingLines(d) else entry(d, topLevel)
+            .map(m => Piece(memberEntry(m), ownerRelative(m)))
+        val head = Piece(headed(d, topLevel), ownerRelative(d))
+        val closing = closingLines(d)
+        if (members.size <= 1)
+          Vector(Piece(head.lines ++ members.flatMap(_.lines) ++ closing, head.name))
+        else
+          Vector(head) ++ members.dropRight(1) ++
+            members.takeRight(1).map(m => m.copy(lines = m.lines ++ closing))
+      } else Vector(Piece(entry(d, topLevel), ownerRelative(d)))
     }
 
-    // Each entry is its lines; a file's header rides on its first entry, so a cut never leaves a bare header.
-    val groups: Vector[Vector[Vector[String]]] = files.map { f =>
+    // Each entry is its pieces; a file's header rides on its first, so a cut never leaves a bare header.
+    val groups: Vector[Vector[Vector[Piece]]] = files.map { f =>
       val namedHere = named.filter(_.file == f).map(namedEntry)
       val tracedHere = traced.types
         .filter(_.file == f)
         .sortBy(_.lines.start)
-        .map(d => Vector(oneLine(d, companions)))
+        .map(d => Vector(Piece(Vector(oneLine(d, companions)), ownerRelative(d))))
       namedHere ++ tracedHere
     }
 
-    val chunks: Vector[Vector[String]] = files.zip(groups).flatMap { case (f, entries) =>
+    val entries: Vector[Vector[Piece]] = files.zip(groups).flatMap { case (f, here) =>
       val pkg = everything.find(_.file == f).map(d => pkgOf(d.fullName)).getOrElse("")
       val header = fileLine(f, pkg, stale.contains(f))
-      entries.zipWithIndex.map { case (lines, i) => if (i == 0) header +: lines else lines }
+      here.zipWithIndex.map { case (pieces, i) =>
+        if (i == 0) pieces.zipWithIndex.map { case (p, j) =>
+          if (j == 0) p.copy(lines = header +: p.lines) else p
+        }
+        else pieces
+      }
     }
+    val chunks: Vector[Vector[String]] = entries.flatten.map(_.lines)
 
     // One budget over the definitions and the tests list, so a cut line counts both.
     val shown = fitting(chunks ++ exercising, cap)
@@ -120,7 +132,8 @@ object Render {
          else Vector.empty)
     val kept = chunks.take(shown).flatten ++ trailer ++ exercising.take(shown - chunks.size).flatten
     val body =
-      (kept ++ cut(chunks ++ exercising, shown, cap) ++ summaries.map(testsLine))
+      (kept ++ cutBetween(entries ++ exercising.map(c => Vector(Piece(c, ""))), shown, cap) ++
+        summaries.map(testsLine))
         .map(_ + "\n")
         .mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
@@ -433,12 +446,49 @@ object Render {
   private def cut(chunks: Vector[Vector[String]], shown: Int, cap: Int): Vector[String] =
     if (shown >= chunks.size) Vector.empty
     else {
-      val more = chunks.size - shown
-      val whole = (chunks.map(chunkBytes).sum + 1023) / 1024
-      val budget = if (cap % 1024 == 0) (cap / 1024).toString else kilobytes(cap)
-      val entries = if (more == 1) "1 more entry" else s"$more more entries"
-      Vector(s"-- cut at $budget KB: $entries, ~$whole KB; rerun with --max-kb $whole or narrow")
+      val whole = kilobytesUp(chunks.map(chunkBytes).sum)
+      Vector(
+        s"-- cut at ${budgetOf(cap)} KB: ${counted(chunks.size - shown, "more entry", "more entries")}, ~$whole KB; rerun with --max-kb $whole or narrow"
+      )
     }
+
+  /** One piece of an entry the budget may cut after: its lines, and the owner-relative name of what it shows. */
+  private final case class Piece(lines: Vector[String], name: String)
+
+  /** The line saying `entries` were cut after their first `shown` pieces. Inside an entry, after its first piece:
+    * `-- cut at N KB after <last piece shown>: M more members[ and E more entries], ~R KB; rerun with --max-kb X, or
+    * --body <member> for one`, R the KB of the pieces cut, X the KB of all; otherwise `cut`'s line, counting entries.
+    */
+  private def cutBetween(entries: Vector[Vector[Piece]], shown: Int, cap: Int): Vector[String] = {
+    val starts = entries.map(_.size).scanLeft(0)(_ + _)
+    val at = starts.lastIndexWhere(_ <= shown)
+    val within = shown - starts.lift(at).getOrElse(0)
+    entries.lift(at).filter(_ => within > 0) match {
+      case Some(cutIn) =>
+        val bytes = entries.flatten.map(p => chunkBytes(p.lines))
+        val after = cutIn.lift(within - 1).map(_.name).getOrElse("")
+        val later = entries.size - at - 1
+        val more = counted(cutIn.size - within, "more member", "more members") +
+          (if (later > 0) " and " + counted(later, "more entry", "more entries") else "")
+        Vector(
+          s"-- cut at ${budgetOf(cap)} KB after $after: $more, ~${kilobytesUp(bytes.drop(shown).sum)} KB; rerun with --max-kb ${kilobytesUp(bytes.sum)}, or --body <member> for one"
+        )
+      case None => cut(entries.map(_.flatMap(_.lines)), at, cap)
+    }
+  }
+
+  private def budgetOf(cap: Int): String =
+    if (cap % 1024 == 0) (cap / 1024).toString else kilobytes(cap)
+
+  private def kilobytesUp(bytes: Int): Int = (bytes + 1023) / 1024
+
+  private def counted(n: Int, one: String, many: String): String =
+    if (n == 1) s"1 $one" else s"$n $many"
+
+  /** Whether `d` is a class, trait, object or enum: a definition an Edit may add a member to. */
+  private def isType(d: Defn): Boolean =
+    d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
+      d.kind == Kind.Object || d.kind == Kind.Enum
 
   private def collapse(s: String): String =
     s.trim.split("\\s+").mkString(" ").replaceAll("([(\\[]) ", "$1").replaceAll(" ([)\\]])", "$1")
