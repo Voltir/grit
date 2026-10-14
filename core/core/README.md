@@ -24,9 +24,11 @@ In dependency order, each with the core packages it imports:
   an email address. ← `id`
 - **`model`**: what grit knows about models, as data: the catalog, the settings a call is made
   under, and the policy of which pair does each job. Imports nothing in core.
-- **`visibility`**: who may see what (ADR 0030): labels, compartments, the clearances of people
-  and of the parties grit sends to (ADR 0037), and what a transaction is opened for. `Label` is
-  opaque, never taken apart; `LabelParts`, its stored form, may be named only here and in
+- **`visibility`**: security labels on both axes over one compartment set: who may see what
+  (ADR 0030), with the clearances of people and of the parties grit sends to (ADR 0037), and
+  what may be believed (`Integrity`, ADR 0036), with what each service's results and each room's
+  speech are believed at; and what a transaction is opened for. `Label` and `Integrity` are
+  opaque, never taken apart; `LabelParts`, a label's stored form, may be named only here and in
   `grit.dbos` (enola-intent.yaml). ← `id`, `place`, `identity`, `model`
 - **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
   first, for a provider's prompt cache. ← `id`

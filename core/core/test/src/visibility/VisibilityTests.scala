@@ -339,5 +339,88 @@ object VisibilityTests extends TestSuite {
         )
       ) ==> Left(VisibilityRefusal.ClearedTwice(flashAtA))
     }
+
+    test(
+      "a service's results are believed at its declared output, and an undeclared service's at untrusted"
+    ) {
+      val declared = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          outputs = Vector(Output(github, Integrity.Member))
+        )
+        .map(v => (v.outputOf(github), v.outputOf(jira)))
+      declared ==> Right((Integrity.Member, Integrity.Untrusted))
+      Visibility.Shipped.outputOf(github) ==> Integrity.Untrusted
+    }
+
+    test("a room's speech is capped where the deployment caps it, and nowhere by default") {
+      val guests = Room(place("slack:acme/C-guests"), None)
+      val team = Room(place("slack:acme/C-team"), None)
+      val capped = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          capped = r => Option.when(r == guests)(Integrity.Outside)
+        )
+        .map(v => (v.capOf(guests), v.capOf(team)))
+      capped ==> Right((Some(Integrity.Outside), None))
+      Visibility.Shipped.capOf(guests) ==> None
+    }
+
+    test("a service given two outputs, or one endorsed in an undeclared compartment, is refused") {
+      val finance = compartment("finance")
+      def declaring(outputs: Output*) =
+        Visibility.of(compartments, RoomLabels.Public, groups, grants, outputs = outputs.toVector)
+      (
+        declaring(Output(github, Integrity.Member), Output(github, Integrity.Untrusted)),
+        declaring(Output(jira, Integrity.at(Integrity.Level.Member, trial, finance)))
+      ) ==> (
+        Left(VisibilityRefusal.OutputTwice(github)),
+        Left(VisibilityRefusal.Undeclared(Namer.OutputOf(jira), finance))
+      )
+    }
+
+    test(
+      "grit is believed at top; the local operator and a declared administrator at authority; a " +
+        "steward at authority in what they steward; a realm's full member at member; anyone else, " +
+        "or one added to the administrators through grit, outside"
+    ) {
+      val admins =
+        groups ++ Vector(Group(group("admins"), Set(bo)), Group(group("trial"), Set(ana)))
+      val declared = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          admins,
+          grants,
+          administrators = Some(group("admins")),
+          stewards = Vector(Steward(trial, group("trial")))
+        )
+        .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+      val cy = TestAccounts.account("test:cy")
+      given Tx = TestTx.inForce(declared, Recorded(Map.empty, Map(group("admins") -> Set(cy))))
+      Vector(
+        Principal.Grit,
+        person(Account.Local -> false),
+        person(bo -> false),
+        person(ana -> false),
+        person(TestAccounts.account("slack:T1/U1") -> true),
+        person(TestAccounts.account("slack:T1/U1") -> false),
+        person(cy -> false)
+      ).map(Tx.integrityOf) ==> Vector(
+        Integrity.at(Integrity.Level.Authority, trial, acme, Compartment.Unmapped),
+        Integrity.at(Integrity.Level.Authority),
+        Integrity.at(Integrity.Level.Authority),
+        Integrity.at(Integrity.Level.Authority, trial),
+        Integrity.Member,
+        Integrity.Outside,
+        Integrity.Outside
+      )
+    }
   }
 }

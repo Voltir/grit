@@ -1,12 +1,13 @@
 package grit.core.store
 
-import grit.core.identity.{Held, Principal}
+import grit.core.identity.{Account, Held, Principal}
 import grit.core.model.Grade
 import grit.core.place.{Place, Service}
 import grit.core.visibility.{
   Classification,
   Clearance,
   Explanation,
+  Integrity,
   Item,
   Label,
   Labelled,
@@ -120,6 +121,36 @@ object Tx {
       case Principal.Person(_, held) =>
         memberships(held).map(_.label).foldLeft(Label.Public)(_.join(_))
     }
+
+  /** `principal`'s integrity, as their words enter grit before their room's cap: grit's,
+    * [[Integrity.top]]; the local operator's and a declared administrator's, `Authority`; a
+    * steward's, `Authority` in the compartments they steward; a person attested in a realm,
+    * `Member`; anyone else, `Outside`.
+    */
+  def integrityOf(principal: Principal)(using tx: Tx^): Integrity =
+    principal match {
+      case Principal.Grit => Integrity.top(tx.visibility.compartments)
+      case Principal.Person(_, held) =>
+        val v = tx.visibility
+        val in = declaredIn(principal).map(_.group).toSet
+        val authority = Option.when(
+          held.exists(_.account == Account.Local) || v.administrators.exists(in.contains)
+        )(Integrity.at(Integrity.Level.Authority))
+        val stewarded = v.stewards
+          .filter(s => in.contains(s.group))
+          .map(s => Integrity.at(Integrity.Level.Authority, s.compartment))
+        (authority.toVector ++ stewarded)
+          .foldLeft(if (principal.vouched) Integrity.Member else Integrity.Outside)(_.join(_))
+    }
+
+  /** The groups the deployment declares `principal` in, by an account it names or as a full
+    * member of a realm it names, in its order; never one they were only added to through grit.
+    * Read through [[explain]] at the top label, which every grant is under, so the one rule for
+    * who is in a group is its.
+    */
+  private[core] def declaredIn(principal: Principal)(using tx: Tx^): Vector[Explanation.In] =
+    explain(Some(principal), tx.visibility.compartments.top).groups
+      .filter(i => i.through.nonEmpty || i.members.nonEmpty)
 
   /** What `asker` (`None`: no one asked) is told of their clearance in a room labelled `room`
     * ([[Explanation]]); each group says through which kinds of account they are in it by

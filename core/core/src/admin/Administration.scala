@@ -5,16 +5,7 @@ import java.time.Instant
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{
-  Compartment,
-  Explanation,
-  GroupName,
-  Label,
-  Level,
-  Room,
-  RoomLabels,
-  Visibility
-}
+import grit.core.visibility.{Compartment, GroupName, Label, Level, Room, RoomLabels, Visibility}
 
 /** Changes to who may see what, and to a room's baseline, that people make through grit (ADR
   * 0033), and what they read of them. An edge calls it as it calls the inbox; nothing else writes these settings.
@@ -111,7 +102,7 @@ object Administration {
       case c: Change.Remove =>
         val holds = Label.at(Level.Public, c.compartment)
         val still = person.fold(Vector.empty[GroupName])(p =>
-          declaredIn(p).filter(_.label.dominates(holds)).map(_.group)
+          Tx.declaredIn(p).filter(_.label.dominates(holds)).map(_.group)
         )
         Answer.removed(c, after, still)
     }
@@ -126,23 +117,13 @@ object Administration {
     /** `principal`'s roles, from the groups the deployment declares them in alone. */
     def of(principal: Principal)(using tx: Tx^): Roles = {
       val v = Tx.visibility(tx)
-      val in = declaredIn(principal).map(_.group).toSet
+      val in = Tx.declaredIn(principal).map(_.group).toSet
       Roles(
         v.administrators.exists(in.contains),
         v.stewards.filter(s => in.contains(s.group)).map(_.compartment).toSet
       )
     }
   }
-
-  /** The groups the deployment declares `principal` in, by an account it names or as a full
-    * member of a realm it names, in its order; never one they were only added to through grit.
-    * Read through [[Tx.explain]] at the top label, which every grant is under, so the one rule
-    * for who is in a group is its.
-    */
-  private def declaredIn(principal: Principal)(using tx: Tx^): Vector[Explanation.In] =
-    Tx.explain(Some(principal), Tx.visibility(tx).compartments.top)
-      .groups
-      .filter(i => i.through.nonEmpty || i.members.nonEmpty)
 
   /** The declared compartments whose own group ([[GroupName.own]]) the deployment declares,
     * granted it: those a person may be cleared for through grit.
