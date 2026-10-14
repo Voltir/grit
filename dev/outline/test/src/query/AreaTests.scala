@@ -92,6 +92,34 @@ object AreaTests extends TestSuite {
       assert(text.linesIterator.exists(l => l.contains(" contract class StoreContract")))
     }
 
+    test("an undeclared name that one area's symbols have as a package segment maps to that area") {
+      val answer = area(chain, Vector("store"), 0)
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.contains("-- no area store; area chain names store"))
+      assert(answer.text.linesIterator.exists(_.startsWith("grit.outline.fixture  ")))
+    }
+
+    test("an undeclared name that several areas' symbols have is NoMatch naming those areas") {
+      val answer = area(chain, Vector("fixture"), 0)
+      assert(answer.status == Status.NoMatch)
+      assert(answer.text.contains("no area fixture; areas naming fixture: chain, colours"))
+    }
+
+    test(
+      "an undeclared name no area has, but a package segment does, lists that package's definitions"
+    ) {
+      val coloursOnly = Config(Vector.empty, chain.areas.filter(_.name == "colours"))
+      val answer = area(coloursOnly, Vector("store"), 0)
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator.contains(
+          "-- no area store declared; packages: grit.outline.fixture.store"
+        )
+      )
+      assert(answer.text.linesIterator.exists(_.startsWith("grit.outline.fixture.store  ")))
+      assert(!answer.text.linesIterator.exists(_.startsWith("grit.outline.fixture  ")))
+    }
+
     test("an undeclared area name is NoMatch, and the answer names the declared areas") {
       val answer = area(chain, Vector("nope"), 1)
       assert(answer.status == Status.NoMatch)

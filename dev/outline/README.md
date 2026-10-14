@@ -35,7 +35,9 @@ a site in a test), then each site as its line number and source line.
 
 **area**: To get a map of a part of the project: the areas `.outline.conf` declares, at level 0 one
 line per package, at level 1 (the default) each definition with its doc's first sentence. With no
-name, the declared areas, each with its purpose.
+name, the declared areas, each with its purpose. A name no area declares, such as a module's (`area slack`),
+gives the one area whose symbols lie under a package of that name, or else every main package of that
+name (`area admin`: `grit.core.admin`), under a note saying which; several areas naming it are listed.
 
     scripts/outline area [name[,name…]] [--level 0|1] [--cap BYTES] [--root DIR]
 

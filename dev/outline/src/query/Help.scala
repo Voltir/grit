@@ -141,7 +141,7 @@ object Help {
     operand = Operand(
       "[name[,name…]]",
       "names",
-      "declared area names, as the project's .outline.conf declares them; comma-separated on the CLI; none to list the declared areas, each with its purpose."
+      "declared area names, as the project's .outline.conf declares them; comma-separated on the CLI; none to list the declared areas, each with its purpose. A name no area declares, such as a module's (slack), gives the one area whose symbols lie under a package of that name, or else every package of that name, under a note saying so."
     ),
     purpose =
       "To get a map of a part of the project, or with no name the list of the declared areas.",

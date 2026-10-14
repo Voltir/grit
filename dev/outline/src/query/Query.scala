@@ -263,7 +263,7 @@ object Query {
         sym.dropRight(suffix.length)
     }
 
-  /** The `area` answer for the named areas `names`, declared in `config`; with no names, one line per declared area, its name and its purpose. For names: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `NoMatch` for a name no area declares, `Failed` for a level outside 0..1; cut at `cap` bytes. */
+  /** The `area` answer for the named areas `names`, declared in `config`; with no names, one line per declared area, its name and its purpose. For names: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `Failed` for a level outside 0..1; cut at `cap` bytes. A name no area declares stands for what `standFor` gives, under its note, and is `NoMatch` when that is `Left`. */
   def area(
       root: Root,
       layout: Layout,
@@ -281,18 +281,20 @@ object Query {
         (Answer(s"${header(root)}\nno area declared in .outline.conf", Status.NoMatch), roots)
       else (Answer((header(root) +: listed).mkString("\n"), Status.Found), roots)
     } else {
-      val declared = config.areas.map(_.name)
-      names.find(n => !declared.contains(n)) match {
-        case Some(n) =>
-          (Answer(s"no area $n; declared: ${declared.mkString(", ")}", Status.NoMatch), roots)
-        case None if layout.classesDirs(root).isEmpty =>
+      val classes = layout.classesDirs(root)
+      val stands = names.distinct.map(n => standFor(layout, config, classes, n))
+      stands.collectFirst { case Left(message) => message } match {
+        case Some(message) => (Answer(message, Status.NoMatch), roots)
+        case None if classes.isEmpty =>
           (Answer(layout.notCompiled(root), Status.Failed), roots)
         case None =>
-          val selected = names.distinct.flatMap(n => config.areas.find(_.name == n))
+          val chosen = stands.collect { case Right(stand) => stand }
+          val selected = chosen.flatMap(_.area).distinct
           // The cache read in this query, threaded through a scoped local, as `showIn` does.
           var state = Roots.of(roots, root)
           val listed = mutable.ListBuffer.empty[Render.Listed]
           val notes = mutable.ListBuffer.empty[String]
+          notes ++= chosen.flatMap(_.note)
           var failure: Option[String] = None
 
           Resolve.preload(root, layout, Scope.Main, selected.flatMap(_.symbols), state) match {
@@ -331,6 +333,17 @@ object Query {
                 }
             }
           }
+          val packaged = chosen.flatMap(_.tasty).distinct
+          if (failure.isEmpty && packaged.nonEmpty) {
+            val (defns, next, loadNotes) = loadAll(root, layout, packaged, state)
+            state = next
+            notes ++= loadNotes
+            listed ++= defns
+              .filter(d =>
+                !d.isPrivate && !config.hidden.exists(prefix => d.file.startsWith(prefix))
+              )
+              .map(d => Render.Listed(d, ""))
+          }
 
           val head = (header(root) +: notes.toVector).mkString("\n")
           val nextRoots = Roots.put(roots, root, state)
@@ -344,6 +357,58 @@ object Query {
               (Answer(Render.area(entries, level, head, cap), status), nextRoots)
           }
       }
+    }
+
+  /** What an `area` name stands for: a declared area, or the `.tasty` files of whole packages, with the note saying which when the name is not declared. */
+  private final case class Stand(area: Option[Area], tasty: Vector[os.Path], note: Option[String])
+
+  /** What `name` stands for: the area `config` declares by that name; else the one area with a symbol or family under a package segment equal to `name`, ignoring case; else the packages in `classes` holding only main classes with such a segment, each package's `.tasty` directly in it. `Left` is the NoMatch message: several areas naming it, or nothing at all. */
+  private def standFor(
+      layout: Layout,
+      config: Config,
+      classes: Vector[os.Path],
+      name: String
+  ): Either[String, Stand] =
+    config.areas.find(_.name == name) match {
+      case Some(declared) => Right(Stand(Some(declared), Vector.empty, None))
+      case None =>
+        def underIt(full: String): Boolean =
+          full.split('.').toVector.dropRight(1).exists(_.equalsIgnoreCase(name))
+        val naming = config.areas.filter(a => (a.symbols ++ a.families).exists(underIt))
+        if (naming.size == 1)
+          Right(
+            Stand(
+              naming.headOption,
+              Vector.empty,
+              naming.headOption.map(a => s"-- no area $name; area ${a.name} names $name")
+            )
+          )
+        else if (naming.size > 1)
+          Left(s"no area $name; areas naming $name: ${naming.map(_.name).mkString(", ")}")
+        else {
+          val packages = classes.filterNot(layout.isTest).flatMap { dir =>
+            os.walk(dir)
+              .filter(os.isDir)
+              .filter(_.relativeTo(dir).segments.exists(_.equalsIgnoreCase(name)))
+              .flatMap { pkg =>
+                val tasty = os.list(pkg).filter(_.ext == "tasty")
+                if (tasty.isEmpty) None
+                else Some(pkg.relativeTo(dir).segments.mkString(".") -> tasty.toVector)
+              }
+          }
+          if (packages.isEmpty)
+            Left(s"no area $name; declared: ${config.areas.map(_.name).mkString(", ")}")
+          else
+            Right(
+              Stand(
+                None,
+                packages.flatMap(_._2).sorted,
+                Some(
+                  s"-- no area $name declared; packages: ${packages.map(_._1).distinct.sorted.mkString(", ")}"
+                )
+              )
+            )
+        }
     }
 
   /** The files among `files` whose source is newer than their newest `.tasty`, as `show`, `tests` and `uses` tag them. */
