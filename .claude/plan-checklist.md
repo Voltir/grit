@@ -18,6 +18,12 @@ that applies in its plan; a reviewer checks each against the plan and says which
   or the names of any one deployment or organisation.
 - **Model spend.** Each run that calls a real model is estimated in cents, a few cents at most,
   with the cheap model and the `max_tokens` it uses.
+- **Each claim tested at the tier that can prove it.** Pure logic in the unit tier. Where grit meets
+  an outside service, the integration tier runs a whole turn against a fake that serves that
+  service's recorded results, and an opt-in live probe holds the recordings to the real service by
+  the fields grit reads. A security claim is tested with a scripted model that does what the
+  attack asks, never left to whether a real model refuses. A live run is a sanity check, not the
+  test.
 - **A person sees it**: a real-use run with the real model, a restart mid-turn, and a person's
   waiting time.
 - **Park, don't widen.** What surfaced and is not in scope is listed as parked, not folded in.
