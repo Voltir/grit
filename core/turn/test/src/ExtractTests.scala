@@ -32,6 +32,8 @@ object ExtractTests extends TestSuite {
 
   /** Every question put, as the tool put it. */
   private final class Answers(answer: Shape -> Either[String, Option[Extracted]]) {
+    // Replaced whole by `ask`, which the tool under test calls on the test's one thread; read
+    // by the assertions after the call returns.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[(Item, String, Shape, CallSlot)]
     val ask: Extract.Answer = (item, question, shape, slot) => {

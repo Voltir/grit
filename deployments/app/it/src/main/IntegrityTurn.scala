@@ -92,6 +92,7 @@ object IntegrityTurn {
     * item or been answered, it posts to [[General]], once; then it answers.
     */
   final class Obeying(issue: Issue, mode: Mode) extends Provider {
+    // Guarded by this provider's monitor: every read and write of it is inside `synchronized`.
     @caps.unsafe.untrackedCaptures
     private var kept = Vector.empty[ModelRequest]
 
@@ -151,6 +152,7 @@ object IntegrityTurn {
 
   /** The summary's pair: it answers an extraction as `asked` says, and is the stub otherwise. */
   final class Answering(asked: Asked) extends Provider {
+    // Guarded by this provider's monitor: every read and write of it is inside `synchronized`.
     @caps.unsafe.untrackedCaptures
     private var kept = Vector.empty[ModelRequest]
 
@@ -184,6 +186,8 @@ object IntegrityTurn {
     * keeping every request it ran and answering each that it posted.
     */
   final class Posts extends Tools {
+    // Guarded by this object's monitor: the edge runs each request on its own thread, and every
+    // read and write of it is inside `synchronized`.
     @caps.unsafe.untrackedCaptures
     private var kept = Vector.empty[ToolRequest]
 
