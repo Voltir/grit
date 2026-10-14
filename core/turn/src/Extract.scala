@@ -35,7 +35,8 @@ object Extract {
       "Asks a question of an item your request shows only as a stub (\"Hidden here as h1: …\"), " +
         "without reading it: a separate model, shown only that item and your question, answers " +
         "in the shape you choose, and you are told only that answer. Unlike read_hidden, it " +
-        "withdraws no tool. Shapes: yes_no; number, a whole number from min to max; day, a " +
+        "withdraws no tool a member's turn is offered; an authority turn that uses it " +
+        "continues at member. Shapes: yes_no; number, a whole number from min to max; day, a " +
         s"date; one_of, one of the options you list (at most ${Shape.MaxOptions}, each at most " +
         s"${Shape.MaxOption} characters); token, at most max (up to ${Shape.MaxToken}) " +
         "characters of A-Z, a-z, 0-9, _ and -. The answer may be that the item does not say.",

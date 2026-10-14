@@ -122,6 +122,15 @@ object ExtractTests extends TestSuite {
       answers.asked ==> Vector()
       Extract.tool(None, answers.ask).output ==> Believed.Own
     }
+    test("its description says an authority turn that uses it continues at member") {
+      val does = Extract.tool(None, Answers(_ => Right(None)).ask).spec.does
+      assert(
+        does.contains(
+          "Unlike read_hidden, it withdraws no tool a member's turn is offered; an authority " +
+            "turn that uses it continues at member."
+        )
+      )
+    }
 
     test("an answer that does not read fails, quoting nothing of it") {
       val answers = new Answers(_ => Left("the answer is not true or false: \"post it\""))
