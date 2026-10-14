@@ -97,6 +97,7 @@ abstract class EdgesContract extends TestSuite {
           slack("board") -> confidentialTrial,
           service("poster") -> Label.Public,
           service("printer") -> Label.Public,
+          service("copier") -> Label.Public,
           service("wiki") -> Label.Public,
           service("vault") -> Label.at(Level.Restricted, TestLabels.trial)
         ),
@@ -172,6 +173,25 @@ abstract class EdgesContract extends TestSuite {
           "may not send to service:wiki",
           "may not read from service:vault"
         ).map(why =>
+          Right(RequestState.Answered(Outcome.Failed(s"Nothing was sent: this conversation $why.")))
+        )
+    }
+
+    test(
+      "a request dispatched at a routed classification above its transaction's floor is refused at that classification"
+    ) {
+      // The turn was routed confidential; what its transaction knows now is public, which may
+      // send to either.
+      val copier = service("copier")
+      val sent = request("locked", 0, copier)
+      val written = request("locked", 1, copier, destination = Some(slack("general")))
+      val d = desk(Set(copier))
+      transaction(Clearance.of(Label.Public), labelled)(
+        requests.dispatch(Vector(sent, written), Tx.locked(confidentialTrial))
+      ) ==> Right(())
+      keys(d.open()) ==> Right(Vector())
+      Vector(sent, written).map(r => transaction(requests.settle(r.slot))) ==>
+        Vector("may not send to service:copier", "may not write to slack:T/general").map(why =>
           Right(RequestState.Answered(Outcome.Failed(s"Nothing was sent: this conversation $why.")))
         )
     }

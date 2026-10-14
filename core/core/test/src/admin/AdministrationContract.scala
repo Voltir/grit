@@ -227,6 +227,21 @@ abstract class AdministrationContract extends TestSuite {
     }
 
     test(
+      "a baseline cleared where none is set, in a room recorded or one nothing is recorded of, is answered as had none and keeps no row"
+    ) {
+      val a = arranged()
+      (
+        run(a, ada, publicRoom, Command.SetBaseline(None), 1),
+        run(a, ada, newRoom, Command.SetBaseline(None), 2),
+        kept(a)
+      ) ==> (
+        Answer.rebased(new Change.Baseline(publicRoom, None, None)),
+        Answer.rebased(new Change.Baseline(newRoom, None, None)),
+        Vector()
+      )
+    }
+
+    test(
       "an administrator's baseline in their own direct message, a room nothing is recorded of, is kept and shown after"
     ) {
       val a = arranged()
