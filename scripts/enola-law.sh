@@ -127,6 +127,16 @@ if [ -n "$ids" ]; then
   failed=1
 fi
 
+# TRAP: rule 1j, as 1f above: only grit.turn, grit.act, grit.kit and core's flow package (its
+# sources, tests and probes) may name Mint.
+mint=$(names -w 'Mint' |
+  grep -vE '^core/core/(src|test/src|probes/src)/flow/|^core/turn/|^core/act/|^kit/' || true)
+if [ -n "$mint" ]; then
+  echo "Only grit.turn, grit.act and grit.kit may name Mint; these sources do:" >&2
+  printf '  %s\n' $mint >&2
+  failed=1
+fi
+
 # TRAP: `check` grades cycles as NEW against the pinned baseline, so a cycle present when a
 # baseline was pinned (by this script when none exists, or by anyone) passes from then on.
 # There are none, so any cycle finding fails, at every confidence: `check` counts only those at

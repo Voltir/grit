@@ -56,6 +56,12 @@ components:
     kind: dependency
     match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
+  # Every module except grit.turn, grit.act and grit.kit, the three that make integrity-carrying
+  # values from raw ones (rule 1j).
+  - name: outside-minters
+    kind: dependency
+    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
@@ -581,6 +587,23 @@ rules:
     pattern: "* -> grit.core.id.PrincipalIds"
     mode: strict
     because: "ADR 0032: a person's id is the store's alone; an edge names accounts, and only grit.dbos makes a PrincipalId from text"
+
+  # -------------------------------------------------------------------------------------
+  # 1j. Only grit.turn, grit.act and grit.kit make integrity-carrying values from raw ones
+  # (ADR 0036): Mint stamps a value with the integrity its reader says it has, starts a turn's
+  # cell and makes the endorsers. Anywhere else, a raw value could be passed off as believed
+  # higher than its source. grit.edge in particular never names it: the request an edge runs
+  # was bound and checked in the engine.
+  #
+  # Watch out: as 1f and 1g, a fully qualified use or a wildcard import makes no edge;
+  # scripts/enola-law.sh greps every source for the name. That grep lets core's flow package
+  # name it too (its sources, tests and probes), which needs no import.
+  # -------------------------------------------------------------------------------------
+  - id: only-turn-act-kit-name-mint
+    forbid_name: outside-minters
+    pattern: "* -> grit.core.flow.Mint"
+    mode: strict
+    because: "ADR 0036: a value's integrity is what its reader says of its source; only the turn, the moves and the kit, which hold the readers, mint it"
 
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
