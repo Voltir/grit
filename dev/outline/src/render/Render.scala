@@ -336,7 +336,6 @@ object Render {
           s"== $file  $pkg" +: here.map(entryLine)
         }
 
-    val total = if (level == 0) chunks.size else listed.size
     val (kept, truncated) = fit(chunks, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
