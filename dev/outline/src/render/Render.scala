@@ -50,7 +50,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; each definition printed without its body ends with its closing lines, a type's after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -165,7 +165,7 @@ object Render {
     case Kind.Opaque => "opaque type"
   }
 
-  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. The trait ends with its closing lines, and each member it shows without its body with the member's. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
+  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. The trait ends with its closing lines, and so does each member it shows without its body that is itself a type. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
   def family(f: Family, all: Vector[Defn], header: String, stale: Set[String], cap: Int): String = {
     def headerOf(d: Defn): String =
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
@@ -555,11 +555,13 @@ object Render {
     }
   }
 
-  /** `d`'s closing lines under an `NN-MM end of <name>` header, for a definition printed without its body; none when it has none. */
+  /** `d`'s closing lines under an `NN-MM end of <name>` header, for a type printed without its body, where an Edit adds a
+    * member; none for any other definition, or a type that has none.
+    */
   private def closingLines(d: Defn): Vector[String] =
-    d.closing.toVector.flatMap(c =>
-      Vector(s"${c.start}-${d.lines.end} end of ${ownerRelative(d)}", c.text)
-    )
+    d.closing.toVector
+      .filter(_ => isType(d))
+      .flatMap(c => Vector(s"${c.start}-${d.lines.end} end of ${ownerRelative(d)}", c.text))
 
   /** What a definition line ends with: its `size` in bytes as `  [N.N KB]`, to one decimal and at least 0.2; nothing when the size is unknown. */
   private def sizeTag(size: Option[Int]): String =

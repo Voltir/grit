@@ -331,21 +331,26 @@ object RenderTests extends TestSuite {
     }
 
     test(
-      "a definition shown without its body ends with its last line under an end-of header: Limits.of's line 33"
+      "a member shown without its body has no closing lines, alone or under its type: Limits.of"
     ) {
       val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
-      val out = Render.show(of3, noTraced, read, Set.empty, Set.empty, false, 80000)
-      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
-      assert(under(out, "33-33 end of Limits.of") == file.slice(32, 33))
+      val limits =
+        named(read, "grit.outline.fixture.Limits").filter(_.kind == grit.outline.model.Kind.Object)
+      val alone = Render.show(of3, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val under = Render.show(limits, noTraced, read, Set.empty, Set.empty, false, 80000)
+      assert(!alone.contains(" end of "))
+      assert(
+        under.linesIterator.filter(_.contains(" end of ")).toVector == Vector("35-36 end of Limits")
+      )
     }
 
     test(
-      "a last line of closing brackets alone comes with the line before it: Outer.Inner.deep's 72-73"
+      "a last line of closing brackets alone comes with the line before it: Outer.Inner's 73-74"
     ) {
-      val deep = named(read, "grit.outline.fixture.Outer.Inner.deep")
-      val out = Render.show(deep, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val inner = named(read, "grit.outline.fixture.Outer.Inner")
+      val out = Render.show(inner, noTraced, read, Set.empty, Set.empty, false, 80000)
       val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
-      assert(under(out, "72-73 end of Outer.Inner.deep") == file.slice(71, 73))
+      assert(under(out, "73-74 end of Outer.Inner") == file.slice(72, 74))
     }
 
     test("a type's closing lines follow its members' entries: object Limits ends with its 35-36") {
@@ -356,8 +361,39 @@ object RenderTests extends TestSuite {
       val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
       assert(under(out, "35-36 end of Limits") == file.slice(34, 36))
       assert(
-        lines.indexWhere(_.startsWith("35-36 end of Limits")) >
-          lines.indexWhere(_.startsWith("33-33 end of Limits.of"))
+        lines.indexWhere(_.startsWith("35-36 end of Limits")) > lines.indexWhere(
+          _.startsWith("30-33 ")
+        )
+      )
+    }
+
+    test(
+      "family --member prints the trait's closing lines, and a member's only when it is a type: Limits.of has none, Outer.Inner its 73-74"
+    ) {
+      def familyOf(owner: String, member: String): String = {
+        val trait0 = named(read, owner).filter(_.kind == grit.outline.model.Kind.Object)
+        Render.family(
+          Family(
+            trait0.headOption.getOrElse(sys.error(owner)),
+            Some(member),
+            Vector.empty,
+            Vector.empty,
+            false
+          ),
+          read,
+          "## family",
+          Set.empty,
+          80000
+        )
+      }
+      val of = familyOf("grit.outline.fixture.Limits", "of")
+      assert(
+        of.linesIterator.filter(_.contains(" end of ")).toVector == Vector("35-36 end of Limits")
+      )
+      val inner = familyOf("grit.outline.fixture.Outer", "Inner")
+      assert(
+        inner.linesIterator.filter(_.contains(" end of ")).toVector ==
+          Vector("73-74 end of Outer.Inner", "74-75 end of Outer")
       )
     }
 
