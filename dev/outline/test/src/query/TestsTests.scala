@@ -87,15 +87,19 @@ object TestsTests extends TestSuite {
     }
 
     test(
-      "a test-source fixture the suite names is listed with the members it names, and not those it does not"
+      "the fixtures the suite names print under one header, a line each with the members it names, one name's definitions on one line"
     ) {
+      val lines = useLines()
+      val at = lines.indexOf("  fixtures (--fixtures for their signatures):")
+      assert(at > 0)
       assert(
-        useLines().contains(
-          "  fixtures used: grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-19  2 of 4 members: seeded, label; --fixtures for their signatures"
+        lines.slice(at + 1, at + 3) == Vector(
+          "    grit.outline.fixture.suites.Paired  dev/outline/fixture/suites/src/Paired.scala:3-6, 8-11  twice, one",
+          "    grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-19  seeded, label"
         )
       )
+      assert(!lines.exists(_.contains("unnamed")))
     }
-
     test(
       "--body prints a used fixture member's own lines, and a suite helper of the same name wins"
     ) {
@@ -108,8 +112,15 @@ object TestsTests extends TestSuite {
 
     test("--fixtures lists the used members' collapsed signatures, and no other member") {
       val lines = useLines(fixtures = true)
-      assert(lines.contains("    6-7 def seeded: Int  [0.2 KB]"))
-      assert(lines.contains("    9-10 def label: String  [0.2 KB]"))
+      val at = lines.indexOf("  fixtures:")
+      assert(at > 0)
+      assert(
+        lines.slice(at + 4, at + 7) == Vector(
+          "    grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-19",
+          "      6-7 def seeded: Int  [0.2 KB]",
+          "      9-10 def label: String  [0.2 KB]"
+        )
+      )
       assert(!lines.exists(_.contains("unnamed")))
     }
 

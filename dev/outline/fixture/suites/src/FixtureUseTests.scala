@@ -12,7 +12,7 @@ object FixtureUseTests {
   def label: String = "own"
 
   test("a seed, tried") {
-    Try(seeded + 1)
+    Try(seeded + Paired.one.twice)
   }
 
   test("a label is the fixture's") {

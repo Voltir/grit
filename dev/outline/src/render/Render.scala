@@ -407,8 +407,8 @@ object Render {
   /** The `tests` answer: the suite's `== file  package` line, flagged when `stale`; the lines of its file `src` outside
     * every one of `tops` (its file's top-level definitions) as file text; the suite's header line and head, its doc cut to
     * its first sentence as `show` cuts a member's; the suite's own loose lines; its helpers as their collapsed signatures;
-    * each of `fixtures` as one line naming its file, range and the members used, or with `listFixtures` each used
-    * member's collapsed signature; then `tests (n):` and each test's name with its line range; then the suite's closing
+    * the fixtures under one header line, one line per fixture name (a class and its companion on one) naming its
+    * file, ranges and the members used, or with `listFixtures` each used member's collapsed signature under it; then `tests (n):` and each test's name with its line range; then the suite's closing
     * lines. A test whose name starts with one of `prefixes` prints its verbatim text after its line; a name in `bodies` prints a
     * helper's own text after its signature, or, when no helper has that name, a used fixture member's own text after the
     * fixtures. Each line naming a definition or a test ends with its size tag. `header` leads. The answer is cut at `cap`
@@ -457,28 +457,35 @@ object Render {
         asked = named
       )
     }
-    val fixturePieces = fixtures.flatMap { f =>
-      val all = f.top.members.count(_.kind != Kind.Param)
-      val where = s"${f.top.fullName}  ${f.top.file}:${f.top.lines.start}-${f.top.lines.end}"
-      val listed =
-        if (listFixtures)
-          Vector(s"  fixtures used: $where  ${f.used.size} of $all members:") ++
-            f.used
-              .map(m => s"    ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}")
-        else
-          Vector(
-            s"  fixtures used: $where  ${f.used.size} of $all members: ${f.used.map(_.name).distinct.mkString(", ")}; --fixtures for their signatures"
-          )
-      val named = f.used.filter(m => bodies.contains(m.name) && !helperNames.contains(m.name))
-      Piece(listed, f.top.name) +:
-        named.map(m =>
-          Piece(
-            Vector(headerLine(m, inContext = false), m.head) ++ m.body.toVector,
-            m.name,
-            asked = true
-          )
-        )
+    // One line per fixture name: a class and its companion are one fixture, their ranges side by side.
+    val byName =
+      fixtures.map(_.top.fullName).distinct.map(n => fixtures.filter(_.top.fullName == n))
+    val fixtureLines = byName.flatMap { same =>
+      val used = same.flatMap(_.used).sortBy(_.lines.start)
+      val where = same.headOption.fold("") { f =>
+        s"${f.top.fullName}  ${f.top.file}:${same.map(g => s"${g.top.lines.start}-${g.top.lines.end}").mkString(", ")}"
+      }
+      if (listFixtures)
+        Vector(s"    $where") ++
+          used
+            .map(m => s"      ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}")
+      else Vector(s"    $where  ${used.map(_.name).distinct.mkString(", ")}")
     }
+    val fixtureHeader =
+      if (listFixtures) "  fixtures:" else "  fixtures (--fixtures for their signatures):"
+    val fixturePieces =
+      (if (fixtureLines.isEmpty) Vector.empty
+       else Vector(Piece(fixtureHeader +: fixtureLines, "fixtures"))) ++
+        fixtures
+          .flatMap(_.used)
+          .filter(m => bodies.contains(m.name) && !helperNames.contains(m.name))
+          .map { m =>
+            Piece(
+              Vector(headerLine(m, inContext = false), m.head) ++ m.body.toVector,
+              m.name,
+              asked = true
+            )
+          }
     val testPieces = tests.map { t =>
       val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}${sizeTag(Some(bytesOf(t.text)))}"
       val named = prefixes.exists(t.name.startsWith)

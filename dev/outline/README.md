@@ -79,7 +79,8 @@ that matches nothing suggests `find` with the name's last segment.
 **tests**: To add or change a test in a suite: its file's imports and its own loose lines as file text, its
 head and closing lines as file text, its helpers' signatures, the test-source fixtures it uses with the members it
 names, and its tests' names with line ranges. A fixture is a top-level definition in test sources, in another file,
-that the suite's TASTy refers to; only the members it names are listed. `--test NAME` prints each test whose name
+that the suite's TASTy refers to; they print under one `fixtures` header, a line each naming its file, its ranges
+(a class and its companion on one line) and the members the suite names. `--test NAME` prints each test whose name
 starts with NAME, or with any of its comma-separated prefixes when NAME as written starts none; `--body h[,h…]` prints a helper's own lines, or, when no helper has the name, a used fixture
 member's; `--fixtures` lists the used members' signatures. What is named is printed first when the answer is cut.
 
