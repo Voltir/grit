@@ -1,13 +1,15 @@
 package grit.turn
 
 import grit.core.act.MovesFixtures.FakeDb as LabelledDb
+import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{TestCallSlots, ToolCallId}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.id.{EntryId, TestCallSlots, ToolCallId, WorkflowId}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   Assignment,
   Catalog,
+  Effort,
   Grade,
   Ladder,
   ModelId,
@@ -17,7 +19,7 @@ import grit.core.model.{
   Rung,
   Upstream
 }
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
 import grit.core.route.Uncleared
 import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
@@ -97,7 +99,218 @@ object TurnRouteTests extends TestSuite {
       }
       .map(TurnJournal.routing.decode)
 
+  /** A turn ladder of two grades, each pair at an upstream of its own and asking an effort. */
+  private val steady = ref("test/steady", Some("deepinfra"))
+  private val mighty = ref("test/mighty", Some("anthropic"))
+  private val bare = ref("test/bare", Some("together"))
+
+  private def graded(rungs: (Grade, ModelRef, Option[Effort])*): Ladder =
+    Ladder
+      .of(rungs.toVector.map((g, r, e) => Rung(g, Assignment(r, 100, e))))
+      .getOrElse(throw new java.lang.AssertionError())
+
+  /** The turn's ladder `turn`; summary and query the open pair, uncleared at internal. */
+  private def gradedCatalog(turn: Ladder): Catalog =
+    Catalog.of(Policy(turn, ladder(summarising), ladder(open), ladder(summarising)), Vector.empty)
+
+  private val twoGrades = gradedCatalog(
+    graded(
+      (Grade.Standard, steady, Some(Effort.Medium)),
+      (Grade.Strong, mighty, Some(Effort.Medium))
+    )
+  )
+
+  private val allCleared: Visibility =
+    labelling(
+      Vector.empty,
+      Vector(steady, mighty, bare).map(r =>
+        Cleared(Party.of(r).getOrElse(throw new java.lang.AssertionError()), internal)
+      )
+    )
+
+  /** Calls an unknown tool every call it may, so the loop runs its whole budget, and says
+    * "done" on the last, made with tools off.
+    */
+  private def looping =
+    new Scripted((request, n) =>
+      Right(
+        if (request.use == ToolUse.Off) said("done")
+        else
+          Message.Assistant(
+            Vector(AssistantBlock.ToolCall(ToolCallId(s"c$n"), "nothing", ujson.Obj())),
+            StopReason.ToolUse,
+            Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+            "m"
+          )
+      )
+    )
+
+  private val taskUsage = Usage(Tokens(600), Tokens(0), Tokens.Zero, Some(BigDecimal("0.0000252")))
+
+  /** The task questions answered `kind` at p(hard) `hard`, the strand shown. */
+  private def answered(kind: TaskKind, hard: Double): Right[Nothing, Tasking.Asked] =
+    Right(
+      Tasking.Asked(
+        Features
+          .of(
+            Map(kind -> grit.core.period.Probability.clamped(0.8)),
+            grit.core.period.Probability.clamped(hard)
+          )
+          .getOrElse(throw new java.lang.AssertionError()),
+        strand = true,
+        "jev-1.13.0",
+        taskUsage,
+        Tokens(612)
+      )
+    )
+
+  /** What a turn under `catalog` did, its root's task questions answering `outcome`: its route,
+    * each turn pin's model and effort asked, how many model calls it made, and how many times
+    * the task questions were asked; its ledger kept in `ledger`, read for headroom under `cap`.
+    */
+  private def routed(
+      catalog: Catalog,
+      outcome: Either[grit.core.triage.Weighing.Unweighed, Tasking.Asked],
+      ledger: InMemoryUsageLedger = new InMemoryUsageLedger,
+      cap: Option[grit.core.spend.DailyCap] = None
+  ) = {
+    val entries = new InMemoryEntryStore
+    val turn = say(entries, "why did signups drop in March?")
+    val durable = new InMemoryDurable
+    val (provider, seen, asks) = (looping, new Pinnings, new Calls)
+    val _ = durable.run(turn.workflowId)(
+      routedBody(
+        entries,
+        provider,
+        new RecordingProvider,
+        new Asking,
+        LabelledDb(Clearance.of(internal), allCleared),
+        catalog,
+        ledger = ledger,
+        routing = routing(new Tasks(outcome, asks), ledger, cap),
+        seen = seen
+      )
+    )
+    (
+      routeOf(durable, turn).flatMap(_.toOption).flatMap(_.toOption),
+      seen.pins.map(p => p.assignment.ref -> p.assignment.effort).distinct,
+      provider.requests.size,
+      asks.n,
+      turn
+    )
+  }
+
   val tests = Tests {
+    test("a hard root answers on the strong pin, asking high effort, with twice the calls") {
+      val (route, pins, calls, asks, _) = routed(twoGrades, answered(TaskKind.Investigation, 0.72))
+      (route.map(r => (r.turn.assignment.ref, r.headroom)), pins, calls, asks) ==> (
+        Some((mighty, Headroom.Ample)),
+        Vector(mighty -> Some(Effort.High)),
+        10,
+        1
+      )
+      route.map(_.task) ==> Some(Route.Task.Read(answered(TaskKind.Investigation, 0.72).value))
+    }
+
+    test("a chat root answers on the standard pin at low effort in two calls") {
+      val (route, pins, calls, _, _) = routed(twoGrades, answered(TaskKind.Chat, 0.9))
+      (route.map(_.turn.assignment.ref), pins, calls) ==>
+        (Some(steady), Vector(steady -> Some(Effort.Low)), 2)
+    }
+
+    test(
+      "at low headroom a hard root answers on the standard pin at medium effort in the default calls"
+    ) {
+      val ledger = new InMemoryUsageLedger
+      ledger.now = java.time.Instant.now()
+      ledger
+        .record(
+          EntryId("earlier"),
+          say(new InMemoryEntryStore, "earlier"),
+          WorkflowId("earlier"),
+          "m",
+          None,
+          None,
+          Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("0.85"))),
+          Tokens(1)
+        )(using TestTx.fake)
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val cap = grit.core.spend.DailyCap.of("1").toOption
+      // Three grades, so the low ceiling leaves two to choose between.
+      val threeGrades = gradedCatalog(
+        graded(
+          (Grade.Light, bare, Some(Effort.High)),
+          (Grade.Standard, steady, Some(Effort.High)),
+          (Grade.Strong, mighty, Some(Effort.High))
+        )
+      )
+      val (route, pins, calls, asks, _) =
+        routed(threeGrades, answered(TaskKind.Investigation, 0.72), ledger, cap)
+      (route.map(r => (r.turn.assignment.ref, r.headroom)), pins, calls, asks) ==>
+        (Some((steady, Headroom.Low)), Vector(steady -> Some(Effort.Medium)), 5, 1)
+    }
+
+    test("a pin that asks no effort is asked none, whatever the root") {
+      val noEffort =
+        gradedCatalog(graded((Grade.Standard, steady, None), (Grade.Strong, mighty, None)))
+      val (_, pins, calls, _, _) = routed(noEffort, answered(TaskKind.Investigation, 0.72))
+      (pins, calls) ==> (Vector(mighty -> None), 10)
+    }
+
+    test("a turn whose cleared pins are one grade asks nothing and keeps its pin and calls") {
+      val oneGrade = gradedCatalog(
+        graded((Grade.Standard, steady, Some(Effort.Medium)), (Grade.Standard, mighty, None))
+      )
+      val (route, pins, calls, asks, _) = routed(oneGrade, answered(TaskKind.Investigation, 0.72))
+      (route.map(r => (r.task, r.allotment)), pins, calls, asks) ==> (
+        Some((Route.Task.Skipped, Allotment.Untouched)),
+        Vector(steady -> Some(Effort.Medium)),
+        5,
+        0
+      )
+    }
+
+    test("an unanswered task ask takes the pin a turn asked nothing takes, recording why") {
+      val late = Left(grit.core.triage.Weighing.Unweighed.Late)
+      val (route, pins, calls, _, _) = routed(twoGrades, late)
+      (route.map(r => (r.task, r.allotment.grade)), pins, calls) ==> (
+        Some((Route.Task.Unanswered(grit.core.triage.Weighing.Unweighed.Late), None)),
+        Vector(steady -> Some(Effort.Medium)),
+        5
+      )
+    }
+
+    test("the task call's cost is in the ledger once, under route:, from offer") {
+      val ledger = new InMemoryUsageLedger
+      val (_, _, _, _, turn) = routed(twoGrades, answered(TaskKind.Lookup, 0.1), ledger)
+      ledger
+        .of(turn.workflowId)(using TestTx.fake)
+        .map(_.filter(_.entry == Route.id(turn)).map(r => (r.model, r.usage, r.estimatedInput))) ==>
+        Right(Vector(("jev-1.13.0", taskUsage, Tokens(612))))
+    }
+
+    test(
+      "summary and query keep their first cleared pin and its own effort, the summary made under it"
+    ) {
+      val catalog = Catalog.of(
+        Policy(
+          graded(
+            (Grade.Standard, steady, Some(Effort.Medium)),
+            (Grade.Strong, mighty, Some(Effort.Medium))
+          ),
+          graded((Grade.Standard, bare, Some(Effort.Minimal))),
+          graded((Grade.Standard, bare, Some(Effort.Minimal))),
+          graded((Grade.Standard, bare, Some(Effort.Minimal)))
+        ),
+        Vector.empty
+      )
+      val (route, pins, _, _, _) = routed(catalog, answered(TaskKind.Investigation, 0.72))
+      route.map(r => (r.summary, r.query).toList.flatten.map(_.assignment.effort)) ==>
+        Some(List(Some(Effort.Minimal), Some(Effort.Minimal)))
+      // The summary is made under its own pin, its effort its own.
+      pins ==> Vector(mighty -> Some(Effort.High), bare -> Some(Effort.Minimal))
+    }
+
     test(
       "a turn answers on the first of its pairs cleared for what it knows, and the uncleared summary and query make no call"
     ) {
@@ -123,7 +336,21 @@ object TurnRouteTests extends TestSuite {
         provider.requests.size,
         summarizer.requests.size
       ) ==> (
-        Some(Right(Right(Route(internal, flashPin, None, None)))),
+        Some(
+          Right(
+            Right(
+              Route(
+                internal,
+                flashPin,
+                None,
+                None,
+                Headroom.Ample,
+                Route.Task.Skipped,
+                Allotment.Untouched
+              )
+            )
+          )
+        ),
         Vector(None),
         1,
         0

@@ -1,5 +1,6 @@
 package grit.turn
 
+import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
 import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, TurnSeq}
@@ -42,7 +43,17 @@ object TurnJournalTests extends TestSuite {
       import grit.core.visibility.{Label, Level}
       val pin = TurnFixtures.TestCatalog.pin
       val routed: Either[TurnFailure, Route] =
-        Right(Route(Label.at(Level.Internal), pin.turn.first, None, Some(pin.query.first)))
+        Right(
+          Route(
+            Label.at(Level.Internal),
+            pin.turn.first,
+            None,
+            Some(pin.query.first),
+            Headroom.Ample,
+            Route.Task.Skipped,
+            Allotment.Untouched
+          )
+        )
       roundTrip(routed) ==> Right(routed)
       routing.encode(routed).contains("summary") ==> false
       val uncleared: Either[TurnFailure, Route] =
@@ -51,6 +62,62 @@ object TurnJournalTests extends TestSuite {
         Right(uncleared),
         """{"failed":"uncleared","reason":"restricted"}"""
       )
+    }
+
+    test(
+      "a route reads back its headroom, its task asked, unanswered or skipped, and its allotment; one recorded before them reads as skipped, ample, nothing laid over"
+    ) {
+      import grit.core.allot.{Features, TaskKind, Tasking}
+      import grit.core.model.{Effort, Grade}
+      import grit.core.period.Probability
+      import grit.core.triage.Weighing
+      import grit.core.visibility.{Label, Level}
+      val pin = TurnFixtures.TestCatalog.pin
+      val features = Features
+        .of(
+          Map(
+            TaskKind.Investigation -> Probability.clamped(0.7),
+            TaskKind.Chat -> Probability.clamped(0.1)
+          ),
+          Probability.clamped(0.72)
+        )
+        .getOrElse(throw new java.lang.AssertionError())
+      val usage = Usage(Tokens(556), Tokens(0), Tokens.Zero, Some(BigDecimal("0.00002335")))
+      val asked = Tasking.Asked(features, strand = true, "jev-1.13.0", usage, Tokens(560))
+      val base =
+        Route(
+          Label.at(Level.Internal),
+          pin.turn.first,
+          Some(pin.summary.first),
+          Some(pin.query.first),
+          Headroom.Ample,
+          Route.Task.Skipped,
+          Allotment.Untouched
+        )
+      val thrice = Allotment.Calls.Scaled.of(3).getOrElse(throw new java.lang.AssertionError())
+      val routes: Vector[Either[TurnFailure, Route]] = Vector(
+        base.copy(
+          task = Route.Task.Read(asked),
+          allotment = Allotment(Some(Grade.Strong), Allotment.Reasoning.At(Effort.High), thrice)
+        ),
+        base.copy(
+          headroom = Headroom.Low,
+          task = Route.Task.Unanswered(Weighing.Unweighed.PlacementLate),
+          allotment =
+            Allotment(None, Allotment.Reasoning.AtMost(Effort.Medium), Allotment.Calls.Fewest)
+        ),
+        base
+      ).map(Right(_))
+      routes.map(roundTrip(_)) ==> routes.map(Right(_))
+      // As every route recorded before tasks were asked was written.
+      val before = ujson.Obj(
+        "ok" -> ujson.Obj(
+          "classification" -> Label.written(base.classification),
+          "turn" -> grit.core.model.CatalogJson.writePinned(base.turn)
+        )
+      )
+      routing.decode(before.render()).map(_.map(r => (r.headroom, r.task, r.allotment))) ==>
+        Right(Right((Headroom.Ample, Route.Task.Skipped, Allotment.Untouched)))
     }
 
     test("a query's note keeps who served it, and one recorded before reads with none") {

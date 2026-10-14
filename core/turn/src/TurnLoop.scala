@@ -2,6 +2,7 @@ package grit.turn
 
 import scala.annotation.tailrec
 
+import grit.core.allot.Allotment
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -25,6 +26,17 @@ object TurnLoop {
     def of(calls: Int): Either[String, Budget] =
       if (calls >= 2) Right(Budget(calls))
       else Left(s"a turn's budget is at least 2 model calls, not $calls")
+
+    /** Two calls: the fewest a turn makes, the first with tools on. */
+    val Fewest: Budget = Budget(2)
+
+    /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls. */
+    def allotted(default: Budget, calls: Allotment.Calls): Budget = calls match {
+      case Allotment.Calls.Default => default
+      // Scaled is at least once by construction, so this is at least `default`, at least 2.
+      case Allotment.Calls.Scaled(times) => Budget(default.calls * times)
+      case Allotment.Calls.Fewest => Fewest
+    }
   }
 
   /** Which model call of a turn this is, counting from 0. */

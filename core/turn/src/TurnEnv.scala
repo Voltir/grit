@@ -2,6 +2,7 @@ package grit.turn
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.core.allot.Tasking
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
@@ -13,6 +14,7 @@ import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
 import grit.core.speech.{Speaking, SpeechStore}
+import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{Placements, StitchStore, Tuning}
 import grit.core.store.{
   Askers,
@@ -41,7 +43,8 @@ import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
   * [[TurnStitching]] says. None of them writes the store but `stitching`'s `placements`,
   * which queues an opening's placement and waits for it, so a step body that captures this
   * can otherwise only read it. `weighing` is what its root's answers are read from, or
-  * asked of, before its offer ([[TurnWeighing]]).
+  * asked of, before its offer ([[TurnWeighing]]); `routing`, what its `route` step reads
+  * besides its clearances ([[TurnRouting]]).
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -54,8 +57,15 @@ final case class TurnEnv(
     fresh: Fresh^,
     speech: TurnSpeech,
     stitching: TurnStitching^,
-    weighing: TurnWeighing^
+    weighing: TurnWeighing^,
+    routing: TurnRouting^
 )
+
+/** What a turn's `route` step reads besides its clearances: the task questions it asks its root
+  * when the pins it may be routed to are of more than one grade (`tasks`), and the daily budget
+  * and the spend its headroom is read from.
+  */
+final case class TurnRouting(tasks: Tasking^, budget: Budget, spending: Spending)
 
 /** What a turn's root is weighed by before its offer (ADR 0025): the tags live triage kept
   * for a heard message (`triage`), or, for a message said to grit whose answers its recipe

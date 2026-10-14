@@ -152,6 +152,12 @@ object CatalogJson {
   /** The repair written `v` ([[argRepair]]'s form), or why it is none. */
   def readArgRepair(v: ujson.Value): Either[String, ArgRepair] = RepairWords.read(v, "a repair")
 
+  /** How the catalog writes `effort`: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. */
+  def effort(effort: Effort): String = EffortWords.of(effort)
+
+  /** The effort written `v` ([[effort]]'s form), or why it is none. */
+  def readEffort(v: ujson.Value): Either[String, Effort] = EffortWords.read(v, "an effort")
+
   private val AfterWords: Words[AfterToolResult] = Words(
     AfterToolResult.values.toVector,
     {

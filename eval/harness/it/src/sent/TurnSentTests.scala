@@ -100,6 +100,12 @@ object TurnSentTests extends TestSuite {
   }
 
   /** Weighs nothing: a TUI turn's recipe reads no answers. */
+  /** Asks a root no task questions: every turn routed as if asked nothing. */
+  private object Untasked extends grit.core.allot.Tasking {
+    def task(turn: TurnRef): Either[Weighing.Unweighed, grit.core.allot.Tasking.Asked] =
+      Left(Weighing.Unweighed.Unread)
+  }
+
   private object Unweighed extends Weighing {
     def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
       Left(Weighing.Unweighed.Unread)
@@ -154,7 +160,8 @@ object TurnSentTests extends TestSuite {
             Tuning.Default,
             engine.placements
           ),
-          TurnWeighing(engine.triage, Unweighed)
+          TurnWeighing(engine.triage, Unweighed),
+          grit.turn.TurnRouting(Untasked, engine.budget, engine.spending)
         ),
         TurnTooling[{}](
           right(Toolbox.of[{}](echo)),

@@ -85,6 +85,16 @@ object TurnLoopTests extends TestSuite {
       Budget.of(2).map(_.calls) ==> Right(2)
     }
 
+    test("an allotment scales the deployment's budget, keeps it, or makes it the fewest, two") {
+      import grit.core.allot.Allotment.Calls
+      val thrice = Calls.Scaled.of(3).getOrElse(throw new java.lang.AssertionError())
+      Vector[Calls](Calls.Default, thrice, Calls.Fewest).map(
+        Budget.allotted(budget(5), _).calls
+      ) ==>
+        Vector(5, 15, 2)
+      Budget.Fewest.calls ==> 2
+    }
+
     test("a round's step is call-model, then call-model:n") {
       Vector(0, 1, 7).map(n => round(n).step) ==>
         Vector("call-model", "call-model:1", "call-model:7")

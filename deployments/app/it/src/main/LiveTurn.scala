@@ -107,6 +107,27 @@ object LiveTurn {
       recipe: TurnRecipe = TurnRecipe.Shipped
   ): Unit = {
     val models = new LiveModels(provider)
+    // One Mentions weighs a said root before its offer and asks its task questions in route.
+    val mentions =
+      new grit.lifecycle.triage.Mentions(
+        grit.core.stitch.StitchReads(
+          engine.entries,
+          engine.conversations,
+          engine.lifecycle,
+          engine.stitches,
+          engine.search,
+          engine.principals
+        ),
+        engine.rooms,
+        knowledge,
+        grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
+        grit.core.classify.ClearedClassifier.of(StubClassifier.Service, new StubClassifier),
+        engine.placements,
+        engine.db,
+        Clock.system(),
+        CharEstimate,
+        grit.core.stitch.Tuning.Default
+      )
     def launch[C^](tooling: TurnTooling[C]^): Unit =
       engine.launch(
         Turn.body(
@@ -148,28 +169,8 @@ object LiveTurn {
               grit.core.stitch.Tuning.Default,
               engine.placements
             ),
-            grit.turn.TurnWeighing(
-              engine.triage,
-              new grit.lifecycle.triage.Mentions(
-                grit.core.stitch.StitchReads(
-                  engine.entries,
-                  engine.conversations,
-                  engine.lifecycle,
-                  engine.stitches,
-                  engine.search,
-                  engine.principals
-                ),
-                engine.rooms,
-                knowledge,
-                grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
-                grit.core.classify.ClearedClassifier.of(StubClassifier.Service, new StubClassifier),
-                engine.placements,
-                engine.db,
-                Clock.system(),
-                CharEstimate,
-                grit.core.stitch.Tuning.Default
-              )
-            )
+            grit.turn.TurnWeighing(engine.triage, mentions),
+            grit.turn.TurnRouting(mentions, engine.budget, engine.spending)
           ),
           tooling
         ),

@@ -185,6 +185,27 @@ object TurnCaptureTests extends TestSuite {
       engine.jot,
       right(TurnLoop.Budget.of(4))
     )
+    // One Mentions weighs a said root before its offer and asks its task questions in route.
+    val mentions =
+      new grit.lifecycle.triage.Mentions(
+        grit.core.stitch.StitchReads(
+          engine.entries,
+          engine.conversations,
+          engine.lifecycle,
+          engine.stitches,
+          engine.search,
+          engine.principals
+        ),
+        engine.rooms,
+        Corpora.Empty,
+        grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
+        grit.core.classify.ClearedClassifier.none("no classifier"),
+        engine.placements,
+        engine.db,
+        Clock.system(),
+        CharEstimate,
+        Tuning.Default
+      )
     engine.launch(
       Turn.body(
         TurnEnv(
@@ -228,28 +249,8 @@ object TurnCaptureTests extends TestSuite {
             Tuning.Default,
             engine.placements
           ),
-          grit.turn.TurnWeighing(
-            engine.triage,
-            new grit.lifecycle.triage.Mentions(
-              grit.core.stitch.StitchReads(
-                engine.entries,
-                engine.conversations,
-                engine.lifecycle,
-                engine.stitches,
-                engine.search,
-                engine.principals
-              ),
-              engine.rooms,
-              Corpora.Empty,
-              grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
-              grit.core.classify.ClearedClassifier.none("no classifier"),
-              engine.placements,
-              engine.db,
-              Clock.system(),
-              CharEstimate,
-              Tuning.Default
-            )
-          )
+          grit.turn.TurnWeighing(engine.triage, mentions),
+          grit.turn.TurnRouting(mentions, engine.budget, engine.spending)
         ),
         tooling
       ),

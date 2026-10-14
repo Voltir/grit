@@ -223,6 +223,35 @@ object TurnFixtures {
       new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
     )
 
+  /** Routing that finds the task questions unanswered, under no cap: every turn at ample
+    * headroom, and one whose pins span grades routed as if asked nothing.
+    */
+  def noRouting(): TurnRouting^ =
+    routing(new Tasks(Left(grit.core.triage.Weighing.Unweighed.Unavailable)))
+
+  /** Routing asking `tasks`, its headroom read from `spending` under `cap`. */
+  def routing(
+      tasks: grit.core.allot.Tasking^,
+      spending: grit.core.spend.Spending = new InMemoryUsageLedger,
+      cap: Option[grit.core.spend.DailyCap] = None
+  ): TurnRouting^ =
+    TurnRouting(tasks, grit.core.spend.Budget(java.time.ZoneOffset.UTC, cap), spending)
+
+  /** A [[grit.core.allot.Tasking]] that answers every root with `outcome`, as lifecycle's
+    * `Mentions` answers one it asked or could not, counting each call in `calls`.
+    */
+  final class Tasks(
+      outcome: Either[grit.core.triage.Weighing.Unweighed, grit.core.allot.Tasking.Asked],
+      calls: Calls = new Calls
+  ) extends grit.core.allot.Tasking {
+    def task(
+        turn: TurnRef
+    ): Either[grit.core.triage.Weighing.Unweighed, grit.core.allot.Tasking.Asked] = {
+      calls.n += 1
+      outcome
+    }
+  }
+
   /** How many times a [[Weighs]] was asked. */
   final class Calls {
     // Read only by the test that owns it.
@@ -726,7 +755,8 @@ object TurnFixtures {
         Fresh.random(),
         quiet(),
         unstitched(),
-        weighing
+        weighing,
+        noRouting()
       ),
       TurnTooling[{}](
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
@@ -1037,6 +1067,46 @@ object TurnFixtures {
     )
   }
 
+  /** [[RoutedCatalog]] with a turn ladder of two grades, each asking medium effort:
+    * [[RoutedFlash]] standard, then [[RoutedQuery]] strong. What a fixture turn routed by its
+    * task pins.
+    */
+  val GradedCatalog: Catalog = {
+    def rung(g: grit.core.model.Grade, r: ModelRef) =
+      grit.core.model.Rung(g, Assignment(r, 100, Some(grit.core.model.Effort.Medium)))
+    def ladder(rungs: grit.core.model.Rung*) =
+      grit.core.model.Ladder.of(rungs.toVector).getOrElse(throw new java.lang.AssertionError())
+    Catalog.of(
+      RoutedCatalog.policy.copy(turn =
+        ladder(
+          rung(grit.core.model.Grade.Standard, RoutedFlash),
+          rung(grit.core.model.Grade.Strong, RoutedQuery)
+        )
+      ),
+      Vector.empty
+    )
+  }
+
+  /** The task questions answered of a root: an investigation, p(hard) 0.72, the strand
+    * shown.
+    */
+  val HardInvestigation: grit.core.allot.Tasking.Asked =
+    grit.core.allot.Tasking.Asked(
+      grit.core.allot.Features
+        .of(
+          Map(
+            grit.core.allot.TaskKind.Investigation -> grit.core.period.Probability.clamped(0.8),
+            grit.core.allot.TaskKind.Lookup -> grit.core.period.Probability.clamped(0.2)
+          ),
+          grit.core.period.Probability.clamped(0.72)
+        )
+        .getOrElse(throw new java.lang.AssertionError()),
+      strand = true,
+      "jev-1.13.0",
+      Usage(Tokens(600), Tokens(0), Tokens.Zero, Some(BigDecimal("0.0000252"))),
+      Tokens(612)
+    )
+
   /** Reads for the public through [[FakeDb]]: what a fixture's tools read through. */
   def PublicReads: grit.core.store.Reads^ = FakeDb.as(Subject.Public)
 
@@ -1083,12 +1153,25 @@ object TurnFixtures {
   /** Models for a test: `inForce` is the catalog, and the calls under a pin of its summary's
     * ladder go to `summary`, every other to `turn`.
     */
-  final class FixedModels(turn: Provider^, summary: Provider^, inForce: Catalog = TestCatalog)
-      extends Models {
+  final class FixedModels(
+      turn: Provider^,
+      summary: Provider^,
+      inForce: Catalog = TestCatalog,
+      seen: Pinnings = new Pinnings
+  ) extends Models {
     def catalog(): Either[String, Catalog] = Right(inForce)
-    def provider(pinned: Pinned): Provider^ =
+    def provider(pinned: Pinned): Provider^ = {
+      seen.pins = seen.pins :+ pinned
       if (inForce.policy.summary.rungs.exists(_.assignment == pinned.assignment)) summary
       else turn
+    }
+  }
+
+  /** Each pin a [[FixedModels]] was asked a provider for, in order. */
+  final class Pinnings {
+    // Read only by the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var pins = Vector.empty[Pinned]
   }
 
   /** The turn's workflow body over `entries`, reading through `db`, under `catalog`, the
@@ -1104,7 +1187,9 @@ object TurnFixtures {
       catalog: Catalog,
       speech: TurnSpeech = quiet(),
       tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools,
-      ledger: UsageLedger = new InMemoryUsageLedger
+      ledger: UsageLedger = new InMemoryUsageLedger,
+      routing: TurnRouting^ = noRouting(),
+      seen: Pinnings = new Pinnings
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -1119,13 +1204,14 @@ object TurnFixtures {
         hosting(),
         assembler,
         grit.core.classify.TestClassifiers.cleared(NoClassifier),
-        new FixedModels(provider, summarizer, catalog),
+        new FixedModels(provider, summarizer, catalog, seen),
         db,
         new NoWait,
         Fresh.random(),
         speech,
         unstitched(),
-        noTriage()
+        noTriage(),
+        routing
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         tools,
@@ -1182,7 +1268,8 @@ object TurnFixtures {
         Fresh.random(),
         speech,
         stitching,
-        weighing
+        weighing,
+        noRouting()
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         tools,
@@ -1231,7 +1318,8 @@ object TurnFixtures {
         Fresh.random(),
         quiet(),
         unstitched(),
-        noTriage()
+        noTriage(),
+        noRouting()
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         noTools,
@@ -1503,7 +1591,8 @@ object TurnFixtures {
         Fresh.random(),
         speech,
         stitching,
-        noTriage()
+        noTriage(),
+        noRouting()
       ),
       TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
@@ -1516,6 +1605,7 @@ object TurnFixtures {
     val kept = new InMemoryModelProfileStore
     val _ = kept.pin(WorkflowId("kept"), TestCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("routed"), RoutedCatalog.pin)(using TestTx.fake)
+    val _ = kept.pin(WorkflowId("graded"), GradedCatalog.pin)(using TestTx.fake)
     kept
   }
 
@@ -1555,7 +1645,8 @@ object TurnFixtures {
         Fresh.random(),
         quiet(),
         unstitched(),
-        noTriage()
+        noTriage(),
+        noRouting()
       ),
       TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)

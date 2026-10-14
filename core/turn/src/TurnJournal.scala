@@ -1,11 +1,13 @@
 package grit.turn
 
+import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.id.{CorpusName, EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{CatalogJson, TurnProfileId}
+import grit.core.model.{CatalogJson, Grade, TurnProfileId}
+import grit.core.period.Probability
 import grit.core.place.{Place, Service}
 import grit.core.prompt.FragmentId
 import grit.core.recipe.ServiceOffer
@@ -234,6 +236,10 @@ private[turn] object TurnJournal {
         )
         r.summary.foreach(p => o("summary") = CatalogJson.writePinned(p))
         r.query.foreach(p => o("query") = CatalogJson.writePinned(p))
+        // Each written only when it is not what a route recorded before it decided.
+        if (r.headroom == Headroom.Low) o("headroom") = "low"
+        writeTask(r.task).foreach(t => o("task") = t)
+        if (r.allotment != Allotment.Untouched) o("allotment") = writeAllotment(r.allotment)
         o
       },
       v => {
@@ -255,9 +261,133 @@ private[turn] object TurnJournal {
             .flatMap(CatalogJson.readPinned(_, "route.turn"))
           summary <- optional(o, "summary")
           query <- optional(o, "query")
-        } yield Route(classification, turn, summary, query)
+          headroom <- o.get("headroom") match {
+            case None => Right(Headroom.Ample)
+            case Some(ujson.Str("low")) => Right(Headroom.Low)
+            case Some(_) => Left("route: headroom is not low")
+          }
+          task <- o.get("task").fold(Right(Route.Task.Skipped))(readTask)
+          allotment <- o.get("allotment").fold(Right(Allotment.Untouched))(readAllotment)
+        } yield Route(classification, turn, summary, query, headroom, task, allotment)
       }
     )
+
+  /** A route's `task`: `{"asked": "read", "kinds": {kind: p, …}, "hard", "strand", "model",
+    * "usage", "estimate"}`, or `{"asked": "unanswered", "why": kind}` by [[unweighedKinds]];
+    * nothing when skipped.
+    */
+  private def writeTask(t: Route.Task): Option[ujson.Value] = t match {
+    case Route.Task.Skipped => None
+    case Route.Task.Read(a) =>
+      Some(
+        ujson.Obj(
+          "asked" -> "read",
+          "kinds" -> ujson.Obj.from(
+            a.features.kinds.map((k, p) => k.word -> ujson.Num(Probability.value(p)))
+          ),
+          "hard" -> Probability.value(a.features.hard),
+          "strand" -> a.strand,
+          "model" -> a.model,
+          "usage" -> PayloadJson.writeUsage(a.usage),
+          "estimate" -> Tokens.value(a.estimate).toDouble
+        )
+      )
+    case Route.Task.Unanswered(why) =>
+      Some(ujson.Obj("asked" -> "unanswered", "why" -> unweighedKind(why)))
+  }
+
+  private def readTask(v: ujson.Value): Either[String, Route.Task] = {
+    def probability(n: ujson.Value, at: String) =
+      n.numOpt.flatMap(Probability.of).toRight(s"route.task: $at is not a probability")
+    for {
+      o <- v.objOpt.toRight("route.task: expected an object")
+      task <- o.get("asked").flatMap(_.strOpt) match {
+        case Some("unanswered") =>
+          o.get("why")
+            .flatMap(_.strOpt)
+            .flatMap(k => unweighedKinds.collectFirst { case (why, `k`) => why })
+            .toRight("route.task: why is not a known kind")
+            .map(Route.Task.Unanswered(_))
+        case Some("read") =>
+          for {
+            kinds <- o.get("kinds").flatMap(_.objOpt).toRight("route.task: no kinds")
+            weights <- kinds.toVector.foldLeft[Either[String, Map[TaskKind, Probability]]](
+              Right(Map.empty)
+            ) { case (acc, (word, p)) =>
+              for {
+                done <- acc
+                kind <- TaskKind.values
+                  .find(_.word == word)
+                  .toRight(s"route.task: no kind $word")
+                weight <- probability(p, word)
+              } yield done + (kind -> weight)
+            }
+            hard <- o.get("hard").toRight("route.task: no hard").flatMap(probability(_, "hard"))
+            features <- Features.of(weights, hard).toRight("route.task: no kind weighs anything")
+            strand <- o.get("strand").flatMap(_.boolOpt).toRight("route.task: no strand")
+            model <- o.get("model").flatMap(_.strOpt).toRight("route.task: no model")
+            usage <- o.get("usage").toRight("route.task: no usage").flatMap(PayloadJson.readUsage)
+            estimate <- o
+              .get("estimate")
+              .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
+              .toRight("route.task: no whole estimate")
+          } yield Route.Task.Read(Tasking.Asked(features, strand, model, usage, estimate))
+        case _ => Left("route.task: asked is neither read nor unanswered")
+      }
+    } yield task
+  }
+
+  /** A route's `allotment`: `{"grade": word | null, "reasoning": {"at": e} | {"at-most": e} |
+    * null, "calls": {"times": n} | "fewest" | null}`, each null its untouched value.
+    */
+  private def writeAllotment(a: Allotment): ujson.Value =
+    ujson.Obj(
+      "grade" -> a.grade.fold[ujson.Value](ujson.Null)(g => ujson.Str(g.word)),
+      "reasoning" -> (a.reasoning match {
+        case Allotment.Reasoning.Own => ujson.Null
+        case Allotment.Reasoning.At(e) => ujson.Obj("at" -> CatalogJson.effort(e))
+        case Allotment.Reasoning.AtMost(e) => ujson.Obj("at-most" -> CatalogJson.effort(e))
+      }),
+      "calls" -> (a.calls match {
+        case Allotment.Calls.Default => ujson.Null
+        case Allotment.Calls.Scaled(n) => ujson.Obj("times" -> n)
+        case Allotment.Calls.Fewest => ujson.Str("fewest")
+      })
+    )
+
+  private def readAllotment(v: ujson.Value): Either[String, Allotment] = {
+    def effort(n: ujson.Value) = CatalogJson.readEffort(n).left.map(why => s"route.allotment: $why")
+    for {
+      o <- v.objOpt.toRight("route.allotment: expected an object")
+      grade <- o.get("grade") match {
+        case None | Some(ujson.Null) => Right(None)
+        case Some(g) =>
+          g.strOpt
+            .flatMap(w => Grade.values.find(_.word == w))
+            .toRight("route.allotment: not a grade")
+            .map(Some(_))
+      }
+      reasoning <- o.get("reasoning") match {
+        case None | Some(ujson.Null) => Right(Allotment.Reasoning.Own)
+        case Some(r: ujson.Obj) if r.value.contains("at") =>
+          effort(r.value("at")).map(Allotment.Reasoning.At(_))
+        case Some(r: ujson.Obj) if r.value.contains("at-most") =>
+          effort(r.value("at-most")).map(Allotment.Reasoning.AtMost(_))
+        case Some(_) => Left("route.allotment: reasoning is not at or at-most")
+      }
+      calls <- o.get("calls") match {
+        case None | Some(ujson.Null) => Right(Allotment.Calls.Default)
+        case Some(ujson.Str("fewest")) => Right(Allotment.Calls.Fewest)
+        case Some(c: ujson.Obj) =>
+          c.value
+            .get("times")
+            .collect { case ujson.Num(n) if n.isWhole => n.toInt }
+            .flatMap(Allotment.Calls.Scaled.of)
+            .toRight("route.allotment: times is not a whole number of at least 1")
+        case Some(_) => Left("route.allotment: calls is not times or fewest")
+      }
+    } yield Allotment(grade, reasoning, calls)
+  }
 
   /** A turn's pinned profile, by its id: the profile is kept in the profile store. */
   given profile: Journaled[Either[TurnFailure, TurnProfileId]] =

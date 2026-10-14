@@ -804,7 +804,29 @@ object RecordTurnHistories {
       "uncleared-said" -> routedTurn(internal, heard = false),
       "uncleared-heard" -> routedTurn(internal, heard = true),
       "routed-crashed-after-route" ->
-        inFlight(routed, routed.steps.indexWhere(_.name == Turn.Step.Route) + 1)
+        inFlight(routed, routed.steps.indexWhere(_.name == Turn.Step.Route) + 1),
+      "routed-tasked" -> {
+        // Its turn pins span two grades, so its root is asked: hard, so strong at high
+        // effort, with twice the calls; the call's cost kept by offer.
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "why did signups drop in March?")
+        val durable = new InMemoryDurable
+        durable.run(turn.workflowId)(
+          routedBody(
+            entries,
+            new RecordingProvider,
+            new RecordingProvider,
+            new Querying(entries),
+            LabelledDb(
+              Clearance.of(internal),
+              clearing(internal, RoutedFlash, RoutedSummary, RoutedQuery)
+            ),
+            GradedCatalog,
+            routing = routing(new Tasks(Right(HardInvestigation)))
+          )
+        )
+        recorded(durable, turn)
+      }
     )
   }
 }

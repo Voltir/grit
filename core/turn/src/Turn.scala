@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.act.phase.{Asking, Calling, Hearing}
+import grit.core.allot.{Allotment, Headroom, Router}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document, DocumentSearch, Pointer}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
@@ -22,7 +23,7 @@ import grit.core.model.{
 }
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
-import grit.core.route.{Routed, Uncleared}
+import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{
@@ -66,9 +67,10 @@ import TurnVerdict.Shape
   *      under.
   *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
   *      the turn.
-  *   1. `route` — the pin each role's calls are made under ([[Route]]); `Uncleared` when no turn
-  *      pin is cleared for the turn.
-  *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing.
+  *   1. `route` — the pin each role's calls are made under, and the effort laid over the turn's
+  *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn.
+  *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
+  *      and of its task questions.
   *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
   *      ([[failedEarly]]): a heard message's turn keeps `Failed`; an uncleared one said to grit
   *      is replied [[Uncleared.reply]].
@@ -444,7 +446,8 @@ object Turn {
               else Right(None)
             routed match {
               case Left(failure) => failedEarly(env, turn, failure)
-              case Right(r) => offered(env, tooling, turn, weighed)(using Picked.of(profile, r), d)
+              case Right(r) =>
+                offered(env, tooling, turn, weighed, r)(using Picked.of(profile, r), d)
             }
         }
     }
@@ -456,7 +459,8 @@ object Turn {
       env: TurnEnv^,
       tooling: TurnTooling[C]^,
       turn: TurnRef,
-      weighed: Option[TurnWeighing.Weighed]
+      weighed: Option[TurnWeighing.Weighed],
+      routed: Option[Route]
   )(using pins: Picked, d: Durable^): String = {
     import TurnJournal.recordedOffer
     val hosting = env.hosting
@@ -479,7 +483,9 @@ object Turn {
           )
         )
         .flatMap(offered =>
-          weighCost(ledger, env.classifier.upstream, turn, weighed).map(_ => offered)
+          weighCost(ledger, env.classifier.upstream, turn, weighed)
+            .flatMap(_ => taskCost(ledger, env.classifier.upstream, turn, routed))
+            .map(_ => offered)
         )
     ).flatMap(TurnOffer.load(hosting, pins.reads(env.db).as(Subject.Turn(turn)), _)) match {
       case Left(failure) => failedEarly(env, turn, failure)
@@ -555,26 +561,94 @@ object Turn {
     } yield true
   }
 
-  /** The `route` step: the pin each role's calls are made under, the first of `profile`'s for
-    * it whose pair is cleared for what a read for `turn` knows. `Uncleared` when no turn pin
-    * is; `Store` when the read fails.
+  /** The `route` step: what a read for `turn` knows and the day's headroom, then each role's
+    * pins cleared for that; the turn's, at `Low` headroom, at most [[Router.ceiling]]
+    * ([[Routing.atMost]]). When those are of more than one grade the root is asked the task
+    * questions, outside any transaction, and [[Router.allot]] says what grade the turn wants and
+    * what it lays over its calls; the turn is the pin [[Routing.pick]] gives that grade, or,
+    * with none wanted, the one a turn asked nothing takes ([[unasked]]). Summary and query take
+    * their first cleared pin. `Uncleared` when no turn pin is cleared; `Store` when the read
+    * fails.
     */
   private def routeOf(
       env: TurnEnv^,
       turn: TurnRef,
       profile: TurnProfile
-  ): Either[TurnFailure, Route] =
+  ): Either[TurnFailure, Route] = {
+    val (routing, now) = (env.routing, env.clock.now())
     env.db
-      .read(Subject.Turn(turn))(Right(Routed.of))
+      .read(Subject.Turn(turn)) {
+        // Routed first: the spend read cannot raise what the turn is routed for.
+        val routed = Routed.of
+        routing.spending
+          .on(routing.budget.today(now))
+          .map(spent => routed -> Router.headroom(spent, routing.budget.cap))
+      }
       .left
       .map(storeFailure)
-      .flatMap { routed =>
-        def cleared(pins: grit.core.model.Pins) = routed.cleared(pins).map(_.first)
+      .flatMap { (routed, headroom) =>
+        def cleared(pins: grit.core.model.Pins) = routed.cleared(pins)
         val label = routed.classification.label
         cleared(profile.turn)
           .toRight(TurnFailure.Uncleared(label))
-          .map(Route(label, _, cleared(profile.summary), cleared(profile.query)))
+          .map { all =>
+            val pins = Router.ceiling(headroom).fold(all)(Routing.atMost(all, _))
+            // Outside the read: no transaction is open while the root is asked.
+            val task =
+              if (pins.all.map(_.grade).distinct.sizeIs > 1)
+                routing.tasks.task(turn).fold(Route.Task.Unanswered(_), Route.Task.Read(_))
+              else Route.Task.Skipped
+            val allotment = Router.allot(
+              task match {
+                case Route.Task.Read(asked) => Some(asked.features)
+                case Route.Task.Skipped | Route.Task.Unanswered(_) => None
+              },
+              headroom
+            )
+            Route(
+              label,
+              allotment.grade.fold(unasked(pins))(Routing.pick(pins, _)),
+              cleared(profile.summary).map(_.first),
+              cleared(profile.query).map(_.first),
+              headroom,
+              task,
+              allotment
+            )
+          }
       }
+  }
+
+  /** The pin a turn asked nothing, or wanting no grade, is routed to among `pins`, the turn
+    * pins it may be routed to: the first.
+    */
+  private def unasked(pins: grit.core.model.Pins): Pinned = pins.first
+
+  /** The cost of the task call `routed` made, when its root was asked and answered, recorded
+    * in `ledger` under [[Route.id]] with its estimate, served by `upstream`; nothing otherwise.
+    */
+  private def taskCost(
+      ledger: UsageLedger,
+      upstream: Option[String],
+      turn: TurnRef,
+      routed: Option[Route]
+  )(using Tx^): Either[TurnFailure, Unit] =
+    routed.map(_.task) match {
+      case Some(Route.Task.Read(asked)) =>
+        ledger
+          .record(
+            Route.id(turn),
+            turn,
+            turn.workflowId,
+            asked.model,
+            upstream,
+            None,
+            asked.usage,
+            asked.estimate
+          )
+          .left
+          .map(storeFailure)
+      case Some(Route.Task.Skipped | Route.Task.Unanswered(_)) | None => Right(())
+    }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
     * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would
@@ -1024,16 +1098,18 @@ object Turn {
   /** The id of the record of `turn`'s window. */
   def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")
 
-  /** The pin each role's calls are made under, and the classification each read whose content
-    * a model is sent is bounded by: a routed turn's [[Route]], a summary uncleared failing
+  /** The pin each role's calls are made under, the classification each read whose content a
+    * model is sent is bounded by, and the turn loop's calls: a routed turn's [[Route]], its
+    * allotment laid over its turn pin's effort and its calls, a summary uncleared failing
     * `Uncleared`; or, for a turn that passed `route` before it shipped ([[Patches.Route]]),
-    * each role's first pin and no bound.
+    * each role's first pin, no bound and the deployment's calls.
     */
   private[turn] final case class Picked(
       turn: Pinned,
       summary: Either[TurnFailure, Pinned],
       query: Option[Pinned],
-      bound: Option[Label]
+      bound: Option[Label],
+      calls: Allotment.Calls
   ) {
 
     /** `db`, its reads bounded as this says ([[Db.within]]). */
@@ -1055,13 +1131,22 @@ object Turn {
     def of(profile: TurnProfile, route: Option[Route]): Picked = route match {
       case Some(r) =>
         Picked(
-          r.turn,
+          r.turn.copy(assignment =
+            r.turn.assignment.copy(effort = r.allotment.reasoning.over(r.turn.assignment.effort))
+          ),
           r.summary.toRight(TurnFailure.Uncleared(r.classification)),
           r.query,
-          Some(r.classification)
+          Some(r.classification),
+          r.allotment.calls
         )
       case None =>
-        Picked(profile.turn.first, Right(profile.summary.first), Some(profile.query.first), None)
+        Picked(
+          profile.turn.first,
+          Right(profile.summary.first),
+          Some(profile.query.first),
+          None,
+          Allotment.Calls.Default
+        )
     }
   }
 
@@ -1206,7 +1291,7 @@ object Turn {
       asked,
       TurnOffer.toolbox(tooling, offer),
       tooling.jot,
-      tooling.budget,
+      TurnLoop.Budget.allotted(tooling.budget, pins.calls),
       pins.turn.settings.strict == StrictSchemas.Enforced,
       tooling.answerWithin
     )

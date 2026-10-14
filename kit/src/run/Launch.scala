@@ -147,6 +147,27 @@ private[grit] object Launch {
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     }
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
+      // One Mentions both weighs a said root before its offer and asks its task questions in route.
+      val mentions =
+        new Mentions(
+          grit.core.stitch.StitchReads(
+            engine.entries,
+            engine.conversations,
+            engine.lifecycle,
+            engine.stitches,
+            engine.search,
+            engine.principals
+          ),
+          engine.rooms,
+          d.knowledge,
+          d.triage,
+          weighing,
+          engine.placements,
+          engine.db,
+          clock,
+          CharEstimate,
+          grit.core.stitch.Tuning.Default
+        )
       val turnEnv =
         TurnEnv(
           TurnRecords(
@@ -180,28 +201,8 @@ private[grit] object Launch {
             grit.core.stitch.Tuning.Default,
             engine.placements
           ),
-          grit.turn.TurnWeighing(
-            engine.triage,
-            new Mentions(
-              grit.core.stitch.StitchReads(
-                engine.entries,
-                engine.conversations,
-                engine.lifecycle,
-                engine.stitches,
-                engine.search,
-                engine.principals
-              ),
-              engine.rooms,
-              d.knowledge,
-              d.triage,
-              weighing,
-              engine.placements,
-              engine.db,
-              clock,
-              CharEstimate,
-              grit.core.stitch.Tuning.Default
-            )
-          )
+          grit.turn.TurnWeighing(engine.triage, mentions),
+          grit.turn.TurnRouting(mentions, d.budget, engine.spending)
         )
       engine.launch(
         // Told after the body returns, outside any step: the turn's steps are unchanged.
