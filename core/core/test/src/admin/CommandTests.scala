@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.{Account, TestAccounts}
+import grit.core.model.Grade
 import grit.core.visibility.TestLabels.compartment
 import grit.core.visibility.{Label, Level}
 
@@ -54,6 +55,31 @@ object CommandTests extends TestSuite {
         Right(Command.Quiet(true)),
         Right(Command.Quiet(false)),
         Right(Command.Help)
+      )
+    }
+
+    test(
+      "baseline shows this room's baseline; with a grade's word, in any case, sets it, and with none clears it"
+    ) {
+      Vector(
+        read("baseline"),
+        read("baseline light"),
+        read("BASELINE Standard"),
+        read("baseline strong"),
+        read("baseline none")
+      ) ==> Vector(
+        Right(Command.ShowBaseline),
+        Right(Command.SetBaseline(Some(Grade.Light))),
+        Right(Command.SetBaseline(Some(Grade.Standard))),
+        Right(Command.SetBaseline(Some(Grade.Strong))),
+        Right(Command.SetBaseline(None))
+      )
+    }
+
+    test("baseline refuses a word that names no grade, naming the choices, and any word after") {
+      Vector(refusal("baseline mighty"), refusal("baseline strong now")) ==> Vector(
+        Right("mighty: not a baseline; the baselines are light|standard|strong|none"),
+        Right("now: nothing goes after baseline strong")
       )
     }
 
@@ -123,6 +149,8 @@ object CommandTests extends TestSuite {
           "compartments: the compartments you can name",
           "quiet: post nothing here unasked",
           "speak: post here unasked again",
+          "baseline: this room's baseline",
+          "baseline <light|standard|strong|none>: set this room's baseline, the least grade its turns get",
           "help: these commands",
           "The levels: public, internal, confidential and restricted."
         ).mkString("\n")

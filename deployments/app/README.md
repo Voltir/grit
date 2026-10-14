@@ -64,9 +64,10 @@ steward or an administrator. What a deployment writes, least first:
   "Copy member ID" gives them), comma-separated; one that is not is refused, naming the
   variable. They are the declared group `administrators` of `slack:{team}/{id}` accounts, the
   visibility's administrators (`Main.visibility`); no other group, grant or compartment is
-  declared, so public channels are public and private ones unmapped until labelled. Unset, no
-  one can lower a room's label or label a public channel, and `grit serve` says so as it
-  starts.
+  declared, so public channels are public and private ones unmapped until labelled. They alone
+  set a room's baseline (`baseline <grade>`), the least grade its turns are routed to. Unset, no
+  one can lower a room's label, label a public channel or set a baseline, and `grit serve` says
+  so as it starts.
 - **Tier 1, a deployment's code.** One realm group granted `Internal`, and
   `RoomLabels.of(…, open = Some(Labelled.Mapped(Internal)))`: every full member reads internal,
   and public channels are internal.

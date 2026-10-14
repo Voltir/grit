@@ -1,9 +1,10 @@
 package grit.core.admin
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.visibility.{Compartment, Label, Level}
 
-/** What a person asks of grit's visibility by command, as [[Command.read]] reads it. Each runs
+/** What a person asks of grit's visibility, or of a room's baseline, by command, as [[Command.read]] reads it. Each runs
   * where it was asked: its room is that conversation's room.
   */
 enum Command {
@@ -32,6 +33,12 @@ enum Command {
   /** This room quiet (`on`): nothing posted there unasked; or not. */
   case Quiet(on: Boolean)
 
+  /** This room's baseline, and what it does. */
+  case ShowBaseline
+
+  /** This room's baseline set to `to`; `None` clears it. */
+  case SetBaseline(to: Option[Grade])
+
   /** [[Command.Usage]]. */
   case Help
 }
@@ -40,8 +47,9 @@ object Command {
 
   /** `words`, what follows the command's name, as a [[Command]]: `label`, `label <level>
     * [compartment…]`, `unlabel`, `clearance [person]`, `clear <person> for <compartment>`,
-    * `remove <person> from <compartment>`, `compartments`, `quiet`, `speak`, `help` (also for
-    * nothing). The command's words and a level's name are read in any case, a compartment's
+    * `remove <person> from <compartment>`, `compartments`, `quiet`, `speak`, `baseline`,
+    * `baseline <light|standard|strong|none>`, `help` (also for nothing). The command's words, a
+    * level's name and a grade's are read in any case, a compartment's
     * name as [[Compartment.of]] reads it. `person` reads a word naming a person into their
     * account (an edge's mention syntax), `None` when it names none. Why not, as one line a
     * person reads naming the word it stopped at, then [[Usage]]. Whether a compartment is
@@ -101,6 +109,20 @@ object Command {
         case "compartments" => done(Compartments, 1)
         case "quiet" => done(Quiet(true), 1)
         case "speak" => done(Quiet(false), 1)
+        case "baseline" =>
+          said.lift(1) match {
+            case None => Right(ShowBaseline)
+            case Some(word) =>
+              val to = word.toLowerCase match {
+                case "none" => Right(None)
+                case w =>
+                  Grade.values
+                    .find(_.word == w)
+                    .map(Some(_))
+                    .toRight(s"$word: not a baseline; the baselines are $baselines")
+              }
+              to.flatMap(g => done(SetBaseline(g), 2))
+          }
         case _ => Left(s"$first: no such command")
       }
     }
@@ -119,6 +141,8 @@ object Command {
       "compartments: the compartments you can name",
       "quiet: post nothing here unasked",
       "speak: post here unasked again",
+      "baseline: this room's baseline",
+      s"baseline <$baselines>: set this room's baseline, the least grade its turns get",
       "help: these commands",
       s"The levels: $levels."
     ).mkString("\n")
@@ -127,6 +151,9 @@ object Command {
   private def name(level: Level): String = Label.written(Label.at(level))
 
   private def levels: String = and(Level.values.toVector.map(name))
+
+  /** What `baseline` takes: each grade's word, then `none`. */
+  private def baselines: String = (Grade.values.toVector.map(_.word) :+ "none").mkString("|")
 
   /** `words` as a person lists them: `a`, `a and b`, `a, b and c`. Here, not in [[Answer]],
     * whose `Help` reads [[Usage]] as it is initialised.

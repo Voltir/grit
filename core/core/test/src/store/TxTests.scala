@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.model.{ModelId, Upstream}
+import grit.core.model.{Grade, ModelId, Upstream}
 import grit.core.place.{Place, Service}
 import grit.core.visibility.*
 import grit.dbos.sql.TestTx
@@ -147,9 +147,10 @@ object TxTests extends TestSuite {
       def kept(
           access: Option[RoomAccess] = None,
           label: Option[Label] = None,
-          quiet: Boolean = false
+          quiet: Boolean = false,
+          baseline: Option[Grade] = None
       ) =
-        Recorded.Kept(access, label, quiet)
+        Recorded.Kept(access, label, quiet, baseline)
       def under(rooms: (Place, Recorded.Kept)*): Tx =
         TestTx.fake(Clearance.of(Label.Public), inForce, Recorded(rooms.toMap, Map.empty))
 
@@ -220,6 +221,25 @@ object TxTests extends TestSuite {
           ),
           Vector(true, true, false, false, false)
         )
+      }
+
+      test(
+        "a room's baseline is the one recorded for it; none for a room recorded without one or with nothing recorded"
+      ) {
+        given Tx =
+          under(room -> kept(baseline = Some(Grade.Strong)), sameLevel -> kept(quiet = true))
+        Vector(room, sameLevel, public).map(Tx.baseline) ==> Vector(Some(Grade.Strong), None, None)
+      }
+
+      test(
+        "a room is decided when a person set its label, quiet or baseline, and not for its access"
+      ) {
+        Vector(
+          kept(access = Some(RoomAccess.Open)),
+          kept(label = Some(internalFinance)),
+          kept(quiet = true),
+          kept(baseline = Some(Grade.Light))
+        ).map(_.decided) ==> Vector(false, true, true, true)
       }
 
       test("a quiet room is never writable, though its label is; a room not quiet is") {

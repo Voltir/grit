@@ -3,6 +3,7 @@ package grit.core.edge
 import java.time.Instant
 
 import grit.core.identity.{Account, Realm, TestAccounts}
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.visibility.RoomAccess
 import grit.core.visibility.TestLabels.place
@@ -24,6 +25,9 @@ abstract class JoinsContract extends TestSuite {
 
   /** Has a person made `room` quiet (`on`), or spoken there again, as a command would. */
   protected def quiet(j: Joins, room: Place, on: Boolean): Unit
+
+  /** Has a person set `room`'s baseline to `to`, as a command would. */
+  protected def baseline(j: Joins, room: Place, to: Option[Grade]): Unit
 
   /** `room`'s access as recorded; `None` when none is. */
   protected def access(j: Joins, room: Place): Option[RoomAccess]
@@ -191,6 +195,21 @@ abstract class JoinsContract extends TestSuite {
         Membership.Gone,
         Membership.Gone
       )
+    }
+
+    test(
+      "forget keeps a room left with a baseline set, and forgets one whose baseline was cleared"
+    ) {
+      val j = fresh()
+      ok(j.joined(general, RoomAccess.Open, None, t(1)))
+      ok(j.left(general, t(2)))
+      baseline(j, general, Some(Grade.Strong))
+      ok(j.joined(ops, RoomAccess.Invited, None, t(1)))
+      ok(j.left(ops, t(2)))
+      baseline(j, ops, Some(Grade.Light))
+      baseline(j, ops, None)
+      (ok(j.forget(Team, t(3))), access(j, general), access(j, ops)) ==>
+        (1, Some(RoomAccess.Open), None)
     }
 
     test("a room left, quieted and spoken in again is forgotten: the person's decision undone") {

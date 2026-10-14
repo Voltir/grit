@@ -3,6 +3,7 @@ package grit.core.admin
 import java.time.Instant
 
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.TestLabels.{compartment, group, place}
@@ -194,6 +195,48 @@ abstract class AdministrationContract extends TestSuite {
         ),
         Vector()
       )
+    }
+
+    test(
+      "a baseline set, raised and cleared by an administrator is kept with one audit row each and shown to any member; a repeat keeps nothing, and a member's is refused"
+    ) {
+      val a = arranged()
+      val set = new Change.Baseline(publicRoom, None, Some(Grade.Standard))
+      val raise = new Change.Baseline(publicRoom, Some(Grade.Standard), Some(Grade.Strong))
+      val clear = new Change.Baseline(publicRoom, Some(Grade.Strong), None)
+      (
+        run(a, mia, publicRoom, Command.ShowBaseline),
+        run(a, ada, publicRoom, Command.SetBaseline(Some(Grade.Standard)), 1),
+        run(a, ada, publicRoom, Command.SetBaseline(Some(Grade.Strong)), 2),
+        run(a, ada, publicRoom, Command.SetBaseline(Some(Grade.Strong)), 3),
+        run(a, mia, publicRoom, Command.SetBaseline(Some(Grade.Light)), 4),
+        run(a, mia, publicRoom, Command.ShowBaseline),
+        run(a, ada, publicRoom, Command.SetBaseline(None), 5),
+        run(a, mia, publicRoom, Command.ShowBaseline)
+      ) ==> (
+        Answer.baseline(None),
+        Answer.rebased(set),
+        Answer.rebased(raise),
+        Answer.rebased(new Change.Baseline(publicRoom, Some(Grade.Strong), Some(Grade.Strong))),
+        Answer.Refused(Refusal.NotAdministrator),
+        Answer.baseline(Some(Grade.Strong)),
+        Answer.rebased(clear),
+        Answer.baseline(None)
+      )
+      kept(a) ==> Vector(Kept(ada, t(1), set), Kept(ada, t(2), raise), Kept(ada, t(5), clear))
+    }
+
+    test(
+      "an administrator's baseline in their own direct message, a room nothing is recorded of, is kept and shown after"
+    ) {
+      val a = arranged()
+      val own = Origin.Direct(TestAccounts.sourced("slack:T1/U-ada"), "1.0").room
+      val set = new Change.Baseline(own, None, Some(Grade.Strong))
+      (
+        run(a, ada, own, Command.SetBaseline(Some(Grade.Strong)), 1),
+        run(a, ada, own, Command.ShowBaseline)
+      ) ==> (Answer.rebased(set), Answer.baseline(Some(Grade.Strong)))
+      kept(a) ==> Vector(Kept(ada, t(1), set))
     }
 
     test("quiet and speak are free to any member, and repeating either keeps nothing") {

@@ -50,7 +50,7 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
         val person = allowed.change match {
           case Change.Clear(p, _) => whom(p)
           case Change.Remove(p, _) => whom(p)
-          case Change.Relabel(_, _, _) | Change.Quiet(_, _) => None
+          case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) => None
         }
         Right(Administration.answer(allowed, person)(using inForce))
     }
@@ -65,6 +65,7 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
       records.room(room)(_.copy(label = Some(label)))
     case Change.Relabel(room, _, Change.To.Default(_)) => records.room(room)(_.copy(label = None))
     case Change.Quiet(room, on) => records.room(room)(_.copy(quiet = on))
+    case Change.Baseline(room, _, to) => records.room(room)(_.copy(baseline = to))
     case Change.Clear(person, c) =>
       // A person cleared is kept as an account, as SQL enrols them, seen from then on.
       voucher.saw(person)

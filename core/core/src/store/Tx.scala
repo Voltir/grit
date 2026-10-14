@@ -1,6 +1,7 @@
 package grit.core.store
 
 import grit.core.identity.{Held, Principal}
+import grit.core.model.Grade
 import grit.core.place.{Place, Service}
 import grit.core.visibility.{
   Classification,
@@ -101,6 +102,13 @@ object Tx {
     */
   def quiet(room: Place)(using tx: Tx^): Boolean =
     tx.recorded.rooms.get(room).exists(_.quiet)
+
+  /** The least grade `room`'s turns are routed to, set through grit by an administrator; `None`
+    * when none is. A floor within what a turn may be routed to
+    * ([[grit.core.route.Routing.floored]]), never above it.
+    */
+  def baseline(room: Place)(using tx: Tx^): Option[Grade] =
+    tx.recorded.rooms.get(room).flatMap(_.baseline)
 
   /** `principal`'s clearance: grit's, [[grit.core.visibility.Compartments.top]]; a person's,
     * the join of the grants of every declared group they are in, by the deployment's

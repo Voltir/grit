@@ -1,6 +1,7 @@
 package grit.core.edge
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.InMemoryVoucher
 import grit.core.visibility.{RoomAccess, Visibility}
@@ -20,6 +21,9 @@ object InMemoryJoinsTests extends JoinsContract {
   protected def member(j: Joins, account: Account): Unit = fake(j).member(account)
 
   protected def quiet(j: Joins, room: Place, on: Boolean): Unit = fake(j).quiet(room, on)
+
+  protected def baseline(j: Joins, room: Place, to: Option[Grade]): Unit =
+    fake(j).baseline(room, to)
 
   protected def access(j: Joins, room: Place): Option[RoomAccess] = fake(j).access(room)
 }

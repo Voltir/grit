@@ -59,7 +59,8 @@ trait Joins extends caps.SharedCapability {
   def members(under: Place): Either[StoreError, Vector[(Place, Membership.Member)]]
 
   /** Forgets every room within `under` the bot left before `before` and has not joined since,
-    * unless a person set its label or made it quiet (that decision outlives a re-invite); how
+    * unless a person decided anything of it through grit
+    * ([[grit.core.visibility.Recorded.Kept.decided]]: that decision outlives a re-invite); how
     * many. A join of a forgotten room reported after this is recorded however long ago it was
     * made, so an edge forgets only rooms left at least [[Joins.KeptLeft]] ago.
     */
@@ -123,8 +124,8 @@ object Joins {
       */
     def backfilledSince(since: Instant): Boolean = backfilled.exists(!_.isBefore(since))
 
-    /** Whether [[Joins.forget]] forgets it, before `before`, when no person `decided` its label
-      * or quiet.
+    /** Whether [[Joins.forget]] forgets it, before `before`, when no person `decided` anything
+      * of it.
       */
     def forgotten(before: Instant, decided: Boolean): Boolean =
       !decided && membership == Membership.Gone && left.exists(_.isBefore(before))

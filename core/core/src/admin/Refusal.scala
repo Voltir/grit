@@ -8,8 +8,8 @@ enum Refusal {
   /** The asker is grit, or a person no trusted realm vouches a full member. */
   case NotVouched
 
-  /** The change lowers a level, or labels a room's first label with no compartment: an
-    * administrator's alone.
+  /** The change lowers a level, labels a room's first label with no compartment, or sets a
+    * room's baseline: an administrator's alone.
     */
   case NotAdministrator
 

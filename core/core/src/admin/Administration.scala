@@ -16,14 +16,14 @@ import grit.core.visibility.{
   Visibility
 }
 
-/** Changes to who may see what that people make through grit (ADR 0033), and what they read
-  * of them. An edge calls it as it calls the inbox; nothing else writes these settings.
+/** Changes to who may see what, and to a room's baseline, that people make through grit (ADR
+  * 0033), and what they read of them. An edge calls it as it calls the inbox; nothing else writes these settings.
   */
 trait Administration extends caps.SharedCapability {
 
   /** Runs `command`, asked through `by` in `room` at `at`, in one transaction, against the
-    * labels in force then and whom `by` is linked to then. `ShowLabel`, `Clearance`,
-    * `Compartments` and `Help` only read. Any other is decided by [[Authority.decide]], and
+    * labels in force then and whom `by` is linked to then. `ShowLabel`, `ShowBaseline`,
+    * `Clearance`, `Compartments` and `Help` only read. Any other is decided by [[Authority.decide]], and
     * when allowed is kept with one audit row naming `by`, `at` and the change with what it
     * replaced; repeating a change keeps nothing, and is answered as any change is. Whether `by`
     * administers, and which compartments they steward, are read here from the deployment's
@@ -88,6 +88,8 @@ object Administration {
       case Command.Unlabel =>
         change(Change.Relabel(room, Tx.roomLabel(room), Change.To.Default(Tx.defaultLabel(room))))
       case Command.Quiet(on) => change(Change.Quiet(room, on))
+      case Command.ShowBaseline => Left(Answer.baseline(Tx.baseline(room)))
+      case Command.SetBaseline(to) => change(Change.Baseline(room, Tx.baseline(room), to))
       case Command.Clear(person, c) => change(Change.Clear(person, c))
       case Command.Remove(person, c) => change(Change.Remove(person, c))
     }
@@ -104,6 +106,7 @@ object Administration {
     kept.change match {
       case c: Change.Relabel => Answer.relabelled(c)
       case c: Change.Quiet => Answer.quieted(c)
+      case c: Change.Baseline => Answer.rebased(c)
       case c: Change.Clear => Answer.cleared(c, after)
       case c: Change.Remove =>
         val holds = Label.at(Level.Public, c.compartment)

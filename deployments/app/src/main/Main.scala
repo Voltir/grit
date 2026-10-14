@@ -129,7 +129,7 @@ import grit.turn.{Turn, TurnLoop}
   *     `GRIT_SLACK_REPLY_NOTE` says ([[replyNote]]: `off`, `strength` by default, or
   *     `strength-cost`); the Slack users `GRIT_ADMINS` names (ids,
   *     comma-separated) administer ([[visibility]]), and with none it says at start that no one
-  *     can lower a room's label or label a public channel. Its tools are `read`'s, as in a run with arguments:
+  *     can lower a room's label, label a public channel or set a room's baseline. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
@@ -860,7 +860,8 @@ object Main {
   /** What `grit serve` says at start when `admins` names no one; nothing when it names any. */
   private[main] def unadministered(admins: Vector[UserId]): Option[String] =
     Option.when(admins.isEmpty)(
-      s"$AdminsVar is unset: no one can lower a room's label or label a public channel"
+      s"$AdminsVar is unset: no one can lower a room's label, label a public channel or set a " +
+        "room's baseline"
     )
 
   /** The variable whose token `grit serve` sends GitHub's MCP server; unset, it serves no

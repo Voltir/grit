@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.TestAccounts
+import grit.core.model.Grade
 import grit.core.visibility.TestLabels.{compartment, group, place}
 import grit.core.visibility.{Compartment, Compartments, Explained, Label, Level, RoomAccess}
 
@@ -80,6 +81,28 @@ object AnswerTests extends TestSuite {
           "This room is back to its default label, [level: internal]; it was " +
             "[level: confidential, in: {trial}]. Conversations begun before keep theirs."
         )
+      )
+    }
+
+    test(
+      "a baseline shown says the least grade a room's turns get, and what bounds it; none says so"
+    ) {
+      Vector(Answer.baseline(Some(Grade.Standard)), Answer.baseline(None)).map(_.text) ==> Vector(
+        "This room's baseline is standard: its turns are answered by a standard model or " +
+          "stronger, as far as what they read and the day's spend allow.",
+        "This room has no baseline: each turn is answered by the model its task calls for."
+      )
+    }
+
+    test("a baseline changed says what it is now and what it was") {
+      Vector(
+        Answer.rebased(new Change.Baseline(ops, None, Some(Grade.Strong))),
+        Answer.rebased(new Change.Baseline(ops, Some(Grade.Strong), None))
+      ).map(_.text) ==> Vector(
+        "This room's baseline is now strong; it had none. Its turns are answered by a strong " +
+          "model or stronger, as far as what they read and the day's spend allow.",
+        "This room has no baseline now; it was strong. Each turn is answered by the model its " +
+          "task calls for."
       )
     }
 

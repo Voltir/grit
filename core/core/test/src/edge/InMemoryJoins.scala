@@ -3,6 +3,7 @@ package grit.core.edge
 import java.time.Instant
 
 import grit.core.identity.{Account, Standing, Vouched}
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.{InMemoryVoucher, StoreError}
 import grit.core.visibility.{InMemoryRecorded, RoomAccess}
@@ -36,12 +37,17 @@ final class InMemoryJoins(val voucher: InMemoryVoucher) extends Joins {
     val _ = records.room(room)(_.copy(quiet = on))
   }
 
+  /** Has a person set `room`'s baseline to `to`, as a command would. */
+  def baseline(room: Place, to: Option[Grade]): Unit = {
+    val _ = records.room(room)(_.copy(baseline = to))
+  }
+
   /** `room`'s access as last reported; `None` when it never was, or it was forgotten. */
   def access(room: Place): Option[RoomAccess] = records.now.rooms.get(room).flatMap(_.access)
 
-  /** Whether a person set `room`'s label or made it quiet. */
+  /** Whether a person decided anything of `room` through grit. */
   private def decided(room: Place): Boolean =
-    records.now.rooms.get(room).exists(k => k.label.nonEmpty || k.quiet)
+    records.now.rooms.get(room).exists(_.decided)
 
   private def unavailable = Left(StoreError.DatabaseError("the database is down"))
 

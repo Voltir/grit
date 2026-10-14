@@ -1,5 +1,6 @@
 package grit.core.admin
 
+import grit.core.model.Grade
 import grit.core.visibility.{
   Compartment,
   Compartments,
@@ -74,6 +75,36 @@ object Answer {
       s"This room is $now; it was ${Label.shown(change.from)}. $KeepTheirs"
     )
   }
+
+  /** A room's baseline in force (`None`: none), as `baseline` shows it to any member: the least
+    * grade its turns are routed to, never above what a turn is cleared for or what the day's
+    * spend allows.
+    */
+  def baseline(inForce: Option[Grade]): Answer =
+    Shown(
+      inForce.fold(s"This room has no baseline: $Unfloored")(g =>
+        s"This room's baseline is ${g.word}: ${floored(g)}"
+      )
+    )
+
+  /** `change` made: the baseline now, and what it was. */
+  def rebased(change: Change.Baseline): Answer = {
+    val was = change.from.fold("it had none")(g => s"it was ${g.word}")
+    Changed(
+      change,
+      change.to.fold(s"This room has no baseline now; $was. ${Unfloored.capitalize}")(g =>
+        s"This room's baseline is now ${g.word}; $was. ${floored(g).capitalize}"
+      )
+    )
+  }
+
+  /** What a room with no baseline does. */
+  private val Unfloored = "each turn is answered by the model its task calls for."
+
+  /** What a baseline of `g` does. */
+  private def floored(g: Grade): String =
+    s"its turns are answered by a ${g.word} model or stronger, as far as what they read and " +
+      "the day's spend allow."
 
   /** `change` made: what a quiet room stops, and what it keeps. */
   def quieted(change: Change.Quiet): Answer =

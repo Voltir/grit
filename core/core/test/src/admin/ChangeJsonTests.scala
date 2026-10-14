@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.TestAccounts
+import grit.core.model.Grade
 import grit.core.visibility.TestLabels.{compartment, place}
 import grit.core.visibility.{Label, Level}
 
@@ -19,7 +20,9 @@ object ChangeJsonTests extends TestSuite {
     Change.Quiet(ops, true),
     Change.Quiet(ops, false),
     Change.Clear(bo, trial),
-    Change.Remove(bo, trial)
+    Change.Remove(bo, trial),
+    Change.Baseline(ops, None, Some(Grade.Strong)),
+    Change.Baseline(ops, Some(Grade.Light), None)
   )
 
   val tests = Tests {
@@ -33,7 +36,9 @@ object ChangeJsonTests extends TestSuite {
         "quiet" -> """{"kind":"quiet","room":"slack:acme/C1","on":true}""",
         "quiet" -> """{"kind":"quiet","room":"slack:acme/C1","on":false}""",
         "clear" -> """{"kind":"clear","person":"slack:T1/U-bo","compartment":"trial"}""",
-        "remove" -> """{"kind":"remove","person":"slack:T1/U-bo","compartment":"trial"}"""
+        "remove" -> """{"kind":"remove","person":"slack:T1/U-bo","compartment":"trial"}""",
+        "baseline" -> """{"kind":"baseline","room":"slack:acme/C1","to":"strong"}""",
+        "baseline" -> """{"kind":"baseline","room":"slack:acme/C1","from":"light"}"""
       )
     }
 

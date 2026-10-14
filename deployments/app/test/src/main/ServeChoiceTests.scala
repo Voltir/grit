@@ -159,11 +159,11 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "with no administrators named, serve says no one can lower a label or label a public channel"
+      "with no administrators named, serve says no one can lower a label, label a public channel or set a baseline"
     ) {
       (Main.unadministered(Vector.empty), Main.unadministered(Vector(UserId("U012AB34")))) ==> (
         Some(
-          "GRIT_ADMINS is unset: no one can lower a room's label or label a public channel"
+          "GRIT_ADMINS is unset: no one can lower a room's label, label a public channel or set a room's baseline"
         ),
         None
       )

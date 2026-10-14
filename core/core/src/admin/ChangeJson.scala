@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.visibility.{Compartment, Label}
 
@@ -27,6 +28,12 @@ object ChangeJson {
       ujson.Obj("kind" -> c.kind, "room" -> room.written, "on" -> on)
     case Change.Clear(person, compartment) => membership(c.kind, person, compartment)
     case Change.Remove(person, compartment) => membership(c.kind, person, compartment)
+    case Change.Baseline(room, from, to) =>
+      // A baseline of none is kept as no key, as a route keeps it.
+      val o = ujson.Obj("kind" -> c.kind, "room" -> room.written)
+      from.foreach(g => o("from") = g.word)
+      to.foreach(g => o("to") = g.word)
+      o
   }
 
   /** The change `v` encodes, or why it encodes none. */
@@ -53,6 +60,12 @@ object ChangeJson {
         room <- str(o, "room").flatMap(Place.read)
         on <- bool(o, "on")
       } yield Change.Quiet(room, on))
+    case "baseline" =>
+      Some(for {
+        room <- str(o, "room").flatMap(Place.read)
+        from <- grade(o, "from")
+        to <- grade(o, "to")
+      } yield Change.Baseline(room, from, to))
     case "clear" => Some(membership(o).map(Change.Clear(_, _)))
     case "remove" => Some(membership(o).map(Change.Remove(_, _)))
     case _ => None
@@ -73,6 +86,15 @@ object ChangeJson {
 
   private def str(o: Fields, key: String): Either[String, String] =
     o.get(key).flatMap(_.strOpt).toRight(s"no $key")
+
+  /** The grade `key` names; `None` when there is no `key`. */
+  private def grade(o: Fields, key: String): Either[String, Option[Grade]] =
+    o.get(key).fold(Right(None)) { v =>
+      v.strOpt
+        .flatMap(w => Grade.values.find(_.word == w))
+        .map(Some(_))
+        .toRight(s"$key names no grade")
+    }
 
   private def bool(o: Fields, key: String): Either[String, Boolean] =
     o.get(key).flatMap(_.boolOpt).toRight(s"no $key")

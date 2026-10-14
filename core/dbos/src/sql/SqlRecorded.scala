@@ -5,6 +5,7 @@ import java.sql.Connection
 import scala.util.Using
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.store.StoreError
 import grit.core.visibility.{GroupName, Label, Recorded, RoomAccess}
 
@@ -16,7 +17,7 @@ private[dbos] object SqlRecorded {
 
   /** Every `grit.rooms` row and every `grit.group_members` row, read on `conn` in one round
     * trip. `DatabaseError` when the read fails; `Invalid` when a row names a place, account or
-    * group no value could be (a room's label fails closed instead, as [[SqlLabels.read]] does).
+    * group no value could be, or a baseline no grade's word (a room's label fails closed instead, as [[SqlLabels.read]] does).
     */
   def read(conn: Connection^): Either[StoreError, Recorded] =
     attempt {
@@ -30,7 +31,8 @@ private[dbos] object SqlRecorded {
                   place,
                   Option(rs.getString("access")),
                   Option(rs.getString("label_compartments")).map(_ => SqlLabels.read(rs)),
-                  rs.getBoolean("quiet")
+                  rs.getBoolean("quiet"),
+                  Option(rs.getString("baseline"))
                 )
               case None => Row.Member(rs.getString("group_name"), rs.getString("account"))
             })
@@ -42,7 +44,13 @@ private[dbos] object SqlRecorded {
 
   /** A row as read, before its parts are: a room's or a member's. */
   private enum Row {
-    case Room(place: String, access: Option[String], label: Option[Label], quiet: Boolean)
+    case Room(
+        place: String,
+        access: Option[String],
+        label: Option[Label],
+        quiet: Boolean,
+        baseline: Option[String]
+    )
     case Member(group: String, account: String)
   }
 
@@ -50,11 +58,15 @@ private[dbos] object SqlRecorded {
     rows
       .foldLeft[Either[String, Recorded]](Right(Recorded.Empty)) {
         case (Left(why), _) => Left(why)
-        case (Right(r), Row.Room(place, access, label, quiet)) =>
+        case (Right(r), Row.Room(place, access, label, quiet, baseline)) =>
           for {
             at <- SqlPlaces.read(place)
             reported <- access.fold(Right(None))(a => this.access(a).map(Some(_)))
-          } yield Recorded(r.rooms.updated(at, Recorded.Kept(reported, label, quiet)), r.added)
+            floor <- baseline.fold(Right(None))(b => grade(b).map(Some(_)))
+          } yield Recorded(
+            r.rooms.updated(at, Recorded.Kept(reported, label, quiet, floor)),
+            r.added
+          )
         case (Right(r), Row.Member(group, account)) =>
           for {
             g <- GroupName.of(group).left.map(why => s"a group member's group: $why")
@@ -78,15 +90,19 @@ private[dbos] object SqlRecorded {
       case other => Left(s"no access $other")
     }
 
+  /** `grit.rooms.baseline` as stored: a grade's word. */
+  private def grade(stored: String): Either[String, Grade] =
+    Grade.values.find(_.word == stored).toRight(s"no grade $stored")
+
   /** Rooms first, tagged by a place; members after, by none. */
   private val Query: String =
-    s"""SELECT array_to_json(p.path)::text AS place, r.access, r.quiet,
+    s"""SELECT array_to_json(p.path)::text AS place, r.access, r.quiet, r.baseline,
        |       ${SqlLabels.columns("l")}, NULL::text AS group_name, NULL::text AS account
        |  FROM grit.rooms r
        |  JOIN grit.places p ON p.id = r.place_id
        |  LEFT JOIN grit.labels l ON l.id = r.label_id
        |UNION ALL
-       |SELECT NULL, NULL, NULL, NULL, NULL, m.group_name, m.account
+       |SELECT NULL, NULL, NULL, NULL, NULL, NULL, m.group_name, m.account
        |  FROM grit.group_members m""".stripMargin
 
 }

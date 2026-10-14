@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.{Evidence, Held, Principal, TestAccounts}
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.visibility.TestLabels.{compartment, place}
 import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomAccess}
@@ -218,6 +219,29 @@ object AuthorityTests extends TestSuite {
         Right(Change.Quiet(ops, false)),
         Left(Refusal.InDirectMessage),
         Left(Refusal.InDirectMessage)
+      )
+    }
+
+    test(
+      "a room's baseline, set, raised, lowered or cleared, is an administrator's alone, in a public, private or direct room"
+    ) {
+      val changes = Vector(
+        Change.Baseline(ops, None, Some(Grade.Strong)),
+        Change.Baseline(ops, Some(Grade.Light), Some(Grade.Standard)),
+        Change.Baseline(ops, Some(Grade.Strong), Some(Grade.Light)),
+        Change.Baseline(ops, Some(Grade.Standard), None),
+        Change.Baseline(dm, None, Some(Grade.Strong))
+      )
+      (
+        changes.map(decide(_, By.Administrator, Some(RoomAccess.Open))),
+        changes.map(decide(_, By.Administrator)),
+        changes.map(decide(_, By.Steward(trial, acme, finance))),
+        changes.map(decide(_, By.Member, Some(RoomAccess.Open)))
+      ) ==> (
+        changes.map(Right(_)),
+        changes.map(Right(_)),
+        changes.map(_ => Left(Refusal.NotAdministrator)),
+        changes.map(_ => Left(Refusal.NotAdministrator))
       )
     }
 

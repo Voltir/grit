@@ -307,21 +307,25 @@ CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_
 CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id);
 
 -- A room grit knows beyond its conversations (ADR 0033): its access as its edge last reported
--- it, the label people set for it through grit (NULL: none), whether it is quiet, and its
--- edge's bot's membership: joined_at, left_at (each kept only when later than the other's
+-- it, the label people set for it through grit (NULL: none), whether it is quiet, its baseline,
+-- and its edge's bot's membership: joined_at, left_at (each kept only when later than the other's
 -- event, Joins.Kept), and backfilled_join, the joined_at whose backfill is done or was skipped.
 -- Every transaction reads every row when it opens (SqlRecorded).
 -- Retention: kept, until an edge's open forgets a room its bot left over a day ago
--- (Joins.KeptLeft) and has not rejoined, unless someone labelled or quieted it (Joins.forget);
--- kept that long so a join reported late is still ordered against the leave. Bounded by the
--- rooms the bots are in, those left within the day, and those labelled or quieted: tens to
--- hundreds. Its place is kept while it exists.
+-- (Joins.KeptLeft) and has not rejoined, unless someone labelled, quieted or set a baseline for
+-- it (Joins.forget); kept that long so a join reported late is still ordered against the leave.
+-- Bounded by the rooms the bots are in, those left within the day, and those people decided
+-- anything of: tens to hundreds. Its place is kept while it exists.
 CREATE TABLE IF NOT EXISTS grit.rooms (
     place_id        UUID PRIMARY KEY REFERENCES grit.places(id),
     name            TEXT,   -- the name its edge last reported (`meeting-notes`)
     access          TEXT CHECK (access IN ('open', 'invited')),
     label_id        SMALLINT REFERENCES grit.labels(id),
     quiet           BOOLEAN NOT NULL DEFAULT false,
+    -- The least grade the room's turns are routed to, set by an administrator (`baseline
+    -- <grade>`); NULL: no floor. The words copy Grade's (grit.core.model). That is fine: a new
+    -- grade needs an ALTER of this CHECK anyway, and until then writing it fails loudly.
+    baseline        TEXT CHECK (baseline IN ('light', 'standard', 'strong')),
     joined_at       TIMESTAMPTZ,
     left_at         TIMESTAMPTZ,
     backfilled_join TIMESTAMPTZ,
@@ -340,8 +344,8 @@ CREATE TABLE IF NOT EXISTS grit.group_members (
 );
 
 -- Every change made through a command (ADR 0033): who made it, when, and the change with what
--- it replaced (ChangeJson: {"kind": "relabel"|"quiet"|"clear"|"remove", …}; labels in their
--- written form, accounts as written, no names or addresses; a later kind is added, never a
+-- it replaced (ChangeJson: {"kind": "relabel"|"quiet"|"clear"|"remove"|"baseline", …}; labels
+-- in their written form, accounts as written, no names or addresses; a later kind is added, never a
 -- reuse). A change repeated keeps nothing, and refusals are not kept. Holds PII (`by`, and the
 -- accounts in `change`).
 -- Retention: kept: one row per change a person makes, at human rate (a few a week); no audit

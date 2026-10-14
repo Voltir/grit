@@ -23,6 +23,8 @@ object Authority {
     *    lower level needs `administers`, each compartment removed needs `administers` or to be
     *    in `stewards`, and replacing [[Compartment.Unmapped]] (a room's first label) needs
     *    `administers`, or a new label holding a compartment, each in `stewards`;
+    *  - a room's baseline, set, raised, lowered or cleared, in any room: only when `administers`
+    *    ([[Refusal.NotAdministrator]]), since it spends the deployment's budget;
     *  - clearing or removing a person for `c`: `administers`, or `c` in `stewards`; and
     *    clearing is refused for a `c` not in `ownGroups` ([[Refusal.NoOwnGroup]]): the
     *    compartments whose own group the deployment declares, granted it.
@@ -75,6 +77,7 @@ object Authority {
               .orElse(Option.unless(ownGroups.contains(c))(Refusal.NoOwnGroup(c)))
               .orElse(steward(c))
           case Change.Remove(_, c) => declared(c).orElse(steward(c))
+          case Change.Baseline(_, _, _) => Option.unless(administers)(Refusal.NotAdministrator)
         }
     refusal.toLeft(new Allowed(change))
   }

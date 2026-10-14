@@ -88,9 +88,9 @@ In dependency order, each with the core packages it imports:
 - **`plugin`**: features a deployment turns on (ADR 0027), each a pure bundle of contributions
   to core's points; one plugin reads another's documents only through what it exports. ← `id`,
   `period`, `store`, `document`, `job`, `tool`
-- **`admin`**: changes to who may see what that people make through grit, each kept with its
-  audit row, under one rule over what a change raises, lowers and removes. ← `place`,
-  `identity`, `visibility`, `store`
+- **`admin`**: changes to who may see what, and to a room's baseline, that people make through
+  grit, each kept with its audit row, under one rule over what a change raises, lowers and
+  removes. ← `place`, `identity`, `model`, `visibility`, `store`
 - **`edge`**: what an edge and the engine share (ADRs 0002, 0017, 0021, 0032): served edges,
   attesting, joins, deliveries and tool requests. Named for the same idea as the `grit.edge`
   module: this package is the types every side agrees on, that module the loop an edge runs

@@ -21,7 +21,7 @@ final class InMemoryRecorded {
     * of stays so when `f` records nothing either.
     */
   def room(room: Place)(f: Recorded.Kept => Recorded.Kept): Boolean = {
-    val nothing = Recorded.Kept(None, None, quiet = false)
+    val nothing = Recorded.Kept(None, None, quiet = false, baseline = None)
     val was = held.rooms.get(room)
     val now = f(was.getOrElse(nothing))
     if (was.contains(now) || (was.isEmpty && now == nothing)) false

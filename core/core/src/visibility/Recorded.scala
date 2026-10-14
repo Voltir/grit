@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.place.Place
 
 /** What people and edges have recorded about rooms and groups beyond what the deployment
@@ -20,9 +21,19 @@ final case class Recorded private[grit] (
 object Recorded {
 
   /** What is recorded of a room: its access as its edge last reported it, the label set for it
-    * through grit, and whether it is quiet (nothing is posted there unasked).
+    * through grit, whether it is quiet (nothing is posted there unasked), and its `baseline`, the
+    * least grade its turns are routed to (`None`: no floor).
     */
-  final case class Kept(access: Option[RoomAccess], label: Option[Label], quiet: Boolean)
+  final case class Kept(
+      access: Option[RoomAccess],
+      label: Option[Label],
+      quiet: Boolean,
+      baseline: Option[Grade]
+  ) {
+
+    /** Whether a person set any of it through grit: its label, quiet or baseline. */
+    def decided: Boolean = label.isDefined || quiet || baseline.isDefined
+  }
 
   /** Nothing recorded: every room labelled as the deployment declares it, no one added to any
     * group.

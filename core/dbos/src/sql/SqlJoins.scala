@@ -91,7 +91,8 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
     }
 
   /** A room's row as read: its place's id and the place, its membership, and whether a person
-    * set its label or made it quiet.
+    * decided anything of it: in SQL, the rule [[grit.core.visibility.Recorded.Kept.decided]]
+    * states; JoinsContract holds both to it.
     */
   private final case class Row(id: String, room: Place, kept: Joins.Kept, decided: Boolean)
 
@@ -102,7 +103,8 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
       Using.resource(
         conn.prepareStatement(
           s"""SELECT r.place_id::text, array_to_json(p.path)::text, r.joined_at, r.left_at,
-             |       r.backfilled_join, r.label_id IS NOT NULL OR r.quiet AS decided
+             |       r.backfilled_join, r.label_id IS NOT NULL OR r.quiet OR r.baseline IS NOT NULL
+             |         AS decided
              |  FROM grit.rooms r JOIN grit.places p ON p.id = r.place_id
              | WHERE $where${if (lock) " FOR UPDATE OF r" else ""}""".stripMargin
         )

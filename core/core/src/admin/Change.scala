@@ -1,6 +1,7 @@
 package grit.core.admin
 
 import grit.core.identity.Account
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.visibility.{Compartment, Label}
 
@@ -22,12 +23,18 @@ enum Change {
   /** `person` taken out of `compartment`'s own group, where grit added them. */
   case Remove(person: Account, compartment: Compartment)
 
-  /** `relabel`, `quiet`, `clear` or `remove`. */
+  /** `room`'s baseline, the least grade its turns are routed to, from `from` to `to` (`None`:
+    * none).
+    */
+  case Baseline(room: Place, from: Option[Grade], to: Option[Grade])
+
+  /** `relabel`, `quiet`, `clear`, `remove` or `baseline`. */
   def kind: String = this match {
     case Relabel(_, _, _) => "relabel"
     case Quiet(_, _) => "quiet"
     case Clear(_, _) => "clear"
     case Remove(_, _) => "remove"
+    case Baseline(_, _, _) => "baseline"
   }
 }
 

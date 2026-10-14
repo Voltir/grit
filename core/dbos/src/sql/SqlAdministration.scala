@@ -39,7 +39,8 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
                 person <- change match {
                   case Change.Clear(p, _) => SqlIdentities.person(p)
                   case Change.Remove(p, _) => SqlIdentities.person(p)
-                  case Change.Relabel(_, _, _) | Change.Quiet(_, _) => Right(None)
+                  case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) =>
+                    Right(None)
                 }
                 answer <- answered(allowed, person)
               } yield answer
@@ -84,6 +85,19 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
           )(_.setString(1, place)).map(_ > 0)
         }
       case Change.Quiet(room, false) => atRoom(room, "quiet = false", "r.quiet")
+      case Change.Baseline(room, _, Some(to)) =>
+        SqlPlaces.id(room).flatMap { place =>
+          update(
+            """INSERT INTO grit.rooms (place_id, baseline) VALUES (?::uuid, ?)
+              |ON CONFLICT (place_id) DO UPDATE SET baseline = EXCLUDED.baseline
+              | WHERE grit.rooms.baseline IS DISTINCT FROM EXCLUDED.baseline""".stripMargin
+          ) { ps =>
+            ps.setString(1, place)
+            ps.setString(2, to.word)
+          }.map(_ > 0)
+        }
+      case Change.Baseline(room, _, None) =>
+        atRoom(room, "baseline = NULL", "r.baseline IS NOT NULL")
       case Change.Clear(person, c) =>
         SqlIdentities.enroll(Set(person)).flatMap { _ =>
           update(

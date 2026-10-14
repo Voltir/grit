@@ -6,6 +6,7 @@ import scala.util.Using
 
 import grit.core.edge.{Joins, JoinsContract}
 import grit.core.identity.{Account, Standing, Vouched}
+import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.{Tx, Voucher}
 import grit.core.visibility.{RoomAccess, Visibility}
@@ -63,6 +64,25 @@ object SqlJoinsTests extends JoinsContract {
         }
       }
     }.fold(e => throw new java.lang.AssertionError(s"quieting: $e"), _ => ())
+
+  protected def baseline(j: Joins, room: Place, to: Option[Grade]): Unit =
+    under { (tx: Tx^) ?=>
+      SqlPlaces.id(room).flatMap { place =>
+        SqlEntryStore.attempt {
+          val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+          Using.resource(
+            conn.prepareStatement(
+              """INSERT INTO grit.rooms (place_id, baseline) VALUES (?::uuid, ?)
+                |ON CONFLICT (place_id) DO UPDATE SET baseline = EXCLUDED.baseline""".stripMargin
+            )
+          ) { ps =>
+            ps.setString(1, place)
+            ps.setString(2, to.map(_.word).orNull)
+            ps.executeUpdate()
+          }
+        }
+      }
+    }.fold(e => throw new java.lang.AssertionError(s"setting a baseline: $e"), _ => ())
 
   protected def access(j: Joins, room: Place): Option[RoomAccess] =
     under { (tx: Tx^) ?=>
