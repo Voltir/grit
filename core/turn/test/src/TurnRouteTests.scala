@@ -23,7 +23,8 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
 import grit.core.route.Uncleared
 import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
-import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Subject, Visibility}
+import grit.core.visibility.TestLabels.place
+import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Recorded, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -164,15 +165,49 @@ object TurnRouteTests extends TestSuite {
       )
     )
 
+  /** The room the turns of [[routed]] are read in. */
+  private val room = place("slack:T1/C-ops")
+
+  /** A ledger whose day has spent 0.85 of a cap of 1, so headroom is low, and that cap. */
+  private def spentMost(): (InMemoryUsageLedger, Option[grit.core.spend.DailyCap]) = {
+    val ledger = new InMemoryUsageLedger
+    ledger.now = java.time.Instant.now()
+    ledger
+      .record(
+        EntryId("earlier"),
+        say(new InMemoryEntryStore, "earlier"),
+        WorkflowId("earlier"),
+        "m",
+        None,
+        None,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("0.85"))),
+        Tokens(1)
+      )(using TestTx.fake)
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    (ledger, grit.core.spend.DailyCap.of("1").toOption)
+  }
+
+  /** Light, standard and strong pairs, each asking high effort. */
+  private val threeGrades = gradedCatalog(
+    graded(
+      (Grade.Light, bare, Some(Effort.High)),
+      (Grade.Standard, steady, Some(Effort.High)),
+      (Grade.Strong, mighty, Some(Effort.High))
+    )
+  )
+
   /** What a turn under `catalog` did, its root's task questions answering `outcome`: its route,
     * each turn pin's model and effort asked, how many model calls it made, and how many times
-    * the task questions were asked; its ledger kept in `ledger`, read for headroom under `cap`.
+    * the task questions were asked; its ledger kept in `ledger`, read for headroom under `cap`;
+    * read in [[room]], whose baseline is `baseline`, under `visibility`.
     */
   private def routed(
       catalog: Catalog,
       outcome: Either[grit.core.triage.Weighing.Unweighed, Tasking.Asked],
       ledger: InMemoryUsageLedger = new InMemoryUsageLedger,
-      cap: Option[grit.core.spend.DailyCap] = None
+      cap: Option[grit.core.spend.DailyCap] = None,
+      baseline: Option[Grade] = None,
+      visibility: Visibility = allCleared
   ) = {
     val entries = new InMemoryEntryStore
     val turn = say(entries, "why did signups drop in March?")
@@ -184,7 +219,11 @@ object TurnRouteTests extends TestSuite {
         provider,
         new RecordingProvider,
         new Asking,
-        LabelledDb(Clearance.of(internal), allCleared),
+        LabelledDb(
+          Clearance.inRoom(room, internal, internal),
+          visibility,
+          Recorded(Map(room -> Recorded.Kept(None, None, quiet = false, baseline)), Map.empty)
+        ),
         catalog,
         ledger = ledger,
         routing = routing(new Tasks(outcome, asks), ledger, cap),
@@ -221,33 +260,58 @@ object TurnRouteTests extends TestSuite {
     test(
       "at low headroom a hard root answers on the standard pin at medium effort in the default calls"
     ) {
-      val ledger = new InMemoryUsageLedger
-      ledger.now = java.time.Instant.now()
-      ledger
-        .record(
-          EntryId("earlier"),
-          say(new InMemoryEntryStore, "earlier"),
-          WorkflowId("earlier"),
-          "m",
-          None,
-          None,
-          Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("0.85"))),
-          Tokens(1)
-        )(using TestTx.fake)
-        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-      val cap = grit.core.spend.DailyCap.of("1").toOption
+      val (ledger, cap) = spentMost()
       // Three grades, so the low ceiling leaves two to choose between.
-      val threeGrades = gradedCatalog(
-        graded(
-          (Grade.Light, bare, Some(Effort.High)),
-          (Grade.Standard, steady, Some(Effort.High)),
-          (Grade.Strong, mighty, Some(Effort.High))
-        )
-      )
       val (route, pins, calls, asks, _) =
         routed(threeGrades, answered(TaskKind.Investigation, 0.72), ledger, cap)
       (route.map(r => (r.turn.assignment.ref, r.headroom)), pins, calls, asks) ==>
         (Some((steady, Headroom.Low)), Vector(steady -> Some(Effort.Medium)), 5, 1)
+    }
+
+    test("an unasked turn under a strong floor answers on the strong pin, recording the floor") {
+      val late = Left(grit.core.triage.Weighing.Unweighed.Late)
+      val (route, pins, calls, _, _) = routed(twoGrades, late, baseline = Some(Grade.Strong))
+      (route.map(r => (r.turn.assignment.ref, r.baseline)), pins, calls) ==>
+        (Some((mighty, Some(Grade.Strong))), Vector(mighty -> Some(Effort.Medium)), 5)
+    }
+
+    test(
+      "a chat root under a strong floor answers on the strong pin, at low effort, in the fewest calls"
+    ) {
+      val (route, pins, calls, asks, _) =
+        routed(twoGrades, answered(TaskKind.Chat, 0.9), baseline = Some(Grade.Strong))
+      (route.map(_.turn.assignment.ref), pins, calls, asks) ==>
+        (Some(mighty), Vector(mighty -> Some(Effort.Low)), 2, 1)
+    }
+
+    test("a floor below the grade a root wants changes nothing") {
+      val (route, pins, _, _, _) =
+        routed(twoGrades, answered(TaskKind.Investigation, 0.72), baseline = Some(Grade.Light))
+      (route.map(r => (r.turn.assignment.ref, r.baseline)), pins) ==>
+        (Some((mighty, Some(Grade.Light))), Vector(mighty -> Some(Effort.High)))
+    }
+
+    test("at low headroom a strong floor raises an unasked turn only to the standard pin") {
+      val (ledger, cap) = spentMost()
+      val late = Left(grit.core.triage.Weighing.Unweighed.Late)
+      val (route, pins, _, _, _) =
+        routed(threeGrades, late, ledger, cap, baseline = Some(Grade.Strong))
+      (route.map(r => (r.turn.assignment.ref, r.headroom)), pins) ==>
+        (Some((steady, Headroom.Low)), Vector(steady -> Some(Effort.Medium)))
+    }
+
+    test("a strong floor never takes a strong pin not cleared for what the turn knows") {
+      val steadyCleared = labelling(
+        Vector.empty,
+        Vector(
+          Cleared(Party.of(steady).getOrElse(throw new java.lang.AssertionError()), internal),
+          Cleared(Party.of(bare).getOrElse(throw new java.lang.AssertionError()), internal)
+        )
+      )
+      val late = Left(grit.core.triage.Weighing.Unweighed.Late)
+      val (route, _, _, _, _) =
+        routed(threeGrades, late, baseline = Some(Grade.Strong), visibility = steadyCleared)
+      route.map(_.turn.assignment.ref) ==> Some(steady)
     }
 
     test("a pin that asks no effort is asked none, whatever the root") {
@@ -346,7 +410,8 @@ object TurnRouteTests extends TestSuite {
                 None,
                 Headroom.Ample,
                 Route.Task.Skipped,
-                Allotment.Untouched
+                Allotment.Untouched,
+                None
               )
             )
           )

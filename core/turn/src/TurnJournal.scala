@@ -240,6 +240,7 @@ private[turn] object TurnJournal {
         if (r.headroom == Headroom.Low) o("headroom") = "low"
         writeTask(r.task).foreach(t => o("task") = t)
         if (r.allotment != Allotment.Untouched) o("allotment") = writeAllotment(r.allotment)
+        r.baseline.foreach(g => o("baseline") = g.word)
         o
       },
       v => {
@@ -268,7 +269,13 @@ private[turn] object TurnJournal {
           }
           task <- o.get("task").fold(Right(Route.Task.Skipped))(readTask)
           allotment <- o.get("allotment").fold(Right(Allotment.Untouched))(readAllotment)
-        } yield Route(classification, turn, summary, query, headroom, task, allotment)
+          baseline <- o.get("baseline").fold(Right(None)) { v =>
+            v.strOpt
+              .flatMap(w => Grade.values.find(_.word == w))
+              .map(Some(_))
+              .toRight("route: baseline names no grade")
+          }
+        } yield Route(classification, turn, summary, query, headroom, task, allotment, baseline)
       }
     )
 

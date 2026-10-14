@@ -7,7 +7,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator, ToolUse}
 import grit.core.store.{Db, StoreError, Tx}
-import grit.core.visibility.{Clearance, Label, Subject, Visibility}
+import grit.core.visibility.{Clearance, Label, Recorded, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
 /** What the moves' tests and a job's run's tests both stand their moves on: the models, the
@@ -145,13 +145,14 @@ object MovesFixtures {
   }
 
   /** Every read in one transaction opened at `clearance`, whatever its subject, under
-    * `visibility`.
+    * `visibility` and what `recorded` holds.
     */
   final class FakeDb(
       clearance: Clearance = Clearance.of(Label.Public),
-      visibility: Visibility = Visibility.Shipped
+      visibility: Visibility = Visibility.Shipped,
+      recorded: Recorded = Recorded.Empty
   ) extends Db {
     def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake(clearance, visibility))
+      body(using TestTx.fake(clearance, visibility, recorded))
   }
 }

@@ -4,9 +4,9 @@ import grit.core.act.MovesFixtures.FakeDb as LabelledDb
 import grit.core.context.AssemblyNote
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{EntrySeq, TurnRef}
-import grit.core.model.ModelRef
+import grit.core.model.{Grade, ModelRef}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
-import grit.core.visibility.{Clearance, Label, Level}
+import grit.core.visibility.{Clearance, Label, Level, Recorded}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
   * into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is what
@@ -823,6 +823,33 @@ object RecordTurnHistories {
             ),
             GradedCatalog,
             routing = routing(new Tasks(Right(HardInvestigation)))
+          )
+        )
+        recorded(durable, turn)
+      },
+      "routed-floored" -> {
+        // Its turn pins span two grades and its root's ask comes too late, so it would take
+        // its first pin; its room's strong baseline raises it to the strong one.
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "what's the standup link?")
+        val room = grit.core.visibility.TestLabels.place("slack:T1/C-ops")
+        val durable = new InMemoryDurable
+        durable.run(turn.workflowId)(
+          routedBody(
+            entries,
+            new RecordingProvider,
+            new RecordingProvider,
+            new Querying(entries),
+            LabelledDb(
+              Clearance.inRoom(room, internal, internal),
+              clearing(internal, RoutedFlash, RoutedSummary, RoutedQuery),
+              Recorded(
+                Map(room -> Recorded.Kept(None, None, quiet = false, Some(Grade.Strong))),
+                Map.empty
+              )
+            ),
+            GradedCatalog,
+            routing = routing(new Tasks(Left(grit.core.triage.Weighing.Unweighed.Late)))
           )
         )
         recorded(durable, turn)

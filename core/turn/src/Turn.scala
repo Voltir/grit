@@ -566,7 +566,8 @@ object Turn {
     * ([[Routing.atMost]]). When those are of more than one grade the root is asked the task
     * questions, outside any transaction, and [[Router.allot]] says what grade the turn wants and
     * what it lays over its calls; the turn is the pin [[Routing.pick]] gives that grade, or,
-    * with none wanted, the one a turn asked nothing takes ([[unasked]]). Summary and query take
+    * with none wanted, the one a turn asked nothing takes ([[unasked]]), raised to the room's
+    * baseline among the same pins ([[Routing.floored]]). Summary and query take
     * their first cleared pin. `Uncleared` when no turn pin is cleared; `Store` when the read
     * fails.
     */
@@ -580,13 +581,15 @@ object Turn {
       .read(Subject.Turn(turn)) {
         // Routed first: the spend read cannot raise what the turn is routed for.
         val routed = Routed.of
+        // The turn's own room is its conversation's (Subject.Turn); a gone one has none.
+        val baseline = Tx.clearance(summon[Tx^]).own.flatMap(o => Tx.baseline(o.room))
         routing.spending
           .on(routing.budget.today(now))
-          .map(spent => routed -> Router.headroom(spent, routing.budget.cap))
+          .map(spent => (routed, Router.headroom(spent, routing.budget.cap), baseline))
       }
       .left
       .map(storeFailure)
-      .flatMap { (routed, headroom) =>
+      .flatMap { (routed, headroom, baseline) =>
         def cleared(pins: grit.core.model.Pins) = routed.cleared(pins)
         val label = routed.classification.label
         cleared(profile.turn)
@@ -605,14 +608,16 @@ object Turn {
               },
               headroom
             )
+            val picked = allotment.grade.fold(unasked(pins))(Routing.pick(pins, _))
             Route(
               label,
-              allotment.grade.fold(unasked(pins))(Routing.pick(pins, _)),
+              baseline.fold(picked)(Routing.floored(pins, picked, _)),
               cleared(profile.summary).map(_.first),
               cleared(profile.query).map(_.first),
               headroom,
               task,
-              allotment
+              allotment,
+              baseline
             )
           }
       }

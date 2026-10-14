@@ -51,7 +51,8 @@ object TurnJournalTests extends TestSuite {
             Some(pin.query.first),
             Headroom.Ample,
             Route.Task.Skipped,
-            Allotment.Untouched
+            Allotment.Untouched,
+            None
           )
         )
       roundTrip(routed) ==> Right(routed)
@@ -65,7 +66,7 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
-      "a route reads back its headroom, its task asked, unanswered or skipped, and its allotment; one recorded before them reads as skipped, ample, nothing laid over"
+      "a route reads back its headroom, its task asked, unanswered or skipped, its allotment and its baseline; one recorded before them reads as skipped, ample, nothing laid over, no baseline"
     ) {
       import grit.core.allot.{Features, TaskKind, Tasking}
       import grit.core.model.{Effort, Grade}
@@ -92,7 +93,8 @@ object TurnJournalTests extends TestSuite {
           Some(pin.query.first),
           Headroom.Ample,
           Route.Task.Skipped,
-          Allotment.Untouched
+          Allotment.Untouched,
+          None
         )
       val thrice = Allotment.Calls.Scaled.of(3).getOrElse(throw new java.lang.AssertionError())
       val routes: Vector[Either[TurnFailure, Route]] = Vector(
@@ -106,6 +108,7 @@ object TurnJournalTests extends TestSuite {
           allotment =
             Allotment(None, Allotment.Reasoning.AtMost(Effort.Medium), Allotment.Calls.Fewest)
         ),
+        base.copy(baseline = Some(Grade.Strong)),
         base
       ).map(Right(_))
       routes.map(roundTrip(_)) ==> routes.map(Right(_))
@@ -116,8 +119,10 @@ object TurnJournalTests extends TestSuite {
           "turn" -> grit.core.model.CatalogJson.writePinned(base.turn)
         )
       )
-      routing.decode(before.render()).map(_.map(r => (r.headroom, r.task, r.allotment))) ==>
-        Right(Right((Headroom.Ample, Route.Task.Skipped, Allotment.Untouched)))
+      routing
+        .decode(before.render())
+        .map(_.map(r => (r.headroom, r.task, r.allotment, r.baseline))) ==>
+        Right(Right((Headroom.Ample, Route.Task.Skipped, Allotment.Untouched, None)))
     }
 
     test("a query's note keeps who served it, and one recorded before reads with none") {
