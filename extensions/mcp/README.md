@@ -60,7 +60,11 @@ made-up repository (`elsewhere-org/elsewhere`) and the others to `octocat/Hello-
 `repository_url` and every URL; titles, bodies, ids and node ids were replaced by neutral
 values and the author by `octocat`; `total_count` was set to 12; keys and their order are as
 sent. The code search read a public repository, `github/github-mcp-server`, and is as sent but
-for its second result's `repository`, set to `octocat/Hello-World`. `test/resources/toolsnaps/`
+for its second result's `repository`, set to `octocat/Hello-World`. `issue-read.json`, an
+`issue_read` result for issue 7 of `octocat/Hello-World`, was not recorded: it is the searches'
+envelope around a neutral issue in GitHub's issue JSON, standing in until a recording replaces
+it. Its readers use only the envelope: `content`'s one text block, its `type` and `text`, and
+`isError` when present. `test/resources/toolsnaps/`
 holds GitHub's write tool `issue_write`, which that server does not list, as its source lists
 it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
 (MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for

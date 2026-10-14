@@ -107,8 +107,31 @@ object LiveTurn {
       reaches: Vector[Reaches] = Vector.empty,
       knowledge: Corpora = Corpora.Empty,
       recipe: TurnRecipe = TurnRecipe.Shipped
+  ): Unit =
+    launchWith(
+      engine,
+      entries,
+      new LiveModels(provider),
+      root,
+      all,
+      answerWithin,
+      reaches,
+      knowledge,
+      recipe
+    )
+
+  /** As [[launchIn]], every model call made through `models`. */
+  def launchWith(
+      engine: Engine^,
+      entries: EntryStore,
+      models: Models^,
+      root: java.nio.file.Path,
+      all: Boolean,
+      answerWithin: FiniteDuration,
+      reaches: Vector[Reaches],
+      knowledge: Corpora,
+      recipe: TurnRecipe
   ): Unit = {
-    val models = new LiveModels(provider)
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
       new grit.lifecycle.triage.Mentions(

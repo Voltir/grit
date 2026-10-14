@@ -11,8 +11,10 @@ import grit.turn.Turn
 
 /** One phase of a crash test, run in a JVM of its own: starts a turn on the database
   * named by `GRIT_DATABASE_*` and halts the JVM, as a crash would: when the turn appends
-  * its reply, after the model call is recorded (`ProviderOnceLiveTests`); or, given
-  * `mid-stream`, part way through the model's streamed reply (`TurnRecordLiveTests`).
+  * its reply, after the model call is recorded (`ProviderOnceLiveTests`); given
+  * `mid-stream`, part way through the model's streamed reply (`TurnRecordLiveTests`); or,
+  * given `github-in-flight`, while the planted issue's turn's call to GitHub is in flight
+  * (`IntegrityGateLiveTests`, [[IntegrityTurn.crashInFlight]]).
   */
 object CrashingTurn {
 
@@ -25,6 +27,11 @@ object CrashingTurn {
   def main(args: Array[String]): Unit = {
     val config = DbConfig.fromEnv(sys.env).fold(e => sys.error(e.message), identity)
     val engine = LiveEngine.open(config, Turn.Epoch)
+    if (args.lift(1).contains("github-in-flight")) {
+      IntegrityTurn.crashInFlight(engine, args(0), Halted)
+      engine.close()
+      sys.exit(1)
+    }
     val entries = new EntryStore {
       def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
         if (entry.id == TurnRef(entry.conversationId, entry.turnSeq).replyId)

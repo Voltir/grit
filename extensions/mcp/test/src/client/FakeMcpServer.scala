@@ -417,6 +417,12 @@ object FakeMcpServer {
     */
   def githubSearch(tool: String): ujson.Obj = resource(s"/github/${tool.replace('_', '-')}.json")
 
+  /** A `tools/call` result to `issue_read` getting issue 7 of `octocat/Hello-World`, in the
+    * envelope the searches were answered in, its issue neutral and not recorded (see
+    * extensions/mcp/README.md): one text block holding the issue's JSON.
+    */
+  def githubIssue: ujson.Obj = resource("/github/issue-read.json")
+
   private def resource(path: String): ujson.Obj =
     ujson.Obj.from(
       ujson
