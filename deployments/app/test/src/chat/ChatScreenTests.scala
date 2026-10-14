@@ -11,6 +11,7 @@ import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
 import grit.tui.model.surface.{Color, Pos, Size}
 import grit.tui.runtime.app.Effect
 import grit.tui.runtime.loop.Headless
+import grit.turn.Turn
 
 import utest.*
 
@@ -288,6 +289,34 @@ object ChatScreenTests extends TestSuite {
       assert(held.exists(_.contains("■ documents 640")))
       assert(held.exists(_.contains("692 of 1k budget")))
       assert(!shown(Tokens.Zero).exists(_.contains("documents")))
+    }
+
+    test("the panel's window, for a turn that failed before assembling one, says it was not") {
+      def shown(steps: Vector[String]) =
+        Headless
+          .start(new ChatScreen.App("test-model", Theme.Default, Tokens(1000)), Size(30, 110))
+          .message(Msg.Opened)
+          .message(
+            Msg.Turn(
+              TurnView(
+                TurnSeq(0),
+                "when is the freeze?",
+                None,
+                steps.map(TurnView.Step(_, Some(3L))),
+                None,
+                None,
+                None,
+                None
+              )
+            )
+          )
+          .screen
+      val failed = shown(Vector(Turn.Step.PinModels, Turn.Step.Route, Turn.Step.RecordFailure))
+      assert(failed.exists(_.contains("window   not assembled: it failed")))
+      assert(!failed.exists(_.contains("recorded with the reply")))
+      assert(
+        shown(Vector(Turn.Step.PinModels)).exists(_.contains("window   recorded with the reply"))
+      )
     }
 
     test("the panel's tabs are pills across its top; ctrl-t and a click switch them") {

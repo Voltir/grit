@@ -263,9 +263,11 @@ final case class TurnPanel(look: Look, budget: Tokens) {
 
   /** The window as one bar: system, what came from elsewhere, the documents it held,
     * closing, recent, recalled and the turn's own message, then what is left of `budget`,
-    * each a colour, with a legend under it.
+    * each a colour, with a legend under it. A turn that failed before assembly had none.
     */
   private def window(v: TurnView): Vector[Block] = v.window match {
+    case None if v.steps.exists(_.name == Turn.Step.RecordFailure) =>
+      Vector(row(" window   " -> fg(t.faint), "not assembled: it failed" -> fg(t.faint)))
     case None =>
       Vector(row(" window   " -> fg(t.faint), "recorded with the reply" -> fg(t.faint)))
     case Some(w) =>
