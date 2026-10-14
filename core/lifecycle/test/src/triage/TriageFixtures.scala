@@ -202,7 +202,7 @@ object TriageFixtures {
         payload: Payload,
         by: Option[(String, String)],
         minutes: Long,
-        in: ConversationId = c
+        in: ConversationId
     ): Entry = {
       given Tx = TestTx.fake
       val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
