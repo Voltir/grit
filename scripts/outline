@@ -44,4 +44,30 @@ fi
 JAVA_HOME=$(cat "$java_home_file")
 export JAVA_HOME
 
+# The MCP server runs from a copy of the classes. A query rebuilds compile.dest/classes in place, and a JVM
+# that has loaded a class of the old build then fails on one it loads from the new. The copy is named for
+# this wrapper's pid, which lives as long as the server; snapshots of dead servers are removed at start.
+if [ "${1:-}" = mcp ]; then
+  snaps="$here/out/outline/mcp"
+  mkdir -p "$snaps"
+  for old in "$snaps"/*; do
+    [ -d "$old" ] || continue
+    kill -0 "${old##*/}" 2>/dev/null || rm -rf "$old"
+  done
+  snap="$snaps/$$"
+  rm -rf "$snap"
+  mkdir -p "$snap"
+  trap 'rm -rf "$snap"' EXIT
+  cp -r "$dir/compile.dest/classes" "$snap/classes"
+  sed "s|$dir/compile.dest/classes|$snap/classes|" "$launcher" > "$snap/run"
+  chmod +x "$snap/run"
+  # An asynchronous command reads /dev/null for stdin unless redirected, so the server gets stdin explicitly.
+  "$snap/run" --root "$root" "$@" <&0 &
+  child=$!
+  trap 'kill "$child" 2>/dev/null' INT TERM HUP
+  status=0
+  wait "$child" || status=$?
+  exit "$status"
+fi
+
 exec "$launcher" --root "$root" "$@"
