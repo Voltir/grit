@@ -2,9 +2,10 @@ package grit.app.chat
 
 import grit.app.look.{Look, Theme}
 import grit.core.approval.Approval
-import grit.core.id.TurnSeq
-import grit.core.message.{Cost, Tokens}
-import grit.core.spend.DailyCap
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
+import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.spend.{DailyCap, TurnSpend}
+import grit.core.store.UsageLedger
 import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.Scroller
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
@@ -62,6 +63,8 @@ object ChatScreenTests extends TestSuite {
     }
     h.effects.exists(one)
   }
+
+  private val answering = TurnRef(ConversationId("c"), TurnSeq(0))
 
   val tests = Tests {
     test("every cell has a background from the theme, none left to the terminal") {
@@ -890,6 +893,61 @@ object ChatScreenTests extends TestSuite {
       val closed = open.input(Input.Keyboard(Key.Escape))
       closed.state.modal ==> None
       assert(!closed.screen.mkString.contains("click the thinking line"))
+    }
+
+    test(
+      "a turn's spend sits faint under its reply, above its summary, and is replaced in place when it changes"
+    ) {
+      def spend(usd: String) =
+        TurnSpend.of(
+          answering,
+          Vector(
+            UsageLedger.Row(
+              answering.replyId,
+              "test/model",
+              Some("Fireworks"),
+              None,
+              Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(usd))),
+              Tokens(1)
+            )
+          )
+        )
+      val talked = typed(ready, "/summaries")
+        .input(Input.Keyboard(Key.Enter))
+        .message(
+          Msg.Arrived(
+            Vector(
+              Said(ChatScreen.Voice.User, "one", TurnSeq(0)),
+              Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
+              Said(ChatScreen.Voice.User, "two", TurnSeq(1))
+            ),
+            Some("call-model")
+          )
+        )
+      def rows(h: Headless[ChatScreen.State, Msg]) =
+        h.screen
+          .drop(1)
+          .map(_.dropRight(1).trim)
+          .filter(r => r.nonEmpty && !r.startsWith("━"))
+          .takeWhile(!_.startsWith("ᚠ"))
+      val spent = talked.message(Msg.Spent(TurnSeq(0), spend("0.0042")))
+      val summarised = spent.message(
+        Msg.Arrived(Vector(), Some("call-model"), Vector(ChatScreen.Summarised(TurnSeq(0), "said one")))
+      )
+      val again = summarised.message(Msg.Spent(TurnSeq(0), spend("0.0051")))
+      Vector(rows(spent), rows(again)) ==> Vector(
+        Vector("▌ᛗ one", "▌ᚨ first reply", "m$4.2 · test/model at Fireworks", "▌ᛗ two"),
+        Vector(
+          "▌ᛗ one",
+          "▌ᚨ first reply",
+          "m$5.1 · test/model at Fireworks",
+          "ᛚ said one",
+          "▌ᛗ two"
+        )
+      )
+      val at = again.screen.indexWhere(_.contains("m$5.1"))
+      val col = again.screen.lift(at).map(_.indexOf("m$5.1")).getOrElse(0)
+      again.painted._1.surface.at(at, col).style.fg ==> Some(Theme.Default.faint)
     }
 
     test("/summaries shows each turn's summary under its reply, faint; again hides them") {

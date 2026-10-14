@@ -5,6 +5,7 @@ import grit.app.look.{Look, Pill, Splash, Theme}
 import grit.core.approval.Approval
 import grit.core.id.{ToolCallId, TurnSeq, WorkflowId}
 import grit.core.message.Tokens
+import grit.core.spend.TurnSpend
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.Popup
 import grit.tui.components.pane.Anchor
@@ -58,11 +59,12 @@ object ChatScreen {
   final case class Summarised(turn: TurnSeq, text: String)
 
   /** One entry of the transcript, before it is styled: something said, a turn's summary,
-    * or a failure.
+    * what a turn spent, or a failure.
     */
   enum Entry extends caps.Pure {
     case Spoken(said: Said)
     case Summary(summary: Summarised)
+    case Spent(turn: TurnSeq, spend: TurnSpend)
     case Failure(reason: String)
   }
 
@@ -259,6 +261,11 @@ object ChatScreen {
 
     /** From the host: the turn the panel shows, as it now stands. */
     case Turn(view: TurnView)
+
+    /** From the host: what `turn`, which has answered, has spent so far, shown faint under its
+      * reply in place of what it was last said to have spent.
+      */
+    case Spent(turn: TurnSeq, spend: TurnSpend)
 
     /** From the host: the running turn's reply, as heard so far. */
     case Heard(hearing: Hearing)
@@ -464,6 +471,7 @@ object ChatScreen {
           (s.copy(modalReader = Scroller.update(m, s.modalReader)), Effect.NoOp)
         case Msg.CloseModal => (s.copy(modal = None), Effect.NoOp)
         case Msg.Turn(view) => (s.copy(turn = Some(view)), Effect.NoOp)
+        case Msg.Spent(t, spend) => (spent(s, Entry.Spent(t, spend)), Effect.NoOp)
         case Msg.TogglePanel => (s.copy(panel = !s.panel), Effect.NoOp)
         case Msg.NextTab => (tabbed(s, s.tab.next), Effect.NoOp)
         case Msg.ShowTab(tab) => (tabbed(s, tab), Effect.NoOp)
@@ -532,8 +540,21 @@ object ChatScreen {
       s.copy(said = said, entries = s.entries ++ entries, owners = owners)
     }
 
-    /** The whole transcript laid out again from its entries: in a new theme, or with the
-      * summaries shown or hidden.
+    /** `entry`, what its turn spent, in the transcript: in place of what that turn was last
+      * said to have spent, or added when it was said none.
+      */
+    private def spent(s: State, entry: Entry.Spent): State =
+      s.entries.indexWhere {
+        case Entry.Spent(t, _) => t == entry.turn
+        case _ => false
+      } match {
+        case -1 => recorded(s, Vector(entry))
+        case at if s.entries.lift(at).contains(entry) => s
+        case at => relaid(s.copy(entries = s.entries.updated(at, entry)))
+      }
+
+    /** The whole transcript laid out again from its entries: in a new theme, with the
+      * summaries shown or hidden, or with a turn's spend changed.
       */
     private def relaid(s: State): State =
       recorded(
@@ -542,8 +563,8 @@ object ChatScreen {
       )
 
     /** The transcript's blocks and their turns `at`, with `entry`'s placed in `look`: after
-      * the rest, or a summary (when `summaries` shows them) after the last block of its
-      * turn, which it may arrive after another turn has begun.
+      * the rest, or a spend, or a summary (when `summaries` shows them), after the last block
+      * of its turn, which it may arrive after another turn has begun.
       */
     private def placed(
         at: (Vector[Block], Vector[Option[TurnSeq]]),
@@ -552,22 +573,23 @@ object ChatScreen {
         summaries: Boolean
     ): (Vector[Block], Vector[Option[TurnSeq]]) = {
       val (blocks, owners) = at
+      def under(t: TurnSeq, block: Block) = {
+        val after = owners.lastIndexOf(Some(t)) + 1
+        val to = if (after == 0) blocks.length else after
+        (blocks.patch(to, Vector(block), 0), owners.patch(to, Vector(Some(t)), 0))
+      }
       entry match {
         case Entry.Summary(Summarised(t, text)) =>
-          if (!summaries) at
-          else {
-            val after = owners.lastIndexOf(Some(t)) + 1
-            val to = if (after == 0) blocks.length else after
-            (blocks.patch(to, Vector(look.summary(text)), 0), owners.patch(to, Vector(Some(t)), 0))
-          }
+          if (!summaries) at else under(t, look.summary(text))
+        case Entry.Spent(t, spend) => under(t, look.spent(spend.line))
         case other =>
           val more = styled(look, other)
           (blocks ++ more.map(_(0)), owners ++ more.map(_(1)))
       }
     }
 
-    /** An entry's blocks in `look`, each with the turn it belongs to; none for a summary,
-      * which [[placed]] places.
+    /** An entry's blocks in `look`, each with the turn it belongs to; none for a summary or a
+      * spend, which [[placed]] places.
       */
     private def styled(look: Look, entry: Entry): Vector[(Block, Option[TurnSeq])] =
       entry match {
@@ -576,7 +598,7 @@ object ChatScreen {
         case Entry.Spoken(Said(Voice.Reply, text, t)) => look.assistant(text).map(_ -> Some(t))
         case Entry.Spoken(Said(Voice.Tool, text, t)) => Vector(look.tool(text) -> Some(t))
         case Entry.Spoken(Said(Voice.Closed, text, t)) => look.closed(text).map(_ -> Some(t))
-        case Entry.Summary(_) => Vector.empty
+        case Entry.Summary(_) | Entry.Spent(_, _) => Vector.empty
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }
 

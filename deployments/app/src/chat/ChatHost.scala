@@ -12,7 +12,7 @@ import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
-import grit.core.spend.{Budget, Spend}
+import grit.core.spend.{Budget, Spend, TurnSpend}
 import grit.core.store.{Entry, Nearby, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Link, TurnStatus}
@@ -239,6 +239,7 @@ final class ChatHost(
         var topics: Option[TopicsView] = None
         var listened = Set.empty[TurnSeq]
         var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
+        var spendsShown = Map.empty[TurnSeq, TurnSpend]
         var settled = Set.empty[TurnSeq]
         var sessionAt = Option.empty[Option[EntrySeq]]
         var spentAt = 0L
@@ -275,6 +276,11 @@ final class ChatHost(
                   (recorded, today) <- spent(engine, conversation)
                 } {
                   costs = costs ++ read
+                  // Each turn that has answered shows what it spent under its reply, told again
+                  // as its later calls (its summary's) are recorded.
+                  val changed = ChatHost.spends(conversation, read, spendsShown)
+                  changed.foreach((t, s) => mailbox.offer(ChatScreen.Msg.Spent(t, s)))
+                  spendsShown = spendsShown ++ changed
                   settled = final1
                   sessionAt = Some(last)
                   spentAt = clock.millis()
@@ -464,6 +470,19 @@ object ChatHost {
     case InboxError.OverCap(_, _, _) => Budget.Refusal
     case other => s"not sent: $other"
   }
+
+  /** What each of `conversation`'s turns that `rows` holds the ledger rows of, and that has
+    * answered, has spent, where that is not what `shown` says it spent.
+    */
+  private[chat] def spends(
+      conversation: ConversationId,
+      rows: Map[TurnSeq, Vector[UsageLedger.Row]],
+      shown: Map[TurnSeq, TurnSpend]
+  ): Map[TurnSeq, TurnSpend] =
+    rows.keys
+      .map(t => t -> TurnSpend.of(TurnRef(conversation, t), rows.getOrElse(t, Vector.empty)))
+      .filter((t, spend) => spend.answer.nonEmpty && !shown.get(t).contains(spend))
+      .toMap
 
   /** `voice` as the status line notes it: its name, or the person's own words. */
   def voiced(voice: Voice): String = voice match {

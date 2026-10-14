@@ -194,6 +194,14 @@ final case class Look(theme: Theme) {
         StyledText.styled(what, Style.fg(theme.ink))
     )
 
+  /** What a turn spent, under its reply ([[grit.core.spend.TurnSpend.line]]): faint, set in
+    * where the reply's text begins.
+    */
+  def spent(line: String): Block.Text =
+    Block
+      .styled(StyledText.styled(line, Style.fg(theme.faint)))
+      .beside(StyledText("   "), StyledText("   "))
+
   /** A turn's summary, under its reply: faint, after Laguz (the summarising rune) set
     * under grit's, its wrapped rows hung under its text; its whitespace, line breaks
     * included, run together.
