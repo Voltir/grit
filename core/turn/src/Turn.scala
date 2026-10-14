@@ -1306,7 +1306,8 @@ object Turn {
                     answerWithin,
                     settling,
                     clock,
-                    pins
+                    pins,
+                    cell.level
                   )
               }
               settled.map(_ => ())

@@ -327,7 +327,7 @@ object CallingTests extends TestSuite {
       )
     }
 
-    test("a request answered as its wait ends is known by its answer, at either step") {
+    test("a request answered as its wait ends is its edge's answer, at either step") {
       val atExpire = new InMemoryDurable()
       val (early, edge) = sent(claimed = true)
       val answered = Meanwhile.Answered(Outcome.Done("ok"))
@@ -336,8 +336,8 @@ object CallingTests extends TestSuite {
       val (late, other) = sent(claimed = true)
       val second = waited(atAbandon, new Racing(late, atAbandon, other, Meanwhile.Quiet, answered))
       (first, second) ==> (
-        ("Known(Done(ok,None))", Vector("expire:0:0")),
-        ("Known(Done(ok,None))", Vector("expire:0:0", "abandon:0:0"))
+        ("Answered(Done(ok,None))", Vector("expire:0:0")),
+        ("Answered(Done(ok,None))", Vector("expire:0:0", "abandon:0:0"))
       )
     }
 

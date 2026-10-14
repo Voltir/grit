@@ -12,7 +12,7 @@ import grit.core.id.{ToolCallId, TurnRef}
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Integrity, Label, Subject}
 
 /** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
   * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
@@ -89,7 +89,8 @@ object TurnHosted {
       answerWithin: FiniteDuration,
       settling: TurnTools.Settling^,
       clock: Clock^,
-      pins: Turn.Picked
+      pins: Turn.Picked,
+      level: Integrity
   )(using d: Durable^): Either[TurnFailure, TurnTools.Settled] = {
     import TurnJournal.given
     val named = ToolName.value(hosted.tool)
@@ -124,22 +125,29 @@ object TurnHosted {
           }
       }
     val (requests, askers) = (hosting.requests, hosting.askers)
-    // The service the call went to, whose declared output its result is believed at; at no
-    // service (a directory, this machine), its tool's.
+    // An edge's answer is believed at the declared output of the service the call went to; at
+    // no service (a directory, this machine), its tool's. One no edge gave is grit's own words,
+    // believed at the turn's level as a refusal is; but a person's reason for declining is
+    // theirs, and believed as the edge's would be.
     val from = place.flatMap(_.service).toRight(hosted.output)
+    val own = Left(level)
     outcome.flatMap {
       case Waited.Unsent =>
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, from, clock.now())(
+          settling.answerFrom(slot, call, shown, own, clock.now())(
             pins.known.map(_ => unsent(askers, slot.turn, place))
           )
         )
-      case Waited.Phase(Awaited.Known(o)) =>
+      case Waited.Phase(Awaited.Answered(o)) =>
         d.step(slot.step)(() => settling.answer(slot, call, shown, o, from, clock.now()))
+      case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
+        d.step(slot.step)(() => settling.answer(slot, call, shown, o, from, clock.now()))
+      case Waited.Phase(Awaited.Known(o)) =>
+        d.step(slot.step)(() => settling.answer(slot, call, shown, o, own, clock.now()))
       case Waited.Phase(Awaited.Unread(failure)) =>
         // A wait refused after a rise is unread too: the turn fails here, before its next call.
         d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, from, clock.now())(
+          settling.answerFrom(slot, call, shown, own, clock.now())(
             pins.known.map(_ => unreadable(failure))
           )
         )

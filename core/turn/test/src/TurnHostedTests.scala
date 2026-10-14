@@ -447,6 +447,38 @@ object TurnHostedTests extends TestSuite {
       ) ==> (1, 1, true, true, false)
     }
 
+    test(
+      "an answer no edge gave is grit's own, believed at the turn's level; an edge's, at its service's"
+    ) {
+      def believed(serve: Serve, askers: Option[Principal] = None): Option[Integrity] = {
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "search")
+        val durable = new InMemoryDurable
+        val edge = atGithub(durable, _ => serve)
+        val provider = model(("t1", "github_search", "grit"))
+        durable.run(turn.workflowId)(linkedBody(entries, provider, edge)) ==> Done
+        entries
+          .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
+          .toOption
+          .flatten
+          .map(_.integrity)
+      }
+      // Unclaimed: "No edge is serving github right now".
+      believed(Serve.Never) ==> Some(Integrity.Member)
+      believed(Serve.Now(Outcome.Done("found"))) ==> Some(Integrity.Untrusted)
+      // Unsent: "This turn has no asker to make this call for".
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
+      durable.run(turn.workflowId)(
+        hostedBody(entries, model(("t1", "fetch", "a.txt")), edge, askers = askedBy(None))
+      ) ==> Done
+      entries
+        .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
+        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Member))
+    }
+
     test("a request at a service no edge claims in time is answered that nothing serves it") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "search")

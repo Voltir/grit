@@ -348,12 +348,14 @@ object DurableMoves {
             subject,
             None
           ) match {
-            case Awaited.Rung(_) | Awaited.Known(Outcome.Done(_, _)) =>
+            case Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _)) =>
               d.transact(MoveSteps.answer(name), subject)((tx: Tx^) ?=>
                 Calling.answer[String](requests, cs).map(called(_, Tx.floor(tx)))
               ).left
                 .map(MoveError.Store(_))
-            case Awaited.Known(Outcome.Interrupted) => Right(Called.Interrupted)
+            case Awaited.Answered(Outcome.Interrupted) | Awaited.Known(Outcome.Interrupted) =>
+              Right(Called.Interrupted)
+            case Awaited.Answered(o) => Right(Called.Failed(failed(o)))
             case Awaited.Known(o) => Right(Called.Failed(failed(o)))
             case Awaited.Unread(why) => Left(MoveError.Store(why))
           }

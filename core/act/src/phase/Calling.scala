@@ -38,8 +38,11 @@ enum Awaited[F] {
   /** Its edge rang: the answer is on the request, read by [[Calling.answer]]. */
   case Rung(cs: CallSlot)
 
-  /** Known without reading the request again: no edge claimed it, or it was answered before
-    * the wait ended, or abandoned.
+  /** Its edge's answer, found on the request when the wait ended: the edge's words. */
+  case Answered(outcome: Outcome)
+
+  /** Known without an edge's answer: no edge claimed it, or the one that did was abandoned.
+    * grit's own words.
     */
   case Known(outcome: Outcome)
 
@@ -164,9 +167,9 @@ object Calling {
 
   /** The wait for the request at `cs`, sent by a step that committed: `Rung` when its edge
     * rings within [[ServeWithin]]; else `steps.expire` settles it (a transact step for
-    * `subject`): answered meanwhile, `Known` with the answer; unclaimed, `Known` with a `Failed`
+    * `subject`): answered meanwhile, `Answered`; unclaimed, `Known` with a `Failed`
     * naming `place`'s service, or saying no edge serves it; claimed, waited on [[RunWithin]]
-    * more, then `Rung`, or `steps.abandon`: answered meanwhile, `Known`, else
+    * more, then `Rung`, or `steps.abandon`: answered meanwhile, `Answered`, else
     * `Known(Interrupted)`. A step that cannot read the request is `Unread`, as is one whose
     * transaction knows more than `bound` ([[Tx.within]], checked first, saying to ask again;
     * `None`: unbounded). Its steps record what they found in `F`'s form.
@@ -191,7 +194,7 @@ object Calling {
           standing(within(bound).flatMap(_ => requests.settle(cs)))
         ) match {
           case Left(failure) => Awaited.Unread(failure)
-          case Right(RequestState.Answered(o)) => Awaited.Known(o)
+          case Right(RequestState.Answered(o)) => Awaited.Answered(o)
           case Right(RequestState.Expired) =>
             Awaited.Known(Outcome.Failed(place.flatMap(_.service).fold(NoEdge)(noService)))
           case Right(RequestState.Claimed) =>
@@ -202,7 +205,7 @@ object Calling {
                   standing(within(bound).flatMap(_ => requests.abandon(cs)))
                 ) match {
                   case Left(failure) => Awaited.Unread(failure)
-                  case Right(RequestState.Answered(o)) => Awaited.Known(o)
+                  case Right(RequestState.Answered(o)) => Awaited.Answered(o)
                   case Right(_) => Awaited.Known(Outcome.Interrupted)
                 }
             }
