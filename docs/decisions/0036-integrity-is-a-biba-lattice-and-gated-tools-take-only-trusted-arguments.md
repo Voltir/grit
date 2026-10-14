@@ -1,6 +1,6 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13)
+Status: accepted (2026-10-13), revised (2026-10-14)
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labels what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a call that writes
 out of grit. Layout defences were measured and failed: a forged record placed in grit's own
@@ -16,6 +16,13 @@ integrity label, each stored, combined and checked on its own. Alternatives turn
 - Storing each (confidentiality, integrity) pair as one interned id: it couples the dimensions
   in storage and multiplies every read filter's id set, though integrity never hides a row.
 - Endorsement before gates: soundness does not need it.
+- For what a turn reads below its level: showing everything and lowering (one read of a
+  relaying service's result costs every writing tool for the rest of the turn, and through its
+  summaries the conversation's); hiding every such item, as FIDES does (a read round per result
+  in turns that lose nothing by reading); re-offering a withheld tool as one that asks a person
+  (approval fatigue is measured high).
+- For a job: one cell per run, as in a turn. A planner is code, and one that reads an untrusted
+  value for one call would lose every gated call after it.
 
 Decision:
 
@@ -43,14 +50,28 @@ Decision:
 - **Gates (FIDES' trusted-action policy).** Each hosted tool declares a required integrity
   beside its destinations (ADR 0031's send check is the permitted-flow policy). A tool the
   turn's current level does not meet is not offered. By default, a tool that writes out of grit
-  requires member, and a read-only tool requires nothing. A tool result below the turn's level
-  is kept as a pointer: the model may pass it to a tool by name without reading it, and reading
-  it lowers the turn.
+  requires member, and a read-only tool requires nothing.
+- **What a turn reads.** Before each model call a recorded step decides, by one pure rule over
+  the round's items in request order, what the model reads. An item whose integrity the turn's
+  level dominates is shown. One below it is shown, and lowers the level, when lowering withholds
+  no tool the turn is offered now, or when the model asked to read it (`read_hidden`);
+  otherwise it is hidden: shown as a stub naming it, its source, its level, and the tools
+  reading it would withdraw. The tools the level reached does not meet are withheld. The step
+  records every item below the prior level with its integrity and fate, so the request and a
+  replay read no row.
+- **A job carries taint per value.** A move's inputs and results are tainted values at their own
+  integrity: `call` checks its arguments against the tool's requirement, `ask` answers at the
+  integrity of what it posed, and a run's inputs arrive trusted at its schedule's integrity.
+  `keep` requires outside: a document or card is kept at the integrity of the value kept, and
+  refused below outside.
 - **Endorsement** only raises a level, so soundness never depends on it. Only a holder of the
   `Endorse` capability may endorse: the integrity tree's step and the ask flow. Only a value of
   bounded capacity may be endorsed, at most K bits, where K is a declared constant; free text is
   never endorsed. A classifier labels features and code decides. A classifier's verdict raises
-  untrusted to outside at most. The integrity tree returns `Either` and never throws on content,
+  untrusted to outside at most. `extract` asks a typed, bounded question of a hidden item (yes
+  or no, a number in a range, a day, one of a listed set, a short token), answered by a
+  quarantined model call shown only the item and the question; the answer is endorsed at the
+  turn's level met with member, so an extraction never reaches authority. The integrity tree returns `Either` and never throws on content,
   since a thrown step is recorded and replayed, and its presence leaks a bit.
 - **In SQL.** A second interned table beside the confidentiality one, and an `integrity_id
   SMALLINT NOT NULL` column with no lasting default on each labelled row. In the same migration,
@@ -64,12 +85,18 @@ Decision:
   package.
 
 Consequences: a conversation's summaries carry its lowest level, so taint outlives the turn
-that read the untrusted text. Lost tools are measured per conversation, and a bound on that
-rate over real traffic is part of being done. Soundness rests on every reader of untrusted
-content returning `Tainted`, so raw readers live only in the flow package, which a law rule
-enforces. grit is not compiled in Scala's safe mode, so a pure closure can still leak through
-mutation, I/O or `throw`; safe mode returns for code agents write. K bounds each endorsement,
-not a turn. Separation checking gives the turn's cell exclusivity, not monotonicity; the cell's
+that read the untrusted text. A turn that offers no writing tool, or reads only member text,
+runs at the rounds and tokens it did before; hiding is paid only where it saves a tool. Lost tools are measured per conversation, and a bound on that
+rate over real traffic is part of being done. Soundness rests on every piece of untrusted
+content that steers an effect arriving `Tainted`. Integrity enters the types at three places:
+a turn's model reply, stamped by its cell and checked against a tool's requirement when a call
+is bound; a job's moves (`call`, `ask`, `keep`); and endorsement (`endorse`, `extract`, the
+integrity tree's raise). Rows, and every reader of an entry's payload (assembly, the lifecycle,
+the turn's request), are data: what they read is gated by the level each row was written at,
+pinned by the store contract and the gate's recorded output. A law rule guards who may mint
+`Tainted`, `Trusted` and the capabilities, not who reads rows. grit is not compiled in Scala's
+safe mode, so a pure closure can still leak through mutation, I/O or `throw`; safe mode returns
+for code agents write. K bounds each endorsement, not a turn. Separation checking gives the turn's cell exclusivity, not monotonicity; the cell's
 single mutator gives monotonicity. Each labelled table needs an `ALTER`. Enforced by capture
 probes (pure combinators, unforgeable capabilities, no `Bounded` for free text, no gated call
 with unchecked arguments), the store contract for the insert's cap, and the law rule.
