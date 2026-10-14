@@ -2,8 +2,10 @@
 # Every escape hatch carries its proof (STYLE.md rule 11): refuses each `caps.unsafe` use
 # (`untrackedCaptures`, `unsafeAssumePure`, imported or spelled out) in every Scala source the
 # checkout tracks (main, test, it and probes) that has no comment beside it, naming each as
-# file:line. A proof is a comment on the use's line, or a comment line directly above it (no
-# blank line between). One proof covers a run of annotated declarations: each `@untrackedCaptures`
+# file:line. A proof is a non-doc comment (`//`, or a `/* … */` block that does not open `/**`) on
+# the use's line, or in the comment lines directly above it (no blank line between). A Scaladoc
+# (`/** … */`) is never a proof, though a `//` reason may sit just above it or just below it. One
+# proof covers a run of annotated declarations: each `@untrackedCaptures`
 # at the indentation of the first, with no unannotated line at that indentation or shallower
 # between them (blank lines, comments and a declaration's deeper continuation lines do not end
 # the run). An `unsafeAssumePure` is a call, never part of a run: each needs its own.
@@ -25,16 +27,17 @@ git ls-files -- '*/src/*.scala' |
   sort |
   xargs awk '
     function indent(s) { match(s, /^[ \t]*/); return RLENGTH }
-    FNR == 1 { above = 0; run = 0; inblock = 0; pending = 0 }
+    FNR == 1 { above = 0; run = 0; inblock = 0; doc = 0; pending = 0 }
     {
       if (inblock) {
-        above = 1
+        if (!doc) above = 1
         if ($0 ~ /\*\//) inblock = 0
         next
       }
       if ($0 ~ /^[[:space:]]*$/) { above = 0; next }
       if ($0 ~ /^[[:space:]]*(\/\/|\/\*|\*)/) {
-        above = 1
+        doc = ($0 ~ /^[[:space:]]*\/\*\*/)
+        if (!doc && $0 ~ /^[[:space:]]*(\/\/|\/\*)/) above = 1
         if ($0 ~ /^[[:space:]]*\/\*/ && $0 !~ /\*\//) inblock = 1
         next
       }

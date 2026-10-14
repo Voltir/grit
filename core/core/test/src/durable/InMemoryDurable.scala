@@ -72,18 +72,22 @@ final class InMemoryDurable(
   /** The workflows whose step body is running now. Kept here, not on the run, so a
     * [[StreamWriter]] need not capture the [[Durable]] it came from.
     */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing outside the fake holds it.
   @untrackedCaptures
   private var stepping = Set.empty[WorkflowId]
 
   /** Each workflow's messages not yet received, by topic, oldest first. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing outside the fake holds it.
   @untrackedCaptures
   private var mail = Map.empty[(WorkflowId, String), Vector[String]]
 
   /** The idempotency keys of every message sent. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing outside the fake holds it.
   @untrackedCaptures
   private var sent = Set.empty[String]
 
   /** The workflows a [[run]] or [[replay]] has started. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing outside the fake holds it.
   @untrackedCaptures
   private var started = Set.empty[WorkflowId]
 
@@ -104,6 +108,7 @@ final class InMemoryDurable(
     mail.getOrElse((id, topic), Vector.empty)
 
   /** How far the last run of each workflow got through its journal. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing outside the fake holds it.
   @untrackedCaptures
   private var reached = Map.empty[WorkflowId, Int]
 
