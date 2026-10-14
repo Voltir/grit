@@ -92,6 +92,14 @@ if [ -n "$parts" ]; then
   failed=1
 fi
 
+# TRAP: rule 1f's integrity twin, as above.
+parts=$(names -w 'IntegrityParts' | grep -vE '^core/core/(src|test/src)/visibility/|^core/dbos/' || true)
+if [ -n "$parts" ]; then
+  echo "Only grit.dbos and core's visibility package may name IntegrityParts; these sources do:" >&2
+  printf '  %s\n' $parts >&2
+  failed=1
+fi
+
 # TRAP: rule 1g, as 1f above: only core's visibility package and grit.dbos may name
 # Maintenance.
 maintenance=$(names -w 'Maintenance' | grep -vE '^core/core/(src|test/src)/visibility/|^core/dbos/' || true)

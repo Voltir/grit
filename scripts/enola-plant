@@ -149,6 +149,7 @@ def plant_cycle():
 # Each name grep's heading in the law's output, and the fully qualified use that must trip it.
 NAMES = {
     "may name LabelParts": "grit.core.visibility.LabelParts",
+    "may name IntegrityParts": "grit.core.visibility.IntegrityParts",
     "may name Maintenance": "grit.core.visibility.Maintenance",
     "may name grit.dbos.internal": "grit.dbos.internal.Reader",
     "may name PrincipalIds": "grit.core.id.PrincipalIds",

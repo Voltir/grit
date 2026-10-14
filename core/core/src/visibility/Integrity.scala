@@ -55,9 +55,7 @@ object Integrity {
   /** [[Level.Member]], no compartment. */
   val Member: Integrity = at(Level.Member)
 
-  /** grit's own text: [[Level.Authority]] in every one of `compartments`; the meet's identity.
-    * Never a row's level.
-    */
+  /** grit's own text: [[Level.Authority]] in every one of `compartments`; the meet's identity. */
   def top(compartments: Compartments): Integrity =
     at(Level.Authority, compartments.declared.toVector*)
 
@@ -126,6 +124,9 @@ object Integrity {
 
   /** `i`'s compartments, in order, for this package's own checks. */
   private[visibility] def compartments(i: Integrity): Vector[Compartment] = i.compartments.toVector
+
+  /** `i`'s level, for this package's own checks. */
+  private[visibility] def level(i: Integrity): Level = i.level
 }
 
 /** The deployment declares what `service`'s results are believed at: a service that relays
@@ -133,3 +134,29 @@ object Integrity {
   * `Untrusted`.
   */
 final case class Output(service: Service, integrity: Integrity) derives CanEqual
+
+/** An integrity as the level and compartments it is stored as (`grit.integrity_labels`), for the
+  * code that stores and checks integrity (`grit.core.visibility`, `grit.dbos`) and for nothing
+  * else (enola-intent.yaml).
+  */
+object IntegrityParts {
+
+  /** `i`'s level as stored: its rank on core's scale, from 0 for [[Integrity.Level.Untrusted]]. */
+  def rank(i: Integrity): Int = Integrity.level(i).ordinal
+
+  /** `i`'s compartments' names, distinct and sorted bytewise: the form
+    * `grit.canonical_compartments` keeps.
+    */
+  def compartments(i: Integrity): Vector[String] =
+    Integrity.compartments(i).map(Compartment.name)
+
+  /** The integrity stored as `rank` and `compartments`. Total, and failing closed: a rank naming
+    * no level reads as [[Integrity.Level.Untrusted]], and a name that is no compartment's
+    * ([[Compartment.of]]) is dropped, so it is endorsed in none it cannot name.
+    */
+  def of(rank: Int, compartments: Vector[String]): Integrity =
+    Integrity.at(
+      Integrity.Level.values.lift(rank).getOrElse(Integrity.Level.Untrusted),
+      compartments.flatMap(Compartment.of(_).toOption)*
+    )
+}
