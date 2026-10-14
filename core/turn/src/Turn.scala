@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.act.phase.{Asking, Calling, Hearing}
-import grit.core.allot.{Allotment, Headroom, Router}
+import grit.core.allot.{Allotment, Router}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document, DocumentSearch, Pointer}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
