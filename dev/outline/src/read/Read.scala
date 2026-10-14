@@ -8,7 +8,7 @@ import scala.tasty.inspector.{Inspector, Tasty, TastyInspector}
 import scala.util.control.NonFatal
 
 import grit.outline.locate.{Layout, Locate, Root}
-import grit.outline.model.{Defn, Kind, Lines, Use}
+import grit.outline.model.{Closing, Defn, Kind, Lines, Use}
 
 /** Reads TASTy files into definitions, each with its source slices. Each inspector call is a fresh compiler run, so no compiler context is shared between roots. */
 object Read {
@@ -344,6 +344,7 @@ object Read {
             head = s"$pastTheEndNote$signature",
             body = None,
             size = None,
+            closing = None,
             members = members,
             refs = refs,
             parents = parents,
@@ -430,6 +431,14 @@ object Read {
             if (hasBody && inSpan && headEnd < lastLine)
               Some(text.wholeLines(headEnd + 1, lastLine))
             else None
+          // A last line of closing brackets alone comes with the line before it, so an Edit anchored on them matches once.
+          val closing =
+            if (headEnd >= lastLine) None
+            else {
+              val last = text.line(lastLine).trim
+              val from = if (last.forall(")]}".contains(_))) lastLine - 1 else lastLine
+              Some(Closing(from, text.wholeLines(from, lastLine)))
+            }
           val flags = sym.flags
           Defn(
             kind = kindOf(tree, sym),
@@ -447,6 +456,7 @@ object Read {
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8)
                 .length
             ),
+            closing = closing,
             members = members,
             refs = refs,
             parents = parents,

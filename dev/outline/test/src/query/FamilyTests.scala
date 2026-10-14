@@ -87,6 +87,15 @@ object FamilyTests extends TestSuite {
       )
     }
 
+    test("the trait's closing lines end its entry, after its members: Store's 10-11") {
+      val lines = family("Store", None, false)._1.text.linesIterator.toVector
+      val at = lines.indexOf("10-11 end of Store")
+      assert(at > lines.indexWhere(_.startsWith("9-10 def Store.put")))
+      assert(
+        lines.slice(at + 1, at + 3) == Vector("  def put(key: String, value: String): Store", "}")
+      )
+    }
+
     test("with member put, the trait's put prints its doc and signature as the file's own lines") {
       val (answer, _) = family("Store", Some("put"), false)
       val lines = answer.text.linesIterator.toVector

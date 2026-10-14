@@ -120,7 +120,10 @@ object RenderTests extends TestSuite {
     // The lines printed under the entry whose header starts with `header`, up to the next header or the KB line.
     def under(out: String, header: String): Vector[String] = {
       val lines = out.split("\n", -1).toVector
-      lines.dropWhile(!_.startsWith(header)).drop(1).takeWhile(!_.startsWith("["))
+      lines
+        .dropWhile(!_.startsWith(header))
+        .drop(1)
+        .takeWhile(l => !l.startsWith("[") && !l.matches("""\d+-\d+ .*"""))
     }
 
     test("show prints a member's head and body as the file's own lines") {
@@ -160,6 +163,48 @@ object RenderTests extends TestSuite {
       val out = Render.show(of3, noTraced, read, Set.empty, Set.empty, false, 80000)
       val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
       assert(under(out, "30-33 ") == file.slice(29, 31))
+    }
+
+    test(
+      "a definition shown without its body ends with its last line under an end-of header: Limits.of's line 33"
+    ) {
+      val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
+      val out = Render.show(of3, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(under(out, "33-33 end of Limits.of") == file.slice(32, 33))
+    }
+
+    test(
+      "a last line of closing brackets alone comes with the line before it: Outer.Inner.deep's 72-73"
+    ) {
+      val deep = named(read, "grit.outline.fixture.Outer.Inner.deep")
+      val out = Render.show(deep, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(under(out, "72-73 end of Outer.Inner.deep") == file.slice(71, 73))
+    }
+
+    test("a type's closing lines follow its members' entries: object Limits ends with its 35-36") {
+      val limits =
+        named(read, "grit.outline.fixture.Limits").filter(_.kind == grit.outline.model.Kind.Object)
+      val out = Render.show(limits, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val lines = out.split("\n").toVector
+      val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
+      assert(under(out, "35-36 end of Limits") == file.slice(34, 36))
+      assert(
+        lines.indexWhere(_.startsWith("35-36 end of Limits")) >
+          lines.indexWhere(_.startsWith("33-33 end of Limits.of"))
+      )
+    }
+
+    test(
+      "a definition whose head reaches its last line, or shown with its body, has no closing lines: A.keep, and Limits.of with --body"
+    ) {
+      val keep = named(read, "grit.outline.fixture.A.keep")
+      val of3 = named(read, "grit.outline.fixture.Limits.of").filter(_.signature.contains("extra"))
+      val keepOut = Render.show(keep, noTraced, read, Set.empty, Set.empty, false, 80000)
+      val ofOut = Render.show(of3, noTraced, read, Set.empty, Set("of"), false, 80000)
+      assert(!keepOut.contains(" end of "))
+      assert(!ofOut.contains(" end of "))
     }
   }
 }

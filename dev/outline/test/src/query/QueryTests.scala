@@ -336,7 +336,7 @@ object QueryTests extends TestSuite {
       )
       assert(
         answer.text.contains(
-          "\n  68-77 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
+          "\n  69-78 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
         )
       )
     }
@@ -426,7 +426,7 @@ object QueryTests extends TestSuite {
           false,
           80000
         )
-      assert(answer.text.contains("\n  10-36 OneLineTests: helper defn\n"))
+      assert(answer.text.contains("\n  10-37 OneLineTests: helper defn\n"))
     }
   }
 }

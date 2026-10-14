@@ -39,7 +39,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; `stale` files' headers flagged; cut at `cap` bytes. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; each definition printed without its body ends with its closing lines, a type's after its members; `stale` files' headers flagged; cut at `cap` bytes. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -53,12 +53,15 @@ object Render {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
 
-    def entry(d: Defn): Vector[String] =
+    def headed(d: Defn): Vector[String] =
       Vector(
         s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}${sizeTag(d.size)}",
         d.head
-      ) ++
-        (if (bodies.contains(d.name)) d.body.toVector else Vector.empty)
+      )
+
+    def entry(d: Defn): Vector[String] =
+      headed(d) ++
+        (if (bodies.contains(d.name) && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
     def namedEntry(d: Defn): Vector[String] = {
       val typeKind = d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
@@ -70,7 +73,7 @@ object Render {
             .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
             .flatMap(entry)
         else Vector.empty
-      entry(d) ++ members
+      if (typeKind) headed(d) ++ members ++ closingLines(d) else entry(d)
     }
 
     // Each entry is its lines; a file's header rides on its first entry, so a cut never leaves a bare header.
@@ -131,23 +134,23 @@ object Render {
     case Kind.Opaque => "opaque type"
   }
 
-  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
+  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. The trait ends with its closing lines, and each member it shows without its body with the member's. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
   def family(f: Family, all: Vector[Defn], header: String, stale: Set[String], cap: Int): String = {
     def headerOf(d: Defn): String =
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
 
     def block(d: Defn, body: Boolean): Vector[String] =
-      Vector(headerOf(d) + sizeTag(d.size), d.head) ++ (if (body) d.body.toVector else Vector.empty)
+      Vector(headerOf(d) + sizeTag(d.size), d.head) ++
+        (if (body && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
-    val traitLines: Vector[String] = f.member match {
-      case None =>
-        block(f.trait0, false) ++ f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
-      case Some(m) =>
-        Vector(headerOf(f.trait0) + sizeTag(f.trait0.size), f.trait0.head) ++
-          f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
-    }
+    // The trait's closing lines come after its members' entries.
+    val traitLines: Vector[String] =
+      Vector(headerOf(f.trait0) + sizeTag(f.trait0.size), f.trait0.head) ++ (f.member match {
+        case None => f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
+        case Some(m) => f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
+      }) ++ closingLines(f.trait0)
 
     def implLines(d: Defn): Vector[String] = {
       val head = s"${headerOf(d)}  ${signatureOf(d)}${sizeTag(d.size)}"
@@ -395,6 +398,12 @@ object Render {
   }
 
   private def bytesOf(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** `d`'s closing lines under an `NN-MM end of <name>` header, for a definition printed without its body; none when it has none. */
+  private def closingLines(d: Defn): Vector[String] =
+    d.closing.toVector.flatMap(c =>
+      Vector(s"${c.start}-${d.lines.end} end of ${ownerRelative(d)}", c.text)
+    )
 
   /** What a definition line ends with: its `size` in bytes as `  [N.N KB]`, to one decimal and at least 0.2; nothing when the size is unknown. */
   private def sizeTag(size: Option[Int]): String =

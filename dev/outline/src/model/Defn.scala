@@ -12,12 +12,17 @@ final case class Lines(start: Int, end: Int)
 /** A type a signature names; `topLevel` names the `.tasty` file it lives in. */
 final case class Ref(fullName: String, topLevel: String, inRepo: Boolean)
 
+/** A definition's closing source lines from line `start`, verbatim, for an Edit to anchor on: its last line, or its last two
+  * when the last holds only closing brackets, since a lone `}` matches too often to Edit on.
+  */
+final case class Closing(start: Int, text: String)
+
 /** One definition read from the TASTy: `file` is repo-relative. `head` is the whole source lines from its doc (or its first line)
   * through its signature's, and `body` the whole lines after them, both verbatim; `doc` and `signature` are the same text cut to
   * their own spans, for one-line outlines. A definition whose span runs past the end of its current source (cut shorter since
   * the compile) has the compiler's signature as `signature`, `head` that signature on a `--` line saying it is not file text,
-  * `lines` as compiled, and no `doc`, `body` or `size`. `size` is the UTF-8 bytes of the whole source lines `lines` spans,
-  * doc included, newlines between them and none after.
+  * `lines` as compiled, and no `doc`, `body`, `size` or `closing`. `size` is the UTF-8 bytes of the whole source lines `lines`
+  * spans, doc included, newlines between them and none after. `closing` is none when `head` already ends on the last line.
   */
 final case class Defn(
     kind: Kind,
@@ -30,6 +35,7 @@ final case class Defn(
     head: String,
     body: Option[String],
     size: Option[Int],
+    closing: Option[Closing],
     members: Vector[Defn],
     refs: Vector[Ref],
     parents: Vector[String],
