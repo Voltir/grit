@@ -26,7 +26,7 @@ object ToolSet {
     * [[Writes.Field]]; `writes`, where its calls write outside grit, `None` for a tool that
     * declares no such destination (its arguments still go to the service it runs at);
     * `requires`, the integrity a call must be stamped at to be bound ([[Toolbox.bind]]), by
-    * default its shape's ([[Entry.byShape]]).
+    * default its shape's ([[Entry.byShape]]); `action`, its spec's ([[ToolSpec.action]]).
     */
   final case class Entry(
       name: ToolName,
@@ -35,8 +35,14 @@ object ToolSet {
       asks: Boolean,
       retry: Retry,
       writes: Option[Writes[Place]],
-      requires: Integrity
+      requires: Integrity,
+      action: Option[String]
   ) {
+
+    /** What a person can no longer have done when its calls are withheld, in words that follow
+      * "you can't": its `action`, else "use" and its name ("use note").
+      */
+    def plainly: String = action.getOrElse(s"use ${ToolName.value(name)}")
 
     /** This entry as a call may reach it from a transaction that `sends` its arguments to the
       * service it runs at, or not: one that declares no destination only when it does; one
@@ -59,8 +65,9 @@ object ToolSet {
         parameters: ujson.Value,
         asks: Boolean,
         retry: Retry,
-        writes: Option[Writes[Place]] = None
-    ): Entry = Entry(name, does, parameters, asks, retry, writes, byShape(writes))
+        writes: Option[Writes[Place]] = None,
+        action: Option[String] = None
+    ): Entry = Entry(name, does, parameters, asks, retry, writes, byShape(writes), action)
 
     /** What a tool requires unless it declares otherwise: [[Integrity.Member]] for one that
       * writes outside grit (`writes` is some), nothing ([[Integrity.Untrusted]]) otherwise.
@@ -83,8 +90,9 @@ object ToolSet {
   /** The stored form: `{"tools":[{"name","does","parameters","asks","retry"}, …]}`, in the
     * set's order, an entry with writes also holding `"writes": {"describe", "to": [{"name",
     * "place"}, …]}`, each place written, and one whose `requires` is not its shape's
-    * ([[Entry.byShape]]) holding `"requires"`, written ([[Integrity.written]]). Each only on
-    * an entry that has it, so a set without any keeps the form, and the id, it had before.
+    * ([[Entry.byShape]]) holding `"requires"`, written ([[Integrity.written]]), and one with an
+    * action holding `"action"`. Each only on an entry that has it, so a set without any keeps
+    * the form, and the id, it had before.
     * The id hashes it, so a change here changes every set's id.
     */
   def write(set: ToolSet): ujson.Value =
@@ -107,13 +115,14 @@ object ToolSet {
         }
         if (e.requires != Entry.byShape(e.writes))
           stored("requires") = Integrity.written(e.requires)
+        e.action.foreach(a => stored("action") = a)
         stored
       })
     )
 
   /** The set stored as `v` ([[write]]'s form), or why it is none; why not, also, when an
     * entry's parameters declare [[Writes.Field]]. An entry holding no `"requires"` requires
-    * what its shape does ([[Entry.byShape]]).
+    * what its shape does ([[Entry.byShape]]); one holding no `"action"` has none.
     */
   def read(v: ujson.Value): Either[String, ToolSet] = {
     def field(o: collection.Map[String, ujson.Value], key: String): Either[String, ujson.Value] =
@@ -139,7 +148,12 @@ object ToolSet {
           .fold[Either[String, Integrity]](Right(Entry.byShape(writes)))(r =>
             r.strOpt.toRight("a tool's requires is not a string").flatMap(Integrity.read)
           )
-      } yield Entry(named, does, parameters, asks, retry, writes, requires)
+        action <- o
+          .get("action")
+          .fold[Either[String, Option[String]]](Right(None))(a =>
+            a.strOpt.toRight("a tool's action is not a string").map(Some(_))
+          )
+      } yield Entry(named, does, parameters, asks, retry, writes, requires, action)
     def stored(w: ujson.Value): Either[String, Writes[Place]] =
       for {
         o <- w.objOpt.toRight("a tool's writes is not an object")

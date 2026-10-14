@@ -116,6 +116,19 @@ object ToolSetTests extends TestSuite {
       assert(declared.id != set(peek, post).id)
     }
 
+    test("an action is stored, read back, and gives the set another id") {
+      val acting = set(peek.copy(action = Some("peek at things")), post)
+      ToolSet.write(acting)("tools").arr.map(_.obj.get("action").map(_.str)).toVector ==>
+        Vector(Some("peek at things"), None)
+      ToolSet.read(ToolSet.write(acting)) ==> Right(acting)
+      assert(acting.id != set(peek, post).id)
+    }
+
+    test("an entry is said plainly as its action, else as use and its name") {
+      peek.copy(action = Some("peek at things")).plainly ==> "peek at things"
+      peek.plainly ==> "use peek"
+    }
+
     test("a set reads back from its stored form, and a set differing in retry has another id") {
       val asking = peek.copy(asks = true, retry = Retry.Interrupt)
       ToolSet.read(ToolSet.write(set(peek, asking.copy(name = ToolName("poke"))))) ==>

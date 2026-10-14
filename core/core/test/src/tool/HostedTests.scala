@@ -34,7 +34,15 @@ object HostedTests extends TestSuite {
   )
 
   private val entry =
-    ToolSet.Entry(ToolName("post"), "Posts.", schema, false, Retry.Interrupt, Some(writes))
+    ToolSet.Entry(
+      ToolName("post"),
+      "Posts.",
+      schema,
+      false,
+      Retry.Interrupt,
+      Some(writes),
+      Some("post to channels")
+    )
 
   private val box: Toolbox[{}] =
     Hosted.advertised(entry).toVector match {
@@ -74,7 +82,7 @@ object HostedTests extends TestSuite {
     }
 
     test(
-      "the model is shown `to` as a required choice among the entry's names, and the entry advertised is the entry"
+      "the model is shown `to` as a required choice among the entry's names, and the entry advertised is the entry, its action too"
     ) {
       val shown = box.schemas(strict = false).map(_.parameters)
       shown ==> Vector(

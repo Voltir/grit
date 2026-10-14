@@ -203,7 +203,8 @@ private[slack] object Posting {
                 .optional
             )
           ),
-          Retry.Interrupt
+          Retry.Interrupt,
+          Some("post to channels")
         ),
         Gate.Free,
         a => a.thread.fold("at the top level")(_ => "in a thread"),

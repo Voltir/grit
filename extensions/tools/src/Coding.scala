@@ -190,7 +190,8 @@ object Coding {
           )
           .refine(a => located(a.path).map(p => (path = p, content = a.content))),
         // Running it twice leaves what running it once does.
-        retry = Retry.Rerun
+        retry = Retry.Rerun,
+        action = Some("write files")
       ),
       Gate.Ask(a => {
         val lines = Clipped.lines(a.content)

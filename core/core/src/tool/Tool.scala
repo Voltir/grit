@@ -34,10 +34,28 @@ final class Tool[A] private[tool] (
   def entry: ToolSet.Entry = aim match {
     case None =>
       val parameters = spec.args.schema(false)
-      ToolSet.Entry(spec.name, spec.does, parameters, gate != Gate.Free, spec.retry, None, requires)
+      ToolSet.Entry(
+        spec.name,
+        spec.does,
+        parameters,
+        gate != Gate.Free,
+        spec.retry,
+        None,
+        requires,
+        spec.action
+      )
     case Some(Tool.Aim(parameters, writes)) =>
       val asks = gate != Gate.Free
-      ToolSet.Entry(spec.name, spec.does, parameters, asks, spec.retry, Some(writes), requires)
+      ToolSet.Entry(
+        spec.name,
+        spec.does,
+        parameters,
+        asks,
+        spec.retry,
+        Some(writes),
+        requires,
+        spec.action
+      )
   }
 
   private[tool] def bind(
@@ -122,7 +140,8 @@ object Tool {
     * is gone, and nothing runs.
     */
   def gone(entry: ToolSet.Entry): Offered = {
-    val spec = ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry)
+    val spec =
+      ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry, entry.action)
     val goneOutcome =
       Outcome.Failed(s"The tool ${ToolName.value(entry.name)} is gone; nothing ran.")
     val gate: Gate[ujson.Value] =
@@ -214,7 +233,16 @@ final class Hosted[A] private[tool] (
 
   def entry: ToolSet.Entry = {
     val parameters = spec.args.schema(false)
-    ToolSet.Entry(spec.name, spec.does, parameters, gate != Gate.Free, spec.retry, None, requires)
+    ToolSet.Entry(
+      spec.name,
+      spec.does,
+      parameters,
+      gate != Gate.Free,
+      spec.retry,
+      None,
+      requires,
+      spec.action
+    )
   }
 
   /** This hosted tool, its calls bound only when stamped at `integrity` or above. */
@@ -270,7 +298,8 @@ object Hosted {
     */
   def advertised(entry: ToolSet.Entry): Option[Tool.Offered] =
     Option.unless(entry.asks) {
-      val spec = ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry)
+      val spec =
+        ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry, entry.action)
       val shown: ujson.Value -> String = args => args.render().take(ShownMax)
       entry.writes.fold[Tool.Offered](
         new Hosted(spec, Gate.Free, shown, entry.requires, Believed.At(Integrity.Untrusted))
@@ -366,7 +395,8 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       gate != Gate.Free,
       spec.retry,
       Some(writes.placed),
-      requires
+      requires,
+      spec.action
     )
 
   private[tool] def bind(
@@ -401,7 +431,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       case Gate.Ask(describe) => Gate.Ask(sent => describe(sent._1))
     }
     new Tool[(A, D)](
-      ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry),
+      ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry, spec.action),
       aimed,
       sent => shown(sent._1),
       new Tool.Plain((sent, _) => run(sent._1, sent._2)),

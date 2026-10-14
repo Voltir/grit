@@ -153,7 +153,8 @@ object Reminders {
               } yield (reminder = reminder, when = when)
             ),
           // The same call asking again gets the reminder it first set.
-          retry = Retry.Rerun
+          retry = Retry.Rerun,
+          action = Some("set reminders")
         ),
         Gate.Free,
         a => s"${shown(a.when)}: ${a.reminder.text}"
@@ -264,7 +265,8 @@ object Reminders {
                 )
             ),
           // A second run finds it cancelled, and changes nothing.
-          retry = Retry.Rerun
+          retry = Retry.Rerun,
+          action = Some("cancel reminders")
         ),
         Gate.Free,
         ScheduleId.value
