@@ -32,7 +32,8 @@ signatures do not say.
   Each question set it has asked stays in the code (`TriageQuestions`), so recorded tags stay
   readable; `TriageQuestions.shipped` is the one live triage asks. `Mentions` puts that set to a
   message said to grit, waiting a bounded time for its placement and its answer, and keeps no
-  tags. ← `transcript`
+  tags; it also asks a turn's root the task questions (`TaskQuestions`) over the same state, for
+  the turn's routing. ← `transcript`
 - **`shadow`**: a declared variant of triage's question asked of a message already triaged, on a
   queue of its own so it never delays a triage, recorded and never acted on. It rebuilds
   triage's state from the store as it stands now. How many run each day is the sweep's, within

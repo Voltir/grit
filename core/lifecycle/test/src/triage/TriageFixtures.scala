@@ -226,10 +226,18 @@ object TriageFixtures {
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
 
-    /** `text` said to grit as the next turn at `minutes`, by `name` when given; its turn. */
-    def say(text: String, minutes: Long, name: Option[String] = None): TurnRef = {
-      val e = insert(Payload.Message(Message.User(text)), name.map(n => s"test:u-$n" -> n), minutes)
-      TurnRef(c, e.turnSeq)
+    /** `text` said to grit as the next turn at `minutes` in `in`, by `name` when given; its
+      * turn.
+      */
+    def say(
+        text: String,
+        minutes: Long,
+        name: Option[String] = None,
+        in: ConversationId = c
+    ): TurnRef = {
+      val e =
+        insert(Payload.Message(Message.User(text)), name.map(n => s"test:u-$n" -> n), minutes, in)
+      TurnRef(in, e.turnSeq)
     }
 
     /** Period 1 closed after `last` and its raw entries purged: every entry gone. */

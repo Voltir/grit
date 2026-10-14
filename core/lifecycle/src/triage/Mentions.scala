@@ -4,6 +4,7 @@ import java.util.concurrent.{ExecutionException, FutureTask, TimeUnit, TimeoutEx
 
 import scala.concurrent.duration.*
 
+import grit.core.allot.Tasking
 import grit.core.classify.{ClassifierError, ClearedClassifier, Request}
 import grit.core.clock.Clock
 import grit.core.id.TurnRef
@@ -22,6 +23,10 @@ import grit.core.visibility.Subject
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
   * `clock`. The classifier is asked only when its service is cleared for what the read knew,
   * and is given `askWithin` to answer, past which the message is `Late`, unweighed. Its request's input is estimated by `estimator`. It writes nothing.
+  *
+  * As [[Tasking]], it puts [[TaskQuestions.Shipped]] to the state read with
+  * [[TriageRecipe.Shipped]] (no pool) and no corpora, under the same placement wait, clearance
+  * check and bound.
   */
 final class Mentions(
     reads: StitchReads,
@@ -35,12 +40,47 @@ final class Mentions(
     estimator: TokenEstimator,
     tuning: Tuning,
     askWithin: FiniteDuration = Mentions.AskWithin
-) extends Weighing {
+) extends Weighing,
+      Tasking {
+
+  def task(turn: TurnRef): Either[Weighing.Unweighed, Tasking.Asked] =
+    for {
+      routedRead <- placedRead(turn)
+      (routed, read) = routedRead
+      answered <- within(classifier.asking(routed).ask(read.state, TaskQuestions.Shipped))
+        .flatMap(_.left.map(unweighed))
+    } yield Tasking.Asked(
+      answered.value,
+      read.thread.strand.nonEmpty,
+      answered.model,
+      answered.usage,
+      estimator.system(Request.json(Request.of(read.state, TaskQuestions.Shipped)).render())
+    )
 
   def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
     for {
-      _ <- placed(turn)
-      routedRead <- Routed
+      routedRead <- placedRead(turn)
+      (routed, read) = routedRead
+      // A conversation not found is at no place, so no source covers it.
+      asked = read.place.fold(Corpora.Empty)(sources.at)
+      answered <- within(questions.ask(classifier.asking(routed), read.state, asked))
+        .flatMap(_.left.map(unweighed))
+    } yield {
+      val request = questions.request(read.state, asked)
+      Weighing.Weighed(
+        Tags.Weighed(answered.value, answered.model, answered.usage),
+        estimator.system(Request.json(request).render())
+      )
+    }
+
+  /** Live triage's state for `turn`'s message, read with the shipped recipe (no pool), once
+    * its placement has ended, and what that read was routed for; why not.
+    */
+  private def placedRead(
+      turn: TurnRef
+  ): Either[Weighing.Unweighed, (Routed, TriageInput.Read)] =
+    placed(turn).flatMap(_ =>
+      Routed
         .reading(db, Subject.Turn(turn))((routed, bounded) =>
           TriageInput
             .read(reads, rooms, bounded, turn, tuning, TriageRecipe.Shipped)
@@ -49,22 +89,13 @@ final class Mentions(
         .left
         .map(_ => Weighing.Unweighed.Unread)
         .flatMap(_.left.map(_ => Weighing.Unweighed.Unread))
-      (routed, read) = routedRead
-      // A conversation not found is at no place, so no source covers it.
-      asked = read.place.fold(Corpora.Empty)(sources.at)
-      answered <- within(questions.ask(classifier.asking(routed), read.state, asked)).flatMap(
-        _.left.map {
-          case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
-          case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
-        }
-      )
-    } yield {
-      val request = questions.request(read.state, asked)
-      Weighing.Weighed(
-        Tags.Weighed(answered.value, answered.model, answered.usage),
-        estimator.system(Request.json(request).render())
-      )
-    }
+    )
+
+  /** Why a classifier's failure leaves a message unweighed. */
+  private def unweighed(e: ClassifierError): Weighing.Unweighed = e match {
+    case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
+    case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
+  }
 
   /** What `call` returns, made on a thread of its own and waited for at most `askWithin`:
     * `Late` past it, the call left to end on its own, its answer unused; `Unavailable` when
