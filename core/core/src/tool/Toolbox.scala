@@ -8,7 +8,6 @@ import grit.core.model.NameRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
 import grit.core.store.Reads
-import grit.core.visibility.Integrity
 
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[caps.CapSet^{ws}]` cannot edit or run a command unless `ws`

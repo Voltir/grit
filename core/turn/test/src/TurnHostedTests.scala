@@ -450,7 +450,7 @@ object TurnHostedTests extends TestSuite {
     test(
       "an answer no edge gave is grit's own, believed at the turn's level; an edge's, at its service's"
     ) {
-      def believed(serve: Serve, askers: Option[Principal] = None): Option[Integrity] = {
+      def believed(serve: Serve): Option[Integrity] = {
         val entries = new InMemoryEntryStore
         val turn = say(entries, "search")
         val durable = new InMemoryDurable
