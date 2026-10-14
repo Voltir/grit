@@ -150,6 +150,13 @@ object TestsTests extends TestSuite {
       assert(!text.contains("-- no test starting"))
     }
 
+    test("--test takes comma-separated prefixes, printing each test any of them starts") {
+      val text = answer(suite, Some("put then,get of")).text
+      assert(text.linesIterator.contains("      assert(fresh().get(\"x\").isEmpty)"))
+      assert(text.contains("assert(fresh().put("))
+      assert(!text.contains("-- no test starting"))
+    }
+
     test("a test prefix that starts no test is named in a note") {
       assert(answer(suite, Some("nope")).text.contains("-- no test starting \"nope\""))
     }

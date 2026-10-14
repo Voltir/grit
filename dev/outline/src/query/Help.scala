@@ -219,7 +219,7 @@ object Help {
         "--test",
         "NAME",
         Some("test"),
-        "print the verbatim body of each test whose name starts with NAME."
+        "print the verbatim body of each test whose name starts with NAME; a NAME that starts no test as written is read as comma-separated prefixes (a,b), each test any of them starts printed."
       ),
       Flag(
         "--body",

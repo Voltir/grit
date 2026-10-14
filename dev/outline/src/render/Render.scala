@@ -409,10 +409,10 @@ object Render {
     * its first sentence as `show` cuts a member's; the suite's own loose lines; its helpers as their collapsed signatures;
     * each of `fixtures` as one line naming its file, range and the members used, or with `listFixtures` each used
     * member's collapsed signature; then `tests (n):` and each test's name with its line range; then the suite's closing
-    * lines. A test whose name starts with `prefix` prints its verbatim text after its line; a name in `bodies` prints a
+    * lines. A test whose name starts with one of `prefixes` prints its verbatim text after its line; a name in `bodies` prints a
     * helper's own text after its signature, or, when no helper has that name, a used fixture member's own text after the
     * fixtures. Each line naming a definition or a test ends with its size tag. `header` leads. The answer is cut at `cap`
-    * bytes between entries, what `prefix` and `bodies` name printed whatever `cap`, and ends with its KB line.
+    * bytes between entries, what `prefixes` and `bodies` name printed whatever `cap`, and ends with its KB line.
     */
   def tests(
       suite: Defn,
@@ -421,7 +421,7 @@ object Render {
       helpers: Vector[Defn],
       fixtures: Vector[Fixture],
       tests: Vector[TestCase],
-      prefix: Option[String],
+      prefixes: Vector[String],
       bodies: Set[String],
       listFixtures: Boolean,
       header: String,
@@ -481,7 +481,7 @@ object Render {
     }
     val testPieces = tests.map { t =>
       val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}${sizeTag(Some(bytesOf(t.text)))}"
-      val named = prefix.exists(t.name.startsWith)
+      val named = prefixes.exists(t.name.startsWith)
       Piece(if (named) Vector(line, t.text) else Vector(line), t.name, asked = named)
     }
     val closing = closingLines(suite)

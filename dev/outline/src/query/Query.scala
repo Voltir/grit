@@ -734,7 +734,7 @@ object Query {
     }
   }
 
-  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
+  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies, or, when it starts no test as written, comma-separated prefixes. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
   def tests(
       root: Root,
       layout: Layout,
@@ -780,7 +780,12 @@ object Query {
                 )
                 val helpers = (d.members.filterNot(holdsTests) ++ otherTops).sortBy(_.lines.start)
                 val (used, afterFixtures) = fixturesOf(root, layout, d, resolved.loaded)
-                val notes = test
+                // A value that starts no test as written is comma-separated prefixes.
+                val prefixes = test.toVector.flatMap { t =>
+                  if (tests.exists(_.name.startsWith(t))) Vector(t)
+                  else t.split(',').toVector.map(_.trim).filter(_.nonEmpty)
+                }
+                val notes = prefixes
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
                 val helperNames = helpers.map(_.name).distinct.sorted
@@ -802,7 +807,7 @@ object Query {
                       helpers,
                       used,
                       tests,
-                      test,
+                      prefixes,
                       bodies,
                       fixtures,
                       head,
