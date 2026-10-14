@@ -68,10 +68,13 @@ final class ChatHost(
   /** What an attached screen says while no engine holds the database. */
   private val EngineGoneNote = "engine gone: turns wait until grit runs again"
 
+  // Written once, to false, by close; volatile, so a stale read runs one more round, which
+  // closing the engine bounds.
   @volatile @caps.unsafe.untrackedCaptures
   private var open = true
 
   /** The turn the panel is pinned to; `None` follows the latest. */
+  // Replaced whole, and read once per follow round, so a round follows the old pin or the new.
   @volatile @caps.unsafe.untrackedCaptures
   private var pinned: Option[TurnSeq] = None
 
