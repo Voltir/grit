@@ -17,8 +17,9 @@ import grit.core.visibility.Integrity
   * [[Reminders.Remind]] posts in the conversation that asked for it when it is due;
   * `reminders` lists the asker's pending ones, with the time now; `cancel_reminder` cancels one
   * of them. Each is free. `remind_me` and `cancel_reminder` are bound only to a call stamped at
-  * [[Integrity.Member]] or above, and say what they did at [[Integrity.Authority]]; `reminders`
-  * answers at the least integrity of the reminders it read, [[Integrity.Member]] when none. A
+  * [[Integrity.Member]] or above, and say what they did as grit's own words
+  * ([[grit.core.tool.Believed.Own]]); `reminders` answers at the least integrity of the reminders
+  * it read, [[Integrity.Member]] when none. A
   * reminder runs as late as [[Reminders.Grace]] after its time, and is otherwise missed. A
   * conversation whose replies grit does not post (a TUI session) cannot set one.
   */
@@ -156,7 +157,7 @@ object Reminders {
         ),
         Gate.Free,
         a => s"${shown(a.when)}: ${a.reminder.text}"
-      ).requiring(Integrity.Member).believed(Integrity.Authority)
+      ).requiring(Integrity.Member).own
 
     def bind(
         own: PluginReads,
@@ -267,7 +268,7 @@ object Reminders {
         ),
         Gate.Free,
         ScheduleId.value
-      ).requiring(Integrity.Member).believed(Integrity.Authority)
+      ).requiring(Integrity.Member).own
 
     def bind(
         own: PluginReads,

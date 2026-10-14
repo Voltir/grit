@@ -4,7 +4,7 @@ import grit.core.flow.TestTainted
 import grit.core.id.{EntryId, EntrySeq, TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.store.{Entry, Payload}
-import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -70,13 +70,11 @@ object ReadHiddenTests extends TestSuite {
       )
     }
 
-    test("a call naming nothing hidden is answered so, as grit's own text") {
-      val none = Outcome.Done(
-        "Nothing in the request you answered is hidden as h2.",
-        Some(Integrity.Authority)
-      )
+    test("a call naming nothing hidden is answered so, as grit's own words") {
+      val none = Outcome.Done("Nothing in the request you answered is hidden as h2.")
       asked(Some(gated), ujson.Obj("name" -> "h2")) ==> none
       asked(None, ujson.Obj("name" -> "h2")) ==> none
+      ReadHidden.tool(None).output ==> Believed.Own
     }
 
     test("the names read are those read_hidden was called with, unreadable arguments skipped") {

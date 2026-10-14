@@ -10,7 +10,7 @@ import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
@@ -132,7 +132,8 @@ object TurnTools {
     * and keeps its result as a [[Payload.Result]] entry at [[Slot.resultId]], dated `at`,
     * after everything in the conversation, with the call as it is shown ([[Bound.shown]]).
     * One run here is believed at what its outcome says ([[Outcome.Done.integrity]]), else at
-    * its tool's ([[Bound.Runs.output]]); one answered, at `from`: the declared output of the
+    * its tool's ([[Bound.Runs.output]], as [[believedAs]] reads it at the turn's `level`); one
+    * answered, at `from`: the declared output of the
     * service it went to ([[grit.core.visibility.Visibility.outputOf]]), else the integrity
     * given. A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
@@ -151,7 +152,7 @@ object TurnTools {
         from: Either[Integrity, Service],
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Believed.From(from), at)(() => Right(outcome))
+      settle(slot, call, named, Belief.From(from), at)(() => Right(outcome))
 
     /** The call answered, unrun, with what `read` finds in the store, in a transaction of its
       * own, shown as `named`; `read` runs only when no result is kept, and when it fails, so
@@ -166,7 +167,7 @@ object TurnTools {
     )(
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Believed.From(from), at)(() =>
+      settle(slot, call, named, Belief.From(from), at)(() =>
         jot.write(Subject.Turn(slot.turn))(read).left.map(storeFailure)
       )
 
@@ -175,9 +176,12 @@ object TurnTools {
         slot: Slot,
         call: ToolCallId,
         free: Bound.Free^,
+        level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, Believed.Ran(free.output), at)(() => Right(free(slot.call)))
+      settle(slot, call, free.shown, Belief.Ran(believedAs(free.output, level)), at)(() =>
+        Right(free(slot.call))
+      )
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -188,9 +192,10 @@ object TurnTools {
         call: ToolCallId,
         gated: Bound.Gated^,
         approval: Approval,
+        level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, Believed.Ran(gated.output), at)(() =>
+      settle(slot, call, gated.shown, Belief.Ran(believedAs(gated.output, level)), at)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -205,7 +210,7 @@ object TurnTools {
         slot: Slot,
         call: ToolCallId,
         shown: String,
-        believed: Believed,
+        believed: Belief,
         at: Instant
     )(
         outcome: () => Either[TurnFailure, Outcome]
@@ -276,10 +281,18 @@ object TurnTools {
     }
   }
 
+  /** What a result declared `output` is believed at in a turn at `level`: grit's own words
+    * at `level`, which they never lower.
+    */
+  private[turn] def believedAs(output: Believed, level: Integrity): Integrity = output match {
+    case Believed.At(integrity) => integrity
+    case Believed.Own => level
+  }
+
   /** How a call's result is believed: as answered (`From`, a service's declared output or the
     * integrity given), or as one run here says (`Ran`, `output` when its outcome does not).
     */
-  private enum Believed {
+  private enum Belief {
     case From(from: Either[Integrity, Service])
     case Ran(output: Integrity)
 

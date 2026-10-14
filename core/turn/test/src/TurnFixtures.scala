@@ -971,7 +971,7 @@ object TurnFixtures {
     )
 
   /** Records `text` as the user message that starts the conversation's next turn. */
-  def say(entries: EntryStore, text: String): TurnRef = {
+  def say(entries: EntryStore, text: String, integrity: Integrity = Integrity.Member): TurnRef = {
     given Tx = TestTx.fake
     val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
     entries.insert(
@@ -983,7 +983,7 @@ object TurnFixtures {
         next.seq,
         Payload.Message(Message.User(text)),
         Instant.EPOCH,
-        Integrity.Member
+        integrity
       )
     )
     TurnRef(conversation, next.turnSeq)

@@ -133,14 +133,14 @@ object Bound {
     /** What its results are believed at when its outcome does not say: its tool's
       * ([[Tool.Offered.output]]).
       */
-    def output: Integrity
+    def output: Believed
   }
 
   /** A call of a tool that runs without asking. */
   final class Free private[tool] (
       val tool: ToolName,
       val shown: String,
-      val output: Integrity,
+      val output: Believed,
       run: CallSlot => Outcome
   ) extends Runs {
 
@@ -155,7 +155,7 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       val ask: String,
-      val output: Integrity,
+      val output: Believed,
       run: CallSlot => Outcome
   ) extends Runs {
 
@@ -179,7 +179,7 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       ask: Option[String],
-      output: Integrity,
+      output: Believed,
       run: (CallSlot, Reads^) => Outcome
   ) extends Bound {
 
@@ -211,7 +211,7 @@ object Bound {
       val repairs: Set[grit.core.model.ArgRepair],
       val retry: Retry,
       val destination: Option[Place],
-      val output: Integrity
+      val output: Believed
   ) extends Bound
 
 }

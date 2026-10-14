@@ -5,7 +5,7 @@ import grit.core.flow.TestTainted
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.persona.Persona
-import grit.core.tool.{Bound, Outcome, Repairs, Tool, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Tool, Toolbox}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -55,8 +55,8 @@ object AboutTests extends TestSuite {
       )
     }
 
-    test("about's answers are grit's own text, believed at authority, and it requires nothing") {
-      (about.output, about.entry.requires) ==> (Integrity.Authority, Integrity.Untrusted)
+    test("about's answers are grit's own words, and it requires nothing") {
+      (about.output, about.entry.requires) ==> (Believed.Own, Integrity.Untrusted)
     }
 
     test("about says it answers who the assistant is and what grit is") {

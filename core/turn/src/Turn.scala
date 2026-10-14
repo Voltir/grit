@@ -1282,15 +1282,16 @@ object Turn {
                     settling.answer(slot, call, named, outcome, Left(level), clock.now())
                   }
                 case Right(free: Bound.Free) =>
-                  d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
+                  val level = cell.level
+                  d.step(slot.step) { () => settling.run(slot, call, free, level, clock.now()) }
                 case Right(gated: Bound.Gated) =>
-                  val (entries, shown) = (env.records.entries, gated.ask)
+                  val (entries, shown, level) = (env.records.entries, gated.ask, cell.level)
                   d.transact(slot.askStep, Subject.Turn(turn))(
                     TurnTools.ask(entries, slot, call, shown, clock.now())
                   ).flatMap { _ =>
                     val approval = Calling.approval(call, answerWithin)(using d)
                     d.step(slot.step) { () =>
-                      settling.decide(slot, call, gated, approval, clock.now())
+                      settling.decide(slot, call, gated, approval, level, clock.now())
                     }
                   }
                 case Right(hosted: Bound.Hosted) =>

@@ -14,7 +14,7 @@ import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestCl
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
 import grit.dbos.sql.TestTx
@@ -288,7 +288,7 @@ object DigestTests extends TestSuite {
         case other => sys.error(s"not done: $other")
       }
       run(new FakeDb, new Kept) ==> Outcome.Done("No conversation has closed yet.", None)
-      Digest.RecentActivity.described.output ==> Integrity.Untrusted
+      Digest.RecentActivity.described.output ==> Believed.At(Integrity.Untrusted)
     }
 
     test("recent_activity shows the newest 10 when not told how many") {

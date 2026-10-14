@@ -7,7 +7,7 @@ import grit.core.flow.TestTainted
 import grit.core.host.*
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
-import grit.core.tool.{Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -120,7 +120,7 @@ object CodingTests extends TestSuite {
         "edit" -> Integrity.Member,
         "run" -> Integrity.Member
       )
-      Coding.hosted.map(_.output).distinct ==> Vector(Integrity.Member)
+      Coding.hosted.map(_.output).distinct ==> Vector(Believed.At(Integrity.Member))
     }
 
     test("the engine offers the tools an edge runs: the same names, schemas, gates and retries") {

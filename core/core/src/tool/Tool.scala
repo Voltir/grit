@@ -24,7 +24,7 @@ final class Tool[A] private[tool] (
     run: Tool.Run[A]^,
     aim: Option[Tool.Aim],
     requires: Integrity,
-    val output: Integrity
+    val output: Believed
 ) extends Tool.Offered {
 
   def name: ToolName = spec.name
@@ -130,7 +130,9 @@ object Tool {
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
     entry.writes.fold[Offered](
-      new Hosted(spec, gate, _ => "", entry.requires, Integrity.Untrusted).over(_ => goneOutcome)
+      new Hosted(spec, gate, _ => "", entry.requires, Believed.At(Integrity.Untrusted)).over(_ =>
+        goneOutcome
+      )
     )(writes =>
       new Writing(spec, gate, _ => "", writes, entry.requires).over((_, _) => goneOutcome)
     )
@@ -163,7 +165,7 @@ object Tool {
       * as the engine runs it. A call an edge runs ([[Bound.Hosted]]) is believed at its
       * service's declared output instead ([[grit.core.visibility.Visibility.outputOf]]).
       */
-    def output: Integrity
+    def output: Believed
 
     /** `call`, which names this tool, read against it with `repairs`. */
     private[tool] def bind(
@@ -199,12 +201,12 @@ final class Hosted[A] private[tool] (
     val gate: Gate[A],
     shown: A -> String,
     requires: Integrity,
-    val output: Integrity
+    val output: Believed
 ) extends Tool.Offered {
 
   /** A tool described by `spec`, `gate` and `shown`. */
   def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String) =
-    this(spec, gate, shown, Integrity.Untrusted, Integrity.Untrusted)
+    this(spec, gate, shown, Integrity.Untrusted, Believed.At(Integrity.Untrusted))
 
   def name: ToolName = spec.name
 
@@ -221,7 +223,11 @@ final class Hosted[A] private[tool] (
 
   /** This tool, its results believed at `integrity` when a call does not say ([[output]]). */
   def believed(integrity: Integrity): Hosted[A] =
-    new Hosted(spec, gate, shown, requires, integrity)
+    new Hosted(spec, gate, shown, requires, Believed.At(integrity))
+
+  /** This tool, its results grit's own words when a call does not say ([[Believed.Own]]). */
+  def own: Hosted[A] =
+    new Hosted(spec, gate, shown, requires, Believed.Own)
 
   /** This tool, run by `run`. */
   def over(run: A => Outcome): Tool[A]^{run} =
@@ -267,7 +273,7 @@ object Hosted {
       val spec = ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry)
       val shown: ujson.Value -> String = args => args.render().take(ShownMax)
       entry.writes.fold[Tool.Offered](
-        new Hosted(spec, Gate.Free, shown, entry.requires, Integrity.Untrusted)
+        new Hosted(spec, Gate.Free, shown, entry.requires, Believed.At(Integrity.Untrusted))
       )(writes => new Writing(spec, Gate.Free, shown, writes, entry.requires))
     }
 
@@ -298,7 +304,7 @@ object Hosted {
       spec: ToolSpec[A],
       gate: Gate[A],
       shown: A -> String,
-      output: Integrity,
+      output: Believed,
       arguments: ujson.Value,
       repairs: Set[ArgRepair],
       destination: Option[Place]
@@ -342,7 +348,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
   def name: ToolName = spec.name
 
   // An edge runs it: its results are believed at its service's declared output.
-  def output: Integrity = Integrity.Untrusted
+  def output: Believed = Believed.At(Integrity.Untrusted)
 
   def schema(strict: Boolean): ToolSchema = {
     val described = spec.schema(strict)
@@ -401,7 +407,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       new Tool.Plain((sent, _) => run(sent._1, sent._2)),
       Some(Tool.Aim(spec.args.schema(false), writes.placed)),
       requires,
-      Integrity.Untrusted
+      Believed.At(Integrity.Untrusted)
     )
   }
 }

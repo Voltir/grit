@@ -6,7 +6,7 @@ import grit.core.identity.{Principal, TestAccounts}
 import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
   Clearance,
   Explained,
@@ -91,7 +91,7 @@ object ClearedTests extends TestSuite {
         case Outcome.Done(_, believed) => believed ==> None
         case other => throw new java.lang.AssertionError(s"not done: $other")
       }
-      Cleared.tool(danaAsks).output ==> Integrity.Untrusted
+      Cleared.tool(danaAsks).output ==> Believed.At(Integrity.Untrusted)
     }
 
     test(

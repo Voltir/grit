@@ -5,7 +5,6 @@ import scala.util.Using
 
 import grit.core.persona.Persona
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
-import grit.core.visibility.Integrity
 
 /** `about`: what grit is and how it works, for when the person asks, from docs shipped with
   * this module.
@@ -32,7 +31,7 @@ object About {
     * assistant is, then the overview: "You are called {name}." for [[Persona.Grit]], and for
     * any other `persona` "You are called {name}, a persona of grit: grit is the harness you
     * run on, described below."; the tool reads nothing more and never fails, and its answers
-    * are grit's own text, believed at [[Integrity.Authority]]. `Left` naming each doc that is
+    * are grit's own words ([[grit.core.tool.Believed.Own]]). `Left` naming each doc that is
     * missing or empty.
     */
   def load(persona: Persona): Either[String, Tool[Option[Subject]]] = {
@@ -80,7 +79,7 @@ object About {
       ),
       Gate.Free,
       topic => topic.fold("")(_.key)
-    ).believed(Integrity.Authority).over {
+    ).own.over {
       case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Subject.Grit, "")}")
       case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
     }

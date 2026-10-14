@@ -319,6 +319,49 @@ object TurnGateTurnTests extends TestSuite {
         }) ==> Some("""{"ok":{"level":"member","decided":[],"withheld":[]}}""")
     }
 
+    test("grit's own answer never lowers a turn in a compartment: read_hidden's to no stub") {
+      val team = grit.core.visibility.Compartment
+        .of("team")
+        .getOrElse(throw new java.lang.AssertionError("team is a compartment"))
+      val inTeam = Integrity.at(Integrity.Level.Member, team)
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "read and post", inTeam)
+      val provider = new Scripted((_, n) =>
+        Right(n match {
+          case 0 =>
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj("path" -> "a.txt"))
+            )
+          case 1 =>
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("t2"), "read_hidden", ujson.Obj("name" -> "h2"))
+            )
+          case _ => said("done")
+        })
+      )
+      val ws = new Files(files)
+      val posting = hostedPost.requiring(inTeam).over(_ => grit.core.tool.Outcome.Done("posted"))
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          Toolbox
+            .of[caps.CapSet^{ws}](peek(ws), posting)
+            .fold(d => throw new java.lang.AssertionError(d), identity),
+          5
+        )
+      )
+      provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==>
+        Some("Nothing in the request you answered is hidden as h2.")
+      kept(entries, "result:c1:0:1:0").map(_.integrity) ==> Some(inTeam)
+    }
+
     test("a heard root's turn is believed at most Outside, however its author is") {
       val w = speechWorld()
       new InMemoryDurable().run(w.turn.workflowId)(

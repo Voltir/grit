@@ -55,9 +55,9 @@ object TurnToolsTests extends TestSuite {
       case Left(outcome) =>
         val unrun = Left(Integrity.Untrusted)
         settling.answer(slot, id, pending.call.name, outcome, unrun, Instant.EPOCH)
-      case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
+      case Right(free: Bound.Free) => settling.run(slot, id, free, Integrity.Member, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>
-        settling.decide(slot, id, gated, approval, Instant.EPOCH)
+        settling.decide(slot, id, gated, approval, Integrity.Member, Instant.EPOCH)
       case Right(_: Bound.Hosted) => Left(TurnFailure.Model("no hosted tools here"))
     }
   }
@@ -78,7 +78,7 @@ object TurnToolsTests extends TestSuite {
     TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
       case Right(free: Bound.Free) =>
         settling
-          .run(slot, ToolCallId("c"), free, Instant.EPOCH)
+          .run(slot, ToolCallId("c"), free, Integrity.Member, Instant.EPOCH)
           .map(_ => believed(entries, slot.resultId))
       case other => throw new java.lang.AssertionError(s"not free: $other")
     }

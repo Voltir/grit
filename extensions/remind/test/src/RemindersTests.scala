@@ -32,7 +32,7 @@ import grit.core.job.{
 import grit.core.message.AssistantBlock
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads, PluginTool}
 import grit.core.store.{Db, Origin, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 import grit.dbos.sql.TestTx
 
@@ -336,17 +336,17 @@ object RemindersTests extends TestSuite {
         case Outcome.Done(_, believed) => believed ==> None
         case other => sys.error(s"not done: $other")
       }
-      Reminders.List.described.output ==> Integrity.Member
+      Reminders.List.described.output ==> Believed.At(Integrity.Member)
     }
 
     test(
-      "remind_me and cancel_reminder require a member's stamp and say what they did at authority; reminders requires nothing"
+      "remind_me and cancel_reminder require a member's stamp and say what they did as grit's own words; reminders requires nothing"
     ) {
       val tools = Vector(Reminders.RemindMe, Reminders.List, Reminders.Cancel).map(_.described)
       tools.map(t => (t.entry.requires, t.output)) ==> Vector(
-        (Integrity.Member, Integrity.Authority),
-        (Integrity.Untrusted, Integrity.Member),
-        (Integrity.Member, Integrity.Authority)
+        (Integrity.Member, Believed.Own),
+        (Integrity.Untrusted, Believed.At(Integrity.Member)),
+        (Integrity.Member, Believed.Own)
       )
     }
 
