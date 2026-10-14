@@ -94,3 +94,8 @@ object Twin
 enum Suit {
   case Hearts, Spades, Clubs
 }
+
+/** Reads a field of a [[B]], so a constructor val has a use. */
+object Fields {
+  def noteOf(b: B): String = b.note
+}

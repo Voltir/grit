@@ -77,6 +77,16 @@ object FindTests extends TestSuite {
       )
     }
 
+    test("a case class's constructor val is listed as its member: note finds B.note on B's line") {
+      val answer = find("note")
+      assert(names(answer) == Vector("grit.outline.fixture.B.note"))
+      assert(
+        answer.text.contains(
+          "grit.outline.fixture.B.note  dev/outline/fixture/src/Sample.scala:17-17  note: String"
+        )
+      )
+    }
+
     test("a private member is not listed, and a pattern nothing matches is NoMatch saying so") {
       val answer = find("hidd*")
       assert(answer.status == Status.NoMatch)

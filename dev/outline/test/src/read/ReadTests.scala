@@ -101,13 +101,20 @@ object ReadTests extends TestSuite {
       assert(id.lines == Lines(50, 51))
     }
 
-    test("a case class's signature is its declaration, with no synthetic members") {
+    test(
+      "a case class's signature is its declaration, and its members are its constructor vals alone, no synthetic one"
+    ) {
       val limits =
         only(named(read, "grit.outline.fixture.Limits").filter(_.kind == Kind.CaseClass), "Limits")
       assert(limits.kind == Kind.CaseClass)
       assert(limits.signature == "final case class Limits private (asks: Int, calls: Int)")
       assert(limits.lines == Lines(22, 23))
-      assert(limits.members.isEmpty)
+      assert(
+        limits.members.map(m => (m.kind, m.name, m.signature, m.lines)) == Vector(
+          (Kind.Param, "asks", "asks: Int", Lines(23, 23)),
+          (Kind.Param, "calls", "calls: Int", Lines(23, 23))
+        )
+      )
     }
 
     test("a class's signature stops before its body, and a parentless trait is its name") {

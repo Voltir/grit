@@ -1,8 +1,9 @@
 package grit.outline.model
 
-/** What kind of definition a TASTy entry records. */
+/** What kind of definition a TASTy entry records. `Param` is a class's constructor parameter, kept as its field. */
 enum Kind {
-  case Class, CaseClass, Trait, Object, Enum, EnumCase, Def, Val, Var, Given, TypeAlias, Opaque
+  case Class, CaseClass, Trait, Object, Enum, EnumCase, Def, Val, Var, Param, Given, TypeAlias,
+    Opaque
 }
 
 /** A 1-based, inclusive line range; `start` is the Scaladoc's first line when there is one. */

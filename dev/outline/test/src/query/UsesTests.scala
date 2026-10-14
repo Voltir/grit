@@ -131,6 +131,15 @@ object UsesTests extends TestSuite {
     }
 
     test(
+      "a case class's constructor val resolves: its read in Fields.noteOf is its one site, and the class's synthetic members are none"
+    ) {
+      val (answer, _) = uses("grit.outline.fixture.B.note")
+      assert(answer.status == Status.Found)
+      assert(answer.text.contains("Fields.noteOf"))
+      assert(answer.text.contains("[1 sites in 1 files]"))
+    }
+
+    test(
       "the uses of Limits.of include the 2-argument overload's call on line 28, which targets the 3-argument of on line 31"
     ) {
       val (answer, _) = uses("grit.outline.fixture.Limits.of")

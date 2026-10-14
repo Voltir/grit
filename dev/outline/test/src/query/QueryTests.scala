@@ -312,6 +312,29 @@ object QueryTests extends TestSuite {
       assert(unsearched.isEmpty)
     }
 
+    test(
+      "show B.note shows the constructor val on its class's line, and show B lists no val entry for it"
+    ) {
+      def shown(sym: String): Answer =
+        Query
+          .show(
+            root,
+            FixtureLayout,
+            Config.empty,
+            Roots.empty(6000),
+            Vector(sym),
+            0,
+            Set.empty,
+            false,
+            80000
+          )
+          ._1
+      val field = shown("B.note")
+      assert(field.status == Status.Found)
+      assert(field.text.contains("17-17 val B.note\nfinal case class B(c: C, note: String)"))
+      assert(!shown("grit.outline.fixture.B").text.contains("val B."))
+    }
+
     test("show --no-tests prints no tests section") {
       val (answer, _) =
         Query.show(

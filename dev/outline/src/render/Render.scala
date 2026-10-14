@@ -35,7 +35,7 @@ object Render {
   def fileLine(file: String, pkg: String, stale: Boolean): String =
     s"== $file  $pkg" + (if (stale) "  [stale: source newer than .tasty]" else "")
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; `stale` files' headers flagged; cut at `cap` bytes. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; `stale` files' headers flagged; cut at `cap` bytes. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -57,7 +57,11 @@ object Render {
       val typeKind = d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
         d.kind == Kind.Object || d.kind == Kind.Enum
       val members =
-        if (typeKind) d.members.filter(m => withPrivate || !m.isPrivate).flatMap(entry)
+        // A constructor val's lines are the type's own head, already shown.
+        if (typeKind)
+          d.members
+            .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
+            .flatMap(entry)
         else Vector.empty
       entry(d) ++ members
     }
@@ -114,6 +118,7 @@ object Render {
     case Kind.Def => "def"
     case Kind.Val => "val"
     case Kind.Var => "var"
+    case Kind.Param => "val"
     case Kind.Given => "given"
     case Kind.TypeAlias => "type"
     case Kind.Opaque => "opaque type"

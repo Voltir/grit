@@ -37,7 +37,7 @@ name, the declared areas, each with its purpose.
     scripts/outline area [name[,name…]] [--level 0|1] [--cap BYTES] [--root DIR]
 
 **find**: To find a definition when you don't know its name: one line per definition in main
-sources, members included, as its full name, file, lines and collapsed signature. The pattern's
+sources, members and constructor vals included, as its full name, file, lines and collapsed signature. The pattern's
 dot-separated segments match the last segments of a full name, each whole, `*` standing for any run
 of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. A `show`
 that matches nothing suggests `find` with the name's last segment.

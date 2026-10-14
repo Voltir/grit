@@ -116,8 +116,6 @@ object Read {
           }
           !(flags.is(Flags.Synthetic) || flags.is(Flags.Artifact) || sym.name.contains(
             "$default$"
-          ) || flags.is(
-            Flags.ParamAccessor
           ) ||
             flags.is(Flags.Param) || sym.isClassConstructor || isModuleVal ||
             !sym.pos.exists(_.sourceFile.path.startsWith(prefix)))
@@ -135,6 +133,7 @@ object Read {
               else Kind.Class
             case _: ValDef =>
               if (flags.is(Flags.Enum)) Kind.EnumCase
+              else if (flags.is(Flags.ParamAccessor)) Kind.Param
               else if (flags.is(Flags.Given)) Kind.Given
               else if (flags.is(Flags.Mutable)) Kind.Var
               else Kind.Val
@@ -513,6 +512,10 @@ object Read {
             }
 
             override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match {
+              // A class's synthetic members (a case class's copy, equals, accessors) name its fields where no source does.
+              case d @ (_: DefDef | _: ValDef)
+                  if d.symbol.flags.is(Flags.Synthetic) && d.symbol.maybeOwner.isClassDef =>
+                ()
               case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
                 enclosing = cleanFullName(d.symbol.fullName) :: enclosing
                 super.traverseTree(tree)(owner)
