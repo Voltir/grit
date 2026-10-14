@@ -26,7 +26,8 @@ Those lines are not file text.
     scripts/outline family Trait [--member m] [--body] [--cap BYTES] [--root DIR]
 
 **uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
-filter by path prefix.
+filter by path prefix. `X.apply` (or `X.new`), for a class with no `apply` in source, finds its
+construction sites: `X(…)` and `new X(…)`.
 
     scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]
 

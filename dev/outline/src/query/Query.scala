@@ -116,7 +116,7 @@ object Query {
   /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
   val shortestBare: Int = 4
 
-  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
+  /** The `uses` answer: the direct references to `syms`, grouped by file, filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming the class. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
   def uses(
       root: Root,
       layout: Layout,
@@ -144,9 +144,28 @@ object Query {
         case Left(message) => failure = Some(message)
         case Right(next) => state = next
       }
+      // The classes whose construction sites a name like `X.apply` asks for, when `X` has no apply of its own in source.
+      val constructed = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
           case Left(message) => failure = Some(message)
+          case Right(resolved) if resolved.defns.isEmpty && constructorOwner(sym).nonEmpty =>
+            val owner = constructorOwner(sym).getOrElse(sym)
+            Resolve.resolve(root, layout, config, Scope.WithTests, owner, resolved.loaded) match {
+              case Left(message) => failure = Some(message)
+              case Right(classes) =>
+                state = classes.loaded
+                val built =
+                  classes.defns.filter(d => d.kind == Kind.CaseClass || d.kind == Kind.Class)
+                seen ++= resolved.seen ++ classes.seen
+                if (built.isEmpty) notes ++= resolved.notes
+                else {
+                  constructed ++= built
+                  notes ++= built.map(c =>
+                    s"-- $sym is ${c.fullName}'s constructor: its apply and new sites"
+                  )
+                }
+            }
           case Right(resolved) =>
             state = resolved.loaded
             targets ++= resolved.defns
@@ -155,7 +174,9 @@ object Query {
         }
       }
 
-      val names = targets.toVector.map(_.fullName).distinct.toSet
+      val names = (targets.toVector.map(_.fullName) ++ constructed.toVector.flatMap(c =>
+        Vector(s"${c.fullName}.apply", s"${c.fullName}.<init>")
+      )).distinct.toSet
       val (read, unsearched, next) = referencesIn(
         root,
         layout,
@@ -163,8 +184,11 @@ object Query {
         classes,
         if (failure.nonEmpty) Set.empty else names,
         // With no target, the search by each name's last segment still names the files not compiled.
-        if (targets.isEmpty) syms.map(sym => Search(sym.split('.').last, None)).distinct
-        else searchesFor(targets.toVector, seen.toVector),
+        if (targets.isEmpty && constructed.isEmpty)
+          syms.map(sym => Search(sym.split('.').last, None)).distinct
+        else
+          searchesFor(targets.toVector, seen.toVector) ++
+            constructed.toVector.map(c => Search(c.name, None)).distinct,
         _ => true,
         state
       )
@@ -196,6 +220,13 @@ object Query {
       (answer.copy(text = s"${header(root)}\n$noteText${answer.text}"), nextRoots)
     }
   }
+
+  /** The class `sym` names the construction of, as `X.apply` or `X.new`: `X`, or none for any other name. */
+  private def constructorOwner(sym: String): Option[String] =
+    Vector(".apply", ".new").collectFirst {
+      case suffix if sym.endsWith(suffix) && sym.length > suffix.length =>
+        sym.dropRight(suffix.length)
+    }
 
   /** The `area` answer for the named areas `names`, declared in `config`; with no names, one line per declared area, its name and its purpose. For names: at level 0 one line per package, at level 1 each definition with its doc's first sentence, grouped by file; `NoMatch` for a name no area declares, `Failed` for a level outside 0..1; cut at `cap` bytes. */
   def area(

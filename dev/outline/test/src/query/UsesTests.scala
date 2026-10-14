@@ -140,6 +140,26 @@ object UsesTests extends TestSuite {
     }
 
     test(
+      "the uses of a case class's synthetic apply are its construction sites: Nested.apply lists Nested(n) in Nested.of"
+    ) {
+      val (answer, _) = uses("Nested.apply")
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.exists(_.contains("Right(Nested(n))")))
+      assert(answer.text.contains("Holder.Nested.of"))
+      assert(
+        answer.text.contains(
+          "-- Nested.apply is grit.outline.fixture.Holder.Nested's constructor: its apply and new sites"
+        )
+      )
+    }
+
+    test("a case class's apply counts its new sites: Limits.apply lists new Limits in Limits.of") {
+      val (answer, _) = uses("grit.outline.fixture.Limits.apply")
+      assert(answer.status == Status.Found)
+      assert(answer.text.linesIterator.exists(_.contains("new Limits(asks, calls + hidden)")))
+    }
+
+    test(
       "the uses of Limits.of include the 2-argument overload's call on line 28, which targets the 3-argument of on line 31"
     ) {
       val (answer, _) = uses("grit.outline.fixture.Limits.of")
