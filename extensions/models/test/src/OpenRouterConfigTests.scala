@@ -178,19 +178,38 @@ object OpenRouterConfigTests extends TestSuite {
         ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }
 
+    test(
+      "policy: the heard role reads its own variables; naming neither, it follows the summary's"
+    ) {
+      overlay(
+        "GRIT_HEARD_MODEL" -> "h/m",
+        "GRIT_HEARD_PROVIDER" -> "groq",
+        "GRIT_HEARD_MAX_TOKENS" -> "700"
+      )
+        .map(p => one(p.heard)) ==> Right(Some(Assignment(ref("h/m", "groq"), 700, None)))
+      overlay("GRIT_SUMMARY_MODEL" -> "s/m", "GRIT_SUMMARY_PROVIDER" -> "groq")
+        .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("s/m", "groq")))
+      // The summary follows the turn, so the heard role does too, through it.
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "cerebras").map(p => one(p.heard)) ==>
+        Right(Some(Assignment(ref("x/y", "cerebras"), 1024, None)))
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_HEARD_PROVIDER" -> "groq")
+        .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("small/one", "groq")))
+    }
     test("forRole: each role runs on its own variables, over the seed's budgets") {
       val env = Map(
         "OPENROUTER_API_KEY" -> "k",
         "GRIT_MODEL" -> "t/m",
         "GRIT_SUMMARY_MODEL" -> "s/m",
-        "GRIT_QUERY_MODEL" -> "q/m"
+        "GRIT_QUERY_MODEL" -> "q/m",
+        "GRIT_HEARD_MODEL" -> "h/m"
       )
       ModelRole.values.toSeq.map(role =>
         OpenRouterConfig.forRole(env, role).map(c => (c.model, c.maxTokens, c.upstream))
       ) ==> Seq(
         Right(("t/m", 4096, None)),
         Right(("s/m", 4096, None)),
-        Right(("q/m", 1024, None))
+        Right(("q/m", 1024, None)),
+        Right(("h/m", 4096, None))
       )
       // With nothing set but the key, the query runs on the seed's own budget.
       OpenRouterConfig

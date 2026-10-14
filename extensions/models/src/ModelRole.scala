@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.model.{Grade, Ladder, Pins, Policy, TurnProfile}
+import grit.core.model.{Catalog, Grade, Ladder, Pins, Policy}
 
 /** What a model is used for, and the environment variables that override its ladder in the
   * [[Policy]] for one run: for each grade, the model and the one upstream (its
@@ -18,13 +18,18 @@ enum ModelRole(prefix: String) {
   /** Writes the search query retrieval ranks a turn's earlier entries by. */
   case Query extends ModelRole("GRIT_QUERY_")
 
-  /** `GRIT_MODEL`, `GRIT_SUMMARY_MODEL`, `GRIT_QUERY_MODEL`. */
+  /** Writes the closing of a period grit only heard ([[Policy]]'s `heard`). */
+  case Heard extends ModelRole("GRIT_HEARD_")
+
+  /** `GRIT_MODEL`, `GRIT_SUMMARY_MODEL`, `GRIT_QUERY_MODEL`, `GRIT_HEARD_MODEL`. */
   def modelVar: String = s"${prefix}MODEL"
 
-  /** `GRIT_MAX_TOKENS`, `GRIT_SUMMARY_MAX_TOKENS`, `GRIT_QUERY_MAX_TOKENS`. */
+  /** `GRIT_MAX_TOKENS`, `GRIT_SUMMARY_MAX_TOKENS`, `GRIT_QUERY_MAX_TOKENS`,
+    * `GRIT_HEARD_MAX_TOKENS`.
+    */
   def maxTokensVar: String = s"${prefix}MAX_TOKENS"
 
-  /** `GRIT_PROVIDER`, `GRIT_SUMMARY_PROVIDER`, `GRIT_QUERY_PROVIDER`. */
+  /** `GRIT_PROVIDER`, `GRIT_SUMMARY_PROVIDER`, `GRIT_QUERY_PROVIDER`, `GRIT_HEARD_PROVIDER`. */
   def upstreamVar: String = s"${prefix}PROVIDER"
 
   /** The variable naming this role's model at `grade`: `GRIT_STRONG_MODEL`,
@@ -48,12 +53,14 @@ enum ModelRole(prefix: String) {
     case Turn => policy.turn
     case Summary => policy.summary
     case Query => policy.query
+    case Heard => policy.heard
   }
 
-  /** This role's pins in `profile`. */
-  def in(profile: TurnProfile): Pins = this match {
-    case Turn => profile.turn
-    case Summary => profile.summary
-    case Query => profile.query
+  /** This role's pins in `catalog`, for a call starting now. */
+  def in(catalog: Catalog): Pins = this match {
+    case Turn => catalog.pin.turn
+    case Summary => catalog.pin.summary
+    case Query => catalog.pin.query
+    case Heard => catalog.heard
   }
 }

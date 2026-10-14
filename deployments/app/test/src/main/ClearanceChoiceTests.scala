@@ -69,8 +69,8 @@ object ClearanceChoiceTests extends TestSuite {
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
         "GRIT_QUERY_PROVIDER is unset: the query's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
-        "the heard role's first model, whose upstream OpenRouter picks, is cleared for public rooms " +
-          "alone: a labelled room grit only hears is closed without a written summary"
+        "GRIT_HEARD_PROVIDER is unset: the heard closing's first model, whose upstream OpenRouter picks, is " +
+          "cleared for public rooms alone; naming its one upstream there clears that pair for every label"
       )
     }
   }

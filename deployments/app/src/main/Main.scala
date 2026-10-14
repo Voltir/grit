@@ -813,21 +813,22 @@ object Main {
   /** What `grit serve` says at start, served by OpenRouter under `policy`, of each role whose
     * first pin's upstream OpenRouter picks, so whose calls a labelled room cannot make: the
     * variable that would name its one upstream, and the clearance that pair then gets
-    * ([[cleared]]). The heard role has no variable.
+    * ([[cleared]]).
     */
   private[main] def uncleared(policy: Policy): Vector[String] = {
     def routed(l: Ladder) = Party.of(l.first.assignment.ref).isEmpty
-    val roles =
-      Vector(ModelRole.Turn -> "turn", ModelRole.Summary -> "summary", ModelRole.Query -> "query")
-    roles.collect {
-      case (role, name) if routed(role.in(policy)) =>
-        s"${role.upstreamVar(role.in(policy).first.grade)} is unset: the $name's first model, " +
-          "whose upstream OpenRouter picks, is cleared for public rooms alone; naming its one " +
-          "upstream there clears that pair for every label"
-    } ++ Option.when(routed(policy.heard))(
-      "the heard role's first model, whose upstream OpenRouter picks, is cleared for public " +
-        "rooms alone: a labelled room grit only hears is closed without a written summary"
-    )
+    def name(role: ModelRole) = role match {
+      case ModelRole.Turn => "turn"
+      case ModelRole.Summary => "summary"
+      case ModelRole.Query => "query"
+      case ModelRole.Heard => "heard closing"
+    }
+    ModelRole.values.toVector.collect {
+      case role if routed(role.in(policy)) =>
+        s"${role.upstreamVar(role.in(policy).first.grade)} is unset: the ${name(role)}'s first " +
+          "model, whose upstream OpenRouter picks, is cleared for public rooms alone; naming its " +
+          "one upstream there clears that pair for every label"
+    }
   }
 
   /** What `grit serve` says at start when `admins` names no one; nothing when it names any. */

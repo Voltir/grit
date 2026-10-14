@@ -71,7 +71,8 @@ object OpenRouterConfig {
     * variable alone keeps their model. A grade the ladder has no rung at gets one, after its
     * others, when its model variable is set: the first rung's budget and effort, that pair. A
     * summary or query role that sets neither standard variable follows the turn's standard
-    * model and upstream whenever the turn's standard variables set either. A budget variable
+    * model and upstream whenever the turn's standard variables set either; a heard role that
+    * sets neither follows the summary's, as laid, whenever the summary's or the turn's do. A budget variable
     * replaces only the standard rungs' budget. `Missing` names the model variable when a grade
     * the ladder has no rung at sets only its upstream or budget.
     */
@@ -161,7 +162,9 @@ object OpenRouterConfig {
       followed = if (names(ModelRole.Turn)) standard(turn) else None
       summary <- ladder(ModelRole.Summary, policy.summary, followed)
       query <- ladder(ModelRole.Query, policy.query, followed)
-    } yield Policy(turn, summary, query, policy.heard)
+      written = if (names(ModelRole.Summary) || names(ModelRole.Turn)) standard(summary) else None
+      heard <- ladder(ModelRole.Heard, policy.heard, written)
+    } yield Policy(turn, summary, query, heard)
   }
 
   /** The grades whose variables are read, the standard first: a rung another grade adds
@@ -195,5 +198,5 @@ object OpenRouterConfig {
       k <- key(env).left.map(_.message)
       seed <- Seed.catalog
       p <- policy(env, seed.policy).left.map(_.message)
-    } yield of(k, role.in(seed.withPolicy(p).pin).first)
+    } yield of(k, role.in(seed.withPolicy(p)).first)
 }
