@@ -198,6 +198,21 @@ object QueryTests extends TestSuite {
       )
     }
 
+    test(
+      "a .tasty deleted between its listing and its read is skipped and named, and the rest load"
+    ) {
+      val classes = FixtureLayout.classesDirs(root)
+      val listed = classes.flatMap(c => os.walk(c).filter(_.ext == "tasty"))
+      val gone = classes.map(_ / "grit" / "outline" / "fixture" / "Gone.tasty")
+      val (defns, _, notes) = Query.loadAll(root, FixtureLayout, listed ++ gone, Loaded.empty)
+      assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
+      assert(
+        notes == Vector(
+          "-- not loaded: grit/outline/fixture/Gone.tasty (deleted since it was listed)"
+        )
+      )
+    }
+
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
       val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
       os.copy(

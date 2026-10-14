@@ -40,7 +40,10 @@ object Loaded {
     stale
       .grouped(readBatch)
       .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
-        acc.flatMap(state => splitting(batch, state)(Read.defnsByTasty(root, layout, _), withDefns))
+        acc.flatMap { state =>
+          val (there, next) = present(batch, state)
+          splitting(there, next)(Read.defnsByTasty(root, layout, _), withDefns)
+        }
       }
       .map { next =>
         val all = tasty.flatMap(p => next.byTasty.get(p).map(_.defns).getOrElse(Vector.empty))
@@ -51,9 +54,9 @@ object Loaded {
   /** `in` with each of `files` cached at its current mtime as `batch` read it, and each file `batch` could not read remembered as failed. */
   private def withDefns(in: Loaded, files: Vector[os.Path], batch: Read.Batch): Loaded = {
     val byTasty = files.foldLeft(in.byTasty) { (cache, p) =>
-      cache.updated(p, Cached(os.mtime(p), batch.byTasty.getOrElse(p, Vector.empty)))
+      cache.updated(p, Cached(mtimeOf(p), batch.byTasty.getOrElse(p, Vector.empty)))
     }
-    val failedNow = batch.unreadable.map { case (p, _) => p -> os.mtime(p) }.toMap
+    val failedNow = batch.unreadable.map { case (p, _) => p -> mtimeOf(p) }.toMap
     in.copy(
       byTasty = byTasty,
       failed = (in.failed -- files) ++ failedNow,
@@ -72,9 +75,10 @@ object Loaded {
     stale
       .grouped(readBatch)
       .foldLeft[Either[String, Loaded]](Right(in)) { (acc, batch) =>
-        acc.flatMap(state =>
-          splitting(batch, state)(Read.definitionsAndReferences(root, layout, _), absorb)
-        )
+        acc.flatMap { state =>
+          val (there, next) = present(batch, state)
+          splitting(there, next)(Read.definitionsAndReferences(root, layout, _), absorb)
+        }
       }
       .map { next =>
         val all = tasty.flatMap(p => next.refs.get(p).map(_.uses).getOrElse(Vector.empty))
@@ -86,7 +90,7 @@ object Loaded {
   private def absorb(in: Loaded, batch: Vector[os.Path], both: Read.Both): Loaded = {
     val next = withDefns(in, batch, both.batch)
     next.copy(refs = batch.foldLeft(next.refs) { (index, p) =>
-      index.updated(p, Indexed(os.mtime(p), both.uses.getOrElse(p, Vector.empty)))
+      index.updated(p, Indexed(mtimeOf(p), both.uses.getOrElse(p, Vector.empty)))
     })
   }
 
@@ -119,14 +123,33 @@ object Loaded {
 
   /** `in` with each of `files` remembered as failed at its current mtime. */
   def withFailures(files: Vector[os.Path], in: Loaded): Loaded =
-    in.copy(failed = files.foldLeft(in.failed)((failed, p) => failed.updated(p, os.mtime(p))))
+    in.copy(failed = files.foldLeft(in.failed)((failed, p) => failed.updated(p, mtimeOf(p))))
+
+  /** What a file deleted since it was listed is remembered by. */
+  private val gone = -1L
+
+  /** `p`'s mtime, or `gone` when no file is there now: a build may delete a `.tasty` while a query reads its package. */
+  private def mtimeOf(p: os.Path): Long =
+    scala.util.Try(os.mtime(p)).getOrElse(gone)
+
+  /** `in` with each of `files` no longer there remembered as failed, saying so, and the files still there. */
+  private def present(files: Vector[os.Path], in: Loaded): (Vector[os.Path], Loaded) = {
+    val (there, deleted) = files.partition(p => mtimeOf(p) != gone)
+    val failed = withFailures(deleted, in)
+    (
+      there,
+      failed.copy(unreadable =
+        deleted.foldLeft(failed.unreadable)(_.updated(_, "deleted since it was listed"))
+      )
+    )
+  }
 
   private def cachedAt(in: Loaded, p: os.Path): Boolean =
-    in.byTasty.get(p).exists(_.mtime == os.mtime(p))
+    in.byTasty.get(p).exists(_.mtime == mtimeOf(p))
 
   private def failedAt(in: Loaded, p: os.Path): Boolean =
-    in.failed.get(p).contains(os.mtime(p))
+    in.failed.get(p).contains(mtimeOf(p))
 
   private def indexedAt(in: Loaded, p: os.Path): Boolean =
-    in.refs.get(p).exists(_.mtime == os.mtime(p))
+    in.refs.get(p).exists(_.mtime == mtimeOf(p))
 }
