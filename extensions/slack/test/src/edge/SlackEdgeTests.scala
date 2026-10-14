@@ -147,6 +147,7 @@ object SlackEdgeTests extends TestSuite {
           joins,
           inbox.principals,
           deliveries,
+          inbox.ledger,
           acknowledgements,
           InMemoryReviews.over(inbox),
           FakeJot,

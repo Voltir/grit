@@ -46,8 +46,8 @@ In dependency order, each with the core packages it imports:
   at the clearance it resolves to (ADRs 0030, 0031); the stores, each a trait `grit.dbos`
   implements. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`,
   `retention`, `prompt`
-- **`spend`**: what grit spends on model calls, read back, and the daily budget. ← `id`,
-  `message`, `store`
+- **`spend`**: what grit spends on model calls, read back (a day's, a conversation's, a turn's),
+  and the daily budget. ← `id`, `message`, `model`, `store`
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates
   over their answers, shadow variants, and the corpora that could supply what a message asks
   for. ← `id`, `message`, `place`, `period`, `store`, `spend`, `classify`

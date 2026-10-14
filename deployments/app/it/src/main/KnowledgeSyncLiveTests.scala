@@ -362,6 +362,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
           engine.joins,
           engine.principals,
           engine.deliveries,
+          engine.spending,
           engine.acknowledgements,
           engine.reviews,
           engine.jot,

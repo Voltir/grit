@@ -1,6 +1,6 @@
 package grit.core.spend
 
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, TurnRef}
 import grit.core.store.{StoreError, Tx}
 
 /** What recorded model calls cost, read back from the ledger
@@ -17,4 +17,10 @@ trait Spending {
 
   /** The calls recorded for `conversation`: its turns', and its closes'. */
   def conversation(id: ConversationId)(using Tx^): Either[StoreError, Spend]
+
+  /** `turn`'s spend: every call its workflow recorded, and its answer's. A turn whose rows the
+    * ledger no longer holds, or that recorded none, is [[grit.core.message.Cost.Zero]] and no
+    * answer, not an error.
+    */
+  def turn(turn: TurnRef)(using Tx^): Either[StoreError, TurnSpend]
 }

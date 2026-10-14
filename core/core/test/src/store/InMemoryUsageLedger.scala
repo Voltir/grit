@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.Grade
-import grit.core.spend.{Day, Spend, Spending}
+import grit.core.spend.{Day, Spend, Spending, TurnSpend}
 
 /** An in-memory [[UsageLedger]] for tests, keeping [[StoreContract]], and the [[Spending]]
   * read from it, keeping `SpendingContract`. It ignores the `Tx`. A row is recorded at
@@ -27,6 +27,9 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
     Right(spent(rows.filter { row =>
       recordedAt.get(row._1).exists(at => !at.isBefore(day.from) && at.isBefore(day.until))
     }))
+
+  def turn(turn: TurnRef)(using tx: Tx^): Either[StoreError, TurnSpend] =
+    of(turn.workflowId).map(TurnSpend.of(turn, _))
 
   def conversation(id: ConversationId)(using Tx^): Either[StoreError, Spend] =
     Right(spent(rows.filter(_._6.conversationId == id)))

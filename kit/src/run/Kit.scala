@@ -351,6 +351,7 @@ object Kit {
       link.joins,
       link.principals,
       link.deliveries,
+      link.spending,
       link.acknowledgements,
       link.reviews,
       link.jot,

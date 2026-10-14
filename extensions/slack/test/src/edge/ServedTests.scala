@@ -129,6 +129,7 @@ object ServedTests extends TestSuite {
         joins,
         inbox.principals,
         new InMemoryDeliveries,
+        inbox.ledger,
         acknowledgements,
         picks.reviews,
         jot,

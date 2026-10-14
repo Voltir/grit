@@ -82,5 +82,19 @@ abstract class SpendingContract extends TestSuite {
       call(other, Some("0.1"), "2031-09-13T12:00:00Z")
       transaction(ledger.conversation(c)) ==> Right(Spend(3, Cost.Exact(BigDecimal("0.007"))))
     }
+
+    test("turn: every call its workflow recorded and its reply's row; a turn with none, nothing") {
+      val c = fresh()
+      val turn = TurnRef(c, TurnSeq.First)
+      val other = TurnRef(c, TurnSeq(1))
+      val at = Instant.parse("2031-09-16T12:00:00Z")
+      recordAt(EntryId(s"query:${ConversationId.value(c)}"), turn, turn.workflowId, Some("0.001"), at)
+      recordAt(turn.replyId, turn, turn.workflowId, Some("0.002"), at)
+      recordAt(other.replyId, other, other.workflowId, Some("0.1"), at)
+      transaction(ledger.turn(turn)).map(s => (s.cost, s.answer.map(_.entry))) ==>
+        Right((Cost.Exact(BigDecimal("0.003")), Some(turn.replyId)))
+      val none = TurnRef(c, TurnSeq(2))
+      transaction(ledger.turn(none)).map(s => (s.cost, s.answer)) ==> Right((Cost.Zero, None))
+    }
   }
 }

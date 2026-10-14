@@ -6,7 +6,7 @@ import scala.util.control.NonFatal
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.Grade
-import grit.core.spend.{Day, Spend, Spending}
+import grit.core.spend.{Day, Spend, Spending, TurnSpend}
 import grit.core.store.{StoreError, Tx, UsageLedger}
 
 import org.postgresql.util.PSQLException
@@ -19,6 +19,9 @@ final class SqlUsageLedger extends UsageLedger, Spending {
       ps.setObject(1, java.time.OffsetDateTime.ofInstant(day.from, java.time.ZoneOffset.UTC))
       ps.setObject(2, java.time.OffsetDateTime.ofInstant(day.until, java.time.ZoneOffset.UTC))
     }
+
+  def turn(turn: TurnRef)(using tx: Tx^): Either[StoreError, TurnSpend] =
+    of(turn.workflowId).map(TurnSpend.of(turn, _))
 
   def conversation(id: ConversationId)(using tx: Tx^): Either[StoreError, Spend] =
     spent("conversation_id = ?::uuid")(_.setString(1, ConversationId.value(id)))

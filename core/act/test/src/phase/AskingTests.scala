@@ -8,7 +8,7 @@ import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
-import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
+import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{InMemoryUsageLedger, StoreError, Tx, UsageLedger}
 import grit.dbos.sql.TestTx
 
@@ -68,6 +68,8 @@ object AskingTests extends TestSuite {
   private val unreadable: Spending = new Spending {
     def on(day: Day)(using Tx^): Either[StoreError, Spend] = Left(StoreError.DatabaseError("x"))
     def conversation(id: ConversationId)(using Tx^): Either[StoreError, Spend] =
+      Left(StoreError.DatabaseError("x"))
+    def turn(turn: TurnRef)(using Tx^): Either[StoreError, TurnSpend] =
       Left(StoreError.DatabaseError("x"))
   }
 

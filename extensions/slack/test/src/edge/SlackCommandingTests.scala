@@ -160,6 +160,7 @@ object SlackCommandingTests extends TestSuite {
           new InMemoryJoins(voucher),
           inbox.principals,
           new InMemoryDeliveries,
+          inbox.ledger,
           new InMemoryAcknowledgements,
           InMemoryReviews.over(inbox),
           FakeJot,

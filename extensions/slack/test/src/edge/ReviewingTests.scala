@@ -119,6 +119,7 @@ object ReviewingTests extends TestSuite {
         InMemoryJoins.none(),
         inbox.principals,
         new InMemoryDeliveries,
+        inbox.ledger,
         new InMemoryAcknowledgements,
         watched,
         FakeJot,

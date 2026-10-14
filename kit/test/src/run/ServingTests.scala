@@ -46,6 +46,7 @@ object ServingTests extends TestSuite {
       InMemoryJoins.none(),
       inbox.principals,
       new InMemoryDeliveries,
+      inbox.ledger,
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       FakeJot,

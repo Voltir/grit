@@ -29,7 +29,7 @@ import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
 import grit.core.place.Place
 import grit.core.provider.Models
-import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending}
+import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 import grit.core.visibility.{Clearance, Cleared, Compartments, Label, Party, RoomLabels, Visibility}
@@ -230,6 +230,8 @@ object MovesWorld {
   object Unreadable extends Spending {
     def on(day: Day)(using Tx^): Either[StoreError, Spend] = Left(StoreError.DatabaseError("down"))
     def conversation(id: ConversationId)(using Tx^): Either[StoreError, Spend] =
+      Left(StoreError.DatabaseError("down"))
+    def turn(turn: TurnRef)(using Tx^): Either[StoreError, TurnSpend] =
       Left(StoreError.DatabaseError("down"))
   }
 }
