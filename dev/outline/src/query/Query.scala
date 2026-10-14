@@ -48,7 +48,7 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
-  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
+  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import, unless the pattern's segments before its last match a method, when a note says so in place of them. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
   def find(
       root: Root,
       layout: Layout,
@@ -131,12 +131,26 @@ object Query {
                 Vector(s"-- no definition in main sources matches $pattern; in test sources:")
             )
           else {
-            val renamings = renamingImports(root, files, word)
+            // A pattern under a method names its locals, which no .tasty lists as definitions.
+            val (methods, afterMethods, _, _) =
+              if (segments.size < 2) (Vector.empty, afterTests, Vector.empty, 0)
+              else {
+                val init = segments.dropRight(1)
+                matching(
+                  init.map(segmentGlob),
+                  Scope.WithTests,
+                  Locate.holding(root, wordPattern(init.last)),
+                  afterTests
+                )
+              }
+            val defs = methods.filter(_.kind == Kind.Def)
+            val renamings =
+              if (defs.nonEmpty) Vector.empty else renamingImports(root, files, word)
             val (targets, afterTargets, targetNotes) =
               renamings
                 .map(_.target)
                 .distinct
-                .foldLeft((Vector.empty[Defn], afterTests, testNotes)) {
+                .foldLeft((Vector.empty[Defn], afterMethods, testNotes)) {
                   case ((ds, state, ns), target) =>
                     val exact = target.split('.').toVector.map(java.util.regex.Pattern.quote(_).r)
                     val (more, next, moreNotes, _) = matching(
@@ -151,7 +165,11 @@ object Query {
               targets.distinct,
               afterTargets,
               mainNotes ++ targetNotes,
-              privateNote(testPrivate) ++ renamings.map(r =>
+              privateNote(testPrivate) ++ defs.map(_.fullName).distinct.map { m =>
+                val owner = m.split('.').dropRight(1).mkString(".")
+                val name = m.split('.').lastOption.getOrElse(m)
+                s"-- $m is a def: find lists no definition local to a method; show $owner --body $name --private prints its body"
+              } ++ renamings.map(r =>
                 s"-- ${r.alias} is a renaming import of ${r.target} at ${r.file}:${r.line}"
               )
             )
@@ -175,32 +193,69 @@ object Query {
   /** An import that renames `target` (a full name) to `alias`, at `file`'s `line`. */
   private final case class Renaming(alias: String, target: String, file: os.RelPath, line: Int)
 
-  /** The renaming imports in `files` whose new name is a whole match of `word`: `import a.b.X as Y`, and `X as Y` or `X => Y` inside an import's braces. Read from source text, one line at a time, so an import split across lines is missed and the target is the path as written, not resolved. */
+  /** The renaming imports in `files` whose new name is a whole match of `word`: `import a.b.X as Y`, and `X as Y` or
+    * `X => Y` among an import's braced selectors, the braces spanning lines or not, each at the line its selector starts
+    * on. Read from source text, so the target is the path as written, not resolved.
+    */
   private def renamingImports(
       root: Root,
       files: Vector[os.RelPath],
       word: scala.util.matching.Regex
   ): Vector[Renaming] = {
-    val importLine = raw"^\s*import\s+(.+?)\s*$$".r
-    val braced = raw"^([\w$$.]+)\.\{(.*)\}$$".r
-    val selector = raw"^\s*([\w$$]+)\s*(?:as|=>)\s*([\w$$]+)\s*$$".r
-    val plain = raw"^([\w$$.]+)\.([\w$$]+\s+as\s+[\w$$]+)$$".r
+    val importStart = raw"^\s*import\s+(.*)$$".r
+    val renamed = raw"^\s*([\w$$]+)\s+as\s+([\w$$]+)\s*$$".r
+    val arrowed = raw"^\s*([\w$$]+)\s*=>\s*([\w$$]+)\s*$$".r
+    val plain = raw"^\s*([\w$$.]+)\.([\w$$]+)\s+as\s+([\w$$]+)\s*$$".r
+    // `text` split at the commas outside braces, each part with its offset in `text`.
+    def parts(text: String, from: Int): Vector[(String, Int)] = {
+      val cuts = text.indices
+        .foldLeft((0, Vector.empty[Int])) { case ((depth, at), i) =>
+          text.charAt(i) match {
+            case '{' => (depth + 1, at)
+            case '}' => (depth - 1, at)
+            case ',' if depth == 0 => (depth, at :+ i)
+            case _ => (depth, at)
+          }
+        }
+        ._2
+      val bounds = (-1 +: cuts) :+ text.length
+      bounds.zip(bounds.drop(1)).map { case (a, b) => (text.substring(a + 1, b), from + a + 1) }
+    }
     files.flatMap { file =>
       val path = root.dir / file
       val lines = if (os.isFile(path)) os.read(path).split("\n", -1).toVector else Vector.empty
       lines.zipWithIndex.flatMap {
-        case (importLine(clause), index) =>
-          val selected: Vector[(String, String)] = clause match {
-            case braced(prefix, inside) => inside.split(',').toVector.map(prefix -> _)
-            case _ =>
-              clause.split(',').toVector.map(_.trim).collect { case plain(prefix, one) =>
-                prefix -> one
+        case (importStart(first), index) =>
+          // The statement runs on while its braces are open.
+          def open(t: String): Boolean = t.count(_ == '{') > t.count(_ == '}')
+          val more =
+            lines.iterator.drop(index + 1).scanLeft(first)(_ + "\n" + _).takeWhile(open).size
+          val clause = (first +: lines.slice(index + 1, index + 1 + more)).mkString("\n")
+          def lineAt(offset: Int): Int = index + 1 + clause.take(offset).count(_ == '\n')
+          parts(clause, 0)
+            .flatMap { case (part, at) =>
+              val brace = part.indexOf('{')
+              if (brace < 0) part match {
+                case plain(prefix, name, alias) =>
+                  Vector(Renaming(alias, s"$prefix.$name", file, lineAt(at)))
+                case _ => Vector.empty
               }
-          }
-          selected.collect {
-            case (prefix, selector(name, alias)) if word.matches(alias) && alias != name =>
-              Renaming(alias, s"$prefix.$name", file, index + 1)
-          }
+              else {
+                val prefix = part.take(brace).trim.stripSuffix(".")
+                val inside = part.drop(brace + 1).takeWhile(_ != '}')
+                parts(inside, at + brace + 1).flatMap { case (selector, from) =>
+                  val start = from + selector.indexWhere(!_.isWhitespace).max(0)
+                  selector match {
+                    case renamed(name, alias) =>
+                      Vector(Renaming(alias, s"$prefix.$name", file, lineAt(start)))
+                    case arrowed(name, alias) =>
+                      Vector(Renaming(alias, s"$prefix.$name", file, lineAt(start)))
+                    case _ => Vector.empty
+                  }
+                }
+              }
+            }
+            .filter(r => word.matches(r.alias) && !r.target.endsWith("." + r.alias))
         case _ => Vector.empty
       }
     }

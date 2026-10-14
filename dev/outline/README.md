@@ -65,8 +65,9 @@ sources, members and constructor vals included, as its full name, file, lines an
 dot-separated segments match the last segments of a full name, each whole, `*` standing for any run
 of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. When main
 sources hold no match, test sources' matches follow a `-- no definition in main sources matches` note;
-when neither does, a renaming import giving the name (`import a.X as Y`, read from source text) is named,
-with `X`'s definition. `--private` lists private members too; without it, a pattern only private names match says how many, in a
+when neither does, a renaming import giving the name (`import a.X as Y`, or a braced selector `X as Y` or `X => Y`,
+read from source text) is named, with `X`'s definition. A pattern whose owner is a method (`Read.read.*`) says `find`
+lists no definition local to one, and names the `show` that prints its body. `--private` lists private members too; without it, a pattern only private names match says how many, in a
 `-- N private matches: add --private` note. A `show`
 that matches nothing suggests `find` with the name's last segment.
 

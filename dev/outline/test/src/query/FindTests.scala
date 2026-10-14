@@ -156,6 +156,38 @@ object FindTests extends TestSuite {
       assert(names(answer).contains("grit.outline.fixture.Holder.Nested"))
     }
 
+    test(
+      "a braced import's renames are read selector by selector, a name holding as inside a word renaming nothing"
+    ) {
+      def notes(pattern: String): Vector[String] =
+        find(pattern).text.linesIterator
+          .filter(_.contains("dev/outline/fixture/src/Imports.scala"))
+          .toVector
+      assert(
+        notes("Nowhere.Kept") == Vector(
+          "-- Kept is a renaming import of grit.outline.fixture.store.MemStore at dev/outline/fixture/src/Imports.scala:3"
+        )
+      )
+      assert(
+        notes("Nowhere.Suite") == Vector(
+          "-- Suite is a renaming import of grit.outline.fixture.store.StoreSuite at dev/outline/fixture/src/Imports.scala:7"
+        )
+      )
+      // Classy's `as` is inside the word: no `Cl as sy`.
+      assert(notes("Nowhere.s*") == Vector.empty)
+    }
+    test(
+      "a pattern under a method says find lists no definition local to one, and lists no renaming import"
+    ) {
+      val answer = find("Outer.Inner.deep.*")
+      assert(answer.status == Status.NoMatch)
+      val notes = answer.text.linesIterator.filter(_.startsWith("-- ")).toVector
+      assert(
+        notes == Vector(
+          "-- grit.outline.fixture.Outer.Inner.deep is a def: find lists no definition local to a method; show grit.outline.fixture.Outer.Inner --body deep --private prints its body"
+        )
+      )
+    }
     test("each line ends with its definition's size: StoreSuite's 455 bytes are [0.4 KB]") {
       assert(
         find("StoreSuite").text.linesIterator.contains(
