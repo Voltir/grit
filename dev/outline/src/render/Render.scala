@@ -50,7 +50,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut; a type's members named in `bodies` follow its head, before its other members, and they, that head and a named definition in `bodies` print whatever `cap`. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -84,19 +84,21 @@ object Render {
     def namedEntry(d: Defn): Vector[Piece] = {
       val topLevel = !ownerRelative(d).contains('.')
       if (isType(d)) {
-        val members =
-          // A constructor val's lines are the type's own head, already shown.
-          d.members
-            .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
-            .map(m => Piece(memberEntry(m), ownerRelative(m)))
-        val head = Piece(headed(d, topLevel), ownerRelative(d))
+        // A constructor val's lines are the type's own head, already shown.
+        val (asked, others) = d.members
+          .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
+          .map(m => Piece(memberEntry(m), ownerRelative(m), asked = bodies.contains(m.name)))
+          .partition(_.asked)
+        // What --body names comes first, so a budget spends on it before the rest.
+        val members = asked ++ others
+        val head = Piece(headed(d, topLevel), ownerRelative(d), asked = asked.nonEmpty)
         val closing = closingLines(d)
         if (members.size <= 1)
-          Vector(Piece(head.lines ++ members.flatMap(_.lines) ++ closing, head.name))
+          Vector(Piece(head.lines ++ members.flatMap(_.lines) ++ closing, head.name, head.asked))
         else
           Vector(head) ++ members.dropRight(1) ++
             members.takeRight(1).map(m => m.copy(lines = m.lines ++ closing))
-      } else Vector(Piece(entry(d, topLevel), ownerRelative(d)))
+      } else Vector(Piece(entry(d, topLevel), ownerRelative(d), asked = bodies.contains(d.name)))
     }
 
     // Each entry is its pieces; a file's header rides on its first, so a cut never leaves a bare header.
@@ -119,10 +121,11 @@ object Render {
         else pieces
       }
     }
-    val chunks: Vector[Vector[String]] = entries.flatten.map(_.lines)
+    val pieces = entries.flatten
+    val all = entries ++ exercising.map(c => Vector(Piece(c, "")))
 
     // One budget over the definitions and the tests list, so a cut line counts both.
-    val shown = fitting(chunks ++ exercising, cap)
+    val keep = keptUnder(all.flatten, cap)
 
     val library = traced.library.filterNot(_.contains("<"))
     val notLoaded = traced.missing
@@ -130,9 +133,14 @@ object Render {
       (if (library.nonEmpty) Vector(s"-- library: ${library.mkString(", ")}") else Vector.empty) ++
         (if (notLoaded.nonEmpty) Vector(s"-- not loaded: ${notLoaded.mkString(", ")}")
          else Vector.empty)
-    val kept = chunks.take(shown).flatten ++ trailer ++ exercising.take(shown - chunks.size).flatten
+    def keptOf(ps: Vector[Piece], flags: Vector[Boolean]) =
+      ps.zip(flags).collect { case (p, true) => p.lines }.flatten
+    val kept = keptOf(pieces, keep) ++ trailer ++ keptOf(
+      all.flatten.drop(pieces.size),
+      keep.drop(pieces.size)
+    )
     val body =
-      (kept ++ cutBetween(entries ++ exercising.map(c => Vector(Piece(c, ""))), shown, cap) ++
+      (kept ++ cutBetween(all, keep, cap, hint = bodies.isEmpty) ++
         summaries.map(testsLine))
         .map(_ + "\n")
         .mkString
@@ -451,28 +459,59 @@ object Render {
       )
     }
 
-  /** One piece of an entry the budget may cut after: its lines, and the owner-relative name of what it shows. */
-  private final case class Piece(lines: Vector[String], name: String)
-
-  /** The line saying `entries` were cut after their first `shown` pieces. Inside an entry, after its first piece:
-    * `-- cut at N KB after <last piece shown>: M more members[ and E more entries], ~R KB; rerun with --max-kb X, or
-    * --body <member> for one`, R the KB of the pieces cut, X the KB of all; otherwise `cut`'s line, counting entries.
+  /** One piece of an entry the budget may cut after: its lines, the owner-relative name of what it shows, and whether
+    * it was asked for by name, which a budget never cuts.
     */
-  private def cutBetween(entries: Vector[Vector[Piece]], shown: Int, cap: Int): Vector[String] = {
+  private final case class Piece(lines: Vector[String], name: String, asked: Boolean = false)
+
+  /** Which of `pieces` print under `cap` bytes: every asked one, then the others in order while they fit in what the
+    * asked ones leave, none after the first that does not.
+    */
+  private def keptUnder(pieces: Vector[Piece], cap: Int): Vector[Boolean] = {
+    val sized = pieces.map(p => (chunkBytes(p.lines), p.asked))
+    val left = cap - sized.collect { case (bytes, true) => bytes }.sum
+    val spent = sized
+      .scanLeft(0) { case (total, (bytes, asked)) => if (asked) total else total + bytes }
+      .drop(1)
+    val over = sized.zip(spent).indexWhere { case ((_, asked), total) => !asked && total > left }
+    sized.zipWithIndex.map { case ((_, asked), i) => asked || over < 0 || i < over }
+  }
+
+  /** The line saying which pieces of `entries` were cut, `keep` flagging each piece in order; none when every piece is
+    * kept. Inside an entry, after a piece: `-- cut at N KB after <last piece kept before the cut>: M more members[ and E
+    * more entries], ~R KB; rerun with --max-kb X[, or --body <member> for one]`, R the KB of the pieces cut, X the KB of
+    * all, the `--body` hint only with `hint`; otherwise `cut`'s line, counting the entries cut whole.
+    */
+  private def cutBetween(
+      entries: Vector[Vector[Piece]],
+      keep: Vector[Boolean],
+      cap: Int,
+      hint: Boolean
+  ): Vector[String] = {
     val starts = entries.map(_.size).scanLeft(0)(_ + _)
-    val at = starts.lastIndexWhere(_ <= shown)
-    val within = shown - starts.lift(at).getOrElse(0)
-    entries.lift(at).filter(_ => within > 0) match {
-      case Some(cutIn) =>
-        val bytes = entries.flatten.map(p => chunkBytes(p.lines))
-        val after = cutIn.lift(within - 1).map(_.name).getOrElse("")
-        val later = entries.size - at - 1
-        val more = counted(cutIn.size - within, "more member", "more members") +
-          (if (later > 0) " and " + counted(later, "more entry", "more entries") else "")
+    val marked = entries.zip(starts).map { case (e, at) => e.zip(keep.slice(at, at + e.size)) }
+    val bytes = entries.flatten.map(p => chunkBytes(p.lines))
+    val all = kilobytesUp(bytes.sum)
+    val whole = counted(marked.count(!_.exists(_._2)), "more entry", "more entries")
+    val members = marked.filter(_.exists(_._2)).map(_.count(!_._2)).sum
+    marked.find(_.exists(!_._2)) match {
+      case None => Vector.empty
+      case Some(cutIn) if cutIn.exists(_._2) =>
+        val after = cutIn.takeWhile(_._2).lastOption.fold("")(_._1.name)
+        val later = marked.count(!_.exists(_._2))
+        val more =
+          counted(members, "more member", "more members") + (if (later > 0) s" and $whole" else "")
+        val cutBytes = bytes.zip(keep).collect { case (b, false) => b }.sum
         Vector(
-          s"-- cut at ${budgetOf(cap)} KB after $after: $more, ~${kilobytesUp(bytes.drop(shown).sum)} KB; rerun with --max-kb ${kilobytesUp(bytes.sum)}, or --body <member> for one"
+          s"-- cut at ${budgetOf(cap)} KB after $after: $more, ~${kilobytesUp(cutBytes)} KB; rerun with --max-kb $all" +
+            (if (hint) ", or --body <member> for one" else "")
         )
-      case None => cut(entries.map(_.flatMap(_.lines)), at, cap)
+      case Some(_) =>
+        val alsoMembers =
+          if (members > 0) " and " + counted(members, "more member", "more members") else ""
+        Vector(
+          s"-- cut at ${budgetOf(cap)} KB: $whole$alsoMembers, ~$all KB; rerun with --max-kb $all or narrow"
+        )
     }
   }
 

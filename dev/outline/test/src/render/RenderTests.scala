@@ -272,6 +272,34 @@ object RenderTests extends TestSuite {
         )
       )
     }
+    test(
+      "a member --body names prints right after its type's head, kept whatever the budget: Limits.hidden before both of"
+    ) {
+      val limits =
+        named(read, "grit.outline.fixture.Limits").filter(_.kind == grit.outline.model.Kind.Object)
+      def shownAt(cap: Int) =
+        Render
+          .show(limits, noTraced, read, Set.empty, Set("hidden"), true, cap)
+          .split("\n")
+          .toVector
+      val full = shownAt(80000)
+      val hiddenAt = full.indexWhere(_.startsWith("35-35"))
+      assert(hiddenAt > 0, hiddenAt < full.indexWhere(_.startsWith("27-28 ")))
+      // The budget holds the file line, the head and hidden's entry, and neither of.
+      val shown = full.take(full.indexWhere(_.startsWith("27-28 ")))
+      val cap = shown.map(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1).sum
+      val budget = (BigDecimal(cap) / 1024).setScale(1, BigDecimal.RoundingMode.HALF_UP)
+      val lines = shownAt(cap)
+      assert(lines.take(shown.size) == shown)
+      assert(
+        lines.lift(shown.size) == Some(
+          s"-- cut at $budget KB after Limits.hidden: 2 more members, ~1 KB; rerun with --max-kb 1"
+        )
+      )
+      // A budget smaller than the head still prints the head and the named member.
+      val tiny = shownAt(1)
+      assert(tiny.take(shown.size) == shown)
+    }
     test("a stale file's group header is flagged") {
       val c = named(read, "grit.outline.fixture.C")
       val out = Render.show(c, noTraced, read, Set(sample), Set.empty, false, 80000)

@@ -32,7 +32,7 @@ object Help {
     "--max-kb",
     "N",
     Some("max_kb"),
-    s"cut the answer at N KB (1024 bytes), a whole number from 1; default $defaultMaxKb. It cuts whole entries, never inside one, and a cut answer ends with `-- cut at N KB: M more entries, ~X KB; rerun with --max-kb X or narrow`, X the KB every entry needs. In show, a type of two members or more is cut between its members, its head first, and the answer ends with `-- cut at N KB after Turn.route: M more members, ~R KB; rerun with --max-kb X, or --body <member> for one`, R the KB of what was cut; its closing lines print only when no member was cut."
+    s"cut the answer at N KB (1024 bytes), a whole number from 1; default $defaultMaxKb. It cuts whole entries, never inside one, and a cut answer ends with `-- cut at N KB: M more entries, ~X KB; rerun with --max-kb X or narrow`, X the KB every entry needs. In show, a type of two members or more is cut between its members, its head first, then the members --body names, then the rest in file order; what --body names prints whatever N. A cut type's answer ends with `-- cut at N KB after Turn.route: M more members, ~R KB; rerun with --max-kb X, or --body <member> for one` (the hint only without --body), R the KB of what was cut; its closing lines print only when no member was cut."
   )
 
   private val root = Flag(
