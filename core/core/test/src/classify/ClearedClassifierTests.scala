@@ -73,6 +73,12 @@ object ClearedClassifierTests extends TestSuite {
       (asked, inner.calls) ==> (Vector(Right(Right("jev")), Right(Right("jev"))), 2)
     }
 
+    test("asking at exactly the label its service is cleared for calls the classifier") {
+      val inner = new Counting
+      val asked = ClearedClassifier.of(jev, inner).asking(routedAt(internal))
+      (asked.ask(Note("x"), urgent).map(_.model), inner.calls) ==> (Right("jev"), 1)
+    }
+
     test(
       "a classifier whose service is not cleared for what was read is Uncleared at the classification, asked in its place Unavailable naming both, and is not called"
     ) {

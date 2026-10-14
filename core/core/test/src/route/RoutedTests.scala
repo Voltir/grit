@@ -57,17 +57,22 @@ object RoutedTests extends TestSuite {
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
   }
 
-  /** Reads at `floor`, under [[visibility]], counting each body it runs; every read fails with
-    * `fails` when given.
+  /** Reads at `floor`, under [[visibility]], counting each body it runs; every read from the
+    * `from`th on (counting from 0) fails with `fails` when given.
     */
-  private final class At(floor: Label, fails: Option[StoreError] = None) extends Db {
+  private final class At(floor: Label, fails: Option[StoreError] = None, from: Int = 0) extends Db {
     @caps.unsafe.untrackedCaptures
     var ran = 0
-    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      fails.toLeft(()).flatMap { _ =>
+    @caps.unsafe.untrackedCaptures
+    var reads = 0
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {
+      val failing = if (reads >= from) fails else None
+      reads = reads + 1
+      failing.toLeft(()).flatMap { _ =>
         ran = ran + 1
         body(using TestTx.fake(Clearance.of(floor), visibility))
       }
+    }
   }
 
   /** Reads at internal first, at restricted after, under [[visibility]]. */
@@ -151,6 +156,19 @@ object RoutedTests extends TestSuite {
         Routed.reading(viaReads.as(subject))((_, reads) => reads.read(Right(())))
       )
       read ==> Vector(Right(Left(aboveInternal)), Right(Left(aboveInternal)))
+    }
+
+    test(
+      "a body's read that fails for the store's own reason fails with that reason, not the bound's"
+    ) {
+      // Each routes at internal, then fails its body's read for a reason of the store's.
+      val down = StoreError.DatabaseError("down")
+      val (viaDb, viaReads) = (new At(internal, Some(down), 1), new At(internal, Some(down), 1))
+      val read = Vector(
+        Routed.reading(viaDb, subject)((_, reads) => reads.read(Right(()))),
+        Routed.reading(viaReads.as(subject))((_, reads) => reads.read(Right(())))
+      )
+      (read, viaDb.ran, viaReads.ran) ==> (Vector(Right(Left(down)), Right(Left(down))), 1, 1)
     }
   }
 }
