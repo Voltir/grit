@@ -36,6 +36,10 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 - Edit straight from that file text: an Edit's old_string may be copied from `show`,
   `show --body`, `family`, `tests --test` or `tests --body` output without a Read first. Read a
   line range only when an Edit fails to match.
+- A line range outline printed is not a cue for `sed -n`: to read a member's body, private
+  ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
+  fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
+  is for what outline cannot name (a test file's imports, a region inside one body).
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency to understand the code.
   Name the members you need with `--body`.
