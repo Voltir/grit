@@ -35,13 +35,22 @@ object CostTests extends TestSuite {
     }
 
     test("an amount under 10¢ keeps two significant digits, trailing zeros dropped") {
-      Vector("0.0029", "0.00003", "0.000034567", "0.00194", "0.0012", "0.0000995")
-        .map(shown) ==> Vector("0.29¢", "0.003¢", "0.0035¢", "0.19¢", "0.12¢", "0.01¢")
+      Vector(
+        "0.0029",
+        "0.00003",
+        "0.000034567",
+        "0.00194",
+        "0.0012",
+        "0.0000995",
+        "0.0124",
+        "0.00996",
+        "0.01"
+      ).map(shown) ==>
+        Vector("0.29¢", "0.003¢", "0.0035¢", "0.19¢", "0.12¢", "0.01¢", "1.2¢", "1¢", "1¢")
     }
 
     test("an amount of 10¢ or more keeps its whole cents, the fraction rounded") {
-      Vector("0.0124", "0.1256", "1.2345", "1.256", "0.00996", "0.01")
-        .map(shown) ==> Vector("1.2¢", "13¢", "123¢", "126¢", "1¢", "1¢")
+      Vector("0.1", "0.1256", "1.2345", "1.256").map(shown) ==> Vector("10¢", "13¢", "123¢", "126¢")
     }
 
     test("a half rounds away from zero, either side of 0, a negative with its minus first") {

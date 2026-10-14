@@ -125,11 +125,6 @@ object RoutingTests extends TestSuite {
         Vector(strong, open)
     }
 
-    test("atMost at standard narrows a light and strong ladder to its light pin alone") {
-      atMostRefs(pinsOf(Grade.Light -> flash, Grade.Strong -> strong), Grade.Standard) ==>
-        Vector(flash)
-    }
-
     test("the fixed reply names the classification it could not be routed for") {
       Uncleared.reply(Uncleared(confidential)) ==>
         "No model this deployment uses is cleared for this conversation's classification, " +

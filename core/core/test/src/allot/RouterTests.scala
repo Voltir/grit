@@ -172,7 +172,13 @@ object RouterTests extends TestSuite {
 
   val tests = Tests {
     test("allot gives every input its pinned allotment") {
-      table.size ==> 30
+      val inputs = for {
+        asked <- TaskKind.values.toVector.flatMap(k => Vector(Some(k -> 0.59), Some(k -> 0.6))) :+
+          None
+        headroom <- Headroom.values.toVector
+      } yield (asked, headroom)
+      table.map((asked, headroom, _) => (asked, headroom)).sortBy(_.toString) ==>
+        inputs.sortBy(_.toString)
       val wrong = table.filter { case (asked, headroom, expected) =>
         Router.allot(asked.map(features(_, _)), headroom) != expected
       }

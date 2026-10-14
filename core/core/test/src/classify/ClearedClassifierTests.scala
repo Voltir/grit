@@ -100,7 +100,7 @@ object ClearedClassifierTests extends TestSuite {
         (Left(ClassifierError.Unavailable("topics are off")), None)
     }
 
-    test("a cleared classifier's ledger rows record its service as their upstream") {
+    test("a cleared classifier's upstream is its service, written `service:<name>`") {
       ClearedClassifier.of(jev, new Counting).upstream ==> Some("service:jev")
     }
   }

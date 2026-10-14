@@ -90,6 +90,12 @@ object RoutedTests extends TestSuite {
       .read(subject)(Right(Routed.of))
       .fold(e => throw new java.lang.AssertionError(e), identity)
 
+  /** What a read that rose to restricted fails with, bounded at internal ([[Tx.within]]). */
+  private val aboveInternal: StoreError = StoreError.Invalid(
+    s"a read at ${Label.shown(restricted)} is above the ${Label.shown(internal)} its calls " +
+      "were routed for, which changed since: ask again"
+  )
+
   val tests = Tests {
     test("a routing is the classification its transaction knew, cleared as it read the parties") {
       val r = routedAt(internal)
@@ -98,8 +104,11 @@ object RoutedTests extends TestSuite {
         r.cleared(pins).map(_.all.map(_.assignment.ref)),
         Vector(flash, strong).map(f => r.clears(party(f)))
       ) ==> (internal, Some(Vector(flash, strong)), Vector(true, true))
-      routedAt(Label.at(Level.Confidential)).cleared(pins).map(_.all.map(_.assignment.ref)) ==>
-        Some(Vector(strong))
+      val confidential = routedAt(Label.at(Level.Confidential))
+      (
+        confidential.cleared(pins).map(_.all.map(_.assignment.ref)),
+        Vector(flash, strong).map(f => confidential.clears(party(f)))
+      ) ==> (Some(Vector(strong)), Vector(false, true))
     }
 
     test("a read bounded by a routing that knows more than it was routed for runs nothing") {
@@ -112,8 +121,7 @@ object RoutedTests extends TestSuite {
         r.bound(above.as(subject)).read { bodies = bodies + 1; Right(()) },
         r.bound(at).read(subject) { bodies = bodies + 1; Right(()) }
       )
-      (reads.map(_.left.map(_.toString.contains("ask again"))), bodies) ==>
-        (Vector(Left(true), Left(true), Right(())), 1)
+      (reads, bodies) ==> (Vector(Left(aboveInternal), Left(aboveInternal), Right(())), 1)
     }
 
     test(
@@ -142,8 +150,7 @@ object RoutedTests extends TestSuite {
         Routed.reading(viaDb, subject)((_, reads) => reads.read(Right(()))),
         Routed.reading(viaReads.as(subject))((_, reads) => reads.read(Right(())))
       )
-      read.map(_.map(_.left.exists(_.toString.contains("ask again")))) ==>
-        Vector(Right(true), Right(true))
+      read ==> Vector(Right(Left(aboveInternal)), Right(Left(aboveInternal)))
     }
   }
 }

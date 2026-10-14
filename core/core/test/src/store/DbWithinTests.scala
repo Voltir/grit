@@ -17,6 +17,15 @@ object DbWithinTests extends TestSuite {
     (body, result)
   }
 
+  /** What a read at `known` through a db bounded at `bound` fails with ([[Tx.within]]). */
+  private def above(known: Label, bound: Label): Either[StoreError, Unit] =
+    Left(
+      StoreError.Invalid(
+        s"a read at ${Label.shown(known)} is above the ${Label.shown(bound)} its " +
+          "calls were routed for, which changed since: ask again"
+      )
+    )
+
   val tests = Tests {
     test("a read whose transaction knows no more than the bound runs, at it or under") {
       ran(Db.within(FakeDb(Clearance.of(internal)), internal)) ==> (true, Right(()))
@@ -24,22 +33,15 @@ object DbWithinTests extends TestSuite {
     }
 
     test("a read whose transaction knows more than the bound runs nothing, naming both") {
-      ran(Db.within(FakeDb(Clearance.of(restricted)), internal)) ==> (
-        false,
-        Left(
-          StoreError.Invalid(
-            s"a read at ${Label.shown(restricted)} is above the ${Label.shown(internal)} its " +
-              "calls were routed for, which changed since: ask again"
-          )
-        )
-      )
+      ran(Db.within(FakeDb(Clearance.of(restricted)), internal)) ==>
+        (false, above(restricted, internal))
     }
 
     test("reads for one subject made from a bounded db keep its bound") {
       val reads = Db.within(FakeDb(Clearance.of(restricted)), internal).as(Subject.Public)
       var body = false
       val result = reads.read { body = true; Right(()) }
-      (body, result.isLeft) ==> (false, true)
+      (body, result) ==> (false, above(restricted, internal))
     }
   }
 }
