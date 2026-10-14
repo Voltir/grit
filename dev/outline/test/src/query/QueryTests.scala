@@ -180,6 +180,13 @@ object QueryTests extends TestSuite {
       assert(!text.contains("def Nests.Left.same"), !text.contains("def Nests.Right.same"))
     }
 
+    test(
+      "--body on a member type prints its own text from its head to its end: Holder --body Nested"
+    ) {
+      val text = shownWith("Holder", Set("Nested"))
+      assert(text.linesIterator.contains("    /** A count, or why not: a negative `n`. */"))
+    }
+
     test("a corrupt .tasty is named alone by its path, and the definitions beside it still load") {
       val classes = os.temp.dir(prefix = "outline-bisect-") / "classes"
       os.copy(

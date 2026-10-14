@@ -480,7 +480,8 @@ object Read {
                     sym,
                     p,
                     classCut(c, p, src),
-                    hasBody = false,
+                    // A type's body is its lines after its head, its members' among them, so --body prints it whole.
+                    hasBody = true,
                     members = members(c.body),
                     refs = refsOf(c, sym),
                     parents = parentsOf(sym)
