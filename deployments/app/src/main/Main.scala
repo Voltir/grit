@@ -65,6 +65,7 @@ import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.{Turn, TurnLoop}
 
+// doc-length: the program's manual, naming every variable and mode it reads
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
   * the seed catalog's policy ([[Seed]]) says, overridden for the run by the role's variables

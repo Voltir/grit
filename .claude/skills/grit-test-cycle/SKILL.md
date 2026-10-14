@@ -32,7 +32,7 @@ cut short prints a smaller total that looks green.
   a module's suites rerun only when their inputs changed; a failure is never cached), the
   law (`scripts/enola-law.sh`; `bash scripts/fetch-enola.sh` first if `tools/` lacks enola),
   the capture probes a change reaches (below), format (`bash scripts/fetch-scalafmt.sh` first
-  if `tools/` lacks scalafmt), clock and, last, **lint**: the modules holding a changed Scala
+  if `tools/` lacks scalafmt), clock, docs (`scripts/doc-length`) and, last, **lint**: the modules holding a changed Scala
   source and every module depending on one, compiled with `-Wunused:all` in their own output
   directory. An unused import passes a targeted run and fails lint.
 - **A cached suite can miss a file it reads**: a file a test reads by path is not an input

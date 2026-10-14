@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# A Scaladoc says what, never how (STYLE.md rule 10), and one that has grown past a screen is
+# usually saying how, or holding facts whose home is elsewhere: refuses every `/** ... */`
+# longer than LIMIT lines, its opening line included, in every source the checkout tracks
+# (tests too), naming each as file:line with its length. A doc that is long for a reason (a
+# program's manual, say) says why in a comment line just above it:
+#
+#   // doc-length: the program's manual, every variable it reads
+#   /** grit, against the Postgres named by ...
+#
+#   scripts/doc-length               # as scripts/check's lint tier runs it
+#   LIMIT=40 scripts/doc-length      # what a tighter limit would refuse
+set -uo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+limit=${LIMIT:-60}
+
+# The files this checkout tracks: never a nested worktree's, nor a build's output.
+git ls-files -- '*/src/*.scala' |
+  sort |
+  xargs awk -v limit="$limit" '
+    FNR == 1 { indoc = 0; marked = 0 }
+    !indoc && /^[[:space:]]*\/\*\*/ { indoc = 1; start = FNR; lines = 0; excused = marked }
+    indoc {
+      lines++
+      if ($0 ~ /\*\//) {
+        indoc = 0
+        if (lines > limit && !excused) {
+          printf "doc-length: %s:%d is a doc of %d lines, over %d; trim it, or say why above it (doc-length: <why>)\n", FILENAME, start, lines, limit
+          found = 1
+        }
+      }
+      next
+    }
+    { marked = ($0 ~ /^[[:space:]]*\/\/.*doc-length: [^[:space:]]/) }
+    END { exit found }
+  '
+[ "${PIPESTATUS[2]}" -eq 0 ] || exit 1
