@@ -79,7 +79,8 @@ parameter may capture (a type parameter left unbounded can smuggle a capability)
 step body or transaction must not reach; every `caps.unsafe` with its proof; and, for each
 claim the compiler is meant to enforce, a probe (a `Probes.batch` suite in the module's
 `probes` tests, `SeparationTests` the pattern; `docs/capture-checking.md`), named by suite,
-that shows the breach rejected.
+that shows the breach rejected. It answers every item of `.claude/plan-checklist.md` that applies,
+reading the doc each item names rather than assuming its rule.
 
 ## Build and verify
 

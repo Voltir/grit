@@ -69,6 +69,9 @@ breaks, for whom, and the smallest change that fixes it. Check, as hard as the d
 - **Verification:** tests seen red first, a real-use run for anything a person sees, checks
   sized to the time budget, and checkpoints whose order has no hidden dependency.
 - **Layout:** each package one idea, in a one-way order written where the module is documented.
+- **The house rules no script checks:** every item of `.claude/plan-checklist.md` that applies.
+  Say which you checked; a rule the plan asserts about a doc (an ADR's status, a threshold) is
+  checked against that doc, not taken from the plan.
 
 Say plainly when something is fine; do not invent findings. Separate what you verified in
 the code (cite `file:line` or the outline query) from what you infer.
