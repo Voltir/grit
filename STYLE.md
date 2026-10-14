@@ -123,7 +123,12 @@ that outlives a method.
 One carve-out: a **test double standing in for a mutable resource** may hold mutable
 state, because that state is the thing it exists to emulate. `FakeEntryStore` has to
 behave like a table for the trait's contract to be under test at all. The carve-out is
-for fakes of stateful seams — not for convenience elsewhere in tests.
+for fakes of stateful traits — not for convenience elsewhere in tests.
+
+A second: a field `var` is allowed in a handle on one mutable resource, or in an object
+made per run that never leaves it. Such a `var` carries its proof under
+[rule 11](#11-escape-hatches-carry-their-proof), naming the guard that keeps it from being
+observed.
 
 ## 8. Java libraries are quarantined by role
 
