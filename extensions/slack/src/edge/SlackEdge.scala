@@ -1031,8 +1031,9 @@ final class SlackEdge(
     * its note after the last ([[ReplyNote.of]]; none, and said, when its spend cannot be read),
     * and `:eyes:` removed from the message it answers, which clears its acknowledgement. A part
     * left posting by a crash is looked for by its tag first, and posted only when Slack does
-    * not have it. A part Slack refuses stays posting, for the next pass. How many turns it
-    * delivered; why not, when the store could not be read.
+    * not have it. A part Slack refuses stays posting, for the next pass. A reply awaited at an
+    * address grit did not write is given up, said once, and settled as delivered. How many turns
+    * it delivered; why not, when the store could not be read.
     */
   def deliver(): Either[StoreError, Int] =
     stores.jot.write(Subject.Public)(stores.deliveries.pending()).map { pending =>
@@ -1078,7 +1079,19 @@ final class SlackEdge(
         said(
           s"slack: ${WorkflowId.value(p.turn.workflowId)} awaited at an address grit did not write: ${p.to}"
         )
-        false
+        val at = clock.now()
+        stores.jot.write(Subject.Turn(p.turn))(
+          stores.deliveries
+            .delivered(p.turn)
+            .flatMap(_ => stores.acknowledgements.cleared(p.turn, at))
+        ) match {
+          case Right(()) => true
+          case Left(e) =>
+            said(
+              s"slack: ${WorkflowId.value(p.turn.workflowId)} given up but not marked delivered: $e"
+            )
+            false
+        }
       case Some(to) =>
         val parts = noted(p, reply, posts(reply, outcome))
         val all = parts.zipWithIndex.forall { (part, i) =>

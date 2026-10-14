@@ -1157,6 +1157,19 @@ object SlackEdgeTests extends TestSuite {
       )
     }
 
+    test("a reply awaited at an address grit did not write is said once, and no longer pending") {
+      val w = new World
+      val t = w.named("2.0")
+      w.deliveries.await(t, "elsewhere")(using TestTx.fake) ==> Right(())
+      w.inbox.finish(t, Some(reply("We moved it to Thursday.")), "posted")
+      val passes = (w.first.deliver(), w.first.deliver())
+      w.logged ==> Vector(
+        s"slack: ${grit.core.id.WorkflowId.value(t.workflowId)} awaited at an address grit did not write: elsewhere"
+      )
+      w.deliveries.pending()(using TestTx.fake) ==> Right(Vector.empty)
+      passes ==> (Right(1), Right(0))
+    }
+
     test(
       "an edge starting up starts every unfinished turn again on its first pass, and only then"
     ) {
