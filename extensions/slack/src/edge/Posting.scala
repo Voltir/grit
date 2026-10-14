@@ -221,6 +221,8 @@ private[slack] object Posting {
     case SlackError.Refused("not_in_channel") =>
       s"grit's bot is not in #$name, so it cannot post there. $Unposted"
     case SlackError.Refused(code) => s"Slack refused the post ($code). $Unposted"
+    case SlackError.MessageGone =>
+      s"Slack refused the post: the message it answers is gone. $Unposted"
     case SlackError.Limited(after) =>
       s"Slack is limiting grit's posts; it may post again after ${after.toSeconds} s. $Unposted"
     case SlackError.Unreachable(cause) =>

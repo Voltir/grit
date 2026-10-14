@@ -317,6 +317,31 @@ abstract class ReviewContract extends TestSuite {
     }
 
     test(
+      "a picked prompt dropped is offered no more and never posted; dropped once, only if " +
+        "picked and not posted"
+    ) {
+      val origin = Origin.Task("contract", "review-dropped")
+      val c = conversation(origin)
+      val shadow = name("rv-dropped")
+      val Vector(a, b, d, e) = candidates(c, "rv-dropped", shadow, 4): @unchecked
+      transaction {
+        right(reviews.considered(a, Considered.Picked(Reason.LiveOnly), At))
+        right(reviews.considered(b, Considered.Picked(Reason.ShadowOnly), At.plusSeconds(1)))
+        right(reviews.considered(d, Considered.Passed(Reason.Neither), At))
+        right(reviews.considered(e, Considered.Picked(Reason.Both), At.plusSeconds(2)))
+        right(reviews.posted(e.entry, "rv-dropped/e", At))
+      }
+      Vector(
+        transaction(reviews.dropped(d.entry, At)),
+        transaction(reviews.dropped(a.entry, At)),
+        transaction(reviews.dropped(a.entry, At)),
+        transaction(reviews.dropped(e.entry, At)),
+        transaction(reviews.posted(a.entry, "rv-dropped/a", At))
+      ) ==> Vector(Right(false), Right(true), Right(false), Right(false), Right(false))
+      unposted(c) ==> Vector(b.entry)
+    }
+
+    test(
       "a picked prompt is offered until posted, the earliest picked first; posted once, only " +
         "if picked, at an address no other prompt holds"
     ) {

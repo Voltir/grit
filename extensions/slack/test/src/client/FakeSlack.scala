@@ -238,7 +238,7 @@ final class FakeSlack extends Slack {
     */
   def permalink(channel: ChannelId, ts: Ts): Either[SlackError, String] =
     request {
-      if (!knows(channel, ts)) Left(SlackError.Refused("message_not_found"))
+      if (!knows(channel, ts)) Left(SlackError.MessageGone)
       else
         Right(
           s"https://$domain.slack.com/archives/${ChannelId.value(channel)}/p${Ts.value(ts).filter(_ != '.')}"
@@ -247,7 +247,7 @@ final class FakeSlack extends Slack {
 
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     request {
-      if (!knows(channel, ts)) Left(SlackError.Refused("message_not_found"))
+      if (!knows(channel, ts)) Left(SlackError.MessageGone)
       else {
         reactions = reactions + ((channel, ts, emoji))
         Right(())

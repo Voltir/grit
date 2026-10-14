@@ -37,7 +37,7 @@ final class SqlReviews extends ReviewStore {
   def unposted(to: Place)(using tx: Tx^): Either[StoreError, Vector[Prompt]] =
     Tx.writable(to).fold(Right(Vector.empty))(prompts)
 
-  /** Every picked prompt not yet posted whose conversation's label `at` dominates. */
+  /** Every picked prompt neither posted nor dropped whose conversation's label `at` dominates. */
   private def prompts(at: VisibilityLabel)(using tx: Tx^): Either[StoreError, Vector[Prompt]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
@@ -53,7 +53,8 @@ final class SqlReviews extends ReviewStore {
             |  JOIN grit.speech s ON s.conversation_id = e.conversation_id
             |                    AND s.turn_seq = e.turn_seq
             |  JOIN grit.triage_shadows t ON t.entry_id = r.entry_id AND t.name = r.shadow
-            | WHERE r.picked_at IS NOT NULL AND r.address IS NULL AND t.failure IS NULL
+            | WHERE r.picked_at IS NOT NULL AND r.address IS NULL AND r.dropped_at IS NULL
+            |   AND t.failure IS NULL
             |   AND grit.label_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.label)
             | ORDER BY r.picked_at, r.entry_id""".stripMargin
         )
@@ -93,6 +94,7 @@ final class SqlReviews extends ReviewStore {
         conn.prepareStatement(
           """UPDATE grit.reviews SET address = ?, posted_at = ?
             | WHERE entry_id = ? AND picked_at IS NOT NULL AND address IS NULL
+            |   AND dropped_at IS NULL
             |   AND NOT EXISTS (SELECT 1 FROM grit.reviews WHERE address = ?)""".stripMargin
         )
       ) { ps =>
@@ -100,6 +102,23 @@ final class SqlReviews extends ReviewStore {
         ps.setObject(2, at.atOffset(ZoneOffset.UTC))
         ps.setString(3, EntryId.value(entry))
         ps.setString(4, address)
+        ps.executeUpdate() == 1
+      }
+    }
+  }
+
+  def dropped(entry: EntryId, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """UPDATE grit.reviews SET dropped_at = ?
+            | WHERE entry_id = ? AND picked_at IS NOT NULL AND address IS NULL
+            |   AND dropped_at IS NULL""".stripMargin
+        )
+      ) { ps =>
+        ps.setObject(1, at.atOffset(ZoneOffset.UTC))
+        ps.setString(2, EntryId.value(entry))
         ps.executeUpdate() == 1
       }
     }

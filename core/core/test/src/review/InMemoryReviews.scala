@@ -30,7 +30,7 @@ final class InMemoryReviews(
     speech: InMemorySpeechStore,
     shadows: TriageShadows
 ) extends ReviewStore {
-  import InMemoryReviews.Row
+  import InMemoryReviews.{Fate, Row}
 
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[EntryId, Row]
@@ -62,10 +62,20 @@ final class InMemoryReviews(
       Tx^
   ): Either[StoreError, Boolean] =
     kept.map { all =>
-      val taken = all.exists((_, r) => r.posted.exists(_._1 == address))
+      val taken = all.exists((_, r) => r.fate.exists(postedTo(address)))
       all.find(_._1 == entry) match {
         case Some((_, row @ Row(_, _, _, Considered.Picked(_), None, _))) if !taken =>
-          rows = rows.updated(entry, row.copy(posted = Some((address, at))))
+          rows = rows.updated(entry, row.copy(fate = Some(Fate.Posted(address, at))))
+          true
+        case _ => false
+      }
+    }
+
+  def dropped(entry: EntryId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+    kept.map { all =>
+      all.find(_._1 == entry) match {
+        case Some((_, row @ Row(_, _, _, Considered.Picked(_), None, _))) =>
+          rows = rows.updated(entry, row.copy(fate = Some(Fate.Dropped(at))))
           true
         case _ => false
       }
@@ -149,7 +159,12 @@ final class InMemoryReviews(
 
   /** The kept row whose prompt was posted at `address`. */
   private def postedAt(address: String)(using Tx^): Either[StoreError, Option[(EntryId, Row)]] =
-    kept.map(_.find((_, r) => r.posted.exists(_._1 == address)))
+    kept.map(_.find((_, r) => r.fate.exists(postedTo(address))))
+
+  private def postedTo(address: String)(fate: Fate): Boolean = fate match {
+    case Fate.Posted(a, _) => a == address
+    case Fate.Dropped(_) => false
+  }
 
   private def isHeard(e: Entry): Boolean = e.payload match {
     case Payload.Heard(_) => true
@@ -196,7 +211,7 @@ object InMemoryReviews {
       )
     )
 
-  /** A considered message's review: its prompt's address and when it was posted, and its
+  /** A considered message's review: what became of its prompt, if anything yet, and its
     * label.
     */
   private final case class Row(
@@ -204,7 +219,13 @@ object InMemoryReviews {
       shadow: ShadowName,
       at: Instant,
       as: Considered,
-      posted: Option[(String, Instant)],
+      fate: Option[Fate],
       label: Option[Label]
   )
+
+  /** A picked prompt posted at `address`, `at`; or dropped `at`, never to be posted. */
+  private enum Fate {
+    case Posted(address: String, at: Instant)
+    case Dropped(at: Instant)
+  }
 }

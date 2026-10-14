@@ -85,6 +85,8 @@ object ReviewingTests extends TestSuite {
       if (crash) Left(StoreError.DatabaseError("crashed"))
       else under.posted(entry, address, at)
     }
+    def dropped(entry: EntryId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+      under.dropped(entry, at)
     def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = under.reacted(address, rater, verdict, at)
@@ -226,14 +228,36 @@ object ReviewingTests extends TestSuite {
     }
 
     test(
-      "a prompt whose message was heard in another workspace or no Slack is never posted; one Slack cannot link waits for a later round"
+      "a prompt whose message Slack no longer has is dropped after one pass, and not tried again"
+    ) {
+      val w = new World
+      val gone = w.picks.pick(Origin.Slack(Team, ChannelId.value(C), "4.0"), "4.0")
+      val first = (w.edge.prompt(), w.unposted, w.logged)
+      val second = (w.edge.prompt(), w.logged)
+      (first, second, w.slack.posts) ==> (
+        (
+          Right(0),
+          Vector.empty,
+          Vector(
+            s"slack: the review prompt of ${EntryId.value(gone)}: its message is gone from Slack, so it is dropped"
+          )
+        ),
+        (Right(0), first._3),
+        Vector.empty
+      )
+    }
+
+    test(
+      "a prompt whose message was heard in another workspace or no Slack is never posted; one Slack cannot be asked to link waits for a later round"
     ) {
       val w = new World
       val task = w.picks.pick(Origin.Task("daily", "1"), Said)
       val elsewhere = w.picks.pick(Origin.Slack("T999", ChannelId.value(C), "2.0"), "2.0")
-      val unlinked = w.picks.pick(Origin.Slack(Team, ChannelId.value(C), "3.0"), "3.0")
-      val before = (w.edge.prompt(), w.slack.posts.size)
       w.known(C, "3.0")
+      val unlinked = w.picks.pick(Origin.Slack(Team, ChannelId.value(C), "3.0"), "3.0")
+      w.slack.down = true
+      val before = (w.edge.prompt(), w.slack.posts.size)
+      w.slack.down = false
       (before, w.edge.prompt(), w.slack.posts.map(_.tag), w.unposted.toSet) ==> (
         (Right(0), 0),
         Right(1),

@@ -143,9 +143,9 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
-    test("a reaction to no message is Refused(message_not_found)") {
+    test("a reaction to no message is MessageGone") {
       withSlack() { slack =>
-        slack.react(Public, NoMessage, "eyes") ==> Left(SlackError.Refused("message_not_found"))
+        slack.react(Public, NoMessage, "eyes") ==> Left(SlackError.MessageGone)
       }
     }
 
@@ -212,7 +212,7 @@ abstract class SlackContract extends TestSuite {
       withSlack() { slack =>
         (slack.permalink(Public, w.ts("m1")), slack.permalink(Public, NoMessage)) ==> (
           Right(s"https://$Domain.slack.com/archives/C0000000001/p1790782260791279"),
-          Left(SlackError.Refused("message_not_found"))
+          Left(SlackError.MessageGone)
         )
       }
     }

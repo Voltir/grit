@@ -853,8 +853,9 @@ final class SlackEdge(
     * whose message was heard in this workspace's Slack is posted at the top of the review's
     * place, linking the message by its permalink ([[ReviewPrompt.doc]]): never a message's text
     * or a draft's, nor why it was picked or what either gate decided; then given the three
-    * reactions [[receive]] keeps as its verdict; then kept as posted. A
-    * prompt Slack will not link or post waits for a later pass; a reaction Slack will not add
+    * reactions [[receive]] keeps as its verdict; then kept as posted. A prompt whose message
+    * Slack no longer has is dropped ([[grit.core.review.Reviews.dropped]]), and that said, once;
+    * any other Slack will not link or post waits for a later pass; a reaction Slack will not add
     * is said, and the prompt kept as posted without it. A prompt posted but not kept, as after
     * a crash between the two, is posted again by a later pass, and the reactions to the first
     * post count for nothing. How many prompts it posted and kept; none without a review; why
@@ -885,8 +886,30 @@ final class SlackEdge(
     */
   private def prompted(r: SlackReview, p: Prompt, channel: ChannelId, ts: Ts): Boolean = {
     val shown = channelNameOf(channel).fold(ChannelId.value(channel))(n => s"#$n")
+    val of = s"slack: the review prompt of ${EntryId.value(p.entry)}"
+    slack.permalink(channel, ts) match {
+      case Left(SlackError.MessageGone) =>
+        stores.jot.write(Subject.Public)(stores.reviews.dropped(p.entry, clock.now())) match {
+          case Right(true) => said(s"$of: its message is gone from Slack, so it is dropped")
+          case Right(false) => ()
+          case Left(e) => said(s"$of: its message is gone from Slack, but its drop is not kept: $e")
+        }
+        false
+      case linked => posting(r, p, shown, linked)
+    }
+  }
+
+  /** Posts `p` to `r`'s place, linking its message, shown as `shown`, by `linked`, as
+    * [[prompt]] says; whether it was posted and kept.
+    */
+  private def posting(
+      r: SlackReview,
+      p: Prompt,
+      shown: String,
+      linked: Either[SlackError, String]
+  ): Boolean = {
     val done = for {
-      link <- slack.permalink(channel, ts).left.map(e => s"its message is not linked: $e")
+      link <- linked.left.map(e => s"its message is not linked: $e")
       post <- RichText.render(ReviewPrompt.doc(shown, link)) match {
         case Vector(one) => Right(one)
         case more => Left(s"it renders as ${more.size} messages")
@@ -984,7 +1007,7 @@ final class SlackEdge(
         else
           slack.react(to.channel, to.answered, Working) match {
             case Right(()) => record(at => stores.acknowledgements.shown(a.turn, at))
-            case Left(SlackError.Refused("message_not_found")) => clear
+            case Left(SlackError.MessageGone) => clear
             case Left(e) =>
               said(s"slack: $turn not marked: $e")
               false

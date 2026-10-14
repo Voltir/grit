@@ -63,9 +63,10 @@ final case class Reviewed(
   */
 trait Reviews {
 
-  /** Every picked prompt not yet posted whose message `to` may receive: `to` is writable
-    * ([[Tx.writable]]) at a label dominating its conversation's; none when `to` is not writable.
-    * The earliest picked first (ties by entry id); one whose heard message is gone is not offered.
+  /** Every picked prompt neither posted nor dropped whose message `to` may receive: `to` is
+    * writable ([[Tx.writable]]) at a label dominating its conversation's; none when `to` is not
+    * writable. The earliest picked first (ties by entry id); one whose heard message is gone is
+    * not offered.
     */
   def unposted(to: Place)(using Tx^): Either[StoreError, Vector[Prompt]]
 
@@ -74,6 +75,12 @@ trait Reviews {
     * already, was never picked, or another prompt was posted at `address`.
     */
   def posted(entry: EntryId, address: String, at: Instant)(using Tx^): Either[StoreError, Boolean]
+
+  /** Keeps that `entry`'s prompt will never be posted, `at`, as when its message is gone from
+    * its edge: [[unposted]] offers it no more, and [[posted]] refuses it. `false`, writing
+    * nothing, when it is posted or dropped already, or was never picked.
+    */
+  def dropped(entry: EntryId, at: Instant)(using Tx^): Either[StoreError, Boolean]
 
   /** Keeps `verdict` by `rater`, given `at`, on the prompt posted at `address`, replacing the
     * label standing; `false`, writing nothing, when no prompt was posted there.

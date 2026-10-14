@@ -458,7 +458,7 @@ object SocketSlack {
       .flatMap(_.strOpt)
       .orElse(Some(body.trim).filter(w => w.nonEmpty && !w.startsWith("{")))
     if (status >= 200 && status < 300) Right(())
-    else Left(SlackError.Refused(word.getOrElse(s"http $status")))
+    else Left(SlackError.refused(word.getOrElse(s"http $status")))
   }
 
   /** `user` as a [[Member]] of `team`, as [[Slack.member]] says: the one reading of Slack's
@@ -563,7 +563,7 @@ object SocketSlack {
   private def call[R <: SlackApiTextResponse](body: => R): Either[SlackError, R] =
     try {
       val r = body
-      if (r.isOk) Right(r) else Left(SlackError.Refused(Option(r.getError).getOrElse("unknown")))
+      if (r.isOk) Right(r) else Left(SlackError.refused(Option(r.getError).getOrElse("unknown")))
     } catch {
       case e: SlackApiException if e.getResponse.code == 429 =>
         val after =

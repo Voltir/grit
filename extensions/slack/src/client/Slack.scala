@@ -110,14 +110,13 @@ trait Slack extends caps.SharedCapability {
   /** The message `thread` of `channel` begins with; `None` when there is none. */
   def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]]
 
-  /** The link to message `ts` of `channel` that opens it in Slack. `Refused("message_not_found")`
-    * when there is no such message, `Refused("channel_not_found")` when grit cannot see the
-    * channel.
+  /** The link to message `ts` of `channel` that opens it in Slack. `MessageGone` when there is
+    * no such message, `Refused("channel_not_found")` when grit cannot see the channel.
     */
   def permalink(channel: ChannelId, ts: Ts): Either[SlackError, String]
 
   /** Adds grit's `emoji` reaction to message `ts`; one already there is not an error.
-    * `Refused("message_not_found")` when there is no such message.
+    * `MessageGone` when there is no such message.
     */
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit]
 
@@ -193,12 +192,28 @@ enum ChannelKind {
 /** A Slack call that did not do what was asked. */
 enum SlackError {
 
-  /** Slack answered with `error`, its code (`channel_not_found`, `not_in_channel`, …). */
+  /** Slack answered with `error`, its code (`channel_not_found`, `not_in_channel`, …), any
+    * but `message_not_found`.
+    */
   case Refused(error: String)
+
+  /** Slack has no message at the ts asked about (`message_not_found`): it was deleted, or
+    * never was.
+    */
+  case MessageGone
 
   /** Rate-limited: try again after `after`. */
   case Limited(after: FiniteDuration)
 
   /** Slack could not be reached, or its answer could not be read. */
   case Unreachable(cause: String)
+}
+
+object SlackError {
+
+  /** Slack's refusal by `code`: [[MessageGone]] for `message_not_found`, [[Refused]] for any
+    * other.
+    */
+  def refused(code: String): SlackError =
+    if (code == "message_not_found") MessageGone else Refused(code)
 }
