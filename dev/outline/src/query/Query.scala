@@ -46,7 +46,7 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
-  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). Private members and `config.hidden` sources are left out. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line; `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
+  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). Private members and `config.hidden` sources are left out. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
   def find(
       root: Root,
       layout: Layout,
@@ -67,45 +67,133 @@ object Query {
       )
     else if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
     else {
-      val globs = segments.map(segmentGlob)
-      def matches(d: Defn): Boolean = {
-        val names = d.fullName.split('.').toVector
-        names.size >= globs.size &&
-        names.takeRight(globs.size).zip(globs).forall { case (n, g) => g.matches(n) }
-      }
       def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
       def visible(ds: Vector[Defn]): Vector[Defn] =
         ds.filterNot(_.isPrivate).flatMap(d => d +: visible(d.members))
 
-      // A definition's name is a word of its source, so only the packages holding one are read.
-      val word = ("(?<![\\w$])" + segments.last
-        .split("\\*", -1)
-        .map(java.util.regex.Pattern.quote)
-        .mkString("[\\w$]*") + "(?![\\w$])").r
-      val tasty = Resolve.usable(
-        root,
-        layout,
-        Scope.Main,
-        Locate.holding(root, word).flatMap(file => Locate.inPackageIn(root, classes, file)).distinct
-      )
-      val (defns, loaded, notes) =
-        tasty
-          .grouped(Loaded.readBatch)
-          .foldLeft((Vector.empty[Defn], Roots.of(roots, root), Vector.empty[String])) {
-            case ((ds, in, ns), batch) =>
-              val (more, next, moreNotes) = loadAll(root, layout, batch.toVector, in)
-              (ds ++ more, next, ns ++ moreNotes)
-          }
-      val found =
-        visible(defns)
+      // The visible definitions in `scope` whose names match `globs`, read from the packages of `files`.
+      def matching(
+          globs: Vector[scala.util.matching.Regex],
+          scope: Scope,
+          files: Vector[os.RelPath],
+          in: Loaded
+      ): (Vector[Defn], Loaded, Vector[String]) = {
+        def matches(d: Defn): Boolean = {
+          val names = d.fullName.split('.').toVector
+          names.size >= globs.size &&
+          names.takeRight(globs.size).zip(globs).forall { case (n, g) => g.matches(n) }
+        }
+        val tasty = Resolve.usable(
+          root,
+          layout,
+          scope,
+          files.flatMap(file => Locate.inPackageIn(root, classes, file)).distinct
+        )
+        val (defns, loaded, notes) =
+          tasty
+            .grouped(Loaded.readBatch)
+            .foldLeft((Vector.empty[Defn], in, Vector.empty[String])) {
+              case ((ds, state, ns), batch) =>
+                val (more, next, moreNotes) = loadAll(root, layout, batch.toVector, state)
+                (ds ++ more, next, ns ++ moreNotes)
+            }
+        val found = visible(defns)
           .filter(d => matches(d) && !hidden(d))
           .distinct
           .sortBy(d => (d.fullName, d.file, d.lines.start))
-      val head = (header(root) +: notes).mkString("\n")
+        (found, loaded, notes)
+      }
+
+      // A definition's name is a word of its source, so only the packages holding one are read.
+      val word = wordPattern(segments.last)
+      val files = Locate.holding(root, word)
+      val (inMain, afterMain, mainNotes) =
+        matching(segments.map(segmentGlob), Scope.Main, files, Roots.of(roots, root))
+      val (found, loaded, notes, lead) =
+        if (inMain.nonEmpty) (inMain, afterMain, mainNotes, Vector.empty[String])
+        else {
+          val (inTests, afterTests, testNotes) =
+            matching(segments.map(segmentGlob), Scope.WithTests, files, afterMain)
+          if (inTests.nonEmpty)
+            (
+              inTests,
+              afterTests,
+              mainNotes ++ testNotes,
+              Vector(s"-- no definition in main sources matches $pattern; in test sources:")
+            )
+          else {
+            val renamings = renamingImports(root, files, word)
+            val (targets, afterTargets, targetNotes) =
+              renamings
+                .map(_.target)
+                .distinct
+                .foldLeft((Vector.empty[Defn], afterTests, testNotes)) {
+                  case ((ds, state, ns), target) =>
+                    val exact = target.split('.').toVector.map(java.util.regex.Pattern.quote(_).r)
+                    val (more, next, moreNotes) = matching(
+                      exact,
+                      Scope.WithTests,
+                      Locate.holding(root, wordPattern(target.split('.').last)),
+                      state
+                    )
+                    (ds ++ more, next, ns ++ moreNotes)
+                }
+            (
+              targets.distinct,
+              afterTargets,
+              mainNotes ++ targetNotes,
+              renamings.map(r =>
+                s"-- ${r.alias} is a renaming import of ${r.target} at ${r.file}:${r.line}"
+              )
+            )
+          }
+        }
+      val head = (header(root) +: (notes ++ lead)).mkString("\n")
       val answer =
         if (found.isEmpty) Answer(s"$head\nno definition matches $pattern", Status.NoMatch)
         else Answer(Render.find(found, head, cap), Status.Found)
       (answer, Roots.put(roots, root, loaded))
+    }
+  }
+
+  /** A word of source text matching `segment`, each `*` any run of identifier characters. */
+  private def wordPattern(segment: String): scala.util.matching.Regex =
+    ("(?<![\\w$])" + segment
+      .split("\\*", -1)
+      .map(java.util.regex.Pattern.quote)
+      .mkString("[\\w$]*") + "(?![\\w$])").r
+
+  /** An import that renames `target` (a full name) to `alias`, at `file`'s `line`. */
+  private final case class Renaming(alias: String, target: String, file: os.RelPath, line: Int)
+
+  /** The renaming imports in `files` whose new name is a whole match of `word`: `import a.b.X as Y`, and `X as Y` or `X => Y` inside an import's braces. Read from source text, one line at a time, so an import split across lines is missed and the target is the path as written, not resolved. */
+  private def renamingImports(
+      root: Root,
+      files: Vector[os.RelPath],
+      word: scala.util.matching.Regex
+  ): Vector[Renaming] = {
+    val importLine = raw"^\s*import\s+(.+?)\s*$$".r
+    val braced = raw"^([\w$$.]+)\.\{(.*)\}$$".r
+    val selector = raw"^\s*([\w$$]+)\s*(?:as|=>)\s*([\w$$]+)\s*$$".r
+    val plain = raw"^([\w$$.]+)\.([\w$$]+\s+as\s+[\w$$]+)$$".r
+    files.flatMap { file =>
+      val path = root.dir / file
+      val lines = if (os.isFile(path)) os.read(path).split("\n", -1).toVector else Vector.empty
+      lines.zipWithIndex.flatMap {
+        case (importLine(clause), index) =>
+          val selected: Vector[(String, String)] = clause match {
+            case braced(prefix, inside) => inside.split(',').toVector.map(prefix -> _)
+            case _ =>
+              clause.split(',').toVector.map(_.trim).collect { case plain(prefix, one) =>
+                prefix -> one
+              }
+          }
+          selected.collect {
+            case (prefix, selector(name, alias)) if word.matches(alias) && alias != name =>
+              Renaming(alias, s"$prefix.$name", file, index + 1)
+          }
+        case _ => Vector.empty
+      }
     }
   }
 

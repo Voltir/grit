@@ -44,7 +44,10 @@ name (`area admin`: `grit.core.admin`), under a note saying which; several areas
 **find**: To find a definition when you don't know its name: one line per definition in main
 sources, members and constructor vals included, as its full name, file, lines and collapsed signature. The pattern's
 dot-separated segments match the last segments of a full name, each whole, `*` standing for any run
-of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. A `show`
+of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Moves.a*'`. When main
+sources hold no match, test sources' matches follow a `-- no definition in main sources matches` note;
+when neither does, a renaming import giving the name (`import a.X as Y`, read from source text) is named,
+with `X`'s definition. A `show`
 that matches nothing suggests `find` with the name's last segment.
 
     scripts/outline find pattern [--cap BYTES] [--root DIR]

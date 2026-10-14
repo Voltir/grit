@@ -1,7 +1,7 @@
 package grit.outline.query
 
 import grit.outline.locate.Root
-import grit.outline.testing.FixtureLayout
+import grit.outline.testing.{FixtureLayout, FixtureTestLayout}
 
 import utest.*
 
@@ -85,6 +85,31 @@ object FindTests extends TestSuite {
           "grit.outline.fixture.B.note  dev/outline/fixture/src/Sample.scala:17-17  note: String"
         )
       )
+    }
+
+    test(
+      "a name only test sources define is listed after a note saying none in main sources matches"
+    ) {
+      val (answer, _) =
+        Query.find(root, FixtureTestLayout, Config.empty, Roots.empty(6000), "Nested", 80000)
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator.contains(
+          "-- no definition in main sources matches Nested; in test sources:"
+        )
+      )
+      assert(names(answer).contains("grit.outline.fixture.Holder.Nested"))
+    }
+
+    test("a name only a renaming import gives is named as one, with its target's definition") {
+      val answer = find("Counted")
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator.contains(
+          "-- Counted is a renaming import of grit.outline.fixture.Holder.Nested at dev/outline/fixture/src/Sample.scala:105"
+        )
+      )
+      assert(names(answer).contains("grit.outline.fixture.Holder.Nested"))
     }
 
     test("a private member is not listed, and a pattern nothing matches is NoMatch saying so") {

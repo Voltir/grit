@@ -99,3 +99,9 @@ enum Suit {
 object Fields {
   def noteOf(b: B): String = b.note
 }
+
+/** Names a class through a renaming import. */
+object Renamed {
+  import grit.outline.fixture.Holder.Nested as Counted
+  def one: Counted = Counted(1)
+}

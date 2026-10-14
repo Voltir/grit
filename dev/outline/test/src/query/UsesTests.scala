@@ -6,20 +6,11 @@ import java.nio.file.attribute.FileTime
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
 import grit.outline.model.Use
 import grit.outline.read.Read
-import grit.outline.testing.FixtureLayout
+import grit.outline.testing.{FixtureLayout, FixtureTestLayout}
 
 import utest.*
 
 object UsesTests extends TestSuite {
-
-  /** The fixture's layout with every source counted as a test source, so its test calls name its sites. */
-  private object FixtureTestLayout extends Layout {
-    def classesDirs(root: Root): Vector[os.Path] = FixtureLayout.classesDirs(root)
-    def libraryJars(root: Root): Vector[os.Path] = FixtureLayout.libraryJars(root)
-    def notCompiled(root: Root): String = FixtureLayout.notCompiled(root)
-    def isTest(classesDir: os.Path): Boolean = false
-    def isTestSource(file: os.RelPath): Boolean = true
-  }
 
   /** The worktree root: the nearest directory at or above the test's working directory that holds `build.mill`. */
   private def repoRoot: os.Path = {

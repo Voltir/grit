@@ -167,7 +167,7 @@ object Help {
       "a name pattern: dot-separated segments matched against the last segments of each definition's full name, each whole, with * for any run of characters within one segment; quote it in the shell."
     ),
     purpose =
-      "To find a definition when you don't know its name: one line per definition in main sources, members and constructor vals included, with its full name, file, lines and collapsed signature.",
+      "To find a definition when you don't know its name: one line per definition in main sources, members and constructor vals included, with its full name, file, lines and collapsed signature. When main sources hold no match, test sources' matches follow a note saying so; when neither does, a renaming import (import a.X as Y) giving the name is named, with X's definition.",
     examples = Vector(
       Example("find every type whose name holds Shelf", "find '*Shelf*'"),
       Example("find the member placed of any owner", "find '*.placed'")
