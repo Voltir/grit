@@ -5,7 +5,8 @@ import grit.core.spend.TurnSpend
 
 /** What a reply notes under it, in small print: nothing, the grade and model its answer was made
   * with, or those and what its turn spent ([[TurnSpend]]). Each note but `Off` is made only for
-  * an answer made above [[ReplyNote.NotedAbove]]. `word` is how a deployment names it.
+  * an answer made above [[ReplyNote.NotedAbove]]. `word` is the note's name in a deployment's
+  * settings, as [[ReplyNote.named]] reads it: `off`, `strength`, `strength-cost`.
   */
 enum ReplyNote(val word: String) derives CanEqual {
   case Off extends ReplyNote("off")
