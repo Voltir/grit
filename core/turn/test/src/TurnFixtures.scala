@@ -611,6 +611,40 @@ object TurnFixtures {
     })
   )
 
+  /** Four rounds over [[gatedTools]]: `peek` a.txt (`t1`), whose result the next round hides
+    * as `h1`; then ask it a yes-or-no question through `extract` (`t2`); then `post` it (`t3`);
+    * then the answer.
+    */
+  def extractingScript: Scripted = new Scripted((_, n) =>
+    Right(n match {
+      case 0 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj("path" -> "a.txt")))
+      case 1 =>
+        said(
+          "",
+          AssistantBlock.ToolCall(
+            ToolCallId("t2"),
+            "extract",
+            ujson.Obj("name" -> "h1", "question" -> "Does it say alpha?", "shape" -> "yes_no")
+          )
+        )
+      case 2 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t3"), "post", ujson.Obj("path" -> "a.txt")))
+      case _ => said("done")
+    })
+  )
+
+  /** A summarizer that answers every request offering `reply` by calling it with `answer`, and
+    * every other as the stub does.
+    */
+  def answering(answer: ujson.Value): Scripted = new Scripted((request, _) =>
+    if (request.tools.exists(_.name == "reply"))
+      Right(
+        said("", AssistantBlock.ToolCall(ToolCallId("r1"), "reply", ujson.Obj("answer" -> answer)))
+      )
+    else new StubProvider().complete(request)
+  )
+
   /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
   val hostedFetch: Hosted[String] =
     new Hosted(ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun), Gate.Free, p => p)

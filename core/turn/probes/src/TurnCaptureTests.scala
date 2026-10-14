@@ -82,6 +82,14 @@ object TurnCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** extract over an answer that asks a model through `m`, typed as `tpe`: the tool carries
+    * what its answer captures, so it is no pure tool.
+    */
+  private def extracting(tpe: String) =
+    s"""def asking(m: Models^): $tpe =
+      |  Extract.tool(None, (_, _, _, _) => { val _ = m.catalog(); Left("unasked") })
+      |""".stripMargin
+
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
@@ -98,14 +106,16 @@ object TurnCaptureTests extends TestSuite {
       smuggled("TurnTooling"),
       breach + smuggled("Breached"),
       reads("pure"),
-      reads("spying")
+      reads("spying"),
+      extracting("Tool.Offered^{m}"),
+      extracting("Tool.Offered")
     )
   )
 
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
     erased(prelude),
-    List(reads("spying"), editing, smuggled("TurnTooling")).map(erased),
+    List(reads("spying"), editing, smuggled("TurnTooling"), extracting("Tool.Offered")).map(erased),
     options.filterNot(_.startsWith("-language:experimental."))
   )
 
@@ -141,6 +151,12 @@ object TurnCaptureTests extends TestSuite {
     test("the stores a turn's requests are rebuilt from may not act through a capability") {
       errors(reads("pure")) ==> List()
       assert(rejected(errors(reads("spying"))))
+    }
+
+    test("extract's tool carries what its answer captures: a model's caller is no pure tool") {
+      errors(extracting("Tool.Offered^{m}")) ==> List()
+      assert(rejected(errors(extracting("Tool.Offered"))))
+      unchecked.errors(erased(extracting("Tool.Offered"))) ==> List()
     }
 
     test("capture checking is what rejects a store that acts through a capability") {

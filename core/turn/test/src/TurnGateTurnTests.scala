@@ -2,7 +2,16 @@ package grit.turn
 
 import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  TestCallSlots,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
@@ -58,7 +67,12 @@ object TurnGateTurnTests extends TestSuite {
   /** The stub peek's result `t1` is shown as while hidden. */
   private val peekStub = "Hidden here as h1: something from peek, believed only at " +
     "[integrity: untrusted]. Reading it would withdraw post for the rest of this turn; to read " +
-    "it, call read_hidden with name h1."
+    s"it, call read_hidden with name h1.${asking("h1")}"
+
+  /** What a stub named `name` says of extract, after how to read it. */
+  private def asking(name: String): String =
+    " To ask it a question answered yes or no, by a number, a date, one of options you list " +
+      s"or a short token, without reading it, call extract with name $name."
 
   /** `turn` answered by `provider` with [[gatedTools]] offered over `files`. */
   private def gatedRun(durable: InMemoryDurable, entries: InMemoryEntryStore, turn: TurnRef)(
@@ -107,8 +121,8 @@ object TurnGateTurnTests extends TestSuite {
       )
       provider.requests.map(_.tools.map(_.name)) ==> Vector(
         Vector("peek", "post"),
-        Vector("read_hidden", "peek", "post"),
-        Vector("read_hidden", "peek", "post")
+        Vector("read_hidden", "extract", "peek", "post"),
+        Vector("read_hidden", "extract", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==> Vector(None, Some(peekStub), Some(peekStub))
       // Never having read the result, the turn may post.
@@ -127,9 +141,9 @@ object TurnGateTurnTests extends TestSuite {
         "replied: reply:c1:0; summarised: summary:c1:0"
       provider.requests.map(_.tools.map(_.name)) ==> Vector(
         Vector("peek", "post"),
-        Vector("read_hidden", "peek", "post"),
-        Vector("read_hidden", "peek"),
-        Vector("read_hidden", "peek")
+        Vector("read_hidden", "extract", "peek", "post"),
+        Vector("read_hidden", "extract", "peek"),
+        Vector("read_hidden", "extract", "peek")
       )
       provider.requests.map(resultOf(_, "t1")) ==>
         Vector(None, Some(peekStub), Some("alpha"), Some("alpha"))
@@ -139,6 +153,48 @@ object TurnGateTurnTests extends TestSuite {
         "[integrity: member], since you read peek [integrity: untrusted]."
       provider.requests.map(_.system.endsWith(s"\n\n$withdrawn")) ==>
         Vector(false, false, true, false)
+    }
+
+    test(
+      "a stub asked through extract keeps what reading it would withdraw, its answer at the turn's level"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = extractingScript
+      val summarizer = answering(ujson.Bool(true))
+      val ledger = new InMemoryUsageLedger
+      val turn = say(entries, "read and post")
+      val ws = new Files(files)
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(entries, provider, ledger, summarizer, NoClassifier, ws, gatedTools(ws), 5)
+      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      provider.requests.map(_.tools.map(_.name)) ==> Vector(
+        Vector("peek", "post"),
+        Vector("read_hidden", "extract", "peek", "post"),
+        Vector("read_hidden", "extract", "peek", "post"),
+        Vector("read_hidden", "extract", "peek", "post")
+      )
+      // The item stays hidden, and the answer is all the turn's model reads of it.
+      provider.requests.map(resultOf(_, "t1")).drop(1).forall(_.contains(peekStub)) ==> true
+      provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==> Some("h1 answers: yes.")
+      kept(entries, "result:c1:0:1:0").map(_.integrity) ==> Some(Integrity.Member)
+      kept(entries, "result:c1:0:2:0").map(_.payload) ==> Some(
+        Payload.Result(Message.ToolResult(ToolCallId("t3"), "posted", false), "post a.txt")
+      )
+      // The quarantined ask was shown the item and the question alone, and its cost kept.
+      summarizer.requests.filter(_.tools.exists(_.name == "reply")).map(_.messages) ==> Vector(
+        Vector(
+          Message.User(
+            "BEGIN ITEM\nalpha\nEND ITEM\n\nQuestion: Does it say alpha?\n\n" +
+              "Answer with true for yes or false for no, or null when the item does not say."
+          )
+        )
+      )
+      ledger
+        .of(turn.workflowId)(using TestTx.fake)
+        .map(
+          _.map(_.entry).filter(e => TurnRecord.role(turn, e).contains(TurnRecord.Role.Extract))
+        ) ==>
+        Right(Vector(Extract.costId(TestCallSlots.at(turn, 1, 0), 0)))
     }
 
     test("a call refused before it runs is answered at the turn's level, and hides nothing") {
@@ -186,7 +242,7 @@ object TurnGateTurnTests extends TestSuite {
       gatedRun(new InMemoryDurable, entries, turn)(provider)
       val guestStub = "Hidden here as h1: something from someone, believed only at " +
         "[integrity: outside]. Reading it would withdraw post for the rest of this turn; to " +
-        "read it, call read_hidden with name h1."
+        s"read it, call read_hidden with name h1.${asking("h1")}"
       provider.requests.map(_.messages.headOption) ==> Vector(
         Some(Message.User(guestStub)),
         Some(Message.User(guestStub)),
@@ -254,7 +310,7 @@ object TurnGateTurnTests extends TestSuite {
       def stub(name: String, source: String) =
         s"Hidden here as $name: something from $source, believed only at " +
           "[integrity: outside]. Reading it would withdraw post for the rest of this turn; to " +
-          s"read it, call read_hidden with name $name."
+          s"read it, call read_hidden with name $name.${asking(name)}"
       provider.requests.headOption.map(_.messages.take(2)) ==> Some(
         Vector(
           Message.User(
@@ -302,7 +358,7 @@ object TurnGateTurnTests extends TestSuite {
             "[record] this conversation so far, written by grit (closed 1970-01-01): " +
               "Hidden here as h1: something from a closing record, believed only at " +
               "[integrity: outside]. Reading it would withdraw post for the rest of this turn; " +
-              "to read it, call read_hidden with name h1."
+              s"to read it, call read_hidden with name h1.${asking("h1")}"
           ),
           Message.User("two")
         )

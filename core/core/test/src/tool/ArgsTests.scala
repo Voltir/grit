@@ -301,6 +301,25 @@ object ArgsTests extends TestSuite {
       shown.parameters ==> spec.args.schema(strict = true)
     }
 
+    test("a list of texts: its schema, its bounds, and a failure at the item's path") {
+      val options = Args.of((options = Field.texts("The options.", 1, 3)))
+      options.schema(strict = false)("properties")("options") ==> ujson.Obj(
+        "type" -> "array",
+        "items" -> ujson.Obj("type" -> "string"),
+        "minItems" -> 1,
+        "maxItems" -> 3,
+        "description" -> "The options."
+      )
+      options.read(ujson.Obj("options" -> ujson.Arr("a", "b"))).map(_.options) ==>
+        Right(List("a", "b"))
+      options.read(ujson.Obj("options" -> ujson.Arr())) ==>
+        Left(ArgsError.Invalid("options", "a list of 1 to 3 texts", "[]"))
+      options.read(ujson.Obj("options" -> ujson.Arr("a", "b", "c", "d"))) ==>
+        Left(ArgsError.Invalid("options", "a list of 1 to 3 texts", """["a","b","c","d"]"""))
+      options.read(ujson.Obj("options" -> ujson.Arr("a", 1))) ==>
+        Left(ArgsError.Invalid("options[1]", "text", "1"))
+      assert(admits(options.schema(strict = false), ujson.Obj("options" -> ujson.Arr("a"))))
+    }
     test("every field kind's strict schema reads as the schema a typed reply is sent") {
       val every = Args.of(
         (
@@ -317,7 +336,9 @@ object ArgsTests extends TestSuite {
             Args.of((oldText = Field.text("Old."), note = Field.text("Why.").optional))
           ),
           maybeEdits =
-            Field.each("More edits.", Args.of((at = Field.count("At.", 0, 9))), 0).optional
+            Field.each("More edits.", Args.of((at = Field.count("At.", 0, 9))), 0).optional,
+          names = Field.texts("Names.", 1, 4),
+          maybeNames = Field.texts("Names, if any.", 0, 4).optional
         )
       )
       every.typed.map(_.schema.json) ==> Right(every.schema(strict = true))

@@ -111,15 +111,18 @@ object TurnGate {
   }
 
   /** What the model is shown in `item`'s place when `hidden` hides it: its name, its source and
-    * level, the tools reading it would withdraw, and that `read_hidden` reads it ([[ReadHidden]]).
-    * Pure; not recorded, since a request is never replayed (only its reply is).
+    * level, the tools reading it would withdraw, that `read_hidden` reads it ([[ReadHidden]]),
+    * and that `extract` asks it a bounded question ([[Extract]]). Pure; not recorded, since a
+    * request is never replayed (only its reply is).
     */
   def stub(item: Item, hidden: Fate.Hidden): String = {
     val name = HiddenName.value(hidden.name)
     s"Hidden here as $name: something from ${item.source}, believed only at " +
       s"${Integrity.shown(item.integrity)}. Reading it would withdraw " +
       s"${hidden.costs.map(ToolName.value).mkString(", ")} for the rest of this turn; to read " +
-      s"it, call ${ToolName.value(ReadHidden.Name)} with name $name."
+      s"it, call ${ToolName.value(ReadHidden.Name)} with name $name. To ask it a question " +
+      "answered yes or no, by a number, a date, one of options you list or a short token, " +
+      s"without reading it, call ${ToolName.value(Extract.Name)} with name $name."
   }
 
   /** The line a round's request adds to its system prompt when its gate, `now`, withholds a

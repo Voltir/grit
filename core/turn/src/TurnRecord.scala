@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
-import grit.core.id.{EntryId, TurnRef}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
@@ -185,6 +185,8 @@ object TurnRecord {
     else if (entry == TurnJudge.id(turn)) Some(Role.Judge)
     else if (entry == TurnSummary.id(turn)) Some(Role.Summary)
     else if (entry == TurnWeighing.id(turn)) Some(Role.Weigh)
+    else if (id.startsWith(s"${Extract.Prefix}${WorkflowId.value(turn.workflowId)}:"))
+      Some(Role.Extract)
     else if (
       Vector(TurnTopics.placedId(turn), TurnTopics.describedId(turn), TurnVerdict.verdictId(turn))
         .contains(entry)
@@ -220,6 +222,9 @@ object TurnRecord {
       * ([[TurnWeighing.Weighed.Asked]]).
       */
     case Weigh
+
+    /** A question `extract` put to a hidden item ([[Extract.costId]]). */
+    case Extract
   }
 
   private val Expire = """expire:(\d+):(\d+)""".r

@@ -283,12 +283,14 @@ object TurnDocumentsTests extends TestSuite {
         followingBody(entries, documents, Vector(held), provider, posting)
       )
       provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
-        Vector("read_hidden", "post") -> Vector(
+        Vector("read_hidden", "extract", "post") -> Vector(
           Message.User(
             "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
               "Hidden here as h1: something from Cards, believed only at [integrity: untrusted]. " +
               "Reading it would withdraw post for the rest of this turn; to read it, call " +
-              "read_hidden with name h1."
+              "read_hidden with name h1. To ask it a question answered yes or no, by a number, " +
+              "a date, one of options you list or a short token, without reading it, call " +
+              "extract with name h1."
           ),
           Message.User("one")
         )

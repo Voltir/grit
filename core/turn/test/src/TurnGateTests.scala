@@ -153,11 +153,15 @@ object TurnGateTests extends TestSuite {
       )
     }
 
-    test("a stub names the item, its source and level, what reading it withdraws, and how") {
+    test(
+      "a stub names the item, its source and level, what reading it withdraws, how, and how to ask it"
+    ) {
       TurnGate.stub(issue, Fate.Hidden(named("h1"), Vector(post, note))) ==>
         "Hidden here as h1: something from github_get_issue, believed only at " +
         "[integrity: untrusted]. Reading it would withdraw slack_post, note for the rest of " +
-        "this turn; to read it, call read_hidden with name h1."
+        "this turn; to read it, call read_hidden with name h1. To ask it a question answered " +
+        "yes or no, by a number, a date, one of options you list or a short token, without " +
+        "reading it, call extract with name h1."
     }
 
     test("a hidden item's name is h and a number from 1, with no leading zero") {

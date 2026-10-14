@@ -132,6 +132,41 @@ object Field {
     )
   }
 
+  /** A list of `min` to `max` strings, in order. A string holding a JSON list reads as that
+    * list under [[ArgRepair.QuotedList]] ([[Repair.quotedList]]). An item that is not a string
+    * is refused at its path, counting from 0: `options[2]`.
+    */
+  def texts(meaning: String, min: Int, max: Int): Field[List[String]] = {
+    val accepts = s"a list of $min to $max texts"
+    new Field(
+      _ =>
+        ujson.Obj(
+          "type" -> "array",
+          "items" -> ujson.Obj("type" -> "string"),
+          "minItems" -> min,
+          "maxItems" -> max,
+          "description" -> meaning
+        ),
+      accepts,
+      (path, v, repairs) =>
+        Repair
+          .quotedList(v, repairs)
+          .arrOpt
+          .map(_.toVector)
+          .filter(items => items.size >= min && items.size <= max) match {
+          case None => Left(ArgsError.Invalid(path, accepts, ArgsError.shown(v)))
+          case Some(items) =>
+            items.zipWithIndex.foldRight[Either[ArgsError, List[String]]](Right(Nil)) {
+              case ((sent, i), acc) =>
+                sent.strOpt
+                  .toRight(ArgsError.Invalid(s"$path[$i]", "text", ArgsError.shown(sent)))
+                  .flatMap(t => acc.map(t :: _))
+            }
+        },
+      None
+    )
+  }
+
   /** The only repairs made to what a model sends before a field reads it, each for a
     * slip models are known to make and each made only when its [[ArgRepair]] is asked for;
     * any other value is read as sent. A refused value is

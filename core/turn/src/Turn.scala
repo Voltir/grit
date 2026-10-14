@@ -4,14 +4,15 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.act.phase.{Asking, Calling, Hearing}
+import grit.act.phase.{Asking, Calling, Hearing, Shaped, Shaping}
+import grit.core.act.Posed
 import grit.core.allot.{Allotment, Router}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch, Pointer}
 import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
 import grit.core.edge.Permit
-import grit.core.flow.Mint
-import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
+import grit.core.flow.{Extracted, Mint, Shape}
+import grit.core.id.{CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{
   AfterToolResult,
@@ -1172,11 +1173,20 @@ object Turn {
             g
           }
         }
-        // What a call of `round` binds against: `tools`, and read_hidden over the items the
-        // round's gate hid when the round offers it. Its name is free: offered checked it.
-        def boxAt(round: Round): Toolbox[C] =
+        // How extract puts its questions: to the summary's pin, over what the window shows.
+        val extracting = extraction(env, jot, turn, seen)
+        // What a call of `round` binds against: `tools`, after read_hidden and extract over the
+        // items the round's gate hid when the round offers them. Their names are free: offered
+        // checked them.
+        def boxAt(round: Round): Toolbox[caps.CapSet^{C, extracting}] =
           if (!hidSince(gates.toMap, round)) tools
-          else tools.including(ReadHidden.tool(gates.get(round.index))).getOrElse(tools)
+          else {
+            val g = gates.get(round.index)
+            Toolbox
+              .of[caps.CapSet^{extracting}](ReadHidden.tool(g), Extract.tool(g, extracting))
+              .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, extracting}](hidden, tools))
+              .getOrElse(tools)
+          }
         def shapeAs(round: Round, use: ToolUse): ModelRequest -> ModelRequest = {
           val (shown, line) = gatedOffer(gates.toMap, round, schemas, strict)
           loopShape(asked, round, use, shown, after, guidance, line)
@@ -1363,8 +1373,9 @@ object Turn {
   /** The tools each call of the loop offers: `own`, after `topic` for the classification
     * `asked` holds. `topic` stays on after the first call, which alone asks for it
     * ([[loopShape]]): a request whose messages hold a call names the tool it called.
-    * read_hidden is not among them: a round binds and offers it apart ([[gatedOffer]]).
-    * `TurnFailure.Model` when `own` already names one `topic` or read_hidden.
+    * read_hidden and extract are not among them: a round binds and offers them apart
+    * ([[gatedOffer]]). `TurnFailure.Model` when `own` already names one `topic`, read_hidden or
+    * extract.
     */
   private def offered[C^](
       own: Toolbox[C],
@@ -1375,7 +1386,7 @@ object Turn {
       case Some(c) => own.including(TurnVerdict.tool(c))
     }
     tools
-      .flatMap(t => t.including(ReadHidden.tool(None)).map(_ => t))
+      .flatMap(t => t.preceded(Vector(ReadHidden.tool(None), unasked)).map(_ => t))
       .left
       .map { case DuplicateName(name) =>
         TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
@@ -1383,8 +1394,9 @@ object Turn {
   }
 
   /** What `round`'s request offers of `schemas`, and the line it adds, as `gates`, each
-    * round's gate by its index, say: those its gate withholds left out, after read_hidden from
-    * the first round whose gate hid an item on ([[ReadHidden]], `strict` as `schemas` are), and
+    * round's gate by its index, say: those its gate withholds left out, after read_hidden and
+    * extract from the first round whose gate hid an item on ([[ReadHidden]], [[Extract]],
+    * `strict` as `schemas` are), and
     * the withdrawal its gate makes against the round before's ([[TurnGate.withdrawn]]); all of
     * `schemas` and no line for a round with no gate.
     */
@@ -1398,14 +1410,117 @@ object Turn {
       case None => (schemas, None)
       case Some(now) =>
         (
-          Vector(ReadHidden.tool(None).schema(strict)).filter(_ => hidSince(gates, round)) ++
+          Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict))
+            .filter(_ => hidSince(gates, round)) ++
             schemas.filterNot(s => now.withheld.exists(w => ToolName.value(w.tool) == s.name)),
           gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now))
         )
     }
 
+  /** extract as a request offers it, asking nothing: for its name and schema alone. */
+  private val unasked: Tool.Offered = Extract.tool(None, (_, _, _, _) => Left("not asked"))
+
+  /** How extract puts a question of an item a request over `window` shows of `turn`
+    * ([[Extract.Answer]]): to the summary's pin as `pins` cleared it, a quarantined JSON ask
+    * ([[Extract.request]]) shown the item as the model would be shown it in full ([[textOf]]),
+    * read through `env`'s `db` as `pins` bound it, and the question; each of its model calls
+    * kept in the usage ledger through `jot` under [[Extract.costId]] (one a rerun already kept
+    * is left as kept). Why no answer: no summary pin cleared, the item no longer kept, the
+    * store unreadable, the ask's provider failing or its reply not reading after its repair.
+    */
+  private def extraction(env: TurnEnv^, jot: Jot^, turn: TurnRef, window: Window)(using
+      pins: Picked
+  ): (Item, String, Shape, CallSlot) ->{env, jot} Either[String, Option[Extracted]] =
+    (item, question, shape, slot) =>
+      for {
+        pin <- pins.summary.left.map(_ => "no summary model is cleared for this turn")
+        showing <- pins
+          .reads(env.db)
+          .read(Subject.Turn(turn))(shown(env.records, turn, window))
+          .left
+          .map(describe)
+        text <- textOf(showing, window, item.ref).toRight("the item is no longer kept")
+        request <- Extract.request(text, question, shape, pin.settings.strict)
+        typed <- Extract.reply(shape)
+        shaped = Shaping.shaped(
+          env.models.provider(pin),
+          request,
+          Posed.ReplyTool,
+          typed,
+          pin.settings.names,
+          pin.settings.repairs,
+          Posed.Json.Repairs,
+          env.clock
+        )
+        calls = shaped match {
+          case Shaped.Read(_, _, calls) => calls
+          case Shaped.Unread(_, calls) => calls
+          case Shaped.Failed(_, calls) => calls
+        }
+        _ <- calls.zipWithIndex.foldLeft[Either[String, Unit]](Right(())) { case (acc, (c, k)) =>
+          acc.flatMap { _ =>
+            val (ledger, estimate) = (env.records.ledger, env.records.estimator.request(c.sent))
+            jot.write(Subject.Turn(turn))(
+              ledger.record(
+                Extract.costId(slot, k),
+                turn,
+                turn.workflowId,
+                c.answer.model,
+                c.answer.upstream,
+                Some(pin.grade),
+                c.answer.usage,
+                estimate
+              )
+            ) match {
+              case Right(()) | Left(StoreError.DuplicateId(_)) => Right(())
+              case Left(error) => Left(describe(error))
+            }
+          }
+        }
+        answer <- shaped match {
+          case Shaped.Read(_, value, _) => Right(value)
+          case Shaped.Unread(why, _) => Left(why)
+          case Shaped.Failed(why, _) => Left(why)
+        }
+      } yield answer
+
+  /** What a request over `window` would show of the item at `ref` among `showing` in full, as
+    * its one message's text: a tool's result as [[Shown.result]] shows it, an entry as
+    * [[Shown.of]] does, a nearby one as its section alone shows it ([[Shown.section]]), a
+    * document as [[Shown.document]] does; `None` when `showing` no longer holds it.
+    */
+  private def textOf(showing: Showing, window: Window, ref: ItemRef): Option[String] = {
+    def text(m: Message): String = m match {
+      case Message.User(t) => t
+      case Message.Assistant(blocks, _, _, _, _) =>
+        blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      case Message.ToolResult(_, content, _) => content
+    }
+    val own = showing.window ++ showing.mine
+    ref match {
+      case ItemRef.Result(call) =>
+        own.map(_.payload).collectFirst {
+          case Payload.Result(r, _) if r.callId == call => Shown.result(r).content
+        }
+      case ItemRef.Own(seq) =>
+        own.find(_.seq == seq).flatMap(Shown.of(_, showing.named)).map(text)
+      case ItemRef.Nearby(conversation, seq) =>
+        for {
+          section <- window.nearby.find(s =>
+            s.conversation == conversation && s.names.contains(seq)
+          )
+          e <- showing.near.find(e => e.conversationId == conversation && e.seq == seq)
+          m <- Shown.section(only(section, seq), Vector(e), showing.named)
+        } yield text(m)
+      case ItemRef.Document(version) =>
+        showing.documents.collectFirst {
+          case (d, label) if d.version == version => text(Shown.document(d, label))
+        }
+    }
+  }
+
   /** Whether a gate of `gates`, each round's by its index, hid an item by `round`'s: from then
-    * on, each round offers read_hidden.
+    * on, each round offers read_hidden and extract.
     */
   private def hidSince(gates: Map[Int, Gated], round: Round): Boolean =
     gates.exists((index, g) => index <= round.index && g.hidden.nonEmpty)
