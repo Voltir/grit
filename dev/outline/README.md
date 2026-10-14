@@ -10,6 +10,9 @@ line ranges taken from the Scaladoc.
 
 Each query has a CLI form and an MCP tool of the same name, taking the same arguments.
 `scripts/outline <query> --help` prints that query's full help: its examples and every flag.
+Every query takes `--max-kb N` (MCP `max_kb`), default 12: the answer is cut at N KB, between whole
+entries, and a cut answer ends with `-- cut at 12 KB: 7 more entries, ~31 KB; rerun with --max-kb 31 or narrow`,
+the KB every entry needs, so a rerun at that budget shows them all.
 In show, family, find, tests and uses' owner lines, a line naming a definition ends with its size,
 `[N.N KB]`: the bytes of its whole text, doc included, to tell what a `--body` would cost.
 In show and family, a definition printed without its body ends with its closing lines, an anchor for an
@@ -24,12 +27,12 @@ most references. `--tests` lists them instead: a `## tests exercising <Sym>` lin
 `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>`
 for a helper that itself holds a reference. `--no-tests` drops both. None of these lines is file text.
 
-    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--tests|--no-tests] [--cap BYTES] [--root DIR]
+    scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--tests|--no-tests] [--max-kb N] [--root DIR]
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
 `--member` narrows each to one member.
 
-    scripts/outline family Trait [--member m] [--body] [--cap BYTES] [--root DIR]
+    scripts/outline family Trait [--member m] [--body] [--max-kb N] [--root DIR]
 
 **uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
 filter by path prefix. `X.apply` (or `X.new`), for a class with no `apply` in source, finds its
@@ -39,7 +42,7 @@ a site in a test), then each site as its line number and source line. Over 20 si
 prints as `== file  N sites` and each owner once with its count, with no site lines, and the answer ends
 `-- 57 sites in 31 files; --sites to list them all, or --in/--outside to narrow`. `--sites` lists every site.
 
-    scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--sites] [--cap BYTES] [--root DIR]
+    scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--sites] [--max-kb N] [--root DIR]
 
 **area**: To get a map of a part of the project: the areas `.outline.conf` declares, at level 0 one
 line per package, at level 1 (the default) each definition with its doc's first sentence. With no
@@ -47,7 +50,7 @@ name, the declared areas, each with its purpose. A name no area declares, such a
 gives the one area whose symbols lie under a package of that name, or else every main package of that
 name (`area admin`: `grit.core.admin`), under a note saying which; several areas naming it are listed.
 
-    scripts/outline area [name[,name…]] [--level 0|1] [--cap BYTES] [--root DIR]
+    scripts/outline area [name[,name…]] [--level 0|1] [--max-kb N] [--root DIR]
 
 **find**: To find a definition when you don't know its name: one line per definition in main
 sources, members and constructor vals included, as its full name, file, lines and collapsed signature. The pattern's
@@ -59,16 +62,16 @@ with `X`'s definition. `--private` lists private members too; without it, a patt
 `-- N private matches: add --private` note. A `show`
 that matches nothing suggests `find` with the name's last segment.
 
-    scripts/outline find pattern [--private] [--cap BYTES] [--root DIR]
+    scripts/outline find pattern [--private] [--max-kb N] [--root DIR]
 
 **tests**: To add or change a test in a suite: its helpers and its tests' names with line ranges.
 `--test NAME` prints the verbatim body of each test whose name starts with NAME; `--body h[,h…]` prints each named helper's own lines.
 
-    scripts/outline tests Suite [--test NAME] [--body h[,h…]] [--cap BYTES] [--root DIR]
+    scripts/outline tests Suite [--test NAME] [--body h[,h…]] [--max-kb N] [--root DIR]
 
 MCP tool names: `show`, `family`, `uses`, `area`, `find`, `tests`.
 
-File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source, and an answer that read any such file says so after its ## root line, in a `-- stale since the last compile:` line naming each module, its stale files and the command that compiles them; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only.
+File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). A definition printed without its body (a type after its members' entries) ends with its closing lines under an `NN-MM end of <name>` header line: its last line, or its last two when the last holds only closing brackets; those lines are file text, for an Edit that inserts after the definition, and a definition whose head already reaches its last line has none. In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source, and an answer that read any such file says so after its ## root line, in a `-- stale since the last compile:` line naming each module, its stale files and the command that compiles them; a --max-kb budget cuts whole entries, never inside one; byte-exactness is tested for LF files only.
 
 ## Running it
 

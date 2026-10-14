@@ -13,7 +13,6 @@ object Server {
 
   private val versions = Vector("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
   private val latest = "2025-11-25"
-  private val cap = 80000
   private val cachedFiles = 6000
 
   /** A JSON object holding `items` in order. */
@@ -38,7 +37,15 @@ object Server {
       "description" -> Help.description(e),
       "inputSchema" -> ujson.Obj(
         "type" -> "object",
-        "properties" -> obj(properties),
+        "properties" -> obj(
+          properties :+ prop(
+            e,
+            "max_kb",
+            "type" -> "integer",
+            "minimum" -> 1,
+            "default" -> Help.defaultMaxKb
+          )
+        ),
         "required" -> ujson.Arr(required.map(ujson.Str(_))*),
         "additionalProperties" -> false
       )
@@ -237,27 +244,44 @@ object Server {
       case None => (Left((-32602, "tools/call needs a tool name")), state, None)
       case Some(name) =>
         val args = field(params, "arguments").getOrElse(ujson.Obj())
-        name match {
-          case "show" =>
-            val (result, next) = show(args, state)
-            (Right(result), next, Some(name))
-          case "family" =>
-            val (result, next) = family(args, state)
-            (Right(result), next, Some(name))
-          case "uses" =>
-            val (result, next) = uses(args, state)
-            (Right(result), next, Some(name))
-          case "tests" =>
-            val (result, next) = tests(args, state)
-            (Right(result), next, Some(name))
-          case "area" =>
-            val (result, next) = area(args, state)
-            (Right(result), next, Some(name))
-          case "find" =>
-            val (result, next) = find(args, state)
-            (Right(result), next, Some(name))
-          case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
+        maxKbArg(args) match {
+          case Left(problem) =>
+            (
+              Right(toolResult(s"bad arguments for $name: $problem", isError = true)),
+              state,
+              Some(name)
+            )
+          case Right(cap) => run(name, args, state, cap)
         }
+    }
+
+  /** The call of the tool `name` with `args`, its answer cut at `cap` bytes. */
+  private def run(
+      name: String,
+      args: ujson.Value,
+      state: State,
+      cap: Int
+  ): (Either[(Int, String), ujson.Value], State, Option[String]) =
+    name match {
+      case "show" =>
+        val (result, next) = show(args, state, cap)
+        (Right(result), next, Some(name))
+      case "family" =>
+        val (result, next) = family(args, state, cap)
+        (Right(result), next, Some(name))
+      case "uses" =>
+        val (result, next) = uses(args, state, cap)
+        (Right(result), next, Some(name))
+      case "tests" =>
+        val (result, next) = tests(args, state, cap)
+        (Right(result), next, Some(name))
+      case "area" =>
+        val (result, next) = area(args, state, cap)
+        (Right(result), next, Some(name))
+      case "find" =>
+        val (result, next) = find(args, state, cap)
+        (Right(result), next, Some(name))
+      case other => (Left((-32602, s"unknown tool: $other")), state, Some(other))
     }
 
   private final case class ShowArgs(
@@ -285,7 +309,7 @@ object Server {
       case Right(config) => run(config)
     }
 
-  private def show(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def show(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     parseShow(args) match {
       case Left(problem) => (toolResult(s"bad arguments for show: $problem", isError = true), state)
       case Right(a) =>
@@ -306,7 +330,7 @@ object Server {
         }
     }
 
-  private def family(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def family(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     parseFamily(args) match {
       case Left(problem) =>
         (toolResult(s"bad arguments for family: $problem", isError = true), state)
@@ -334,7 +358,7 @@ object Server {
       allSites: Boolean
   )
 
-  private def uses(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def uses(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     parseUses(args) match {
       case Left(problem) => (toolResult(s"bad arguments for uses: $problem", isError = true), state)
       case Right(a) =>
@@ -401,7 +425,7 @@ object Server {
       root: Option[Root]
   )
 
-  private def tests(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def tests(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     parseTests(args) match {
       case Left(problem) =>
         (toolResult(s"bad arguments for tests: $problem", isError = true), state)
@@ -435,7 +459,7 @@ object Server {
       root: Option[Root]
   )
 
-  private def area(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def area(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     parseArea(args) match {
       case Left(problem) => (toolResult(s"bad arguments for area: $problem", isError = true), state)
       case Right(a) =>
@@ -460,7 +484,7 @@ object Server {
       root <- rootArg(args)
     } yield AreaArgs(names, level, root)
 
-  private def find(args: ujson.Value, state: State): (ujson.Value, State) =
+  private def find(args: ujson.Value, state: State, cap: Int): (ujson.Value, State) =
     (for {
       pattern <- reqText(args, "pattern")
       withPrivate <- flag(args, "private")
@@ -509,6 +533,17 @@ object Server {
             else Left(s"$key must be an array of strings")
           case None => Left(s"$key must be an array of strings")
         }
+    }
+
+  /** The `max_kb` argument in bytes, `Help.defaultMaxKb` KB when absent. */
+  private def maxKbArg(args: ujson.Value): Either[String, Int] =
+    field(args, "max_kb") match {
+      case None => Right(Help.defaultMaxKb * 1024)
+      case Some(v) =>
+        v.numOpt
+          .filter(n => n == n.floor && n >= 1)
+          .map(n => n.toInt * 1024)
+          .toRight("max_kb must be a whole number from 1")
     }
 
   private def depthArg(args: ujson.Value): Either[String, Int] =

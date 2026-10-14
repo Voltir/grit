@@ -17,20 +17,20 @@ object HelpTests extends TestSuite {
       "--private" -> false,
       "--tests" -> false,
       "--no-tests" -> false,
-      "--cap" -> true,
+      "--max-kb" -> true,
       "--root" -> true
     ),
-    "family" -> Vector("--member" -> true, "--body" -> false, "--cap" -> true, "--root" -> true),
+    "family" -> Vector("--member" -> true, "--body" -> false, "--max-kb" -> true, "--root" -> true),
     "uses" -> Vector(
       "--in" -> true,
       "--outside" -> true,
       "--sites" -> false,
-      "--cap" -> true,
+      "--max-kb" -> true,
       "--root" -> true
     ),
-    "area" -> Vector("--level" -> true, "--cap" -> true, "--root" -> true),
-    "find" -> Vector("--private" -> false, "--cap" -> true, "--root" -> true),
-    "tests" -> Vector("--test" -> true, "--cap" -> true, "--root" -> true)
+    "area" -> Vector("--level" -> true, "--max-kb" -> true, "--root" -> true),
+    "find" -> Vector("--private" -> false, "--max-kb" -> true, "--root" -> true),
+    "tests" -> Vector("--test" -> true, "--max-kb" -> true, "--root" -> true)
   )
 
   /** A directory with no build output: a flag that parses reaches the root check and fails there, not as an unknown argument. */

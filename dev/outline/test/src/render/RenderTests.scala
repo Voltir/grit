@@ -100,11 +100,15 @@ object RenderTests extends TestSuite {
       assert(withBody.contains("else { Right(new Limits(asks, calls + hidden)) }"))
       assert(!withoutBody.contains("if (asks < 0"))
     }
-    test("a cap cuts whole entries, says so, and shortens the answer") {
+    test("a budget cuts whole entries, says so, and shortens the answer") {
       val a = named(read, "grit.outline.fixture.A")
       val full = Render.show(a, noTraced, read, Set.empty, Set.empty, false, 80000)
       val capped = Render.show(a, noTraced, read, Set.empty, Set.empty, false, 200)
-      assert(capped.contains("[truncated: "))
+      assert(
+        capped.linesIterator.contains(
+          "-- cut at 0.2 KB: 1 more entry, ~1 KB; rerun with --max-kb 1 or narrow"
+        )
+      )
       assert(capped.length < full.length)
     }
     test("a stale file's group header is flagged") {

@@ -192,6 +192,24 @@ object ServerTests extends TestSuite {
       assert(isError(r) == Some(ujson.Bool(false)))
     }
 
+    test("every tool offers max_kb, default 12, and a max_kb below 1 is an error result") {
+      val (r, _) = reply(request(9, "tools/list", ujson.Obj()), empty)
+      val tools =
+        resultOf(r).flatMap(field(_, "tools")).flatMap(_.arrOpt).getOrElse(ujson.Arr().arr)
+      val defaults = tools.map(t =>
+        field(t, "inputSchema")
+          .flatMap(field(_, "properties"))
+          .flatMap(field(_, "max_kb"))
+          .flatMap(field(_, "default"))
+          .flatMap(_.numOpt)
+      )
+      assert(defaults.size == Help.entries.size && defaults.forall(_ == Some(12.0)))
+      val (bad, _) =
+        reply(call(10, "find", ujson.Obj("pattern" -> "A", "max_kb" -> 0)), empty)
+      assert(isError(bad) == Some(ujson.Bool(true)))
+      assert(textOf(bad).exists(_.contains("max_kb must be a whole number from 1")))
+    }
+
     test("tools/call show with symbols as a string, not an array, is an error result") {
       val (r, _) = reply(call(5, "show", ujson.Obj("symbols" -> "A.keep")), empty)
       assert(isError(r) == Some(ujson.Bool(true)))

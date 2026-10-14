@@ -103,8 +103,8 @@ object Render {
       entries.zipWithIndex.map { case (lines, i) => if (i == 0) header +: lines else lines }
     }
 
-    val total = named.size + traced.types.size
-    val (kept, truncated) = fit(chunks, total, cap)
+    // One budget over the definitions and the tests list, so a cut line counts both.
+    val shown = fitting(chunks ++ exercising, cap)
 
     val library = traced.library.filterNot(_.contains("<"))
     val notLoaded = traced.missing
@@ -112,12 +112,11 @@ object Render {
       (if (library.nonEmpty) Vector(s"-- library: ${library.mkString(", ")}") else Vector.empty) ++
         (if (notLoaded.nonEmpty) Vector(s"-- not loaded: ${notLoaded.mkString(", ")}")
          else Vector.empty)
-    val before = kept ++ trailer ++ truncated
-    val budget = cap - bytesOf(before.map(_ + "\n").mkString)
-    val (exShown, exTruncated) =
-      if (exercising.isEmpty) (Vector.empty, Vector.empty)
-      else fit(exercising, exercising.size, budget)
-    val body = (before ++ exShown ++ exTruncated ++ summaries.map(testsLine)).map(_ + "\n").mkString
+    val kept = chunks.take(shown).flatten ++ trailer ++ exercising.take(shown - chunks.size).flatten
+    val body =
+      (kept ++ cut(chunks ++ exercising, shown, cap) ++ summaries.map(testsLine))
+        .map(_ + "\n")
+        .mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
@@ -208,12 +207,11 @@ object Render {
       here.zipWithIndex.map { case (lines, i) => if (i == 0) fileHeader +: lines else lines }
     }
 
-    val (kept, truncated) = fit(chunks, pieces.size, cap)
+    val (kept, truncated) = fit(chunks, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
   /** The `uses` answer, grouped by file under `== file`, flagged as `show` flags it when the file is in `stale`: each run of sites with one owner as an `in <owner>` line, ending with the size `sizes` gives its first site, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
   def uses(
       sites: Vector[Use],
@@ -264,7 +262,7 @@ object Render {
             s"  in $o  ${count(us.size)}${sizeTag(us.headOption.flatMap(sizes.get))}"
           }
     }
-    val (kept, truncated) = fit(chunks, sites.size, cap)
+    val (kept, truncated) = fit(chunks, cap)
     val summary =
       if (listed) s"[${sites.size} sites in ${files.size} files]"
       else
@@ -283,7 +281,7 @@ object Render {
         s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
       )
     }
-    val (kept, truncated) = fit(chunks, found.size, cap)
+    val (kept, truncated) = fit(chunks, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
@@ -316,7 +314,7 @@ object Render {
         }
 
     val total = if (level == 0) chunks.size else listed.size
-    val (kept, truncated) = fit(chunks, total, cap)
+    val (kept, truncated) = fit(chunks, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
@@ -350,7 +348,7 @@ object Render {
       ) ++ helperChunks ++
         Vector(Vector(s"  tests (${tests.size}):")) ++ testChunks
 
-    val (kept, truncated) = fit(chunks, chunks.size, cap)
+    val (kept, truncated) = fit(chunks, cap)
     val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
@@ -403,19 +401,30 @@ object Render {
     }
   }
 
-  private def fit(
-      chunks: Vector[Vector[String]],
-      total: Int,
-      cap: Int
-  ): (Vector[String], Vector[String]) = {
-    val sizes = chunks.map(c => bytesOf(c.mkString("\n") + "\n")).scanLeft(0)(_ + _).drop(1)
-    val shown = sizes.takeWhile(_ <= cap).length
-    val kept = chunks.take(shown).flatten
-    val truncated =
-      if (shown < chunks.size) Vector(s"[truncated: $shown of $total entries; narrow the query]")
-      else Vector.empty
-    (kept, truncated)
+  /** The leading `chunks` whose bytes, each line with its newline, fit in `cap`, then the cut line when some do not. */
+  private def fit(chunks: Vector[Vector[String]], cap: Int): (Vector[String], Vector[String]) = {
+    val shown = fitting(chunks, cap)
+    (chunks.take(shown).flatten, cut(chunks, shown, cap))
   }
+
+  /** How many leading `chunks` fit in `cap` bytes, each line with its newline. */
+  private def fitting(chunks: Vector[Vector[String]], cap: Int): Int =
+    chunks.map(chunkBytes).scanLeft(0)(_ + _).drop(1).takeWhile(_ <= cap).length
+
+  private def chunkBytes(c: Vector[String]): Int = bytesOf(c.mkString("\n") + "\n")
+
+  /** The line saying `chunks` were cut after the first `shown`: `-- cut at N KB: M more entries, ~X KB; rerun with
+    * --max-kb X or narrow`, X the KB all of them need, rounded up; none when every chunk is shown.
+    */
+  private def cut(chunks: Vector[Vector[String]], shown: Int, cap: Int): Vector[String] =
+    if (shown >= chunks.size) Vector.empty
+    else {
+      val more = chunks.size - shown
+      val whole = (chunks.map(chunkBytes).sum + 1023) / 1024
+      val budget = if (cap % 1024 == 0) (cap / 1024).toString else kilobytes(cap)
+      val entries = if (more == 1) "1 more entry" else s"$more more entries"
+      Vector(s"-- cut at $budget KB: $entries, ~$whole KB; rerun with --max-kb $whole or narrow")
+    }
 
   private def collapse(s: String): String =
     s.trim.split("\\s+").mkString(" ").replaceAll("([(\\[]) ", "$1").replaceAll(" ([)\\]])", "$1")

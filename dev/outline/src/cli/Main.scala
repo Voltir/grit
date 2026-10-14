@@ -21,14 +21,21 @@ object Main {
       case Nil => Right(o)
       case "--body" :: tail => parseFamily(tail, o.copy(withBody = true))
       case "--member" :: value :: tail => parseFamily(tail, o.copy(member = Some(value)))
-      case "--cap" :: value :: tail =>
-        value.toIntOption match {
-          case Some(n) => parseFamily(tail, o.copy(cap = n))
-          case None => Left(s"--cap takes a number of bytes, not $value")
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseFamily(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
         }
       case "--root" :: value :: tail => parseFamily(tail, o.copy(root = Some(value)))
       case flag :: _ => Left(s"unknown argument $flag")
     }
+
+  /** `--max-kb`'s value in bytes, or why it is not a whole number of KB from 1. */
+  private def maxKb(value: String): Either[String, Int] =
+    value.toIntOption
+      .filter(_ >= 1)
+      .map(_ * 1024)
+      .toRight(s"--max-kb takes a whole number of KB from 1, not $value")
 
   private final case class Options(
       depth: Int,
@@ -49,10 +56,10 @@ object Main {
         case Some(n) => parse(tail, o.copy(depth = n))
         case None => Left(s"--depth takes a number, not $value")
       }
-    case "--cap" :: value :: tail =>
-      value.toIntOption match {
-        case Some(n) => parse(tail, o.copy(cap = n))
-        case None => Left(s"--cap takes a number of bytes, not $value")
+    case "--max-kb" :: value :: tail =>
+      maxKb(value) match {
+        case Right(n) => parse(tail, o.copy(cap = n))
+        case Left(message) => Left(message)
       }
     case "--body" :: value :: tail =>
       parse(tail, o.copy(bodies = value.split(',').filter(_.nonEmpty).toSet))
@@ -103,7 +110,7 @@ object Main {
           depth = 1,
           bodies = Set.empty,
           withPrivate = false,
-          cap = 80000,
+          cap = Help.defaultMaxKb * 1024,
           root = leadingRoot,
           tests = TestsShown.Summary
         )
@@ -157,7 +164,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseFamily(rest, FamilyOptions(None, false, 80000, leadingRoot)) match {
+    parseFamily(rest, FamilyOptions(None, false, Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.family)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -196,10 +203,10 @@ object Main {
       case "--in" :: value :: tail => parseUses(tail, o.copy(in = Some(value)))
       case "--outside" :: value :: tail => parseUses(tail, o.copy(outside = Some(value)))
       case "--sites" :: tail => parseUses(tail, o.copy(allSites = true))
-      case "--cap" :: value :: tail =>
-        value.toIntOption match {
-          case Some(n) => parseUses(tail, o.copy(cap = n))
-          case None => Left(s"--cap takes a number of bytes, not $value")
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseUses(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
         }
       case "--root" :: value :: tail => parseUses(tail, o.copy(root = Some(value)))
       case flag :: _ => Left(s"unknown argument $flag")
@@ -211,7 +218,10 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseUses(rest, UsesOptions(None, None, 80000, leadingRoot, allSites = false)) match {
+    parseUses(
+      rest,
+      UsesOptions(None, None, Help.defaultMaxKb * 1024, leadingRoot, allSites = false)
+    ) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.uses)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -251,10 +261,10 @@ object Main {
           case Some(n) => parseArea(tail, o.copy(level = n))
           case None => Left(s"--level takes 0 or 1, not $value")
         }
-      case "--cap" :: value :: tail =>
-        value.toIntOption match {
-          case Some(n) => parseArea(tail, o.copy(cap = n))
-          case None => Left(s"--cap takes a number of bytes, not $value")
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseArea(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
         }
       case "--root" :: value :: tail => parseArea(tail, o.copy(root = Some(value)))
       case flag :: _ => Left(s"unknown argument $flag")
@@ -266,7 +276,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseArea(rest, AreaOptions(1, 80000, leadingRoot)) match {
+    parseArea(rest, AreaOptions(1, Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.area)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -295,10 +305,10 @@ object Main {
   private def parseFind(rest: List[String], o: FindOptions): Either[String, FindOptions] =
     rest match {
       case Nil => Right(o)
-      case "--cap" :: value :: tail =>
-        value.toIntOption match {
-          case Some(n) => parseFind(tail, o.copy(cap = n))
-          case None => Left(s"--cap takes a number of bytes, not $value")
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseFind(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
         }
       case "--root" :: value :: tail => parseFind(tail, o.copy(root = Some(value)))
       case "--private" :: tail => parseFind(tail, o.copy(withPrivate = true))
@@ -311,7 +321,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseFind(rest, FindOptions(80000, leadingRoot, withPrivate = false)) match {
+    parseFind(rest, FindOptions(Help.defaultMaxKb * 1024, leadingRoot, withPrivate = false)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.find)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -348,10 +358,10 @@ object Main {
       case "--test" :: value :: tail => parseTests(tail, o.copy(test = Some(value)))
       case "--body" :: value :: tail =>
         parseTests(tail, o.copy(bodies = value.split(',').filter(_.nonEmpty).toSet))
-      case "--cap" :: value :: tail =>
-        value.toIntOption match {
-          case Some(n) => parseTests(tail, o.copy(cap = n))
-          case None => Left(s"--cap takes a number of bytes, not $value")
+      case "--max-kb" :: value :: tail =>
+        maxKb(value) match {
+          case Right(n) => parseTests(tail, o.copy(cap = n))
+          case Left(message) => Left(message)
         }
       case "--root" :: value :: tail => parseTests(tail, o.copy(root = Some(value)))
       case flag :: _ => Left(s"unknown argument $flag")
@@ -363,7 +373,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseTests(rest, TestsOptions(None, Set.empty, 80000, leadingRoot)) match {
+    parseTests(rest, TestsOptions(None, Set.empty, Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.tests)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {

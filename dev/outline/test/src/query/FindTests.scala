@@ -28,7 +28,7 @@ object FindTests extends TestSuite {
   private def names(answer: Answer): Vector[String] =
     answer.text.linesIterator
       .drop(1)
-      .filterNot(_.startsWith("["))
+      .filterNot(l => l.startsWith("[") || l.startsWith("-- cut at "))
       .map(_.takeWhile(_ != ' '))
       .toVector
 
@@ -89,7 +89,7 @@ object FindTests extends TestSuite {
     }
 
     test(
-      "a cap cuts whole lines: the entries that fit it, one ending exactly at it included, then a line saying how many of how many"
+      "a budget cuts whole lines: the entries that fit it, one ending exactly at it included, then a line saying how many more, the KB the whole needs and the flag to rerun with"
     ) {
       val all = find("*Store*").text.linesIterator.drop(1).filterNot(_.startsWith("[")).toVector
       // Exactly the first two entries' bytes, each with its newline.
@@ -97,9 +97,11 @@ object FindTests extends TestSuite {
       val answer =
         Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), "*Store*", false, cap)._1
       assert(names(answer) == all.take(2).map(_.takeWhile(_ != ' ')))
+      val whole = (all.map(l => l.getBytes("UTF-8").length + 1).sum + 1023) / 1024
+      val budget = BigDecimal(cap) / 1024
       assert(
         answer.text.linesIterator.contains(
-          s"[truncated: 2 of ${all.size} entries; narrow the query]"
+          s"-- cut at ${budget.setScale(1, BigDecimal.RoundingMode.HALF_UP)} KB: ${all.size - 2} more entries, ~$whole KB; rerun with --max-kb $whole or narrow"
         )
       )
     }
