@@ -11,4 +11,9 @@ object SuiteFixtures {
 
   /** Never named by a suite. */
   def unnamed: Int = 0
+
+  /** A helper class, which --body prints whole. */
+  final class Box(val n: Int) {
+    def doubled: Int = n * 2
+  }
 }

@@ -91,7 +91,7 @@ object TestsTests extends TestSuite {
     ) {
       assert(
         useLines().contains(
-          "  fixtures used: grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-14  2 of 3 members: seeded, label; --fixtures for their signatures"
+          "  fixtures used: grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-19  2 of 4 members: seeded, label; --fixtures for their signatures"
         )
       )
     }
@@ -274,6 +274,23 @@ object TestsTests extends TestSuite {
       )
       assert(answer.text.linesIterator.exists(_.contains("private val posed")))
       assert(!answer.text.contains("-- tests of posed"))
+    }
+
+    test("tests --body on a helper class prints its own text from its head to its end") {
+      val text = Query
+        .tests(
+          root,
+          FixtureSuitesLayout,
+          Config.empty,
+          Roots.empty(6000),
+          "grit.outline.fixture.suites.SuiteFixtures",
+          None,
+          Set("Box"),
+          80000
+        )
+        ._1
+        .text
+      assert(text.linesIterator.contains("    def doubled: Int = n * 2"))
     }
 
     test("tests lists the suite's private helpers and its file's other top-level definitions") {
