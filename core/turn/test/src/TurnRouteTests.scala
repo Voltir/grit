@@ -300,6 +300,37 @@ object TurnRouteTests extends TestSuite {
         (Some((steady, Headroom.Low)), Vector(steady -> Some(Effort.Medium)))
     }
 
+    test(
+      "at low headroom a chat root under a strong floor answers on the standard pin, at low effort, in the fewest calls"
+    ) {
+      val (ledger, cap) = spentMost()
+      val (route, pins, calls, asks, _) =
+        routed(threeGrades, answered(TaskKind.Chat, 0.9), ledger, cap, Some(Grade.Strong))
+      (route.map(r => (r.turn.assignment.ref, r.headroom)), pins, calls, asks) ==>
+        (Some((steady, Headroom.Low)), Vector(steady -> Some(Effort.Low)), 2, 1)
+    }
+
+    test("the floor and the low ceiling leave the summary and query pins alone") {
+      val (ledger, cap) = spentMost()
+      val catalog = Catalog.of(
+        Policy(
+          threeGrades.policy.turn,
+          // The summary's first is above the low ceiling, the query's below the strong floor.
+          graded(
+            (Grade.Strong, mighty, Some(Effort.Minimal)),
+            (Grade.Standard, bare, Some(Effort.Minimal))
+          ),
+          graded((Grade.Light, bare, Some(Effort.Low)), (Grade.Strong, mighty, Some(Effort.Low))),
+          graded((Grade.Standard, bare, None))
+        ),
+        Vector.empty
+      )
+      val late = Left(grit.core.triage.Weighing.Unweighed.Late)
+      val (route, _, _, _, _) = routed(catalog, late, ledger, cap, Some(Grade.Strong))
+      route.map(r => (r.summary, r.query).toList.flatten.map(_.assignment.ref)) ==>
+        Some(List(mighty, bare))
+    }
+
     test("a strong floor never takes a strong pin not cleared for what the turn knows") {
       val steadyCleared = labelling(
         Vector.empty,
