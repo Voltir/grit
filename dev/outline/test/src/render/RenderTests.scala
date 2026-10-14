@@ -108,8 +108,9 @@ object RenderTests extends TestSuite {
       val lines = out.linesIterator.toVector
       // A member's lines between its header and the next header.
       def after(name: String): Vector[String] = {
-        val from = lines.indexWhere(_.contains(s" def Almanac.$name "))
-        lines.drop(from + 1).takeWhile(l => !l.matches("\\d+-\\d+ .*"))
+        val signature = lines.indexWhere(_.contains(s" def $name"))
+        val header = lines.lastIndexWhere(_.matches("\\d+-\\d+ .*"), signature)
+        lines.slice(header + 1, signature + 1)
       }
       assert(
         lines.containsSlice(
@@ -162,6 +163,60 @@ object RenderTests extends TestSuite {
       val body = Render.show(almanac, noTraced, read, Set.empty, Set("tides"), false, 80000)
       assert(docs.linesIterator.toVector.containsSlice(whole))
       assert(body.linesIterator.toVector.containsSlice(whole))
+    }
+
+    test(
+      "a header keeps only its lines and size where the file text under it shows its kind and name"
+    ) {
+      val almanac =
+        Render.show(
+          named(read, "grit.outline.fixture.Almanac"),
+          noTraced,
+          read,
+          Set.empty,
+          Set.empty,
+          false,
+          80000
+        )
+      val lines = almanac.linesIterator.toVector
+      val type0 = lines.indexOf("object Almanac {")
+      assert(lines.lift(type0 - 4).exists(_.matches("3-27  \\[\\d+\\.\\d KB\\]")))
+      assert(lines.contains("  def plain: Int = 3"))
+      assert(
+        lines
+          .lift(lines.indexOf("  def plain: Int = 3") - 1)
+          .exists(_.matches("26-26  \\[\\d+\\.\\d KB\\]"))
+      )
+      assert(!almanac.contains("def Almanac.") && !almanac.contains("object Almanac  ["))
+    }
+
+    test(
+      "a header keeps its kind and owner-qualified name for a named member, and where the file text shows another name"
+    ) {
+      val tides = Render.show(
+        named(read, "grit.outline.fixture.Almanac.tides"),
+        noTraced,
+        read,
+        Set.empty,
+        Set.empty,
+        false,
+        80000
+      )
+      assert(tides.linesIterator.exists(_.startsWith("13-16 def Almanac.tides  [")))
+      val suit =
+        Render.show(
+          named(read, "grit.outline.fixture.Suit"),
+          noTraced,
+          read,
+          Set.empty,
+          Set.empty,
+          false,
+          80000
+        )
+      val lines = suit.linesIterator.toVector
+      assert(lines.exists(_.matches("\\d+-\\d+  \\[\\d+\\.\\d KB\\]")))
+      assert(lines.exists(_.startsWith("95-95 case Suit.Spades  [")))
+      assert(!lines.exists(_.contains("case Suit.Hearts")))
     }
 
     test("a budget cuts whole entries, says so, and shortens the answer") {

@@ -1,6 +1,7 @@
 package grit.outline.render
 
 import java.nio.charset.StandardCharsets
+import java.util.regex.Pattern
 
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, TestCase, Use}
@@ -65,20 +66,18 @@ object Render {
     val everything = named ++ traced.types
     val files = everything.map(_.file).distinct
 
-    def headed(d: Defn): Vector[String] =
-      Vector(
-        s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}${sizeTag(d.size)}",
-        d.head
-      )
+    // A top-level definition, or a member under its type, is in its owner's context; a named member is not.
+    def headed(d: Defn, inContext: Boolean): Vector[String] =
+      Vector(headerLine(d, inContext), d.head)
 
-    def entry(d: Defn): Vector[String] =
-      headed(d) ++
+    def entry(d: Defn, inContext: Boolean): Vector[String] =
+      headed(d, inContext) ++
         (if (bodies.contains(d.name) && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
     // A member not named in --body: its doc cut to its first sentence, unless every doc prints whole.
     def memberEntry(d: Defn): Vector[String] =
-      if (fullDocs || bodies.contains(d.name)) entry(d)
-      else headed(d).take(1) ++ briefHead(d) ++ closingLines(d)
+      if (fullDocs || bodies.contains(d.name)) entry(d, inContext = true)
+      else Vector(headerLine(d, inContext = true)) ++ briefHead(d) ++ closingLines(d)
 
     def namedEntry(d: Defn): Vector[String] = {
       val typeKind = d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
@@ -90,7 +89,8 @@ object Render {
             .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
             .flatMap(memberEntry)
         else Vector.empty
-      if (typeKind) headed(d) ++ members ++ closingLines(d) else entry(d)
+      val topLevel = !ownerRelative(d).contains('.')
+      if (typeKind) headed(d, topLevel) ++ members ++ closingLines(d) else entry(d, topLevel)
     }
 
     // Each entry is its lines; a file's header rides on its first entry, so a cut never leaves a bare header.
@@ -157,15 +157,19 @@ object Render {
     def headerOf(d: Defn): String =
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
 
+    // Under the trait, a member is in its owner's context; one --member names is not.
     def block(d: Defn, body: Boolean): Vector[String] =
-      Vector(headerOf(d) + sizeTag(d.size), d.head) ++
+      Vector(headerLine(d, inContext = f.member.isEmpty), d.head) ++
         (if (body && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
     // The trait's closing lines come after its members' entries.
     val traitLines: Vector[String] =
-      Vector(headerOf(f.trait0) + sizeTag(f.trait0.size), f.trait0.head) ++ (f.member match {
+      Vector(
+        headerLine(f.trait0, inContext = !ownerRelative(f.trait0).contains('.')),
+        f.trait0.head
+      ) ++ (f.member match {
         case None => f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
         case Some(m) => f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
       }) ++ closingLines(f.trait0)
@@ -461,6 +465,24 @@ object Render {
   }
 
   private def bytesOf(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** The `NN-MM` line over `d`'s file text, ending with its size tag: its kind and owner-relative name between them unless
+    * `inContext` (`d` is top-level, or shown under its owner) and its signature already shows its kind and name.
+    */
+  private def headerLine(d: Defn, inContext: Boolean): String = {
+    val lines = s"${d.lines.start}-${d.lines.end}"
+    if (inContext && namesItself(d)) s"$lines${sizeTag(d.size)}"
+    else s"$lines ${kindWord(d.kind)} ${ownerRelative(d)}${sizeTag(d.size)}"
+  }
+
+  /** Whether `d`'s head is file text whose lines after its doc hold its kind's keyword then its name, as in `def at`,
+    * `case class Lines` or `case Hearts, Spades` for `Hearts` (not for `Spades`).
+    */
+  private def namesItself(d: Defn): Boolean = d.size.nonEmpty && {
+    val kind = kindWord(d.kind).split(' ').map(Pattern.quote).mkString("\\s+")
+    val code = d.head.linesIterator.drop(d.doc.fold(0)(_.linesIterator.size)).mkString("\n")
+    s"(?<![\\w$$])$kind\\s+${Pattern.quote(d.name)}(?![\\w$$])".r.findFirstIn(code).nonEmpty
+  }
 
   /** `d`'s head with its doc cut to its first sentence: when that sentence is the whole of the doc's first line, that line
     * then a `-- … N more doc lines` line; otherwise a `-- <first sentence> …` line in place of the doc; then the head's
