@@ -22,6 +22,7 @@ import grit.core.plugin.{
 }
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
+import grit.core.visibility.Integrity
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
   * room ([[grit.core.store.Origin.room]]) where conversations closed and per label those
@@ -116,20 +117,29 @@ object Digest {
 
   /** The lines `own`'s documents hold. */
   private def activity(own: PluginReads): Activity = new Activity {
-    def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]] =
-      if (n < 1) Right(Vector.empty)
-      else
-        // The rooms holding the newest n lines are among the n written last: each is written
-        // as of its newest line.
-        own.documents
-          .newest(n)
-          .map(
-            _.flatMap(d => Line.all(d.data))
-              .sortBy(l => (l.at, l.order))(using Ordering[(Instant, Long)].reverse)
-              .take(n)
-              .map(_.shown)
-          )
+    def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]] = newest(own, n).map(_._1)
   }
+
+  /** The newest `n` lines of `own`'s documents, newest first, and the least integrity of the
+    * documents read for them; `None` when none was read.
+    */
+  private def newest(own: PluginReads, n: Int)(using
+      Tx^
+  ): Either[StoreError, (Vector[String], Option[Integrity])] =
+    if (n < 1) Right((Vector.empty, None))
+    else
+      // The rooms holding the newest n lines are among the n written last: each is written
+      // as of its newest line.
+      own.documents
+        .newest(n)
+        .map { documents =>
+          val lines = documents
+            .flatMap(d => Line.all(d.data))
+            .sortBy(l => (l.at, l.order))(using Ordering[(Instant, Long)].reverse)
+            .take(n)
+            .map(_.shown)
+          (lines, documents.map(_.integrity).reduceOption(_.meet(_)))
+        }
 
   /** What heads a room's document, above its lines. */
   private val Header = "Closed here, newest first:"
@@ -214,7 +224,9 @@ object Digest {
   }
 
   /** `recent_activity`: the newest lines of the digest it is bound to that the calling turn
-    * reads (the [[Reads]] its run is handed, for that turn), newest first. Free: it only reads.
+    * reads (the [[Reads]] its run is handed, for that turn), newest first, believed at the
+    * least integrity of the documents read ([[grit.core.visibility.Integrity.Untrusted]] when
+    * none). Free: it only reads.
     */
   val RecentActivity: PluginTool[Int] = new PluginTool[Int] {
     val described: Hosted[Int] =
@@ -243,13 +255,13 @@ object Digest {
         jobs: OwnJobs
     ): Either[Unneeded | NotOwn, PluginRun[Int]] =
       Right(new PluginRun[Int] {
-        private val read = activity(own)
         def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
-          reads.read(read.recent(n)) match {
+          reads.read(newest(own, n)) match {
             case Left(error) => Outcome.Failed(s"the digest could not be read: $error")
-            case Right(lines) =>
+            case Right((lines, believed)) =>
               Outcome.Done(
-                if (lines.isEmpty) "No conversation has closed yet." else lines.mkString("\n")
+                if (lines.isEmpty) "No conversation has closed yet." else lines.mkString("\n"),
+                believed
               )
           }
       })

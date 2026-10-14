@@ -469,7 +469,8 @@ object VisibilityLiveTests extends TestSuite {
       import Shown.*
       (labelled.clearedInB.window, labelled.clearedInB.recent) ==> (
         Vector(bClosed) ++ bOpen ++ Vector(publicNote, bDigest),
-        Outcome.Done(bLine)
+        // Believed as the least of the documents read: closings of heard Slack threads.
+        Outcome.Done(bLine, Some(Integrity.Outside))
       )
     }
 
@@ -479,7 +480,7 @@ object VisibilityLiveTests extends TestSuite {
       import Shown.*
       (labelled.unclearedInA.window, labelled.unclearedInA.recent) ==> (
         aOpen ++ Vector(bClosed, aClosed) ++ bOpen ++ Vector(publicNote, aDigest, bDigest),
-        Outcome.Done(s"$bLine\n$aLine")
+        Outcome.Done(s"$bLine\n$aLine", Some(Integrity.Outside))
       )
       // A tool's result is never in a window; the asker reads it in its room as it reads the
       // reply drawn from it.
@@ -507,7 +508,7 @@ object VisibilityLiveTests extends TestSuite {
       val shipped = scenario("visibility_shipped", Visibility.Shipped)
       val all = Vector(bClosed, aClosed) ++ bOpen ++
         Vector(publicNote, noteInB, noteNowhere, aDigest, bDigest)
-      val recent = Outcome.Done(s"$bLine\n$aLine")
+      val recent = Outcome.Done(s"$bLine\n$aLine", Some(Integrity.Outside))
       shipped ==> Seen(
         Asked(aOpen ++ all, recent),
         Asked(Vector("open a-uncleared: zephyr?") ++ aOpen ++ all, recent),

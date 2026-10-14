@@ -40,7 +40,8 @@ object DigestTests extends TestSuite {
       origin: Origin,
       reason: CloseReason,
       c: Closing,
-      at: String
+      at: String,
+      integrity: Integrity = Integrity.Member
   ): ClosedPeriod =
     ClosedPeriod(
       PeriodRef(ConversationId("c"), PeriodSeq.First),
@@ -49,7 +50,7 @@ object DigestTests extends TestSuite {
       c,
       Instant.parse(at),
       CloseOrdinal.of(n).getOrElse(throw new java.lang.AssertionError(n)),
-      Integrity.Member
+      integrity
     )
 
   private val home: Directory = Directory.of("/home/nick").fold(e => sys.error(e), identity)
@@ -259,19 +260,41 @@ object DigestTests extends TestSuite {
       val kept = posted(periods*)
       run(db, kept, "n" -> 2) ==> Outcome.Done(
         "2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report\n" +
-          "2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test."
+          "2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test.",
+        Some(Integrity.Member)
       )
       run(db, kept) ==> Outcome.Done(
         "2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report\n" +
           "2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test.\n" +
-          "2026-09-20 14:05 UTC · tui default · resolved · staging deploys from main"
+          "2026-09-20 14:05 UTC · tui default · resolved · staging deploys from main",
+        Some(Integrity.Member)
       )
       run(db, new Kept) ==> Outcome.Done("No conversation has closed yet.")
     }
 
+    test(
+      "recent_activity is believed at the least integrity of the documents it read, and as its tool says when it read none"
+    ) {
+      val heard = closed(
+        4,
+        Origin.Slack("T1", "random", "1700.2"),
+        CloseReason.Lapsed,
+        closing("A guest asked.", None),
+        "2026-09-23T10:00:00Z",
+        Integrity.Outside
+      )
+      run(new FakeDb, posted((periods :+ heard)*)) match {
+        case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
+        case other => sys.error(s"not done: $other")
+      }
+      run(new FakeDb, new Kept) ==> Outcome.Done("No conversation has closed yet.", None)
+      Digest.RecentActivity.described.output ==> Integrity.Untrusted
+    }
+
     test("recent_activity shows the newest 10 when not told how many") {
       run(new FakeDb, posted((1L to 12L).map(nightly)*)) ==> Outcome.Done(
-        (12L to 3L by -1L).map(nightlyLine).mkString("\n")
+        (12L to 3L by -1L).map(nightlyLine).mkString("\n"),
+        Some(Integrity.Member)
       )
     }
   }

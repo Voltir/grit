@@ -332,7 +332,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
                           Right(Left(DeskRefusal.TooMany(ScheduleDesk.PendingCap)))
                         else
                           insertAsked(id, call, booking.job, params, by, to, at, grace, now)
-                            .map(_ => Right(Asked(id, at, params)))
+                            .map(believed => Right(Asked(id, at, params, believed)))
                       }
                   case _ => Right(Left(DeskRefusal.Unaddressed))
                 }
@@ -519,7 +519,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       at: Instant,
       grace: Grace,
       now: Instant
-  )(using tx: Tx^): Either[StoreError, Unit] = {
+  )(using tx: Tx^): Either[StoreError, Integrity] = {
     // Kept at the asking turn's floor, its room's label, in its room: its parameters come from
     // the room's content. The desk opens its transaction for that turn, so the label and the
     // room are the transaction's, never ones a caller passes.
@@ -546,7 +546,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         SqlLabels.bind(ps, 10, label)
         ps.setString(12, ujson.Arr.from(room).render())
         SqlIntegrity.bind(ps, 13, believed)
-      }.map(_ => ())
+      }.map(_ => believed)
     }
   }
 
@@ -663,7 +663,7 @@ private[dbos] object SqlSchedules {
       case SlotRule.Once(at, _) =>
         job
           .read(s.params)
-          .map(Asked(id, at, _))
+          .map(Asked(id, at, _, s.integrity))
           .left
           .map(why => DeskRefusal.Unavailable(StoreError.Invalid(why)))
       case other => Left(DeskRefusal.Unavailable(StoreError.Invalid(s"asked, but $other")))

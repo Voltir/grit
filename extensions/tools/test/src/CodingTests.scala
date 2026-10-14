@@ -8,6 +8,7 @@ import grit.core.host.*
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.tool.{Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -106,6 +107,20 @@ object CodingTests extends TestSuite {
         "edit" -> Retry.Interrupt,
         "run" -> Retry.Interrupt
       )
+    }
+
+    test(
+      "write, edit and run bind only a call stamped at member or above; every tool's results are believed at member"
+    ) {
+      all(new Scripted()).set.tools.map(e => (ToolName.value(e.name), e.requires)) ==> Vector(
+        "read" -> Integrity.Untrusted,
+        "list" -> Integrity.Untrusted,
+        "search" -> Integrity.Untrusted,
+        "write" -> Integrity.Member,
+        "edit" -> Integrity.Member,
+        "run" -> Integrity.Member
+      )
+      Coding.hosted.map(_.output).distinct ==> Vector(Integrity.Member)
     }
 
     test("the engine offers the tools an edge runs: the same names, schemas, gates and retries") {

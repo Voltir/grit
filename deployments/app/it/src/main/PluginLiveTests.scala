@@ -225,7 +225,10 @@ object PluginLiveTests extends TestSuite {
             ) ==> Right(
               Outcome.Done(
                 "2026-09-22 10:00 UTC · tui plugins · resolved · Period 2.\n" +
-                  "2026-09-21 10:00 UTC · tui plugins · resolved · Period 1."
+                  "2026-09-21 10:00 UTC · tui plugins · resolved · Period 1.",
+                // Believed as the least of the documents read: closings of the local
+                // operator's sessions.
+                Some(Integrity.Authority)
               )
             )
           case other => sys.error(s"not reading: $other")

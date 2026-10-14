@@ -252,7 +252,7 @@ final class InMemorySchedules(
                         asked = Some(room)
                       )
                     )
-                    Right(Asked(id, at, params))
+                    Right(Asked(id, at, params, believed))
                   }
                 case _ => Left(DeskRefusal.Unaddressed)
               }
@@ -322,7 +322,7 @@ final class InMemorySchedules(
       case SlotRule.Once(at, _) =>
         job
           .read(r.params)
-          .map(Asked(id, at, _))
+          .map(Asked(id, at, _, r.integrity))
           .left
           .map(why => DeskRefusal.Unavailable(StoreError.Invalid(why)))
       case other => Left(DeskRefusal.Unavailable(StoreError.Invalid(s"asked, but $other")))

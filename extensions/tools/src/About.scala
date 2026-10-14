@@ -4,7 +4,8 @@ import scala.io.{Codec, Source}
 import scala.util.Using
 
 import grit.core.persona.Persona
-import grit.core.tool.{Args, Field, Gate, Outcome, Retry, Tool, ToolName, ToolSpec}
+import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
+import grit.core.visibility.Integrity
 
 /** `about`: what grit is and how it works, for when the person asks, from docs shipped with
   * this module.
@@ -30,8 +31,9 @@ object About {
     * now. Each call is answered with the doc of the subject asked for, or, with none, who the
     * assistant is, then the overview: "You are called {name}." for [[Persona.Grit]], and for
     * any other `persona` "You are called {name}, a persona of grit: grit is the harness you
-    * run on, described below."; the tool reads nothing more and never fails. `Left` naming
-    * each doc that is missing or empty.
+    * run on, described below."; the tool reads nothing more and never fails, and its answers
+    * are grit's own text, believed at [[Integrity.Authority]]. `Left` naming each doc that is
+    * missing or empty.
     */
   def load(persona: Persona): Either[String, Tool[Option[Subject]]] = {
     val read = Subject.values.toVector.map(s => s -> doc(s.key))
@@ -53,7 +55,7 @@ object About {
 
   /** The tool answering from `docs`, one for each subject, the overview after `who`. */
   private def tool(docs: Map[Subject, String], who: String): Tool[Option[Subject]] =
-    Tool(
+    new Hosted(
       ToolSpec(
         Name,
         "Who you are, and what grit, the harness you run on, is and how it works: the name " +
@@ -77,12 +79,11 @@ object About {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      topic => topic.fold("")(_.key),
-      {
-        case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Subject.Grit, "")}")
-        case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
-      }
-    )
+      topic => topic.fold("")(_.key)
+    ).believed(Integrity.Authority).over {
+      case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Subject.Grit, "")}")
+      case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
+    }
 
   /** The doc at `about/{key}.md`, trimmed; `None` when it is missing or blank. */
   private def doc(key: String): Option[String] =

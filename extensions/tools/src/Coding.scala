@@ -17,10 +17,13 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
+import grit.core.visibility.Integrity
 
 /** The coding tool set: reading, searching, changing and running things in a checkout. Each
   * tool's description is all the model is told of it, so it states the tool's limits and
-  * every failure the model can see. `write`, `edit` and `run` ask a person first.
+  * every failure the model can see. `write`, `edit` and `run` ask a person first, and are
+  * bound only to a call stamped at [[Integrity.Member]] or above. Every tool's results are
+  * believed at [[Integrity.Member]]: the checkout is its operator's own.
   */
 object Coding {
 
@@ -95,7 +98,7 @@ object Coding {
       ),
       Gate.Free,
       a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o")
-    )
+    ).believed(Integrity.Member)
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
@@ -130,7 +133,7 @@ object Coding {
       ),
       Gate.Free,
       a => RelPath.value(a.path)
-    )
+    ).believed(Integrity.Member)
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
     listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
@@ -163,7 +166,7 @@ object Coding {
       ),
       Gate.Free,
       a => s"\"${a.pattern}\" ${RelPath.value(a.path)}"
-    )
+    ).believed(Integrity.Member)
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
     searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
@@ -195,7 +198,7 @@ object Coding {
           preview(lines, "+ ")
       }),
       a => RelPath.value(a.path)
-    )
+    ).requiring(Integrity.Member).believed(Integrity.Member)
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
     writeHosted.over(a =>
@@ -245,7 +248,7 @@ object Coding {
           shown.mkString("\n")
       }),
       a => RelPath.value(a.path)
-    )
+    ).requiring(Integrity.Member).believed(Integrity.Member)
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
     editHosted.over(a =>
@@ -289,7 +292,7 @@ object Coding {
       ),
       Gate.Ask(a => s"Run in the checkout (timeout ${a.timeout.toSeconds} s):\n${a.command}"),
       a => a.command
-    )
+    ).requiring(Integrity.Member).believed(Integrity.Member)
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a =>

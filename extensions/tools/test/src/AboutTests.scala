@@ -6,6 +6,7 @@ import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.persona.Persona
 import grit.core.tool.{Bound, Outcome, Repairs, Tool, Toolbox}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -52,6 +53,10 @@ object AboutTests extends TestSuite {
         "You are called Pip, a persona of grit: grit is the harness you run on, described " +
           "below.\n\n" + shipped("grit")
       )
+    }
+
+    test("about's answers are grit's own text, believed at authority, and it requires nothing") {
+      (about.output, about.entry.requires) ==> (Integrity.Authority, Integrity.Untrusted)
     }
 
     test("about says it answers who the assistant is and what grit is") {

@@ -7,9 +7,12 @@ import scala.concurrent.duration.*
 import grit.core.clock.Utc
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.store.StoreError
+import grit.core.visibility.Integrity
 
-/** One asked schedule, as its asker sees it. */
-final case class Asked[P <: caps.Pure](id: ScheduleId, at: Instant, params: P)
+/** One asked schedule, as its asker sees it: believed at `integrity`, what its asking turn was
+  * believed at when it asked.
+  */
+final case class Asked[P <: caps.Pure](id: ScheduleId, at: Instant, params: P, integrity: Integrity)
 
 /** The asker's pending schedules of one job, as of `now`, soonest first. */
 final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P]])

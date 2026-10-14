@@ -11,13 +11,16 @@ import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDes
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.Reads
 import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
+import grit.core.visibility.Integrity
 
 /** Reminders (ADR 0029's first use): `remind_me` sets a one-off reminder, which its job
   * [[Reminders.Remind]] posts in the conversation that asked for it when it is due;
   * `reminders` lists the asker's pending ones, with the time now; `cancel_reminder` cancels one
-  * of them. Each is free. A reminder runs as late as [[Reminders.Grace]] after its time, and is
-  * otherwise missed. A conversation whose replies grit does not post (a TUI session) cannot set
-  * one.
+  * of them. Each is free. `remind_me` and `cancel_reminder` are bound only to a call stamped at
+  * [[Integrity.Member]] or above, and say what they did at [[Integrity.Authority]]; `reminders`
+  * answers at the least integrity of the reminders it read, [[Integrity.Member]] when none. A
+  * reminder runs as late as [[Reminders.Grace]] after its time, and is otherwise missed. A
+  * conversation whose replies grit does not post (a TUI session) cannot set one.
   */
 final class Reminders(val name: PluginName) extends Plugin {
 
@@ -153,7 +156,7 @@ object Reminders {
         ),
         Gate.Free,
         a => s"${shown(a.when)}: ${a.reminder.text}"
-      )
+      ).requiring(Integrity.Member).believed(Integrity.Authority)
 
     def bind(
         own: PluginReads,
@@ -207,7 +210,7 @@ object Reminders {
         ),
         Gate.Free,
         _ => ""
-      )
+      ).believed(Integrity.Member)
 
     def bind(
         own: PluginReads,
@@ -226,7 +229,9 @@ object Reminders {
                     "Pending, soonest first:" +: pending.schedules.map(r =>
                       s"${ScheduleId.value(r.id)}, due ${Utc.toSecond(r.at)}: ${r.params.text}"
                     )
-                Outcome.Done((s"Now: ${Utc.toSecond(pending.now)}" +: listed).mkString("\n"))
+                // Believed as the least of the reminders read; with none, as its tool says.
+                val read = pending.schedules.map(_.integrity).reduceOption(_.meet(_))
+                Outcome.Done((s"Now: ${Utc.toSecond(pending.now)}" +: listed).mkString("\n"), read)
             }
         }
       }
@@ -262,7 +267,7 @@ object Reminders {
         ),
         Gate.Free,
         ScheduleId.value
-      )
+      ).requiring(Integrity.Member).believed(Integrity.Authority)
 
     def bind(
         own: PluginReads,

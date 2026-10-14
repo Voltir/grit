@@ -33,7 +33,7 @@ import grit.core.message.AssistantBlock
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads, PluginTool}
 import grit.core.store.{Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Integrity, Subject}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -65,10 +65,17 @@ object RemindersTests extends TestSuite {
     val desk: ScheduleDesk^ = schedules.desk(name, Vector(Reminders.Remind.name), clock)
 
     /** The first call of `turn(n)`, whose reply is posted in the thread at `address`, or
-      * nowhere, its message `by`'s.
+      * nowhere, its message `by`'s, the turn believed at `believed`.
       */
-    def asked(n: Int, address: Option[String] = Some("1700.1"), by: Account = asker): CallSlot =
-      TestCallSlots.at(turn(n)).tap(_ => schedules.asking(turn(n), thread, by, address))
+    def asked(
+        n: Int,
+        address: Option[String] = Some("1700.1"),
+        by: Account = asker,
+        believed: Integrity = Integrity.Member
+    ): CallSlot =
+      TestCallSlots
+        .at(turn(n))
+        .tap(_ => schedules.asking(turn(n), thread, by, address, believed = believed))
 
     /** What `tool` comes to, called at `at` with `args`: a call whose arguments do not read
       * comes to what the model is told of it.
@@ -304,7 +311,42 @@ object RemindersTests extends TestSuite {
         "Now: 2026-10-06 14:04:12 UTC\n" +
           "Pending, soonest first:\n" +
           s"${ScheduleId.value(id(2))}, due 2026-10-06 14:13:12 UTC: tea\n" +
-          s"${ScheduleId.value(id(1))}, due 2026-10-06 14:33:12 UTC: stretch"
+          s"${ScheduleId.value(id(1))}, due 2026-10-06 14:33:12 UTC: stretch",
+        Some(Integrity.Member)
+      )
+    }
+
+    test(
+      "reminders is believed at the least integrity of the reminders it read, and at member when none"
+    ) {
+      val d = new Desk
+      d.run(Reminders.RemindMe, d.asked(1), "text" -> "stretch", "in_minutes" -> 30)
+      d.run(
+        Reminders.RemindMe,
+        d.asked(2, believed = Integrity.Outside),
+        "text" -> "tea",
+        "in_minutes" -> 10
+      )
+      d.run(Reminders.List, d.asked(3)) match {
+        case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
+        case other => sys.error(s"not done: $other")
+      }
+      val none = new Desk
+      none.run(Reminders.List, none.asked(1)) match {
+        case Outcome.Done(_, believed) => believed ==> None
+        case other => sys.error(s"not done: $other")
+      }
+      Reminders.List.described.output ==> Integrity.Member
+    }
+
+    test(
+      "remind_me and cancel_reminder require a member's stamp and say what they did at authority; reminders requires nothing"
+    ) {
+      val tools = Vector(Reminders.RemindMe, Reminders.List, Reminders.Cancel).map(_.described)
+      tools.map(t => (t.entry.requires, t.output)) ==> Vector(
+        (Integrity.Member, Integrity.Authority),
+        (Integrity.Untrusted, Integrity.Member),
+        (Integrity.Member, Integrity.Authority)
       )
     }
 

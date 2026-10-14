@@ -70,7 +70,9 @@ abstract class DeskContract extends TestSuite {
       val f = setUp()
       import f.*
       val id = ScheduleId.asked(call("thread"))
-      ask(desk, call("thread"), When.In(30.minutes), 3) ==> Right(Asked(id, at("09:30"), Count(3)))
+      ask(desk, call("thread"), When.In(30.minutes), 3) ==> Right(
+        Asked(id, at("09:30"), Count(3), Integrity.Member)
+      )
       u.read(id) ==> Some(
         Schedule(
           remind.name,
@@ -191,7 +193,10 @@ abstract class DeskContract extends TestSuite {
       desk.pending(call("later"), booking(remind)) ==> Right(
         Pending(
           at("09:05"),
-          Vector(Asked(soon, at("10:00"), Count(2)), Asked(late, at("12:00"), Count(1)))
+          Vector(
+            Asked(soon, at("10:00"), Count(2), Integrity.Member),
+            Asked(late, at("12:00"), Count(1), Integrity.Member)
+          )
         )
       )
       desk.pending(call("nowhere"), booking(remind)) ==> Right(Pending(at("09:05"), Vector()))

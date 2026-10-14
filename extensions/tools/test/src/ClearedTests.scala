@@ -7,7 +7,16 @@ import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.{Clearance, Explained, Explanation, Label, Level, Subject, Visibility}
+import grit.core.visibility.{
+  Clearance,
+  Explained,
+  Explanation,
+  Integrity,
+  Label,
+  Level,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -75,6 +84,16 @@ object ClearedTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "clearance reads no row that carries an integrity, so its answers are believed at its declared untrusted"
+    ) {
+      calledUnder(After, Clearance.of(confidentialTrial)) match {
+        case Outcome.Done(_, believed) => believed ==> None
+        case other => throw new java.lang.AssertionError(s"not done: $other")
+      }
+      Cleared.tool(danaAsks).output ==> Integrity.Untrusted
+    }
+
     test(
       "in a direct message it answers the asker's explanation at the thread's floor, not their clearance, with the two rules and the hidden-content line"
     ) {
