@@ -261,7 +261,50 @@ object TurnGateTurnTests extends TestSuite {
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
               s"User: ${stub("h1", "someone")}"
           ),
-          Message.User(stub("h2", "a closing record"))
+          Message.User(
+            "[afar] another conversation's record, written by grit when it closed on " +
+              s"1970-01-01, at slack:T1/C1/2.0: ${stub("h2", "a closing record")}"
+          )
+        )
+      )
+    }
+
+    test("a hidden closing that opens the window is its stub under the record's own line") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      given grit.core.store.Tx = TestTx.fake
+      val _ = entries.insert(
+        Entry(
+          EntryId("closing"),
+          conversation,
+          TurnSeq(3),
+          None,
+          EntrySeq(0),
+          Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Froze deploys.")),
+          java.time.Instant.EPOCH,
+          Integrity.Outside
+        )
+      )
+      val turn = say(entries, "two")
+      val opening = new ContextAssembler {
+        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector(EntrySeq(0)), Vector.empty))
+      }
+      val posting = Toolbox
+        .of[caps.CapSet^{NoCheckout}](hostedPost.over(_ => grit.core.tool.Outcome.Done("posted")))
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(entries, provider, opening, new InMemoryUsageLedger, tools = posting)
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(
+          Message.User(
+            "[record] this conversation so far, written by grit (closed 1970-01-01): " +
+              "Hidden here as h1: something from a closing record, believed only at " +
+              "[integrity: outside]. Reading it would withdraw post for the rest of this turn; " +
+              "to read it, call read_hidden with name h1."
+          ),
+          Message.User("two")
         )
       )
     }

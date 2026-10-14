@@ -22,6 +22,7 @@ import grit.core.model.{
   TurnProfile,
   TurnProfileId
 }
+import grit.core.period.{Balance, Closing, Flows}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.route.{Routed, Routing, Uncleared}
@@ -1729,8 +1730,9 @@ object Turn {
 
   /** `showing` with each item `stubs` names, by the ref [[itemsOf]] gives it, in its kind's
     * place but holding its stub in place of what it says: a tool's result as a result that is
-    * no error, grit's reply as its text, a heard message or grit's post as one, a document as
-    * its text (dropped if the stub cannot be one), and any other entry as a person's message.
+    * no error, grit's reply as its text, a heard message or grit's post as one, a closing as
+    * its record's prose, a document as its text (dropped if the stub cannot be one), and any
+    * other entry as a person's message.
     */
   private def hiding(showing: Showing, stubs: Map[ItemRef, String]): Showing =
     if (stubs.isEmpty) showing
@@ -1767,6 +1769,12 @@ object Turn {
       }))
     case Payload.Heard(_) => Payload.Heard(stub)
     case Payload.Posted(_) => Payload.Posted(stub)
+    case Payload.Closed(period, reason, _) =>
+      Flows
+        .of(stub, None, Vector.empty)
+        .fold(Payload.Message(Message.User(stub)))(f =>
+          Payload.Closed(period, reason, Closing(f, Balance.empty))
+        )
     case _ => Payload.Message(Message.User(stub))
   }
 
@@ -1839,7 +1847,7 @@ object Turn {
   )
 
   /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
-    * there ([[hiding]]; a closed conversation's record as its stub alone), to be shaped
+    * there ([[hiding]]), to be shaped
     * ([[Unshaped]]): each nearby section as one user message ([[Shown.section]], a section with
     * none of its entries left dropped), then each document as one ([[Shown.document]]), then
     * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
@@ -1856,15 +1864,7 @@ object Turn {
   ): Either[TurnFailure, Unshaped] = {
     val Showing(at, mine, near, named, documents) = hiding(showing, stubs)
     val bySeq = at.map(e => e.seq -> e).toMap
-    val sections = window.nearby.flatMap {
-      // A closed conversation's record, hidden, is its stub alone: no record is left to frame.
-      case closed @ Nearby.Closed(conversation, _, seq) =>
-        stubs
-          .get(ItemRef.Nearby(conversation, seq))
-          .map(Message.User(_))
-          .orElse(Shown.section(closed, near, named))
-      case nearby => Shown.section(nearby, near, named)
-    }
+    val sections = window.nearby.flatMap(Shown.section(_, near, named))
     window.entries.filterNot(bySeq.contains) match {
       case missing if missing.nonEmpty =>
         Left(
