@@ -62,12 +62,29 @@ object FamilyTests extends TestSuite {
     }
 
     test(
-      "with member put, the trait shows put and not get, and each implementation ends a line with put"
+      "with member put, the trait shows put and not get, and each implementation ends a line with put and its size"
     ) {
       val (answer, _) = family("Store", Some("put"), false)
       assert(answer.text.contains("  def put(key: String, value: String): Store"))
       assert(!answer.text.contains("def get(key: String): Option[String]"))
-      assert(answer.text.linesIterator.count(_.endsWith(" put")) == 2)
+      assert(answer.text.linesIterator.count(_.endsWith(" put  [0.2 KB]")) == 2)
+    }
+
+    test(
+      "the trait's header, each implementation's line and each contract's line end with its size"
+    ) {
+      val lines = family("Store", None, false)._1.text.linesIterator.toVector
+      assert(lines.contains("3-11 trait Store  [0.2 KB]"))
+      assert(
+        lines.contains(
+          "13-17 case class MemStore  final case class MemStore(values: Map[String, String]) extends Store  [0.2 KB]"
+        )
+      )
+      assert(
+        lines.contains(
+          "25-33 contract StoreContract  abstract class StoreContract  [0.2 KB]"
+        )
+      )
     }
 
     test("with member put, the trait's put prints its doc and signature as the file's own lines") {

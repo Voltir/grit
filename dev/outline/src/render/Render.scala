@@ -17,7 +17,7 @@ final case class Family(
 
 object Render {
 
-  /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it in `d`'s own file, each as its collapsed signature and start line. */
+  /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it in `d`'s own file, each as its collapsed signature and start line; then `d`'s size tag. */
   def oneLine(d: Defn, companions: Vector[Defn]): String = {
     val head = s"→ ${d.lines.start}-${d.lines.end} ${collapse(withoutDocs(d.signature))}"
     val items: Vector[Defn] =
@@ -27,8 +27,8 @@ object Render {
           .flatMap(c => c +: c.members)
           .filter(i => i.file == d.file && i.parents.contains(d.fullName))
       else Vector.empty
-    if (items.isEmpty) head
-    else head + ": " + items.map(caseItem).mkString(" | ")
+    (if (items.isEmpty) head
+     else head + ": " + items.map(caseItem).mkString(" | ")) + sizeTag(d.size)
   }
 
   /** A file's `== file  package` header line, flagged when its source is newer than its tasty. */
@@ -39,7 +39,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; `stale` files' headers flagged; cut at `cap` bytes. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; `stale` files' headers flagged; cut at `cap` bytes. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -54,7 +54,10 @@ object Render {
     val files = everything.map(_.file).distinct
 
     def entry(d: Defn): Vector[String] =
-      Vector(s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}", d.head) ++
+      Vector(
+        s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}${sizeTag(d.size)}",
+        d.head
+      ) ++
         (if (bodies.contains(d.name)) d.body.toVector else Vector.empty)
 
     def namedEntry(d: Defn): Vector[String] = {
@@ -128,13 +131,13 @@ object Render {
     case Kind.Opaque => "opaque type"
   }
 
-  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, grouped by file under the `header` line; cut at `cap` bytes. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
+  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
   def family(f: Family, all: Vector[Defn], header: String, stale: Set[String], cap: Int): String = {
     def headerOf(d: Defn): String =
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
 
     def block(d: Defn, body: Boolean): Vector[String] =
-      Vector(headerOf(d), d.head) ++ (if (body) d.body.toVector else Vector.empty)
+      Vector(headerOf(d) + sizeTag(d.size), d.head) ++ (if (body) d.body.toVector else Vector.empty)
 
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
@@ -142,19 +145,22 @@ object Render {
       case None =>
         block(f.trait0, false) ++ f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
       case Some(m) =>
-        Vector(headerOf(f.trait0), f.trait0.head) ++
+        Vector(headerOf(f.trait0) + sizeTag(f.trait0.size), f.trait0.head) ++
           f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
     }
 
     def implLines(d: Defn): Vector[String] = {
-      val head = s"${headerOf(d)}  ${signatureOf(d)}"
+      val head = s"${headerOf(d)}  ${signatureOf(d)}${sizeTag(d.size)}"
       f.member match {
         case None => Vector(head)
         case Some(m) =>
           val overloads = d.members.filter(_.name == m)
           if (f.withBody)
             Vector(head) ++ overloads.flatMap(o => Vector(o.head) ++ o.body.toVector)
-          else Vector(head) ++ overloads.map(o => s"  ${o.lines.start}-${o.lines.end} $m")
+          else
+            Vector(head) ++ overloads.map(o =>
+              s"  ${o.lines.start}-${o.lines.end} $m${sizeTag(o.size)}"
+            )
       }
     }
 
@@ -162,10 +168,12 @@ object Render {
       val runBy =
         if (suites.isEmpty) "  run by nothing"
         else s"  run by ${suites.map(s => s"${s.file}:${s.lines.start}").mkString(", ")}"
-      Vector(s"${c.lines.start}-${c.lines.end} contract ${ownerRelative(c)}  ${signatureOf(c)}") ++
+      Vector(
+        s"${c.lines.start}-${c.lines.end} contract ${ownerRelative(c)}  ${signatureOf(c)}${sizeTag(c.size)}"
+      ) ++
         c.members
           .filter(!_.isPrivate)
-          .map(m => s"  ${m.lines.start}-${m.lines.end} ${signatureOf(m)}") ++
+          .map(m => s"  ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}") ++
         Vector(runBy)
     }
 
@@ -190,13 +198,14 @@ object Render {
   }
 
   /** The chunks that fit in `cap` bytes, flattened, and the truncation line when some do not; `total` counts the entries the line reports. */
-  /** The `uses` answer, grouped by file under `== file`, flagged as `show` flags it when the file is in `stale`: each run of sites with one owner as an `in <owner>` line, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
+  /** The `uses` answer, grouped by file under `== file`, flagged as `show` flags it when the file is in `stale`: each run of sites with one owner as an `in <owner>` line, ending with the size `sizes` gives its first site, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
   def uses(
       sites: Vector[Use],
       overloaded: Set[String],
       cap: Int,
       tests: Map[Use, String],
-      stale: Set[String]
+      stale: Set[String],
+      sizes: Map[Use, Int]
   ): String = {
     def owner(u: Use): String = {
       val pkg = pkgOf(u.enclosing)
@@ -221,7 +230,9 @@ object Render {
     val files = sites.map(_.file).distinct
     val chunks: Vector[Vector[String]] = files.map { f =>
       s"== $f${staleTag(stale.contains(f))}" +: runs(sites.filter(_.file == f)).flatMap(run =>
-        run.headOption.map(u => s"  in ${owner(u)}").toVector ++ run.map(siteLine)
+        run.headOption.map(u => s"  in ${owner(u)}${sizeTag(sizes.get(u))}").toVector ++ run.map(
+          siteLine
+        )
       )
     }
     val (kept, truncated) = fit(chunks, sites.size, cap)
@@ -230,11 +241,11 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The `find` answer under `header`: each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>`; cut at `cap` bytes. */
+  /** The `find` answer under `header`: each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes. */
   def find(found: Vector[Defn], header: String, cap: Int): String = {
     val chunks = found.map { d =>
       Vector(
-        s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}"
+        s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
       )
     }
     val (kept, truncated) = fit(chunks, found.size, cap)
@@ -275,7 +286,7 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range; a test whose name starts with `prefix` also prints its verbatim text after its line, and a helper named in `bodies` its own text after its signature. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
+  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range, each of these lines ending with its definition's size tag; a test whose name starts with `prefix` also prints its verbatim text after its line, and a helper named in `bodies` its own text after its signature. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
   def tests(
       suite: Defn,
       helpers: Vector[Defn],
@@ -289,13 +300,13 @@ object Render {
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
 
     val suiteLine =
-      s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}"
+      s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}${sizeTag(suite.size)}"
     val helperChunks = helpers.sortBy(_.lines.start).map { h =>
-      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}") ++
+      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}${sizeTag(h.size)}") ++
         (if (bodies.contains(h.name)) Vector(h.head) ++ h.body.toVector else Vector.empty)
     }
     val testChunks = tests.map { t =>
-      val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}"
+      val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}${sizeTag(Some(bytesOf(t.text)))}"
       if (prefix.exists(t.name.startsWith)) Vector(line, t.text) else Vector(line)
     }
     val chunks: Vector[Vector[String]] =
@@ -384,6 +395,13 @@ object Render {
   }
 
   private def bytesOf(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** What a definition line ends with: its `size` in bytes as `  [N.N KB]`, to one decimal and at least 0.2; nothing when the size is unknown. */
+  private def sizeTag(size: Option[Int]): String =
+    size.fold("") { bytes =>
+      val kb = (BigDecimal(bytes) / 1024).setScale(1, BigDecimal.RoundingMode.HALF_UP)
+      s"  [${kb.max(BigDecimal("0.2"))} KB]"
+    }
 
   private def kilobytes(bytes: Int): String =
     (BigDecimal(bytes) / 1024).setScale(1, BigDecimal.RoundingMode.HALF_UP).toString

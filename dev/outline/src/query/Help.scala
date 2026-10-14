@@ -49,7 +49,7 @@ object Help {
       "symbols to show, each Name, Name.member or fully qualified; comma-separated on the CLI."
     ),
     purpose =
-      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call. After them, a Tests section lists the tests in test sources that exercise the symbols: a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper. Those lines are not file text.",
+      "To read or call a definition: its signature and Scaladoc, with one-line outlines of the project types it names. Pass every symbol you need in one call. Each definition's NN-MM header, and each outline, ends with its size, `[N.N KB]`. After them, a Tests section lists the tests in test sources that exercise the symbols: a `## tests exercising <Sym>` line, then per file a `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>` for a use in a suite's helper. Those lines are not file text.",
     examples = Vector(
       Example("read one move's signature and doc", "show Moves.ask"),
       Example(
@@ -88,7 +88,8 @@ object Help {
   val family: Entry = Entry(
     query = "family",
     operand = Operand("Trait", "trait", "the trait or abstract class, by name."),
-    purpose = "To implement or change a trait: its implementations, contracts and their suites.",
+    purpose =
+      "To implement or change a trait: its implementations, contracts and their suites, each definition's line ending with its size, `[N.N KB]`.",
     examples = Vector(
       Example(
         "see one member of Inbox across its implementations and contracts",
@@ -119,7 +120,7 @@ object Help {
       "symbols whose references to find: Name, Name.member or fully qualified; a Name with no qualifier shorter than 4 characters, such as of or get, is refused: qualify it with at least its owner, as in MoveLimits.of; comma-separated on the CLI. X.apply or X.new, for a class X with no apply in source, finds X's construction sites, X(…) and new X(…)."
     ),
     purpose =
-      "To find who calls or names a definition before changing it. Sites are grouped by file (`== file`), then by the definition holding them: an `in <owner>` line (the member around the site, or `<Suite>: <test name>` for a site in a test), then each site as `<line>  <source line>`.",
+      "To find who calls or names a definition before changing it. Sites are grouped by file (`== file`), then by the definition holding them: an `in <owner>` line (the member around the site, or `<Suite>: <test name>` for a site in a test) ending with the owner's size, `[N.N KB]`, then each site as `<line>  <source line>`.",
     examples = Vector(
       Example("find the references to Inbox.hear outside core", "uses Inbox.hear --outside core"),
       Example("find where a case class is built", "uses EdgeStores.apply"),
@@ -167,7 +168,7 @@ object Help {
       "a name pattern: dot-separated segments matched against the last segments of each definition's full name, each whole, with * for any run of characters within one segment; quote it in the shell."
     ),
     purpose =
-      "To find a definition when you don't know its name: one line per definition in main sources, members and constructor vals included, with its full name, file, lines and collapsed signature. When main sources hold no match, test sources' matches follow a note saying so; when neither does, a renaming import (import a.X as Y) giving the name is named, with X's definition.",
+      "To find a definition when you don't know its name: one line per definition in main sources, members and constructor vals included, with its full name, file, lines, collapsed signature and size, `[N.N KB]`. When main sources hold no match, test sources' matches follow a note saying so; when neither does, a renaming import (import a.X as Y) giving the name is named, with X's definition.",
     examples = Vector(
       Example("find every type whose name holds Shelf", "find '*Shelf*'"),
       Example("find the member placed of any owner", "find '*.placed'")
@@ -179,7 +180,7 @@ object Help {
     query = "tests",
     operand = Operand("Suite", "suite", "the suite's class or object, by name or fully qualified."),
     purpose =
-      "To add or change a test in a suite: its helpers and its tests' names with line ranges; `--test NAME` prints the body of each test whose name starts with NAME.",
+      "To add or change a test in a suite: its helpers and its tests' names with line ranges, each line ending with its size, `[N.N KB]`; `--test NAME` prints the body of each test whose name starts with NAME.",
     examples = Vector(
       Example(
         "read the bodies of OneLineTests' tests named \"a trait\"",
@@ -207,7 +208,7 @@ object Help {
 
   /** Which text show, family and tests print is the file's own, for an Edit to match; in the help and descriptions of those three and in the server's instructions. */
   val fileText: String =
-    "File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only."
+    "File text: in show and family, each definition's lines after its NN-MM header are the file's own lines, unchanged: its doc and signature, and with --body its body (family: with --member and --body). In tests --test, each printed test is the file's own lines. Not file text: the ##, == and -- lines, the NN-MM header lines, the → lines, the [N KB] line, and tests' helper and test-name lines; a helper's --body lines are file text. A size tag, `[N.N KB]` at the end of a line naming a definition, is the bytes of the definition's whole text, doc included (what --body prints for it), to one decimal and at least 0.2; no file-text line carries one, and a definition past the end of its source has none. A family line that gives an implementation, a contract or a member its collapsed signature after the NN-MM header is not file text. An Edit may take file text as old_string without a Read first; Read the line range only when an Edit fails to match. Exceptions: a file tagged [stale: ...] may print lines that no longer match its source; a cap cuts whole entries, never inside one; byte-exactness is tested for LF files only."
 
   /** The queries whose output is file text, and so carry `fileText` in their help and descriptions. */
   private val readsFiles: Set[String] = Set("show", "family", "tests")

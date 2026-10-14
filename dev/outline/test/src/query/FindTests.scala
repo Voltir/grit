@@ -40,7 +40,7 @@ object FindTests extends TestSuite {
       assert(answer.status == Status.Found)
       assert(
         answer.text.linesIterator.contains(
-          "grit.outline.fixture.store.MemStore  dev/outline/fixture/src/store/Store.scala:13-17  final case class MemStore(values: Map[String, String]) extends Store"
+          "grit.outline.fixture.store.MemStore  dev/outline/fixture/src/store/Store.scala:13-17  final case class MemStore(values: Map[String, String]) extends Store  [0.2 KB]"
         )
       )
       assert(
@@ -144,6 +144,14 @@ object FindTests extends TestSuite {
         )
       )
       assert(names(answer).contains("grit.outline.fixture.Holder.Nested"))
+    }
+
+    test("each line ends with its definition's size: StoreSuite's 455 bytes are [0.4 KB]") {
+      assert(
+        find("StoreSuite").text.linesIterator.contains(
+          "grit.outline.fixture.store.StoreSuite  dev/outline/fixture/src/store/Store.scala:61-76  object StoreSuite  [0.4 KB]"
+        )
+      )
     }
 
     test("a private member is not listed, and a pattern nothing matches is NoMatch saying so") {

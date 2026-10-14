@@ -60,6 +60,21 @@ object ReadTests extends TestSuite {
       assert(keep.file == "dev/outline/fixture/src/Sample.scala")
     }
 
+    test(
+      "a definition's size is the bytes of the whole lines it spans, doc included: Limits.of's 30-33 and the object Limits' 25-36"
+    ) {
+      val second = only(
+        named(read, "grit.outline.fixture.Limits.of").filter(_.lines == Lines(30, 33)),
+        "Limits.of at lines 30-33"
+      )
+      val limits = only(
+        named(read, "grit.outline.fixture.Limits").filter(_.kind == Kind.Object),
+        "object Limits"
+      )
+      assert(second.size == Some(236))
+      assert(limits.size == Some(397))
+    }
+
     test("A.run keeps its function parameter's type verbatim") {
       val run = only(named(read, "grit.outline.fixture.A.run"), "A.run")
       assert(run.signature.contains("Int -> Tx^ ?-> Int"))

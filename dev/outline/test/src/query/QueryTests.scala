@@ -160,7 +160,7 @@ object QueryTests extends TestSuite {
     }
 
     test(
-      "a source cut shorter than its tasty's positions is shown stale, each definition past its end as its TASTy signature under a line saying it is not file text"
+      "a source cut shorter than its tasty's positions is shown stale, each definition past its end as its TASTy signature under a line saying it is not file text, with no size"
     ) {
       val dir = os.temp.dir(prefix = "outline-shortened-")
       val src = dir / "src" / "q" / "Shelf.scala"
@@ -214,6 +214,7 @@ object QueryTests extends TestSuite {
       )
       assert(lines.contains("-- not file text, past the end of the source: trait Shelf"))
       assert(lines.contains("-- not file text, past the end of the source: def first: Int"))
+      assert(!lines.exists(l => !l.startsWith("[") && l.endsWith(" KB]")))
     }
 
     test(
@@ -335,7 +336,7 @@ object QueryTests extends TestSuite {
       )
       assert(
         answer.text.contains(
-          "\n  67-76 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
+          "\n  68-77 OneLineTests: a trait's one-liner lists each implementor as its bare constructor, without modifiers, extends clause or doc\n"
         )
       )
     }
@@ -388,7 +389,9 @@ object QueryTests extends TestSuite {
           ._1
       val field = shown("B.note")
       assert(field.status == Status.Found)
-      assert(field.text.contains("17-17 val B.note\nfinal case class B(c: C, note: String)"))
+      assert(
+        field.text.contains("17-17 val B.note  [0.2 KB]\nfinal case class B(c: C, note: String)")
+      )
       assert(!shown("grit.outline.fixture.B").text.contains("val B."))
     }
 
@@ -423,7 +426,7 @@ object QueryTests extends TestSuite {
           false,
           80000
         )
-      assert(answer.text.contains("\n  10-35 OneLineTests: helper defn\n"))
+      assert(answer.text.contains("\n  10-36 OneLineTests: helper defn\n"))
     }
   }
 }

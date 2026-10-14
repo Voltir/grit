@@ -16,7 +16,8 @@ final case class Ref(fullName: String, topLevel: String, inRepo: Boolean)
   * through its signature's, and `body` the whole lines after them, both verbatim; `doc` and `signature` are the same text cut to
   * their own spans, for one-line outlines. A definition whose span runs past the end of its current source (cut shorter since
   * the compile) has the compiler's signature as `signature`, `head` that signature on a `--` line saying it is not file text,
-  * `lines` as compiled, and no `doc` or `body`.
+  * `lines` as compiled, and no `doc`, `body` or `size`. `size` is the UTF-8 bytes of the whole source lines `lines` spans,
+  * doc included, newlines between them and none after.
   */
 final case class Defn(
     kind: Kind,
@@ -28,6 +29,7 @@ final case class Defn(
     signature: String,
     head: String,
     body: Option[String],
+    size: Option[Int],
     members: Vector[Defn],
     refs: Vector[Ref],
     parents: Vector[String],

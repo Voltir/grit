@@ -343,6 +343,7 @@ object Read {
             signature = signature,
             head = s"$pastTheEndNote$signature",
             body = None,
+            size = None,
             members = members,
             refs = refs,
             parents = parents,
@@ -440,6 +441,12 @@ object Read {
             signature = signature,
             head = head,
             body = body,
+            size = Some(
+              text
+                .wholeLines(firstLine, lastLine)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                .length
+            ),
             members = members,
             refs = refs,
             parents = parents,

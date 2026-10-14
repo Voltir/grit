@@ -67,11 +67,11 @@ object RenderTests extends TestSuite {
       val before = out.split("\n").takeWhile(!_.startsWith("-- library")).mkString("\n")
       val expected = Vector(
         s"== $sample  grit.outline.fixture",
-        "9-10 def A.keep",
+        "9-10 def A.keep  [0.2 KB]",
         "  /** `b` kept, in `tx`. */",
         "  def keep(b: B)(using Tx^): Either[String, Int]",
-        "→ 3-4 trait Tx extends caps.SharedCapability",
-        "→ 16-17 final case class B(c: C, note: String)"
+        "→ 3-4 trait Tx extends caps.SharedCapability  [0.2 KB]",
+        "→ 16-17 final case class B(c: C, note: String)  [0.2 KB]"
       ).mkString("\n")
       assert(before == expected)
       assert(out.split("\n").lastOption.exists(_.matches("""\[\d+\.\d KB\]""")))
@@ -80,7 +80,7 @@ object RenderTests extends TestSuite {
       val colour = named(read, "grit.outline.fixture.Colour")
       assert(
         colour.map(Render.oneLine(_, read)) == Vector(
-          "→ 38-46 enum Colour: Red :41 | Mix(weight: Double) :44"
+          "→ 38-46 enum Colour: Red :41 | Mix(weight: Double) :44  [0.2 KB]"
         )
       )
     }
@@ -88,7 +88,7 @@ object RenderTests extends TestSuite {
       val suit = named(read, "grit.outline.fixture.Suit")
       assert(
         suit.map(Render.oneLine(_, read)) == Vector(
-          "→ 93-96 enum Suit: Hearts :95 | Spades :95 | Clubs :95"
+          "→ 93-96 enum Suit: Hearts :95 | Spades :95 | Clubs :95  [0.2 KB]"
         )
       )
     }
@@ -137,6 +137,20 @@ object RenderTests extends TestSuite {
       val file = os.read.lines(root.dir / os.RelPath(sample)).toVector
       assert(deep.map(_.lines) == Vector(grit.outline.model.Lines(69, 73)))
       assert(under(out, "69-73 ") == file.slice(68, 73))
+    }
+
+    test(
+      "a definition's header line ends with its size in KB to one decimal, at least 0.2, and with none when its size is unknown"
+    ) {
+      val keep = named(read, "grit.outline.fixture.A.keep")
+      def header(size: Option[Int]): Option[String] =
+        Render
+          .show(keep.map(_.copy(size = size)), noTraced, read, Set.empty, Set.empty, false, 80000)
+          .split("\n")
+          .find(_.startsWith("9-10 "))
+      assert(header(Some(1946)) == Some("9-10 def A.keep  [1.9 KB]"))
+      assert(header(Some(10)) == Some("9-10 def A.keep  [0.2 KB]"))
+      assert(header(None) == Some("9-10 def A.keep"))
     }
 
     test(

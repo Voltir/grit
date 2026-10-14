@@ -76,8 +76,8 @@ object UsesTests extends TestSuite {
     ) {
       val (answer, _) = uses(s"$storePackage.Store.get")
       val lines = answer.text.linesIterator.toVector
-      assert(lines.count(_ == "  in StoreSuite.run") == 1)
-      val at = lines.indexOf("  in StoreSuite.run")
+      assert(lines.count(_ == "  in StoreSuite.run  [0.2 KB]") == 1)
+      val at = lines.indexOf("  in StoreSuite.run  [0.2 KB]")
       assert(
         lines.slice(at + 1, at + 3) == Vector(
           "    70  assert(fresh().put(\"k\", \"v\").get(\"k\") == Some(\"v\"))",
@@ -86,12 +86,17 @@ object UsesTests extends TestSuite {
       )
     }
 
+    test("an owner's line ends with its definition's size: StoreSuite.run's 222 bytes") {
+      val (answer, _) = uses(s"$storePackage.Store.get")
+      assert(answer.text.linesIterator.contains("  in StoreSuite.run  [0.2 KB]"))
+    }
+
     test("a site in a local val's right-hand side is owned by the member around it, Local.read") {
       val (answer, _) = uses(s"$storePackage.Store.get")
       val lines = answer.text.linesIterator.toVector
       val at = lines.indexWhere(_.contains("val held = s.get"))
       assert(at > 0)
-      assert(lines(at - 1) == "  in Local.read")
+      assert(lines(at - 1) == "  in Local.read  [0.2 KB]")
     }
 
     test("a site inside a test call in a test source is owned by its suite and the test's name") {
@@ -109,14 +114,14 @@ object UsesTests extends TestSuite {
       assert(
         lines.containsSlice(
           Vector(
-            "  in StoreSuite: put then get returns the value",
+            "  in StoreSuite: put then get returns the value  [0.2 KB]",
             "    70  assert(fresh().put(\"k\", \"v\").get(\"k\") == Some(\"v\"))",
-            "  in StoreSuite: get of an absent key is None",
+            "  in StoreSuite: get of an absent key is None  [0.2 KB]",
             "    73  assert(fresh().get(\"x\").isEmpty)"
           )
         )
       )
-      assert(lines.contains("  in Caller.all"))
+      assert(lines.contains("  in Caller.all  [0.2 KB]"))
     }
 
     test(
@@ -195,7 +200,7 @@ object UsesTests extends TestSuite {
       assert(
         lines.containsSlice(
           Vector(
-            "  in MemStore.get",
+            "  in MemStore.get  [0.2 KB]",
             "    15  def get(key: String): Option[String] = values.get(key)"
           )
         )
@@ -274,7 +279,7 @@ object UsesTests extends TestSuite {
       assert(
         lines.containsSlice(
           Vector(
-            "  in Limits.of",
+            "  in Limits.of  [0.2 KB]",
             "    28 [→ of :31]  def of(asks: Int, calls: Int): Either[String, Limits] = of(asks, calls, 0)"
           )
         )

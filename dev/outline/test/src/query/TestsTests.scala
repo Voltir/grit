@@ -32,12 +32,21 @@ object TestsTests extends TestSuite {
       "the suite's helper is fresh with its doc's line, and its two tests are listed with their ranges; run, which holds tests, is not a helper"
     ) {
       val lines = answer(suite, None).text.linesIterator.toVector
-      assert(lines.contains("  65-66 def fresh(): Store"))
+      assert(lines.contains("  65-66 def fresh(): Store  [0.2 KB]"))
       assert(lines.contains("  tests (2):"))
-      assert(lines.contains("    69-71 put then get returns the value"))
-      assert(lines.contains("    72-74 get of an absent key is None"))
+      assert(lines.contains("    69-71 put then get returns the value  [0.2 KB]"))
+      assert(lines.contains("    72-74 get of an absent key is None  [0.2 KB]"))
       assert(!lines.exists(_.contains("def run")))
-      assert(lines.contains("  63-63 private def test(name: String)(body: => Unit): Unit"))
+      assert(
+        lines.contains("  63-63 private def test(name: String)(body: => Unit): Unit  [0.2 KB]")
+      )
+    }
+
+    test("the suite's line, each helper's line and each test's line end with its size") {
+      val lines = answer(suite, None).text.linesIterator.toVector
+      assert(lines.contains("61-76 object StoreSuite  object StoreSuite  [0.4 KB]"))
+      assert(lines.contains("  65-66 def fresh(): Store  [0.2 KB]"))
+      assert(lines.contains("    69-71 put then get returns the value  [0.2 KB]"))
     }
 
     test("a test prefix prints the verbatim body of the tests it starts, and no other") {
@@ -179,7 +188,7 @@ object TestsTests extends TestSuite {
         ).text
           .split("\n", -1)
           .toVector
-      val header = lines.find(l => l.startsWith("    ") && l.endsWith(s" $name")).getOrElse("")
+      val header = lines.find(l => l.startsWith("    ") && l.contains(s" $name  [")).getOrElse("")
       val Span = raw"    (\d+)-(\d+) .*".r
       val (from, to) = header match {
         case Span(a, b) => (a.toInt, b.toInt)

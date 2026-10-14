@@ -4,7 +4,7 @@ import scala.collection.mutable
 
 import grit.outline.locate.{Layout, Locate, Root}
 import grit.outline.model.Lines
-import grit.outline.model.{Defn, Kind, Staleness, Use}
+import grit.outline.model.{Defn, Kind, Staleness, TestCase, Use}
 import grit.outline.read.Read
 import grit.outline.render.{Family, Render}
 import grit.outline.trace.Trace
@@ -300,13 +300,15 @@ object Query {
                     case (name, ds) if ds.size > 1 => name
                   }
                   .toSet
+                val holding = testsHolding(root, layout, config, kept)
                 Answer(
                   Render.uses(
                     kept,
                     overloaded,
                     cap,
-                    testsHolding(root, layout, config, kept),
-                    staleFiles(root, layout, kept.map(_.file))
+                    holding.view.mapValues(_.name).toMap,
+                    staleFiles(root, layout, kept.map(_.file)),
+                    ownerSizes(kept, holding, state)
                   ),
                   Status.Found
                 )
@@ -318,13 +320,13 @@ object Query {
     }
   }
 
-  /** The name of the innermost test call holding each of `sites` that lies in a test source, read from its file's source text. */
+  /** The innermost test call holding each of `sites` that lies in a test source, read from its file's source text. */
   private def testsHolding(
       root: Root,
       layout: Layout,
       config: Config,
       sites: Vector[Use]
-  ): Map[Use, String] =
+  ): Map[Use, TestCase] =
     sites
       .groupBy(_.file)
       .toVector
@@ -338,11 +340,37 @@ object Query {
             calls
               .filter(t => t.lines.start <= u.line && u.line <= t.lines.end)
               .maxByOption(_.lines.start)
-              .map(t => u -> t.name)
+              .map(t => u -> t)
           }
         }
       }
       .toMap
+
+  /** The size in bytes of what owns each of `sites`: the test in `tests` holding it, else the innermost definition `loaded`
+    * holds in its file under its enclosing name whose lines span it; a site with neither has none.
+    */
+  private def ownerSizes(
+      sites: Vector[Use],
+      tests: Map[Use, TestCase],
+      loaded: Loaded
+  ): Map[Use, Int] = {
+    val files = sites.map(_.file).toSet
+    val defns = everyDefnOf(
+      loaded.byTasty.values.toVector.flatMap(_.defns).filter(d => files.contains(d.file))
+    ).groupBy(d => (d.file, d.fullName))
+    sites.flatMap { u =>
+      val size = tests.get(u) match {
+        case Some(t) => Some(t.text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+        case None =>
+          defns
+            .getOrElse((u.file, u.enclosing), Vector.empty)
+            .filter(d => d.lines.start <= u.line && u.line <= d.lines.end)
+            .minByOption(d => d.lines.end - d.lines.start)
+            .flatMap(_.size)
+      }
+      size.map(u -> _)
+    }.toMap
+  }
 
   /** The class `sym` names the construction of, as `X.apply` or `X.new`: `X`, or none for any other name. */
   private def constructorOwner(sym: String): Option[String] =
