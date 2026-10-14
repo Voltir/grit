@@ -1,10 +1,10 @@
 # Architecture Decision Records
 
 One short file per decision about grit's design that future code has to follow.
-Numbered. A record may be revised in place for 30 days after it is first accepted, while
-the design it records is still being built and run; its Status line then reads
-`revised (date)`, and the commit says what changed. After that it ossifies: never edited
-again, and reversed only by a new record that marks it `Superseded by NNNN` (changing only
+Numbered. A record may be revised in place until 30 days have passed since it last changed (the
+latest date on its Status line), while the design it records is still being built and run;
+its Status line then reads `revised (date)`, and the commit says what changed. A record left
+alone for 30 days ossifies: never edited again, and reversed only by a new record that marks it `Superseded by NNNN` (changing only
 its Status line is allowed).
 
 ## The threshold
