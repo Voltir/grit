@@ -45,22 +45,21 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
     * tool's `requires` ([[CallError.Withheld]], naming both levels), or its arguments do not
     * read.
     */
-  def bind(call: Tainted[AssistantBlock.ToolCall], repairs: Repairs): Either[CallError, Bound^{C}] =
-    // Every integrity dominates Untrusted, so this check passes: it reads the name sent.
-    Trusted.check(call, Integrity.Untrusted) match {
-      case Left(_) => Left(CallError.Unknown("", names))
-      case Right(read) =>
-        val sent = read.extract
-        tools.find(t => ToolName.value(t.name) == Toolbox.named(sent.name, repairs.names)) match {
-          case None => Left(CallError.Unknown(sent.name, names))
-          case Some(tool) =>
-            val requires = tool.entry.requires
-            Trusted.check(call, requires) match {
-              case Left(below) => Left(CallError.Withheld(tool.name, requires, below.integrity))
-              case Right(checked) => tool.bind(checked.extract, repairs.args)
-            }
+  def bind(
+      call: Tainted[AssistantBlock.ToolCall],
+      repairs: Repairs
+  ): Either[CallError, Bound^{C}] = {
+    val sent = Trusted.asIs(call.map(_.name)).extract
+    tools.find(t => ToolName.value(t.name) == Toolbox.named(sent, repairs.names)) match {
+      case None => Left(CallError.Unknown(sent, names))
+      case Some(tool) =>
+        val requires = tool.entry.requires
+        Trusted.check(call, requires) match {
+          case Left(below) => Left(CallError.Withheld(tool.name, requires, below.integrity))
+          case Right(checked) => tool.bind(checked.extract, repairs.args)
         }
     }
+  }
 
   /** `call`, sent to an edge as a request whose destination is `destination`
     * ([[grit.core.edge.ToolRequest.destination]]), read against the tool it names with

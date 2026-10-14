@@ -32,6 +32,13 @@ object Trusted {
       Right(new Trusted(proposed.open, proposed.integrity))
     else Left(proposed)
 
+  /** `proposed`, trusted at the integrity it is believed at: the check against
+    * [[Integrity.Untrusted]], the least, which every value passes. For reading what picks the
+    * requirement a value is then checked against (the tool a call names), never for acting on.
+    */
+  def asIs[A](proposed: Tainted[A]): Trusted[A] =
+    new Trusted(proposed.open, proposed.integrity)
+
   /** A string constant in grit's source, at `Authority` with no compartment. A compile error
     * unless `text` is a constant.
     */

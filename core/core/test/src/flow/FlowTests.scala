@@ -41,6 +41,11 @@ object FlowTests extends TestSuite {
         .map(t => (t.extract, t.integrity)) ==> Right((7, Integrity.Member))
     }
 
+    test("asIs trusts any value at the integrity it is believed at") {
+      val low = Trusted.asIs(Mint.tainted(7, Integrity.at(Level.Untrusted, team)))
+      (low.extract, low.integrity) ==> (7, Integrity.at(Level.Untrusted, team))
+    }
+
     test("check returns a value below the required integrity unchanged") {
       val low = Mint.tainted(7, Integrity.Outside)
       Trusted.check(low, Integrity.Member).left.map(t => (t.open, t.integrity)) ==>
