@@ -21,14 +21,22 @@ object FindTests extends TestSuite {
 
   private lazy val root: Root = Root(repoRoot)
 
-  private def find(pattern: String, withPrivate: Boolean = false): Answer =
-    Query.find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, withPrivate, 80000)._1
+  /** `find`'s answer over the fixture, which the build compiles before the tests run, so no file of it reads stale. */
+  private def find(pattern: String, withPrivate: Boolean = false): Answer = {
+    val answer =
+      Query
+        .find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, withPrivate, 80000)
+        ._1
+    val staleLine = answer.text.linesIterator.find(_.startsWith("-- stale since"))
+    assert(staleLine.isEmpty)
+    answer
+  }
 
-  /** The full names an answer lists, one per match line. */
+  /** The full names an answer lists, one per match line: no `--` note and no size line. */
   private def names(answer: Answer): Vector[String] =
     answer.text.linesIterator
       .drop(1)
-      .filterNot(l => l.startsWith("[") || l.startsWith("-- cut at "))
+      .filterNot(l => l.startsWith("[") || l.startsWith("-- "))
       .map(_.takeWhile(_ != ' '))
       .toVector
 
