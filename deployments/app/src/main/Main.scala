@@ -14,7 +14,7 @@ import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId,
 import grit.core.identity.{Account, Identities, Vouching}
 import grit.core.job.SlotRule
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{ModelId, Policy}
+import grit.core.model.{Ladder, ModelId, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Service, WorksIn}
@@ -25,7 +25,16 @@ import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
 import grit.core.triage.Corpus
-import grit.core.visibility.{Compartments, Group, GroupName, Label, RoomLabels, Visibility}
+import grit.core.visibility.{
+  Cleared,
+  Compartments,
+  Group,
+  GroupName,
+  Label,
+  Party,
+  RoomLabels,
+  Visibility
+}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
@@ -38,7 +47,16 @@ import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.mcp.client.McpServer
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
-import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
+import grit.models.{
+  JevClassifier,
+  JevConfig,
+  ModelRole,
+  OpenRouterConfig,
+  Seed,
+  StubClassifier,
+  StubModels,
+  StubProvider
+}
 import grit.remind.Reminders
 import grit.slack.edge.{Backfill, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
@@ -231,6 +249,9 @@ object Main {
       if (serving) {
         // Who may lower a label or label a public channel, said before serving starts.
         unadministered(exitOnLeft(admins(env))).foreach(line => System.err.println(s"[main] $line"))
+        // Which roles a labelled room cannot call, said before serving starts.
+        if (env.contains(OpenRouterConfig.KeyVar))
+          uncleared(deployment.policy).foreach(line => System.err.println(s"[main] $line"))
         Kit.serve(deployment, env).left.map(_.message).swap.toOption
       } else if (backfilling)
         backfillDays(env)
@@ -667,7 +688,7 @@ object Main {
       )
       identities <- Identities.of(trusted, domains).left.map(_.message)
       named <- admins(env)
-      visible <- visibility(named, slackIn)
+      visible <- visibility(named, slackIn, cleared(models))
       plugins <- pluginChoice(env, visible, zone)
       deployment <- Deployment
         .of(
@@ -733,17 +754,23 @@ object Main {
         )
       }
 
-  /** The reference deployment's visibility: with Slack served from the workspace `slackIn`
-    * and `admins` named, the shipped one but for [[Administrators]], declared as those users'
-    * accounts there (`slack:{team}/{id}`), who alone may lower a room's label or label a public
-    * channel; otherwise [[Visibility.Shipped]], under which no one may.
+  /** The reference deployment's visibility, clearing `parties`: with Slack served from the
+    * workspace `slackIn` and `admins` named, the shipped one but for [[Administrators]],
+    * declared as those users' accounts there (`slack:{team}/{id}`), who alone may lower a
+    * room's label or label a public channel; otherwise [[Visibility.Shipped]], under which no
+    * one may, with `parties` cleared. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
-      slackIn: Option[TeamId]
+      slackIn: Option[TeamId],
+      parties: Vector[Cleared]
   ): Either[String, Visibility] =
     slackIn.filter(_ => admins.nonEmpty) match {
-      case None => Right(Visibility.Shipped)
+      case None =>
+        Visibility
+          .of(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty, parties)
+          .left
+          .map(r => s"the deployment's clearances: $r")
       case Some(team) =>
         admins
           .foldLeft[Either[String, Set[Account]]](Right(Set.empty))((acc, user) =>
@@ -758,12 +785,50 @@ object Main {
                 RoomLabels.Public,
                 Vector(Group(Administrators, accounts)),
                 Vector.empty,
+                parties,
                 administrators = Some(Administrators)
               )
               .left
               .map(r => s"$AdminsVar: $r")
           )
     }
+
+  /** The reference deployment's clearances (ADR 0037), each at [[Compartments.Shipped]]'s top:
+    * every pair `policy` pins that names its upstream ([[Party.of]]; grit's own deployment
+    * names one only through an operator's provider variable, and that choice is the trust),
+    * the stub's pair, and the services of Jev and the stub classifier. Each party once, in
+    * that order. A pair whose upstream OpenRouter picks is cleared for public alone.
+    */
+  private[main] def cleared(policy: Policy): Vector[Cleared] = {
+    val pinned = Vector(policy.turn, policy.summary, policy.query, policy.heard)
+      .flatMap(_.rungs)
+      .flatMap(r => Party.of(r.assignment.ref))
+    val always = Party.of(StubModels.Ref).toVector ++ Vector(
+      Party.Service(JevClassifier.Service),
+      Party.Service(StubClassifier.Service)
+    )
+    (pinned ++ always).distinct.map(Cleared(_, Compartments.Shipped.top))
+  }
+
+  /** What `grit serve` says at start, served by OpenRouter under `policy`, of each role whose
+    * first pin's upstream OpenRouter picks, so whose calls a labelled room cannot make: the
+    * variable that would name its one upstream, and the clearance that pair then gets
+    * ([[cleared]]). The heard role has no variable.
+    */
+  private[main] def uncleared(policy: Policy): Vector[String] = {
+    def routed(l: Ladder) = Party.of(l.first.assignment.ref).isEmpty
+    val roles =
+      Vector(ModelRole.Turn -> "turn", ModelRole.Summary -> "summary", ModelRole.Query -> "query")
+    roles.collect {
+      case (role, name) if routed(role.in(policy)) =>
+        s"${role.upstreamVar(role.in(policy).first.grade)} is unset: the $name's first model, " +
+          "whose upstream OpenRouter picks, is cleared for public rooms alone; naming its one " +
+          "upstream there clears that pair for every label"
+    } ++ Option.when(routed(policy.heard))(
+      "the heard role's first model, whose upstream OpenRouter picks, is cleared for public " +
+        "rooms alone: a labelled room grit only hears is closed without a written summary"
+    )
+  }
 
   /** What `grit serve` says at start when `admins` names no one; nothing when it names any. */
   private[main] def unadministered(admins: Vector[UserId]): Option[String] =
