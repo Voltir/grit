@@ -82,8 +82,13 @@ object TurnTests extends TestSuite {
   /** The steps every turn takes. */
   private val Always: Vector[String] = AllSteps.filterNot(Turn.Step.optional.contains)
 
-  /** What a turn records: the steps every turn takes. */
-  private val Recorded: Vector[String] = Always
+  /** What a turn records: the steps every turn takes, its model call after the integrity
+    * patch's marker and its gate.
+    */
+  private val Recorded: Vector[String] = Always.flatMap {
+    case "call-model" => Vector("DBOS.patch-integrity", "gate:0", "call-model")
+    case step => Vector(step)
+  }
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -240,7 +245,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       val turn = say(store, "hello")
       assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 3)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       runTurn(durable, entries, provider, turn) ==> Done
       provider.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -318,7 +323,7 @@ object TurnTests extends TestSuite {
         summarizer = new RecordingProvider(fail = true)
       )
       out ==> "replied: reply:c1:0; no summary: Model(down (after 3 tries))"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
     }
 
@@ -431,7 +436,7 @@ object TurnTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       )
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer) ==> Done
       summarizer.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -777,7 +782,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider(fail = true)
       val turn = say(entries, "hello")
       runTurn(durable, entries, provider, turn) ==> "failed: Model(down (after 3 tries))"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 3)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       texts(entries) ==> Vector("user: hello")
     }
 

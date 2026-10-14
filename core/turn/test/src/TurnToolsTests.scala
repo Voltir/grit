@@ -51,7 +51,7 @@ object TurnToolsTests extends TestSuite {
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
     val settling = new TurnTools.Settling(new FakeJot, entries)
-    TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, TurnTools.Ungated) match {
+    TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, Integrity.Authority) match {
       case Left(outcome) =>
         val unrun = Left(Integrity.Untrusted)
         settling.answer(slot, id, pending.call.name, outcome, unrun, Instant.EPOCH)
@@ -75,7 +75,7 @@ object TurnToolsTests extends TestSuite {
     val settling = new TurnTools.Settling(new FakeJot, entries)
     val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
     val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
-    TurnTools.read(box, sent, Repairs.All, PublicReads, TurnTools.Ungated) match {
+    TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
       case Right(free: Bound.Free) =>
         settling
           .run(slot, ToolCallId("c"), free, Instant.EPOCH)

@@ -51,11 +51,11 @@ final case class Decided(item: Item, fate: Fate)
 /** An offered tool the round's level withholds: its name and what it requires. */
 final case class Withheld(tool: ToolName, requires: Integrity)
 
-/** What one round shows the model and offers it, as its `gate:n` step decided (ADR 0036,
-  * 0038): the turn's `level` after the round's reads; every item below the level before it,
+/** What one round shows the model and offers it, as its `gate:n` step decided (ADR
+  * 0036): the turn's `level` after the round's reads; every item below the level before it,
   * `decided`, in request order (an item at or above that level is shown and is not listed);
-  * and the offered tools the level withholds. Recorded: the round's request is rendered from
-  * it and the recorded window, never from a row read again.
+  * and the offered tools the level withholds. Recorded: what the round's request offers is
+  * read from it on a replay or a rebuild, never decided from rows again.
   */
 final case class Gated(level: Integrity, decided: Vector[Decided], withheld: Vector[Withheld])
 

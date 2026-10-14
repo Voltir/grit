@@ -31,7 +31,7 @@ import grit.models.{StubClassifier, StubModels}
 import grit.prose.markdown.Markdown
 import grit.remind.Reminders
 import grit.slack.client.{FakeSlack, Self}
-import grit.slack.edge.SlackEdge
+import grit.slack.edge.{SlackAccounts, SlackEdge}
 import grit.slack.event.{Payloads, TeamId, Ts, UserId}
 import grit.slack.text.RichText
 import grit.turn.{Turn, TurnLoop}
@@ -45,6 +45,12 @@ import utest.*
   * the test's own `tick`, so none races the assertions.
   */
 object ReminderLiveTests extends TestSuite {
+
+  /** grit's team's accounts, which the edge attests. */
+  private val Ours: grit.core.identity.Realm =
+    SlackAccounts
+      .realm(TeamId(Payloads.Team))
+      .fold(e => throw new java.lang.AssertionError(e), identity)
   import Payloads.*
 
   /** A model that asks for a reminder to stretch in a minute when it is offered `remind_me`
@@ -184,7 +190,8 @@ object ReminderLiveTests extends TestSuite {
         engine.reviews,
         engine.jot,
         engine,
-        new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
+        // grit's team's realm trusted, so the asker is a member: remind_me requires one.
+        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
       ),
       None,
       grit.slack.edge.ReplyNote.Off,

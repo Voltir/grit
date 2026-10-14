@@ -117,6 +117,24 @@ object TurnReplayTests extends TestSuite {
       assert(failures.isEmpty)
     }
 
+    test("every recorded gate is written back byte for byte") {
+      // A gate is recorded data: the round's request is rebuilt from it, never from rows.
+      val j = TurnJournal.gated
+      val outputs = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector.flatMap(_.steps.collect {
+          case s if Turn.Step.family(s.name).contains(Turn.Step.Gate) => (path.last, s.outcome)
+        })
+      }
+      assert(outputs.exists(_._1 == "gated-withheld.json"))
+      val failures = outputs.collect {
+        case (file, InMemoryDurable.Outcome.Output(text))
+            if j.decode(text).map(j.encode) != Right(text) =>
+          file
+        case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
+      }
+      failures ==> Vector.empty
+    }
+
     test("every recorded window is written back byte for byte") {
       // A window is recorded data: one recorded before notes, sections or documents existed
       // reads back, and today's codec writes the same text back, documents among them.

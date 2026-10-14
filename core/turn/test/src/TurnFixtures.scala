@@ -565,6 +565,34 @@ object TurnFixtures {
       .of[caps.CapSet^{ws}](peek(ws), poke(ws))
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
+  /** `post`, which requires [[Integrity.Member]]. */
+  val hostedPost: Hosted[String] = new Hosted(
+    ToolSpec(ToolName("post"), "Posts a note.", path),
+    Gate.Free,
+    p => p
+  ).requiring(Integrity.Member)
+
+  /** `peek` over `ws`, its results believed at nothing, then `post`, which requires
+    * [[Integrity.Member]] and answers "posted".
+    */
+  def gatedTools(ws: Workspace^): Toolbox[caps.CapSet^{ws}] =
+    Toolbox
+      .of[caps.CapSet^{ws}](peek(ws), hostedPost.over(_ => Outcome.Done("posted")))
+      .fold(d => throw new java.lang.AssertionError(d), identity)
+
+  /** Three rounds over [[gatedTools]]: `peek` a.txt (`t1`), then `post` it (`t2`), then the
+    * answer.
+    */
+  def gatedScript: Scripted = new Scripted((_, n) =>
+    Right(n match {
+      case 0 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj("path" -> "a.txt")))
+      case 1 =>
+        said("", AssistantBlock.ToolCall(ToolCallId("t2"), "post", ujson.Obj("path" -> "a.txt")))
+      case _ => said("done")
+    })
+  )
+
   /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
   val hostedFetch: Hosted[String] =
     new Hosted(ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun), Gate.Free, p => p)

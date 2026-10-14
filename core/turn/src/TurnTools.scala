@@ -104,12 +104,6 @@ object TurnTools {
     } yield slot.askId).left.map(storeFailure)
   }
 
-  /** What a turn stamps its calls at while its level is not recorded among its steps: grit's
-    * own ([[Integrity.Level.Authority]], no compartment), so a call binds to any tool whose
-    * requirement names no compartment, as every turn's did before calls were stamped.
-    */
-  val Ungated: Integrity = Integrity.Authority
-
   /** `pending`, stamped at `at`, read against `tools` with `repairs`, ready to run, a call of
     * a tool that reads the store run through `reads` ([[Bound.Reading]]); or the outcome it is
     * answered with, unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that

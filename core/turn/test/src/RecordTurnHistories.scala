@@ -424,7 +424,8 @@ object RecordTurnHistories {
         said: Vector[String],
         provider: grit.core.provider.Provider^,
         crash: Option[grit.core.store.Entry -> Boolean] = None,
-        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty
+        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty,
+        gated: Boolean = false
     ): History = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -445,7 +446,7 @@ object RecordTurnHistories {
               new grit.models.StubProvider(),
               classifier,
               ws,
-              tools(ws),
+              if (gated) gatedTools(ws) else tools(ws),
               5
             )
           )
@@ -530,6 +531,9 @@ object RecordTurnHistories {
 
     Vector(
       "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
+      // A result believed at nothing withholds post, which requires member, from the next
+      // round, and the call of it there is answered that it is withheld.
+      "gated-withheld" -> looping(Vector("read and post"), gatedScript, gated = true),
       "loop-approved" -> looping(
         Vector("poke a"),
         new TurnFixtures.Scripted((r, n) =>

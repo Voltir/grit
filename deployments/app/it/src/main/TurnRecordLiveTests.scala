@@ -26,7 +26,12 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        steps.map(_.name) ==> Turn.Step.all.filterNot(Turn.Step.optional.contains)
+        // Every turn's steps, its model call after the integrity patch's marker and its gate.
+        steps.map(_.name) ==> Turn.Step.all.filterNot(Turn.Step.optional.contains).flatMap {
+          case Turn.Step.CallModel =>
+            Vector("DBOS.patch-integrity", "gate:0", Turn.Step.CallModel)
+          case step => Vector(step)
+        }
         val own = steps.filter(s => Turn.Step.all.contains(s.name))
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
@@ -67,7 +72,7 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, """look #call:{"path":"notes.txt"}""")
         val _ = engine.awaitTurn(turn)
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
-          Vector("record-call:0", "dispatch:0", "tool:0:0", "call-model:1")
+          Vector("gate:0", "record-call:0", "dispatch:0", "tool:0:0", "gate:1", "call-model:1")
         val own = engine.db
           .read(Subject.Public)(engine.entries.list(turn.conversationId))
           .getOrElse(Vector.empty)

@@ -251,7 +251,8 @@ object Look {
     def futhark(tick: Long): Char = Futhark(math.floorMod(tick, Futhark.length).toInt)
 
     /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
-      * the inheritance, while memory is assembled; Ansuz while the model answers; Jera,
+      * the inheritance, while memory is assembled; Algiz, the ward, while what a round shows
+      * is weighed against the tools it offers; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
       * summarised; Tiwaz while a tool runs, or asks you first; Mannaz, you, while it waits for
       * your answer. A tool loop's step is known by its family (`call-model:2` answers). A name
@@ -261,6 +262,7 @@ object Look {
       case Step.Classify => "ᛈ placing"
       case Step.Assemble => "ᛟ assembling"
       case Step.CallModel => "ᚨ answering"
+      case Step.Gate => "ᛉ weighing what it read"
       case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.RecordCall |
           Step.Append | Step.AppendSummary =>
         "ᛃ recording"

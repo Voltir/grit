@@ -35,7 +35,7 @@ import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.remind.Reminders
 import grit.slack.client.{FakeSlack, Self}
-import grit.slack.edge.SlackEdge
+import grit.slack.edge.{SlackAccounts, SlackEdge}
 import grit.slack.event.{Payloads, TeamId, UserId}
 import grit.turn.{Turn, TurnLoop}
 
@@ -48,6 +48,12 @@ import utest.*
   * the test sets, and the windows are hours, so no wait is real.
   */
 object RunRetentionLiveTests extends TestSuite {
+
+  /** grit's team's accounts, which the edge attests. */
+  private val Ours: grit.core.identity.Realm =
+    SlackAccounts
+      .realm(TeamId(Payloads.Team))
+      .fold(e => throw new java.lang.AssertionError(e), identity)
   import Payloads.*
 
   private val assigned =
@@ -161,7 +167,8 @@ object RunRetentionLiveTests extends TestSuite {
             engine.reviews,
             engine.jot,
             engine,
-            new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
+            // grit's team's realm trusted, so the asker is a member: remind_me requires one.
+            new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
           ),
           None,
           grit.slack.edge.ReplyNote.Off,
