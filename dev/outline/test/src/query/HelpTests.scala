@@ -31,7 +31,13 @@ object HelpTests extends TestSuite {
     ),
     "area" -> Vector("--level" -> true, "--max-kb" -> true, "--root" -> true),
     "find" -> Vector("--private" -> false, "--max-kb" -> true, "--root" -> true),
-    "tests" -> Vector("--test" -> true, "--max-kb" -> true, "--root" -> true),
+    "tests" -> Vector(
+      "--test" -> true,
+      "--body" -> true,
+      "--fixtures" -> false,
+      "--max-kb" -> true,
+      "--root" -> true
+    ),
     "file" -> Vector("--max-kb" -> true, "--root" -> true)
   )
 

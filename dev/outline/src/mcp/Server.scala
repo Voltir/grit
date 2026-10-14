@@ -88,6 +88,7 @@ object Server {
       prop(Help.tests, "suite", "type" -> "string"),
       prop(Help.tests, "test", "type" -> "string"),
       prop(Help.tests, "body", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+      prop(Help.tests, "fixtures", "type" -> "boolean"),
       prop(Help.tests, "root", "type" -> "string")
     ),
     Vector("suite")
@@ -438,6 +439,7 @@ object Server {
       suite: String,
       test: Option[String],
       body: Set[String],
+      fixtures: Boolean,
       root: Option[Root]
   )
 
@@ -455,7 +457,8 @@ object Server {
             t.suite,
             t.test,
             t.body,
-            cap
+            cap,
+            t.fixtures
           )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
@@ -466,8 +469,9 @@ object Server {
       suite <- optText(args, "suite").flatMap(_.toRight("suite is required"))
       test <- optText(args, "test")
       body <- stringList(args, "body", required = false)
+      fixtures <- flag(args, "fixtures")
       root <- rootArg(args)
-    } yield TestsArgs(suite, test, body.toSet, root)
+    } yield TestsArgs(suite, test, body.toSet, fixtures, root)
 
   private final case class AreaArgs(
       names: Vector[String],

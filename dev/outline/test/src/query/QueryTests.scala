@@ -282,7 +282,7 @@ object QueryTests extends TestSuite {
       assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty"))
     }
 
-    test("show of a test suite's name names the tests query") {
+    test("show of a test suite's name shows it from test sources, under a note naming it") {
       val (answer, _) =
         Query.show(
           root,
@@ -295,33 +295,11 @@ object QueryTests extends TestSuite {
           false,
           80000
         )
-      assert(answer.status == Status.NoMatch)
+      assert(answer.status == Status.Found)
       assert(
-        answer.text.endsWith(
-          "\n-- OneLineTests is in test sources: tests grit.outline.render.OneLineTests"
-        )
+        answer.text.linesIterator.contains("-- in test sources: grit.outline.render.OneLineTests")
       )
-    }
-
-    test("show of a helper inside a suite names its suite") {
-      val (answer, _) =
-        Query.show(
-          root,
-          OutlineLayout,
-          Config.empty,
-          Roots.empty(6000),
-          Vector("OneLineTests.posed"),
-          1,
-          Set.empty,
-          false,
-          80000
-        )
-      assert(answer.status == Status.NoMatch)
-      assert(
-        answer.text.endsWith(
-          "\n-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests --body posed"
-        )
-      )
+      assert(answer.text.linesIterator.contains("object OneLineTests extends TestSuite {"))
     }
 
     test("show lists the tests that exercise a definition, by suite, name and lines") {

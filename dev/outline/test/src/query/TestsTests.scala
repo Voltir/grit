@@ -1,7 +1,7 @@
 package grit.outline.query
 
 import grit.outline.locate.{Layout, Root}
-import grit.outline.testing.{FixtureLayout, OutlineLayout}
+import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
 
@@ -27,7 +27,101 @@ object TestsTests extends TestSuite {
   private def answer(name: String, test: Option[String], layout: Layout = FixtureLayout): Answer =
     Query.tests(root, layout, Config.empty, Roots.empty(6000), name, test, Set.empty, 80000)._1
 
+  private val useSuite = "grit.outline.fixture.suites.FixtureUseTests"
+  private val useFile = "dev/outline/fixture/suites/src/FixtureUseTests.scala"
+
+  /** The `tests` answer's lines for FixtureUseTests, whose fixtures are in SuiteFixtures. */
+  private def useLines(
+      test: Option[String] = None,
+      bodies: Set[String] = Set.empty,
+      fixtures: Boolean = false,
+      cap: Int = 80000
+  ): Vector[String] =
+    Query
+      .tests(
+        root,
+        FixtureSuitesLayout,
+        Config.empty,
+        Roots.empty(6000),
+        useSuite,
+        test,
+        bodies,
+        cap,
+        fixtures
+      )
+      ._1
+      .text
+      .linesIterator
+      .toVector
+
+  /** The lines of the source at `file`, 0-based. */
+  private def source(file: String): Vector[String] =
+    os.read(root.dir / os.RelPath(file)).split("\n").toVector
+
   def tests = Tests {
+    test("a suite's file's package and imports print first, as the file's own lines") {
+      val lines = useLines()
+      assert(lines.lift(1).exists(_.startsWith(s"== $useFile  ")))
+      assert(lines.lift(2) == Some("1-3"))
+      assert(lines.slice(3, 6) == source(useFile).take(3))
+    }
+
+    test("the suite's in-body import prints under its line, as the file's own line") {
+      val lines = useLines()
+      val at = lines.indexOf("  7-7")
+      assert(at > 0)
+      assert(lines.lift(at + 1) == Some("  import SuiteFixtures.*"))
+    }
+
+    test(
+      "the suite's head and closing lines are the file's own lines, and its one-line form is gone"
+    ) {
+      val lines = useLines()
+      val at = lines.indexWhere(_.startsWith("5-21  ["))
+      assert(at > 0)
+      assert(lines.slice(at + 1, at + 3) == source(useFile).slice(4, 6))
+      val end = lines.indexOf("20-21 end of FixtureUseTests")
+      assert(end > at)
+      assert(lines.slice(end + 1, end + 3) == source(useFile).slice(19, 21))
+      assert(!lines.exists(_.contains("object FixtureUseTests  object")))
+    }
+
+    test(
+      "a test-source fixture the suite names is listed with the members it names, and not those it does not"
+    ) {
+      assert(
+        useLines().contains(
+          "  fixtures used: grit.outline.fixture.suites.SuiteFixtures  dev/outline/fixture/suites/src/SuiteFixtures.scala:3-14  2 of 3 members: seeded, label; --fixtures for their signatures"
+        )
+      )
+    }
+
+    test(
+      "--body prints a used fixture member's own lines, and a suite helper of the same name wins"
+    ) {
+      val lines = useLines(bodies = Set("seeded", "label"))
+      val fixtures = "dev/outline/fixture/suites/src/SuiteFixtures.scala"
+      assert(lines.containsSlice(source(fixtures).slice(5, 7)))
+      assert(lines.containsSlice(source(useFile).slice(10, 12)))
+      assert(!lines.exists(_.contains("def label: String = \"fixture\"")))
+    }
+
+    test("--fixtures lists the used members' collapsed signatures, and no other member") {
+      val lines = useLines(fixtures = true)
+      assert(lines.contains("    6-7 def seeded: Int  [0.2 KB]"))
+      assert(lines.contains("    9-10 def label: String  [0.2 KB]"))
+      assert(!lines.exists(_.contains("unnamed")))
+    }
+
+    test(
+      "under a budget smaller than the suite, a --test match and a --body helper print, and the cut counts the rest"
+    ) {
+      val lines = useLines(test = Some("a label"), bodies = Set("label"), cap = 200)
+      assert(lines.contains("    SuiteFixtures.label"))
+      assert(lines.contains("  def label: String = \"own\""))
+      assert(lines.exists(_.startsWith("-- cut at 0.2 KB: ")))
+    }
+
     test(
       "the suite's helper is fresh with its doc's line, and its two tests are listed with their ranges; run, which holds tests, is not a helper"
     ) {
@@ -44,7 +138,7 @@ object TestsTests extends TestSuite {
 
     test("the suite's line, each helper's line and each test's line end with its size") {
       val lines = answer(suite, None).text.linesIterator.toVector
-      assert(lines.contains("61-76 object StoreSuite  object StoreSuite  [0.4 KB]"))
+      assert(lines.contains("61-76  [0.4 KB]"))
       assert(lines.contains("  65-66 def fresh(): Store  [0.2 KB]"))
       assert(lines.contains("    69-71 put then get returns the value  [0.2 KB]"))
     }
@@ -153,7 +247,7 @@ object TestsTests extends TestSuite {
       assert(text.contains("fresh"))
     }
 
-    test("show names the suite of a helper in test sources, and the --body that prints it") {
+    test("show of a name main sources lack answers from test sources, under a note naming it") {
       val (answer, _) = Query.show(
         root,
         OutlineLayout,
@@ -165,11 +259,14 @@ object TestsTests extends TestSuite {
         false,
         80000
       )
+      assert(answer.status == Status.Found)
       assert(
         answer.text.linesIterator.contains(
-          "-- OneLineTests.posed is in test sources: tests grit.outline.render.OneLineTests --body posed"
+          "-- in test sources: grit.outline.render.OneLineTests.posed"
         )
       )
+      assert(answer.text.linesIterator.exists(_.contains("private val posed")))
+      assert(!answer.text.contains("-- tests of posed"))
     }
 
     test("tests lists the suite's private helpers and its file's other top-level definitions") {

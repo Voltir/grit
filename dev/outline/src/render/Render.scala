@@ -349,37 +349,104 @@ object Render {
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 
-  /** The `tests` answer: the suite's `== file  package` block with its own line, then its non-private helpers as their collapsed signatures, then `tests (n):` and each test's name with its line range, each of these lines ending with its definition's size tag; a test whose name starts with `prefix` also prints its verbatim text after its line, and a helper named in `bodies` its own text after its signature. `header` leads; the file line is flagged when `stale`; the answer is cut at `cap` bytes and ends with its KB line. */
+  /** A top-level definition in test sources, in another file than a suite's, whose members `used` the suite refers to. */
+  final case class Fixture(top: Defn, used: Vector[Defn])
+
+  /** The `tests` answer: the suite's `== file  package` line, flagged when `stale`; the lines of its file `src` outside
+    * every one of `tops` (its file's top-level definitions) as file text; the suite's header line and head, its doc cut to
+    * its first sentence as `show` cuts a member's; the suite's own loose lines; its helpers as their collapsed signatures;
+    * each of `fixtures` as one line naming its file, range and the members used, or with `listFixtures` each used
+    * member's collapsed signature; then `tests (n):` and each test's name with its line range; then the suite's closing
+    * lines. A test whose name starts with `prefix` prints its verbatim text after its line; a name in `bodies` prints a
+    * helper's own text after its signature, or, when no helper has that name, a used fixture member's own text after the
+    * fixtures. Each line naming a definition or a test ends with its size tag. `header` leads. The answer is cut at `cap`
+    * bytes between entries, what `prefix` and `bodies` name printed whatever `cap`, and ends with its KB line.
+    */
   def tests(
       suite: Defn,
+      tops: Vector[Defn],
+      src: String,
       helpers: Vector[Defn],
+      fixtures: Vector[Fixture],
       tests: Vector[TestCase],
       prefix: Option[String],
       bodies: Set[String],
+      listFixtures: Boolean,
       header: String,
       cap: Int,
       stale: Boolean
   ): String = {
     def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
+    val lines = src.split("\n", -1).toVector
 
-    val suiteLine =
-      s"${suite.lines.start}-${suite.lines.end} ${kindWord(suite.kind)} ${ownerRelative(suite)}  ${signatureOf(suite)}${sizeTag(suite.size)}"
-    val helperChunks = helpers.sortBy(_.lines.start).map { h =>
-      Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}${sizeTag(h.size)}") ++
-        (if (bodies.contains(h.name)) Vector(h.head) ++ h.body.toVector else Vector.empty)
+    val fileLoose = loose(lines, 1, lines.size, tops.map(_.lines)).flatMap { case (from, to) =>
+      looseBlock(lines, from, to, "")
     }
-    val testChunks = tests.map { t =>
+    val opening = Piece(
+      Vector(fileLine(suite.file, pkgOf(suite.fullName), stale)) ++ fileLoose ++
+        Vector(headerLine(suite, inContext = true)) ++ briefHead(suite),
+      ownerRelative(suite)
+    )
+    val headEnd = suite.lines.start + suite.head.linesIterator.size - 1
+    val inside =
+      if (suite.closing.isEmpty) Vector.empty
+      else
+        loose(lines, headEnd + 1, suite.lines.end - 1, suite.members.map(_.lines)).flatMap {
+          case (from, to) =>
+            looseBlock(lines, from, to, "  ")
+        }
+    val helperNames = helpers.map(_.name).toSet
+    val helperPieces = helpers.sortBy(_.lines.start).map { h =>
+      val named = bodies.contains(h.name)
+      Piece(
+        Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}${sizeTag(h.size)}") ++
+          (if (named) Vector(h.head) ++ h.body.toVector else Vector.empty),
+        h.name,
+        asked = named
+      )
+    }
+    val fixturePieces = fixtures.flatMap { f =>
+      val all = f.top.members.count(_.kind != Kind.Param)
+      val where = s"${f.top.fullName}  ${f.top.file}:${f.top.lines.start}-${f.top.lines.end}"
+      val listed =
+        if (listFixtures)
+          Vector(s"  fixtures used: $where  ${f.used.size} of $all members:") ++
+            f.used
+              .map(m => s"    ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}")
+        else
+          Vector(
+            s"  fixtures used: $where  ${f.used.size} of $all members: ${f.used.map(_.name).distinct.mkString(", ")}; --fixtures for their signatures"
+          )
+      val named = f.used.filter(m => bodies.contains(m.name) && !helperNames.contains(m.name))
+      Piece(listed, f.top.name) +:
+        named.map(m =>
+          Piece(
+            Vector(headerLine(m, inContext = false), m.head) ++ m.body.toVector,
+            m.name,
+            asked = true
+          )
+        )
+    }
+    val testPieces = tests.map { t =>
       val line = s"    ${t.lines.start}-${t.lines.end} ${t.name}${sizeTag(Some(bytesOf(t.text)))}"
-      if (prefix.exists(t.name.startsWith)) Vector(line, t.text) else Vector(line)
+      val named = prefix.exists(t.name.startsWith)
+      Piece(if (named) Vector(line, t.text) else Vector(line), t.name, asked = named)
     }
-    val chunks: Vector[Vector[String]] =
-      Vector(
-        Vector(fileLine(suite.file, pkgOf(suite.fullName), stale), suiteLine)
-      ) ++ helperChunks ++
-        Vector(Vector(s"  tests (${tests.size}):")) ++ testChunks
+    val closing = closingLines(suite)
+    val pieces: Vector[Piece] =
+      Vector(opening) ++ (if (inside.isEmpty) Vector.empty
+                          else Vector(Piece(inside, ownerRelative(suite)))) ++
+        helperPieces ++ fixturePieces ++ Vector(
+          Piece(Vector(s"  tests (${tests.size}):"), "")
+        ) ++ testPieces ++
+        (if (closing.isEmpty) Vector.empty else Vector(Piece(closing, ownerRelative(suite))))
 
-    val (kept, truncated) = fit(chunks, cap)
-    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+    val keep = keptUnder(pieces, cap)
+    val kept = pieces.zip(keep).collect { case (p, true) => p.lines }.flatten
+    val body =
+      (Vector(header) ++ kept ++ cutBetween(pieces.map(Vector(_)), keep, cap, hint = false))
+        .map(_ + "\n")
+        .mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
 

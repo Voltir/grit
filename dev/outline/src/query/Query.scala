@@ -17,7 +17,7 @@ final case class Answer(text: String, status: Status)
 
 object Query {
 
-  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. A name found only in test sources is a `NoMatch` whose note names the `tests` query for its suite. */
+  /** The `show` answer for `syms` (each `Name`, `Name.member` or fully qualified), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. Every answer starts with `root`'s `## root` line. A name main sources lack is looked up in test sources and shown from there, under a `-- in test sources: <full name>` note, with no tests line. */
   def show(
       root: Root,
       layout: Layout,
@@ -688,7 +688,8 @@ object Query {
       suite: String,
       test: Option[String],
       bodies: Set[String],
-      cap: Int
+      cap: Int,
+      fixtures: Boolean = false
   ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     if (layout.classesDirs(root).isEmpty)
       (Answer(layout.notCompiled(root), Status.Failed), roots)
@@ -723,28 +724,81 @@ object Query {
                   t.file == d.file && (t.lines.end < d.lines.start || d.lines.end < t.lines.start)
                 )
                 val helpers = (d.members.filterNot(holdsTests) ++ otherTops).sortBy(_.lines.start)
+                val (used, afterFixtures) = fixturesOf(root, layout, d, resolved.loaded)
                 val notes = test
                   .filterNot(p => tests.exists(_.name.startsWith(p)))
                   .map(p => "-- no test starting \"" + p + "\"")
                 val helperNames = helpers.map(_.name).distinct.sorted
+                val fixtureNames = used.flatMap(_.used.map(_.name)).distinct.sorted
                 val bodyNotes = bodies.toVector.sorted
-                  .filterNot(b => helperNames.contains(b))
+                  .filterNot(b => helperNames.contains(b) || fixtureNames.contains(b))
                   .map(b =>
-                    s"-- --body $b matches nothing shown; names here: ${helperNames.mkString(", ")}"
+                    s"-- --body $b matches nothing shown; names here: ${(helperNames ++ fixtureNames).distinct.mkString(", ")}"
                   )
                 val head =
                   (Vector(header(root)) ++ resolved.notes ++ notes ++ bodyNotes).mkString("\n")
                 val stale = staleFiles(root, layout, Vector(d.file)).nonEmpty
                 (
                   Answer(
-                    Render.tests(d, helpers, tests, test, bodies, head, cap, stale),
+                    Render.tests(
+                      d,
+                      d +: otherTops,
+                      src,
+                      helpers,
+                      used,
+                      tests,
+                      test,
+                      bodies,
+                      fixtures,
+                      head,
+                      cap,
+                      stale
+                    ),
                     Status.Found
                   ),
-                  nextRoots
+                  Roots.put(roots, root, afterFixtures)
                 )
               }
           }
       }
+  }
+
+  /** The test-source fixtures `suite` uses: each top-level definition in a test classes dir, in another file than
+    * `suite`'s, holding a member `suite`'s `.tasty` refers to, with those members in file order; and the cache after.
+    * A read that fails leaves none.
+    */
+  private def fixturesOf(
+      root: Root,
+      layout: Layout,
+      suite: Defn,
+      in: Loaded
+  ): (Vector[Render.Fixture], Loaded) = {
+    val own = Locate.forTopLevel(root, layout, suite.fullName)
+    Loaded.uses(root, layout, own, in) match {
+      case Left(_) => (Vector.empty, in)
+      case Right((refs, afterRefs, _)) =>
+        val targets = refs.map(_.target).toSet
+        val testDirs = layout.classesDirs(root).filter(layout.isTest)
+        val tasty = targets.toVector
+          .flatMap(t => Locate.forTopLevelIn(testDirs, t))
+          .distinct
+          .filterNot(own.contains)
+        Loaded.defns(root, layout, tasty, afterRefs) match {
+          case Left(_) => (Vector.empty, afterRefs)
+          case Right((defns, next, _)) =>
+            def named(m: Defn): Boolean =
+              targets.contains(m.fullName) || targets.exists(_.startsWith(m.fullName + "."))
+            val found = defns
+              .filter(_.file != suite.file)
+              .sortBy(d => (d.file, d.lines.start))
+              .flatMap { top =>
+                val used =
+                  top.members.filter(m => m.kind != Kind.Param && named(m)).sortBy(_.lines.start)
+                if (used.isEmpty) None else Some(Render.Fixture(top, used))
+              }
+            (found, next)
+        }
+    }
   }
 
   /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */
@@ -1240,26 +1294,12 @@ object Query {
         case Right(next) => state = next
       }
       val matches = mutable.ListBuffer.empty[Defn]
-      // One note per distinct suite: the outermost top-level definition of the match's file that holds it.
-      def testSuiteNotes(sym: String, found: Resolved): Vector[String] =
-        found.defns
-          .map { m =>
-            val suite = found.seen
-              .find(t =>
-                t.file == m.file && t.lines.start <= m.lines.start && m.lines.end <= t.lines.end
-              )
-              .getOrElse(m)
-            // A helper names its own suite and its --body, which prints the helper.
-            if (suite.fullName == m.fullName) suite.fullName
-            else s"${suite.fullName} --body ${m.name}"
-          }
-          .distinct
-          .sorted
-          .map(target => s"-- $sym is in test sources: tests $target")
+      // The matches found in test sources only, which no tests line counts.
+      val inTests = mutable.ListBuffer.empty[Defn]
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.Main, sym, state) match {
           case Left(message) => failure = Some(message)
-          // A miss pays for one more resolve, over the test-only classes dirs; a name found there is named with its suite instead.
+          // A miss pays for one more resolve, over the test-only classes dirs; a name found there is shown under a note.
           case Right(resolved) if resolved.defns.isEmpty =>
             state = resolved.loaded
             companions ++= resolved.seen
@@ -1267,8 +1307,16 @@ object Query {
               case Left(message) => failure = Some(message)
               case Right(tests) =>
                 state = tests.loaded
+                companions ++= tests.seen
                 if (tests.defns.isEmpty) notes ++= resolved.notes
-                else notes ++= testSuiteNotes(sym, tests)
+                else {
+                  notes ++= tests.notes ++ tests.defns
+                    .map(_.fullName)
+                    .distinct
+                    .map(n => s"-- in test sources: $n")
+                  matches ++= tests.defns
+                  inTests ++= tests.defns
+                }
             }
           case Right(resolved) =>
             state = resolved.loaded
@@ -1288,7 +1336,15 @@ object Query {
           val tops = matches.toVector.distinct
           val (hits, testNotes, afterTests) = tests match {
             case TestsShown.Dropped => (Vector.empty, Vector.empty, state)
-            case _ => exercisedBy(root, layout, config, tops, companions.toVector, state)
+            case _ =>
+              exercisedBy(
+                root,
+                layout,
+                config,
+                tops.filterNot(inTests.contains),
+                companions.toVector,
+                state
+              )
           }
           state = afterTests
           val traced = Trace.trace(
@@ -1314,7 +1370,7 @@ object Query {
               case _ => Vector.empty
             },
             summaries = tests match {
-              case TestsShown.Summary => summaries(tops, hits)
+              case TestsShown.Summary => summaries(tops.filterNot(inTests.contains), hits)
               case _ => Vector.empty
             },
             fullDocs = fullDocs

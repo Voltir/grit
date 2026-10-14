@@ -398,6 +398,7 @@ object Main {
   private final case class TestsOptions(
       test: Option[String],
       bodies: Set[String],
+      fixtures: Boolean,
       cap: Int,
       root: Option[String]
   )
@@ -406,6 +407,7 @@ object Main {
     rest match {
       case Nil => Right(o)
       case "--test" :: value :: tail => parseTests(tail, o.copy(test = Some(value)))
+      case "--fixtures" :: tail => parseTests(tail, o.copy(fixtures = true))
       case "--body" :: value :: tail =>
         parseTests(tail, o.copy(bodies = value.split(',').filter(_.nonEmpty).toSet))
       case "--max-kb" :: value :: tail =>
@@ -423,7 +425,10 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseTests(rest, TestsOptions(None, Set.empty, Help.defaultMaxKb * 1024, leadingRoot)) match {
+    parseTests(
+      rest,
+      TestsOptions(None, Set.empty, false, Help.defaultMaxKb * 1024, leadingRoot)
+    ) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.tests)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -440,7 +445,8 @@ object Main {
                   suite,
                   o.test,
                   o.bodies,
-                  o.cap
+                  o.cap,
+                  o.fixtures
                 )
                 (exitCode(answer.status), answer.text)
             }
