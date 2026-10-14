@@ -310,14 +310,16 @@ object TriageFixtures {
 
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
       * `speaking` says, with no daily cap, the deployment's knowledge `sources` those given,
-      * reading through `db`; a turn it starts is kept in [[started]].
+      * reading through `db`, starting a turn as `start` answers; a turn it starts is kept in
+      * [[started]].
       */
     def body(
         classifier: Classifier^,
         minutes: Long,
         speaking: Speaking = Speaking.Off,
         sources: Corpora = Corpora.Empty,
-        db: Db^ = FakeDb
+        db: Db^ = FakeDb,
+        start: TurnRef => Either[String, Unit] = _ => Right(())
     )(
         id: WorkflowId
     )(using Durable^): String =
@@ -343,10 +345,7 @@ object TriageFixtures {
           TriageSpeech(
             speaking,
             Budget(ZoneOffset.UTC, None),
-            turn => {
-              started = started :+ turn
-              Right(())
-            }
+            turn => start(turn).map(_ => started = started :+ turn)
           ),
           Tuning.Default,
           placements(classifier, minutes),

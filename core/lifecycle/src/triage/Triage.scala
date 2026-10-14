@@ -4,7 +4,7 @@ import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
-import grit.core.speech.{Decision, SpeechJson}
+import grit.core.speech.{Decision, Outcome, SpeechJson}
 import grit.core.stitch.{Opening, StitchReads}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Tags}
@@ -34,6 +34,8 @@ import grit.core.visibility.Subject
   *      not speak keeps none but on a message put to grit.
   *   1. `start` — when drafting or answering, the heard message's own turn started, a turn
   *      rooted on it ([[grit.core.store.Payload.Heard]]).
+  *   1. `unstarted` — when drafting and its start failed, the decision settled as failed
+  *      ([[grit.core.speech.SpeechStore.drafted]]).
   */
 object Triage {
   import TriageInput.describe
@@ -45,10 +47,17 @@ object Triage {
     val Record = "record"
     val Consider = "consider"
     val Start = "start"
+
+    /** Keeps a drafting turn whose start failed settled as failed, so it holds no later
+      * message in its thread.
+      */
+    val Unstarted = "unstarted"
   }
 
   /** The triage workflow's body, for the heard message whose workflow id is `workflowId`.
-    * Returns what it did, for logs: the tags are in the store.
+    * Returns what it did, for logs: the tags are in the store. A drafting turn whose start
+    * fails is kept settled as [[grit.core.speech.Outcome.Failed]], with why; one answering as
+    * said to grit stays awaited, and its edge starts it again when it next starts.
     */
   def body(env: TriageEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     TriageRef.fromWorkflowId(workflowId) match {
@@ -74,12 +83,9 @@ object Triage {
               case Right(true) =>
                 val now = env.clock.now()
                 val (records, speech) = (env.records, env.speech)
-                def started(as: String, turn: TurnRef): String = {
+                def started(turn: TurnRef): Either[String, WorkflowId] = {
                   val start = speech.start
-                  d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId)) match {
-                    case Left(why) => s"$as, not started: $why"
-                    case Right(queued) => s"$as: ${WorkflowId.value(queued)}"
-                  }
+                  d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId))
                 }
                 val considered = d.transact(Step.Consider, subject)(
                   Speak.consider(records, speech.speaking, speech.budget, triage, entry, tags, now)
@@ -88,8 +94,31 @@ object Triage {
                   case Left(why) => s"not considered: $why"
                   case Right(Decision.Held(why)) =>
                     s"held: ${SpeechJson.writeSilence(why).render()}"
-                  case Right(Decision.Drafting(turn)) => started("drafting", turn)
-                  case Right(Decision.Answering(turn, _)) => started("answering", turn)
+                  case Right(Decision.Drafting(turn)) =>
+                    started(turn) match {
+                      case Right(queued) => s"drafting: ${WorkflowId.value(queued)}"
+                      case Left(why) =>
+                        // A drafting row left unsettled holds every later unprompted message
+                        // in its thread unanswered, so it is settled failed. An enqueue that
+                        // committed yet reported a failure still runs its turn, which posts
+                        // while the ledger says settled: the hold is released either way.
+                        val failed = Outcome.Failed(s"not started: $why")
+                        val store = records.speech
+                        d.transact(Step.Unstarted, subject)(
+                          store.drafted(turn, failed, None, now).left.map(describe)
+                        ) match {
+                          case Left(e) => s"drafting, not started: $why; not settled: $e"
+                          case Right(_) => s"drafting, not started: $why"
+                        }
+                    }
+                  // Left unsettled: its reply was awaited in `consider`'s transaction, so its
+                  // edge starts it when it next starts, and an answering row counts in no rate
+                  // and holds no later message.
+                  case Right(Decision.Answering(turn, _)) =>
+                    started(turn) match {
+                      case Right(queued) => s"answering: ${WorkflowId.value(queued)}"
+                      case Left(why) => s"answering, not started: $why"
+                    }
                 })
             }
         })

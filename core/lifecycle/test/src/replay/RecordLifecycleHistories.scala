@@ -196,6 +196,12 @@ object RecordLifecycleHistories {
         d.run(t.workflowId)(w.body(asking, 1, speaks))
         t.workflowId
       },
+      triaged("triage-not-started") { (w, d) =>
+        // Drafting, its turn's start failed: the decision settled as failed.
+        val t = w.hear("what did we decide about the refi page?", "Ana", 0)
+        d.run(t.workflowId)(w.body(asking, 1, speaks, start = _ => Left("the queue is down")))
+        t.workflowId
+      },
       triaged("triage-held-gated") { (w, d) =>
         // Held at the gate: gap leaves nothing open, and nothing is open.
         val t = w.hear("thanks all!", "Ana", 0)

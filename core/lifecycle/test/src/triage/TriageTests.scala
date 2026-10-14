@@ -7,7 +7,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.edge.Acknowledgement
 import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.period.Probability
-import grit.core.speech.{Decision, Limits, Silence, Speaking}
+import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
 import grit.core.store.Tx
@@ -359,6 +359,33 @@ object TriageTests extends TestSuite {
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
       history.map(_.name) ==> Vector("stitched", "ask", "record", "consider", "start")
+    }
+
+    test(
+      "a drafting turn whose start fails is kept failed, and holds no later message in its thread"
+    ) {
+      val w = new World
+      val first = w.hear("what did we decide about the refi page?", "Ana", 0)
+      val durable = new InMemoryDurable
+      val log = durable.run(first.workflowId)(
+        w.body(asking, 1, within, start = _ => Left("the queue is down"))
+      )
+      val second = w.hear("and the pricing page?", "Ana", 2)
+      new InMemoryDurable().run(second.workflowId)(w.body(asking, 2, within))
+      val (one, two) = (TurnRef(c, first.turn), TurnRef(c, second.turn))
+      (
+        log.endsWith("drafting, not started: the queue is down"),
+        durable.recordedSteps(first.workflowId),
+        w.speech.outcomes.get(one).map(_._1),
+        w.speech.decisions.map(_._2),
+        w.started
+      ) ==> (
+        true,
+        Vector("stitched", "ask", "record", "consider", "start", "unstarted"),
+        Some(Outcome.Failed("not started: the queue is down")),
+        Vector(Decision.Drafting(one), Decision.Drafting(two)),
+        Vector(two)
+      )
     }
 
     test("a message failing the gate is kept held on every bound it failed, and no turn starts") {
