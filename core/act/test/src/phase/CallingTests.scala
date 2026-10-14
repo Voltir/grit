@@ -291,7 +291,7 @@ object CallingTests extends TestSuite {
     }
 
     test(
-      "a request may not be sent at the classification it is dispatched at is written answered with its refusal, though the floor now would send it"
+      "a request that may not be sent at the classification it is dispatched at is written answered with its refusal, though the floor now would send it"
     ) {
       val edges = serving
       // A public floor, dispatching what was read at internal: as a routed turn after a fall.

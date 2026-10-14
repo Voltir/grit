@@ -19,7 +19,7 @@ import grit.core.id.{
 }
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.place.Directory
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
@@ -47,7 +47,16 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
-import grit.core.visibility.{Clearance, Label, Subject}
+import grit.core.visibility.{
+  Clearance,
+  Cleared,
+  Compartments,
+  Label,
+  Party,
+  RoomLabels,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
@@ -124,13 +133,50 @@ object CloseFixtures {
     Catalog.of(Policy.one(a, a, a, a.copy(maxTokens = 512)), Vector.empty)
   }
 
-  /** Every role's calls to `provider`, keeping each pin a provider was asked for. */
-  final class OneModel(provider: Provider^) extends Models {
+  /** The pair [[ClearedCatalog]] pins for every role: [[TestCatalog]]'s model, served at an
+    * upstream a deployment can clear.
+    */
+  val ClearableSummary: ModelRef = ModelRef(
+    ModelId.of("test/summary").getOrElse(throw new java.lang.AssertionError("id")),
+    Some(Upstream.of("fireworks").getOrElse(throw new java.lang.AssertionError("upstream")))
+  )
+
+  /** [[TestCatalog]], its pair [[ClearableSummary]]. */
+  val ClearedCatalog: Catalog = {
+    val a = Assignment(ClearableSummary, 1024, None)
+    Catalog.of(Policy.one(a, a, a, a.copy(maxTokens = 512)), Vector.empty)
+  }
+
+  /** A visibility clearing [[ClearableSummary]] for [[grit.core.classify.TestClassifiers.Above]],
+    * and no other party: the fake classifiers' service stays uncleared.
+    */
+  val ClearingSummary: Visibility =
+    Party
+      .of(ClearableSummary)
+      .toRight("no party")
+      .flatMap(p =>
+        Visibility
+          .of(
+            Compartments.Shipped,
+            RoomLabels.Public,
+            Vector.empty,
+            Vector.empty,
+            Vector(Cleared(p, grit.core.classify.TestClassifiers.Above))
+          )
+          .left
+          .map(_.toString)
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** Every role's calls to `provider` under `served`, keeping each pin a provider was asked
+    * for.
+    */
+  final class OneModel(provider: Provider^, served: Catalog = TestCatalog) extends Models {
     // Only ever replaced by a new immutable vector; read only by the test that owns it.
     @caps.unsafe.untrackedCaptures
     var pins = Vector.empty[Pinned]
 
-    def catalog(): Either[String, Catalog] = Right(TestCatalog)
+    def catalog(): Either[String, Catalog] = Right(served)
     def provider(pinned: Pinned): Provider^ = {
       pins = pins :+ pinned
       provider

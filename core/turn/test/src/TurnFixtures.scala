@@ -1151,7 +1151,9 @@ object TurnFixtures {
   }
 
   /** Models for a test: `inForce` is the catalog, and the calls under a pin of its summary's
-    * ladder go to `summary`, every other to `turn`.
+    * ladder go to `summary`, every other to `turn`. It tells the roles apart by assignment
+    * alone, so a catalog whose summary ladder shares an assignment with its turn or query
+    * ladder is refused when made: their calls would land on one provider.
     */
   final class FixedModels(
       turn: Provider^,
@@ -1159,6 +1161,16 @@ object TurnFixtures {
       inForce: Catalog = TestCatalog,
       seen: Pinnings = new Pinnings
   ) extends Models {
+    locally {
+      val p = inForce.policy
+      val shared = p.summary.rungs
+        .map(_.assignment)
+        .filter(a => (p.turn.rungs ++ p.query.rungs).exists(_.assignment == a))
+      if (shared.nonEmpty)
+        throw new java.lang.AssertionError(
+          s"summary shares assignments with turn or query: $shared"
+        )
+    }
     def catalog(): Either[String, Catalog] = Right(inForce)
     def provider(pinned: Pinned): Provider^ = {
       seen.pins = seen.pins :+ pinned

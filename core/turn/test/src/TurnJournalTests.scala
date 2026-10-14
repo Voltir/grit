@@ -131,7 +131,11 @@ object TurnJournalTests extends TestSuite {
       roundTrip(noted) ==> Right(noted)
       val before: Either[TurnFailure, Window] =
         Right(Window(Vector(EntrySeq(0)), Vector(TurnFixtures.queried)))
-      window.encode(before).contains("upstream") ==> false
+      // As every query note was recorded before its upstream was.
+      window.decode(
+        """{"ok":{"entries":[0],"notes":[{"queried":"hello greeting","model":"writer",""" +
+          """"usage":{"input":30,"output":4,"cachedInput":0,"costUsd":"0.00001"},"estimate":28}]}}"""
+      ) ==> Right(before)
     }
 
     test("a window's notes read back, and one without notes keeps the bare array") {

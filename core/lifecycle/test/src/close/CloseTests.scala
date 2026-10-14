@@ -546,17 +546,28 @@ object CloseTests extends TestSuite {
     ) {
       val w = new World
       w.say("hello", 0)
-      val gate = new Gate(Some(Vector(0.1, 0.2, 0.3, 0.6)))
+      val asked = gate
+      val summary = answering("Summary: small talk.")
       new InMemoryDurable().run(w.attempt.workflowId)(
-        w.body(
-          gate,
-          answering("Summary: small talk."),
+        w.bodyOver(
+          asked,
+          new OneModel(summary, ClearedCatalog),
           new SetClock(at(Lapsed)),
-          db = grit.core.classify.TestClassifiers.above()
+          db = grit.core.classify.TestClassifiers.above(ClearingSummary)
         )
-      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
-        "; no summary: no model cleared for internal"
-      gate.calls ==> 0
+      ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}"
+      asked.calls ==> 0
+      summary.requests.map(_.system) ==> Vector(
+        ClosingSummary
+          .request(
+            PeriodTranscript.labelled(Vector.empty, Speakers.none),
+            Balance.empty,
+            Vector.empty,
+            Asked.Every,
+            overheard = false
+          )
+          .system
+      )
     }
 
     test(
@@ -564,17 +575,18 @@ object CloseTests extends TestSuite {
     ) {
       val w = new World
       w.say("hello", 0)
+      val asked = gate
       val models = new OneModel(answering("Summary: small talk."))
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.bodyOver(
-          gate,
+          asked,
           models,
           new SetClock(at(Lapsed)),
           db = grit.core.classify.TestClassifiers.above()
         )
       ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
         "; no summary: no model cleared for internal"
-      models.pins ==> Vector.empty
+      (asked.calls, models.pins) ==> (0, Vector.empty)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
         c.flows.prose
       } ==> Some("hello")
@@ -597,6 +609,9 @@ object CloseTests extends TestSuite {
       ) ==> s"closed: closing:c1:1; gate unavailable: ${grit.core.classify.TestClassifiers.Uncleared}" +
         "; no summary: no model cleared for internal"
       models.pins ==> Vector.empty
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
+        c.flows.prose
+      } ==> Some("Heard 1 message; nothing kept.")
     }
 
     test(

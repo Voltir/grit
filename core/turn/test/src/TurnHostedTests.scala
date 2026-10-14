@@ -335,15 +335,6 @@ object TurnHostedTests extends TestSuite {
         Vector(("found at service:github", false))
     }
 
-    test("a turn whose clearance fell after it was routed still replies") {
-      val entries = new InMemoryEntryStore
-      val turn = say(entries, "hello")
-      val durable = fallen()
-      val edge = atGithub(durable, _ => Serve.Never)
-      val provider = new Scripted((_, _) => Right(calling("done")))
-      durable.run(turn.workflowId)(routedRestricted(entries, provider, edge)) ==> Done
-    }
-
     test(
       "a turn whose clearance fell after it was routed sends only where its routed classification is cleared: a service cleared for the fallen floor alone is not offered, and nothing is sent"
     ) {

@@ -55,13 +55,22 @@ object TaskQuestionsTests extends TestSuite {
     }
 
     test("an answer reads into each kind's weight and hard's probability") {
-      val weights = Vector(0.05, 0.05, 0.2, 0.6, 0.05, 0.0, 0.05)
+      // Seven distinct weights, answered in an order other than TaskKind's.
+      val weights = Vector(
+        TaskKind.Decision -> 0.30,
+        TaskKind.Chat -> 0.01,
+        TaskKind.Coding -> 0.15,
+        TaskKind.Analysis -> 0.40,
+        TaskKind.Lookup -> 0.02,
+        TaskKind.Writing -> 0.08,
+        TaskKind.Investigation -> 0.04
+      )
       val features = TaskQuestions.Shipped
         .read(
           Vector(
             Answer.Choice(
               "analysis",
-              TaskKind.values.toVector.map(_.word).zip(weights).map(Answer.Weight(_, _)),
+              weights.map((k, w) => Answer.Weight(k.word, w)),
               0.5
             ),
             Answer.YesNo(0.72)
@@ -70,8 +79,8 @@ object TaskQuestionsTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       features.kind ==> TaskKind.Analysis
       features.hard ==> Probability.clamped(0.72)
-      features.kinds.values.map(Probability.value).toVector.map(p => math.round(p * 100)) ==>
-        Vector(5L, 5L, 20L, 60L, 5L, 0L, 5L)
+      features.kinds.map((k, p) => k -> math.round(Probability.value(p) * 100)).toMap ==>
+        weights.map((k, w) => k -> math.round(w * 100)).toMap
     }
   }
 }

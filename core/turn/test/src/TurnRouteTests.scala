@@ -314,7 +314,7 @@ object TurnRouteTests extends TestSuite {
       route.map(_.turn.assignment.ref) ==> Some(steady)
     }
 
-    test("a pin that asks no effort is asked none, whatever the root") {
+    test("a pin that asks no effort is asked none: a hard root asks none of it") {
       val noEffort =
         gradedCatalog(graded((Grade.Standard, steady, None), (Grade.Strong, mighty, None)))
       val (_, pins, calls, _, _) = routed(noEffort, answered(TaskKind.Investigation, 0.72))
@@ -344,7 +344,7 @@ object TurnRouteTests extends TestSuite {
       )
     }
 
-    test("the task call's cost is in the ledger once, under route:, from offer") {
+    test("the task call's cost is in the ledger once, under route:") {
       val ledger = new InMemoryUsageLedger
       val (_, _, _, _, turn) = routed(twoGrades, answered(TaskKind.Lookup, 0.1), ledger)
       ledger
@@ -362,15 +362,23 @@ object TurnRouteTests extends TestSuite {
             (Grade.Standard, steady, Some(Effort.Medium)),
             (Grade.Strong, mighty, Some(Effort.Medium))
           ),
-          graded((Grade.Standard, bare, Some(Effort.Minimal))),
-          graded((Grade.Standard, bare, Some(Effort.Minimal))),
+          // A hard root takes the strong turn pin; summary and query keep their first.
+          graded(
+            (Grade.Standard, bare, Some(Effort.Minimal)),
+            (Grade.Strong, mighty, Some(Effort.Low))
+          ),
+          graded(
+            (Grade.Standard, bare, Some(Effort.Low)),
+            (Grade.Strong, mighty, Some(Effort.Minimal))
+          ),
           graded((Grade.Standard, bare, Some(Effort.Minimal)))
         ),
         Vector.empty
       )
       val (route, pins, _, _, _) = routed(catalog, answered(TaskKind.Investigation, 0.72))
-      route.map(r => (r.summary, r.query).toList.flatten.map(_.assignment.effort)) ==>
-        Some(List(Some(Effort.Minimal), Some(Effort.Minimal)))
+      route.map(r =>
+        (r.summary, r.query).toList.flatten.map(p => p.assignment.ref -> p.assignment.effort)
+      ) ==> Some(List(bare -> Some(Effort.Minimal), bare -> Some(Effort.Low)))
       // The summary is made under its own pin, its effort its own.
       pins ==> Vector(mighty -> Some(Effort.High), bare -> Some(Effort.Minimal))
     }
@@ -558,14 +566,15 @@ object TurnRouteTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "hello")
       val ledger = new InMemoryUsageLedger
-      def graded(g: Grade, r: ModelRef): Ladder =
+      def graded(g: Grade, r: ModelRef, budget: Int): Ladder =
         Ladder
-          .of(Vector(Rung(g, Assignment(r, 100, None))))
+          .of(Vector(Rung(g, Assignment(r, budget, None))))
           .getOrElse(throw new java.lang.AssertionError())
+      // One pair at two grades, each its own assignment, so each role's calls are told apart.
       val strong = Catalog.of(
         Policy(
-          graded(Grade.Strong, flash),
-          graded(Grade.Light, flash),
+          graded(Grade.Strong, flash, 100),
+          graded(Grade.Light, flash, 200),
           ladder(open),
           ladder(flash)
         ),

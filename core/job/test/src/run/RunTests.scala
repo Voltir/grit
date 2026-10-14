@@ -830,10 +830,6 @@ object RunTests extends TestSuite {
       Vector(Right(Answers(answers(owner), Judged, "test/judge")))
   }
 
-  /** `remind` at version 1, within an ask: it judges `j`, [[Triaged]]'s questions about
-    * `state`, and replies the owner chosen, its confidence and the likeliest urgency, or the
-    * error, telling `seen` what it replied.
-    */
   /** What a move came to, as a job's reply says it, an uncleared one as the label it was made
     * at.
     */
@@ -842,6 +838,10 @@ object RunTests extends TestSuite {
     case other => other.toString
   }
 
+  /** `remind` at version 1, within an ask: it judges `j`, [[Triaged]]'s questions about
+    * `state`, and replies the owner chosen, its confidence and the likeliest urgency, or the
+    * error, telling `seen` what it replied.
+    */
   private def judging(seen: Seen, state: String = Triaged.State): Moving =
     new Moving(
       1,
