@@ -221,7 +221,8 @@ object Render {
       cap: Int,
       tests: Map[Use, String],
       stale: Set[String],
-      sizes: Map[Use, Int]
+      sizes: Map[Use, Int],
+      allSites: Boolean = false
   ): String = {
     def owner(u: Use): String = {
       val pkg = pkgOf(u.enclosing)
@@ -243,19 +244,37 @@ object Render {
           case _ => acc :+ Vector(u)
         }
       }
+    def count(n: Int): String = if (n == 1) "1 site" else s"$n sites"
     val files = sites.map(_.file).distinct
+    val listed = allSites || sites.size <= SitesListed
     val chunks: Vector[Vector[String]] = files.map { f =>
-      s"== $f${staleTag(stale.contains(f))}" +: runs(sites.filter(_.file == f)).flatMap(run =>
-        run.headOption.map(u => s"  in ${owner(u)}${sizeTag(sizes.get(u))}").toVector ++ run.map(
-          siteLine
+      val here = sites.filter(_.file == f)
+      if (listed)
+        s"== $f${staleTag(stale.contains(f))}" +: runs(here).flatMap(run =>
+          run.headOption.map(u => s"  in ${owner(u)}${sizeTag(sizes.get(u))}").toVector ++ run.map(
+            siteLine
+          )
         )
-      )
+      else
+        s"== $f  ${count(here.size)}${staleTag(stale.contains(f))}" +: here
+          .groupBy(owner)
+          .toVector
+          .sortBy { case (_, us) => us.headOption.fold(0)(_.line) }
+          .map { case (o, us) =>
+            s"  in $o  ${count(us.size)}${sizeTag(us.headOption.flatMap(sizes.get))}"
+          }
     }
     val (kept, truncated) = fit(chunks, sites.size, cap)
-    val summary = s"[${sites.size} sites in ${files.size} files]"
+    val summary =
+      if (listed) s"[${sites.size} sites in ${files.size} files]"
+      else
+        s"-- ${count(sites.size)} in ${files.size} files; --sites to list them all, or --in/--outside to narrow"
     val body = (kept ++ truncated :+ summary).map(_ + "\n").mkString
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
+
+  /** The most sites `uses` lists one by one without `allSites`; past it, each file and owner prints its count instead. */
+  val SitesListed: Int = 20
 
   /** The `find` answer under `header`: each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes. */
   def find(found: Vector[Defn], header: String, cap: Int): String = {

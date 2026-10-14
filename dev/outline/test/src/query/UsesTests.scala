@@ -6,6 +6,7 @@ import java.nio.file.attribute.FileTime
 import grit.outline.locate.{Layout, Locate, MillLayout, Root}
 import grit.outline.model.Use
 import grit.outline.read.Read
+import grit.outline.render.Render
 import grit.outline.testing.{FixtureLayout, FixtureTestLayout}
 
 import utest.*
@@ -427,6 +428,38 @@ object UsesTests extends TestSuite {
         )
       assert(answer.status == Status.Found)
       assert(lookups < candidates)
+    }
+
+    /** `n` sites in `file`, owned by `owner`, from line `from`. */
+    def sitesIn(file: String, owner: String, n: Int, from: Int): Vector[Use] =
+      Vector.tabulate(n)(i => Use("p.T.t", 3, file, from + i, owner, "T.t()"))
+
+    val many = sitesIn("a/A.scala", "p.A.f", 15, 1) ++ sitesIn("b/B.scala", "p.B.g", 4, 1) ++
+      sitesIn("b/B.scala", "p.B.h", 2, 10)
+
+    test(
+      "over 20 sites, uses prints each file's site count and each owner once with its count, and a line naming --sites"
+    ) {
+      val out = Render.uses(many, Set.empty, 80000, Map.empty, Set.empty, Map(many(0) -> 300))
+      assert(
+        out.linesIterator.toVector.dropRight(1) == Vector(
+          "== a/A.scala  15 sites",
+          "  in A.f  15 sites  [0.3 KB]",
+          "== b/B.scala  6 sites",
+          "  in B.g  4 sites",
+          "  in B.h  2 sites",
+          "-- 21 sites in 2 files; --sites to list them all, or --in/--outside to narrow"
+        )
+      )
+    }
+
+    test("at 20 sites, or with --sites, uses prints every site under its owner") {
+      val twenty = Render.uses(many.drop(1), Set.empty, 80000, Map.empty, Set.empty, Map.empty)
+      val all =
+        Render.uses(many, Set.empty, 80000, Map.empty, Set.empty, Map.empty, allSites = true)
+      assert(twenty.linesIterator.count(_.startsWith("    ")) == 20)
+      assert(all.linesIterator.count(_.startsWith("    ")) == 21)
+      assert(all.contains("\n  in B.h\n    10  T.t()\n    11  T.t()\n"))
     }
   }
 }

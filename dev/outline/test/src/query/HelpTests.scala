@@ -21,7 +21,13 @@ object HelpTests extends TestSuite {
       "--root" -> true
     ),
     "family" -> Vector("--member" -> true, "--body" -> false, "--cap" -> true, "--root" -> true),
-    "uses" -> Vector("--in" -> true, "--outside" -> true, "--cap" -> true, "--root" -> true),
+    "uses" -> Vector(
+      "--in" -> true,
+      "--outside" -> true,
+      "--sites" -> false,
+      "--cap" -> true,
+      "--root" -> true
+    ),
     "area" -> Vector("--level" -> true, "--cap" -> true, "--root" -> true),
     "find" -> Vector("--private" -> false, "--cap" -> true, "--root" -> true),
     "tests" -> Vector("--test" -> true, "--cap" -> true, "--root" -> true)

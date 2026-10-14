@@ -35,9 +35,11 @@ for a helper that itself holds a reference. `--no-tests` drops both. None of the
 filter by path prefix. `X.apply` (or `X.new`), for a class with no `apply` in source, finds its
 construction sites: `X(…)` and `new X(…)`. Sites are grouped by file (`== file`), then by the
 definition holding them: an `in <owner>` line (the member around the site, or `Suite: test name` for
-a site in a test), then each site as its line number and source line.
+a site in a test), then each site as its line number and source line. Over 20 sites in all, each file
+prints as `== file  N sites` and each owner once with its count, with no site lines, and the answer ends
+`-- 57 sites in 31 files; --sites to list them all, or --in/--outside to narrow`. `--sites` lists every site.
 
-    scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--cap BYTES] [--root DIR]
+    scripts/outline uses Sym[,Sym…] [--in PREFIX] [--outside PREFIX] [--sites] [--cap BYTES] [--root DIR]
 
 **area**: To get a map of a part of the project: the areas `.outline.conf` declares, at level 0 one
 line per package, at level 1 (the default) each definition with its doc's first sentence. With no

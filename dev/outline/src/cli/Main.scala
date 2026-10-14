@@ -186,7 +186,8 @@ object Main {
       in: Option[String],
       outside: Option[String],
       cap: Int,
-      root: Option[String]
+      root: Option[String],
+      allSites: Boolean
   )
 
   private def parseUses(rest: List[String], o: UsesOptions): Either[String, UsesOptions] =
@@ -194,6 +195,7 @@ object Main {
       case Nil => Right(o)
       case "--in" :: value :: tail => parseUses(tail, o.copy(in = Some(value)))
       case "--outside" :: value :: tail => parseUses(tail, o.copy(outside = Some(value)))
+      case "--sites" :: tail => parseUses(tail, o.copy(allSites = true))
       case "--cap" :: value :: tail =>
         value.toIntOption match {
           case Some(n) => parseUses(tail, o.copy(cap = n))
@@ -209,7 +211,7 @@ object Main {
       cwd: os.Path,
       leadingRoot: Option[String]
   ): (Int, String) =
-    parseUses(rest, UsesOptions(None, None, 80000, leadingRoot)) match {
+    parseUses(rest, UsesOptions(None, None, 80000, leadingRoot, allSites = false)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.uses)}")
       case Right(o) =>
         rootDir(o.root, cwd) match {
@@ -227,7 +229,8 @@ object Main {
                     syms.split(',').toVector.filter(_.nonEmpty),
                     o.in,
                     o.outside,
-                    o.cap
+                    o.cap,
+                    o.allSites
                   )
                 (exitCode(answer.status), answer.text)
             }

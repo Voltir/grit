@@ -220,7 +220,8 @@ object Query {
       syms: Vector[String],
       in: Option[String],
       outside: Option[String],
-      cap: Int
+      cap: Int,
+      allSites: Boolean = false
   ): (Answer, Roots) = staled(root, layout, roots) { roots =>
     val bare = syms.filter(sym => !sym.contains('.') && sym.length < shortestBare)
     lazy val classes = layout.classesDirs(root)
@@ -315,7 +316,8 @@ object Query {
                     cap,
                     holding.view.mapValues(_.name).toMap,
                     staleFiles(root, layout, kept.map(_.file)),
-                    ownerSizes(kept, holding, state)
+                    ownerSizes(kept, holding, state),
+                    allSites
                   ),
                   Status.Found
                 )

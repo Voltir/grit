@@ -126,7 +126,7 @@ object Help {
       "symbols whose references to find: Name, Name.member or fully qualified; a Name with no qualifier shorter than 4 characters, such as of or get, is refused: qualify it with at least its owner, as in MoveLimits.of; comma-separated on the CLI. X.apply or X.new, for a class X with no apply in source, finds X's construction sites, X(…) and new X(…)."
     ),
     purpose =
-      "To find who calls or names a definition before changing it. Sites are grouped by file (`== file`), then by the definition holding them: an `in <owner>` line (the member around the site, or `<Suite>: <test name>` for a site in a test) ending with the owner's size, `[N.N KB]`, then each site as `<line>  <source line>`.",
+      "To find who calls or names a definition before changing it. Sites are grouped by file (`== file`), then by the definition holding them: an `in <owner>` line (the member around the site, or `<Suite>: <test name>` for a site in a test) ending with the owner's size, `[N.N KB]`, then each site as `<line>  <source line>`, and last `[N sites in M files]`. Over 20 sites in all, each file prints as `== file  N sites` and each owner once as `in <owner>  N sites`, with no site lines, ending `-- N sites in M files; --sites to list them all, or --in/--outside to narrow`.",
     examples = Vector(
       Example("find the references to Inbox.hear outside core", "uses Inbox.hear --outside core"),
       Example("find where a case class is built", "uses EdgeStores.apply"),
@@ -139,6 +139,12 @@ object Help {
         "PREFIX",
         Some("outside"),
         "drop files whose repo-relative path starts with PREFIX."
+      ),
+      Flag(
+        "--sites",
+        "",
+        Some("sites"),
+        "list every site, however many there are; without it, over 20 sites print as counts per file and owner."
       )
     ) ++ common
   )

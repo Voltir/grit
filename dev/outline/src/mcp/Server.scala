@@ -111,6 +111,7 @@ object Server {
       prop(Help.uses, "symbols", "type" -> "array", "items" -> ujson.Obj("type" -> "string")),
       prop(Help.uses, "in", "type" -> "string"),
       prop(Help.uses, "outside", "type" -> "string"),
+      prop(Help.uses, "sites", "type" -> "boolean"),
       prop(Help.uses, "root", "type" -> "string")
     ),
     Vector("symbols")
@@ -329,7 +330,8 @@ object Server {
       symbols: Vector[String],
       in: Option[String],
       outside: Option[String],
-      root: Option[Root]
+      root: Option[Root],
+      allSites: Boolean
   )
 
   private def uses(args: ujson.Value, state: State): (ujson.Value, State) =
@@ -345,7 +347,8 @@ object Server {
             a.symbols,
             a.in,
             a.outside,
-            cap
+            cap,
+            a.allSites
           )
           (toolResult(answer.text, isError = false), state.copy(roots = roots))
         }
@@ -357,7 +360,8 @@ object Server {
       in <- optText(args, "in")
       outside <- optText(args, "outside")
       root <- rootArg(args)
-    } yield UsesArgs(symbols, in, outside, root)
+      allSites <- flag(args, "sites")
+    } yield UsesArgs(symbols, in, outside, root, allSites)
 
   private def parseShow(args: ujson.Value): Either[String, ShowArgs] =
     for {
