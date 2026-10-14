@@ -42,8 +42,9 @@ In dependency order, each with the core packages it imports:
   implements. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`,
   `retention`, `prompt`
 - **`route`**: which of a role's pairs a call is made with (ADR 0037): the pins cleared for what
-  a transaction knows, the pin a wanted grade picks among them, and what a turn says when none
-  is. ← `model`, `store`, `visibility`
+  a transaction knows, the pin a wanted grade picks among them, the narrowing to a day's ceiling
+  and the raising to a room's baseline, and what a turn says when none is. ← `model`, `store`,
+  `visibility`
 - **`classify`**: the `Classifier` trait (Jev's shape: closed questions answered with a
   probability per option), the pure readers of its answers, and the deployment's classifier
   behind its clearance check. Above the packages that record what a classifier answered.
