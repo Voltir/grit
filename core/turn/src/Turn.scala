@@ -280,13 +280,17 @@ object Turn {
       recorded[A](name).flatMap(_.toRight(s"$workflow recorded no $name step"))
     def kept[A](what: String, read: Either[StoreError, A]): Either[String, A] =
       read.left.map(e => s"$what of $workflow unread: ${describe(e)}")
-    // The rounds whose replies called tools, by the ask:n:record steps that kept them.
-    val looped: Vector[(Round, String)] =
-      steps.flatMap(s => Loop.of(s.name).collect { case Loop.Record(n) => Round.at(n) -> s.name })
-    // Each round's gate, by the gate:n steps that recorded it: none for a turn ungated.
-    val gated: Vector[(Int, String)] =
-      steps.flatMap(s => Loop.of(s.name).collect { case Loop.Gate(n) => n -> s.name })
     for {
+      // The rounds asked, as each model call's input shows them, in order.
+      rounds <- Flows
+        .read(TurnFlow.flow, turn, steps)
+        .left
+        .map(why => s"$workflow does not read as this build's turn: $why")
+        .map(_.observed.collect { case TurnRound.Asked(n) => n })
+      // Each asked round's ask:n:record, which kept its reply when it called tools, and its
+      // gate:n, recorded when the round was gated.
+      looped = rounds.map(n => Round.at(n) -> Loop.Record(n).name)
+      gated = rounds.map(n => n -> Loop.Gate(n).name)
       byRef <- needed[TurnOffer.Recorded](Step.Offer)
       profileId <- needed[TurnProfileId](Step.PinModels)
       window <- needed[Window](Step.Assemble)

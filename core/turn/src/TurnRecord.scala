@@ -65,7 +65,8 @@ object TurnRecord {
     * that ran the turn. `Calls(Vector.empty, None, _)` for a turn whose first call's reply is
     * not kept yet.
     *
-    * `Left` naming what does not read: a step whose output does not read, a prompt, tool set
+    * `Left` naming what does not read: steps that do not read as this build's turn (one of
+    * another epoch, [[grit.core.durable.Flows.read]]), a step whose output does not read, a prompt, tool set
     * or profile not kept, a call's reply entry no longer kept, or a window naming entries
     * since deleted, with their seqs. A nearby entry or document since deleted, a plugin since disabled or a person since
     * renamed rebuilds as it is now, not as sent: each call's ledger row keeps the estimate of

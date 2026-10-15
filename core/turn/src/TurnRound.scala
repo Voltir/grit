@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.act.phase.Calling
 import grit.core.approval.Approval
 import grit.core.context.Window
-import grit.core.durable.{Flow, Step, StepName}
+import grit.core.durable.{Flow, Observed, Step, StepName}
 import grit.core.edge.Permit
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.Message
@@ -152,6 +152,11 @@ private[turn] object TurnRound {
 
   /** A loop that ended for `failure`, where `at` says. */
   final case class Stalled(failure: TurnFailure, at: Rounds)
+
+  /** What the model call `ask:round` shows a reader of the turn's history: that round `round`
+    * (from 0) was asked.
+    */
+  final case class Asked(round: Int) extends Observed
 
   /** The call `pending` of `at.round`'s reply, at `slot`, bound as `kind`; `sent`, whether its
     * round's free hosted calls to its place reached a serving edge.
@@ -343,9 +348,10 @@ private[turn] object TurnRound {
   private def round: Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
     val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
     val gating = Flow.decide(gate)((at, g) => stalling(at)(g.map(at.gatedBy)))
-    val calling = Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
-      at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
-    )
+    val calling = Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](
+      Names.ask,
+      at => Some(Asked(at.round.index))
+    )(r => at => r.call(at, TurnLoop.use(at.looping.budget, at.round)))
     gating
       .andThen(Flow.decide(calling)(replied))
       .andThen(
