@@ -77,6 +77,14 @@ object ReadHiddenTests extends TestSuite {
       ReadHidden.tool(None).output ==> Believed.Own
     }
 
+    test("its description says what reading costs and when to read, in plain words") {
+      ReadHidden.tool(None).spec.does ==>
+        "Shows in full something your request shows only as a note (\"Hidden here as h1: " +
+        "…\"), in its place, from your next request on. After you read it, you can't do what " +
+        "that note says you'd lose until you've answered. Read it when your answer needs what " +
+        "it says."
+    }
+
     test("the names read are those read_hidden was called with, unreadable arguments skipped") {
       ReadHidden.read(
         Vector(

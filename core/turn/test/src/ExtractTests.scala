@@ -124,13 +124,15 @@ object ExtractTests extends TestSuite {
       answers.asked ==> Vector()
       Extract.tool(None, answers.ask).output ==> Believed.Own
     }
-    test("its description says an authority turn that uses it continues at member") {
+    test("its description opens with what it can answer, and says using it costs nothing") {
       val does = Extract.tool(None, Answers(_ => Right(None)).ask).spec.does
       assert(
-        does.contains(
-          "Unlike read_hidden, it withdraws no tool a member's turn is offered; an authority " +
-            "turn that uses it continues at member."
-        )
+        does.startsWith(
+          "It can only answer yes or no, a whole number, a date, one of options you list, or " +
+            "a short code of up to 16 letters, digits, _ or -. It can't give you any other " +
+            "text, such as a title, a name or a sentence: for those, read the item. "
+        ),
+        does.contains("Using it never stops you doing anything you can do now.")
       )
     }
 
@@ -149,13 +151,21 @@ object ExtractTests extends TestSuite {
         "shape" -> "token",
         "max" -> 17
       )
-      called(Some(gatedAt(Integrity.Member)), answers, wide).left.map {
+      val refused = called(Some(gatedAt(Integrity.Member)), answers, wide)
+      refused.left.map {
         case CallError.BadArgs(_, error, _) => Some(error)
         case _ => None
       } ==> Left(
         Some(
-          ArgsError.Invalid("shape", "a shape", "a token shape allows 1 to 16 characters, not 17")
+          ArgsError.Refused(
+            "shape",
+            "a short code is at most 16 characters, not 17. For longer text, read the item."
+          )
         )
+      )
+      refused.left.map(_.message.takeWhile(_ != '{')) ==> Left(
+        "The call to `extract` was not run: a short code is at most 16 characters, not 17. " +
+          "For longer text, read the item. You sent: "
       )
       val reversed = ujson.Obj(
         "name" -> "h1",
@@ -164,7 +174,12 @@ object ExtractTests extends TestSuite {
         "min" -> 5,
         "max" -> 1
       )
-      assert(called(Some(gatedAt(Integrity.Member)), answers, reversed).isLeft)
+      called(Some(gatedAt(Integrity.Member)), answers, reversed).left.map(
+        _.message.takeWhile(_ != '{')
+      ) ==> Left(
+        "The call to `extract` was not run: a number's least, 5, is above its most, 1. " +
+          "You sent: "
+      )
       answers.asked ==> Vector()
     }
 

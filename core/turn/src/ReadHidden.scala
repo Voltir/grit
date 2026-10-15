@@ -16,13 +16,17 @@ object ReadHidden {
   private val spec: ToolSpec[HiddenName] =
     ToolSpec(
       Name,
-      "Shows in full an item your request shows only as a stub (\"Hidden here as h1: …\"), " +
-        "in its place, from your next request on. Reading it withdraws the tools its stub " +
-        "names for the rest of this turn: call it only when the task needs what it says.",
+      "Shows in full something your request shows only as a note (\"Hidden here as h1: " +
+        "…\"), in its place, from your next request on. After you read it, you can't do what " +
+        "that note says you'd lose until you've answered. Read it when your answer needs what " +
+        "it says.",
       Args
-        .of((name = Field.text("The stub's name, such as h1.")))
+        .of((name = Field.text("The name its note gives, such as h1.")))
         .refine(a =>
-          HiddenName.read(a.name).left.map(_ => ArgsError.Invalid("name", "a stub's name", a.name))
+          HiddenName
+            .read(a.name)
+            .left
+            .map(_ => ArgsError.Invalid("name", "a name such as h1", a.name))
         )
     )
 

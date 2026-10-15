@@ -29,21 +29,28 @@ object Extract {
     */
   type Answer = (Item, String, Shape, CallSlot) => Either[String, Option[Extracted]]
 
+  /* What a refused shape's reason ends with: for a short code, where longer text is had. */
+  private def longer(kind: String): String =
+    if (kind == "token") " For longer text, read the item." else ""
+
   private val spec: ToolSpec[Asking] =
     ToolSpec(
       Name,
-      "Asks a question of an item your request shows only as a stub (\"Hidden here as h1: …\"), " +
-        "without reading it: a separate model, shown only that item and your question, answers " +
-        "in the shape you choose, and you are told only that answer. Unlike read_hidden, it " +
-        "withdraws no tool a member's turn is offered; an authority turn that uses it " +
-        "continues at member. Shapes: yes_no; number, a whole number from min to max; day, a " +
-        s"date; one_of, one of the options you list (at most ${Shape.MaxOptions}, each at most " +
-        s"${Shape.MaxOption} characters); token, at most max (up to ${Shape.MaxToken}) " +
-        "characters of A-Z, a-z, 0-9, _ and -. The answer may be that the item does not say.",
+      "It can only answer yes or no, a whole number, a date, one of options you list, or a " +
+        s"short code of up to ${Shape.MaxToken} letters, digits, _ or -. It can't give you any " +
+        "other text, such as a title, a name or a sentence: for those, read the item. It asks " +
+        "a question of something your request shows only as a note (\"Hidden here as h1: " +
+        "…\"), without reading it: a separate model, shown only that and your question, " +
+        "answers in the shape you choose, and you are told only that answer. Using it never " +
+        "stops you doing anything you can do now. Shapes: yes_no; number, a whole number from " +
+        "min to max; day, a date; one_of, one of the options you list (at most " +
+        s"${Shape.MaxOptions}, each at most ${Shape.MaxOption} characters); token, a short code " +
+        s"of at most max (up to ${Shape.MaxToken}) characters of A-Z, a-z, 0-9, _ and -. The " +
+        "answer may be that the item does not say.",
       Args
         .of(
           (
-            name = Field.text("The stub's name, such as h1."),
+            name = Field.text("The name its note gives, such as h1."),
             question = Field.text("What to ask of the item, in one sentence."),
             shape = Field.oneOf(
               "The shape the answer is read in.",
@@ -71,7 +78,7 @@ object Extract {
             name <- HiddenName
               .read(a.name)
               .left
-              .map(_ => ArgsError.Invalid("name", "a stub's name", a.name))
+              .map(_ => ArgsError.Invalid("name", "a name such as h1", a.name))
             shape <- Shape
               .of(
                 ujson.Obj.from(
@@ -82,7 +89,7 @@ object Extract {
                 )
               )
               .left
-              .map(why => ArgsError.Invalid("shape", "a shape", why))
+              .map(why => ArgsError.Refused("shape", s"$why.${longer(a.shape)}"))
           } yield (name = name, question = a.question, shape = shape)
         )
     )

@@ -49,12 +49,12 @@ object ShapeTests extends TestSuite {
         token(17),
         token(0)
       ).map(Shape.of) ==> List(
-        Left("a number shape's range is reversed: 5 to 4"),
-        Left("a one_of shape lists 1 to 64 options, not 65"),
-        Left("a one_of shape's options are at most 80 characters each"),
-        Left("a one_of shape lists 1 to 64 options, not 0"),
-        Left("a token shape allows 1 to 16 characters, not 17"),
-        Left("a token shape allows 1 to 16 characters, not 0")
+        Left("a number's least, 5, is above its most, 4"),
+        Left("one_of lists 1 to 64 options, not 65"),
+        Left("each of one_of's options is at most 80 characters"),
+        Left("one_of lists 1 to 64 options, not 0"),
+        Left("a short code is at most 16 characters, not 17"),
+        Left("a short code is at least 1 character, not 0")
       )
     }
 

@@ -18,8 +18,13 @@ enum ArgsError {
   /** `field` held `got`, which is not what it `accepts`. */
   case Invalid(field: String, accepts: String, got: String)
 
+  /** `field` held a value of the kind it accepts that its tool refuses, for `why`: whole
+    * sentences, the model's to read as they are.
+    */
+  case Refused(field: String, why: String)
+
   /** What the model reads when its call is refused: one sentence naming the field and what it
-    * accepts, or saying the arguments must be an object.
+    * accepts, or saying the arguments must be an object; a refused value's `why` as it is.
     */
   def message: String = this match {
     case NotAnObject(got) => s"The arguments must be a JSON object, not $got."
@@ -28,6 +33,7 @@ enum ArgsError {
       val names = known.map(k => s"`$k`").mkString(", ")
       s"There is no argument `$field`; the arguments there are $names."
     case Invalid(field, accepts, got) => s"`$field` takes $accepts, not $got."
+    case Refused(_, why) => why
   }
 
   /** This error, from reading the object at `path`, as the enclosing read reports it. */
@@ -36,6 +42,7 @@ enum ArgsError {
     case Missing(field, accepts) => Missing(s"$path.$field", accepts)
     case Unexpected(field, known) => Unexpected(s"$path.$field", known)
     case Invalid(field, accepts, got) => Invalid(s"$path.$field", accepts, got)
+    case Refused(field, why) => Refused(s"$path.$field", why)
   }
 }
 

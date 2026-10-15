@@ -31,7 +31,8 @@ object Shape {
   /** The most characters a [[Token]] allows. */
   val MaxToken: Int = 16
 
-  /** The shape `json` writes, or why not. `json` is an object whose `kind` is `yes_no`, `day`,
+  /** The shape `json` writes, or why not, in words the model reads as its call's refusal
+    * ([[grit.core.tool.ArgsError.Refused]]). `json` is an object whose `kind` is `yes_no`, `day`,
     * `number` (with whole `min` and `max`), `one_of` (with an `options` array of strings) or
     * `token` (with a whole `max`). Refused: an unknown kind or a missing field, an empty or
     * reversed range, no options, more than [[MaxOptions]] or one over [[MaxOption]]
@@ -48,25 +49,25 @@ object Shape {
           for {
             min <- whole(fields, "min")
             max <- whole(fields, "max")
-            _ <- Either.cond(min <= max, (), s"a number shape's range is reversed: $min to $max")
+            _ <- Either.cond(min <= max, (), s"a number's least, $min, is above its most, $max")
           } yield Number(min, max)
         case "one_of" =>
           fields
             .get("options")
             .flatMap(_.arrOpt)
             .flatMap(items => Some(items.toVector.flatMap(_.strOpt)).filter(_.size == items.size))
-            .toRight("a one_of shape lists its options as strings")
+            .toRight("one_of lists its options as strings")
             .flatMap(options =>
               if (options.isEmpty || options.size > MaxOptions)
-                Left(s"a one_of shape lists 1 to $MaxOptions options, not ${options.size}")
+                Left(s"one_of lists 1 to $MaxOptions options, not ${options.size}")
               else if (options.exists(_.length > MaxOption))
-                Left(s"a one_of shape's options are at most $MaxOption characters each")
+                Left(s"each of one_of's options is at most $MaxOption characters")
               else Right(OneOf(options))
             )
         case "token" =>
           whole(fields, "max").flatMap(n =>
-            if (n < 1 || n > MaxToken)
-              Left(s"a token shape allows 1 to $MaxToken characters, not $n")
+            if (n < 1) Left(s"a short code is at least 1 character, not $n")
+            else if (n > MaxToken) Left(s"a short code is at most $MaxToken characters, not $n")
             else Right(Token(n.toInt))
           )
         case other => Left(s"no shape is called $other")

@@ -60,6 +60,17 @@ object PlainWordsTests extends TestSuite {
       Vector("turn").filter(w => s"\\b$w\\b".r.findFirstIn(said).isDefined)
   }
 
+  /** Every `description` a schema gives, at any depth. */
+  private def meanings(schema: ujson.Value): Vector[String] = schema match {
+    case ujson.Obj(fields) =>
+      fields.toVector.flatMap {
+        case ("description", ujson.Str(meaning)) => Vector(meaning)
+        case (_, v) => meanings(v)
+      }
+    case ujson.Arr(items) => items.toVector.flatMap(meanings)
+    case _ => Vector.empty
+  }
+
   val tests = Tests {
 
     test("a stub and a withdrawal say nothing a person would not follow") {
@@ -71,6 +82,15 @@ object PlainWordsTests extends TestSuite {
       val line = TurnGate.withdrawn(before, now, offered)
       assert(line.isDefined)
       (stubs ++ line).map(unplain) ==> Vector.fill(4)(Vector.empty[String])
+    }
+
+    test("read_hidden's and extract's descriptions say nothing a person would not follow") {
+      val schemas = Vector(
+        ReadHidden.tool(None).schema(strict = false),
+        Extract.tool(None, (_, _, _, _) => Right(None)).schema(strict = false)
+      )
+      val described = schemas.map(s => (s.description +: meanings(s.parameters)).mkString(" "))
+      described.map(unplain) ==> Vector.fill(2)(Vector.empty[String])
     }
   }
 }
