@@ -1,8 +1,8 @@
 package grit.act.moves
 
-import grit.core.act.{Asked, Called, Keeping, MoveError, MoveLimits, Moves, ScriptedKeeping}
 import java.time.Instant
 
+import grit.core.act.{Asked, Called, Keeping, MoveError, MoveLimits, Moves, ScriptedKeeping}
 import grit.core.classify.Answer as Judged
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.flow.TestTainted

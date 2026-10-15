@@ -142,7 +142,7 @@ object RunTests extends TestSuite {
         new Moving(
           1,
           limits(1, 0),
-          (n, m) => said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))))
+          (n, m) => said(m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))))
         )
       val first =
         try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -183,7 +183,7 @@ object RunTests extends TestSuite {
         new Moving(
           1,
           limits(1, 0),
-          (n, m) => uncleared(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))))
+          (n, m) => uncleared(m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))))
         )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (w.reply(turn), w.models.calls, w.durable.recordedSteps(turn.workflowId)) ==>
@@ -203,10 +203,10 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(1, 0),
-        (_, m) => {
+        (n, m) => {
           import Triaged.given
           uncleared(
-            m.ask(move("j"), TestTainted.authority(Posed.judge(Triaged.State, Triaged.questions)))
+            m.ask(move("j"), n.map(_ => Posed.judge(Triaged.State, Triaged.questions)))
           )
         }
       )
@@ -223,8 +223,8 @@ object RunTests extends TestSuite {
         limits(2, 0),
         (n, m) => {
           import Triaged.given
-          val _ = m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n))))
-          m.ask(move("j"), TestTainted.authority(Posed.judge(Triaged.State, Triaged.questions)))
+          val _ = m.ask(move("a"), n.map(c => Posed.Text(request(c.n))))
+          m.ask(move("j"), n.map(_ => Posed.judge(Triaged.State, Triaged.questions)))
             .fold(_.toString, _ => "")
         }
       )
@@ -252,7 +252,7 @@ object RunTests extends TestSuite {
         new Moving(
           1,
           limits(1, 0),
-          (n, m) => said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))))
+          (n, m) => said(m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))))
         )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (w.reply(turn), w.models.calls, w.durable.recordedSteps(turn.workflowId)) ==>
@@ -269,8 +269,8 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(0, 1),
-        (_, m) =>
-          m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
+        (n, m) =>
+          m.call(move("c"), Probe, Read, n.map(_ => ujson.Obj("path" -> "a")))
             .fold(_.toString, shown)
       )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -299,10 +299,10 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(0, 2),
-        (_, m) =>
+        (n, m) =>
           Vector(
-            m.call(move("nope"), Probe, ToolName("probe_nope"), TestTainted.authority(ujson.Obj())),
-            m.call(move("asks"), Probe, Asks, TestTainted.authority(ujson.Obj("path" -> "a")))
+            m.call(move("nope"), Probe, ToolName("probe_nope"), n.map(_ => ujson.Obj())),
+            m.call(move("asks"), Probe, Asks, n.map(_ => ujson.Obj("path" -> "a")))
           ).map(_.fold(_.toString, shown)).mkString("\n")
       )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -343,6 +343,29 @@ object RunTests extends TestSuite {
     }
 
     test(
+      "a run asked at Outside whose job calls, from its run, a tool requiring Member is withheld, and sends nothing"
+    ) {
+      val w = new World
+      w.serve(guarded = true)
+      val turn = w.started(w.asked("thread", "C1/1.0", believed = Integrity.Outside))
+      val job = new Moving(
+        1,
+        limits(0, 1),
+        (n, m) =>
+          m.call(move("c"), Probe, Guarded, n.map(_ => ujson.Obj("path" -> "a")))
+            .fold(_.toString, shown)
+      )
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
+      (w.reply(turn), w.sent) ==> (
+        Some(
+          "Failed(You can't read guarded paths right now, because of something you read; " +
+            "nothing was done, so answer without it.)"
+        ),
+        Vector()
+      )
+    }
+
+    test(
       "a call the run may not send to is written answered with its refusal, and fails unwaited"
     ) {
       val w = new World(floor = Label.at(Level.Internal))
@@ -351,8 +374,8 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(0, 1),
-        (_, m) =>
-          m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
+        (n, m) =>
+          m.call(move("c"), Probe, Read, n.map(_ => ujson.Obj("path" -> "a")))
             .fold(_.toString, shown)
       )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -372,8 +395,8 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(0, 1),
-        (_, m) =>
-          m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
+        (n, m) =>
+          m.call(move("c"), Probe, Read, n.map(_ => ujson.Obj("path" -> "a")))
             .fold(_.toString, shown)
       )
       val first =
@@ -397,8 +420,8 @@ object RunTests extends TestSuite {
       val job = new Moving(
         1,
         limits(0, 1),
-        (_, m) =>
-          m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
+        (n, m) =>
+          m.call(move("c"), Probe, Read, n.map(_ => ujson.Obj("path" -> "a")))
             .fold(_.toString, shown)
       )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -428,8 +451,8 @@ object RunTests extends TestSuite {
         limits(2, 0),
         (n, m) =>
           Vector(
-            m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))),
-            m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n))))
+            m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))),
+            m.ask(move("a"), n.map(c => Posed.Text(request(c.n))))
           )
             .map(said)
             .mkString("\n")
@@ -446,10 +469,10 @@ object RunTests extends TestSuite {
       def asking(first: Int) = new Moving(
         1,
         limits(2, 0),
-        (_, m) =>
+        (n, m) =>
           Vector(
-            m.ask(move("a"), TestTainted.authority(Posed.Text(request(first)))),
-            m.ask(move("b"), TestTainted.authority(Posed.Text(request(9))))
+            m.ask(move("a"), n.map(_ => Posed.Text(request(first)))),
+            m.ask(move("b"), n.map(_ => Posed.Text(request(9))))
           )
             .map(said)
             .mkString("\n")
@@ -470,7 +493,7 @@ object RunTests extends TestSuite {
         new Moving(
           1,
           limits(1, 0),
-          (_, m) => said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n)))))
+          (t, m) => said(m.ask(move("a"), t.map(_ => Posed.Text(request(n)))))
         )
       try w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1))))
       catch { case _: InMemoryDurable.Crash => "crashed" }
@@ -657,7 +680,7 @@ object RunTests extends TestSuite {
         new Moving(
           1,
           limits(1, 0),
-          (n, m) => said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))))
+          (n, m) => said(m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))))
         )
       val crashed =
         try
@@ -696,7 +719,7 @@ object RunTests extends TestSuite {
         1,
         limits(1, 0),
         (n, m) => {
-          val r = said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n)))))
+          val r = said(m.ask(move("a"), n.map(c => Posed.Text(request(c.n)))))
           seen.reply = Some(r)
           r
         }
@@ -820,11 +843,11 @@ object RunTests extends TestSuite {
         2,
         limits(1, 1),
         (n, m) =>
-          said(m.ask(move("a"), TestTainted.authority(Posed.Text(request(n.n))))) + m.call(
+          said(m.ask(move("a"), n.map(c => Posed.Text(request(c.n))))) + m.call(
             move("c"),
             Probe,
             Read,
-            TestTainted.authority(ujson.Obj())
+            n.map(_ => ujson.Obj())
           )
       )
       val said2 = w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
@@ -837,7 +860,6 @@ object RunTests extends TestSuite {
     }
   }
 
-  /** `{"count": integer}`, read as the count. */
   /** `remind`, replying what its run is believed at, written. */
   private object Believing extends PlainJob[Count] {
     val name = remind.name
@@ -847,6 +869,7 @@ object RunTests extends TestSuite {
     def run(run: Trusted[JobRun[Count]], moves: Moves^): String = Integrity.written(run.integrity)
   }
 
+  /** `{"count": integer}`, read as the count. */
   private object Counted {
     val read: grit.core.schema.Conforming -> Either[String, Int] =
       c => c.json.objOpt.flatMap(_.get("count")).flatMap(_.numOpt).map(_.toInt).toRight("no count")
@@ -865,7 +888,7 @@ object RunTests extends TestSuite {
         val r = m
           .ask(
             move("a"),
-            TestTainted.authority(Posed.Json("Count.", Vector(Message.User(s"to ${n.n}")), reply))
+            n.map(c => Posed.Json("Count.", Vector(Message.User(s"to ${c.n}")), reply))
           )
           .fold(_.toString, a => (replied(a) * 2).toString)
         seen.reply = Some(r)
@@ -929,10 +952,10 @@ object RunTests extends TestSuite {
     new Moving(
       1,
       limits(1, 0),
-      (_, m) => {
+      (n, m) => {
         import Triaged.given
         val r = m
-          .ask(move("j"), TestTainted.authority(Posed.judge(state, Triaged.questions)))
+          .ask(move("j"), n.map(_ => Posed.judge(state, Triaged.questions)))
           .fold(
             _.toString,
             a => s"${replied(a)._1.choice} ${replied(a)._1.confidence} ${replied(a)._2.likeliest}"

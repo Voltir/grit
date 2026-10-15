@@ -21,7 +21,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.flow.{TestTainted, Trusted}
+import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -458,18 +458,19 @@ object RunFixtures {
   def said(asked: Either[MoveError, Asked[Message.Assistant]]): String =
     asked.fold(_.toString, replied(_).blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
 
-  /** `remind` at `version`, its parameters a count, replying what `plan` makes of its count and
-    * moves, within `limits`.
+  /** `remind` at `version`, its parameters a count, replying what `plan` makes of its count,
+    * believed as its run is, and moves, within `limits`.
     */
   final class Moving(
       val version: Int,
       override val limits: MoveLimits,
-      plan: (Count, Moves^) -> String
+      plan: (Tainted[Count], Moves^) -> String
   ) extends PlainJob[Count] {
     val name = remind.name
     def write(params: Count): ujson.Value = remind.write(params)
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
-    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = plan(run.extract.params, moves)
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String =
+      plan(run.tainted.map(_.params), moves)
   }
 
   /** `remind` at `version`, within an ask and a call, its plan [[probes]], telling `seen` what
@@ -533,26 +534,26 @@ object RunFixtures {
     * [[Answered]]; with 5 it judges [[Weighed]] of a text. Its reply is each move's result, a
     * line each.
     */
-  val probes: (Count, Moves^) -> String =
+  val probes: (Tainted[Count], Moves^) -> String =
     (n, m) => {
-      def call() = m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
+      def call() = m.call(move("c"), Probe, Read, n.map(_ => ujson.Obj("path" -> "a")))
       def ask(about: String) =
         said(
           m.ask(
             move("a"),
-            TestTainted.authority(Posed.Text(ModelRequest("Count.", Vector(Message.User(about)))))
+            n.map(_ => Posed.Text(ModelRequest("Count.", Vector(Message.User(about)))))
           )
         )
-      n.n match {
+      Trusted.asIs(n).extract.n match {
         case 1 => ask("to 1")
         case 2 => call().fold(_.toString, shown)
         case 4 =>
           m.ask(
             move("a"),
-            TestTainted.authority(Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
+            n.map(_ => Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
           ).fold(_.toString, replied)
         case 5 =>
-          m.ask(move("j"), TestTainted.authority(Posed.judge("the build is red", Weighed)))
+          m.ask(move("j"), n.map(_ => Posed.judge("the build is red", Weighed)))
             .fold(_.toString, a => s"${replied(a)._1} ${replied(a)._2.choice}")
         case _ =>
           val called = call().fold(_.toString, shown)
