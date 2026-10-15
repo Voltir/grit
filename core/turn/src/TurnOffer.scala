@@ -123,7 +123,7 @@ object TurnOffer {
       at: Classification
   )(using
       tx: Tx^
-  ): Either[TurnFailure, Recorded] =
+  ): Either[TurnFailure, Decided] =
     (for {
       found <- hosting.conversations.get(turn.conversationId)
       conversation <- found.toRight(
@@ -216,14 +216,18 @@ object TurnOffer {
           Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
-    } yield Recorded(
-      workspace,
-      set.id,
-      prompt.ids,
-      root,
-      if (kept) advertised.map(_.name) else Vector.empty,
-      offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
-      Some(TurnShape(shaping.width, whole.id, took))
+    } yield Decided(
+      Recorded(
+        workspace,
+        set.id,
+        prompt.ids,
+        root,
+        if (kept) advertised.map(_.name) else Vector.empty,
+        offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
+        Some(TurnShape(shaping.width, whole.id, took))
+      ),
+      set,
+      prompt
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
@@ -276,25 +280,40 @@ object TurnOffer {
         StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
       }
 
-  /** The offer `recorded` read back through `db`: its tool set and prompt, by id.
-    * `TurnFailure.Store` naming what is not kept.
+  /** What the `offer` step decided: `recorded`, the offer by reference, as its texts are kept,
+    * and `offer`, what those references name.
     */
-  def load(hosting: TurnHosting, db: Reads^, recorded: Recorded): Either[TurnFailure, TurnOffer] =
-    db.read { (tx: Tx^) ?=>
-      for {
-        set <- hosting.toolSets.get(recorded.tools)
-        prompt <- hosting.prompts.prompt(recorded.prompt)
-      } yield TurnOffer(
+  final case class Decided private (recorded: Recorded, offer: TurnOffer)
+
+  object Decided {
+
+    /** `recorded`, its tool set `tools` and its prompt `prompt`; `Left` when `tools` or `prompt`
+      * is not what `recorded` names by id.
+      */
+    def of(recorded: Recorded, tools: ToolSet, prompt: SystemPrompt): Either[String, Decided] =
+      if (tools.id != recorded.tools) Left("the offer's tool set is not the one its id names")
+      else if (prompt.ids != recorded.prompt) Left("the offer's prompt is not the one its ids name")
+      else Right(apply(recorded, tools, prompt))
+
+    // `recorded` made from `tools` and `prompt` themselves, so it names them by id.
+    private[TurnOffer] def apply(
+        recorded: Recorded,
+        tools: ToolSet,
+        prompt: SystemPrompt
+    ): Decided =
+      new Decided(recorded, whole(recorded, tools, prompt))
+
+    private def whole(recorded: Recorded, tools: ToolSet, prompt: SystemPrompt): TurnOffer =
+      TurnOffer(
         recorded.workspace,
-        set,
+        tools,
         prompt,
         recorded.root,
         recorded.advertised,
         recorded.reached,
         recorded.shaped.fold(Width.Deployed)(_.width)
       )
-    }.left
-      .map(TurnFailure.ofStore)
+  }
 
   /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
     * tool, else its hosted one, else, for a name `offer` took from an advert, its

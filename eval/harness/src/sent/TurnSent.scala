@@ -125,14 +125,7 @@ object TurnSent {
             TurnRecord.requests(
               turn,
               steps,
-              TurnRecord.Reads(
-                reader.entries,
-                reader.principals,
-                reader.documents,
-                reader.prompts,
-                reader.toolSets,
-                reader.profiles
-              )
+              TurnRecord.Reads(reader.entries, reader.principals, reader.documents)
             )
           )
         )

@@ -9,26 +9,26 @@ import TurnSteps.*
 /** The durable turn, as one flow: what [[Turn.body]] runs. Its steps, as [[Turn.Step]] names
   * them, in order:
   *   1. `pin-models` — the catalog in force, pinned as the turn's profile, which a rerun runs
-  *      under; the profile read back from the store in every run, recorded by none.
+  *      under.
   *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
   *      the turn.
   *   1. `route` — the pin each role's calls are made under, and the effort laid over the turn's
   *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn.
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
-  *      and of its task questions; what it recorded read back in every run.
-  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, or what they
-  *      recorded did not read back, ending the turn ([[TurnSteps.recordFailure]]). A turn that
-  *      failed there before the patch [[Turn.Patches.RecordFailure]] shipped records nothing
-  *      more.
+  *      and of its task questions; recorded with its tool set and prompt.
+  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
+  *      ([[TurnSteps.recordFailure]]). A turn that failed there before the patch
+  *      [[Turn.Patches.RecordFailure]] shipped records nothing more.
   *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
   *      Never fails the turn.
   *   1. `classify`, `record-topic` — the message placed among its conversation's topics, and that
   *      placement recorded ([[TurnTopics]]). Never fail the turn.
   *   1. `assemble` — a fresh window over what came before the turn, at its offer's width.
   *   1. `record-window` — the window and its queries recorded before the model is called, so an
-  *      edge sees what the model will see.
+  *      edge sees what the model will see, and the loop's limits, once its tools are checked to
+  *      make one toolbox.
   *   1. The tool loop ([[TurnRound]]), from `call-model`, until a reply calls no tool or the
-  *      budget's last call; before it, in every run, its tools checked to make one toolbox.
+  *      budget's last call.
   *   1. `record-verdict` — when the classifier was unsure, the model's verdict ([[TurnVerdict]]),
   *      once the loop has a reply. Never fails the turn.
   *   1. `append` — the reply recorded as the turn's entry, or as a draft when its root is a
@@ -52,26 +52,9 @@ private[turn] object TurnFlow {
 
   /** From `pin-models` to `offer`: what the turn offers, or why it ended before it did. */
   private def early: Flow[Env, TurnRef, Failed, Offered] = {
-    val profiled = Flow
-      .mayEnd(
-        Flow
-          .step(pinModels)
-          .keeping
-          .map((turn, id) => id.map((turn, _)).left.map(Failed(turn, _)))
-      )
-      .andThen(
-        Flow.mayEnd(
-          Flow.unrecorded[Env, (TurnRef, grit.core.model.TurnProfileId), Either[Failed, Weighed]](
-            r =>
-              (turn, id) =>
-                TurnSteps
-                  .profileOf(r.env, id)
-                  .map(Weighed(turn, _, None))
-                  .left
-                  .map(Failed(turn, _))
-          )
-        )
-      )
+    val profiled = Flow.decide(pinModels)((turn, pinned) =>
+      pinned.map(Weighed(turn, _, None)).left.map(Failed(turn, _))
+    )
     val weighed = profiled
       .andThen(
         Flow
@@ -84,24 +67,13 @@ private[turn] object TurnFlow {
         r.map(Offering(w.turn, w.weighed, _)).left.map(Failed(w.turn, _))
       )
     )
-    val offered = Flow.decide(offer)((r, made) => made.map((r, _)).left.map(Failed(r.turn, _)))
-    val loaded = Flow.mayEnd(
-      Flow.unrecorded[Env, (Offering, TurnOffer.Recorded), Either[Failed, Offered]](r =>
-        (routed, recorded) => {
-          val (env, pins) = (r.env, Turn.Picked.of(routed.route))
-          TurnOffer
-            .load(
-              env.hosting,
-              pins.reads(env.db).as(grit.core.visibility.Subject.Turn(routed.turn)),
-              recorded
-            )
-            .map(Offered(routed.turn, pins, _, ""))
-            .left
-            .map(Failed(routed.turn, _))
-        }
-      )
+    val offered = Flow.decide(offer)((r, decided) =>
+      decided
+        .map(d => Offered(r.turn, Turn.Picked.of(r.route), d.offer, ""))
+        .left
+        .map(Failed(r.turn, _))
     )
-    routed.andThen(offered).andThen(loaded)
+    routed.andThen(offered)
   }
 
   /** A turn ended before its offer: `record-failure`, once the patch for it shipped. */
@@ -140,16 +112,11 @@ private[turn] object TurnFlow {
     def unran(at: Offered, failure: TurnFailure): Ended = Ended(at, Left(failure), None, None)
     val assembled = Flow
       .decide(assemble)((p, w) => w.map(Assembled(p.at, p.placing, _)).left.map(unran(p.at, _)))
-      .andThen(Flow.decide(recordWindow)((a, kept) => kept.map(_ => a).left.map(unran(a.at, _))))
-    val started = Flow.mayEnd(
-      Flow.unrecorded[Env, Assembled, Either[Ended, (Assembled, TurnRound.Looping)]](r =>
-        a =>
-          r.looping(a.turn, a.at.offer, a.at.pins, a.seen, TurnShown.asked(a.placing))
-            .map((a, _))
-            .left
-            .map(unran(a.at, _))
+      .andThen(
+        Flow.decide(recordWindow)((a, limits) =>
+          limits.map(l => (a, looping(a, l))).left.map(unran(a.at, _))
+        )
       )
-    )
     val looped = Flow
       .pass[(Assembled, TurnRound.Looping)]
       .map(_._2)
@@ -158,7 +125,6 @@ private[turn] object TurnFlow {
       .map((started, loop) => (started._1, loop))
     placed
       .andThen(assembled)
-      .andThen(started)
       .andThen(looped)
       .andThen(
         Flow.mayEnd(
@@ -168,6 +134,19 @@ private[turn] object TurnFlow {
         )
       )
   }
+
+  /** What `a`'s loop runs under, within `limits`. */
+  private def looping(a: Assembled, limits: TurnRound.Limits): TurnRound.Looping =
+    TurnRound.Looping(
+      a.turn,
+      a.at.offer,
+      a.at.pins,
+      a.seen,
+      TurnShown.asked(a.placing),
+      limits.budget,
+      a.at.pins.turn.settings.strict == grit.core.model.StrictSchemas.Enforced,
+      limits.answerWithin
+    )
 
   /** A loop that stalled: its verdict recorded when it had a reply. */
   private def stalled: Flow[Env, (Assembled, TurnRound.Stalled), Nothing, Ended] =

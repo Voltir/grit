@@ -49,19 +49,17 @@ private[turn] object TurnSteps {
       */
     def offer(turn: TurnRef, weighed: Option[TurnWeighing.Weighed], routed: Route)(using
         Tx^
-    ): Either[TurnFailure, TurnOffer.Recorded]
+    ): Either[TurnFailure, TurnOffer.Decided]
 
-    /** What `turn`'s loop runs under, offered as `offer` over `seen` as `pins` allot its
-      * calls, its model asked about `asked`: `TurnFailure.Model` when its tools do not make one
-      * toolbox ([[TurnShown.offered]]). Read in every run, recorded by none.
+    /** The limits a loop offered as `offer`, its calls allotted as `pins` says, its model asked
+      * about `asked`, runs under: `TurnFailure.Model` when its tools do not make one toolbox
+      * ([[TurnShown.offered]]).
       */
-    def looping(
-        turn: TurnRef,
+    def limits(
         offer: TurnOffer,
         pins: Turn.Picked,
-        seen: Window,
         asked: Option[TurnTopics.Classification]
-    ): Either[TurnFailure, TurnRound.Looping]
+    ): Either[TurnFailure, TurnRound.Limits]
 
     /** What the turn's rounds act through. */
     def rounds: TurnRound.Env^{this}
@@ -87,7 +85,7 @@ private[turn] object TurnSteps {
 
     def offer(turn: TurnRef, weighed: Option[TurnWeighing.Weighed], routed: Route)(using
         Tx^
-    ): Either[TurnFailure, TurnOffer.Recorded] = {
+    ): Either[TurnFailure, TurnOffer.Decided] = {
       val pins = Turn.Picked.of(routed)
       val (ledger, upstream) = (turnEnv.records.ledger, turnEnv.classifier.upstream)
       pins.known
@@ -112,24 +110,16 @@ private[turn] object TurnSteps {
         )
     }
 
-    def looping(
-        turn: TurnRef,
+    def limits(
         offer: TurnOffer,
         pins: Turn.Picked,
-        seen: Window,
         asked: Option[TurnTopics.Classification]
-    ): Either[TurnFailure, TurnRound.Looping] =
+    ): Either[TurnFailure, TurnRound.Limits] =
       TurnShown
         .offered(TurnOffer.toolbox(tooling, offer), asked)
         .map(_ =>
-          TurnRound.Looping(
-            turn,
-            offer,
-            pins,
-            seen,
-            asked,
+          TurnRound.Limits(
             TurnLoop.Budget.allotted(tooling.budget, pins.calls),
-            pins.turn.settings.strict == StrictSchemas.Enforced,
             tooling.answerWithin
           )
         )
@@ -256,11 +246,10 @@ private[turn] object TurnSteps {
   private def onTurn(in: OfTurn): Subject = Subject.Turn(in.turn)
 
   /** `pin-models`: the catalog in force, pinned as the turn's profile: kept by the store, and
-    * its id the step's output, so a replay makes every call under the profile the turn started
-    * with.
+    * the step's output, so a replay makes every call under the profile the turn started with.
     */
-  val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfileId]] =
-    Step.transact[Env, TurnRef, Either[TurnFailure, TurnProfileId]](
+  val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfile]] =
+    Step.transact[Env, TurnRef, Either[TurnFailure, TurnProfile]](
       Names.pinModels,
       Subject.Turn(_)
     )(r =>
@@ -274,19 +263,9 @@ private[turn] object TurnSteps {
               .map(why => TurnFailure.Model(s"no model catalog: $why"))
             profile = catalog.pin
             _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(TurnFailure.ofStore)
-          } yield profile.id
+          } yield profile
         }
     )
-
-  /** The profile kept under `id`, read through `env`'s `db`; `TurnFailure.Store` when none
-    * is.
-    */
-  def profileOf(env: TurnEnv^, id: TurnProfileId): Either[TurnFailure, TurnProfile] =
-    env.db
-      .read(Subject.Public)(env.records.profiles.get(id))
-      .left
-      .map(TurnFailure.ofStore)
-      .flatMap(_.toRight(TurnFailure.Store(s"no profile kept under ${TurnProfileId.value(id)}")))
 
   /** `weigh` ([[Env.weigh]]). Taken by every turn, whatever the recipe, so a recovery under
     * another deployment's configuration replays the same steps.
@@ -303,8 +282,8 @@ private[turn] object TurnSteps {
     )
 
   /** `offer` ([[Env.offer]]), its transaction bounded as the turn was routed. */
-  val offer: Step[Env, Offering, Either[TurnFailure, TurnOffer.Recorded]] =
-    Step.transact[Env, Offering, Either[TurnFailure, TurnOffer.Recorded]](Names.offer, onTurn)(r =>
+  val offer: Step[Env, Offering, Either[TurnFailure, TurnOffer.Decided]] =
+    Step.transact[Env, Offering, Either[TurnFailure, TurnOffer.Decided]](Names.offer, onTurn)(r =>
       in => (tx: Tx^) ?=> r.offer(in.turn, in.weighed, in.route)
     )
 
@@ -397,11 +376,20 @@ private[turn] object TurnSteps {
 
   /** `record-window`: the turn's window and the queries that chose it, recorded before the
     * model is called, so an edge sees them while the turn runs, and each document the window
-    * holds counted as placed.
+    * holds counted as placed; and the limits its loop runs under ([[Env.limits]]), checked
+    * first, so a turn whose tools do not make one toolbox records no window.
     */
-  val recordWindow: Step[Env, Assembled, Either[TurnFailure, EntryId]] =
-    Step.transact[Env, Assembled, Either[TurnFailure, EntryId]](Names.recordWindow, onTurn)(r =>
-      in => (tx: Tx^) ?=> windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now())
+  val recordWindow: Step[Env, Assembled, Either[TurnFailure, TurnRound.Limits]] =
+    Step.transact[Env, Assembled, Either[TurnFailure, TurnRound.Limits]](
+      Names.recordWindow,
+      onTurn
+    )(r =>
+      in =>
+        (tx: Tx^) ?=>
+          r.limits(in.at.offer, in.at.pins, TurnShown.asked(in.placing))
+            .flatMap(limits =>
+              windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now()).map(_ => limits)
+            )
     )
 
   /** `record-verdict`: the model's verdict on the turn's topic, when the classifier was unsure

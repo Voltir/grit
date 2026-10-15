@@ -61,25 +61,25 @@ object TurnCaptureTests extends TestSuite {
       |  Toolbox.of().toOption.map(box => $tooling(box, Toolbox.Empty, Vector(writes(e)), j, b))
       |""".stripMargin
 
-  /** A tool set store over `store`, handed to [[TurnRecord.Reads]], the stores a turn's
+  /** A principals store over `store`, handed to [[TurnRecord.Reads]], the stores a turn's
     * requests are rebuilt from: one that reads through the workspace `ws` when `store` is
     * `"spying"`, else one that reads nothing.
     */
   private def reads(store: String) =
     s"""def rebuildFrom(ws: Workspace^, rs: TurnRecord.Reads): TurnRecord.Reads^{ws} = {
       |  val none = Left(grit.core.store.StoreError.Invalid("none"))
-      |  val pure = new grit.core.tool.ToolSets {
-      |    def keep(set: grit.core.tool.ToolSet)(using grit.core.store.Tx^) = Right(())
-      |    def get(id: grit.core.tool.ToolSetId)(using grit.core.store.Tx^) = none
+      |  val pure = new grit.core.store.Principals {
+      |    def name(account: grit.core.identity.Account, name: String)(using grit.core.store.Tx^) = Right(())
+      |    def speakers(entries: Vector[grit.core.id.EntryId])(using grit.core.store.Tx^) = none
       |  }
-      |  val spying = new grit.core.tool.ToolSets {
-      |    def keep(set: grit.core.tool.ToolSet)(using grit.core.store.Tx^) = Right(())
-      |    def get(id: grit.core.tool.ToolSetId)(using grit.core.store.Tx^) = {
+      |  val spying = new grit.core.store.Principals {
+      |    def name(account: grit.core.identity.Account, name: String)(using grit.core.store.Tx^) = Right(())
+      |    def speakers(entries: Vector[grit.core.id.EntryId])(using grit.core.store.Tx^) = {
       |      val _ = RelPath.of("x").flatMap(ws.read(_, Lines.All))
       |      none
       |    }
       |  }
-      |  rs.copy(toolSets = $store)
+      |  rs.copy(principals = $store)
       |}
       |""".stripMargin
 
@@ -121,19 +121,19 @@ object TurnCaptureTests extends TestSuite {
       |import grit.turn.*
       |""".stripMargin
 
-  /** A round's binding of `p`, passing on `kept`, of the type `tpe`, as round state. */
-  private def bindingKept(tpe: String, kept: String) =
-    s"""def binding(p: TurnLoop.Pending): Flow[TurnRound.Env, TurnRound.Rounds, Nothing, (TurnRound.Rounds, $tpe)] =
-      |  Flow.unrecorded[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)](r => at => (at, $kept))
+  /** A round's step, passing on `kept`, of the type `tpe`, as round state. */
+  private def roundKept(tpe: String, kept: String) =
+    s"""def kept(using Journaled[(TurnRound.Rounds, $tpe)]): Step[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)] =
+      |  Step[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)](StepName("kept"))(r => at => (at, $kept))
       |""".stripMargin
 
-  private val keptSettling = bindingKept("TurnTools.Settling^", "r.settling")
-  private val keptKind = bindingKept("Either[TurnFailure, TurnTools.Kind]", "r.kind(at, p)")
+  private val keptSettling = roundKept("TurnTools.Settling^", "r.settling")
+  private val keptNow = roundKept("java.time.Instant", "r.now()")
 
   /** A turn's step of its own, passing on `kept`, of the type `tpe`, on the wire. */
   private def stepKept(tpe: String, kept: String) =
-    s"""def held: Flow[TurnSteps.Env, grit.core.id.TurnRef, Nothing, (grit.core.id.TurnRef, $tpe)] =
-      |  Flow.unrecorded[TurnSteps.Env, grit.core.id.TurnRef, (grit.core.id.TurnRef, $tpe)](r => t => (t, $kept))
+    s"""def held(using Journaled[(grit.core.id.TurnRef, $tpe)]): Step[TurnSteps.Env, grit.core.id.TurnRef, (grit.core.id.TurnRef, $tpe)] =
+      |  Step[TurnSteps.Env, grit.core.id.TurnRef, (grit.core.id.TurnRef, $tpe)](StepName("held"))(r => t => (t, $kept))
       |""".stripMargin
 
   private val keptRounds = stepKept("TurnRound.Env^", "r.rounds")
@@ -141,7 +141,7 @@ object TurnCaptureTests extends TestSuite {
   private val keptWeighed = stepKept("Option[TurnWeighing.Weighed]", "r.weigh(t)")
 
   private lazy val rounds =
-    Probes.batch(roundsPrelude, List(keptSettling, keptKind, keptRounds, keptEnv, keptWeighed))
+    Probes.batch(roundsPrelude, List(keptSettling, keptNow, keptRounds, keptEnv, keptWeighed))
 
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
@@ -191,7 +191,7 @@ object TurnCaptureTests extends TestSuite {
     }
 
     test("a round's state holds what its env's bodies found, never a capability they act through") {
-      rounds.errors(keptKind) ==> List()
+      rounds.errors(keptNow) ==> List()
       assert(rejected(rounds.errors(keptSettling)))
     }
 

@@ -142,6 +142,12 @@ private[turn] object TurnRound {
       copy(gating = gating.map(_.updated(round.index, gate)))
   }
 
+  /** What a turn's loop is allowed: `budget`, its model calls, and `answerWithin`, how long a
+    * call that asks a person first waits for them. Recorded with the turn's window, so a
+    * rerun keeps the limits its turn started under.
+    */
+  final case class Limits(budget: Budget, answerWithin: FiniteDuration)
+
   /** What a round whose reply called tools kept: the reply, as `reply`, and what each of its
     * calls is, in order, as the run that kept it read them.
     */

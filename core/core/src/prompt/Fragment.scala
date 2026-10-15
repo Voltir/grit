@@ -27,6 +27,16 @@ object Fragment {
     */
   def write(f: Fragment): ujson.Value =
     ujson.Obj("layer" -> f.layer.key, "source" -> f.source, "text" -> f.text)
+
+  /** The fragment stored as `v` ([[write]]'s form), or why it is none. */
+  def read(v: ujson.Value): Either[String, Fragment] =
+    for {
+      o <- v.objOpt.toRight("fragment: expected an object")
+      key <- o.get("layer").flatMap(_.strOpt).toRight("fragment: no layer")
+      layer <- Layer.of(key).toRight(s"fragment: no layer $key")
+      source <- o.get("source").flatMap(_.strOpt).toRight("fragment: no source")
+      text <- o.get("text").flatMap(_.strOpt).toRight("fragment: no text")
+    } yield Fragment(layer, source, text)
 }
 
 /** A fragment's content hash ([[Fragment.id]]). */

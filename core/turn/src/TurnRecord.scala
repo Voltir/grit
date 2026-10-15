@@ -6,8 +6,7 @@ import grit.core.edge.RequestState
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
-import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
-import grit.core.tool.ToolSets
+import grit.core.store.{EntryStore, Principals, Tx}
 
 import TurnJournal.given
 
@@ -50,10 +49,7 @@ object TurnRecord {
   final case class Reads(
       entries: EntryStore,
       principals: Principals,
-      documents: DocumentSearch,
-      prompts: PromptStore,
-      toolSets: ToolSets,
-      profiles: ModelProfileStore
+      documents: DocumentSearch
   )
 
   /** The model calls `turn`'s reply made, each with the request it was sent, rebuilt from
@@ -65,8 +61,8 @@ object TurnRecord {
     * that ran the turn. `Calls(Vector.empty, None, _)` for a turn whose first call's reply is
     * not kept yet.
     *
-    * `Left` naming what does not read: a step whose output does not read, a prompt, tool set
-    * or profile not kept, a call's reply entry no longer kept, or a window naming entries
+    * `Left` naming what does not read: a step whose output does not read, a call's reply entry
+    * no longer kept, or a window naming entries
     * since deleted, with their seqs. A nearby entry or document since deleted, a plugin since disabled or a person since
     * renamed rebuilds as it is now, not as sent: each call's ledger row keeps the estimate of
     * what was sent to compare with.

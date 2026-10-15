@@ -119,6 +119,7 @@ object TurnOfferTests extends TestSuite {
         answering = false,
         Tx.classification
       )
+      .map(_.recorded)
       .flatMap(r =>
         Prompts
           .prompt(r.prompt)
@@ -185,6 +186,7 @@ object TurnOfferTests extends TestSuite {
         false,
         Tx.classification
       )
+      .map(_.recorded)
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
       .fold(
         f => throw new java.lang.AssertionError(f.toString),
@@ -255,6 +257,7 @@ object TurnOfferTests extends TestSuite {
         false,
         Tx.classification
       )
+      .map(_.recorded)
       .flatMap(r =>
         ToolSets
           .get(r.tools)
@@ -339,6 +342,7 @@ object TurnOfferTests extends TestSuite {
         answering,
         Tx.classification
       )
+      .map(_.recorded)
       .flatMap(r =>
         (for {
           set <- ToolSets.get(r.tools)
@@ -501,6 +505,7 @@ object TurnOfferTests extends TestSuite {
         answering = false,
         Tx.classification
       )
+      .map(_.recorded)
       .flatMap(r =>
         (for {
           set <- ToolSets.get(r.tools)

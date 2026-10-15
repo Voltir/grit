@@ -851,7 +851,7 @@ object TurnHostedTests extends TestSuite {
       results(provider).map(_.content) ==> Vector("The tool fetch is gone; nothing ran.")
     }
 
-    test("a turn whose recorded tool set is not kept fails, naming it") {
+    test("a turn rerun offers the tool set its offer recorded, whether or not a store keeps it") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
@@ -861,11 +861,12 @@ object TurnHostedTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         durable.run(turn.workflowId)(hostedBody(entries, dies, edge, toolSets = kept))
       )
-      val id = kept.sets.map(s => grit.core.tool.ToolSetId.value(s.id)).mkString
+      val rerun = new Scripted((_, _) => Right(calling("done")))
       durable.run(turn.workflowId)(
-        hostedBody(entries, model(), edge, toolSets = new InMemoryToolSets)
-      ) ==>
-        s"failed: Store(no tool set $id is kept)"
+        hostedBody(entries, rerun, edge, toolSets = new InMemoryToolSets)
+      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      rerun.requests.headOption.map(_.tools.map(_.name)) ==>
+        Some(kept.sets.flatMap(_.tools.map(e => ToolName.value(e.name))))
     }
   }
 }

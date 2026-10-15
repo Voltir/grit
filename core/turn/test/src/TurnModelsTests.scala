@@ -102,7 +102,7 @@ object TurnModelsTests extends TestSuite {
       profiles.of(next.workflowId)(using TestTx.fake) ==> Right(Some(Changed.pin))
     }
 
-    test("pin-models journals the profile's id, and the turn runs under the profile kept by it") {
+    test("pin-models journals the profile itself, and the turn runs under the profile recorded") {
       val entries = new InMemoryEntryStore
       val profiles = new InMemoryModelProfileStore
       val provider = new RecordingProvider
@@ -112,16 +112,15 @@ object TurnModelsTests extends TestSuite {
         InMemoryDurable.Step(
           "pin-models",
           InMemoryDurable.Outcome.Output(
-            ujson.Obj("ok" -> TurnProfileId.value(profile.id)).render()
+            ujson.Obj("ok" -> grit.core.model.CatalogJson.writeTurn(profile)).render()
           )
         )
       val turn = say(entries, "hello")
       durable.run(turn.workflowId)(modelsBody(entries, models, profiles, NoCheckout, noTools))
-      // The step's stored form: the profile's id; `model_profiles` keeps the profile.
+      // The step's stored form: the profile's pins; `model_profiles` keeps it too.
       durable.history(turn.workflowId).headOption ==> Some(pinned(TestCatalog.pin))
-      // A turn whose step recorded another profile's id runs under the profile kept by that
-      // id, whatever the catalog in force.
-      profiles.pin(WorkflowId("another-turn"), Changed.pin)(using TestTx.fake) ==> Right(())
+      // A turn whose step recorded another profile runs under it, whatever the catalog in
+      // force, though no store keeps it.
       val later = new Switching(provider, Right(TestCatalog))
       val next = say(entries, "again")
       val _ = durable.replay(next.workflowId, Vector(pinned(Changed.pin)))(

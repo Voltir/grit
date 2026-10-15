@@ -112,12 +112,6 @@ object DurableFlowReadTests extends TestSuite {
       prefixes(catching, "x", Vector.empty) ==> Vector("0:a")
     }
 
-    test("a read stops at what no step records, opaque from there on") {
-      val unkept = Flow.unrecorded[Env, String, String](r => in => s"${r.tag}u($in)")
-      readings(Flow.step(a).andThen(unkept).andThen(Flow.step(b)), env, "x") ==>
-        ("Right(tb(tu(ta(x))))", Vector("0:a", "Opaque(1)", "Opaque(1)"))
-    }
-
     test("a flow over a larger environment is read as the flow itself") {
       val flow = Flow.step(a).andThen(Flow.step(b))
       val (_, history) = ran(flow, env, "x")

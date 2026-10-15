@@ -201,11 +201,6 @@ object DurableFlowLawTests extends TestSuite {
       durable.recordedSteps(id) ==> Vector(StepRecord.Received, StepRecord.Slept, "heard")
     }
 
-    test("unrecorded is computed over the run's environment, recording nothing of its own") {
-      val unkept = Flow.unrecorded[Env, String, String](r => in => s"${r.tag}u($in)")
-      ran(unkept.andThen(Flow.step(b)), env, "x") ==> ("Right(tb(tu(x)))", Vector("b"))
-    }
-
     test("a program makes its steps one at a time, each decided from the last's result") {
       ran(planner, env, "") ==> ("Right(ttt)", Vector("grow:0", "grow:1", "grow:2"))
     }

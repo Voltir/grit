@@ -14,14 +14,14 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{CatalogJson, Grade, TurnProfileId}
+import grit.core.model.{CatalogJson, Grade, TurnProfile}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
-import grit.core.prompt.FragmentId
+import grit.core.prompt.{Fragment, FragmentId, SystemPrompt}
 import grit.core.recipe.ServiceOffer
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
-import grit.core.tool.{ToolName, ToolSetId}
+import grit.core.tool.{ToolName, ToolSet, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.core.visibility.{Integrity, Label}
@@ -271,6 +271,23 @@ private[turn] object TurnJournal {
     case other => Left(s"kind: unknown ${other.render()}")
   }
 
+  /** A `record-window` step's output: `{"budget": calls, "answer-within": milliseconds}`. */
+  given limits: Journaled[Either[TurnFailure, TurnRound.Limits]] =
+    outcome(
+      l =>
+        ujson.Obj("budget" -> l.budget.calls, "answer-within" -> l.answerWithin.toMillis.toDouble),
+      v =>
+        for {
+          o <- v.objOpt.toRight("limits: expected an object")
+          calls <- o.get("budget").flatMap(_.numOpt).toRight("limits: no budget")
+          budget <- TurnLoop.Budget.of(calls.toInt).left.map(e => s"limits: $e")
+          within <- o.get("answer-within").flatMap(_.numOpt).toRight("limits: no answer-within")
+        } yield TurnRound.Limits(
+          budget,
+          scala.concurrent.duration.FiniteDuration(within.toLong, "ms")
+        )
+    )
+
   /** A `tool:n:j` step's output: `{"result": entry id, "failed": boolean}`. */
   given settled: Journaled[Either[TurnFailure, TurnTools.Settled]] =
     outcome(
@@ -458,12 +475,11 @@ private[turn] object TurnJournal {
     } yield Allotment(grade, reasoning, calls)
   }
 
-  /** A turn's pinned profile, by its id: the profile is kept in the profile store. */
-  given profile: Journaled[Either[TurnFailure, TurnProfileId]] =
-    outcome(
-      id => ujson.Str(TurnProfileId.value(id)),
-      v => v.strOpt.map(TurnProfileId(_)).toRight("profile id: expected a string")
-    )
+  /** A `pin-models` step's output: the turn's pinned profile, as [[CatalogJson.writeTurn]]
+    * writes it.
+    */
+  given profile: Journaled[Either[TurnFailure, TurnProfile]] =
+    outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
     * "prompt": [fragment ids]}`, `"root": "heard"` for a turn rooted on a heard message, and
@@ -474,104 +490,131 @@ private[turn] object TurnJournal {
     * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
+    outcome(writeRecorded, readRecorded)
+
+  /** An `offer` step's output: the offer by reference ([[recordedOffer]]'s form), with
+    * `"set"`, its tool set ([[ToolSet.write]]), and `"fragments"`, its prompt's
+    * ([[Fragment.write]]), so a run reads it back without a store.
+    */
+  given decidedOffer: Journaled[Either[TurnFailure, TurnOffer.Decided]] =
     outcome(
-      r => {
-        val o = ujson.Obj(
-          "workspace" -> r.workspace.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written)),
-          "tools" -> ToolSetId.value(r.tools),
-          "prompt" -> ujson.Arr.from(r.prompt.map(id => ujson.Str(FragmentId.value(id))))
-        )
-        // Written only for a heard root, so an addressed turn's offer keeps its earlier form.
-        r.root match {
-          case TurnOffer.Root.Heard => o("root") = "heard"
-          case TurnOffer.Root.Named => o("root") = "named"
-          case TurnOffer.Root.ByName => o("root") = "by-name"
-          case TurnOffer.Root.Addressed => ()
-        }
-        // Written only when some were taken, so every other offer keeps its earlier form.
-        if (r.advertised.nonEmpty)
-          o("advertised") = ujson.Arr.from(r.advertised.map(n => ujson.Str(ToolName.value(n))))
-        // Written only when some were taken, so every other offer keeps its earlier form.
-        if (r.reached.nonEmpty)
-          o("reached") = ujson.Obj.from(
-            r.reached.toVector
-              .sortBy((n, _) => ToolName.value(n))
-              .map((n, p) => ToolName.value(n) -> ujson.Str(p.written))
-          )
-        // Written only when shaped, so every offer recorded before shapes keeps its form.
-        r.shaped.foreach(shape => o("shaped") = writeShape(shape))
+      d => {
+        val o = writeRecorded(d.recorded)
+        o("set") = ToolSet.write(d.offer.tools)
+        o("fragments") = ujson.Arr.from(d.offer.prompt.fragments.map(Fragment.write))
         o
       },
       v =>
         for {
+          recorded <- readRecorded(v)
           o <- v.objOpt.toRight("offer: expected an object")
-          workspace <- o.get("workspace") match {
-            case Some(ujson.Null) | None => Right(None)
-            case Some(w) =>
-              w.strOpt.toRight("offer: workspace is not a string").flatMap(Place.read).map(Some(_))
-          }
-          tools <- o.get("tools").flatMap(_.strOpt).toRight("offer: no tools").flatMap(ToolSetId.of)
-          prompt <- o
-            .get("prompt")
+          set <- o.get("set").toRight("offer: no set").flatMap(ToolSet.read)
+          fragments <- o
+            .get("fragments")
             .flatMap(_.arrOpt)
-            .toRight("offer: no prompt")
-            .flatMap(_.toVector.foldLeft[Either[String, Vector[FragmentId]]](Right(Vector.empty)) {
-              (acc, id) =>
-                acc.flatMap(done =>
-                  id.strOpt
-                    .toRight("offer: an id is not a string")
-                    .flatMap(FragmentId.of)
-                    .map(done :+ _)
-                )
-            })
-          root <- o.get("root") match {
-            case None => Right(TurnOffer.Root.Addressed)
-            case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
-            case Some(ujson.Str("named")) => Right(TurnOffer.Root.Named)
-            case Some(ujson.Str("by-name")) => Right(TurnOffer.Root.ByName)
-            case Some(other) => Left(s"offer: unknown root ${other.render()}")
-          }
-          advertised <- o.get("advertised") match {
-            case None => Right(Vector.empty)
-            case Some(names) =>
-              names.arrOpt
-                .toRight("offer: advertised is not an array")
-                .flatMap(
-                  _.toVector.foldLeft[Either[String, Vector[ToolName]]](Right(Vector.empty)) {
-                    (acc, n) =>
-                      acc.flatMap(done =>
-                        n.strOpt
-                          .toRight("offer: an advertised name is not a string")
-                          .flatMap(ToolName.of(_).left.map(e => s"offer: $e"))
-                          .map(done :+ _)
-                      )
-                  }
-                )
-          }
-          reached <- o.get("reached") match {
-            case None => Right(Map.empty[ToolName, Place])
-            case Some(places) =>
-              places.objOpt
-                .toRight("offer: reached is not an object")
-                .flatMap(
-                  _.toVector.foldLeft[Either[String, Map[ToolName, Place]]](Right(Map.empty)) {
-                    case (acc, (n, p)) =>
-                      acc.flatMap(done =>
-                        for {
-                          name <- ToolName.of(n).left.map(e => s"offer: $e")
-                          written <- p.strOpt.toRight("offer: a reached place is not a string")
-                          place <- Place.read(written).left.map(e => s"offer: $e")
-                        } yield done.updated(name, place)
-                      )
-                  }
-                )
-          }
-          shaped <- o.get("shaped") match {
-            case None => Right(None)
-            case Some(shape) => readShape(shape).map(Some(_))
-          }
-        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped)
+            .toRight("offer: no fragments")
+            .flatMap(fs => sequence(fs.toVector.map(Fragment.read)))
+          decided <- TurnOffer.Decided.of(recorded, set, SystemPrompt.of(fragments))
+        } yield decided
     )
+
+  private def writeRecorded(r: TurnOffer.Recorded): ujson.Obj = {
+    val o = ujson.Obj(
+      "workspace" -> r.workspace.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written)),
+      "tools" -> ToolSetId.value(r.tools),
+      "prompt" -> ujson.Arr.from(r.prompt.map(id => ujson.Str(FragmentId.value(id))))
+    )
+    // Written only for a heard root, so an addressed turn's offer keeps its earlier form.
+    r.root match {
+      case TurnOffer.Root.Heard => o("root") = "heard"
+      case TurnOffer.Root.Named => o("root") = "named"
+      case TurnOffer.Root.ByName => o("root") = "by-name"
+      case TurnOffer.Root.Addressed => ()
+    }
+    // Written only when some were taken, so every other offer keeps its earlier form.
+    if (r.advertised.nonEmpty)
+      o("advertised") = ujson.Arr.from(r.advertised.map(n => ujson.Str(ToolName.value(n))))
+    // Written only when some were taken, so every other offer keeps its earlier form.
+    if (r.reached.nonEmpty)
+      o("reached") = ujson.Obj.from(
+        r.reached.toVector
+          .sortBy((n, _) => ToolName.value(n))
+          .map((n, p) => ToolName.value(n) -> ujson.Str(p.written))
+      )
+    // Written only when shaped, so every offer recorded before shapes keeps its form.
+    r.shaped.foreach(shape => o("shaped") = writeShape(shape))
+    o
+  }
+
+  private def readRecorded(v: ujson.Value): Either[String, TurnOffer.Recorded] =
+    for {
+      o <- v.objOpt.toRight("offer: expected an object")
+      workspace <- o.get("workspace") match {
+        case Some(ujson.Null) | None => Right(None)
+        case Some(w) =>
+          w.strOpt.toRight("offer: workspace is not a string").flatMap(Place.read).map(Some(_))
+      }
+      tools <- o.get("tools").flatMap(_.strOpt).toRight("offer: no tools").flatMap(ToolSetId.of)
+      prompt <- o
+        .get("prompt")
+        .flatMap(_.arrOpt)
+        .toRight("offer: no prompt")
+        .flatMap(_.toVector.foldLeft[Either[String, Vector[FragmentId]]](Right(Vector.empty)) {
+          (acc, id) =>
+            acc.flatMap(done =>
+              id.strOpt
+                .toRight("offer: an id is not a string")
+                .flatMap(FragmentId.of)
+                .map(done :+ _)
+            )
+        })
+      root <- o.get("root") match {
+        case None => Right(TurnOffer.Root.Addressed)
+        case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
+        case Some(ujson.Str("named")) => Right(TurnOffer.Root.Named)
+        case Some(ujson.Str("by-name")) => Right(TurnOffer.Root.ByName)
+        case Some(other) => Left(s"offer: unknown root ${other.render()}")
+      }
+      advertised <- o.get("advertised") match {
+        case None => Right(Vector.empty)
+        case Some(names) =>
+          names.arrOpt
+            .toRight("offer: advertised is not an array")
+            .flatMap(
+              _.toVector.foldLeft[Either[String, Vector[ToolName]]](Right(Vector.empty)) {
+                (acc, n) =>
+                  acc.flatMap(done =>
+                    n.strOpt
+                      .toRight("offer: an advertised name is not a string")
+                      .flatMap(ToolName.of(_).left.map(e => s"offer: $e"))
+                      .map(done :+ _)
+                  )
+              }
+            )
+      }
+      reached <- o.get("reached") match {
+        case None => Right(Map.empty[ToolName, Place])
+        case Some(places) =>
+          places.objOpt
+            .toRight("offer: reached is not an object")
+            .flatMap(
+              _.toVector.foldLeft[Either[String, Map[ToolName, Place]]](Right(Map.empty)) {
+                case (acc, (n, p)) =>
+                  acc.flatMap(done =>
+                    for {
+                      name <- ToolName.of(n).left.map(e => s"offer: $e")
+                      written <- p.strOpt.toRight("offer: a reached place is not a string")
+                      place <- Place.read(written).left.map(e => s"offer: $e")
+                    } yield done.updated(name, place)
+                  )
+              }
+            )
+      }
+      shaped <- o.get("shaped") match {
+        case None => Right(None)
+        case Some(shape) => readShape(shape).map(Some(_))
+      }
+    } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped)
 
   /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",
     * "hits"}`; each service `{"service", "via": "workspace" | "reached", "tools": [names],
