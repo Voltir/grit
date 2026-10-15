@@ -24,7 +24,7 @@ query=$(cat <<SQL
 SELECT jsonb_pretty(jsonb_build_object(
   'workflow', w.name,
   'id', w.workflow_uuid,
-  'epoch', w.application_version,
+  'epoch', split_part(w.application_version, '+', 1),
   'source', 'captured',
   'steps', coalesce((
     SELECT jsonb_agg(jsonb_build_object('name', o.function_name)

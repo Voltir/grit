@@ -99,5 +99,18 @@ object SentMarkdownTests extends TestSuite {
       )
       assert(shown(t, Cut.Whole).contains(s"```text\n${"x" * 25}\n```"))
     }
+
+    test(
+      "a turn run under this build's epoch and a deployment's version is not said to differ; one of another epoch is"
+    ) {
+      val same = shown(sent(request(asked), epoch = s"${Turn.Epoch}+1"), Cut.Whole)
+      val other = shown(sent(request(asked), epoch = "1970-01-01+1"), Cut.Whole)
+      assert(
+        same.contains(
+          s"- Ran under epoch `${Turn.Epoch}+1`; this build is epoch `${Turn.Epoch}`.\n"
+        ),
+        other.contains("**they differ**")
+      )
+    }
   }
 }

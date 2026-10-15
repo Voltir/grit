@@ -18,7 +18,6 @@ import grit.dbos.engine.{Engine, Link}
 import grit.host.LocalMachine
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
-import grit.turn.Turn
 
 /** Why [[Kit.serve]] or [[Kit.catchUp]] could not run, or stopped. */
 enum KitFailure {
@@ -328,7 +327,7 @@ object Kit {
   ): Either[KitFailure, Engine^] =
     Engine.open(
       secrets.database,
-      Turn.Epoch,
+      deployment.runsUnder,
       LocalMachine.identity(),
       deployment.budget,
       deployment.visibility,

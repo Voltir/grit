@@ -36,7 +36,7 @@ import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.JevClassifier
 import grit.tools.Names
-import grit.turn.{TurnLoop, TurnVerdict}
+import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
 final case class Offer(tools: Offered, rounds: TurnLoop.Rounds)
@@ -254,6 +254,9 @@ enum DeploymentRefusal {
     */
   case RealmUnvouched(realm: Realm)
 
+  /** `raw` is no [[DeploymentVersion]]. */
+  case VersionMalformed(raw: String)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -310,6 +313,8 @@ enum DeploymentRefusal {
       s"two edges served, ${EdgeName.value(by)} and ${EdgeName.value(and)}, say they are ${AttesterName.value(attester)}"
     case RealmUnvouched(realm) =>
       s"a group names the realm ${realm.namespace}:${realm.within}/, which the identities trust no attester for"
+    case VersionMalformed(raw) =>
+      s"the deployment's version '$raw' must be 1 to ${DeploymentVersion.Longest} letters, digits, '.' or '-'"
   }
 }
 
@@ -357,8 +362,14 @@ final case class Deployment private (
     schedules: Vector[Declared[?]],
     visibility: Visibility,
     identities: Identities,
+    version: DeploymentVersion,
     allJobs: Jobs
 ) {
+
+  /** The application version this deployment's engines open under: grit's epoch and its
+    * version. A workflow started under another is never resumed by them.
+    */
+  def runsUnder: String = Turn.under(DeploymentVersion.value(version))
 
   /** Every schedule declared, each with its declarer: each plugin's, then its own. */
   def declared: Vector[(Declarer, Declared[?])] = Deployment.declared(plugins, schedules)
@@ -398,7 +409,8 @@ object Deployment {
       jobs: Vector[PlainJob[?]] = Vector.empty,
       schedules: Vector[Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
-      identities: Identities = Identities.Shipped
+      identities: Identities = Identities.Shipped,
+      version: DeploymentVersion = DeploymentVersion.First
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -589,6 +601,7 @@ object Deployment {
       schedules,
       visibility,
       identities,
+      version,
       all
     )
   }

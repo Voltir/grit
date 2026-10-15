@@ -148,7 +148,8 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 object Link {
 
   /** A link to the engine another process runs on the database `config` names, as grit of
-    * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
+    * application version `version` (as [[Engine.start]] takes it) in the process `identity`
+    * names: no DBOS executor here,
     * only its client, the stores and the inbox, which takes new messages as `budget` allows,
     * dating each, and reading the day its cap counts, by `clock`, and labels the conversations
     * it creates as `visibility` labels their rooms.
@@ -157,7 +158,7 @@ object Link {
     */
   private[grit] def attach(
       config: DbConfig,
-      epoch: String,
+      version: String,
       identity: ProcessIdentity,
       budget: Budget,
       visibility: Visibility,
@@ -167,7 +168,7 @@ object Link {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget, visibility, clock)
+    new Attached(config, ds, new DBOSClient(ds), version, identity, budget, visibility, clock)
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */

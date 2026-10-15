@@ -25,40 +25,41 @@ object LiveEngine {
   val Unplaced: WorkflowId -> Durable^ ?-> String =
     id => (_: Durable^) ?=> s"unplaced: ${WorkflowId.value(id)}"
 
-  /** The engine of `config`'s database under compatibility epoch `epoch`, running under
+  /** The engine of `config`'s database under application version `version` (a deployment's
+    * `runsUnder` when the test launches one), running under
     * `visibility`, its inbox dated by `clock`; throws, naming the holder, when another engine holds its lock (a test that
     * opens two at once has a bug), or naming the compartment `visibility` drops.
     */
   def open(
       config: DbConfig,
-      epoch: String,
+      version: String,
       budget: Budget = Uncapped,
       visibility: Visibility = Visibility.Shipped,
       clock: Clock^ = Clock.system()
   ): Engine^ =
-    opened(config, epoch, budget, visibility, clock, 1)
+    opened(config, version, budget, visibility, clock, 1)
 
   /** As [[open]], after a process that held its lock was halted: the lock is free only once
     * the server notices the halted process's connection gone, which can take a moment under
     * load. Tries every half second for up to 30 seconds; throws, naming the holder, after.
     */
-  def reopen(config: DbConfig, epoch: String): Engine^ =
-    opened(config, epoch, Uncapped, Visibility.Shipped, Clock.system(), 60)
+  def reopen(config: DbConfig, version: String): Engine^ =
+    opened(config, version, Uncapped, Visibility.Shipped, Clock.system(), 60)
 
   /** The engine, trying `tries` times, half a second apart, while its lock is held. */
   private def opened(
       config: DbConfig,
-      epoch: String,
+      version: String,
       budget: Budget,
       visibility: Visibility,
       clock: Clock^,
       tries: Int
   ): Engine^ =
-    Engine.open(config, epoch, Identity, budget, visibility, clock) match {
+    Engine.open(config, version, Identity, budget, visibility, clock) match {
       case Right(engine) => engine
       case Left(Unopened.Lock(_)) if tries > 1 =>
         Thread.sleep(500)
-        opened(config, epoch, budget, visibility, clock, tries - 1)
+        opened(config, version, budget, visibility, clock, tries - 1)
       case Left(refused) =>
         sys.error(s"the engine could not open: ${refused.message(clock.now())}")
     }

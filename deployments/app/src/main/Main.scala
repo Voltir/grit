@@ -65,7 +65,7 @@ import grit.slack.event.{TeamId, UserId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnLoop}
+import grit.turn.TurnLoop
 
 // doc-length: the program's manual, naming every variable and mode it reads
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
@@ -297,7 +297,7 @@ object Main {
                   Engine.start(
                     config,
                     lock,
-                    Turn.Epoch,
+                    deployment.runsUnder,
                     identity,
                     deployment.budget,
                     deployment.visibility,
@@ -325,7 +325,7 @@ object Main {
                 val link =
                   Link.attach(
                     config,
-                    Turn.Epoch,
+                    deployment.runsUnder,
                     identity,
                     deployment.budget,
                     deployment.visibility,
@@ -367,7 +367,7 @@ object Main {
       } else
         Engine.open(
           config,
-          Turn.Epoch,
+          deployment.runsUnder,
           identity,
           deployment.budget,
           deployment.visibility,
@@ -378,7 +378,7 @@ object Main {
             val link =
               Link.attach(
                 config,
-                Turn.Epoch,
+                deployment.runsUnder,
                 identity,
                 deployment.budget,
                 deployment.visibility,

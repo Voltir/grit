@@ -16,7 +16,6 @@ import grit.kit.environment.Secrets
 import grit.kit.run.{Kit, Launch}
 import grit.slack.edge.{SlackCommand, SlackEdge}
 import grit.slack.event.TeamId
-import grit.turn.Turn
 
 import utest.*
 
@@ -145,7 +144,7 @@ object TrustingLiveTests extends TestSuite {
         .fold(sys.error, identity)
       val secrets =
         Secrets.of(on(config, Map.empty), deployment).fold(r => sys.error(r.message), identity)
-      val engine = LiveEngine.open(config, Turn.Epoch, visibility = deployment.visibility)
+      val engine = LiveEngine.open(config, deployment.runsUnder, visibility = deployment.visibility)
       try { val _ = Main.ownEngine(engine, deployment, secrets, Launch.Run.Served) }
       finally engine.close()
       attestations(config) ==>

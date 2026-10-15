@@ -1050,7 +1050,7 @@ object Main {
       println(
         s"calls: ${requests.size}, whose estimate agrees with its ledger row: $agree; " +
           s"epoch ${sent.epoch}${
-              if (sent.epoch == Turn.Epoch) "" else s" (this build: ${Turn.Epoch})"
+              if (Turn.epochOf(sent.epoch) == Turn.Epoch) "" else s" (this build: ${Turn.Epoch})"
             }"
       )
     }

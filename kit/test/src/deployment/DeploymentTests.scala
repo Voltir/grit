@@ -863,6 +863,28 @@ object DeploymentTests extends TestSuite {
         Right(Some(Owned.Keeps(name("p"), TestPlugins.Tallies.terms, tally)))
     }
 
+    test(
+      "a deployment runs under grit's epoch joined with its version, two versions under two strings"
+    ) {
+      val second = DeploymentVersion.of("2").fold(r => sys.error(r.message), identity)
+      val (first, next) = (
+        Deployments.of().map(_.runsUnder),
+        Deployments.of(version = second).map(_.runsUnder)
+      )
+      first ==> Right(s"${grit.turn.Turn.Epoch}+1")
+      next ==> Right(s"${grit.turn.Turn.Epoch}+2")
+      next.map(grit.turn.Turn.epochOf) ==> Right(grit.turn.Turn.Epoch)
+    }
+
+    test("a version holding +, a space or nothing, or over 32 characters, is refused") {
+      val malformed = Vector("a+b", "a b", "", "v" * 33)
+      malformed.map(DeploymentVersion.of) ==> malformed.map(r =>
+        Left(DeploymentRefusal.VersionMalformed(r))
+      )
+      DeploymentVersion.of("v1.2-rc" + "x" * 25).map(DeploymentVersion.value) ==>
+        Right("v1.2-rc" + "x" * 25)
+    }
+
     test("a deployment declared with every argument but jobs and schedules has none of either") {
       val assigned = grit.core.model.Assignment(
         grit.core.model.ModelRef(

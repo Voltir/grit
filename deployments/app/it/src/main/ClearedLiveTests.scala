@@ -10,7 +10,6 @@ import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.kit.deployment.Offered
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
-import grit.turn.Turn
 
 import utest.*
 
@@ -46,7 +45,7 @@ object ClearedLiveTests extends TestSuite {
       val secrets =
         Secrets.of(on(config, Map.empty), deployment).fold(r => sys.error(r.message), identity)
       val origin = Origin.Task("cleared", "secret")
-      val engine = LiveEngine.open(config, Turn.Epoch, visibility = deployment.visibility)
+      val engine = LiveEngine.open(config, deployment.runsUnder, visibility = deployment.visibility)
       val replies =
         try {
           val launched = Main.ownEngine(engine, deployment, secrets, Launch.Run.Served)

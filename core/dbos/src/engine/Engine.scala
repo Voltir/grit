@@ -599,7 +599,7 @@ object Engine {
   /** [[EngineLock.take]], then [[start]]. */
   private[grit] def open(
       config: DbConfig,
-      epoch: String,
+      version: String,
       identity: ProcessIdentity,
       budget: Budget,
       visibility: Visibility,
@@ -607,7 +607,7 @@ object Engine {
   ): Either[Unopened, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(Unopened.Lock(refused))
-      case Right(lock) => start(config, lock, epoch, identity, budget, visibility, clock)
+      case Right(lock) => start(config, lock, version, identity, budget, visibility, clock)
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
@@ -615,7 +615,8 @@ object Engine {
     * and this start, with [[Build.current]], appended to `grit.engine_starts` in the same
     * statement, and its heartbeat begun,
     * recovering and dequeuing only workflows of
-    * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
+    * application version `version` (ADR 0004: a compatibility epoch, and the deployment's own
+    * version after a `+`). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
     * then fail. Its inbox takes new messages as `budget` allows, dating each, and reading the
     * day its cap counts, by `clock`. `visibility`'s compartments
@@ -627,7 +628,7 @@ object Engine {
   private[grit] def start(
       config: DbConfig,
       lock: EngineLock^,
-      epoch: String,
+      version: String,
       identity: ProcessIdentity,
       budget: Budget,
       visibility: Visibility,
@@ -635,7 +636,7 @@ object Engine {
   ): Either[Unopened, Engine^] =
     try {
       schemaSetup(config)
-      val dbosConfig = dbosConfigOf(config, epoch)
+      val dbosConfig = dbosConfigOf(config, version)
       // Before anything builds a DBOSClient, which refuses a database DBOS has not migrated.
       MigrationManager.runMigrations(dbosConfig)
       compartmentsSetup(config, visibility) match {
@@ -644,10 +645,10 @@ object Engine {
           Left(Unopened.Dropped(dropped))
         case None =>
           lock
-            .claim(epoch, identity, Build.current)
+            .claim(version, identity, Build.current)
             .left
             .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-          val engine = build(config, dbosConfig, lock, epoch, identity, budget, visibility, clock)
+          val engine = build(config, dbosConfig, lock, version, identity, budget, visibility, clock)
           engine.beating()
           Right(engine)
       }

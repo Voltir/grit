@@ -3,12 +3,12 @@ package grit.app.main
 import grit.core.clock.Clock
 import grit.core.model.{Catalog, CatalogJson, Profile}
 import grit.core.spend.Budget
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
+import grit.kit.deployment.Offered
 import grit.kit.environment.DotEnv
 import grit.models.Seed
-import grit.turn.Turn
 
 /** Prints the seed catalog with every model setting approved at runtime laid over it, in the seed's
   * form, for a person to put in `extensions/models/resources/catalog.json` and commit. The settings
@@ -33,16 +33,22 @@ object PromoteModelSettings {
       .fold(fail, identity)
     val config = DbConfig.fromEnv(env).left.map(_.message).fold(fail, identity)
     val seed = Seed.catalog.fold(fail, identity)
+    // The reference deployment, serving nothing: its engine opens under the deployment's
+    // version, which a database running it made its latest (ADR 0004); any other would leave
+    // the deployment's workflows undequeued until its next start.
+    val deployment = Main
+      .deployment(env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
+      .fold(fail, identity)
     // The engine's lock, like any engine: while grit runs on this database, this says so.
     val engine = Engine.open(
       config,
-      Turn.Epoch,
+      deployment.runsUnder,
       grit.host.LocalMachine.identity(),
       // It takes no messages: no cap, and any zone.
       Budget(java.time.ZoneOffset.UTC, None),
-      // The reference deployment's: it declares none. A database that ran under compartments
-      // is refused, naming one, rather than opened as if it had not.
-      Visibility.Shipped,
+      // A database that ran under compartments the deployment does not declare is refused,
+      // naming one, rather than opened as if it had not.
+      deployment.visibility,
       clock
     ) match {
       case Right(open) => open

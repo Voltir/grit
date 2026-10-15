@@ -78,7 +78,7 @@ object SentMarkdown {
         "pinned profile, window and entries) through this build's code, so texts this build " +
         "adds (labels, gap lines, the topic tag, the last-call note) are this build's.",
       s"- Ran under epoch `${sent.epoch}`; this build is epoch `${Turn.Epoch}`" +
-        (if (sent.epoch == Turn.Epoch) "."
+        (if (Turn.epochOf(sent.epoch) == Turn.Epoch) "."
          else ": **they differ**, so this build's texts may not be those sent."),
       ""
     )

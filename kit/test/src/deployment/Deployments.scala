@@ -67,7 +67,8 @@ object Deployments {
       jobs: Vector[grit.core.job.PlainJob[?]] = Vector.empty,
       schedules: Vector[grit.core.job.Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
-      identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped
+      identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped,
+      version: DeploymentVersion = DeploymentVersion.First
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -90,7 +91,8 @@ object Deployments {
       jobs = jobs,
       schedules = schedules,
       visibility = visibility,
-      identities = identities
+      identities = identities,
+      version = version
     )
 
   /** [[of]], which the test expects to be accepted. */

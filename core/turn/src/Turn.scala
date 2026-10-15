@@ -23,12 +23,24 @@ import TurnShown.{asked, gatedOffer, loopShape, offered, requestOf, shown, stubs
 object Turn {
 
   /** The turn's compatibility epoch (ADR 0004). Every turn in flight was started under an
-    * epoch, and only an engine of the same epoch resumes it. Change the steps compatibly
+    * epoch, and only an engine of the same epoch, and the same deployment version
+    * ([[under]]), resumes it. Change the steps compatibly
     * with `Durable.patch` and keep the epoch; change the epoch only for a break a patch
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
   val Epoch = "2026-10-15"
+
+  /** The application version an engine opens under for a deployment whose own version is
+    * `deployment`: [[Epoch]], `+`, then `deployment`. Only an engine of the same one resumes
+    * a workflow started under it.
+    */
+  def under(deployment: String): String = s"$Epoch+$deployment"
+
+  /** The epoch the application version `version` names: what comes before its first `+`, or
+    * all of it when it holds none.
+    */
+  def epochOf(version: String): String = version.takeWhile(_ != '+')
 
   /** The names of the turn's steps, as DBOS records them; which run, and in what order, is
     * [[TurnFlow.flow]]'s ([[all]]).
