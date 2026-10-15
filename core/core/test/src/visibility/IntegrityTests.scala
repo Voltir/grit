@@ -91,14 +91,22 @@ object IntegrityTests extends TestSuite {
       all1(a => a.belowOutside == (Integrity.level(a) == Level.Untrusted)) ==> None
     }
 
-    test("an integrity's written form reads back as it, and its shown form names its level") {
+    test(
+      "an integrity's written form reads back as it, and its shown form names its level; a text naming no level first, or a compartment by no compartment's name, is refused saying which"
+    ) {
       all1(a => Integrity.read(Integrity.written(a)) == Right(a)) ==> None
+      // The written form other files and recorded outputs hold (a tool's `requires`): pinned.
       Integrity.written(Integrity.at(Level.Authority, trial, acme)) ==> "authority+acme+trial"
       (
         Integrity.shown(Integrity.Member),
         Integrity.shown(Integrity.at(Level.Authority, trial))
       ) ==> ("[integrity: member]", "[integrity: authority, in: {trial}]")
-      Vector("public", "member+Not-A-Name").map(Integrity.read(_).isLeft) ==> Vector(true, true)
+      Vector("public", "member+Not-A-Name").map(Integrity.read) ==> Vector(
+        Left("public names no integrity level first: public"),
+        Left(
+          "Not-A-Name is not a compartment's name: lowercase letters, digits and -, 1 to 32 of them"
+        )
+      )
     }
   }
 }
