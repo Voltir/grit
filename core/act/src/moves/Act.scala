@@ -14,7 +14,7 @@ import grit.act.phase.{
   Waiting
 }
 import grit.core.act.{Acting, Allowance, Called, MoveError, MoveName, Posed}
-import grit.core.classify.{AnswersJson, Ask, ClassifierError, Request}
+import grit.core.classify.{Answers, AnswersJson, Ask, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Step, StepName}
@@ -29,7 +29,7 @@ import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.{Integrity, Label, Subject}
 
 /** The names a move's steps are recorded under, from the input each step runs over: the move
   * itself as `move`, named for what it is (`ask`, `call` or `keep`), then its phases, each the
@@ -81,9 +81,13 @@ object ActName {
   */
 private[moves] object Act {
 
-  /** The input of a move's steps: the move `name`, made under `acting`. */
+  /** The input of a move's steps: the move `name`. */
   trait Move {
     def name: MoveName
+  }
+
+  /** A planner's move: one made under `acting`. */
+  trait Acted extends Move {
     def acting: Acting
   }
 
@@ -98,7 +102,7 @@ private[moves] object Act {
 
   /** The text ask `name` of `request`, under `digest`. */
   final case class Text(name: MoveName, acting: Acting, request: ModelRequest, digest: String)
-      extends Move
+      extends Acted
 
   /** The JSON ask `name` of `system` then `messages`, its reply read by `reply`, under `digest`.
     */
@@ -109,7 +113,7 @@ private[moves] object Act {
       messages: Vector[Message],
       reply: Typed[T],
       digest: String
-  ) extends Move
+  ) extends Acted
 
   /** The judgment `name` of `request`, its answers read by `questions`, under `digest`. */
   final case class Judgment[T](
@@ -118,7 +122,7 @@ private[moves] object Act {
       request: Request,
       questions: Ask[?, T],
       digest: String
-  ) extends Move
+  ) extends Acted
 
   /** The call `name` of `tool` at `service` with `arguments`, believed at `believed`, as the
     * call at `cs`, under `digest`.
@@ -132,11 +136,11 @@ private[moves] object Act {
       arguments: ujson.Obj,
       believed: Integrity,
       digest: String
-  ) extends Move
+  ) extends Acted
 
   /** The keep `name` of `value` into `keeper`'s documents. */
   final case class Keep[I](name: MoveName, acting: Acting, value: I, keeper: DocumentKeeper)
-      extends Move
+      extends Acted
 
   /** What an ask's `ask:{n}` recorded, and its `ask:{n}:record`'s result: `Right` when it
     * recorded nothing to keep.
@@ -233,10 +237,8 @@ private[moves] object Act {
                   case Left(error) =>
                     AskMade.Refused(AskMade.Kind.Model, unanswered(error), j.digest)
                   case Right(answers) =>
-                    val estimate =
-                      env.records.estimator.system(Request.json(j.request).render())
                     val call =
-                      AskMade.Call(answers.model, answers.usage, estimate, env.classifier.upstream)
+                      classified(env.records, j.request, answers, env.classifier.upstream)
                     j.questions.read(answers.answers) match {
                       case Left(error) => AskMade.Unjudged(j.digest, unanswered(error), call)
                       case Right(_) =>
@@ -250,16 +252,25 @@ private[moves] object Act {
     )
   }
 
-  /** The costs of the model calls an ask's `made` holds, recorded in its `ask:{n}:record`. */
-  private final case class Spent(name: MoveName, acting: Acting, made: AskMade) extends Move
+  /** The costs of an ask's model or classifier `calls`, recorded in its `ask:{n}:record` for
+    * `turn`, under `workflow`, in a transaction opened for `subject`; and what its `ask:{n}`
+    * `made`.
+    */
+  private[moves] final case class Spent[+A](
+      name: MoveName,
+      turn: TurnRef,
+      workflow: WorkflowId,
+      subject: Subject,
+      calls: Vector[AskMade.Call],
+      made: A
+  ) extends Move
 
-  private val recorded: Step[MovesEnv, Spent, Either[String, Unit]] = {
+  private[moves] val recorded: Step[MovesEnv, Spent[Any], Either[String, Unit]] = {
     import MovesJournal.given
-    Step.transact[MovesEnv, Spent, Either[String, Unit]](Asks.record, _.acting.subject)(env =>
+    Step.transact[MovesEnv, Spent[Any], Either[String, Unit]](Asks.record, _.subject)(env =>
       s => {
-        val turn = s.acting.turn
-        val base = s"move:${WorkflowId.value(turn.workflowId)}:${MoveName.value(s.name)}"
-        costed(env.records.ledger, turn, base, s.made.spent)
+        val base = s"move:${WorkflowId.value(s.workflow)}:${MoveName.value(s.name)}"
+        costed(env.records.ledger, s.turn, s.workflow, base, s.calls)
       }
     )
   }
@@ -268,22 +279,28 @@ private[moves] object Act {
     * whatever shape recorded them: a run replays its steps by place, so a record step the first
     * run took is taken again.
     */
-  def ask[I <: Move](made: Step[MovesEnv, I, AskMade]): Flow[MovesEnv, I, Nothing, Settling] =
+  def ask[I <: Acted](made: Step[MovesEnv, I, AskMade]): Flow[MovesEnv, I, Nothing, Settling] =
     Flow
       .step(made)
       .keeping
       .map((in, m) =>
-        if (m.spent.isEmpty) Right(Settling(m, Right(()))) else Left(Spent(in.name, in.acting, m))
+        if (m.spent.isEmpty) Right(Settling(m, Right(())))
+        else {
+          val turn = in.acting.turn
+          Left(Spent(in.name, turn, turn.workflowId, in.acting.subject, m.spent, m))
+        }
       )
       .andThen(
         Flow.either(
-          Flow.step(recorded).keeping.map((s, kept) => Settling(s.made, kept)),
+          (Flow
+            .step(recorded): Flow[MovesEnv, Spent[AskMade], Nothing, Either[String, Unit]]).keeping
+            .map((s, kept) => Settling(s.made, kept)),
           Flow.pass[Settling]
         )
       )
 
   /** A sent call, and what its `call:{n}` recorded. */
-  private final case class Sending(call: Call, digest: String) extends Move {
+  private final case class Sending(call: Call, digest: String) extends Acted {
     def name: MoveName = call.name
     def acting: Acting = call.acting
   }
@@ -417,24 +434,49 @@ private[moves] object Act {
       clock: Clock^,
       acting: Acting,
       digest: String
-  ): Either[AskMade, (Label, Routed)] = {
-    val allowance: Allowance = acting.allowance
-    db.read(acting.subject)((tx: Tx^) ?=>
-      Asking.admits(allowance, records.spending, clock.now()).map((_, Tx.floor(tx), Routed.of))
-    ) match {
+  ): Either[AskMade, (Label, Routed)] =
+    admission(records, db, clock, acting.allowance, acting.subject) match {
       case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, describe(e), digest))
       case Right((false, _, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
       case Right((true, at, routed)) => Right((at, routed))
     }
-  }
 
-  /** `calls`' costs recorded for `turn`: the first under `base`, the first repair's under
+  /** Whether `allowance` admits an ask now, read in one transaction for `subject`, with the
+    * label what it is made from may hold and what that read was routed for.
+    */
+  private[moves] def admission(
+      records: MoveRecords,
+      db: Db^,
+      clock: Clock^,
+      allowance: Allowance,
+      subject: Subject
+  ): Either[StoreError, (Boolean, Label, Routed)] =
+    db.read(subject)((tx: Tx^) ?=>
+      Asking.admits(allowance, records.spending, clock.now()).map((_, Tx.floor(tx), Routed.of))
+    )
+
+  /** The cost of a classifier's call, answering `answers` to `request`, served by `upstream`. */
+  private[moves] def classified(
+      records: MoveRecords,
+      request: Request,
+      answers: Answers,
+      upstream: Option[String]
+  ): AskMade.Call =
+    AskMade.Call(
+      answers.model,
+      answers.usage,
+      records.estimator.system(Request.json(request).render()),
+      upstream
+    )
+
+  /** `calls`' costs recorded for `turn`, kept under `workflow`: the first under `base`, the first repair's under
     * `{base}:repair`, a later one's under `{base}:repair{i}`. Each id is this move's alone, so
     * one recorded already is its own earlier record.
     */
   private def costed(
       ledger: UsageLedger,
       turn: TurnRef,
+      workflow: WorkflowId,
       base: String,
       calls: Vector[AskMade.Call]
   )(using Tx^): Either[String, Unit] =
@@ -446,7 +488,16 @@ private[moves] object Act {
             case 1 => s"$base:repair"
             case _ => s"$base:repair$i"
           })
-          Asking.cost(ledger, entry, turn, c.model, c.upstream, c.usage, c.estimate) match {
+          Asking.cost(
+            ledger,
+            entry,
+            turn,
+            workflow,
+            c.model,
+            c.upstream,
+            c.usage,
+            c.estimate
+          ) match {
             case Left(StoreError.DuplicateId(_)) => Right(())
             case other => other
           }
@@ -550,9 +601,9 @@ private[moves] object Act {
 
   private val Nobody = "There is nobody to make this call for, so it did not run."
 
-  private val Capped = "The day's spend reached its cap, so no model was asked."
+  private[moves] val Capped = "The day's spend reached its cap, so no model was asked."
 
-  private def describe(error: StoreError): String = error match {
+  private[moves] def describe(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
     case StoreError.DatabaseError(cause) => cause
     case StoreError.Invalid(cause) => cause

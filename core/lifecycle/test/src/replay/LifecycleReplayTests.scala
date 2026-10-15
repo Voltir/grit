@@ -32,7 +32,8 @@ object LifecycleReplayTests extends TestSuite {
     "gate" -> 256, // which of close's sections its gate let through, and why
     "summarise" -> 1600, // the closing close drew up, whole
     "seal" -> 64, // the closing's id
-    "ask" -> 1100, // triage's, settle's and shadow's answers, with their weights
+    "ask" -> 1100, // triage's, settle's and shadow's answers, with their weights and calls' costs
+    "ask:record" -> 64, // whether an ask's classifier cost was recorded
     "record" -> 64, // whether the answers were kept
     "consider" -> 448, // what triage decided of a heard message, and the gate's readings
     "start" -> 64, // the turn triage started, or why not
@@ -60,9 +61,20 @@ object LifecycleReplayTests extends TestSuite {
     test(
       "each lifecycle history of the previous epoch names its steps as its scenario's in this one"
     ) {
-      def namesOf(epoch: String): Map[String, Vector[String]] =
-        historiesOf(epoch).collect { case (p, Right(h)) => p.last -> h.steps.map(_.name) }.toMap
-      val (before, after) = (namesOf("2026-10-14"), namesOf(Turn.Epoch))
+      def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
+        historiesOf(epoch).collect { case (p, Right(h)) => p.last -> named(h) }.toMap
+      // A settle's `ask` is the move `ask:settle`, its cost then recorded in
+      // `ask:settle:record` when the classifier answered, its weighed verdict naming the model.
+      def renamed(h: History): Vector[String] = h.steps.flatMap { s =>
+        (h.workflow, s.name) match {
+          case ("settle", "ask") if s.outcome.toString.contains("\"model\"") =>
+            Vector("ask:settle", "ask:settle:record")
+          case ("settle", "ask") => Vector("ask:settle")
+          case (_, name) => Vector(name)
+        }
+      }
+      val before = namesOf("2026-10-14")(renamed)
+      val after = namesOf(Turn.Epoch)(_.steps.map(_.name))
       (before.size, before == after) ==> (33, true)
     }
 

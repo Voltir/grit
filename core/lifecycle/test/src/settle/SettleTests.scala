@@ -1,9 +1,12 @@
 package grit.lifecycle.settle
 
-import grit.core.classify.Question
+import grit.core.classify.{Question, TestClassifiers}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.WorkflowId
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.message.{Tokens, Usage}
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict}
+import grit.core.spend.DailyCap
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -25,7 +28,7 @@ object SettleTests extends TestSuite {
       val id = w.question.workflowId
       durable.run(id)(w.body(weigher, 90)) ==> "judged: nobody 0.85 (jev)"
       weigher.calls ==> 1
-      durable.recordedSteps(id) ==> Vector("check", "ask", "record")
+      durable.recordedSteps(id) ==> Vector("check", "ask:settle", "ask:settle:record", "record")
       w.activity.map(a => (a.verdict, a.asked)) ==> Some(
         (
           Some(
@@ -53,6 +56,53 @@ object SettleTests extends TestSuite {
       new InMemoryDurable().run(asked.workflowId)(same.body(weigher, 90)) ==>
         s"abandoned: active since, at ${at(5)}"
       (weigher.calls, same.activity.flatMap(_.verdict)) ==> (0, None)
+    }
+
+    // A settle's ask is a move (ADR 0034): admitted under the deployment's daily cap against
+    // what every conversation spent that day, as a job's is.
+    test("a settle over the day's cap asks no classifier: its verdict is unanswered, for the cap") {
+      val w = new World
+      val t = w.turn("hello", 0)
+      w.ledger.now = at(90)
+      w.ledger.record(
+        EntryId("elsewhere"),
+        TurnRef(ConversationId("c2"), TurnSeq(0)),
+        WorkflowId("c2:0"),
+        "m",
+        None,
+        None,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(1))),
+        Tokens(1)
+      )(using TestTx.fake)
+      val weigher = finished
+      val capped = "unavailable: The day's spend reached its cap, so no model was asked."
+      new InMemoryDurable().run(w.question.workflowId)(
+        w.body(weigher, 90, cap = DailyCap.of("1").toOption)
+      ) ==> s"judged: unanswered: $capped"
+      weigher.calls ==> 0
+      w.activity.flatMap(_.verdict) ==>
+        Some(Verdict(at(90), t.turnSeq, Judgement.Unanswered(capped)))
+    }
+
+    test("a settle's classifier call is kept in the ledger once, under its own workflow") {
+      val w = new World
+      val t = w.turn("deploy staging?", 0)
+      val id = w.question.workflowId
+      val durable = new InMemoryDurable
+      durable.run(id)(w.body(finished, 90))
+      def rows(of: WorkflowId) =
+        w.ledger.of(of)(using TestTx.fake).map(_.map(r => (r.entry, r.model, r.upstream, r.usage)))
+      rows(id) ==> Right(
+        Vector(
+          (
+            EntryId(s"move:${WorkflowId.value(id)}:settle"),
+            "jev",
+            Some(TestClassifiers.Service.place.written),
+            Usage(Tokens(1), Tokens(1), Tokens.Zero, None)
+          )
+        )
+      )
+      rows(t.workflowId) ==> Right(Vector())
     }
 
     test("an absent classifier is a verdict too, and the same quiet stretch is not asked again") {

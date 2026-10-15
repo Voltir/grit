@@ -9,8 +9,12 @@
       "output": "{\"ok\":{\"asking\":0}}"
     },
     {
-      "name": "ask",
-      "output": "{\"nobody\":0.9,\"onPerson\":0.1,\"onOther\":0,\"model\":\"jev\"}"
+      "name": "ask:settle",
+      "output": "{\"made\":\"{\\\"nobody\\\":0.9,\\\"onPerson\\\":0.1,\\\"onOther\\\":0,\\\"model\\\":\\\"jev\\\"}\",\"calls\":[{\"model\":\"jev\",\"usage\":{\"input\":1,\"output\":1,\"cachedInput\":0},\"estimate\":584,\"upstream\":\"service:test\"}]}"
+    },
+    {
+      "name": "ask:settle:record",
+      "output": "{\"recorded\":true}"
     },
     {
       "name": "record",

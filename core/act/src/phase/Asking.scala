@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.Allowance
 import grit.core.clock.Clock
-import grit.core.id.{EntryId, TurnRef}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -86,18 +86,19 @@ object Asking {
     )
 
   /** As [[spent]], for any model's call made under no pin: `usage` of the call made by `model`,
-    * served by `upstream` as its provider reported, recorded for `turn` under `entry` beside
-    * `estimate`, with no grade; the one way an ask's cost reaches the ledger.
-    * `DuplicateId` when `entry`'s is recorded already.
+    * served by `upstream` as its provider reported, recorded for `turn` from the workflow
+    * `workflow` under `entry` beside `estimate`, with no grade; the one way an ask's cost
+    * reaches the ledger. `DuplicateId` when `entry`'s is recorded already.
     */
   def cost(
       ledger: UsageLedger,
       entry: EntryId,
       turn: TurnRef,
+      workflow: WorkflowId,
       model: String,
       upstream: Option[String],
       usage: Usage,
       estimate: Tokens
   )(using Tx^): Either[StoreError, Unit] =
-    ledger.record(entry, turn, turn.workflowId, model, upstream, None, usage, estimate)
+    ledger.record(entry, turn, workflow, model, upstream, None, usage, estimate)
 }

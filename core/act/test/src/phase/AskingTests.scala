@@ -149,7 +149,8 @@ object AskingTests extends TestSuite {
       val usage = Usage(Tokens(30), Tokens(4), Tokens(10), Some(BigDecimal("0.002")))
       val first = Asking.spent(ledger, EntryId("e"), turn, reply, Some(Grade.Strong), Tokens(7))
       val second = Asking.spent(ledger, EntryId("e"), turn, reply, Some(Grade.Strong), Tokens(7))
-      val call = Asking.cost(ledger, EntryId("f"), turn, "judge", None, usage, Tokens(28))
+      val call =
+        Asking.cost(ledger, EntryId("f"), turn, turn.workflowId, "judge", None, usage, Tokens(28))
       (first, second, call, ledger.of(turn.workflowId)) ==>
         (
           Right(()),

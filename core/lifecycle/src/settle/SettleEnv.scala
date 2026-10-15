@@ -1,18 +1,21 @@
 package grit.lifecycle.settle
 
-import grit.core.classify.ClearedClassifier
+import grit.act.moves.MovesEnv
 import grit.core.clock.Clock
+import grit.core.spend.Budget
 import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, Principals}
 
 /** What a settle works with besides its `Durable`: where it reads the period and keeps the
-  * verdict ([[SettleRecords]]), the `classifier` it asks, `db` to read the period's
-  * transcript outside a transaction, and `clock` to say when the verdict was given.
+  * verdict ([[SettleRecords]]), `db` to read the period's transcript outside a transaction,
+  * `clock` to say when the verdict was given, and `moves`, whose classifier its ask goes to,
+  * admitted by `budget`.
   */
 final case class SettleEnv(
     records: SettleRecords,
-    classifier: ClearedClassifier^,
     db: Db^,
-    clock: Clock^
+    clock: Clock^,
+    moves: MovesEnv^,
+    budget: Budget
 )
 
 /** Where a settle reads its period, who wrote it and the settings in force, and keeps its

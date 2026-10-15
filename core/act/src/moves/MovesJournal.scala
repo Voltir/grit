@@ -312,6 +312,24 @@ object MovesJournal {
 
   given callMade: Journaled[CallMade] = Journaled.json(writeCall, readCall)
 
+  /** An engine workflow's judgment's step: what it made, in `B`'s own journaled form, and its
+    * answered calls' costs.
+    */
+  def posed[B](using b: Journaled[B]): Journaled[Judging.Posed[B]] = Journaled.json(
+    p => ujson.Obj("made" -> b.encode(p.made), "calls" -> ujson.Arr.from(p.calls.map(writeCost))),
+    v =>
+      fields(v, "judgment").flatMap { o =>
+        for {
+          made <- o
+            .get("made")
+            .flatMap(_.strOpt)
+            .toRight("judgment: no made")
+            .flatMap(b.decode)
+          calls <- costs(o)
+        } yield Judging.Posed(made, calls)
+      }
+  )
+
   /** A keep's step: what its body returned, in `A`'s own journaled form, or why nothing was
     * kept. Carries no digest: a keep's input is its code.
     */

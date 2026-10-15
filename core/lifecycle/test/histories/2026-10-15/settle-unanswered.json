@@ -9,8 +9,8 @@
       "output": "{\"ok\":{\"asking\":0}}"
     },
     {
-      "name": "ask",
-      "output": "{\"unanswered\":\"unavailable: no classifier\"}"
+      "name": "ask:settle",
+      "output": "{\"made\":\"{\\\"unanswered\\\":\\\"unavailable: no classifier\\\"}\",\"calls\":[]}"
     },
     {
       "name": "record",

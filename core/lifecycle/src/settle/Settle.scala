@@ -1,7 +1,9 @@
 package grit.lifecycle.settle
 
+import grit.act.moves.Judging
+import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
-import grit.core.id.{EntryId, SettleRef, TurnSeq, WorkflowId}
+import grit.core.id.{EntryId, SettleRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
 import grit.core.route.Routed
 import grit.core.store.{Speakers, StoreError, Tx}
@@ -16,8 +18,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *   1. `check` — the period as it stands: abandoned, asking nothing, when it is not open,
   *      has had activity since the question was made (the sweep makes a new one), or is not
   *      to be asked under the settings in force ([[grit.core.period.Deadline.ask]]).
-  *   1. `ask` — one classifier call over the period's transcript ([[SettleQuestion]]); an
-  *      absent or failing classifier, or an answer that does not read, is a judgement too.
+  *   1. `ask:settle` — one classifier call over the period's transcript ([[SettleQuestion]]),
+  *      a move ([[grit.act.moves.Judging]]): admitted against the day's cap, so one over it is
+  *      unanswered; an absent or failing classifier, or an answer that does not read, is a
+  *      judgement too. `ask:settle:record` — when the classifier answered, its cost in the
+  *      ledger, charged to the question's last turn; a store that fails it fails the settle.
   *   1. `record` — the verdict kept ([[grit.core.store.PeriodStore.judged]]); ignored when
   *      a turn came in meanwhile.
   */
@@ -48,8 +53,16 @@ object Settle {
       ref => check(env.records, ref)
     )
 
-  private val asked: Step[SettleEnv, Asking, Judgement] =
-    Step[SettleEnv, Asking, Judgement](StepName("ask"))(env => a => judge(env, a.ref, a.first))
+  private val asked: Flow[SettleEnv, Asking, Nothing, Judging.Judged[Judgement]] =
+    Judging.flow[SettleEnv, Asking, Judgement](
+      MoveName("settle"),
+      a =>
+        Judging.Charged(
+          TurnRef(a.ref.period.conversationId, a.ref.last),
+          a.ref.workflowId,
+          subject(a.ref)
+        )
+    )(_.moves, _.budget)(env => (a, asks) => judge(env, asks, a))
 
   private val recorded: Step[SettleEnv, Judged, Either[String, Boolean]] =
     Step.transact[SettleEnv, Judged, Either[String, Boolean]](
@@ -75,7 +88,10 @@ object Settle {
         case (_, Right(Checked.Abandoned(why))) => Left(s"abandoned: $why")
         case (ref, Right(Checked.Asking(first))) => Right(Asking(ref, first))
       })
-      .andThen(Flow.step(asked).keeping.map((a, judgement) => Judged(a.ref, judgement)))
+      .andThen(Flow.mayEnd(asked.keeping.map {
+        case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
+        case (a, Judging.Judged(judgement, Right(()))) => Right(Judged(a.ref, judgement))
+      }))
       .andThen(Flow.step(recorded).keeping)
       .map {
         case (_, Left(why)) => s"failed: $why"
@@ -90,7 +106,8 @@ object Settle {
   /** The `ask` step: one classifier call over the transcript of `question`'s period from
     * `first`, asked only when its service is cleared for what was read.
     */
-  private def judge(env: SettleEnv^, question: SettleRef, first: TurnSeq): Judgement =
+  private def judge(env: SettleEnv^, asks: Judging.Asks^, at: Asking): Judgement = {
+    val (question, first) = (at.ref, at.first)
     Routed
       .reading(env.db.as(subject(question))) { (routed, bounded) =>
         val entries = PeriodTranscript.entries(
@@ -109,7 +126,7 @@ object Settle {
               .speakers(bounded, env.records.principals, own)
               .getOrElse(Speakers.none)
             SettleQuestion.judge(
-              env.classifier.asking(routed),
+              asks.classifier(env.moves.classifier, routed),
               SettleQuestion.Transcript(PeriodTranscript.of(own, names))
             )
         }
@@ -118,6 +135,7 @@ object Settle {
         error => Judgement.Unanswered(s"transcript unread: ${describe(error)}"),
         identity
       )
+  }
 
   /** The `check` step. */
   private def check(records: SettleRecords, question: SettleRef)(using

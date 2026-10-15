@@ -1,15 +1,24 @@
 package grit.lifecycle.settle
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.act.moves.{MoveRecords, MovesEnv}
+import grit.core.act.MovesFixtures.{Answering, PerChar}
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.Clock
+import grit.core.document.InMemoryDocuments
 import grit.core.durable.Durable
+import grit.core.edge.InMemoryEdges
 import grit.core.id.{ConversationId, EntryId, PeriodRef, PeriodSeq, SettleRef, TurnRef, WorkflowId}
+import grit.core.identity.Principal
+import grit.core.job.InMemorySchedules
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.Activity
+import grit.core.spend.Budget
+import grit.core.spend.DailyCap
+import grit.core.store.{Askers, InMemoryToolSets}
 import grit.core.store.{
   Db,
   Entry,
@@ -17,6 +26,7 @@ import grit.core.store.{
   InMemoryLifecycleStore,
   InMemoryPeriodStore,
   InMemoryPrincipals,
+  InMemoryUsageLedger,
   Payload,
   StoreError,
   Tx
@@ -91,6 +101,7 @@ object SettleFixtures {
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
     val principals = new InMemoryPrincipals
+    val ledger = new InMemoryUsageLedger
 
     /** A user message starting the next turn at `minutes`, and a reply, its period opened as
       * the inbox does.
@@ -159,18 +170,61 @@ object SettleFixtures {
     def question: SettleRef = activity.map(_.question).getOrElse(sys.error("period 1 is not open"))
 
     /** The settle's body over this world, with `classifier`, at `minutes`, reading through
-      * `db`.
+      * `db`, its asks admitted under `cap` against what [[ledger]] recorded that day.
       */
-    def body(classifier: Classifier^, minutes: Long, db: Db^ = FakeDb)(id: WorkflowId)(using
+    def body(
+        classifier: Classifier^,
+        minutes: Long,
+        db: Db^ = FakeDb,
+        cap: Option[DailyCap] = None
+    )(id: WorkflowId)(using
         Durable^
-    ): String =
+    ): String = {
+      val clock = new Stopped(at(minutes))
       Settle.body(
         SettleEnv(
           SettleRecords(entries, periods, lifecycle, principals),
-          grit.core.classify.TestClassifiers.cleared(classifier),
           db,
-          new Stopped(at(minutes))
+          clock,
+          movesOf(ledger, classifier, db, clock),
+          Budget(ZoneOffset.UTC, cap)
         )
       )(id)
+    }
+  }
+
+  /** What a lifecycle workflow's asks are made with in a test: `classifier`, cleared as the test
+    * classifiers are, its costs kept in `ledger`, read through `db` at `clock`, and nothing else
+    * a move could reach (no model answers, no edge, no tool set, no schedule, no asker).
+    */
+  def movesOf(
+      ledger: InMemoryUsageLedger,
+      classifier: Classifier^,
+      db: Db^,
+      clock: Clock^
+  ): MovesEnv^ = {
+    val edges = new InMemoryEdges
+    MovesEnv(
+      MoveRecords(
+        ledger,
+        ledger,
+        edges,
+        edges,
+        new InMemoryToolSets,
+        new InMemorySchedules(),
+        NoAskers,
+        PerChar,
+        new InMemoryDocuments().savepoints
+      ),
+      new Answering("unused"),
+      grit.core.classify.TestClassifiers.cleared(classifier),
+      db,
+      clock
+    )
+  }
+
+  /** No turn's asker: a lifecycle ask is made for nobody's request. */
+  object NoAskers extends Askers {
+    def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
   }
 }
