@@ -203,10 +203,11 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     * turn's flow's to decide, from what each step returns, so none is shown before it runs.
     */
   private def steps(v: TurnView, runningMs: Long): Vector[Block] = {
-    val longest = math.max(1L, (v.steps.flatMap(_.ms) :+ runningMs).max)
-    def bar(ms: Long): Int = math.max(1, math.round(ms.toDouble / longest * BarCells).toInt)
     val recorded = v.steps.map(_.name).filter(Turn.Step.family(_).nonEmpty)
     val shown = (recorded ++ v.running.toVector.filterNot(recorded.contains)).distinct
+    val longest =
+      math.max(1L, (v.steps.filter(s => recorded.contains(s.name)).flatMap(_.ms) :+ runningMs).max)
+    def bar(ms: Long): Int = math.max(1, math.round(ms.toDouble / longest * BarCells).toInt)
     shown.map { name =>
       val rune = Look.Runes.stepRune(name)
       val label = s"$rune ${name.padTo(NameCols, ' ')}"
