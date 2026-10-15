@@ -134,6 +134,8 @@ object AboutTests extends TestSuite {
 
     test("its topic says the plain security answer is the default, the technical one when wanted") {
       val topic = about.schema(strict = false).parameters("properties")("topic")("description").str
+      // Pinned whole: this sentence is all that steers the model to the plain answer by
+      // default, so a rewording changes what people are told and is reviewed here.
       assert(
         topic.endsWith(
           "For how you keep things safe, security is the plain explanation, to give by " +
