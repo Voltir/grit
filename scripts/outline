@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # The outline tool's `show` query, run from the caller's checkout (grit's TASTy query tool, dev/outline).
-# Mill builds a launcher only when it is missing or a source is newer; the launcher's JAVA_HOME is the
-# JDK build.mill pins, cached beside it so a query never waits on Mill.
+#
+# Builds are kept outside every checkout, in ${XDG_CACHE_HOME:-~/.cache}/grit-outline, one per version of
+# outline's own sources: <key> is a hash of dev/outline's files and the build definition lines that make
+# the module, so every worktree on the same outline code runs one build, and a branch that changes outline
+# gets its own. A key's build (run, classes, java_home.txt) is never rewritten once kept; neither a rebuild
+# nor `./mill clean` reaches it. A key with no build is built first, then kept; keys unused for 7 days are
+# removed at start.
 #
 # The build runs without a daemon in its own output directory, out/outline. Built in out/ itself, a
 # no-daemon run replaces the compiler worker that out/'s warm daemon is connected to (Mill keeps one
@@ -25,19 +30,32 @@ build_mill() { (cd "$here" && MILL_OUTPUT_DIR=out/outline ./mill --no-daemon --t
 # `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
 path_of() { build_mill show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
 
-# What an MCP server runs from, and its log, live outside out/, in a cache directory for this checkout:
-# `./mill clean` removes out/outline whole, and a server whose classes went with it fails on the first
-# class it had not yet loaded.
-cache="${XDG_CACHE_HOME:-$HOME/.cache}/grit-outline/$(printf '%s' "$here" | sha256sum | cut -c1-12)"
+# The key of this checkout's outline sources: every file under dev/outline, by path and content, and the
+# lines of build.mill that define the module (Placed, GritModule, the outline object), and .mill-version.
+outline_key() {
+  {
+    (cd "$here" && find dev/outline -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+    awk '/^trait Placed /,/^}$/; /^trait GritModule /,/^}$/; /^  object outline /,/^  }$/' "$here/build.mill"
+    cat "$here/.mill-version"
+  } | sha256sum | cut -c1-16
+}
 
-# An MCP server's life goes to mcp.log in the cache: who started it, the server's stderr, what removed
-# which snapshot, and how it ended. The client shows a server's stderr only when it fails to connect, so a
-# server that dies later says why nowhere else. The log is cut to its last 2000 lines at each start.
-log="$cache/mcp.log"
+base="${XDG_CACHE_HOME:-$HOME/.cache}/grit-outline"
+key=$(outline_key)
+cache="$base/$key"
+last="$base/last"
+mkdir -p "$base/locks"
+lock="$base/locks/$(printf '%s' "$here" | sha256sum | cut -c1-16).lock"
+
+# The cache's log: each MCP server's life (who started it, its stderr, what removed which snapshot, how it
+# ended), the background builds, and what the cleanup removed. The client shows a server's stderr only
+# when it fails to connect, so a server that dies later says why nowhere else. The log is cut to its last
+# 2000 lines at each MCP start.
+log="$base/mcp.log"
+log_line() { printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" "$*" >> "$log"; }
 note() { :; }
 if [ "${1:-}" = mcp ] || [ "${1:-}" = --build-behind ]; then
-  mkdir -p "$cache"
-  note() { printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" "$*" >> "$log"; }
+  note() { log_line "$@"; }
 fi
 if [ "${1:-}" = mcp ]; then
   if [ -f "$log" ] && [ "$(wc -l < "$log")" -gt 2000 ]; then
@@ -45,56 +63,72 @@ if [ "${1:-}" = mcp ]; then
   fi
   parent=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null || echo '?')
   parent=${parent% }
-  note "invoked: root $root, parent $PPID ${parent:0:200}"
+  note "invoked: root $root, key $key, parent $PPID ${parent:0:200}"
   for s in INT TERM HUP; do trap "note \"got SIG$s before the server started\"; exit $((128 + $(kill -l $s)))" "$s"; done
   trap 'st=$?; note "ended with status $st before the server started"' EXIT
 fi
 
-# Builds the launcher and its JAVA_HOME file; Mill's output goes to stdout. The returns are explicit, since
-# a caller testing the status turns `set -e` off inside.
-build_launcher() {
+# Keys not used for 7 days, other than this one, are removed, and so said in the log.
+for old in "$base"/*/; do
+  old=${old%/}
+  name=${old##*/}
+  case "$name" in mcp | locks | "$key") continue ;; esac
+  [ -L "$old" ] && continue
+  stamp="$old/used"
+  [ -e "$stamp" ] || stamp="$old"
+  if [ -z "$(find "$stamp" -maxdepth 0 -mtime -7 2>/dev/null)" ]; then
+    log_line "removing build $name: unused since $(date -u -r "$stamp" +%Y-%m-%dT%H:%MZ)"
+    rm -rf "${base:?}/$name"
+  fi
+done
+
+# Builds the launcher in this checkout and keeps it as this key's build; Mill's output goes to stdout. The
+# returns are explicit, since a caller testing the status turns `set -e` off inside. A source changed
+# during the build changes the key, and that build is not kept.
+build_and_keep() {
   build_mill grit.outline.launcher || return
-  # Mill rewrites the launcher only when a source's content changed; a source merely touched (a checkout,
-  # a branch switch) would otherwise stay newer than it and send every query back through Mill.
-  touch "$launcher" || return
   mkdir -p "$dir" || return
-  path_of grit.outline.javaHome > "$java_home_file.$$" || return
-  mv "$java_home_file.$$" "$java_home_file"
+  path_of grit.outline.javaHome > "$java_home_file" || return
+  local now
+  now=$(outline_key) || return
+  if [ "$now" != "$key" ]; then
+    echo "outline: a source changed during the build, so it is not kept as $key"
+    return 0
+  fi
+  [ -d "$cache" ] && return 0
+  local next="$cache.tmp.$$"
+  rm -rf "$next"
+  mkdir -p "$next" || return
+  cp -r "$dir/compile.dest/classes" "$next/classes" || return
+  cp "$java_home_file" "$next/java_home.txt" || return
+  # A kept launcher names its own classes, so a query runs it as it is.
+  sed "s|$dir/compile.dest/classes|$cache/classes|" "$launcher" > "$next/run" || return
+  chmod +x "$next/run" || return
+  # A rename, so a key's directory is whole once it exists; another checkout that kept it first wins.
+  mv -T "$next" "$cache" 2>/dev/null || rm -rf "$next"
+  echo "outline: kept the build as $key"
 }
 
-# The last good build, for an MCP server to start from at once while a newer launcher builds: `good` is a
-# link to a good.<epoch>.<pid> directory holding the launcher (run), its classes and java_home.txt. The link
-# is replaced by a rename, and the build before is kept, since a server starting may still be copying it.
-good="$cache/good"
-save_good() {
-  local next
-  next="$cache/good.$(date +%s).$$"
-  mkdir -p "$next"
-  cp -r "$dir/compile.dest/classes" "$next/classes"
-  cp "$java_home_file" "$next/java_home.txt"
-  cp "$launcher" "$next/run"
-  ln -sfn "${next##*/}" "$good.$$"
-  mv -T "$good.$$" "$good"
-  local old
-  for old in $(find "$cache" -maxdepth 1 -name 'good.*.*' -type d -printf '%f\n' | sort | head -n -2); do
-    rm -rf "${cache:?}/$old"
-  done
-  note "saved the launcher as the last good build, ${next##*/}"
+# A key's build was used: its stamp, for the cleanup, and for an MCP start the build it may begin from.
+used() {
+  touch "$base/$1/used"
+  ln -sfn "$1" "$last.$$"
+  mv -T "$last.$$" "$last"
 }
 
-# The background build an MCP server's start leaves behind it (see below): one at a time per checkout, its
-# output in the log, its result saved as the last good build.
+# The background build an MCP start leaves behind it (see below): one at a time per checkout, its output
+# in the log.
 if [ "${1:-}" = --build-behind ]; then
-  exec 9> "$cache/build.lock"
+  exec 9> "$lock"
   if ! flock -n 9; then
-    note "background build: another is running, so none is started"
+    note "background build: another is running in this checkout, so none is started"
     exit 0
   fi
-  note "background build: started"
+  note "background build: started for $key in $here"
   status=0
-  build_launcher 2>&1 | while IFS= read -r line; do note "build: $line"; done || status=$?
-  if [ "$status" -eq 0 ]; then
-    save_good
+  build_and_keep 2>&1 | while IFS= read -r line; do note "build: $line"; done || status=$?
+  if [ "$status" -eq 0 ] && [ -d "$cache" ]; then
+    used "$key"
     note "background build: done"
   else
     note "background build: failed, status $status"
@@ -102,53 +136,48 @@ if [ "${1:-}" = --build-behind ]; then
   exit "$status"
 fi
 
-# Why the launcher must be built first, if it must: it is missing, or a source is newer than it.
-why=""
-if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ]; then
-  why="it is not built yet"
-else
-  newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
-  if [ -n "$newer" ]; then why="${newer#"$here"/} is newer than it"; fi
-fi
-
-# What the query runs from: the launcher, or for an MCP server whose launcher is not ready, the last good
-# build. A client gives a server about 30 s to answer `initialize`, and a cold build takes a minute or two.
-run_from="$launcher"
-classes_from="$dir/compile.dest/classes"
-java_home_from="$java_home_file"
-if [ -n "$why" ] && [ "${1:-}" = mcp ] && [ -d "$good/" ]; then
-  last=$(readlink -f "$good")
-  echo "outline: starting from the last good build, since the launcher $why; a new one builds in the background for the next start" >&2
-  note "starting from the last good build ${last##*/}, since the launcher $why"
-  run_from="$last/run"
-  classes_from="$last/classes"
-  java_home_from="$last/java_home.txt"
+# What the query runs from: this key's build; for an MCP server whose key has none yet, the last build
+# used, since a client gives a server about 30 s to answer `initialize` and a cold build takes a minute
+# or two; else a build made first.
+from="$cache"
+if [ -d "$cache" ]; then
+  used "$key"
+elif [ "${1:-}" = mcp ] && [ -d "$last/" ] && [ -f "$last/run" ]; then
+  from=$(readlink -f "$last")
+  echo "outline: starting from the last build used, ${from##*/}, since these sources have none yet; theirs builds in the background for the next start" >&2
+  note "starting from the last build used, ${from##*/}, since $key has none yet"
+  touch "$from/used"
   # In its own session, so the client's ending this server's process group does not end the build.
   setsid "${BASH_SOURCE[0]}" --build-behind < /dev/null >> "$log" 2>&1 &
   note "background build: pid $!"
-elif [ -n "$why" ]; then
+else
   # On stderr, so an MCP client's stdout stays JSON-RPC; the build is otherwise silent for its first minute or two.
   if [ "${1:-}" = mcp ]; then
-    echo "outline: no last good build to start from, so the server waits for this one; a client may time out first" >&2
-    note "no last good build to start from: building the launcher first, since $why"
+    echo "outline: no build to start from, so the server waits for this one; a client may time out first" >&2
+    note "no build to start from: building $key first"
   fi
-  echo "outline: building the query tool first, since $why; a cold build takes a minute or two" >&2
-  build_launcher >&2
-  note "built the launcher"
-  if [ "${1:-}" = mcp ]; then save_good; fi
-elif [ "${1:-}" = mcp ] && { [ ! -d "$good/" ] || [ "$launcher" -nt "$good/run" ]; }; then
-  save_good
+  echo "outline: building the query tool first, since these sources have no build yet; a cold build takes a minute or two" >&2
+  exec 9> "$lock"
+  flock 9
+  # Another query may have built it while this one waited.
+  [ -d "$cache" ] || build_and_keep >&2
+  exec 9>&-
+  if [ ! -d "$cache" ]; then
+    echo "outline: the build was not kept (a source changed during it); run the query again" >&2
+    exit 2
+  fi
+  used "$key"
+  note "built and kept $key"
 fi
 
-JAVA_HOME=$(cat "$java_home_from")
+JAVA_HOME=$(cat "$from/java_home.txt")
 export JAVA_HOME
 
-# The MCP server runs from a copy of the classes, in the cache. A query rebuilds compile.dest/classes in
-# place, and a JVM that has loaded a class of the old build then fails on one it loads from the new. The
-# copy is named for this wrapper's pid, which lives as long as the server; snapshots of dead servers are
-# removed at start.
+# The MCP server runs from a copy of the classes, so that removing a key's build cannot reach a running
+# server. The copy is named for this wrapper's pid, which lives as long as the server; snapshots of dead
+# servers are removed at start.
 if [ "${1:-}" = mcp ]; then
-  snaps="$cache/mcp"
+  snaps="$base/mcp"
   mkdir -p "$snaps"
   for old in "$snaps"/*; do
     [ -d "$old" ] || continue
@@ -161,9 +190,8 @@ if [ "${1:-}" = mcp ]; then
   rm -rf "$snap"
   mkdir -p "$snap"
   trap 'st=$?; rm -rf "$snap"; note "ended with status $st before the server started"' EXIT
-  cp -r "$classes_from" "$snap/classes"
-  # A launcher names its classes by the path Mill built them at, a last good build's too.
-  sed "s|$dir/compile.dest/classes|$snap/classes|" "$run_from" > "$snap/run"
+  cp -r "$from/classes" "$snap/classes"
+  sed "s|$from/classes|$snap/classes|" "$from/run" > "$snap/run"
   chmod +x "$snap/run"
   # The server's stderr reaches the client as before and the log line by line; stdout stays the JSON-RPC.
   exec 3> >(while IFS= read -r line; do
@@ -174,7 +202,7 @@ if [ "${1:-}" = mcp ]; then
   # An asynchronous command reads /dev/null for stdin unless redirected, so the server gets stdin explicitly.
   "$snap/run" --root "$root" "$@" <&0 2>&3 &
   child=$!
-  note "started: server pid $child, snapshot $snap"
+  note "started: server pid $child, build ${from##*/}, snapshot $snap"
   by=""
   for s in INT TERM HUP; do trap "by=SIG$s; kill \"\$child\" 2>/dev/null" "$s"; done
   status=0
@@ -190,4 +218,4 @@ if [ "${1:-}" = mcp ]; then
   exit "$status"
 fi
 
-exec "$run_from" --root "$root" "$@"
+exec "$from/run" --root "$root" "$@"

@@ -105,15 +105,20 @@ File text: in show and family, each definition's lines after its NN-MM header ar
 
       {"outline": {"command": "<checkout>/scripts/outline", "args": ["mcp"]}}
 
-The launcher is built on first use, without a daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never disturbed), and rebuilt when a source under `dev/outline/src` is newer; either build first says so on stderr, in one `outline: building` line.
+Builds are kept in `${XDG_CACHE_HOME:-~/.cache}/grit-outline/<key>`, one per version of outline's
+sources: the key hashes every file under `dev/outline`, the `build.mill` lines that define the module
+and `.mill-version`. Every checkout on the same outline code runs the same build, and a branch that
+changes outline gets its own. A key with no build is built on first use, in the checkout, without a
+daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never
+disturbed), then kept; the build first says so on stderr, in one `outline: building` line. A kept
+build is never rewritten, so neither a rebuild nor `./mill clean` reaches it. A key unused for 7 days
+is removed.
 
-An MCP server runs from its own copy of the classes, outside `out/` so that neither a rebuild nor
-`./mill clean` reaches it: `${XDG_CACHE_HOME:-~/.cache}/grit-outline/<hash of the checkout's path>/mcp/<pid>`.
-Its log is `mcp.log` beside that `mcp/` directory: when and by whom each server was started, its
-stderr, and how it ended. Each build an MCP start makes is kept there as the last good build; a server
-whose launcher is missing or older than a source starts from that one at once, since a client waits
-about 30 s for it to answer, and the new launcher builds in the background for the next start. With no
-last good build, the server builds first, as a query does, and says so on stderr.
+An MCP server runs from its own copy of a kept build, in `grit-outline/mcp/<pid>`. When its key has
+no build yet, it starts at once from the last build used, since a client waits about 30 s for it to
+answer, and its own builds in the background for the next start; with none to start from, it builds
+first and says so on stderr. `grit-outline/mcp.log` keeps when and by whom each server was started,
+its stderr, how it ended, the background builds and the keys removed.
 
 A request the server fails on gets a JSON-RPC error (-32603) naming the failure, and the server goes on
 serving. Three requests in a row that fail to link, its classes gone or changed under it, end it; it
