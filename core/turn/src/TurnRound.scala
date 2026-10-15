@@ -91,7 +91,8 @@ private[turn] object TurnRound {
   }
 
   /** Where a turn's loop stands at round `round`: for a gated turn, the gate of each round so
-    * far, by its index; and every reply so far, as the model sent it, the first first.
+    * far, by its index; and every reply so far, as the model sent it, the first first: the
+    * verdict on the message's topic is read from the first and checked against them all.
     */
   final case class Rounds(
       round: Round,
@@ -106,11 +107,7 @@ private[turn] object TurnRound {
       * [[Integrity.Authority]] before any.
       */
     def level: Integrity =
-      gates.toVector
-        .sortBy(_._1)
-        .map(_._2.level)
-        .reduceOption(_.meet(_))
-        .getOrElse(Integrity.Authority)
+      gates.values.map(_.level).reduceOption(_.meet(_)).getOrElse(Integrity.Authority)
 
     /** What the turn's rows are believed at: its level, when it is gated. */
     def believed: Option[Integrity] = gating.map(_ => level)
