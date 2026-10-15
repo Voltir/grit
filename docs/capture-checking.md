@@ -310,6 +310,28 @@ give the helper an explicit result type that does not name the parameter.
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 
+**A case class built from a dependent function without its type arguments.**
+
+- *Symptom:* *"Reference `any` is not included in the allowed capture set {} of the
+  enclosing object Flow … External uses should be declared explicitly with a uses clause"*,
+  at a call like `Over(f, get)` whose `get` is `(r2: R2^) -> R^{r2}`.
+- *Cause:* the constructor's type arguments are inferred from the dependent function, and
+  one comes out as a capturing type the enclosing object may not name.
+- *Fix:* give the constructor its type arguments (`Over[R, R2, I, E, O](f, get)`).
+
+**An extension method that takes a function whose result names its parameter.**
+
+- *Symptom:* at a call like `flow.over[Wide](w => w.env)`: *"Capability `r2` outlives its
+  scope: it leaks into outer capture set 's… which is owned by value f"*, with the required
+  type showing the flow's environment as `Env{…}^'s…`, a capturing type.
+- *Cause:* an extension's type parameters stay open across its argument lists, so `R` is
+  inferred again from `get`'s result, `R^{r2}`, as a capturing type that `r2` cannot be
+  charged to. A type annotation on the receiver does not help.
+- *Fix:* make it a member of the trait, so `R` is the receiver's own (`Flow.over`). The
+  same `get` written as a lambda that builds an environment, rather than projecting one out
+  of its argument, is rejected however it is typed: `over` finds an environment, it never
+  makes one.
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or

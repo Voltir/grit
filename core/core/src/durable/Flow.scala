@@ -10,6 +10,15 @@ import Flows.{At, Unreadable, Walk}
   * its steps' bodies acting only through the `R` a run hands them.
   */
 sealed trait Flow[-R, -I, +E, +O] {
+
+  /** This flow run over a larger environment: each body is handed the `R` that `get` finds in
+    * the `R2` a run hands it. It records exactly what this flow records.
+    */
+  // A member, not an extension: an extension infers `R` again from `get`, as a capturing type
+  // that `r2` cannot be charged to (docs/capture-checking.md).
+  def over[R2](get: (r2: R2^) -> R^{r2}): Flow[R2, I, E, O] =
+    Flow.Over[R, R2, I, E, O](this, get)
+
   private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O]
 
   /** Where `history`, from `at` on, leaves this flow run from `in`. */
@@ -106,11 +115,6 @@ object Flow {
 
     /** Its input beside its output. */
     def keeping: Flow[R, I, E, (I, O)] = Keeping(f)
-
-    /** `f` run over a larger environment: each body is handed the `R` that `get` finds in the
-      * `R2` a run hands it. It records exactly what `f` records.
-      */
-    def over[R2](get: (r2: R2^) -> R^{r2}): Flow[R2, I, E, O] = Over[R, R2, I, E, O](f, get)
   }
 
   /** The families `f` can record in the order a run reaches them, repeats kept, each marked
@@ -389,8 +393,10 @@ object Flow {
     }
   }
 
-  private final case class Over[R, R2, I, E, O](f: Flow[R, I, E, O], get: (r2: R2^) -> R^{r2})
-      extends Flow[R2, I, E, O] {
+  private[durable] final case class Over[R, R2, I, E, O](
+      f: Flow[R, I, E, O],
+      get: (r2: R2^) -> R^{r2}
+  ) extends Flow[R2, I, E, O] {
     private[durable] def run(env: R2^, in: I)(using d: Durable^): Either[E, O] =
       f.run(get(env), in)
     private[durable] def walk(
