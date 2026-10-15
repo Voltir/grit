@@ -13,8 +13,12 @@
       "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":true,\\\"standing\\\":true,\\\"settled\\\":true,\\\"note\\\":\\\"gate unavailable: no classifier\\\"}\",\"calls\":[]}"
     },
     {
-      "name": "summarise",
-      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"x\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":59}}"
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"x\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[],\\\"topics\\\":[]}}}\",\"calls\":[{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":2108}]}"
+    },
+    {
+      "name": "ask:summary:record",
+      "output": "{\"recorded\":true}"
     },
     {
       "name": "seal",

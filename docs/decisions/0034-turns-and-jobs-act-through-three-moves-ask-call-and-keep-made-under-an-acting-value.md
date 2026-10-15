@@ -82,7 +82,7 @@ model call or tool request made outside a move is a review finding. The step seq
 generic in their caller's failure type and recorded forms, which costs some indirection. A
 call's answer is read in one place, in a transaction for its actor, where labels per item can
 filter it; a model is chosen where a turn's or ask's pin is made, where trust can route it.
-Lifecycle's workflows' classifier calls are moves (`Judging`); the close's summary model call is not yet, and those a turn makes through `Mentions` are the turn's own. Every store behind a keep must
+Lifecycle's workflows' classifier calls, and the close's summary model call, are moves (`Judging`); those a turn makes through `Mentions` are the turn's own. Every store behind a keep must
 give savepoints. Enforced by the types (a job is pure and is handed only moves; a keeping job
 exists only with its plugin's terms; a keep's body captures nothing and returns a pure value),
 capture probes, one contract run against the moves and their fake, the moves' recorded forms

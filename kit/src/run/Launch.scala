@@ -220,16 +220,13 @@ private[grit] object Launch {
               engine.entries,
               engine.periods,
               engine.lifecycle,
-              engine.ledger,
               engine.tombstones,
-              CharEstimate,
               engine.principals,
               engine.triage,
               engine.conversations
             ),
             moves,
             d.budget,
-            models,
             engine.db,
             clock
           )

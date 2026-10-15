@@ -17,8 +17,12 @@
       "output": "{\"recorded\":true}"
     },
     {
-      "name": "summarise",
-      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[{\"added\":{\"section\":\"standing\",\"text\":\"staging first\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}}]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":120}}"
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"We chose staging.\\\",\\\"outcome\\\":\\\"staging\\\",\\\"changes\\\":[{\\\"added\\\":{\\\"section\\\":\\\"standing\\\",\\\"text\\\":\\\"staging first\\\",\\\"since\\\":1,\\\"touched\\\":1,\\\"ground\\\":\\\"claimed\\\"}}]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[{\\\"text\\\":\\\"staging first\\\",\\\"since\\\":1,\\\"touched\\\":1,\\\"ground\\\":\\\"claimed\\\"}],\\\"topics\\\":[]}}}\",\"calls\":[{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":2015}]}"
+    },
+    {
+      "name": "ask:summary:record",
+      "output": "{\"recorded\":true}"
     },
     {
       "name": "seal",

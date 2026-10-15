@@ -9,7 +9,17 @@ import grit.core.edge.InMemoryEdges
 import grit.core.id.TurnRef
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
-import grit.core.store.{Askers, Db, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
+import grit.core.provider.Models
+import grit.core.spend.Spending
+import grit.core.store.{
+  Askers,
+  Db,
+  InMemoryToolSets,
+  InMemoryUsageLedger,
+  StoreError,
+  Tx,
+  UsageLedger
+}
 
 /** What a lifecycle workflow's asks are made with in a test. */
 object TestMoves {
@@ -23,12 +33,24 @@ object TestMoves {
       classifier: Classifier^,
       db: Db^,
       clock: Clock^
+  ): MovesEnv^ = withModels(ledger, ledger, classifier, db, clock, new Answering("unused"))
+
+  /** As [[of]], with `models` answering its model asks, their costs recorded in `recording`
+    * and admitted against what `spending` read.
+    */
+  def withModels(
+      recording: UsageLedger,
+      spending: Spending,
+      classifier: Classifier^,
+      db: Db^,
+      clock: Clock^,
+      models: Models^
   ): MovesEnv^ = {
     val edges = new InMemoryEdges
     MovesEnv(
       MoveRecords(
-        ledger,
-        ledger,
+        recording,
+        spending,
         edges,
         edges,
         new InMemoryToolSets,
@@ -37,7 +59,7 @@ object TestMoves {
         PerChar,
         new InMemoryDocuments().savepoints
       ),
-      new Answering("unused"),
+      models,
       grit.core.classify.TestClassifiers.cleared(classifier),
       db,
       clock

@@ -27,9 +27,21 @@ object LifecycleReplayTests extends TestSuite {
     * most any records today, each with what it records. A step new to these workflows has
     * none until it is given one here.
     */
+  /** A close's summary step: its judgment's `made` holds what it wrote. */
+  private val Summary = "ask:summary"
+
+  /** The closing a close's recorded `ask:summary` output `text` holds, as recorded. */
+  private def closingIn(text: String): Option[ujson.Value] =
+    ujson
+      .read(text)
+      .obj
+      .get("made")
+      .flatMap(_.strOpt)
+      .flatMap(made => ujson.read(made).obj.get("closing"))
+
   private val Budgets: Map[String, Int] = Map(
     "check" -> 512, // what is due, and close's known record of the conversation
-    "summarise" -> 1600, // the closing close drew up, whole
+    "ask:summary" -> 1900, // the closing close drew up, whole, escaped in its judgment
     "seal" -> 64, // the closing's id
     // triage's, settle's and shadow's answers, with their weights, which of close's
     // sections its gate let through, and why, and a placement with what it was shown; each
@@ -69,7 +81,8 @@ object LifecycleReplayTests extends TestSuite {
       def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
         historiesOf(epoch).collect { case (p, Right(h)) => p.last -> named(h) }.toMap
       // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, a placement's
-      // `stitch` is `ask:stitch`, and a close's `gate` is `ask:gate`, each one's cost then
+      // `stitch` is `ask:stitch`, and a close's `gate` and `summarise` are `ask:gate` and
+      // `ask:summary`, each one's cost then
       // recorded in its `:record` step when the classifier replied: a reply names its model,
       // and a gate's leaves no note. A close unearned or ran asks no gate, and records no step
       // for it.
@@ -80,6 +93,10 @@ object LifecycleReplayTests extends TestSuite {
             Vector()
           case ("close", "gate") if out.contains("\"note\"") => Vector("ask:gate")
           case ("close", "gate") => Vector("ask:gate", "ask:gate:record")
+          // A close's `summarise` is `ask:summary`, its cost recorded when a model replied.
+          case ("close", "summarise") if out.contains("\"cost\"") =>
+            Vector("ask:summary", "ask:summary:record")
+          case ("close", "summarise") => Vector("ask:summary")
           case (w @ ("settle" | "triage" | "shadow"), "ask") if out.contains("\"model\"") =>
             Vector(s"ask:$w", s"ask:$w:record")
           case (w @ ("settle" | "triage" | "shadow"), "ask") => Vector(s"ask:$w")
@@ -114,7 +131,10 @@ object LifecycleReplayTests extends TestSuite {
     ) {
       val read = histories.collect { case (path, Right(h)) => path.last -> h }
       assert(read.size == histories.size)
-      RecordedSizes.breaches(read, RecordedSizes.familyOf, Budgets, Whole) ==> Vector.empty
+      // A closing is not answers: the close's summary is its own family.
+      def family(name: String): String =
+        if (name == Summary) name else RecordedSizes.familyOf(name)
+      RecordedSizes.breaches(read, family, Budgets, Whole) ==> Vector.empty
     }
 
     test(
@@ -258,10 +278,10 @@ object LifecycleReplayTests extends TestSuite {
             )
           )
           .flatMap(_.steps.collect {
-            case s if s.name == "summarise" =>
+            case s if s.name == Summary =>
               s.outcome match {
                 case InMemoryDurable.Outcome.Output(text) =>
-                  ujson.read(text).obj.get("closing").flatMap(ClosingJson.read(_).toOption)
+                  closingIn(text).flatMap(ClosingJson.read(_).toOption)
                 case _ => None
               }
           })
@@ -275,17 +295,17 @@ object LifecycleReplayTests extends TestSuite {
     }
 
     test("every recorded closing of the epoch reads, and the epoch holds a version-3 one") {
-      // A close in flight reads back its summarise step: today's reader must read every
+      // A close in flight reads back its summary step: today's reader must read every
       // version this epoch recorded (ADR 0018). An earlier epoch's closes are never resumed;
       // a stored closing of an earlier version is ClosingTests'.
       val closings = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == "summarise" => (path.last, s.outcome)
+          case s if s.name == Summary => (path.last, s.outcome)
         })
       }
       val read = closings.map {
         case (file, InMemoryDurable.Outcome.Output(text)) =>
-          val closing = ujson.read(text).obj.get("closing")
+          val closing = closingIn(text)
           val version = closing.flatMap(_.obj.get("v")).flatMap(_.numOpt).map(_.toInt)
           file -> closing.map(ClosingJson.read).map(_.map(c => (version, c)))
         case (file, other) => file -> Some(Left(s"not an output: $other"))

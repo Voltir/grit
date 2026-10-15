@@ -8,8 +8,9 @@ import utest.*
 /** What capture checking rejects about [[DurableMoves]] (ADR 0034): what a run's body returns,
   * through `plain` or `keeping`, cannot carry its moves out, and the body makes no step of its
   * own beside them, so the run's next step may use the program's `Steps` they were made
-  * through. Pinned by compiling probe sources against act with act's own flags;
-  * `assertCompileError` cannot see capture errors (docs/capture-checking.md).
+  * through. A judgment's writing pose reads its reply purely, so it cannot ask a model again
+  * uncharged ([[Judging.Pose.writing]]). Pinned by compiling probe sources against act with
+  * act's own flags; `assertCompileError` cannot see capture errors (docs/capture-checking.md).
   */
 object MovesCaptureTests extends TestSuite {
 
@@ -59,10 +60,23 @@ object MovesCaptureTests extends TestSuite {
       |  Reply(moves.toString + seen)
       |})""".stripMargin
 
+  /** A judgment's writing pose over `models`, its reply read by `read`. */
+  private def writing(read: String): String =
+    "def pose(models: grit.core.provider.Models^, routed: grit.core.route.Routed, " +
+      "pins: grit.core.model.Pins, request: grit.core.provider.ModelRequest)" +
+      ": Judging.Pose[String]^{models} =\n" +
+      s"  Judging.Pose.writing(models, routed, pins, request)($read)"
+
+  private val writingPure = writing("reply => reply.fold(identity, _.toString)")
+
+  private val writingAsksAgain =
+    writing("reply => models.catalog().fold(identity, _.toString) + reply.toString")
+
   /* The bounds' refusals are the typer's, so a second compile answers the rest. */
   private lazy val compiled = Probes.batch(
     prelude,
-    List(runs, plainReturnsMoves, keepingReturnsMoves, plainSteps, keepingSteps).map(run)
+    List(runs, plainReturnsMoves, keepingReturnsMoves, plainSteps, keepingSteps).map(run) ++
+      List(writingPure, writingAsksAgain)
   )
 
   val tests = Tests {
@@ -93,6 +107,16 @@ object MovesCaptureTests extends TestSuite {
     test("a keeping run's body that makes a step while its moves are live is rejected") {
       val errs = errors(keepingSteps)
       assert(errs.exists(_.startsWith("Separation failure")))
+    }
+
+    test("a writing pose whose read is pure compiles") {
+      val errs = compiled.errors(writingPure)
+      assert(classpath.nonEmpty, errs.isEmpty)
+    }
+
+    test("a writing pose whose read captures its models is rejected") {
+      val errs = compiled.errors(writingAsksAgain)
+      assert(errs.exists(e => e.contains("->{models} String") && Probes.flowsInto("{}")(List(e))))
     }
   }
 }

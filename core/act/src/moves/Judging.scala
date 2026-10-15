@@ -15,13 +15,16 @@ import grit.core.classify.{
 }
 import grit.core.durable.{Flow, Journaled, Step}
 import grit.core.id.{TurnRef, WorkflowId}
+import grit.core.message.Message
+import grit.core.model.Pins
+import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.Routed
 import grit.core.spend.Budget
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 
-/** An engine workflow's judgment as a move (ADR 0034): its classifier asks admitted against the
-  * day's spend and their costs kept in the ledger, as a job's are, its request read in its own
-  * step.
+/** An engine workflow's judgment as a move (ADR 0034): its classifier or model asks admitted
+  * against the day's spend and their costs kept in the ledger, as a job's are, its request read
+  * in its own step.
   */
 object Judging {
 
@@ -30,8 +33,9 @@ object Judging {
     */
   final case class Charged(turn: TurnRef, workflow: WorkflowId, subject: Subject)
 
-  /** What a judgment's workflow made of its input: made with no classifier asked, or a request
-    * and what it makes of the answers ([[Pose.asking]]).
+  /** What a judgment's workflow made of its input: made with no classifier or model asked, or a
+    * request and what it makes of the answers ([[Pose.asking]]) or of the reply
+    * ([[Pose.writing]]).
     */
   sealed trait Pose[+B]
 
@@ -67,16 +71,38 @@ object Judging {
         request: Request,
         read: (Either[ClassifierError, Answers], FiniteDuration) -> B
     ) extends Pose[B]
+
+    /** `request`, asked once of the first of `pins` cleared for what was read under `routed`,
+      * through `models`; `read` makes the judgment from its reply, or from why there is none:
+      * the day's spend reached its cap ("The day's spend reached its cap, so no model was
+      * asked."), the spend cannot be read ("the day's spend is unread: {cause}"), or no pin is
+      * cleared ("no model cleared for {label}"), each sending nothing; or the provider's
+      * failure, its cause. Every reply is charged, however it reads, by the judgment's record
+      * step, at the request's estimate.
+      */
+    def writing[B](models: Models^, routed: Routed, pins: Pins, request: ModelRequest)(
+        read: Either[String, Message.Assistant] -> B
+    ): Pose[B]^{models} =
+      Writing(models, routed, pins, request, read)
+
+    private[Judging] final case class Writing[+B](
+        models: Models^,
+        routed: Routed,
+        pins: Pins,
+        request: ModelRequest,
+        read: Either[String, Message.Assistant] -> B
+    ) extends Pose[B]
   }
 
-  /** What a judgment came to: what its workflow `made` of it, and whether its classifier's cost
-    * was recorded (`Left`, why not; `Right` when it was, or when no call was answered).
+  /** What a judgment came to: what its workflow `made` of it, and whether its classifier's or
+    * model's cost was recorded (`Left`, why not; `Right` when it was, or when no call was
+    * answered).
     */
   final case class Judged[+B](made: B, kept: Either[String, Unit])
 
   /** The judgment `name` of the workflow input `I`: `ask:{name}`, recording what `pose` made of
-    * the input, its classifier asked at most once, the ask admitted first by `budget`'s daily
-    * cap against what every conversation spent that day; then, when the classifier answered,
+    * the input, its classifier or model asked at most once, the ask admitted first by
+    * `budget`'s daily cap against what every conversation spent that day; then, when it answered,
     * `ask:{name}:record`, its cost recorded for `charged`'s turn, under its workflow. A store
     * that fails the record is `kept`'s `Left`, never a throw.
     */
@@ -94,15 +120,10 @@ object Judging {
             case Pose.Made(b) => Posed(b, Vector.empty)
             case Pose.Asking(cleared, routed, request, read) =>
               val env: MovesEnv^{r} = moves(r)
-              val allowance: Allowance = Allowance.Daily(budget(r))
               val asked: (Either[ClassifierError, Reply], FiniteDuration) =
-                Act.admission(env.records, env.db, env.clock, allowance, p.charged.subject) match {
-                  case Left(e) =>
-                    val why = s"the day's spend is unread: ${Act.describe(e)}"
-                    (Left(ClassifierError.Unavailable(why)), Duration.Zero)
-                  case Right((false, _, _)) =>
-                    (Left(ClassifierError.Unavailable(Act.Capped)), Duration.Zero)
-                  case Right((true, _, _)) =>
+                admitted(env, budget(r), p.charged.subject) match {
+                  case Left(why) => (Left(ClassifierError.Unavailable(why)), Duration.Zero)
+                  case Right(()) =>
                     val start = env.clock.millis()
                     val got = cleared.asking(routed).replied(request)
                     (got, (env.clock.millis() - start).millis)
@@ -112,6 +133,19 @@ object Judging {
                 Act.classified(env.records, request, a, cleared.upstream)
               )
               Posed(read(reply.flatMap(_.answers), took), calls)
+            case Pose.Writing(models, routed, pins, request, read) =>
+              val env: MovesEnv^{r} = moves(r)
+              val reply: Either[String, Message.Assistant] = for {
+                _ <- admitted(env, budget(r), p.charged.subject)
+                cleared <- routed
+                  .cleared(pins)
+                  .toRight(s"no model cleared for ${Label.written(routed.classification.label)}")
+                got <- models.provider(cleared.first).complete(request).left.map(_.cause)
+              } yield got
+              val calls = reply.toOption.toVector.map(m =>
+                AskMade.Call(m.model, m.usage, env.records.estimator.request(request), m.upstream)
+              )
+              Posed(read(reply), calls)
           }
       )
     Flow
@@ -136,11 +170,19 @@ object Judging {
       )
   }
 
+  /** Whether `budget`'s daily cap admits an ask for `subject` now; `Left`, why not. */
+  private def admitted(env: MovesEnv^, budget: Budget, subject: Subject): Either[String, Unit] =
+    Act.admission(env.records, env.db, env.clock, Allowance.Daily(budget), subject) match {
+      case Left(e) => Left(s"the day's spend is unread: ${Act.describe(e)}")
+      case Right((false, _, _)) => Left(Act.Capped)
+      case Right((true, _, _)) => Right(())
+    }
+
   /** A judgment's input: the judgment `name`, charged as `charged`, of the workflow input `in`. */
   private final case class Posing[+I](name: MoveName, charged: Charged, in: I) extends Act.Move
 
   /** What a judgment's `ask:{n}` recorded: what its workflow `made` of it, and the cost of each
-    * call its classifiers answered, in order.
+    * call its classifiers or models answered, in order.
     */
   private[moves] final case class Posed[+B](made: B, calls: Vector[AskMade.Call])
 }

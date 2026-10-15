@@ -17,8 +17,8 @@
       "output": "{\"recorded\":true}"
     },
     {
-      "name": "summarise",
-      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"Chose staging.\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"note\":\"nothing new: carried\"}"
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"Chose staging.\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[],\\\"topics\\\":[]}},\\\"note\\\":\\\"nothing new: carried\\\"}\",\"calls\":[]}"
     },
     {
       "name": "seal",

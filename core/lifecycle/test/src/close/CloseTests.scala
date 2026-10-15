@@ -1,5 +1,6 @@
 package grit.lifecycle.close
 
+import grit.core.act.MovesFixtures.PerChar
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
   ConversationId,
@@ -232,16 +233,31 @@ object CloseTests extends TestSuite {
         Some(
           (last.turnSeq, Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing), at(Lapsed))
         )
-      w.sealedRows(id)
+      w.summaryRows(id)
         .map(_.map(r => (EntryId.value(r.entry), r.model, r.usage, r.estimatedInput))) ==>
         Right(
-          Vector(("closing:c1:1", "summariser", summaryUsage, Chars.request(summary.requests(0))))
+          Vector(
+            (
+              s"move:${WorkflowId.value(id)}:summary",
+              "summariser",
+              summaryUsage,
+              PerChar.request(summary.requests(0))
+            )
+          )
         )
-      durable
-        .recordedSteps(id) ==> Vector("check", "ask:gate", "ask:gate:record", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector(
+        "check",
+        "ask:gate",
+        "ask:gate:record",
+        "ask:summary",
+        "ask:summary:record",
+        "seal"
+      )
     }
 
-    test("a close over the day's cap asks no gate: every part is asked for, saying why") {
+    test(
+      "a close over the day's cap asks no gate and writes no summary: the period is carried, saying why"
+    ) {
       val w = new World
       w.turn("where do we deploy?", "staging", "Chose staging.", 0)
       w.ledger.now = at(Lapsed)
@@ -256,10 +272,16 @@ object CloseTests extends TestSuite {
         Tokens(1)
       )(using TestTx.fake)
       val g = gate
-      new InMemoryDurable().run(w.attempt.workflowId)(
-        w.body(g, answering(written), new SetClock(at(Lapsed)), cap = DailyCap.of("1").toOption)
-      ) ==> "closed: closing:c1:1; gate unavailable: The day's spend reached its cap, so no model was asked."
-      g.calls ==> 0
+      val summary = answering(written)
+      val id = w.attempt.workflowId
+      new InMemoryDurable().run(id)(
+        w.body(g, summary, new SetClock(at(Lapsed)), cap = DailyCap.of("1").toOption)
+      ) ==> "closed: closing:c1:1; gate unavailable: The day's spend reached its cap, so no model was asked.; no summary: The day's spend reached its cap, so no model was asked."
+      (g.calls, summary.requests.size) ==> (0, 0)
+      w.closingEntry.map(_.payload) ==> Some(
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Chose staging."))
+      )
+      w.summaryRows(id) ==> Right(Vector.empty)
     }
 
     test(
@@ -270,7 +292,12 @@ object CloseTests extends TestSuite {
       val id = w.attempt.workflowId
       new InMemoryDurable().run(id)(w.body(gate, answering(written), new SetClock(at(Lapsed))))
       w.ledger.of(id)(using TestTx.fake).map(_.map(r => (EntryId.value(r.entry), r.model))) ==>
-        Right(Vector((s"move:${WorkflowId.value(id)}:gate", "jev"), ("closing:c1:1", "summariser")))
+        Right(
+          Vector(
+            (s"move:${WorkflowId.value(id)}:gate", "jev"),
+            (s"move:${WorkflowId.value(id)}:summary", "summariser")
+          )
+        )
     }
 
     test(
@@ -370,7 +397,7 @@ object CloseTests extends TestSuite {
       durable.run(id)(w.bodyOver(g, models, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; unearned"
       (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
-      durable.recordedSteps(id) ==> Vector("check", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector("check", "ask:summary", "seal")
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
         (reason, c.flows.prose, c.flows.outcome)
       } ==> Some((CloseReason.Unearned, "Heard 2 messages; nothing kept.", None))
@@ -532,7 +559,7 @@ object CloseTests extends TestSuite {
     }
 
     test(
-      "a turn that comes in while the summary is written abandons the seal: nothing is written"
+      "a turn that comes in while the summary is written abandons the seal: nothing is sealed, the summary's cost is kept"
     ) {
       val w = new World
       w.say("hello", 0)
@@ -545,7 +572,28 @@ object CloseTests extends TestSuite {
       w.periods.get(p1)(using TestTx.fake).map(_.map(_.state)) ==> Right(
         Some(PeriodState.Open)
       )
-      w.sealedRows(id) ==> Right(Vector.empty[UsageLedger.Row])
+      w.summaryRows(id).map(_.map(r => (EntryId.value(r.entry), r.model))) ==>
+        Right(Vector((s"move:${WorkflowId.value(id)}:summary", "summariser")))
+    }
+
+    test(
+      "a close whose summary's cost cannot be recorded fails before its seal: nothing is sealed"
+    ) {
+      val w = new World
+      w.say("hello", 0)
+      val durable = new InMemoryDurable
+      val id = w.attempt.workflowId
+      durable.run(id)(
+        w.bodyOver(
+          gate,
+          new OneModel(answering(written)),
+          new SetClock(at(Lapsed)),
+          recording = new Refusing(w.ledger, ":summary")
+        )
+      ) ==> "failed: its cost unrecorded: ledger down"
+      w.closingEntry ==> None
+      w.periods.get(p1)(using TestTx.fake).map(_.map(_.state)) ==> Right(Some(PeriodState.Open))
+      durable.recordedSteps(id).lastOption ==> Some("ask:summary:record")
     }
 
     test("a model that fails leaves the per-turn summaries as the prose, and no section") {
@@ -563,7 +611,7 @@ object CloseTests extends TestSuite {
           TestClosings.prose("Chose staging. Prod is later.")
         )
       )
-      w.sealedRows(id) ==> Right(Vector.empty[UsageLedger.Row])
+      w.summaryRows(id) ==> Right(Vector.empty[UsageLedger.Row])
     }
 
     test("a close cut short while sealing runs again without calling the summary model again") {
@@ -943,8 +991,8 @@ object CloseTests extends TestSuite {
       w.closingEntry.map(_.payload) ==> Some(
         Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Added PNG."))
       )
-      w.sealedRows(id).map(_.map(r => (EntryId.value(r.entry), r.usage))) ==>
-        Right(Vector(("closing:c1:1", summaryUsage)))
+      w.summaryRows(id).map(_.map(r => (EntryId.value(r.entry), r.usage))) ==>
+        Right(Vector((s"move:${WorkflowId.value(id)}:summary", summaryUsage)))
     }
 
     test("a closed period's attempt says so, and writes nothing") {

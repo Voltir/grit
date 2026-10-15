@@ -19,10 +19,10 @@ import grit.core.id.{
 }
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
+import grit.core.model.{Assignment, Catalog, Grade, ModelId, ModelRef, Pinned, Policy, Upstream}
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.place.Directory
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
   ClosedElsewhere,
@@ -86,12 +86,6 @@ object CloseFixtures {
     def now(): Instant = time
     def millis(): Long = time.toEpochMilli
     def sleep(duration: FiniteDuration): Unit = time = time.plusMillis(duration.toMillis)
-  }
-
-  /** One character a token, and nothing for the prompt. */
-  object Chars extends TokenEstimator {
-    def message(message: Message): Tokens = Tokens(message.toString.length.toLong)
-    def system(prompt: String): Tokens = Tokens.Zero
   }
 
   val summaryUsage: Usage = Usage(Tokens(100), Tokens(20), Tokens.Zero, Some(BigDecimal("0.0002")))
@@ -376,11 +370,11 @@ object CloseFixtures {
     def closingOf(period: PeriodRef): Option[Entry] =
       entries.get(period.closingId)(using TestTx.fake).getOrElse(None)
 
-    /** The ledger's rows the seal of the close `id` wrote: its rows but its gate's move's. */
-    def sealedRows(id: WorkflowId): Either[StoreError, Vector[UsageLedger.Row]] =
+    /** The ledger's rows of the close `id`'s summary: its rows but its gate's move's. */
+    def summaryRows(id: WorkflowId): Either[StoreError, Vector[UsageLedger.Row]] =
       ledger
         .of(id)(using TestTx.fake)
-        .map(_.filterNot(r => EntryId.value(r.entry).startsWith("move:")))
+        .map(_.filterNot(r => EntryId.value(r.entry) == s"move:${WorkflowId.value(id)}:gate"))
 
     /** The close's body over this world, with `gate`, `summary` and `clock`, its periods
       * `sealing`, reading through `db`, its gate's ask admitted under `cap` against what
@@ -398,14 +392,17 @@ object CloseFixtures {
     )(using Durable^): String =
       bodyOver(gate, new OneModel(summary), clock, sealing, db, cap)(id)
 
-    /** The close's body over this world, its models `models`. */
+    /** The close's body over this world, its models `models`, its asks' costs recorded in
+      * `recording`.
+      */
     def bodyOver(
         gate: Classifier^,
         models: Models^,
         clock: Clock^,
         sealing: PeriodStore = periods,
         db: Db^ = FakeDb,
-        cap: Option[DailyCap] = None
+        cap: Option[DailyCap] = None,
+        recording: UsageLedger = ledger
     )(
         id: WorkflowId
     )(using Durable^): String =
@@ -415,16 +412,13 @@ object CloseFixtures {
             entries,
             sealing,
             lifecycle,
-            ledger,
             tombstones,
-            Chars,
             principals,
             triage,
             conversations
           ),
-          TestMoves.of(ledger, gate, db, clock),
+          TestMoves.withModels(recording, ledger, gate, db, clock, models),
           Budget(ZoneOffset.UTC, cap),
-          models,
           db,
           clock
         )
@@ -478,6 +472,27 @@ object CloseFixtures {
     def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] = underlying.drop(period)
     def all(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Period]] =
       underlying.all(conversation)
+  }
+
+  /** `underlying`, failing to record any row whose entry id ends with `suffix`. */
+  final class Refusing(underlying: UsageLedger, suffix: String) extends UsageLedger {
+    def record(
+        entry: EntryId,
+        turn: TurnRef,
+        workflow: WorkflowId,
+        model: String,
+        upstream: Option[String],
+        grade: Option[Grade],
+        usage: Usage,
+        estimatedInput: Tokens
+    )(using Tx^): Either[StoreError, Unit] =
+      if (EntryId.value(entry).endsWith(suffix)) Left(StoreError.DatabaseError("ledger down"))
+      else underlying.record(entry, turn, workflow, model, upstream, grade, usage, estimatedInput)
+    def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
+      underlying.of(workflow)
+    def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
+        Tx^
+    ): Either[StoreError, Unit] = underlying.forget(conversation, from, to)
   }
 
   /** Turn numbers. */

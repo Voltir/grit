@@ -7,11 +7,11 @@ core's in-memory fakes, and its histories are read over the same flow. Not in
 workflow here has its own recorded histories, replayed under the engine's epoch
 (`Turn.Epoch`). Each workflow's steps and the environment it works with are the code's
 (`scripts/outline area lifecycle`); this file holds the package order and what the steps'
-signatures do not say. A workflow's classifier call is a move (`grit.act.moves.Judging`):
-admitted under the deployment's daily cap, unavailable when over it, and its cost kept in the
-ledger, charged to its turn under the workflow's own id. The close's summary model call is not
-yet one, nor are `Mentions`' asks: the turn makes them inside its own `weigh` and `route` steps
-and keeps their costs in the ledger under itself.
+signatures do not say. A workflow's classifier call, and the close's summary model call, is a
+move (`grit.act.moves.Judging`): admitted under the deployment's daily cap, unavailable when
+over it, and its cost kept in the ledger, charged to its turn under the workflow's own id.
+`Mentions`' asks are not: the turn makes them inside its own `weigh` and `route` steps and
+keeps their costs in the ledger under itself.
 
 - **`transcript`**: a period's entries as a classifier and the summary model read them. What
   its windows showed from other conversations a close treats as known, never as its own; a

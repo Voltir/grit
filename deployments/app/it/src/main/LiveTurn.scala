@@ -214,16 +214,13 @@ object LiveTurn {
               entries,
               engine.periods,
               engine.lifecycle,
-              engine.ledger,
               engine.tombstones,
-              CharEstimate,
               engine.principals,
               engine.triage,
               engine.conversations
             ),
             moves,
             uncapped,
-            models,
             engine.db,
             Clock.system()
           )

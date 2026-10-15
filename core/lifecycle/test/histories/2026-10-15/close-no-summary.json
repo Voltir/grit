@@ -13,8 +13,8 @@
       "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":true,\\\"standing\\\":true,\\\"settled\\\":true,\\\"note\\\":\\\"gate unavailable: no classifier\\\"}\",\"calls\":[]}"
     },
     {
-      "name": "summarise",
-      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"Greetings.\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"note\":\"no summary: HTTP 400\"}"
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"Greetings.\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[],\\\"topics\\\":[]}},\\\"note\\\":\\\"no summary: HTTP 400\\\"}\",\"calls\":[]}"
     },
     {
       "name": "seal",

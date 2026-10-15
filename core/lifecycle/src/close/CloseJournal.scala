@@ -3,11 +3,10 @@ package grit.lifecycle.close
 import grit.core.durable.Journaled
 import grit.core.durable.Journaled.outcome
 import grit.core.id.{EntryId, TurnSeq}
-import grit.core.message.Tokens
 import grit.core.period.ClosingJson
 import grit.core.store.{PayloadJson, Sealed}
 
-import Close.{Checked, Cost, Summarised}
+import Close.{Checked, Summarised}
 
 /** How the close's step outputs are recorded: `{"ok": value}` or `{"failed": reason}`. A close
   * in flight must read back what an earlier build wrote, so change these only with the
@@ -104,14 +103,6 @@ private[close] object CloseJournal {
       s => {
         val o = ujson.Obj()
         s.closing.foreach(c => o("closing") = ClosingJson.write(c))
-        s.cost.foreach { c =>
-          o("cost") = ujson.Obj(
-            "model" -> c.model,
-            "usage" -> PayloadJson.writeUsage(c.usage),
-            "estimate" -> Tokens.value(c.estimate).toDouble
-          )
-          c.upstream.foreach(u => o("cost")("upstream") = u)
-        }
         s.note.foreach(n => o("note") = n)
         o
       },
@@ -122,29 +113,12 @@ private[close] object CloseJournal {
             case None => Right(None)
             case Some(c) => ClosingJson.read(c).map(Some(_))
           }
-          cost <- o.get("cost") match {
-            case None => Right(None)
-            case Some(c) =>
-              for {
-                co <- c.objOpt.toRight("cost: expected an object")
-                model <- co.get("model").flatMap(_.strOpt).toRight("cost: missing model")
-                usage <- co
-                  .get("usage")
-                  .toRight("cost: missing usage")
-                  .flatMap(PayloadJson.readUsage)
-                estimate <- co
-                  .get("estimate")
-                  .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
-                  .toRight("cost: bad estimate")
-                upstream = co.get("upstream").flatMap(_.strOpt)
-              } yield Some(Cost(model, usage, estimate, upstream))
-          }
           note <- o.get("note") match {
             case None => Right(None)
             case Some(ujson.Str(n)) => Right(Some(n))
             case Some(_) => Left("summarised: note is not a string")
           }
-        } yield Summarised(closing, cost, note)
+        } yield Summarised(closing, note)
     )
 
   given sealing: Journaled[Either[String, Sealed]] =

@@ -17,8 +17,12 @@
       "output": "{\"recorded\":true}"
     },
     {
-      "name": "summarise",
-      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":2,\"ground\":\"claimed\"}],\"topics\":[{\"text\":\"Deploy Target\",\"since\":1,\"touched\":2,\"summary\":\"where to deploy\"}]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":109}}"
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"We chose staging.\\\",\\\"outcome\\\":\\\"staging\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[{\\\"text\\\":\\\"staging first\\\",\\\"since\\\":1,\\\"touched\\\":2,\\\"ground\\\":\\\"claimed\\\"}],\\\"topics\\\":[{\\\"text\\\":\\\"Deploy Target\\\",\\\"since\\\":1,\\\"touched\\\":2,\\\"summary\\\":\\\"where to deploy\\\"}]}}}\",\"calls\":[{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":2502}]}"
+    },
+    {
+      "name": "ask:summary:record",
+      "output": "{\"recorded\":true}"
     },
     {
       "name": "seal",

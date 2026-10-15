@@ -7,7 +7,7 @@ import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows as DurableFlows, Step, StepName}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.job.Slot
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.retention.Target
 import grit.core.route.Routed
@@ -23,7 +23,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.Earning
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.Subject
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -40,25 +40,29 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      deadline's, when the period did not earn a written closing
   *      ([[grit.core.triage.Earning]], over what triage made of its heard messages). The
   *      attempt is taken to be enqueued once its deadline had come.
-  *   1. `gate` — what of the closing is new beside the balance the period opened with and
+  *   1. `ask:gate` — what of the closing is new beside the balance the period opened with and
   *      what its windows showed from other conversations ([[CloseGate]]); every part when
   *      the classifier does not answer; none, with no classifier call, when unearned or ran.
-  *   1. `summarise` — the closing: its flows written by the catalog's summary pin
-  *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the balance it opened with after the writer's edits and
-  *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
+  *   1. `ask:summary` — the closing: its flows written by the catalog's summary pin
+  *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the
+  *      balance it opened with after the writer's edits and the topics'
+  *      ([[grit.core.store.EntryTopics.edits]]), held to the cap
   *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
-  *      is cut off at its token limit (its cost still kept), or when the gate found
-  *      nothing new or no pin of its role is cleared for what its period reads now ([[grit.core.route.Routed]];
-  *      and then no model is called), the period's per-turn summaries joined
-  *      as the prose, and the balance carried with the topics' edits alone. A period grit
+  *      is cut off at its token limit, or when the gate found nothing new, the day's spend
+  *      reached its cap or no pin of its role is cleared for what its period reads now
+  *      ([[grit.core.route.Routed]]; and then no model is called), the period's per-turn
+  *      summaries joined as the prose, and the balance carried with the topics' edits alone.
+  *      A period grit
   *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) that earned
   *      its closing is written by the catalog's heard pin, as reported speech, asking only its
   *      prose and outcome; one that did not is closed with no model call, its prose
   *      `Heard 4 messages; nothing kept.` and its balance carried. A run's period is closed
   *      with no model call: its prose the run's opening, its outcome the run's reply verbatim
   *      (`No reply.` without one), and its balance carried unchanged. A close never fails for
-  *      a model.
-  *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, the period
+  *      a model. Its model is admitted by the day's spend as the gate's classifier is
+  *      ([[Judging]]), and every reply is charged, however it reads, in `ask:summary:record`;
+  *      a store that cannot record it ends the close there, sealing nothing.
+  *   1. `seal` — under the lock again: the closing entry, the period
   *      closed, and the tombstones on its raw entries, on the closing it replaces and on its
   *      conversation going quiet ([[grit.core.retention.Target]]), together; abandoned,
   *      writing nothing, when a turn came in meanwhile.
@@ -80,20 +84,10 @@ object Close {
     case Abandoned(why: String)
   }
 
-  /** What a summary cost: its `model`, the `upstream` that served it as its provider reported
-    * (`None`: not reported), its `usage`, and the estimate of its request.
+  /** What `ask:summary` wrote: the `closing` (`None` only when the period had no text at all
+    * and no turns), and why no model wrote it.
     */
-  final case class Cost(
-      model: String,
-      usage: Usage,
-      estimate: Tokens,
-      upstream: Option[String] = None
-  )
-
-  /** What `summarise` wrote: the `closing` (`None` only when the period had no text at all
-    * and no turns), what it cost when a model wrote it, and why no model did.
-    */
-  final case class Summarised(closing: Option[Closing], cost: Option[Cost], note: Option[String])
+  final case class Summarised(closing: Option[Closing], note: Option[String])
 
   import CloseJournal.given
 
@@ -127,16 +121,19 @@ object Close {
       ref => check(env.records, ref)
     )
 
+  /** What the attempt `at`'s judgments cost is charged to: its last turn, under its workflow. */
+  private def charged(at: Attempt): Judging.Charged =
+    Judging.Charged(
+      TurnRef(at.ref.period.conversationId, at.ref.last),
+      at.ref.workflowId,
+      subject(at.ref)
+    )
+
   private val gated: Flow[CloseEnv, Attempt, Nothing, Judging.Judged[(Asked, Option[String])]] =
-    Judging.flow[CloseEnv, Attempt, (Asked, Option[String])](
-      MoveName("gate"),
-      at =>
-        Judging.Charged(
-          TurnRef(at.ref.period.conversationId, at.ref.last),
-          at.ref.workflowId,
-          subject(at.ref)
-        )
-    )(_.moves, _.budget)(env => at => gate(env, at))
+    Judging.flow[CloseEnv, Attempt, (Asked, Option[String])](MoveName("gate"), charged)(
+      _.moves,
+      _.budget
+    )(env => at => gate(env, at))
 
   /** An attempt's gate: none, asking nothing, when it is unearned or ran; else [[gated]]. */
   private val gating: Flow[CloseEnv, Attempt, String, Gated] =
@@ -157,10 +154,18 @@ object Close {
       )
     )
 
-  private val summarised: Step[CloseEnv, Gated, Summarised] =
-    Step[CloseEnv, Gated, Summarised](StepName("summarise")) { env => g =>
-      summarise(env, g.at.ref, g.at.first, g.asked, g.at.known, g.at.cap, g.at.reason)
-    }
+  private val summary: Flow[CloseEnv, Gated, Nothing, Judging.Judged[Summarised]] =
+    Judging.flow[CloseEnv, Gated, Summarised](MoveName("summary"), g => charged(g.at))(
+      _.moves,
+      _.budget
+    )(env => g => summarise(env, g.at.ref, g.at.first, g.asked, g.at.known, g.at.cap, g.at.reason))
+
+  /** A gated attempt's summary; the close ends when its cost cannot be recorded. */
+  private val summarised: Flow[CloseEnv, Gated, String, Written] =
+    Flow.mayEnd(summary.keeping.map {
+      case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
+      case (g, Judging.Judged(s, Right(()))) => Right(Written(g, s))
+    })
 
   private val sealedUp: Step[CloseEnv, Written, Either[String, Sealed]] =
     Step.transact[CloseEnv, Written, Either[String, Sealed]](
@@ -184,7 +189,7 @@ object Close {
           Right(Attempt(ref, first, reason, known, cap))
       })
       .andThen(gating)
-      .andThen(Flow.step(summarised).keeping.map((g, s) => Written(g, s)))
+      .andThen(summarised)
       .andThen(Flow.step(sealedUp).keeping)
       .map {
         case (w, Left(why)) => s"failed: $why${w.noted}"
@@ -313,7 +318,7 @@ object Close {
   private def reads(env: CloseEnv^, attempt: CloseRef): Reads^ =
     env.db.as(Subject.Conversation(attempt.period.conversationId))
 
-  /** The `summarise` step, for a period closing for `reason`: the closing of the period's
+  /** The `ask:summary` step, for a period closing for `reason`: the closing of the period's
     * turns `first` to the attempt's last, from the flows and edits the summary model writes,
     * asking for `asked`, applied to `known` and held to `cap`; or, when it fails, the fallback
     * prose ([[fallback]]) with `known` carried unedited. A run's ([[ran]]) and an unearned one
@@ -327,30 +332,29 @@ object Close {
       known: Balance,
       cap: Int,
       reason: CloseReason
-  ): Summarised =
+  ): Judging.Pose[Summarised]^{env} =
     // What the writer is sent is read under one routing of the period's conversation, which
     // chooses the pin it may go to: a direct message's floor may have risen since the gate.
     Routed
       .reading(reads(env, attempt)) { (routed, read) =>
         written(env, attempt, first, asked, known, cap, reason, Right(routed), read)
-      }
-      .fold(
-        // Unrouted, the period is unread (only the names of no entries are read), and no model
-        // is asked.
-        e =>
-          written(
-            env,
-            attempt,
-            first,
-            asked,
-            known,
-            cap,
-            reason,
-            Left(describe(e)),
-            reads(env, attempt)
-          ),
-        identity
-      )
+      } match {
+      case Right(pose) => pose
+      // Unrouted, the period is unread (only the names of no entries are read), and no model
+      // is asked.
+      case Left(e) =>
+        written(
+          env,
+          attempt,
+          first,
+          asked,
+          known,
+          cap,
+          reason,
+          Left(describe(e)),
+          reads(env, attempt)
+        )
+    }
 
   /** [[summarise]], its period read through `read` under `routed`; when the routing read
     * failed (`Left`), the period closed as unread.
@@ -365,7 +369,7 @@ object Close {
       reason: CloseReason,
       routed: Either[String, Routed],
       read: Reads^
-  ): Summarised = {
+  ): Judging.Pose[Summarised]^{env} = {
     val entries = routed.flatMap(_ => own(read, env, attempt, first))
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
     val labelled = {
@@ -395,51 +399,56 @@ object Close {
     def carried(note: String) = Summarised(
       fallback(entries.getOrElse(Vector.empty), attempt, first)
         .flatMap(closed(_, None, Vector.empty)),
-      None,
       Some(note)
     )
+    // The summary pin's reply, or why there is none, made into the closing.
+    def replied(reply: Either[String, Message.Assistant]): Summarised =
+      reply.fold(
+        why => carried(s"no summary: $why"),
+        m =>
+          // A reply cut off at its token limit may have lost any part, a Resolved one
+          // included, and its last line may be half written: none of it is read.
+          if (m.stop == StopReason.MaxTokens) carried("no summary: cut off at its token limit")
+          else
+            ClosingSummary
+              .read(m, known, asking, labelled)
+              .flatMap(read => closed(read.prose, read.outcome, read.edits))
+              .fold(carried(s"no summary: the summary had no prose (stop: ${m.stop})"))(c =>
+                Summarised(Some(c), None)
+              )
+      )
     if (reason == CloseReason.Ran)
-      entries.fold(
-        why =>
-          Summarised(
-            fallback(Vector.empty, attempt, first).flatMap(closed(_, None, Vector.empty)),
-            None,
-            Some(s"unread: $why")
-          ),
-        own => Summarised(ran(own, attempt, first, known), None, None)
+      Judging.Pose.Made(
+        entries.fold(
+          why =>
+            Summarised(
+              fallback(Vector.empty, attempt, first).flatMap(closed(_, None, Vector.empty)),
+              Some(s"unread: $why")
+            ),
+          own => Summarised(ran(own, attempt, first, known), None)
+        )
       )
     else if (reason == CloseReason.Unearned)
-      Summarised(
-        fallback(entries.getOrElse(Vector.empty), attempt, first)
-          .flatMap(closed(_, None, Vector.empty)),
-        None,
-        None
+      Judging.Pose.Made(
+        Summarised(
+          fallback(entries.getOrElse(Vector.empty), attempt, first)
+            .flatMap(closed(_, None, Vector.empty)),
+          None
+        )
       )
-    else if (asked.nothingNew && !overheard) carried("nothing new: carried")
+    else if (asked.nothingNew && !overheard) Judging.Pose.Made(carried("nothing new: carried"))
     else {
-      val written = for {
+      val models = env.moves.models
+      (for {
         r <- routed
-        catalog <- env.models.catalog()
-        pins <- r
-          .cleared(if (overheard) catalog.heard else catalog.pin.summary)
-          .toRight(s"no model cleared for ${Label.written(r.classification.label)}")
-        reply <- env.models.provider(pins.first).complete(request).left.map(_.cause)
-      } yield {
-        val cost =
-          Cost(reply.model, reply.usage, env.records.estimator.request(request), reply.upstream)
-        // A reply cut off at its token limit may have lost any part, a Resolved one
-        // included, and its last line may be half written: none of it is read.
-        if (reply.stop == StopReason.MaxTokens)
-          carried("no summary: cut off at its token limit").copy(cost = Some(cost))
-        else
-          ClosingSummary
-            .read(reply, known, asking, labelled)
-            .flatMap(read => closed(read.prose, read.outcome, read.edits))
-            .fold(carried(s"no summary: the summary had no prose (stop: ${reply.stop})"))(c =>
-              Summarised(Some(c), Some(cost), None)
-            )
-      }
-      written.fold(why => carried(s"no summary: $why"), identity)
+        catalog <- models.catalog()
+      } yield Judging.Pose.writing(
+        models,
+        r,
+        if (overheard) catalog.heard else catalog.pin.summary,
+        request
+      )(replied))
+        .fold(why => Judging.Pose.Made(carried(s"no summary: $why")), identity)
     }
   }
 
@@ -497,7 +506,7 @@ object Close {
         .find(_.trim.nonEmpty)
     }
 
-  /** The `seal` step, at `now`: the closing entry and its cost, and the period closed. */
+  /** The `seal` step, at `now`: the closing entry, and the period closed. */
   private def seal(
       records: CloseRecords,
       attempt: CloseRef,
@@ -510,20 +519,6 @@ object Close {
       case Some(closing) =>
         (for {
           outcome <- records.periods.seal(attempt, reason, closing, now)
-          _ <- (outcome, summarised.cost) match {
-            case (Sealed.Closed(entry), Some(c)) =>
-              records.ledger.record(
-                entry,
-                TurnRef(attempt.period.conversationId, attempt.last),
-                attempt.workflowId,
-                c.model,
-                c.upstream,
-                None,
-                c.usage,
-                c.estimate
-              )
-            case _ => Right(())
-          }
           _ <- outcome match {
             case Sealed.Closed(_) => tombstones(records.tombstones, attempt.period, now)
             case Sealed.Abandoned => Right(())
