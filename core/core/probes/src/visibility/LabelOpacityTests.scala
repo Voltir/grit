@@ -20,15 +20,29 @@ object LabelOpacityTests extends TestSuite {
     opaque("val ok = (l.dominates(Label.Public), l.join(l).meet(l) == l, Label.written(l))")
   private val level = opaque("val lv = l.level")
   private val compartments = opaque("val cs = l.compartments")
-  private val matchRepr = opaque("def f(x: Label) = x match { case r: Label.Repr => r.level }")
-  private val buildRepr =
-    opaque("val r = new Label.Repr(Level.Public, scala.collection.immutable.SortedSet.empty)")
+  private val matchRepr = opaque("def f(x: Label) = x match { case r: Levelled[?] => r.level }")
+  private val buildRepr = opaque("val r = Levelled.at(Level.Public, Nil)")
   private val readCompartments = opaque("val cs = Label.compartments(l)")
   private val readLevel = opaque("val lv = Label.level(l)")
+  private val integrityLevel = "val lv = Integrity.Member.level"
+  private val matchIntegrity =
+    "def f(x: Integrity) = x match { case r: Levelled[?] => r.compartments }"
+  private val readIntegrityLevel = "val lv = Integrity.level(Integrity.Member)"
 
   private lazy val compiled = Probes.batch(
     prelude,
-    List(outside, level, compartments, matchRepr, buildRepr, readCompartments, readLevel)
+    List(
+      outside,
+      level,
+      compartments,
+      matchRepr,
+      buildRepr,
+      readCompartments,
+      readLevel,
+      integrityLevel,
+      matchIntegrity,
+      readIntegrityLevel
+    )
   )
 
   private def probe(body: String): List[String] = compiled.errors(body)
@@ -51,13 +65,26 @@ object LabelOpacityTests extends TestSuite {
     }
 
     test("a label's representation cannot be named outside its package, to match on or build") {
-      val errs = probe(matchRepr) ++ probe(buildRepr)
-      errs.count(_.contains("Repr cannot be accessed")) ==> 2
+      // Outside its package neither the representation's class nor its object is found: the
+      // compiler, finding only the other one, names each as the wrong kind.
+      assert(
+        probe(matchRepr).exists(_.contains("Expected a type, but found a term: Levelled")),
+        probe(buildRepr).exists(_.contains("Expected a term, but found a type: Levelled"))
+      )
     }
 
     test("a label's compartments and level cannot be read outside its package") {
       val errs = probe(readCompartments) ++ probe(readLevel)
       errs.count(_.contains("cannot be accessed")) ==> 2
+    }
+
+    test("an integrity, over the same representation, is as opaque outside its package") {
+      assert(
+        probe(integrityLevel)
+          .exists(_.contains("value level is not a member of grit.core.visibility.Integrity")),
+        probe(matchIntegrity).exists(_.contains("Expected a type, but found a term: Levelled")),
+        probe(readIntegrityLevel).exists(_.contains("level cannot be accessed"))
+      )
     }
   }
 }

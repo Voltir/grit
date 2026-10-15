@@ -1,7 +1,5 @@
 package grit.core.visibility
 
-import scala.collection.immutable.SortedSet
-
 import grit.core.place.Service
 
 /** How far a thing may be believed to steer an effect (Biba, ADR 0036): a level and the
@@ -9,25 +7,14 @@ import grit.core.place.Service
   * other's and it holds every compartment of the other. What is made from several is believed
   * at their meet. Opaque, as `Label` is.
   */
-opaque type Integrity = Integrity.Repr
+opaque type Integrity = Levelled[Integrity.Level]
 
 object Integrity {
-
-  /* Not a case class and not a set, so a type test outside this file finds no structure to
-   * take apart, as for `Label.Repr`. */
-  private[visibility] final class Repr(val level: Level, val compartments: SortedSet[Compartment]) {
-    override def equals(that: Any): Boolean = that match {
-      case r: Repr => level == r.level && compartments == r.compartments
-      case _ => false
-    }
-    override def hashCode: Int = (level, compartments).##
-    override def toString: String = written(this)
-  }
 
   /** grit's integrity levels (Biba), lowest first; not the confidentiality `Level` beside it.
     * Each unlocks what those below it do and its own.
     */
-  enum Level {
+  enum Level extends caps.Pure {
 
     /** Content no source vouches for (a relaying service's results, an undeclared one's).
       * Unlocks nothing.
@@ -65,68 +52,45 @@ object Integrity {
   /** `level` in `compartments`, read as the compartments it is *endorsed in*: the reverse of
     * `Label.at`'s reading, so the usual value names none.
     */
-  def at(level: Level, compartments: Compartment*): Integrity =
-    new Repr(level, SortedSet.from(compartments))
+  def at(level: Level, compartments: Compartment*): Integrity = Levelled.at(level, compartments)
 
   extension (i: Integrity) {
-    def dominates(other: Integrity): Boolean =
-      i.level.ordinal >= other.level.ordinal && other.compartments.subsetOf(i.compartments)
+    def dominates(other: Integrity): Boolean = i.dominates(other)
 
     /** Whether it is believed below [[Outside]]: at [[Level.Untrusted]], in any compartments. */
     def belowOutside: Boolean = !i.dominates(Outside)
 
     /** The greatest integrity both dominate: what is made from both. */
-    def meet(other: Integrity): Integrity =
-      new Repr(
-        if (i.level.ordinal <= other.level.ordinal) i.level else other.level,
-        i.compartments.intersect(other.compartments)
-      )
+    def meet(other: Integrity): Integrity = i.meet(other)
 
     /** The least integrity dominating both. */
-    def join(other: Integrity): Integrity =
-      new Repr(
-        if (i.level.ordinal >= other.level.ordinal) i.level else other.level,
-        i.compartments ++ other.compartments
-      )
+    def join(other: Integrity): Integrity = i.join(other)
   }
 
   given CanEqual[Integrity, Integrity] = CanEqual.derived
 
-  /* Its level's name, as the written form holds it: changing one changes every written
+  /* Its levels' names, as the written form holds them: changing one changes every written
    * integrity. */
-  private def name(level: Level): String = level match {
-    case Level.Untrusted => "untrusted"
-    case Level.Outside => "outside"
-    case Level.Member => "member"
-    case Level.Authority => "authority"
+  private[visibility] given Levels[Level] {
+    val all: Vector[Level] = Level.values.toVector
+    def name(level: Level): String = level match {
+      case Level.Untrusted => "untrusted"
+      case Level.Outside => "outside"
+      case Level.Member => "member"
+      case Level.Authority => "authority"
+    }
+    def shownAs: String = "integrity"
+    def refusedAs: String = "integrity level"
   }
 
   /** Its written form, stable across releases; parsed by [[read]]. */
-  def written(i: Integrity): String =
-    (name(i.level) +: i.compartments.toVector.map(Compartment.name)).mkString("+")
+  def written(i: Integrity): String = i.written
 
   /** Its form for people and the model, e.g. `[integrity: member]`. Never parsed. */
-  def shown(i: Integrity): String = {
-    val in =
-      if (i.compartments.isEmpty) ""
-      else i.compartments.toVector.map(Compartment.name).mkString(", in: {", ", ", "}")
-    s"[integrity: ${name(i.level)}$in]"
-  }
+  def shown(i: Integrity): String = i.shown
 
   /** The integrity `text` writes, or why not. */
-  def read(text: String): Either[String, Integrity] =
-    text.split('+').toVector match {
-      case head +: rest =>
-        for {
-          level <- Level.values
-            .find(name(_) == head)
-            .toRight(s"$text names no integrity level first: $head")
-          compartments <- rest.foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) {
-            (acc, c) => acc.flatMap(cs => Compartment.of(c).map(cs :+ _))
-          }
-        } yield at(level, compartments*)
-      case _ => Left(s"$text names no integrity level")
-    }
+  def read(text: String): Either[String, Integrity] = Levelled.read[Level](text)
 
   /** `i`'s compartments, in order, for this package's own checks. */
   private[visibility] def compartments(i: Integrity): Vector[Compartment] = i.compartments.toVector

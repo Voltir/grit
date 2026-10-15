@@ -77,6 +77,42 @@ object LabelTests extends TestSuite {
       (LabelParts.rank(Label.Public), LabelParts.compartments(Label.Public)) ==> (0, Vector.empty)
     }
 
+    test(
+      "every level, confidentiality's and integrity's, is written and shown by its own name, and read back from it"
+    ) {
+      // What files, rows and recorded outputs hold, and what people read: pinned whole.
+      Level.values.toVector.map(l => Label.written(Label.at(l, acme))) ==> Vector(
+        "public+acme",
+        "internal+acme",
+        "confidential+acme",
+        "restricted+acme"
+      )
+      Level.values.toVector.map(l => Label.shown(Label.at(l, acme))) ==> Vector(
+        "[level: public, in: {acme}]",
+        "[level: internal, in: {acme}]",
+        "[level: confidential, in: {acme}]",
+        "[level: restricted, in: {acme}]"
+      )
+      val integrities = Integrity.Level.values.toVector.map(Integrity.at(_, acme))
+      integrities.map(Integrity.written) ==> Vector(
+        "untrusted+acme",
+        "outside+acme",
+        "member+acme",
+        "authority+acme"
+      )
+      integrities.map(Integrity.shown) ==> Vector(
+        "[integrity: untrusted, in: {acme}]",
+        "[integrity: outside, in: {acme}]",
+        "[integrity: member, in: {acme}]",
+        "[integrity: authority, in: {acme}]"
+      )
+      integrities.map(i => Integrity.read(Integrity.written(i))) ==> integrities.map(Right(_))
+      Vector("restricted", "authority").map(Label.read) ==> Vector(
+        Right(Label.at(Level.Restricted)),
+        Left("authority names no level first: authority")
+      )
+    }
+
     test("a label's written form reads back to the same label") {
       labels.find(l => Label.read(Label.written(l)) != Right(l)) ==> None
       // The written form other files and recorded outputs hold: pinned.

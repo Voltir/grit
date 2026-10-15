@@ -1,7 +1,5 @@
 package grit.core.visibility
 
-import scala.collection.immutable.SortedSet
-
 /** A named area a deployment declares (a team, a client, a project): a thing in it is read
   * only by a clearance holding it, at whatever level.
   */
@@ -37,44 +35,23 @@ object Compartment {
   * when its level is at least the other's and it holds every compartment of the other.
   * Opaque: a label is compared, joined, met and passed to core as a key, never taken apart.
   */
-opaque type Label = Label.Repr
+opaque type Label = Levelled[Level]
 
 object Label {
 
-  /* Not a case class and not a set, so a type test outside this file finds no structure to
-   * take apart: `Repr` cannot be named there, and it is no `Product` or `Set`. */
-  private[visibility] final class Repr(val level: Level, val compartments: SortedSet[Compartment]) {
-    override def equals(that: Any): Boolean = that match {
-      case r: Repr => level == r.level && compartments == r.compartments
-      case _ => false
-    }
-    override def hashCode: Int = (level, compartments).##
-    override def toString: String = written(this)
-  }
-
   /** The bottom: [[Level.Public]], no compartment. Every label dominates it. */
-  val Public: Label = new Repr(Level.Public, SortedSet.empty)
+  val Public: Label = at(Level.Public)
 
-  def at(level: Level, compartments: Compartment*): Label =
-    new Repr(level, SortedSet.from(compartments))
+  def at(level: Level, compartments: Compartment*): Label = Levelled.at(level, compartments)
 
   extension (l: Label) {
-    def dominates(other: Label): Boolean =
-      l.level.ordinal >= other.level.ordinal && other.compartments.subsetOf(l.compartments)
+    def dominates(other: Label): Boolean = l.dominates(other)
 
     /** The least label dominating both: what is made from both is kept at least here. */
-    def join(other: Label): Label =
-      new Repr(
-        if (l.level.ordinal >= other.level.ordinal) l.level else other.level,
-        l.compartments ++ other.compartments
-      )
+    def join(other: Label): Label = l.join(other)
 
     /** The greatest label both dominate. */
-    def meet(other: Label): Label =
-      new Repr(
-        if (l.level.ordinal <= other.level.ordinal) l.level else other.level,
-        l.compartments.intersect(other.compartments)
-      )
+    def meet(other: Label): Label = l.meet(other)
   }
 
   given CanEqual[Label, Label] = CanEqual.derived
@@ -83,32 +60,16 @@ object Label {
     * outside the database hold. Parseable by [[read]], so a label is not secret from whoever
     * holds its written form; opacity buys representation independence, not secrecy.
     */
-  def written(l: Label): String =
-    (Level.name(l.level) +: l.compartments.toVector.map(Compartment.name)).mkString("+")
+  def written(l: Label): String = l.written
 
   /** Its form for people and the model to read, e.g. `[level: confidential, in: {acme, trial}]`,
     * or `[level: internal]` with no compartment. Never parsed: [[written]] is the form a file
     * or a recorded output holds.
     */
-  def shown(l: Label): String = {
-    val in =
-      if (l.compartments.isEmpty) ""
-      else l.compartments.toVector.map(Compartment.name).mkString(", in: {", ", ", "}")
-    s"[level: ${Level.name(l.level)}$in]"
-  }
+  def shown(l: Label): String = l.shown
 
   /** The label `text` writes, or why not. */
-  def read(text: String): Either[String, Label] =
-    text.split('+').toVector match {
-      case head +: rest =>
-        for {
-          level <- Level.named(head).toRight(s"$text names no level first: $head")
-          compartments <- rest.foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) {
-            (acc, c) => acc.flatMap(cs => Compartment.of(c).map(cs :+ _))
-          }
-        } yield at(level, compartments*)
-      case _ => Left(s"$text names no level")
-    }
+  def read(text: String): Either[String, Label] = Levelled.read[Level](text)
 
   /** `l`'s level, for this package's own checks. */
   private[visibility] def level(l: Label): Level = l.level
