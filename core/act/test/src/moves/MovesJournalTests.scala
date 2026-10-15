@@ -170,7 +170,7 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
-      "a JSON ask's move step is written shaped with its digest, reply, label and each call's model, usage and estimate, or unshaped saying why"
+      "a JSON ask's move step is written shaped with its digest, reply, label, posing level and each call's model, usage and estimate, or unshaped saying why"
     ) {
       val calls = Vector(
         AskMade.Call("test/summary", message.usage, Tokens(42)),
@@ -180,8 +180,14 @@ object MovesJournalTests extends TestSuite {
         """[{"model":"test/summary","usage":{"input":10,"output":2,"cachedInput":0,"costUsd":"0.001"},"estimate":42},""" +
           """{"model":"test/summary","usage":{"input":3,"output":1,"cachedInput":0},"estimate":57}]"""
       pinned[AskMade](
-        AskMade.Shaped("v1:ab", """{"b":2,"a":"x"}""", Label.at(Level.Internal), calls),
-        s"""{"shaped":{"digest":"v1:ab","reply":{"b":2,"a":"x"},"at":"internal","calls":$written}}"""
+        AskMade.Shaped(
+          "v1:ab",
+          """{"b":2,"a":"x"}""",
+          Label.at(Level.Internal),
+          Integrity.Member,
+          calls
+        ),
+        s"""{"shaped":{"digest":"v1:ab","reply":{"b":2,"a":"x"},"at":"internal","level":"member","calls":$written}}"""
       )
       pinned[AskMade](
         AskMade.Unshaped("v1:ab", "no call of `reply`", calls),

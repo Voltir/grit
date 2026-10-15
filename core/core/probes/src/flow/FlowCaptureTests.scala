@@ -34,12 +34,6 @@ object FlowCaptureTests extends TestSuite {
     """def f(t: Tainted[String]): Either[Tainted[String], Trusted[String]] =
       |  Trusted.check(t, Integrity.Member)
       |""".stripMargin
-  private val endorseControl =
-    """def f(r: Tainted[Option[(Boolean, Token[16])]], x: Tainted[Extracted])(using
-      |    e: Endorse.Extraction^
-      |): (Trusted[Option[(Boolean, Token[16])]], Trusted[Extracted]) =
-      |  (Trusted.endorse(r), Trusted.endorse(x))
-      |""".stripMargin
   private val taintControl =
     """def f(t: Taint^)(using d: Durable^): Tainted[String] = {
       |  val read = d.step("gate") { () => "outside" }
@@ -80,30 +74,9 @@ object FlowCaptureTests extends TestSuite {
   private val trustedAt = "def f(s: String): Trusted[String] = Trusted.at(s, Integrity.Member)"
   private val trustedLiteral = "def f(s: String): Trusted[String] = Trusted.literal(s)"
   private val taintNew = "def f(): Taint^ = new Taint(Integrity.Member)"
-  private val extractionNew =
-    "def f(): Endorse.Extraction^ = new Endorse.Extraction(Integrity.Authority)"
-  private val sanitiserNew = "def f(): Endorse.Sanitiser^ = new Endorse.Sanitiser"
+  private val downgradeNew =
+    "def f(d: Downgrade.Described[?]): Downgrade[Int, Int] = new Downgrade(d, i => i)"
   private val boundedForged = "given Bounded[String, 1] = new Bounded[String, 1] {}"
-
-  // Endorsement: only with the capability, only of a bounded value, and never in a pure function.
-  private val endorseWithout =
-    "def f(r: Tainted[Boolean]): Trusted[Boolean] = Trusted.endorse(r)"
-  private val endorseString =
-    "def f(s: Tainted[String])(using e: Endorse.Extraction^): Trusted[String] = Trusted.endorse(s)"
-  private val endorseTooWide =
-    "def f(s: Tainted[Token[43]])(using e: Endorse.Extraction^): Trusted[Token[43]] = Trusted.endorse(s)"
-  private val endorseBySanitiser =
-    """def f(t: Tainted[Boolean]): Trusted[Boolean] =
-      |  Trusted.endorse[Boolean, 1](t)(using summon, summon)(using Mint.sanitiser)
-      |""".stripMargin
-  private val endorseInPure =
-    """def f(using e: Endorse.Extraction): Tainted[Boolean] -> Trusted[Boolean] =
-      |  t => Trusted.endorse(t)
-      |""".stripMargin
-  private val endorseInMap =
-    """def f(t: Tainted[Boolean], other: Tainted[Boolean])(using e: Endorse.Extraction^): Tainted[Boolean] =
-      |  t.map(_ => Trusted.endorse(other).extract)
-      |""".stripMargin
 
   // The cell: exclusive, lowered only with the Durable, never inside a step's body.
   private val taintInMap =
@@ -146,10 +119,11 @@ object FlowCaptureTests extends TestSuite {
       |  t.coflatMap(_ => raw)
       |""".stripMargin
   private val endorseSplit =
-    """def f(a: Tainted[Extracted], b: Tainted[Extracted])(using
-      |    e: Endorse.Extraction^
-      |): Trusted[(Extracted, Extracted)] =
-      |  Trusted.endorse(a).zip(Trusted.endorse(b))
+    """type In = (value: Tainted[Option[Extracted]], level: Integrity)
+      |def f(a: Tainted[Option[Extracted]], b: Tainted[Option[Extracted]])(
+      |    r: Raise[In, Trusted[Option[Extracted]]]^
+      |): Trusted[(Option[Extracted], Option[Extracted])] =
+      |  r((value = a, level = Integrity.Member)).zip(r((value = b, level = Integrity.Member)))
       |""".stripMargin
   private val capabilityInside =
     """def f(t: Tainted[Provider^]): Tainted[Int] =
@@ -157,7 +131,7 @@ object FlowCaptureTests extends TestSuite {
       |""".stripMargin
 
   private val controls =
-    List(taintedControl, trustedControl, checkControl, endorseControl, taintControl)
+    List(taintedControl, trustedControl, checkControl, taintControl)
   private val holes = List(leakBuffer, leakThrow, trustedLaundered, endorseSplit)
 
   private val all: List[String] = controls ++ List(
@@ -171,15 +145,8 @@ object FlowCaptureTests extends TestSuite {
     trustedNew,
     trustedAt,
     taintNew,
-    extractionNew,
-    sanitiserNew,
+    downgradeNew,
     boundedForged,
-    endorseWithout,
-    endorseString,
-    endorseTooWide,
-    endorseBySanitiser,
-    endorseInPure,
-    endorseInMap,
     taintInMap,
     taintInPure,
     taintInStep,
@@ -240,29 +207,12 @@ object FlowCaptureTests extends TestSuite {
       )
     }
 
-    test("nothing outside the package makes a cell, an endorser or a bound") {
+    test("nothing outside the package makes a cell, a downgrade or a bound") {
       assert(
         says("constructor Taint cannot be accessed")(errs(taintNew)),
-        says("constructor Extraction cannot be accessed")(errs(extractionNew)),
-        says("constructor Sanitiser cannot be accessed")(errs(sanitiserNew)),
+        says("constructor Downgrade cannot be accessed")(errs(downgradeNew)),
         says("Cannot extend sealed class Bounded")(errs(boundedForged))
       )
-    }
-
-    test("no endorsement without the capability, of free text, or of more than K bits") {
-      assert(
-        says("No given instance of type grit.core.flow.Endorse.Extraction^")(errs(endorseWithout)),
-        says("No given instance of type grit.core.flow.Bounded[String, B]")(errs(endorseString)),
-        says("Cannot prove that B <= grit.core.flow.Bounded.K")(errs(endorseTooWide))
-      )
-    }
-
-    test("the sanitiser does not endorse: only an extraction's endorser does") {
-      assert(says("Required: grit.core.flow.Endorse.Extraction")(errs(endorseBySanitiser)))
-    }
-
-    test("an endorser does not escape into a pure function, nor into a map") {
-      assert(says(pure("e"))(errs(endorseInPure)), says(pure("e"))(errs(endorseInMap)))
     }
 
     test("the cell does not escape into a map or a pure function") {

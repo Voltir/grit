@@ -29,9 +29,17 @@ private[moves] enum AskMade {
   case Refused(kind: AskMade.Kind, why: String, digest: String, at: Option[Label] = None)
 
   /** A JSON ask's reply conformed and read: `reply`, its conforming JSON written compactly;
-    * what it was asked held nothing above `at`; `calls`, its model calls in order.
+    * what it was asked held nothing above `at`; `level`, the integrity of the acting that posed
+    * it, which an extraction of the reply is trusted at ([[grit.core.act.Extraction.Node]]);
+    * `calls`, its model calls in order.
     */
-  case Shaped(digest: String, reply: String, at: Label, calls: Vector[AskMade.Call])
+  case Shaped(
+      digest: String,
+      reply: String,
+      at: Label,
+      level: Integrity,
+      calls: Vector[AskMade.Call]
+  )
 
   /** A JSON ask's reply did not read, `why`, after `calls`, its model calls in order. */
   case Unshaped(digest: String, why: String, calls: Vector[AskMade.Call])
@@ -52,7 +60,7 @@ private[moves] enum AskMade {
     case Made(_, message, _, estimate) =>
       Vector(AskMade.Call(message.model, message.usage, estimate, message.upstream))
     case Refused(_, _, _, _) => Vector()
-    case Shaped(_, _, _, calls) => calls
+    case Shaped(_, _, _, _, calls) => calls
     case Unshaped(_, _, calls) => calls
     case Judged(_, _, _, call) => Vector(call)
     case Unjudged(_, _, call) => Vector(call)
@@ -118,8 +126,8 @@ private[moves] object CallMade {
   *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`,
   *     or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
   *     classifier it could go to was cleared for;
-  *   - a JSON ask's `ask:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"calls":[c…]}}`, `j`
-  *     its conforming JSON, or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
+  *   - a JSON ask's `ask:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"level":i,"calls":[c…]}}`,
+  *     `j` its conforming JSON, `i` an [[grit.core.visibility.Integrity.written]], or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
   *     it ([[grit.core.store.PayloadJson.writeUsage]]), then `"upstream":p` when who served it
   *     was reported;
@@ -437,12 +445,13 @@ object MovesJournal {
         Vector[(String, ujson.Value)]("refused" -> kind.key, "why" -> why, "digest" -> digest) ++
           at.map(l => "at" -> ujson.Str(Label.written(l)))
       )
-    case AskMade.Shaped(digest, reply, at, calls) =>
+    case AskMade.Shaped(digest, reply, at, level, calls) =>
       ujson.Obj(
         "shaped" -> ujson.Obj(
           "digest" -> digest,
           "reply" -> ujson.read(reply),
           "at" -> Label.written(at),
+          "level" -> Integrity.written(level),
           "calls" -> ujson.Arr.from(calls.map(writeCost))
         )
       )
@@ -503,8 +512,9 @@ object MovesJournal {
             digest <- str(f, "digest")
             reply <- f.get("reply").toRight("ask: no reply").map(ujson.write(_))
             at <- str(f, "at").flatMap(Label.read)
+            level <- str(f, "level").flatMap(Integrity.read)
             calls <- costs(f)
-          } yield AskMade.Shaped(digest, reply, at, calls)
+          } yield AskMade.Shaped(digest, reply, at, level, calls)
         case (_, _, _, Some(unshaped)) =>
           for {
             f <- fields(unshaped, "ask.unshaped")

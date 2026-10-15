@@ -2,6 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
+import grit.core.act.Extraction
 import grit.core.allot.Allotment
 import grit.core.approval.Approval
 import grit.core.context.Window
@@ -90,7 +91,10 @@ object TurnRoundTests extends TestSuite {
     ): Either[TurnFailure, Bound.Hosted] = Left(TurnFailure.Store("nothing is hosted"))
     def shown(call: TurnRound.Call): Either[TurnFailure, String] =
       Left(TurnFailure.Store("nothing asks"))
-    def settle(call: TurnRound.Call): Either[TurnFailure, TurnTools.Settled] =
+    def settle(
+        call: TurnRound.Call,
+        raise: Extraction.Raising^
+    ): Either[TurnFailure, TurnTools.Settled] =
       Right(TurnTools.Settled(call.slot.resultId, call.kind == TurnTools.Kind.Refused))
     def decide(call: TurnRound.Call, approval: Approval): Either[TurnFailure, TurnTools.Settled] =
       Left(TurnFailure.Store("nothing is gated"))

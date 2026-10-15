@@ -18,12 +18,13 @@ import grit.core.act.{
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Steps}
-import grit.core.flow.{Endorse, Extracted, Mint, Shape, Tainted, Trusted}
+import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.CallSlot
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
+import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -33,6 +34,12 @@ import grit.core.visibility.Integrity
   * `Calling`.
   */
 object DurableMoves {
+
+  /** The downgrades a run's moves make, for its program to declare ([[Flow.program]]'s
+    * `within`): an extraction's ([[Extraction.Node]]) and the integrity tree's
+    * ([[IntegrityTree.Node]], without which a vet is [[MoveError.Undeclared]]).
+    */
+  val Within: Vector[Flow.Node] = Vector(Extraction.Node, IntegrityTree.Node)
 
   /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`,
     * after which none of them may be made: each recorded as `ask:{name}`, `call:{name}` or
@@ -100,7 +107,7 @@ object DurableMoves {
 
     private val turn = acting.turn
 
-    protected def sanitiser: Endorse.Sanitiser^ = Mint.sanitiser
+    protected def tree: Option[IntegrityTree.Raising^] = IntegrityTree.Node.raise
 
     /** What `flow`, a move's steps, passed from `in`, made next through the run's steps. */
     protected def made[I, O](flow: Flow[MovesEnv, I, Nothing, O], in: I): O =
@@ -174,16 +181,28 @@ object DurableMoves {
         reply: Typed[T],
         believed: Integrity
     ): Either[MoveError, Asked[T]] =
+      shaped(name, system, messages, reply, believed)(Act.ask(Act.json[T]).map(s => (s, ())))
+        .map(_._1)
+
+    /** As [[json]], its steps `flow`, with what `flow` passed beside its reply. */
+    private def shaped[T, X](
+        name: MoveName,
+        system: String,
+        messages: Vector[Message],
+        reply: Typed[T],
+        believed: Integrity
+    )(
+        flow: Flow[MovesEnv, Act.Json[T], Nothing, (Act.Settling, X)]
+    ): Either[MoveError, (Asked[T], X)] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
         val digest = MovesJournal.json(system, messages, reply.schema)
-        val asked =
-          made(Act.ask(Act.json[T]), Act.Json(name, acting, system, messages, reply, digest))
+        val (asked, x) = made(flow, Act.Json(name, acting, system, messages, reply, digest))
         val same = MovesJournal.sameJson(asked.made.digest, system, messages, reply.schema)
         settled(name, asked, same) {
-          case AskMade.Shaped(_, written, at, _) =>
+          case AskMade.Shaped(_, written, at, _, _) =>
             Some(readBack(reply, written).map(r => Asked(Mint.tainted(r, believed), at)))
           case _ => None
-        }
+        }.map((_, x))
       }
 
     /** The judgment `name` of `request`, its answers read by `questions` and `believed` at that.
@@ -251,10 +270,18 @@ object DurableMoves {
       Extraction.reply(shape) match {
         case Left(why) => Left(MoveError.Model(why))
         case Right(typed) =>
-          given (Endorse.Extraction^) = Mint.extraction(acting.integrity)
           val messages = Extraction.messages(Trusted.asIs(from).extract, question, shape)
-          json(name, Extraction.System, messages, typed, from.integrity).map(a =>
-            Trusted.asIs(a.reply).extract.map(x => Trusted.endorse(a.reply.map(_ => x)))
+          // Believed at nothing: an extraction trusts its answer at the recorded level alone.
+          type Said = Option[Trusted[Option[Extracted]]]
+          val flow: Flow[MovesEnv, Act.Json[Option[Extracted]], Nothing, (Act.Settling, Said)] =
+            Act.raised(Act.json[Option[Extracted]], Extraction.Node) {
+              case AskMade.Shaped(_, written, _, level, _) =>
+                readBack(typed, written).toOption
+                  .map(a => (value = Mint.tainted(a, Integrity.Untrusted), level = level))
+              case _ => None
+            }
+          shaped(name, Extraction.System, messages, typed, from.integrity)(flow).map((_, said) =>
+            said.flatMap(t => t.extract.map(x => t.map(_ => x)))
           )
       }
 

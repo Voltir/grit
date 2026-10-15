@@ -7,7 +7,7 @@ import grit.core.act.{Extraction, Posed}
 import grit.core.approval.Approval
 import grit.core.context.Window
 import grit.core.durable.StreamWriter
-import grit.core.flow.{Extracted, Shape}
+import grit.core.flow.{Extracted, Mint, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef}
 import grit.core.message.Message
 import grit.core.model.{Grade, StrictSchemas}
@@ -65,7 +65,9 @@ private[turn] final class Rounding[C^](
       l = at.looping
       kinds = {
         val bind = binding(at, tools, pins)
-        calls.map(p => TurnTools.Kind.of(bind.bound(p), tool => offer.placeOf(tool)))
+        calls.map(p =>
+          TurnTools.Kind.of(bind.bound(p, Extract.Unasked), tool => offer.placeOf(tool))
+        )
       }
       (stubs, shape) <- Rounding.sent(tooling, at, offer, pins)
       kept <- Rounding.recordCall(
@@ -88,13 +90,13 @@ private[turn] final class Rounding[C^](
       slot: TurnTools.Slot,
       pending: Pending
   ): Either[TurnFailure, Bound.Hosted] =
-    rebinding(at).flatMap(_.rebind(slot, pending) {
+    rebinding(at).flatMap(_.rebind(slot, pending, Extract.Unasked) {
       case Right(hosted: Bound.Hosted) => Some(hosted)
       case _ => None
     })
 
   def shown(call: TurnRound.Call): Either[TurnFailure, String] =
-    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending) {
+    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
       case Right(gated: Bound.Gated) => Some(gated.ask)
       case Right(hosted: Bound.Hosted) => hosted.ask
       case _ => None
@@ -102,18 +104,23 @@ private[turn] final class Rounding[C^](
 
   // A call refused, or one that does not bind, is answered at the turn's level: grit's text
   // and what the call sent.
-  def settle(call: TurnRound.Call): Either[TurnFailure, TurnTools.Settled] = {
+  def settle(
+      call: TurnRound.Call,
+      raise: Extraction.Raising^
+  ): Either[TurnFailure, TurnTools.Settled] = {
     val (slot, id, level) = (call.slot, call.id, call.at.level)
-    rebinding(call.at).flatMap(_.rebind(slot, call.pending) {
-      case Left(outcome) =>
-        Some(settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now()))
-      case Right(free: Bound.Free) => Some(settling.run(slot, id, free, level, now()))
-      case _ => None
-    }.flatten)
+    rebinding(call.at).flatMap(b =>
+      b.rebind(slot, call.pending, b.extracting(raise)) {
+        case Left(outcome) =>
+          Some(settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now()))
+        case Right(free: Bound.Free) => Some(settling.run(slot, id, free, level, now()))
+        case _ => None
+      }.flatten
+    )
   }
 
   def decide(call: TurnRound.Call, approval: Approval): Either[TurnFailure, TurnTools.Settled] =
-    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending) {
+    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
       case Right(gated: Bound.Gated) =>
         Some(settling.decide(call.slot, call.id, gated, approval, call.at.level, now()))
       case _ => None
@@ -170,35 +177,42 @@ private[turn] final class Rounding[C^](
     // recorded with its round, in this run or one before it; a binding `as` does not take
     // means the call's tools changed between those runs, which a redeploy can do, since what
     // a call binds to is the deployment's, not the history's.
-    def rebind[A](slot: TurnTools.Slot, pending: Pending)(
+    def rebind[A, X^](slot: TurnTools.Slot, pending: Pending, answer: Extract.Answer^{X})(
         as: Either[
           Outcome,
-          (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads}
+          (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}
         ] ->{Rounding.this} Option[A]
     ): Either[TurnFailure, A] =
-      as(bound(pending)).toRight(
+      as(bound[X](pending, answer)).toRight(
         TurnFailure.ToolsChanged(
           s"the call at round ${slot.round.index}, index ${slot.index}, binds otherwise than " +
             "its round recorded: its tools changed between runs"
         )
       )
 
-    def bound(
-        pending: Pending
-    ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads}] = {
-      val l = at.looping
-      val extracting = Rounding.extraction(env, tooling.jot, l.turn, l.seen)(using pins)
-      val box: Toolbox[caps.CapSet^{C, extracting}] =
+    // `pending` bound to the round's tools, extract's questions put to `answer`.
+    def bound[X^](
+        pending: Pending,
+        answer: Extract.Answer^{X}
+    ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}] = {
+      val box: Toolbox[caps.CapSet^{C, X}] =
         if (!hidSince(at.gates, at.round)) tools
         else {
           val g = at.gates.get(at.round.index)
           Toolbox
-            .of[caps.CapSet^{extracting}](ReadHidden.tool(g), Extract.tool(g, extracting))
-            .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, extracting}](hidden, tools))
+            .of[caps.CapSet^{X}](ReadHidden.tool(g), Extract.tool(g, answer))
+            .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, X}](hidden, tools))
             .getOrElse(tools)
         }
       val settings = pins.turn.settings
       TurnTools.read(box, pending, Repairs(settings.names, settings.repairs), reads, at.level)
+    }
+
+    // Extract's answers for a call this round settles, made through `raise`.
+    def extracting(raise: Extraction.Raising^): Extract.Answer^{env, tooling, raise} = {
+      val l = at.looping
+      val level = Extract.level(at.gates.get(at.round.index))
+      Rounding.extraction(env, tooling.jot, l.turn, l.seen, raise, level)(using pins)
     }
   }
 }
@@ -303,13 +317,23 @@ private[turn] object Rounding {
     * ([[Extract.request]]) shown the item as the model would be shown it in full
     * ([[TurnShown.textOf]]), read through `env`'s `db` as `pins` bound it, and the question;
     * each of its model calls kept in the usage ledger through `jot` under [[Extract.costId]]
-    * (one a rerun already kept is left as kept). Why no answer: no summary pin cleared, the
+    * (one a rerun already kept is left as kept); its answer trusted through `raise` at `level`
+    * ([[Extraction.Node]]). Why no answer: no summary pin cleared, the
     * item no longer kept, the store unreadable, the ask's provider failing or its reply not
     * reading after its repair.
     */
-  private def extraction(env: TurnEnv^, jot: Jot^, turn: TurnRef, window: Window)(using
+  private def extraction(
+      env: TurnEnv^,
+      jot: Jot^,
+      turn: TurnRef,
+      window: Window,
+      raise: Extraction.Raising^,
+      level: Integrity
+  )(using
       pins: Turn.Picked
-  ): (Item, String, Shape, CallSlot) ->{env, jot} Either[String, Option[Extracted]] =
+  ): (Item, String, Shape, CallSlot) ->{env, jot, raise} Either[String, Trusted[
+    Option[Extracted]
+  ]] =
     (item, question, shape, slot) =>
       for {
         pin <- pins.summary.left.map(_ => "no summary model is cleared for this turn")
@@ -361,7 +385,7 @@ private[turn] object Rounding {
           case Shaped.Unread(why, _) => Left(why)
           case Shaped.Failed(why, _) => Left(why)
         }
-      } yield answer
+      } yield raise((value = Mint.tainted(answer, item.integrity), level = level))
 
   /** The `ask:n:record` step: `reply`, the reply to `round` that called tools, kept as
     * [[TurnTools.callId]] dated `at` after everything in the conversation, believed as

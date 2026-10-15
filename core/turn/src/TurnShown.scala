@@ -75,7 +75,7 @@ private[turn] object TurnShown {
     }
 
   /** extract as a request offers it, asking nothing: for its name and schema alone. */
-  private val unasked: Tool.Offered = Extract.tool(None, (_, _, _, _) => Left("not asked"))
+  private val unasked: Tool.Offered = Extract.tool(None, Extract.Unasked)
 
   /** Whether a gate of `gates`, each round's by its index, hid an item by `round`'s: from then
     * on, each round offers read_hidden and extract.

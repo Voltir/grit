@@ -1,6 +1,7 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13), revised (2026-10-14), revised (2026-10-15): the turn's level is loop state, by 0038
+Status: accepted (2026-10-13), revised (2026-10-14), revised (2026-10-15): the turn's level is loop state, by 0038;
+revised (2026-10-15): an endorsement is a downgrade a flow lists, the sanitiser's raised to outside, still tainted
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labels what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a call that writes
 out of grit. Layout defences were measured and failed: a forged record placed in grit's own
@@ -65,8 +66,12 @@ Decision:
   integrity of what it posed, and a run's inputs arrive trusted at its schedule's integrity.
   `keep` requires outside: a document or card is kept at the integrity of the value kept, and
   refused below outside.
-- **Endorsement** only raises a level, so soundness never depends on it. Only a holder of the
-  `Endorse` capability may endorse: the integrity tree's step and the ask flow. Only a value of
+- **Endorsement** only raises a level, so soundness never depends on it. An endorsement is a
+  downgrade (ADR 0035): a pure, described node a flow lists, applied only through the `Raise`
+  handed where it sits, on a step's recorded output, within a step's body, or within a program
+  that declares it. There are two: the extraction, which endorses a bounded answer, or that
+  there is none, to `Trusted`; and the integrity tree's, which raises free text to outside,
+  still tainted. Only a value of
   bounded capacity may be endorsed, at most K bits, where K is a declared constant; free text is
   never endorsed. A classifier labels features and code decides. A classifier's verdict raises
   untrusted to outside at most. `extract` asks a typed, bounded question of a hidden item (yes
@@ -81,8 +86,8 @@ Decision:
   an id set, as a clearance does: an `int2eq` test is leakproof, and array containment is not.
 - **In the types.** `Classified[T]` has a pure `map` and `reveal` under a capability.
   `Tainted[T]` has a pure `map` and no exit. `Trusted[T]` has a free `extract` and a pure
-  `coflatMap`, and is made only by a check against a required level, by `endorse`, or from a
-  constant. A gated tool takes `Trusted` arguments. `Reveal` and `Endorse` are minted in one
+  `coflatMap`, and is made only by a check against a required level, by a downgrade, or from a
+  constant. A gated tool takes `Trusted` arguments. `Reveal` and `Raise` are minted in one
   package.
 
 Consequences: a conversation's summaries carry its lowest level, so taint outlives the turn
@@ -91,7 +96,7 @@ runs at the rounds and tokens it did before; hiding is paid only where it saves 
 rate over real traffic is part of being done. Soundness rests on every piece of untrusted
 content that steers an effect arriving `Tainted`. Integrity enters the types at three places:
 a turn's model reply, stamped by its cell and checked against a tool's requirement when a call
-is bound; a job's moves (`call`, `ask`, `keep`); and endorsement (`endorse`, `extract`, the
+is bound; a job's moves (`call`, `ask`, `keep`); and endorsement (the extraction, the
 integrity tree's raise). Rows, and every reader of an entry's payload (assembly, the lifecycle,
 the turn's request), are data: what they read is gated by the level each row was written at,
 pinned by the store contract and the gate's recorded output. A law rule guards who may mint

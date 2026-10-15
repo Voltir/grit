@@ -1,11 +1,9 @@
 package grit.core.flow
 
-import scala.compiletime.ops.int.<=
-
 import grit.core.visibility.Integrity
 
-/** A value checked to `integrity`, free to use anywhere. Made only by [[Trusted.check]],
-  * [[Trusted.endorse]], [[Trusted.literal]], and [[Mint]].
+/** A value checked to `integrity`, free to use anywhere. Made only by [[Trusted.check]], a
+  * [[Downgrade]], [[Trusted.literal]], and [[Mint]].
   */
 final class Trusted[+T] private[flow] (value: T, val integrity: Integrity) {
 
@@ -46,16 +44,6 @@ object Trusted {
     compiletime.requireConst(text)
     at(text, Integrity.at(Integrity.Level.Authority))
   }
-
-  /** `t`'s value, trusted at the extraction's level ([[Endorse.Extraction.at]]), whatever `t`
-    * was believed at. `T` must be [[Bounded]] to at most [[Bounded.K]] bits: free text is never
-    * endorsed.
-    */
-  def endorse[T, B <: Int](t: Tainted[T])(using
-      Bounded[T, B],
-      (B <= Bounded.K) =:= true
-  )(using by: Endorse.Extraction^): Trusted[T] =
-    new Trusted(t.open, by.at)
 
   private[flow] def at[T](value: T, integrity: Integrity): Trusted[T] =
     new Trusted(value, integrity)

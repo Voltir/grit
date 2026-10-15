@@ -128,7 +128,7 @@ object Run {
   private def moves(
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper
   ): Flow[MovesEnv, Planning, Nothing, String] =
-    Flow.program[MovesEnv, Planning, String]("moves") { steps => p =>
+    Flow.program[MovesEnv, Planning, String]("moves", DurableMoves.Within) { steps => p =>
       p.owned match {
         case Owned.Deployments(job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Plugins(_, job) => plain(job, p.read, p.acting)(using steps)

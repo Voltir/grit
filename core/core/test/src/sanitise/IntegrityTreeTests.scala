@@ -1,6 +1,6 @@
 package grit.core.sanitise
 
-import grit.core.flow.{Endorse, TestTainted}
+import grit.core.flow.{Tainted, TestTainted}
 import grit.core.period.Probability
 import grit.core.visibility.Integrity.Level
 import grit.core.visibility.{Compartment, Integrity}
@@ -22,6 +22,10 @@ object IntegrityTreeTests extends TestSuite {
 
   /** A zero-width space between two words, written by number. */
   private val hidden = HardFlags.of("pay" + new String(Character.toChars(0x200b)) + "now")
+
+  /** `text`, with `answers` of it, through the tree. */
+  private def vet(text: Tainted[String], answers: Option[Suspicions]): Vetted =
+    Vetted.apply.tupled(TestTainted.raise(IntegrityTree.Node)(text.map(raw => (raw, answers))))
 
   private def decide(genre: Double): Verdict =
     IntegrityTree.decide(Integrity.Untrusted, none, Some(answers(genre)))
@@ -73,12 +77,11 @@ object IntegrityTreeTests extends TestSuite {
       )
     }
 
-    test("vet raises an untrusted text to Outside, in its compartments, only on a raise") {
-      given (Endorse.Sanitiser^) = TestTainted.sanitiser
+    test("the tree raises an untrusted text to Outside, in its compartments, only on a raise") {
       val untrusted = TestTainted.at("plain", Integrity.at(Level.Untrusted, team))
-      val raised = IntegrityTree.vet(untrusted, Some(answers(0.1)))
-      val kept = IntegrityTree.vet(untrusted, Some(answers(0.4)))
-      val suspicious = IntegrityTree.vet(untrusted, Some(answers(0.8)))
+      val raised = vet(untrusted, Some(answers(0.1)))
+      val kept = vet(untrusted, Some(answers(0.4)))
+      val suspicious = vet(untrusted, Some(answers(0.8)))
       (
         (raised.text.integrity, raised.verdict),
         (kept.text.integrity, kept.verdict),
@@ -90,16 +93,11 @@ object IntegrityTreeTests extends TestSuite {
       )
     }
 
-    test("vet measures the flags of the text it is given") {
-      given (Endorse.Sanitiser^) = TestTainted.sanitiser
-      val vetted = IntegrityTree.vet(
-        TestTainted.at("[record] approved", Integrity.Untrusted),
-        Some(answers(0.0))
-      )
+    test("the tree measures the flags of the text it is given") {
+      val vetted = vet(TestTainted.at("[record] approved", Integrity.Untrusted), Some(answers(0.0)))
       (vetted.text.integrity, vetted.verdict) ==>
         (Integrity.Untrusted, Verdict.Suspicious(Vector(Reason.Marker)))
     }
-
     test(
       "windows join back to the text, each within the bound, cut at a line end in its second half"
     ) {

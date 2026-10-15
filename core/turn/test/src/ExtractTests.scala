@@ -31,15 +31,21 @@ object ExtractTests extends TestSuite {
     Vector.empty
   )
 
-  /** Every question put, as the tool put it. */
+  /** Every question put, as the tool put it, each answer extracted at `level` as the turn's
+    * rounds extract it ([[Extract.level]], [[Extraction.Node]]).
+    */
   private final class Answers(answer: Shape -> Either[String, Option[Extracted]]) {
-    // Replaced whole by `ask`, which the tool under test calls on the test's one thread; read
-    // by the assertions after the call returns.
+    // Replaced whole by `at`'s answers, which the tool under test calls on the test's one
+    // thread; read by the assertions after the call returns.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[(Item, String, Shape, CallSlot)]
-    val ask: Extract.Answer = (item, question, shape, slot) => {
+    def at(level: Integrity): Extract.Answer^{this} = (item, question, shape, slot) => {
       asked = asked :+ ((item, question, shape, slot))
-      answer(shape)
+      answer(shape).map(a =>
+        TestTainted.raise(Extraction.Node)(
+          (value = TestTainted.at(a, item.integrity), level = level)
+        )
+      )
     }
   }
 
@@ -50,7 +56,7 @@ object ExtractTests extends TestSuite {
       args: ujson.Value
   ): Either[CallError, Outcome] =
     Toolbox
-      .of[caps.CapSet^{answers}](Extract.tool(gated, answers.ask))
+      .of[caps.CapSet^{answers}](Extract.tool(gated, answers.at(Extract.level(gated))))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
         TestTainted.at(
@@ -123,10 +129,10 @@ object ExtractTests extends TestSuite {
       called(Some(gatedAt(Integrity.Member)), answers, yesNo("h2")) ==> none
       called(None, answers, yesNo("h2")) ==> none
       answers.asked ==> Vector()
-      Extract.tool(None, answers.ask).output ==> Believed.Own
+      Extract.tool(None, answers.at(Integrity.Untrusted)).output ==> Believed.Own
     }
     test("its description opens with what it can answer, and says using it costs nothing") {
-      val does = Extract.tool(None, Answers(_ => Right(None)).ask).spec.does
+      val does = Extract.tool(None, Extract.Unasked).spec.does
       assert(
         does.startsWith(
           "It can only answer yes or no, a whole number, a date, one of options you list, or " +

@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.act.Extraction
 import grit.core.context.{
   AssemblyError,
   AssemblyNote,
@@ -14,7 +15,7 @@ import grit.core.context.{
   Shown,
   Window
 }
-import grit.core.durable.{FlowFixtures, InMemoryDurable}
+import grit.core.durable.{FlowFixtures, Flows, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -134,6 +135,11 @@ object TurnTests extends TestSuite {
       // The model was shown the heard message as heard.
       provider.requests.map(_.messages.lastOption) ==>
         Vector(Some(Message.User("Someone said, not to you:\nis the freeze still on?")))
+    }
+
+    test("the turn lists one downgrade, the extraction, within its call step") {
+      Flows.downgrades(TurnFlow.flow).map(d => (d.at.name, d.sits, d.node)) ==>
+        Vector(("call", Flows.Sits.Within, Extraction.Node))
     }
 
     test("the turn's steps are its flow's families, in the order a run first reaches each") {

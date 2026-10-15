@@ -5,11 +5,11 @@ import java.time.Instant
 import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
-import grit.core.flow.{Endorse, Extracted, Shape, Tainted, Trusted}
+import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
-import grit.core.sanitise.{HardFlags, IntegrityTree, Suspicions, Vetted}
+import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -137,7 +137,8 @@ trait Moves {
   /** `question` of `from`, asked as a JSON ask of [[Extraction]] is ([[ask]]), its reply read
     * in `shape` ([[Extraction.reply]]): the answer, or `None` when `from` does not say. The
     * answer is trusted at the acting's integrity ([[Acting.integrity]]) met with
-    * [[grit.core.visibility.Integrity.Member]], whatever `from` is believed at: an `Authority`
+    * [[grit.core.visibility.Integrity.Member]] ([[Extraction.Node]]), whatever `from` is
+    * believed at: an `Authority`
     * run's is `Member`, never higher. Made, limited and refused as an ask, [[MoveError.Model]]
     * when the reply does not read in `shape` after its repair; and [[MoveError.Model]], no move
     * made, when `shape` writes no schema (a reversed range).
@@ -150,38 +151,45 @@ trait Moves {
   ): Either[MoveError, Option[Trusted[Extracted]]]
 
   /** `text`, a `source` (what kind of document it is, in a few words, such as `file`), through
-    * the integrity tree ([[IntegrityTree.vet]]): raised from below `Outside` to it when the tree
+    * the integrity tree ([[IntegrityTree.Node]]): raised from below `Outside` to it when the tree
     * finds nothing, otherwise as it came, with the tree's reasons. The tree's questions
     * ([[grit.core.sanitise.Suspicions.questions]]) are asked as a judgment ([[ask]]), counted
     * and refused as one, and only when their answer could raise `text`: when it is believed
     * below `Outside` and no flag fires ([[grit.core.sanitise.HardFlags]]); otherwise no move is
     * made. A classifier that is unavailable, uncleared or answers what does not read keeps
     * `text` as it came, its move made; any other refusal is the judgment's. Never fails on what
-    * `text` holds.
+    * `text` holds. [[MoveError.Undeclared]] when the run's program did not declare the tree
+    * ([[IntegrityTree.Node]]), and no move is made.
     */
   final def vet(
       name: MoveName,
       text: Tainted[String],
       source: String
-  ): Either[MoveError, Vetted] = {
-    val raw = Trusted.asIs(text).extract
-    val answers =
-      if (!text.integrity.belowOutside || HardFlags.of(raw).fired.nonEmpty)
-        Right(None)
-      else
-        ask(
-          name,
-          text.map(_ => Posed.judge(Suspicions.State(source, raw), Suspicions.questions))
-        ) match {
-          case Right(asked) => Right(Some(Trusted.asIs(asked.reply).extract))
-          case Left(MoveError.Model(_) | MoveError.Uncleared(_)) => Right(None)
-          case Left(error) => Left(error)
+  ): Either[MoveError, Vetted] =
+    tree match {
+      case None => Left(MoveError.Undeclared(IntegrityTree.Node.described.name))
+      case Some(raise) =>
+        val unasked = Vetted.apply.tupled(raise(text.map(raw => (raw, None))))
+        unasked.verdict match {
+          case Verdict.Kept(Vector(Reason.Unjudged)) =>
+            ask(
+              name,
+              text.map(raw => Posed.judge(Suspicions.State(source, raw), Suspicions.questions))
+            ) match {
+              case Right(asked) =>
+                val answered = text.zip(asked.reply).map((raw, s) => (raw, Some(s)))
+                Right(Vetted.apply.tupled(raise(answered)))
+              case Left(MoveError.Model(_) | MoveError.Uncleared(_)) => Right(unasked)
+              case Left(error) => Left(error)
+            }
+          case _ => Right(unasked)
         }
-    answers.map(IntegrityTree.vet(text, _)(using sanitiser))
-  }
+    }
 
-  /** The integrity tree's endorsement, for [[vet]]. */
-  protected def sanitiser: Endorse.Sanitiser^
+  /** The integrity tree, as the run's program declared it ([[grit.core.durable.Flow.program]]'s
+    * `within`): `None` when it did not.
+    */
+  protected def tree: Option[IntegrityTree.Raising^]
 }
 
 /** [[Moves]], and the acting plugin's own documents. */

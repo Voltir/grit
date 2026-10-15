@@ -39,4 +39,9 @@ enum MoveError {
     * moves' results. Every later move is refused so too.
     */
   case Diverged(name: MoveName)
+
+  /** The move makes the downgrade `node` (its name), which the run's program does not declare
+    * in its `within`: the run's code, so making it again changes nothing.
+    */
+  case Undeclared(node: String)
 }

@@ -4,7 +4,7 @@ import grit.core.visibility.Integrity
 
 /** A value not yet checked, believed at most at `integrity`: a tool's result, a guest's words,
   * the model's reply after reading either. Stays unchecked through any pure computation and any
-  * combination. Leaves only through [[Trusted.check]] and [[Trusted.endorse]].
+  * combination. Leaves only through [[Trusted.check]] and a [[Downgrade]].
   */
 final class Tainted[+T] private[flow] (value: T, val integrity: Integrity) {
 

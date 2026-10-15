@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 
 import grit.act.phase.Calling
+import grit.core.act.Extraction
 import grit.core.approval.Approval
 import grit.core.context.Window
 import grit.core.durable.{Flow, Observed, Step, StepName}
@@ -70,9 +71,9 @@ private[turn] object TurnRound {
     def shown(call: Call): Either[TurnFailure, String]
 
     /** The `call:n:j` body of `call`, refused or free: answered with its outcome, unrun, at
-      * the turn's level, or run.
+      * the turn's level, or run, an extraction it makes made through `raise`.
       */
-    def settle(call: Call): Either[TurnFailure, Settled]
+    def settle(call: Call, raise: Extraction.Raising^): Either[TurnFailure, Settled]
 
     /** The `call:n:j` body of `call`, gated, answered by `approval`
       * ([[TurnTools.Settling.decide]]).
@@ -473,7 +474,9 @@ private[turn] object TurnRound {
     * to an edge when hosted.
     */
   private def one: Flow[Env, Call, Stalled, Unit] = {
-    val here = Step[Env, Call, Either[TurnFailure, Settled]](Names.call)(r => c => r.settle(c))
+    val here = Extraction.Node.step[Env, Call, Either[TurnFailure, Settled]](Names.call)(r =>
+      raise => c => r.settle(c, raise)
+    )
     val decided = Step[Env, Decided, Either[TurnFailure, Settled]](Names.call)(r =>
       d => r.decide(d.call, d.approval)
     )

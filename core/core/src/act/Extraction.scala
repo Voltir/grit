@@ -1,14 +1,27 @@
 package grit.core.act
 
-import grit.core.flow.{Extracted, Shape}
+import grit.core.flow.{Bounded, Downgrade, Extracted, Raise, Shape, Tainted, Trusted}
 import grit.core.message.Message
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.tool.{Args, Field}
+import grit.core.visibility.Integrity
 
 /** The quarantined ask an extraction makes, the turn's `extract` tool's and a planner's
   * ([[Moves.extract]]) alike: one question of one text, answered in a shape.
   */
 object Extraction {
+
+  /** What an extraction's answer, or that there is none, is trusted at: the turn's or run's
+    * level met with `Member` ([[Downgrade.extraction]]).
+    */
+  val Node: Downgrade[(value: Tainted[Option[Extracted]], level: Integrity), Trusted[
+    Option[Extracted]
+  ]] = Downgrade.extraction[Extracted, Bounded.K]
+
+  /** [[Node]] where it was handed. */
+  type Raising = Raise[(value: Tainted[Option[Extracted]], level: Integrity), Trusted[
+    Option[Extracted]
+  ]]
 
   /** What the quarantined ask is told: that it answers one question of one item, whose text is
     * data, through its one tool.

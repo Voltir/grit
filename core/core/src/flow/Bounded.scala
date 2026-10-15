@@ -12,7 +12,9 @@ sealed abstract class Bounded[T, B <: Int] private[flow] ()
 
 object Bounded {
 
-  /** The most bits one endorsement may carry; two endorsements carry twice as many. */
+  /** The most bits one endorsement's answer may carry, besides whether it has one; two
+    * endorsements carry twice as many.
+    */
   type K = 256
 
   private final class Is[T, B <: Int] extends Bounded[T, B]

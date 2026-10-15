@@ -16,11 +16,12 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.flow.{Endorse, Extracted, Shape, Tainted, TestTainted, Trusted}
+import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
 import grit.core.place.Service
+import grit.core.sanitise.IntegrityTree
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
@@ -283,7 +284,7 @@ object SyncTests extends TestSuite {
         shape: Shape
     ): Either[MoveError, Option[Trusted[Extracted]]] = inner.extract(name, from, question, shape)
 
-    protected def sanitiser: Endorse.Sanitiser^ = TestTainted.sanitiser
+    protected def tree: Option[IntegrityTree.Raising^] = Some(TestTainted.raise(IntegrityTree.Node))
 
     def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
         body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]

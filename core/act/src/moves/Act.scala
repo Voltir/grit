@@ -19,7 +19,7 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.flow.Mint
+import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{NameRepair, Pinned}
@@ -210,7 +210,7 @@ private[moves] object Act {
               env.clock
             ) match {
               case Shaped.Read(conforming, _, calls) =>
-                AskMade.Shaped(j.digest, conforming.text, at, costs(calls))
+                AskMade.Shaped(j.digest, conforming.text, at, j.acting.integrity, costs(calls))
               case Shaped.Unread(why, calls) => AskMade.Unshaped(j.digest, why, costs(calls))
               case Shaped.Failed(why, Vector()) =>
                 AskMade.Refused(AskMade.Kind.Model, why, j.digest)
@@ -279,22 +279,37 @@ private[moves] object Act {
     * run took is taken again.
     */
   def ask[I <: Acted](made: Step[MovesEnv, I, AskMade]): Flow[MovesEnv, I, Nothing, Settling] =
-    Flow
-      .step(made)
-      .keeping
-      .map((in, m) =>
-        if (m.spent.isEmpty) Right(Settling(m, Right(())))
+    settled(Flow.step(made).map(m => (m, ()))).map(_._1)
+
+  /** As [[ask]], with `node` made over what `of` takes from what `made` recorded, beside it. */
+  def raised[I <: Acted, A, B](made: Step[MovesEnv, I, AskMade], node: Downgrade[A, B])(
+      of: AskMade -> Option[A]
+  ): Flow[MovesEnv, I, Nothing, (Settling, Option[B])] =
+    settled(node.on(made)(of))
+
+  /** `head`'s ask, then its costs recorded as [[ask]] says, passing `head`'s `X` beside it. */
+  private def settled[I <: Acted, X](
+      head: Flow[MovesEnv, I, Nothing, (AskMade, X)]
+  ): Flow[MovesEnv, I, Nothing, (Settling, X)] =
+    head.keeping
+      .map((in, made) => {
+        val (m, x) = made
+        if (m.spent.isEmpty) Right((Settling(m, Right(())), x))
         else {
           val turn = in.acting.turn
-          Left(Spent(in.name, turn, turn.workflowId, in.acting.subject, m.spent, m))
+          Left(Spent(in.name, turn, turn.workflowId, in.acting.subject, m.spent, made))
         }
-      )
+      })
       .andThen(
         Flow.either(
-          (Flow
-            .step(recorded): Flow[MovesEnv, Spent[AskMade], Nothing, Either[String, Unit]]).keeping
-            .map((s, kept) => Settling(s.made, kept)),
-          Flow.pass[Settling]
+          (Flow.step(recorded): Flow[
+            MovesEnv,
+            Spent[(AskMade, X)],
+            Nothing,
+            Either[String, Unit]
+          ]).keeping
+            .map((s, kept) => (Settling(s.made._1, kept), s.made._2)),
+          Flow.pass[(Settling, X)]
         )
       )
 

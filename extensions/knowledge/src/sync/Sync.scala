@@ -430,6 +430,7 @@ object Sync {
     case MoveError.Store(why) => why
     case MoveError.Diverged(name) =>
       s"the run's moves differ from its record at ${MoveName.value(name)}"
+    case MoveError.Undeclared(node) => s"the job's code does not allow the $node it used"
   }
 
   private def plural(kind: MoveKind): String = kind match {

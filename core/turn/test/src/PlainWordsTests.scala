@@ -134,7 +134,7 @@ object PlainWordsTests extends TestSuite {
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {
       val schemas = Vector(
         ReadHidden.tool(None).schema(strict = false),
-        Extract.tool(None, (_, _, _, _) => Right(None)).schema(strict = false)
+        Extract.tool(None, Extract.Unasked).schema(strict = false)
       )
       val described = schemas.map(s => (s.description +: meanings(s.parameters)).mkString(" "))
       described.map(unplain) ==> Vector.fill(2)(Vector.empty[String])

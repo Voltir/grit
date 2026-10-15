@@ -1,10 +1,11 @@
 package grit.core.act
 
 import grit.core.classify.{Answer, ClassifierError, Request}
-import grit.core.flow.{Endorse, Extracted, Shape, Tainted, TestTainted, Trusted}
+import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
+import grit.core.sanitise.IntegrityTree
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 
@@ -98,16 +99,16 @@ class ScriptedMoves(
     Extraction.reply(shape) match {
       case Left(why) => Left(MoveError.Model(why))
       case Right(typed) =>
-        given (Endorse.Extraction^) = TestTainted.extraction(integrity)
         val posed = from.map(t =>
           Posed.Json(Extraction.System, Extraction.messages(t, question, shape), typed)
         )
-        ask(name, posed).map(a =>
-          Trusted.asIs(a.reply).extract.map(x => Trusted.endorse(a.reply.map(_ => x)))
-        )
+        ask(name, posed).map { a =>
+          val said = TestTainted.raise(Extraction.Node)((value = a.reply, level = integrity))
+          said.extract.map(x => said.map(_ => x))
+        }
     }
 
-  protected def sanitiser: Endorse.Sanitiser^ = TestTainted.sanitiser
+  protected def tree: Option[IntegrityTree.Raising^] = Some(TestTainted.raise(IntegrityTree.Node))
 
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {

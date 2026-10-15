@@ -186,16 +186,17 @@ final class MovesWorld(
   )
 
   /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once, a JSON
-    * ask's model replying each of `shapes` in turn (`Answering`'s), and a judgment asked of
-    * `classifier`.
+    * ask's model replying each of `shapes` in turn (`Answering`'s), a judgment asked of
+    * `classifier`, and its program declaring `declared`.
     */
   def run[A <: caps.Pure](
       limits: MoveLimits,
       shapes: Vector[ujson.Value] = Vector(),
-      classifier: Classifier^ = new Judging()
+      classifier: Classifier^ = new Judging(),
+      declared: Vector[Flow.Node] = DurableMoves.Within
   )(use: Moves^ -> A): A = {
     val models = new Answering(Answer, shapes = shapes)
-    val moving = MovesWorld.moves(acting, limits)(use)
+    val moving = MovesWorld.moves(acting, limits, declared)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(Flows.run(moving, env(models, classifier), ()).merge)
@@ -227,12 +228,14 @@ final class MovesWorld(
 object MovesWorld {
 
   /** What `use` returns over the moves of `acting` within `limits`, as a job's program makes
-    * them.
+    * them, declaring `declared`.
     */
-  def moves[A <: caps.Pure](acting: Acting, limits: MoveLimits)(
-      use: Moves^ -> A
-  ): Flow[MovesEnv, Unit, Nothing, A] =
-    Flow.program[MovesEnv, Unit, A]("moves")(steps =>
+  def moves[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      declared: Vector[Flow.Node] = DurableMoves.Within
+  )(use: Moves^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
+    Flow.program[MovesEnv, Unit, A]("moves", declared)(steps =>
       _ => DurableMoves.plain(acting, limits)(use)(using steps)
     )
 
@@ -240,7 +243,7 @@ object MovesWorld {
   def keeps[A <: caps.Pure](acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(
       use: Keeping^ -> A
   ): Flow[MovesEnv, Unit, Nothing, A] =
-    Flow.program[MovesEnv, Unit, A]("moves")(steps =>
+    Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
       _ => DurableMoves.keeping(acting, limits, keeper)(use)(using steps)
     )
 

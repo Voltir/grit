@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.act.phase.Shaping
 import grit.core.act.{Extraction, Posed}
-import grit.core.flow.{Endorse, Extracted, Mint, Shape, Trusted}
+import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, WorkflowId}
 import grit.core.model.StrictSchemas
 import grit.core.provider.ModelRequest
@@ -23,9 +23,13 @@ object Extract {
   type Asking = (name: HiddenName, question: String, shape: Shape)
 
   /** How a question is put to a hidden item, told the call that puts it: its answer in the
-    * shape, `None` when the item does not say, or why no answer read.
+    * shape, `None` when the item does not say, trusted as an extraction is
+    * ([[grit.core.act.Extraction.Node]]); or why no answer read.
     */
-  type Answer = (Item, String, Shape, CallSlot) => Either[String, Option[Extracted]]
+  type Answer = (Item, String, Shape, CallSlot) -> Either[String, Trusted[Option[Extracted]]]
+
+  /** An answer for a tool that is described or bound but never called: it answers nothing. */
+  val Unasked: Answer = (_, _, _, _) => Left("not asked")
 
   /* What a refused shape's reason ends with: for a short code, where longer text is had. */
   private def longer(kind: String): String =
@@ -94,36 +98,38 @@ object Extract {
 
   /** The tool as a round whose gate was `gated` offers it (none for a round ungated): it
     * requires nothing, asks no one, and puts each question to `answer`. A call naming an item
-    * `gated` hides is answered with the answer, or that the item does not say, believed at
-    * `gated`'s level met with [[grit.core.visibility.Integrity.Member]]
-    * ([[grit.core.flow.Mint.extraction]]): so a turn at `Member` or below does not fall for
-    * extracting, and an `Authority` turn that extracts falls to `Member`. When `answer` gives
-    * no answer the call fails, quoting nothing of why; a name `gated` hides nothing under is
-    * answered so, as grit's own words ([[grit.core.tool.Believed.Own]]), and nothing is asked.
+    * `gated` hides is answered with the answer, or that the item does not say, believed as
+    * `answer` trusts it. When `answer` gives no answer the call fails, quoting nothing of why;
+    * a name `gated` hides nothing under is answered so, as grit's own words
+    * ([[grit.core.tool.Believed.Own]]), and nothing is asked.
     */
-  def tool(gated: Option[Gated], answer: Answer): Tool[Asking]^{answer} = {
+  def tool(gated: Option[Gated], answer: Answer^): Tool[Asking]^{answer} = {
     val hidden: Map[HiddenName, Item] =
       gated.fold(Vector.empty)(_.hidden).map((item, h) => h.name -> item).toMap
-    val level = gated.fold(Integrity.Untrusted)(_.level)
     new Hosted(spec, Gate.Free, a => s"${HiddenName.value(a.name)}: ${a.question}").own.calling {
       (a, slot) =>
         val n = HiddenName.value(a.name)
         hidden.get(a.name) match {
           case None => Outcome.Done(s"Nothing in the request you answered is hidden as $n.")
           case Some(item) =>
-            given (Endorse.Extraction^) = Mint.extraction(level)
             answer(item, a.question, a.shape, slot) match {
               case Left(_) => Outcome.Failed(s"$n gave no answer that reads as ${named(a.shape)}.")
-              case Right(None) =>
-                val said = Trusted.endorse(Mint.tainted(false, item.integrity))
-                Outcome.Done(s"$n does not say.", Some(said.integrity))
-              case Right(Some(x)) =>
-                val said = Trusted.endorse(Mint.tainted(x, item.integrity))
-                Outcome.Done(s"$n answers: ${written(said.extract)}.", Some(said.integrity))
+              case Right(said) =>
+                said.extract match {
+                  case None => Outcome.Done(s"$n does not say.", Some(said.integrity))
+                  case Some(x) => Outcome.Done(s"$n answers: ${written(x)}.", Some(said.integrity))
+                }
             }
         }
     }
   }
+
+  /** The level an answer to a question asked under `gated` is extracted at: the gate's,
+    * `Untrusted` with none. [[grit.core.act.Extraction.Node]] meets it with `Member`, so a turn
+    * at `Member` or below does not fall for extracting, and an `Authority` turn that extracts
+    * falls to `Member`.
+    */
+  def level(gated: Option[Gated]): Integrity = gated.fold(Integrity.Untrusted)(_.level)
 
   /** The quarantined ask's request: [[Extraction.System]], then [[Extraction.messages]],
     * offered only the tool `reply`, which it must call ([[grit.act.phase.Shaping.request]],

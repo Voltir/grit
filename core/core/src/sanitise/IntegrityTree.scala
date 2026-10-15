@@ -1,6 +1,6 @@
 package grit.core.sanitise
 
-import grit.core.flow.{Endorse, Tainted, Trusted}
+import grit.core.flow.{Downgrade, Raise, Tainted}
 import grit.core.period.Probability
 import grit.core.visibility.Integrity
 
@@ -71,19 +71,22 @@ object IntegrityTree {
       }
   }
 
-  /** `text` judged by [[decide]], its flags measured from it ([[HardFlags.of]]), and raised by
-    * `sanitiser` only when the verdict is `Raised`. `answers` are the classifier's to
-    * [[Suspicions.questions]] about this `text`.
+  /** [[Node]] where it was handed. */
+  type Raising = Raise[Tainted[(String, Option[Suspicions])], (Tainted[String], Verdict)]
+
+  /** The tree as a downgrade: a text, with the classifier's answers to [[Suspicions.questions]]
+    * about it, judged by [[decide]], its flags measured from it ([[HardFlags.of]]), and raised
+    * only when the verdict is `Raised`. Made with no answers, its verdict is `Kept` for
+    * [[Reason.Unjudged]] alone exactly when answers could raise it.
     */
-  def vet(text: Tainted[String], answers: Option[Suspicions])(using
-      sanitiser: Endorse.Sanitiser^
-  ): Vetted = {
-    val verdict = decide(text.integrity, HardFlags.of(Trusted.asIs(text).extract), answers)
-    verdict match {
-      case Verdict.Raised(_) => Vetted(sanitiser.sanitised(text), verdict)
-      case Verdict.Kept(_) | Verdict.Suspicious(_) => Vetted(text, verdict)
+  val Node: Downgrade[Tainted[(String, Option[Suspicions])], (Tainted[String], Verdict)] =
+    Downgrade.sanitiser[Option[Suspicions], Verdict]("integrity tree") { (text, at, answers) =>
+      val verdict = decide(at, HardFlags.of(text), answers)
+      verdict match {
+        case Verdict.Raised(_) => (verdict, true)
+        case Verdict.Kept(_) | Verdict.Suspicious(_) => (verdict, false)
+      }
     }
-  }
 
   /** `text` cut into pieces of at most [[Bound]] characters, in order, joined back the same:
     * each ends at its last line end when that falls in its second half, and otherwise at

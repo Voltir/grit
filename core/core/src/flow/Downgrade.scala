@@ -29,7 +29,7 @@ final class Downgrade[-A, +B] private[flow] (
     * inside a body, such as a tool's call. Listed within the step.
     */
   def step[R, I, O](name: StepName[I])(
-      body: (r: R^) -> (raise: Raise[A, B]^) -> I ->{r, raise} O
+      body: (r: R^) -> (raise: Raise[A, B]^) ->{r} I ->{r, raise} O
   )(using Journaled[O]): Step[R, I, O] =
     Step.within[R, I, O](name, this)(r => in => body(r)(new Raise.Of(rule))(in))
 
@@ -131,21 +131,22 @@ object Downgrade {
     case Text
   }
 
-  /** An extraction's endorsement: `value` trusted at `level` met with `Member`, whatever it was
-    * believed at, so an extraction never reaches `Authority`. Free text has no `Bounded`, so is
-    * never endorsed.
+  /** An extraction's endorsement: `value`, an answer or that there is none, trusted at `level`
+    * met with `Member`, whatever it was believed at, so an extraction never reaches
+    * `Authority`. Its capacity is the answer's bits and one for whether there is one. Free text
+    * has no `Bounded`, so is never endorsed.
     */
   def extraction[T, B <: Int](using
       Bounded[T, B],
       (B <= Bounded.K) =:= true,
       ValueOf[B]
-  ): Downgrade[(value: Tainted[T], level: Integrity), Trusted[T]] =
+  ): Downgrade[(value: Tainted[Option[T]], level: Integrity), Trusted[Option[T]]] =
     new Downgrade(
       Described(
         "extraction",
         Axis.Integrity,
         Authority.Rule(Integrity.Member),
-        Capacity.Bits(valueOf[B])
+        Capacity.Bits(valueOf[B] + 1)
       ),
       in => Trusted.at(in.value.open, in.level.meet(Integrity.Member))
     )

@@ -1,7 +1,7 @@
 package grit.job.run
 
 import grit.core.act.MovesFixtures.{Judged, PerChar, replied, shown}
-import grit.core.act.{MoveError, Moves, Posed}
+import grit.core.act.{Extraction, MoveError, Moves, Posed}
 import grit.core.classify.{
   Answer as Judgment,
   Answers,
@@ -14,7 +14,7 @@ import grit.core.classify.{
   Scored,
   StateJson
 }
-import grit.core.durable.InMemoryDurable
+import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.edge.{Pending, RequestState}
 import grit.core.flow.{TestTainted, Trusted}
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
@@ -22,6 +22,7 @@ import grit.core.identity.Account
 import grit.core.job.JobTests.Count
 import grit.core.job.{Ending, JobRun, PlainJob}
 import grit.core.message.{Message, Tokens, Usage}
+import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
 import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolName}
@@ -34,6 +35,16 @@ object RunTests extends TestSuite {
   import RunFixtures.*
 
   val tests = Tests {
+    test("a job's program lists the extraction and the tree, within moves") {
+      val env = new World().env()
+      Flows
+        .downgrades(Run.flow(jobs(1), env.budget, env.keepers))
+        .map(d => (d.at.name, d.sits, d.node)) ==> Vector(
+        ("moves", Flows.Sits.Within, Extraction.Node),
+        ("moves", Flows.Sits.Within, IntegrityTree.Node)
+      )
+    }
+
     test(
       "a run replies its job's reply as its turn's reply, awaited nowhere for a kept schedule, and its once schedule ends ran"
     ) {

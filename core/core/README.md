@@ -69,9 +69,9 @@ In dependency order, each with the core packages it imports:
   flow of pure step values, run over `Durable` and read over a recorded history (ADR 0038). Not
   the `flow` package below, whose values carry integrity. ← `id`, `visibility`, `store`
 - **`flow`**: values that carry the integrity they are believed at (ADR 0036): unchecked
-  (`Tainted`) or checked (`Trusted`), raised only by a holder of one of `Endorse`'s two roles:
-  an extraction's endorses a bounded value, the sanitiser's raises a text; and a turn's
-  cell, which only falls. Raw values become these only through `Mint`, which only `grit.turn`,
+  (`Tainted`) or checked (`Trusted`), raised only by a `Downgrade`, a described node a flow
+  lists and applies only through the `Raise` it hands where it sits: an extraction endorses a
+  bounded value, the sanitiser raises a text; and a turn's cell, which only falls. Raw values become these only through `Mint`, which only `grit.turn`,
   `grit.act` and `grit.kit` may name (enola-intent.yaml). ← `visibility`, `durable`
 - **`approval`**: a person's answer to a gated tool call. ← `id`
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
@@ -88,7 +88,7 @@ In dependency order, each with the core packages it imports:
   `place`, `message`, `period`, `store`, `document`
 - **`sanitise`**: the integrity tree (ADR 0036): what code flags in a text, what the classifier
   is asked of it, and the one decision that raises an untrusted text to `Outside`, which alone
-  calls `Endorse.Sanitiser.sanitised` (`scripts/enola-law.sh`). ← `period`, `visibility`,
+  makes `Downgrade.sanitiser` (`scripts/enola-law.sh`). ← `period`, `visibility`,
   `classify`, `flow`, `context`
 - **`recipe`**: what a call's input shows beyond its own thread, and how a turn is shaped.
   Nothing in core imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`,
