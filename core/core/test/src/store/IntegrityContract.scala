@@ -79,18 +79,20 @@ abstract class IntegrityContract extends TestSuite {
       val c = conversation(Origin.Task("open", "turns"))
       val first = turn(c)
       transaction(right(entries.believed(first))) ==> Integrity.Untrusted
-      say(first, "endorsed", Trial)
-      transaction(right(entries.believed(first))) ==> Trial
       say(first, "outside", Integrity.Outside)
+      transaction(right(entries.believed(first))) ==> Integrity.Outside
+      // Lowest first: the meet is not the latest entry's.
+      say(first, "endorsed", Trial)
       transaction(right(entries.believed(first))) ==> Integrity.Outside
     }
 
     test("a closing is believed at the meet of its period's entries") {
       val c = conversation(Origin.Task("open", "closing"))
       val first = turn(c)
-      say(first, "endorsed", Trial)
+      // Lowest in the first turn: the meet is not the closing turn's alone.
+      say(first, "outside", Integrity.Outside)
       val second = turn(c)
-      say(second, "member", Integrity.Member)
+      say(second, "endorsed", Trial)
       val period = PeriodRef(c, PeriodSeq.of(1).getOrElse(throw new java.lang.AssertionError(1)))
       val outcome = transaction(
         right(
@@ -105,7 +107,7 @@ abstract class IntegrityContract extends TestSuite {
         )
       )
       outcome ==> Sealed.Closed(period.closingId)
-      believed(period.closingId) ==> Some(Integrity.Member)
+      believed(period.closingId) ==> Some(Integrity.Outside)
     }
   }
 }
