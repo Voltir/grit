@@ -1,7 +1,15 @@
 package grit.act.moves
 
 import grit.core.act.{Allowance, MoveName}
-import grit.core.classify.{Classifier, ClearedClassifier}
+import grit.core.classify.{
+  Answered,
+  Answers,
+  Ask,
+  ClassifierError,
+  ClearedClassifier,
+  Request,
+  StateJson
+}
 import grit.core.durable.{Flow, Journaled, Step}
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.route.Routed
@@ -19,16 +27,42 @@ object Judging {
     */
   final case class Charged(turn: TurnRef, workflow: WorkflowId, subject: Subject)
 
-  /** What a judgment's step asks through, captured by the environment its step was handed. */
-  trait Asks {
+  /** What a judgment's workflow made of its input: made with no classifier asked, or a request
+    * and what it makes of the answers ([[Pose.asking]]).
+    */
+  sealed trait Pose[+B]
 
-    /** `cleared`, asking about what was read under `routed`, each call asked once and admitted
-      * first: `Unavailable`, sending nothing, when the day's spend reached its cap ("The day's
-      * spend reached its cap, so no model was asked."), the spend cannot be read, or `cleared`'s
-      * service is not cleared for `routed` (as [[ClearedClassifier.asking]] answers); otherwise
-      * its answers, each answered call's cost kept by the judgment's record step.
+  object Pose {
+
+    /** `made` with no classifier asked. */
+    final case class Made[+B](made: B) extends Pose[B]
+
+    /** `questions` about `state`, asked once of `classifier` about what was read under
+      * `routed`; `read` makes the judgment from its answers, or from why there are none:
+      * `Unavailable`, sending nothing, when the day's spend reached its cap ("The day's spend
+      * reached its cap, so no model was asked."), the spend cannot be read, or `classifier`'s
+      * service is not cleared for `routed` (as [[ClearedClassifier.asking]] answers). An
+      * answered call's cost is kept by the judgment's record step.
       */
-    def classifier(cleared: ClearedClassifier^, routed: Routed): Classifier^
+    def asking[S: StateJson, T, B](
+        classifier: ClearedClassifier^,
+        routed: Routed,
+        state: S,
+        questions: Ask[S, T]
+    )(read: Either[ClassifierError, Answered[T]] -> B): Pose[B]^{classifier} =
+      Asking(
+        classifier,
+        routed,
+        Request.of(state, questions),
+        a => read(a.flatMap(questions.answered))
+      )
+
+    private[Judging] final case class Asking[+B](
+        classifier: ClearedClassifier^,
+        routed: Routed,
+        request: Request,
+        read: Either[ClassifierError, Answers] -> B
+    ) extends Pose[B]
   }
 
   /** What a judgment came to: what its workflow `made` of it, and whether its classifier's cost
@@ -36,52 +70,41 @@ object Judging {
     */
   final case class Judged[+B](made: B, kept: Either[String, Unit])
 
-  /** The judgment `name` of the workflow input `I`: `ask:{name}`, recording what `pose` makes of
-    * the input through the [[Asks]] it is handed, each ask admitted by `budget`'s daily cap
-    * against what every conversation spent that day; then, when a call was answered,
+  /** The judgment `name` of the workflow input `I`: `ask:{name}`, recording what `pose` made of
+    * the input, its classifier asked at most once, the ask admitted first by `budget`'s daily
+    * cap against what every conversation spent that day; then, when the classifier answered,
     * `ask:{name}:record`, its cost recorded for `charged`'s turn, under its workflow. A store
     * that fails the record is `kept`'s `Left`, never a throw.
     */
   def flow[R, I, B](name: MoveName, charged: I -> Charged)(
       moves: (r: R^) -> MovesEnv^{r},
       budget: (r: R^) -> Budget
-  )(pose: (r: R^) -> (I, Asks^) ->{r} B)(using
+  )(pose: (r: R^) -> I ->{r} Pose[B]^{r})(using
       Journaled[B]
   ): Flow[R, I, Nothing, Judged[B]] = {
     given Journaled[Posed[B]] = MovesJournal.posed[B]
     val made: Step[R, Posing[I], Posed[B]] =
       Step[R, Posing[I], Posed[B]](Act.Asks.move)(r =>
-        p => {
-          val env: MovesEnv^{r} = moves(r)
-          val allowance: Allowance = Allowance.Daily(budget(r))
-          // Written only by the classifiers this step hands out, read once they are done.
-          @caps.unsafe.untrackedCaptures
-          var calls = Vector.empty[AskMade.Call]
-          val asks: Asks^{env} = new Asks {
-            def classifier(cleared: ClearedClassifier^, routed: Routed): Classifier^ =
-              Act.admission(env.records, env.db, env.clock, allowance, p.charged.subject) match {
-                case Left(e) => Classifier.none(s"the day's spend is unread: ${Act.describe(e)}")
-                case Right((false, _, _)) => Classifier.none(Act.Capped)
-                case Right((true, _, _)) =>
-                  cleared.at(routed) match {
-                    case Left(_) => cleared.asking(routed)
-                    case Right(c) =>
-                      Classifier.around(c)((request, ask) => {
-                        val got = ask()
-                        got.foreach(a =>
-                          calls = calls :+ Act.classified(env.records, request, a, cleared.upstream)
-                        )
-                        got
-                      })
-                  }
-              }
+        p =>
+          pose(r)(p.in) match {
+            case Pose.Made(b) => Posed(b, Vector.empty)
+            case Pose.Asking(cleared, routed, request, read) =>
+              val env: MovesEnv^{r} = moves(r)
+              val allowance: Allowance = Allowance.Daily(budget(r))
+              val answers: Either[ClassifierError, Answers] =
+                Act.admission(env.records, env.db, env.clock, allowance, p.charged.subject) match {
+                  case Left(e) =>
+                    Left(
+                      ClassifierError.Unavailable(s"the day's spend is unread: ${Act.describe(e)}")
+                    )
+                  case Right((false, _, _)) => Left(ClassifierError.Unavailable(Act.Capped))
+                  case Right((true, _, _)) => cleared.asking(routed).answers(request)
+                }
+              val calls = answers.toOption.toVector.map(a =>
+                Act.classified(env.records, request, a, cleared.upstream)
+              )
+              Posed(read(answers), calls)
           }
-          // `asks` reaches `r` only through the reads and the clock it hands its classifiers,
-          // which mutate nothing of `r`; `pose` holds `r` too, and the two run in turn on this
-          // step's one thread, so neither sees the other's use.
-          val b = caps.unsafe.unsafeAssumeSeparate(pose(r)(p.in, asks))
-          Posed(b, calls)
-        }
       )
     Flow
       .pass[I]

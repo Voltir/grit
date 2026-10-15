@@ -10,15 +10,13 @@ import grit.core.message.Usage
 trait Classifier extends caps.SharedCapability {
 
   /** `questions` about `state`, sent as one request; `Unreadable` when the reply holds other
-    * than one answer per question, or an answer does not read: [[answers]], then [[Ask.read]].
+    * than one answer per question, or an answer does not read: [[answers]], then [[Ask.answered]].
     */
   final def ask[S: StateJson, T](
       state: S,
       questions: Ask[S, T]
   ): Either[ClassifierError, Answered[T]] =
-    answers(Request.of(state, questions)).flatMap { a =>
-      questions.read(a.answers).map(Answered(_, a.usage, a.model))
-    }
+    answers(Request.of(state, questions)).flatMap(questions.answered)
 
   /** The classifier's answers to `request`, unread into any type, with what the request
     * consumed and the model that answered. `Unreadable` only when there is not one answer per

@@ -1,7 +1,9 @@
 package grit.lifecycle.settle
 
-import grit.core.classify.{Ask, Classifier, ClassifierError, Criterion, StateJson}
+import grit.act.moves.Judging
+import grit.core.classify.{Ask, ClassifierError, ClearedClassifier, Criterion, StateJson}
 import grit.core.period.{Judgement, Probability}
+import grit.core.route.Routed
 
 /** The one question a quiet period is asked: is anyone waiting on anything, the person or
   * something else, or nobody. Only nobody can close it: a lookup or a recap, with nothing
@@ -40,14 +42,20 @@ object SettleQuestion {
       )
     )
 
-  /** What `classifier` makes of `transcript`: each option's probability and the model that
-    * weighed them; `Unanswered`, with why, when it is unavailable or its answer does not read.
+  /** What `classifier`, asked about `transcript` as read under `routed`, makes of it: each
+    * option's probability and the model that weighed them; `Unanswered`, with why, when it is
+    * unavailable or its answer does not read.
     */
-  def judge(classifier: Classifier^, transcript: Transcript): Judgement =
+  def judge(
+      classifier: ClearedClassifier^,
+      routed: Routed,
+      transcript: Transcript
+  ): Judging.Pose[Judgement]^{classifier} =
     question match {
-      case Left(Ask.DuplicateKey(key)) => Judgement.Unanswered(s"the question repeats $key")
+      case Left(Ask.DuplicateKey(key)) =>
+        Judging.Pose.Made(Judgement.Unanswered(s"the question repeats $key"))
       case Right(ask) =>
-        classifier.ask(transcript, ask) match {
+        Judging.Pose.asking(classifier, routed, transcript, ask) {
           case Right(answered) =>
             def p(o: Standing) = Probability.clamped(answered.value.probability(o))
             Judgement.Weighed(

@@ -99,6 +99,12 @@ final class Ask[S, T] private (
   def read(answers: Vector[Answer]): Either[ClassifierError, T] =
     Ask.counted(questions, answers).toLeft(answers).flatMap(reader)
 
+  /** [[read]] of a classifier's `answers` to these questions, kept with what the request
+    * consumed and the model that answered.
+    */
+  def answered(answers: Answers): Either[ClassifierError, Answered[T]] =
+    read(answers.answers).map(Answered(_, answers.usage, answers.model))
+
   def map[U](f: T -> U): Ask[S, U] = new Ask(questions, answers => reader(answers).map(f))
 
   /** Both sets of questions, in one request. */

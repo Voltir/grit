@@ -62,7 +62,7 @@ object Settle {
           a.ref.workflowId,
           subject(a.ref)
         )
-    )(_.moves, _.budget)(env => (a, asks) => judge(env, asks, a))
+    )(_.moves, _.budget)(env => a => judge(env, a))
 
   private val recorded: Step[SettleEnv, Judged, Either[String, Boolean]] =
     Step.transact[SettleEnv, Judged, Either[String, Boolean]](
@@ -106,7 +106,7 @@ object Settle {
   /** The `ask` step: one classifier call over the transcript of `question`'s period from
     * `first`, asked only when its service is cleared for what was read.
     */
-  private def judge(env: SettleEnv^, asks: Judging.Asks^, at: Asking): Judgement = {
+  private def judge(env: SettleEnv^, at: Asking): Judging.Pose[Judgement]^{env} = {
     val (question, first) = (at.ref, at.first)
     Routed
       .reading(env.db.as(subject(question))) { (routed, bounded) =>
@@ -119,20 +119,21 @@ object Settle {
         )
         entries match {
           case Left(error) =>
-            Judgement.Unanswered(s"transcript unread: ${describe(error)}")
+            Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${describe(error)}"))
           case Right(own) =>
             // Unread names are no names: each line is then its role's.
             val names = PeriodTranscript
               .speakers(bounded, env.records.principals, own)
               .getOrElse(Speakers.none)
             SettleQuestion.judge(
-              asks.classifier(env.moves.classifier, routed),
+              env.moves.classifier,
+              routed,
               SettleQuestion.Transcript(PeriodTranscript.of(own, names))
             )
         }
       }
       .fold(
-        error => Judgement.Unanswered(s"transcript unread: ${describe(error)}"),
+        error => Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${describe(error)}")),
         identity
       )
   }
