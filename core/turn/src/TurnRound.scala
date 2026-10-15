@@ -342,7 +342,7 @@ private[turn] object TurnRound {
   /** One round: its gate, its call, and, when its reply called tools, those calls settled. */
   private def round: Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
     val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
-    val gating = Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
+    val gating = Flow.decide(gate)((at, g) => stalling(at)(g.map(at.gatedBy)))
     val calling = Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
       at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
     )
@@ -384,9 +384,7 @@ private[turn] object TurnRound {
       s => Subject.Turn(s.at.looping.turn)
     )(r => s => (tx: Tx^) ?=> r.record(s.at, s.reply, s.calls))
     Flow
-      .decide(record)((s, kept) =>
-        kept.left.map(Stalled(_, s.at)).flatMap(k => slotted(s, k.kinds))
-      )
+      .decide(record)((s, kept) => stalling(s.at)(kept).flatMap(k => slotted(s, k.kinds)))
       .andThen(
         Flow
           .each[Env, Slotted, Stalled, Sending, (Place, Boolean)](sends)(sending)
@@ -403,19 +401,19 @@ private[turn] object TurnRound {
 
   /** `s`'s calls at their slots, bound as `kinds` say. */
   private def slotted(s: Settle, kinds: Vector[Kind]): Either[Stalled, Slotted] =
-    s.calls
-      .zip(kinds)
-      .zipWithIndex
-      .foldLeft[Either[TurnFailure, Vector[(Slot, Pending, Kind)]]](Right(Vector.empty)) {
-        case (acc, ((pending, kind), index)) =>
-          for {
-            done <- acc
-            slot <- Slot.of(s.at.looping.turn, s.at.round, index)
-          } yield done :+ ((slot, pending, kind))
-      }
-      .map(Slotted(s.at, s.next, _))
-      .left
-      .map(Stalled(_, s.at))
+    stalling(s.at)(
+      s.calls
+        .zip(kinds)
+        .zipWithIndex
+        .foldLeft[Either[TurnFailure, Vector[(Slot, Pending, Kind)]]](Right(Vector.empty)) {
+          case (acc, ((pending, kind), index)) =>
+            for {
+              done <- acc
+              slot <- Slot.of(s.at.looping.turn, s.at.round, index)
+            } yield done :+ ((slot, pending, kind))
+        }
+        .map(Slotted(s.at, s.next, _))
+    )
 
   /** `s`'s free hosted calls, by the place each goes to, in the order each place is first
     * called; a call whose tool has no place is left out.
@@ -462,7 +460,7 @@ private[turn] object TurnRound {
     val send = Flow.branch((s: Sending) =>
       if (s.at.looping.offer.workspace.contains(s.place)) Left(s) else Right(s)
     )(Flow.step(sent(Names.send)), Flow.step(sent(Names.sendTo)))
-    send.decided((s, went) => went.map(s.place -> _).left.map(Stalled(_, s.at)))
+    send.decided((s, went) => stalling(s.at)(went.map(s.place -> _)))
   }
 
   /** One call settled: run or answered in its own step, asked about first when gated, or sent
@@ -480,6 +478,10 @@ private[turn] object TurnRound {
       Flow.step(here),
       Flow.either(gated, TurnHosted.settle)
     )
-    routed.decided((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at)))
+    routed.decided((c, settled) => stalling(c.at)(settled.map(_ => ())))
   }
+
+  /** `failed`'s failure as the loop's stall, where `at` says. */
+  private def stalling[A](at: Rounds)(failed: Either[TurnFailure, A]): Either[Stalled, A] =
+    failed.left.map(Stalled(_, at))
 }

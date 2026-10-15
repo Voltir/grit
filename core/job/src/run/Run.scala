@@ -70,10 +70,10 @@ object Run {
       .fromEither(WorkflowId.as("run", TurnRef.fromWorkflowId))
       .andThen(Flow.decide(readSlot) {
         case (_, SlotRead.Unreadable(why)) => Left(s"unreadable: $why")
-        case (turn, read: SlotRead.Read) => Right(planned(jobs, budget, turn, read))
+        case (turn, read: SlotRead.Read) => Right((turn, read))
       })
       .andThen(
-        Flow.either(
+        Flow.branch((r: (TurnRef, SlotRead.Read)) => planned(jobs, budget, r._1, r._2))(
           moves(keepers).over[RunEnv](env => env.moves).keeping.map { (p, text) =>
             Replying(p.acting.turn, p.read, Planned.Says(text))
           },

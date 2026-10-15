@@ -71,8 +71,10 @@ object TurnHosted {
         .over[TurnRound.Env](r => r.hosting.requests)
         .map(Waited.Phase(_))
     // A call sent to no serving edge waits for nothing.
-    val awaited: Flow[TurnRound.Env, Either[TurnRound.Hosting, Waited], Nothing, Waited] =
-      Flow.either(waited, Flow.pass[Waited])
+    val awaited: Flow[TurnRound.Env, (TurnRound.Hosting, Boolean), Nothing, Waited] =
+      Flow.branch((sending: (TurnRound.Hosting, Boolean)) =>
+        if (sending._2) Left(sending._1) else Right(Waited.Unsent)
+      )(waited, Flow.pass[Waited])
     val sent = Step.transact[TurnRound.Env, Dispatching, Either[TurnFailure, Boolean]](
       TurnRound.Names.dispatch,
       d => Subject.Turn(d.slot.turn)
@@ -91,9 +93,7 @@ object TurnHosted {
       Flow
         .step(sent)
         .keeping
-        .map[Either[TurnFailure, Either[TurnRound.Hosting, Waited]]]((d, went) =>
-          went.map(w => if (w) Left(d.hosting) else Right(Waited.Unsent))
-        )
+        .map((d, went) => went.map(d.hosting -> _))
         .andThen(awaited.right[TurnFailure])
     val approved: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, Waited]] =
       Flow
@@ -162,9 +162,7 @@ object TurnHosted {
       .branch((h: TurnRound.Hosting) => if (h.asks) Right(h) else Left(h))(
         Flow
           .pass[TurnRound.Hosting]
-          .map[Either[TurnRound.Hosting, Waited]](h =>
-            if (h.call.sent) Left(h) else Right(Waited.Unsent)
-          )
+          .map(h => (h, h.call.sent))
           .andThen(awaited)
           .map[Either[TurnFailure, Waited]](Right(_)),
         approved
