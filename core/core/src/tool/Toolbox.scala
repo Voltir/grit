@@ -54,7 +54,8 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
       case Some(tool) =>
         val requires = tool.entry.requires
         Trusted.check(call, requires) match {
-          case Left(below) => Left(CallError.Withheld(tool.name, requires, below.integrity))
+          case Left(below) =>
+            Left(CallError.Withheld(tool.name, tool.entry.plainly, requires, below.integrity))
           case Right(checked) => tool.bind(checked.extract, repairs.args)
         }
     }

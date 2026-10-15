@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.id.{DocumentVersion, EntrySeq, ToolCallId}
-import grit.core.tool.{Retry, ToolName, ToolSet}
+import grit.core.tool.{CallError, Retry, ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -105,6 +105,16 @@ object PlainWordsTests extends TestSuite {
 
     test("what every turn is told of who may see what says nothing a person would not follow") {
       unplain(TurnPrompt.Security.text) ==> Vector.empty
+    }
+
+    test("a call withheld for what was read is refused in words a person would follow") {
+      val refused = CallError.Withheld(
+        ToolName("slack_post"),
+        offered.plainly(ToolName("slack_post")),
+        Integrity.Member,
+        Integrity.Untrusted
+      )
+      unplain(refused.message) ==> Vector.empty
     }
 
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {

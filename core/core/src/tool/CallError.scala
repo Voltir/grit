@@ -27,11 +27,14 @@ enum CallError {
   case Misdirected(tool: ToolName, destination: Option[Place])
 
   /** It was stamped at `at`, below what `tool` requires, `requires`: this turn read something
-    * believed less than the tool needs, and it does not run.
+    * believed less than the tool needs, and it does not run. `plainly` is what a person can no
+    * longer have done by it ([[ToolSet.Entry.plainly]]).
     */
-  case Withheld(tool: ToolName, requires: Integrity, at: Integrity)
+  case Withheld(tool: ToolName, plainly: String, requires: Integrity, at: Integrity)
 
-  /** What is wrong, then the tools there are, or what was sent. */
+  /** What is wrong, then the tools there are, or what was sent; a withheld call, in words the
+    * model may repeat to a person, naming neither level.
+    */
   def message: String = this match {
     case Unknown(name, offered) =>
       val names = offered.map(n => s"`${ToolName.value(n)}`").mkString(", ")
@@ -47,10 +50,9 @@ enum CallError {
       destination.fold(s"${ToolName.value(tool)} was told no place to write to; it did not run.")(
         at => s"${ToolName.value(tool)} does not write to ${at.written} here; it did not run."
       )
-    case Withheld(tool, requires, at) =>
-      s"The call to `${ToolName.value(tool)}` was not run: it needs what this turn has read " +
-        s"believed at ${Integrity.shown(requires)} or above, and this turn has read something " +
-        s"believed only at ${Integrity.shown(at)}."
+    case Withheld(_, plainly, _, _) =>
+      s"You can't $plainly right now, because of something you read; nothing was done, so " +
+        "answer without it."
   }
 
   /** This error as the call's outcome: [[Outcome.Failed]] with [[message]]. */

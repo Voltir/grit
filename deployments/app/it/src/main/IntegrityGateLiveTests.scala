@@ -38,9 +38,8 @@ object IntegrityGateLiveTests extends TestSuite {
   )
 
   private val withheld =
-    "The call to `slack_post` was not run: it needs what this turn has read believed at " +
-      "[integrity: member] or above, and this turn has read something believed only at " +
-      "[integrity: untrusted]."
+    "You can't post to channels right now, because of something you read; nothing was done, " +
+      "so answer without it."
 
   private val general = "slack:T0NEUTRAL/C0GENERAL"
 

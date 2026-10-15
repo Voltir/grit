@@ -111,7 +111,7 @@ object ToolboxTests extends TestSuite {
     }
 
     test(
-      "a call stamped below its tool's requirement is withheld, naming both levels; one at or above it binds"
+      "a call stamped below its tool's requirement is withheld, saying plainly what can't be done; one at or above it binds"
     ) {
       val guarded = Toolbox
         .of(new Hosted(echo.spec, Gate.Free, (t: String) => t).requiring(Integrity.Member).over {
@@ -122,11 +122,10 @@ object ToolboxTests extends TestSuite {
         AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
       def stamped(at: Integrity) = guarded.bind(TestTainted.at(sent, at), Repairs.All)
       stamped(Integrity.Outside).map(_.tool) ==>
-        Left(CallError.Withheld(ToolName("echo"), Integrity.Member, Integrity.Outside))
+        Left(CallError.Withheld(ToolName("echo"), "use echo", Integrity.Member, Integrity.Outside))
       stamped(Integrity.Outside).left.map(_.message) ==> Left(
-        "The call to `echo` was not run: it needs what this turn has read believed at " +
-          "[integrity: member] or above, and this turn has read something believed only at " +
-          "[integrity: outside]."
+        "You can't use echo right now, because of something you read; nothing was done, so " +
+          "answer without it."
       )
       stamped(Integrity.Member).map(_.tool) ==> Right(ToolName("echo"))
       stamped(Integrity.Authority).map(_.tool) ==> Right(ToolName("echo"))
