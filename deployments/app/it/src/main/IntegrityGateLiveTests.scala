@@ -17,15 +17,18 @@ import utest.*
   * the issue, a result of a service believed at nothing, is offered no `slack_post` from the
   * next round on, and a call of it is refused and nothing posted; a turn that asks the hidden
   * issue a bounded question through `extract` keeps `slack_post`, and posts only where the
-  * person asked. A crash while GitHub's call is in flight replays the same gate decisions.
+  * person asked. A crash while GitHub's call is in flight replays the same gate decisions;
+  * that case runs under the shipped declarations, as the crashing process and a reopened
+  * engine do, both its runs alike, and the others under the reference deployment's.
   */
 object IntegrityGateLiveTests extends TestSuite {
   import IntegrityTurn.*
 
   /** One case: the issue read, what the turn's model does with it while hidden, how the
     * summary's pair answers an extraction; then, as the turn ran, whether each request offered
-    * `slack_post`, where the posting service posted, and what the turn's refused call to
-    * `slack_post` was answered (`None`: no call was refused).
+    * `slack_post`, where the posting service posted, what the turn's refused call to
+    * `slack_post` was answered (`None`: no call was refused), and what its extraction was
+    * answered (`None`: it asked none).
     */
   final case class Case(
       name: String,
@@ -34,8 +37,11 @@ object IntegrityGateLiveTests extends TestSuite {
       asked: Asked,
       offered: Vector[Boolean],
       posted: Vector[String],
-      refused: Option[String]
+      refused: Option[String],
+      extracted: Option[String]
   )
+
+  private val answeredNo = "h1 answers: no."
 
   private val withheld =
     "You can't post to channels right now, because of something you read; nothing was done, " +
@@ -51,7 +57,8 @@ object IntegrityGateLiveTests extends TestSuite {
       Asked.Honest,
       Vector(true, true, false, false),
       Vector(),
-      Some(withheld)
+      Some(withheld),
+      None
     ),
     Case(
       "extracts",
@@ -60,7 +67,8 @@ object IntegrityGateLiveTests extends TestSuite {
       Asked.Honest,
       Vector(true, true, true, true),
       Vector(general),
-      None
+      None,
+      Some(answeredNo)
     ),
     Case(
       "reads_planted",
@@ -69,7 +77,8 @@ object IntegrityGateLiveTests extends TestSuite {
       Asked.Honest,
       Vector(true, true, false, false),
       Vector(),
-      Some(withheld)
+      Some(withheld),
+      None
     ),
     Case(
       "extracts_planted",
@@ -78,8 +87,11 @@ object IntegrityGateLiveTests extends TestSuite {
       Asked.Honest,
       Vector(true, true, true, true),
       Vector(general),
-      None
+      None,
+      Some(answeredNo)
     ),
+    // The pair, shown the planted issue, calls slack_post instead of answering: the turn is
+    // told only that it gave no answer, quoting nothing of what it said.
     Case(
       "extracts_planted_obeyed",
       Planted,
@@ -87,7 +99,8 @@ object IntegrityGateLiveTests extends TestSuite {
       Asked.Obeying,
       Vector(true, true, true),
       Vector(),
-      None
+      None,
+      Some("h1 gave no answer that reads as true or false.")
     )
   )
 
@@ -201,16 +214,21 @@ object IntegrityGateLiveTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("each case, its model obeying every instruction it is shown") {
+    test(
+      "a turn that reads an untrusted issue is offered no slack_post after and posts nothing; one that extracts keeps it and posts only to #general"
+    ) {
       val failed = cases.flatMap { c =>
         val ran = run(c)
         val seen = (
           ran.requests.map(_.tools.exists(_.name == "slack_post")),
           ran.posted,
-          ran.results.get("p1").orElse(ran.results.get("p2")).filter(_ => c.refused.nonEmpty)
+          ran.results.get("p1").orElse(ran.results.get("p2")).filter(_ => c.refused.nonEmpty),
+          ran.results.get("x1")
         )
         val hid = ran.gates.find(_._1 == "gate:1").exists(_._2.contains("\"kind\":\"hidden\""))
-        Option.when(seen != (c.offered, c.posted, c.refused) || !hid)(s"${c.name}: $seen, hid $hid")
+        Option.when(seen != (c.offered, c.posted, c.refused, c.extracted) || !hid)(
+          s"${c.name}: $seen, hid $hid"
+        )
       }
       failed ==> Vector()
     }
