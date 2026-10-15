@@ -15,6 +15,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
+import grit.core.flow.TestTainted
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
@@ -198,7 +199,10 @@ object SyncTests extends TestSuite {
     )
 
   private def runOf(moves: Keeping^, perRun: Int = 5): String =
-    sync.run(JobRun(SyncParams(name, perRun), Instant.EPOCH, Instant.EPOCH), moves)
+    sync.run(
+      TestTainted.trusted(JobRun(SyncParams(name, perRun), Instant.EPOCH, Instant.EPOCH)),
+      moves
+    )
 
   private def pathOf(d: Document): String =
     d.data.objOpt.flatMap(_.get("path")).flatMap(_.strOpt).getOrElse(s"no path in ${d.data}")
@@ -460,7 +464,13 @@ object SyncTests extends TestSuite {
     test("parameters naming no source of its are refused by the reply, making no move") {
       val other = right(CorpusName.of("wiki"))
       val k = keeping(floor, new InMemoryDocuments)
-      (sync.run(JobRun(SyncParams(other, 5), Instant.EPOCH, Instant.EPOCH), k), k.made) ==>
+      (
+        sync.run(
+          TestTainted.trusted(JobRun(SyncParams(other, 5), Instant.EPOCH, Instant.EPOCH)),
+          k
+        ),
+        k.made
+      ) ==>
         ("wiki: no source of this sync's", Vector())
     }
 

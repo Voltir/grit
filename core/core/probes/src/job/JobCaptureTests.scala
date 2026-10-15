@@ -20,6 +20,7 @@ object JobCaptureTests extends TestSuite {
       |import grit.core.act.*
       |import grit.core.host.*
       |import grit.core.id.*
+      |import grit.core.flow.Trusted
       |import grit.core.job.*
       |import grit.core.plugin.*
       |import grit.core.store.*
@@ -32,7 +33,7 @@ object JobCaptureTests extends TestSuite {
       |  val version: Int = 1
       |  def write(params: Note): ujson.Value = ujson.Str(params.text)
       |  def read(params: ujson.Value): Either[String, Note] = params.strOpt.map(Note(_)).toRight("no text")
-      |  def run(run: JobRun[Note], moves: Moves^): String = run.params.text
+      |  def run(run: Trusted[JobRun[Note]], moves: Moves^): String = run.extract.params.text
       |}
       |object Remember extends PluginTool[Int] {
       |  val described: Hosted[Int] =
@@ -64,7 +65,7 @@ object JobCaptureTests extends TestSuite {
       |  val version: Int = 1
       |  def write(params: Note): ujson.Value = Remind.write(params)
       |  def read(params: ujson.Value): Either[String, Note] = Remind.read(params)
-      |  def run(run: JobRun[Note], moves: Moves^): String = db.read(Subject.Public)(Right("")).fold(_ => "", identity)
+      |  def run(run: Trusted[JobRun[Note]], moves: Moves^): String = db.read(Subject.Public)(Right("")).fold(_ => "", identity)
       |}
       |""".stripMargin
 

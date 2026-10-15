@@ -12,4 +12,10 @@ object TestTainted {
     * compartment, as a turn stamps its calls before its level is recorded.
     */
   def authority[A](value: A): Tainted[A] = Mint.tainted(value, Integrity.Authority)
+
+  /** `value`, checked to `integrity`: [[Integrity.Authority]] unless given, as a declared
+    * schedule's run starts.
+    */
+  def trusted[A](value: A, integrity: Integrity = Integrity.Authority): Trusted[A] =
+    Mint.trusted(value, integrity)
 }

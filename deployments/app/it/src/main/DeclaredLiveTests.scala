@@ -8,6 +8,7 @@ import scala.util.Using
 
 import grit.core.act.Moves
 import grit.core.clock.{Clock, SetClock}
+import grit.core.flow.Trusted
 import grit.core.id.{
   ConversationId,
   Declarer,
@@ -67,7 +68,7 @@ object DeclaredLiveTests extends TestSuite {
     val name: JobName = JobName.of(called).fold(sys.error, identity)
     def write(params: Ping.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Ping.None.type] = Right(Ping.None)
-    def run(run: JobRun[Ping.None.type], moves: Moves^): String = says match {
+    def run(run: Trusted[JobRun[Ping.None.type]], moves: Moves^): String = says match {
       case Ping.Says.Reply => s"$called v$version"
       case Ping.Says.Unwritable => s"$called\u0000"
       case Ping.Says.Crash => throw new StackOverflowError(s"$called crashes")

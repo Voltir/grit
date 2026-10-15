@@ -32,7 +32,16 @@ import grit.core.provider.Models
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
-import grit.core.visibility.{Clearance, Cleared, Compartments, Label, Party, RoomLabels, Visibility}
+import grit.core.visibility.{
+  Clearance,
+  Cleared,
+  Compartments,
+  Integrity,
+  Label,
+  Party,
+  RoomLabels,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against [[DurableMoves]], over [[InMemoryDurable]] and core's in-memory
@@ -157,7 +166,8 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
     ActsFor.Asker,
     if (broken) Allowance.Daily(Budget(ZoneOffset.UTC, DailyCap.of("1").toOption))
     else Allowance.Admitted,
-    Gates.Closed
+    Gates.Closed,
+    Integrity.Authority
   )
 
   /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once, a JSON

@@ -3,6 +3,7 @@ package grit.app.main
 import java.time.{Instant, LocalTime, ZoneId}
 
 import grit.core.act.{Called, MoveError, ScriptedKeeping}
+import grit.core.flow.TestTainted
 import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.place.Service
@@ -61,7 +62,7 @@ object PluginChoiceTests extends TestSuite {
       case k: KeepingJob[P] =>
         plugin.documents.fold("a keeping job of a plugin keeping no documents") { documents =>
           k.run(
-            JobRun(d.params, Instant.EPOCH, Instant.EPOCH),
+            TestTainted.trusted(JobRun(d.params, Instant.EPOCH, Instant.EPOCH)),
             new ScriptedKeeping(
               k.limits,
               d.clearance,

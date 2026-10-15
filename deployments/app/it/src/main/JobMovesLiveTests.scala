@@ -11,6 +11,7 @@ import grit.core.classify.{Ask, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
+import grit.core.flow.Trusted
 import grit.core.id.{
   Declarer,
   DocKey,
@@ -115,7 +116,7 @@ object JobMovesLiveTests extends TestSuite {
     override val limits: MoveLimits = MoveLimits.of(2, 1).fold(sys.error, identity)
     def write(params: NoParams.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
-    def run(run: JobRun[NoParams.type], moves: Moves^): String = {
+    def run(run: Trusted[JobRun[NoParams.type]], moves: Moves^): String = {
       val called = moves
         .call(
           JobMovesLiveTests.name("look"),
@@ -184,7 +185,7 @@ object JobMovesLiveTests extends TestSuite {
     val version: Int = 1
     def write(params: NoParams.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
-    def run(run: JobRun[NoParams.type], moves: Keeping^): String = {
+    def run(run: Trusted[JobRun[NoParams.type]], moves: Keeping^): String = {
       def keep(n: String, text: String, refuse: Boolean) =
         moves
           .keep[Tallied](JobMovesLiveTests.name(n)) { (keeper, at) =>

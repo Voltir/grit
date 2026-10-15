@@ -6,6 +6,7 @@ import grit.act.moves.{DurableMoves, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Durable
+import grit.core.flow.Trusted
 import grit.core.id.{EntryId, JobName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId
 import grit.core.job.{Job, JobRun, Jobs, KeepingJob, Owned, PlainJob, Report, Slot}
@@ -54,7 +55,8 @@ object Run {
               turn,
               ActsFor.Scheduled(read.slot.schedule),
               Allowance.Daily(env.budget),
-              Gates.Closed
+              Gates.Closed,
+              read.integrity
             )
             val planned: Planned = jobs.named(read.job) match {
               case None => Planned.Jobless
@@ -104,7 +106,8 @@ object Run {
           case Right((slot, job, version, started)) =>
             records.schedules.read(slot.schedule).map {
               case None => SlotRead.Unreadable("its schedule is gone")
-              case Some(s) => SlotRead.Read(slot, job, version, started, s.params, s.report)
+              case Some(s) =>
+                SlotRead.Read(slot, job, version, started, s.params, s.report, s.integrity)
             }
         }
       } yield read
@@ -166,14 +169,14 @@ object Run {
   /** What `run` replies to the run `read` of `job`, given its parameters, or the line saying
     * they could not be read.
     */
-  private def said[P <: caps.Pure](job: Job[P], read: SlotRead.Read)(
-      run: JobRun[P] => String
+  private def said[P <: caps.Pure](job: Job[P], read: SlotRead.Read, acting: Acting)(
+      run: Trusted[JobRun[P]] => String
   ): String =
     job
       .read(read.params)
       .fold(
         why => unreadParams(read.job, why),
-        params => run(JobRun(params, read.slot.nominal, read.started))
+        params => run(DurableMoves.started(JobRun(params, read.slot.nominal, read.started), acting))
       )
 
   /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `env`. */
@@ -183,7 +186,7 @@ object Run {
       acting: Acting,
       env: MovesEnv^
   )(using d: Durable^): String =
-    said(job, read)(run =>
+    said(job, read, acting)(run =>
       DurableMoves.plain(acting, job.limits, env)(moves => Said(job.run(run, moves))).text
     )
 
@@ -195,7 +198,7 @@ object Run {
       env: MovesEnv^,
       keeper: DocumentKeeper
   )(using d: Durable^): String =
-    said(job, read)(run =>
+    said(job, read, acting)(run =>
       DurableMoves
         .keeping(acting, job.limits, env, keeper)(moves => Said(job.run(run, moves)))
         .text

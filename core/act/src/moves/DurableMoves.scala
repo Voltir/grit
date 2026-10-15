@@ -21,8 +21,9 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.flow.Mint
+import grit.core.flow.{Mint, Trusted}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.job.JobRun
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{NameRepair, Pinned}
 import grit.core.place.Service
@@ -45,6 +46,10 @@ object DurableMoves {
       body: Moves^ => A
   )(using d: Durable^): A =
     body(new Run(acting, limits, env))
+
+  /** `run`, believed at what `acting`'s run starts at ([[Acting.integrity]]). */
+  def started[P <: caps.Pure](run: JobRun[P], acting: Acting): Trusted[JobRun[P]] =
+    Mint.trusted(run, acting.integrity)
 
   /** As [[plain]], its moves also keeping `keeper`'s documents. */
   def keeping[A <: caps.Pure](

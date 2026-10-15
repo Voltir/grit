@@ -4,6 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.Moves
 import grit.core.clock.SetClock
+import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, EdgeName, JobName, PluginName, ScheduleId, TestCallSlots}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
@@ -286,7 +287,7 @@ abstract class DeskContract extends TestSuite {
     val version: Int = 1
     def write(params: Count): ujson.Value = ujson.Str(s"${params.n}")
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
-    def run(run: JobRun[Count], moves: Moves^): String = ""
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = ""
   }
 
 }

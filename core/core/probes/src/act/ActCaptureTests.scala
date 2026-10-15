@@ -26,6 +26,7 @@ object ActCaptureTests extends TestSuite {
       |import grit.core.document.*
       |import grit.core.durable.*
       |import grit.core.id.*
+      |import grit.core.flow.Trusted
       |import grit.core.job.{JobRun, KeepingJob, PlainJob}
       |import grit.core.message.*
       |import grit.core.provider.*
@@ -61,7 +62,7 @@ object ActCaptureTests extends TestSuite {
   private val jobKeepsMoves =
     """final class Keeps extends Counted {
       |  var kept: Option[Moves^] = None
-      |  def run(run: JobRun[Count], moves: Moves^): String = { kept = Some(moves); "kept" }
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = { kept = Some(moves); "kept" }
       |}
       |""".stripMargin
 
@@ -69,14 +70,14 @@ object ActCaptureTests extends TestSuite {
   private val jobStashesMoves =
     """final class Stashes extends Counted {
       |  val kept: scala.collection.mutable.ArrayBuffer[Moves^] = scala.collection.mutable.ArrayBuffer.empty
-      |  def run(run: JobRun[Count], moves: Moves^): String = { kept += moves; "stashed" }
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = { kept += moves; "stashed" }
       |}
       |""".stripMargin
 
   /** 3. A keeping job whose keep's body makes a move. */
   private val keepAsks =
     """final class Asks extends Tallied {
-      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       |    moves.keep(Names.of("count")) { (keeper, at) =>
       |      val _ = moves.ask(Names.of("inner"), Posed.Text(Names.request))
       |      Right(Count(1))
@@ -87,7 +88,7 @@ object ActCaptureTests extends TestSuite {
   /** 4. A job holding a provider it was built with. */
   private val jobHoldsProvider =
     """final class Calls(provider: Provider) extends Counted {
-      |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = provider; "called" }
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = { val _ = provider; "called" }
       |}
       |""".stripMargin
 
@@ -98,7 +99,7 @@ object ActCaptureTests extends TestSuite {
       |  def decode(s: String): Either[String, A] = Left("never read")
       |}
       |final class Later(key: DocKey, label: Label) extends Tallied {
-      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       |    moves.keep(Names.of("later")) { (keeper, at) => Right(() => keeper.current(key, label)) }
       |      .fold(_.toString, _ => "later")
       |}
@@ -107,7 +108,7 @@ object ActCaptureTests extends TestSuite {
   /** 6. A job whose reply's reader makes a move: a JSON ask whose `Typed`'s `read` asks. */
   private val readerAsks =
     """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
-      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val typed = grit.core.schema.Typed[String](schema, c =>
       |      moves.ask(Names.of("inner"), Posed.Text(Names.request)).left.map(_.toString).map(_ => "read")
       |    )
@@ -133,7 +134,7 @@ object ActCaptureTests extends TestSuite {
   /** 8. A job holding a classifier it was built with. */
   private val jobHoldsClassifier =
     """final class Judges(classifier: Classifier) extends Counted {
-      |  def run(run: JobRun[Count], moves: Moves^): String = { val _ = classifier; "judged" }
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = { val _ = classifier; "judged" }
       |}
       |""".stripMargin
 
@@ -153,11 +154,11 @@ object ActCaptureTests extends TestSuite {
 
   private val usesMoves =
     """object Counter extends Counted {
-      |  def run(run: JobRun[Count], moves: Moves^): String =
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String =
       |    moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
       |}
       |final class Tally(key: DocKey, label: Label) extends Tallied {
-      |  def run(run: JobRun[Count], moves: Keeping^): String =
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
       |      .fold(_.toString, _.toString)
       |}
@@ -165,7 +166,7 @@ object ActCaptureTests extends TestSuite {
 
   private val readsJson =
     """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
-      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
       |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
       |    val json = moves.ask(Names.of("json"), Posed.json("", Vector.empty, schema)).fold(_.toString, _.reply.text)
@@ -178,7 +179,7 @@ object ActCaptureTests extends TestSuite {
   private val judges =
     """final class Weighs(schema: grit.core.schema.JsonSchema) extends Counted {
       |  import Text.given
-      |  def run(run: JobRun[Count], moves: Moves^): String = {
+      |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val judged = Ask.score[String, Int]("How urgent is `text`?", Level(0, "not"), Level(1, "very"))
       |      .fold(_.toString, ask =>
       |        moves.ask(Names.of("urgency"), Posed.judge("the build is red", ask)).fold(_.toString, _.reply.likeliest.toString)
@@ -195,7 +196,7 @@ object ActCaptureTests extends TestSuite {
       |  def closed: Acting = parent.copy(gates = Gates.Closed)
       |}
       |def pure[A <: caps.Pure](a: A): A = a
-      |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute)))
+      |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute), Integrity.Authority))
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(

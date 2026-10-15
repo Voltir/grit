@@ -8,6 +8,7 @@ import grit.core.act.{ActsFor, Gates, Moves}
 import grit.core.approval.Approval
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Permit, RequestState, ToolRequest, ToolRequests}
+import grit.core.flow.Trusted
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -94,7 +95,7 @@ object CallingTests extends TestSuite {
     def version: Int = 1
     def write(params: NoParams): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams] = Right(NoParams())
-    def run(run: JobRun[NoParams], moves: Moves^): String = "done"
+    def run(run: Trusted[JobRun[NoParams]], moves: Moves^): String = "done"
   }
 
   private val key: ScheduleKey = ScheduleKey.of("nightly").fold(sys.error, identity)

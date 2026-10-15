@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.act.{Keeping, MoveLimits, Moves}
 import grit.core.document.DocumentTerms
+import grit.core.flow.Trusted
 import grit.core.id.{JobName, PluginName}
 
 /** A job (ADRs 0021, 0029): versioned code each slot of its schedules runs, as a turn of the
@@ -36,9 +37,10 @@ sealed trait Job[P <: caps.Pure] extends caps.Pure {
 trait PlainJob[P <: caps.Pure] extends Job[P] {
 
   /** What the run `run` replies, after the moves it makes through `moves`: kept as its turn's
-    * reply, and posted where its schedule reports.
+    * reply, and posted where its schedule reports. `run` is believed at its schedule's
+    * integrity ([[Schedule.integrity]]).
     */
-  def run(run: JobRun[P], moves: Moves^): String
+  def run(run: Trusted[JobRun[P]], moves: Moves^): String
 }
 
 /** A plugin's job whose runs keep its documents. A deployment is refused one whose plugin
@@ -47,7 +49,7 @@ trait PlainJob[P <: caps.Pure] extends Job[P] {
 trait KeepingJob[P <: caps.Pure] extends Job[P] {
 
   /** As [[PlainJob.run]], its moves also keeping its plugin's documents. */
-  def run(run: JobRun[P], moves: Keeping^): String
+  def run(run: Trusted[JobRun[P]], moves: Keeping^): String
 }
 
 /** One run as its job sees it: its parameters, its slot's instant, and when it started (after

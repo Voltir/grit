@@ -21,6 +21,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
+import grit.core.flow.Trusted
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -114,12 +115,12 @@ object RunFixtures {
     val name = remind.name
     def write(params: Count): ujson.Value = remind.write(params)
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
-    def run(run: JobRun[Count], moves: Keeping^): String =
+    def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       moves
         .keep[Noted](move("note")) { (keeper, at) =>
           (for {
             key <- DocKey.of("count")
-            text <- DocText.of(s"counted ${run.params.n}")
+            text <- DocText.of(s"counted ${run.extract.params.n}")
           } yield (key, text)) match {
             case Left(why) => Left(StoreError.Invalid(why))
             case Right((key, text)) =>
@@ -154,7 +155,7 @@ object RunFixtures {
     def write(params: Text): ujson.Value = ujson.Str(params.text)
     def read(params: ujson.Value): Either[String, Text] =
       params.strOpt.map(Text(_)).toRight(s"not text: $params")
-    def run(run: JobRun[Text], moves: Moves^): String = run.params.text
+    def run(run: Trusted[JobRun[Text]], moves: Moves^): String = run.extract.params.text
   }
 
   final case class Text(text: String) extends caps.Pure
@@ -292,12 +293,23 @@ object RunFixtures {
     }
 
     /** A schedule of `remind` with the count `n`, asked in `thread`, a Slack thread whose
-      * reply was posted at `address`, due at [[Due]].
+      * reply was posted at `address`, by a turn `believed` at that, due at [[Due]].
       */
-    def asked(thread: String, address: String, n: Int = 1): ScheduleId = {
+    def asked(
+        thread: String,
+        address: String,
+        n: Int = 1,
+        believed: Integrity = Integrity.Member
+    ): ScheduleId = {
       val origin = Origin.Slack("T1", "C1", thread)
       val turn = TurnRef(ConversationId(thread), TurnSeq.First)
-      inbox.schedules.asking(turn, origin, TestAccounts.account("test:ann"), Some(address))
+      inbox.schedules.asking(
+        turn,
+        origin,
+        TestAccounts.account("test:ann"),
+        Some(address),
+        believed = believed
+      )
       val plugin = PluginName.of("reminders").fold(sys.error, identity)
       val desk =
         inbox.schedules.desk(plugin, Vector(remind.name), new SetClock(Due.minusSeconds(3600)))
@@ -444,7 +456,7 @@ object RunFixtures {
     val name = remind.name
     def write(params: Count): ujson.Value = remind.write(params)
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
-    def run(run: JobRun[Count], moves: Moves^): String = plan(run.params, moves)
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = plan(run.extract.params, moves)
   }
 
   /** `remind` at `version`, within an ask and a call, its plan [[probes]], telling `seen` what

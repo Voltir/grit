@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.Moves
 import grit.core.clock.Utc
+import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDesk, When}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
@@ -79,10 +80,11 @@ object Reminders {
         .toRight(s"a reminder's parameters hold its text, not ${params.render().take(100)}")
         .flatMap(Reminder.of)
 
-    def run(run: JobRun[Reminder], moves: Moves^): String = {
-      val said = s"Reminder: ${run.params.text}"
-      if (Duration.between(run.nominal, run.started).compareTo(Late) > 0)
-        s"$said\n(due ${Utc.toMinute(run.nominal)}; sent late)"
+    def run(run: Trusted[JobRun[Reminder]], moves: Moves^): String = {
+      val r = run.extract
+      val said = s"Reminder: ${r.params.text}"
+      if (Duration.between(r.nominal, r.started).compareTo(Late) > 0)
+        s"$said\n(due ${Utc.toMinute(r.nominal)}; sent late)"
       else said
     }
   }

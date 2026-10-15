@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{EdgeName, JobName, ScheduleId}
 import grit.core.job.{Destination, Report, Slot}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -26,10 +27,11 @@ object RunJournalTests extends TestSuite {
       2,
       Instant.parse("2026-10-07T09:00:05.5Z"),
       ujson.Obj("text" -> "stretch"),
-      Report.Posted(Destination(EdgeName.Slack, "C1/1.0"))
-    ) -> """{"kind":"read","slot":"asked:00112233445566ff@2026-10-07T09:00:00Z","job":"remind","version":2,"started":"2026-10-07T09:00:05.500Z","params":{"text":"stretch"},"report":{"kind":"posted","edge":"slack","address":"C1/1.0"}}""",
-    SlotRead.Read(slot, remind, 1, slot.nominal, ujson.Num(3), Report.Kept) ->
-      """{"kind":"read","slot":"asked:00112233445566ff@2026-10-07T09:00:00Z","job":"remind","version":1,"started":"2026-10-07T09:00:00Z","params":3,"report":{"kind":"kept"}}""",
+      Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
+      Integrity.Member
+    ) -> """{"kind":"read","slot":"asked:00112233445566ff@2026-10-07T09:00:00Z","job":"remind","version":2,"started":"2026-10-07T09:00:05.500Z","params":{"text":"stretch"},"report":{"kind":"posted","edge":"slack","address":"C1/1.0"},"integrity":"member"}""",
+    SlotRead.Read(slot, remind, 1, slot.nominal, ujson.Num(3), Report.Kept, Integrity.Outside) ->
+      """{"kind":"read","slot":"asked:00112233445566ff@2026-10-07T09:00:00Z","job":"remind","version":1,"started":"2026-10-07T09:00:00Z","params":3,"report":{"kind":"kept"},"integrity":"outside"}""",
     SlotRead.Unreadable("its schedule is gone") ->
       """{"kind":"unreadable","why":"its schedule is gone"}"""
   )
@@ -45,6 +47,16 @@ object RunJournalTests extends TestSuite {
     test("a read-slot output is recorded in its pinned form, and read back as it was") {
       reads.map((r, _) => RunJournal.slotRead.encode(r)) ==> reads.map(_._2)
       reads.map((_, text) => RunJournal.slotRead.decode(text)) ==> reads.map(r => Right(r._1))
+    }
+
+    test(
+      "a read-slot output recorded before it held its schedule's integrity reads as believed at Authority, as such a run started"
+    ) {
+      RunJournal.slotRead.decode(
+        """{"kind":"read","slot":"asked:00112233445566ff@2026-10-07T09:00:00Z","job":"remind","version":1,"started":"2026-10-07T09:00:00Z","params":3,"report":{"kind":"kept"}}"""
+      ) ==> Right(
+        SlotRead.Read(slot, remind, 1, slot.nominal, ujson.Num(3), Report.Kept, Integrity.Authority)
+      )
     }
 
     test("a reply output is recorded in its pinned form, and read back as it was") {

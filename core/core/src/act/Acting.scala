@@ -4,17 +4,23 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.{ScheduleId, TurnRef}
 import grit.core.spend.Budget
-import grit.core.visibility.Subject
+import grit.core.visibility.{Integrity, Subject}
 
 /** Who acts, and within what (ADR 0034): every ask, call and keep is made under one. Its
   * moves belong to `turn`: their spend is recorded under its conversation, their requests are
   * made from it, and an edge rings its workflow. What its transactions read, and the least
   * label they write at, are each transaction's clearance, resolved as it opens for [[subject]]
   * (ADR 0030, 0032). `actsFor` is whom its requests record; `allowance`, what its asks may
-  * spend; `gates`, what becomes of a call whose tool asks a person first.
+  * spend; `gates`, what becomes of a call whose tool asks a person first; `integrity`, what its
+  * run starts believed at (ADR 0036): its schedule's ([[grit.core.job.Schedule.integrity]]).
   */
-final case class Acting(turn: TurnRef, actsFor: ActsFor, allowance: Allowance, gates: Gates)
-    extends caps.Pure {
+final case class Acting(
+    turn: TurnRef,
+    actsFor: ActsFor,
+    allowance: Allowance,
+    gates: Gates,
+    integrity: Integrity
+) extends caps.Pure {
 
   /** Whom its transactions are opened for: its turn. */
   def subject: Subject = Subject.Turn(turn)

@@ -7,11 +7,14 @@ import scala.util.Try
 import grit.core.durable.Journaled
 import grit.core.id.JobName
 import grit.core.job.{ReportJson, Slot}
+import grit.core.visibility.Integrity
 
 /** How a run's step outputs are recorded. A run in flight must read back what an earlier build
   * wrote, so change these only with the workflow's epoch (ADR 0004).
   *   - `read-slot`: `{"kind":"read","slot":key,"job":…,"version":n,"started":instant,
-  *     "params":…,"report":…}` (a [[Slot.key]], a [[ReportJson]]), or
+  *     "params":…,"report":…,"integrity":…}` (a [[Slot.key]], a [[ReportJson]], an
+  *     [[Integrity.written]]; read as [[Integrity.Authority]] when it has none, as a run
+  *     recorded before schedules' integrity was read started believed), or
   *     `{"kind":"unreadable","why":…}`;
   *   - `reply`: `{"kind":"replied","text":…}`, `{"kind":"superseded","current":n}`,
   *     `{"kind":"jobless"}` or `{"kind":"failed","why":…}`.
@@ -23,7 +26,7 @@ object RunJournal {
   given runEnd: Journaled[RunEnd] = Journaled.json(writeRunEnd, readRunEnd)
 
   def writeSlotRead(read: SlotRead): ujson.Value = read match {
-    case SlotRead.Read(slot, job, version, started, params, report) =>
+    case SlotRead.Read(slot, job, version, started, params, report, integrity) =>
       ujson.Obj(
         "kind" -> "read",
         "slot" -> slot.key,
@@ -31,7 +34,8 @@ object RunJournal {
         "version" -> version,
         "started" -> started.toString,
         "params" -> params,
-        "report" -> ReportJson.write(report)
+        "report" -> ReportJson.write(report),
+        "integrity" -> Integrity.written(integrity)
       )
     case SlotRead.Unreadable(why) => ujson.Obj("kind" -> "unreadable", "why" -> why)
   }
@@ -51,7 +55,12 @@ object RunJournal {
             started <- Try(Instant.parse(at)).toOption.toRight(s"read-slot: no instant $at")
             params <- o.get("params").toRight("read-slot has no params")
             report <- o.get("report").toRight("read-slot has no report").flatMap(ReportJson.read)
-          } yield SlotRead.Read(slot, job, version, started, params, report)
+            integrity <- o
+              .get("integrity")
+              .fold(Right(Integrity.Authority))(v =>
+                v.strOpt.toRight("read-slot's integrity is not a string").flatMap(Integrity.read)
+              )
+          } yield SlotRead.Read(slot, job, version, started, params, report, integrity)
         case "unreadable" => str(o, "why").map(SlotRead.Unreadable(_))
         case other => Left(s"read-slot: no kind $other")
       }

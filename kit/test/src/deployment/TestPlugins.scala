@@ -4,6 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.{Keeping, Moves}
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
+import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName}
 import grit.core.job.{Declared, Job, JobRun, KeepingJob, NotOwn, OwnJobs, PlainJob, ScheduleDesk}
 import grit.core.plugin.{
@@ -89,7 +90,7 @@ object TestPlugins {
     val version: Int = 1
     def write(params: Named.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
-    def run(run: JobRun[Named.None.type], moves: Moves^): String = called
+    def run(run: Trusted[JobRun[Named.None.type]], moves: Moves^): String = called
   }
 
   object Named {
@@ -102,7 +103,7 @@ object TestPlugins {
     val version: Int = 1
     def write(params: Named.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
-    def run(run: JobRun[Named.None.type], moves: Keeping^): String = called
+    def run(run: Trusted[JobRun[Named.None.type]], moves: Keeping^): String = called
   }
 
   /** Documents labelled "tallies", which nothing posts. */

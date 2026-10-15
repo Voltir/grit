@@ -2,7 +2,7 @@ package grit.job.run
 
 import grit.act.moves.MoveSteps
 import grit.core.act.MovesFixtures.{Judged, PerChar}
-import grit.core.act.{MoveError, Posed}
+import grit.core.act.{MoveError, Moves, Posed}
 import grit.core.classify.{
   Answer as Judgment,
   Answers,
@@ -17,14 +17,16 @@ import grit.core.classify.{
 }
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{Pending, RequestState}
+import grit.core.flow.Trusted
 import grit.core.id.{EntryId, PrincipalId, SourceId, WorkflowId}
 import grit.core.identity.Account
-import grit.core.job.Ending
+import grit.core.job.JobTests.Count
+import grit.core.job.{Ending, JobRun, PlainJob}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.schema.Typed
 import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolName}
-import grit.core.visibility.{Label, Level}
+import grit.core.visibility.{Compartments, Integrity, Label, Level}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -44,6 +46,21 @@ object RunTests extends TestSuite {
       (said, w.reply(turn), w.pending, w.schedule(id).flatMap(_.ended)) ==>
         (s"replied: reply:${turn.conversationId}:0", Some("3"), Vector(), Some(Ending.Ran))
       durable.recordedSteps(turn.workflowId) ==> Vector(Run.Step.ReadSlot, Run.Step.Reply)
+    }
+
+    test(
+      "a run's job is given its run believed at its schedule's integrity: a declared one's grit's own, an asked one's its asking turn's"
+    ) {
+      val w = new World
+      val declared = w.started(w.declared("standup"))
+      val asked = w.started(w.asked("thread", "C1/1.0", believed = Integrity.Outside))
+      Vector(declared, asked).foreach(turn =>
+        new InMemoryDurable().run(turn.workflowId)(Run.body(w.env(), jobsOf(Believing)))
+      )
+      (w.reply(declared), w.reply(asked)) ==> (
+        Some(Integrity.written(Integrity.top(Compartments.Shipped))),
+        Some(Integrity.written(Integrity.Outside))
+      )
     }
 
     test("an asked schedule's run is awaited at the address its asking turn's reply was posted") {
@@ -767,6 +784,15 @@ object RunTests extends TestSuite {
   }
 
   /** `{"count": integer}`, read as the count. */
+  /** `remind`, replying what its run is believed at, written. */
+  private object Believing extends PlainJob[Count] {
+    val name = remind.name
+    val version = 1
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = Integrity.written(run.integrity)
+  }
+
   private object Counted {
     val read: grit.core.schema.Conforming -> Either[String, Int] =
       c => c.json.objOpt.flatMap(_.get("count")).flatMap(_.numOpt).map(_.toInt).toRight("no count")

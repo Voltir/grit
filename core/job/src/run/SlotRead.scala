@@ -4,12 +4,14 @@ import java.time.Instant
 
 import grit.core.id.JobName
 import grit.core.job.{Report, Slot}
+import grit.core.visibility.Integrity
 
 /** What a run's `read-slot` step recorded: the slot it runs, or why it runs none. */
 enum SlotRead {
 
   /** A run of `job` for `slot`, started at its job's `version` at `started` (when its opening
-    * was written), its schedule's parameters as kept `params`, reporting as `report` says.
+    * was written), its schedule's parameters as kept `params`, reporting as `report` says,
+    * believed at its schedule's `integrity`.
     */
   case Read(
       slot: Slot,
@@ -17,7 +19,8 @@ enum SlotRead {
       version: Int,
       started: Instant,
       params: ujson.Value,
-      report: Report
+      report: Report,
+      integrity: Integrity
   )
 
   /** `why` it runs none: its conversation is no slot's, its opening names no version, its

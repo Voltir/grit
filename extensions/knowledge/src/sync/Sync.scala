@@ -7,6 +7,7 @@ import scala.annotation.tailrec
 import grit.core.act.{Called, Keeping, MoveError, MoveKind, MoveLimits, MoveName, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
+import grit.core.flow.Trusted
 import grit.core.id.{CorpusName, DocumentVersion, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
@@ -69,10 +70,10 @@ final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
       .fold(why => throw new IllegalStateException(why), identity)
   }
 
-  def run(run: JobRun[SyncParams], moves: Keeping^): String =
-    cards.find(_.corpus == run.params.source) match {
-      case None => s"${CorpusName.value(run.params.source)}: no source of this sync's"
-      case Some(source) => Sync.walk(source, run.params.perRun, moves)
+  def run(run: Trusted[JobRun[SyncParams]], moves: Keeping^): String =
+    cards.find(_.corpus == run.extract.params.source) match {
+      case None => s"${CorpusName.value(run.extract.params.source)}: no source of this sync's"
+      case Some(source) => Sync.walk(source, run.extract.params.perRun, moves)
     }
 }
 

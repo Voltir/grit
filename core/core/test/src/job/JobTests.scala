@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.{Keeping, Moves}
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
+import grit.core.flow.Trusted
 import grit.core.id.{JobName, PluginName}
 
 import utest.*
@@ -19,7 +20,7 @@ object JobTests extends TestSuite {
     def write(params: Count): ujson.Value = ujson.Num(params.n)
     def read(params: ujson.Value): Either[String, Count] =
       params.numOpt.map(n => Count(n.toInt)).toRight(s"not a count: $params")
-    def run(run: JobRun[Count], moves: Moves^): String = s"${run.params.n}"
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = s"${run.extract.params.n}"
   }
 
   final case class Count(n: Int) extends caps.Pure
@@ -31,7 +32,7 @@ object JobTests extends TestSuite {
     def write(params: Count): ujson.Value = ujson.Num(params.n)
     def read(params: ujson.Value): Either[String, Count] =
       params.numOpt.map(n => Count(n.toInt)).toRight(s"not a count: $params")
-    def run(run: JobRun[Count], moves: Keeping^): String = s"${run.params.n}"
+    def run(run: Trusted[JobRun[Count]], moves: Keeping^): String = s"${run.extract.params.n}"
   }
 
   private def name(text: String): JobName =

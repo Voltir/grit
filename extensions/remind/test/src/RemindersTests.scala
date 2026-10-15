@@ -131,7 +131,7 @@ object RemindersTests extends TestSuite {
     */
   private def replied(text: String, late: Long): String =
     Reminders.Remind.run(
-      JobRun(reminder(text), due, due.plusSeconds(late)),
+      TestTainted.trusted(JobRun(reminder(text), due, due.plusSeconds(late))),
       new ScriptedMoves(
         MoveLimits.Zero,
         _ => Left(MoveError.Model("remind asks nothing")),
