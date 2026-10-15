@@ -54,19 +54,22 @@ private[turn] object TurnRound {
     /** What `pending`, a call of round `at.round`, is. */
     def kind(at: Rounds, pending: Pending): Kind
 
-    /** `pending`, when it is a call of a hosted tool. */
-    def hosted(at: Rounds, pending: Pending): Option[Bound.Hosted]
+    /** `pending`, the call at `slot` of round `at.round`, bound to its hosted tool. Fails, as
+      * each member below that binds a call does, when it binds to no such tool: its kind was
+      * read in an earlier run, and the call's tools changed since.
+      */
+    def hosted(at: Rounds, slot: Slot, pending: Pending): Either[TurnFailure, Bound.Hosted]
 
-    /** What a person is shown of `pending` when its tool asks them first. */
-    def shown(at: Rounds, pending: Pending): Option[String]
+    /** What a person is shown of `call` when its tool asks them first. */
+    def shown(call: Call): Either[TurnFailure, String]
 
     /** The `tool:n:j` body of `call`, refused or free: answered with its outcome, unrun, at
-      * the turn's level, or run. [[unbound]] when it is neither.
+      * the turn's level, or run.
       */
     def settle(call: Call): Either[TurnFailure, Settled]
 
     /** The `tool:n:j` body of `call`, gated, answered by `approval`
-      * ([[TurnTools.Settling.decide]]). [[unbound]] when it is not gated.
+      * ([[TurnTools.Settling.decide]]).
       */
     def decide(call: Call, approval: Approval): Either[TurnFailure, Settled]
 
@@ -177,14 +180,6 @@ private[turn] object TurnRound {
     Flow.patch(Turn.Patches.Integrity)(from(None), from(Some(Map.empty)))
   }
 
-  /** Why a step found its call bound otherwise than its round's binding said: never, as long
-    * as binding is a function of the round.
-    */
-  private[turn] def unbound(slot: Slot): TurnFailure =
-    TurnFailure.Store(
-      s"the call at round ${slot.round.index}, index ${slot.index}, binds otherwise than it did"
-    )
-
   /** A person's answer about `call`, waited for up to `within` ([[Calling.approval]]). */
   private[turn] def approval(within: FiniteDuration): Flow[Any, Call, Nothing, Approval] =
     Calling.approval[Call](Names.answer, _.id, _ => within)
@@ -198,8 +193,7 @@ private[turn] object TurnRound {
     )(r =>
       c =>
         (tx: Tx^) ?=>
-          r.shown(c.at, c.pending)
-            .toRight(unbound(c.slot))
+          r.shown(c)
             .flatMap(TurnTools.ask(r.settling.entries, c.slot, c.id, _, r.now()))
     )
   }
@@ -374,9 +368,7 @@ private[turn] object TurnRound {
             val hosted = s.calls.foldLeft[Either[TurnFailure, Vector[(Slot, Bound.Hosted)]]](
               Right(Vector.empty)
             ) { case (acc, (slot, pending)) =>
-              acc.flatMap(done =>
-                r.hosted(s.at, pending).toRight(unbound(slot)).map(h => done :+ ((slot, h)))
-              )
+              acc.flatMap(done => r.hosted(s.at, slot, pending).map(h => done :+ ((slot, h))))
             }
             hosted.flatMap(TurnHosted.dispatch(r.hosting, turn, s.place, _, Permit.Free, pins))
           }

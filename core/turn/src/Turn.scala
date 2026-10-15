@@ -1223,14 +1223,18 @@ object Turn {
       TurnTools.Kind.of(bound(at, pending), tool => placing.placeOf(tool))
     }
 
-    def hosted(at: TurnRound.Rounds, pending: Pending): Option[Bound.Hosted] =
-      bound(at, pending) match {
+    def hosted(
+        at: TurnRound.Rounds,
+        slot: TurnTools.Slot,
+        pending: Pending
+    ): Either[TurnFailure, Bound.Hosted] =
+      rebind(at, slot, pending) {
         case Right(hosted: Bound.Hosted) => Some(hosted)
         case _ => None
       }
 
-    def shown(at: TurnRound.Rounds, pending: Pending): Option[String] =
-      bound(at, pending) match {
+    def shown(call: TurnRound.Call): Either[TurnFailure, String] =
+      rebind(call.at, call.slot, call.pending) {
         case Right(gated: Bound.Gated) => Some(gated.ask)
         case Right(hosted: Bound.Hosted) => hosted.ask
         case _ => None
@@ -1240,23 +1244,23 @@ object Turn {
     // and what the call sent.
     def settle(call: TurnRound.Call): Either[TurnFailure, TurnTools.Settled] = {
       val (slot, id, level) = (call.slot, call.id, call.at.level)
-      bound(call.at, call.pending) match {
+      rebind(call.at, slot, call.pending) {
         case Left(outcome) =>
-          settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now())
-        case Right(free: Bound.Free) => settling.run(slot, id, free, level, now())
-        case Right(_) => Left(TurnRound.unbound(slot))
-      }
+          Some(settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now()))
+        case Right(free: Bound.Free) => Some(settling.run(slot, id, free, level, now()))
+        case _ => None
+      }.flatten
     }
 
     def decide(
         call: TurnRound.Call,
         approval: grit.core.approval.Approval
     ): Either[TurnFailure, TurnTools.Settled] =
-      bound(call.at, call.pending) match {
+      rebind(call.at, call.slot, call.pending) {
         case Right(gated: Bound.Gated) =>
-          settling.decide(call.slot, call.id, gated, approval, call.at.level, now())
-        case _ => Left(TurnRound.unbound(call.slot))
-      }
+          Some(settling.decide(call.slot, call.id, gated, approval, call.at.level, now()))
+        case _ => None
+      }.flatten
 
     def settling: TurnTools.Settling^{this} = new TurnTools.Settling(jot, env.records.entries)
 
@@ -1273,6 +1277,22 @@ object Turn {
     /** Round `at.round`'s request from the plain one, as its budget offers tools. */
     def shape(at: TurnRound.Rounds): ModelRequest -> ModelRequest =
       shapeAs(at, TurnLoop.use(budget, at.round))
+
+    // `pending`, the call at `slot`, bound again inside a step's body, once, and taken as `as`
+    // takes it. Its kind was read from an earlier binding, in this run or one before it; a
+    // binding `as` does not take means the call's tools changed between those runs, which a
+    // redeploy can do, since what a call binds to is the deployment's, not the history's.
+    private def rebind[A](at: TurnRound.Rounds, slot: TurnTools.Slot, pending: Pending)(
+        as: Either[grit.core.tool.Outcome, (Bound.Runs | Bound.Hosted)^{C, env, jot, reads}] ->{
+          this
+        } Option[A]
+    ): Either[TurnFailure, A] =
+      as(bound(at, pending)).toRight(
+        TurnFailure.Store(
+          s"the call at round ${slot.round.index}, index ${slot.index}, binds otherwise than " +
+            "it did: its tools changed between runs"
+        )
+      )
 
     // `pending` read against what round `at.round` offers: `tools`, after read_hidden and
     // extract over the items the round's gate hid when the round offers them (their names are

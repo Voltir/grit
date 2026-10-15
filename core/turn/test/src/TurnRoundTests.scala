@@ -86,12 +86,17 @@ object TurnRoundTests extends TestSuite {
       case Pending.Refused(_, _) => TurnTools.Kind.Refused
       case Pending.Run(_) => TurnTools.Kind.Free
     }
-    def hosted(at: TurnRound.Rounds, pending: Pending): Option[Bound.Hosted] = None
-    def shown(at: TurnRound.Rounds, pending: Pending): Option[String] = None
+    def hosted(
+        at: TurnRound.Rounds,
+        slot: TurnTools.Slot,
+        pending: Pending
+    ): Either[TurnFailure, Bound.Hosted] = Left(TurnFailure.Store("nothing is hosted"))
+    def shown(call: TurnRound.Call): Either[TurnFailure, String] =
+      Left(TurnFailure.Store("nothing asks"))
     def settle(call: TurnRound.Call): Either[TurnFailure, TurnTools.Settled] =
       Right(TurnTools.Settled(call.slot.resultId, call.kind == TurnTools.Kind.Refused))
     def decide(call: TurnRound.Call, approval: Approval): Either[TurnFailure, TurnTools.Settled] =
-      Left(TurnRound.unbound(call.slot))
+      Left(TurnFailure.Store("nothing is gated"))
     def settling: TurnTools.Settling^{this} = new TurnTools.Settling(jot, entries)
     def now(): Instant = Instant.EPOCH
     def hosting: TurnHosting = TurnFixtures.hosting()

@@ -81,11 +81,10 @@ object TurnHosted {
       d =>
         (tx: Tx^) ?=> {
           val (h, turn) = (d.hosting, d.slot.turn)
-          r.hosted(h.call.at, h.call.pending) match {
-            case Some(hosted) =>
+          r.hosted(h.call.at, d.slot, h.call.pending)
+            .flatMap(hosted =>
               dispatch(r.hosting, turn, d.to, Vector((d.slot, hosted)), Permit.Approved, pins)
-            case None => Left(TurnRound.unbound(d.slot))
-          }
+            )
         }
     )
     val dispatched: Flow[TurnRound.Env, Dispatching, Nothing, Either[TurnFailure, Waited]] =
@@ -139,8 +138,7 @@ object TurnHosted {
     )(r =>
       c => {
         val (h, slot) = (c.hosting, c.slot)
-        r.hosted(h.call.at, h.call.pending) match {
-          case Some(hosted) =>
+        r.hosted(h.call.at, slot, h.call.pending).flatMap { hosted =>
             val (call, shown, level) = (h.call.id, hosted.shown, h.call.at.level)
             val (settling, at) = (r.settling, r.now())
             val (requests, askers) = (r.hosting.requests, r.hosting.askers)
@@ -174,7 +172,6 @@ object TurnHosted {
                   )
                 )
             }
-          case None => Left(TurnRound.unbound(slot))
         }
       }
     )
