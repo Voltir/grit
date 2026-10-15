@@ -3,8 +3,8 @@ package grit.core.act
 import scala.compiletime.ops.string.Matches
 import scala.compiletime.{constValue, constValueOpt, error}
 
-/** A move's name within its run, and its steps': `move:{name}`, then `move:{name}:{phase}`. 1 to
-  * 200 characters, none a control character or `:`.
+/** A move's name within its run, and its steps': `ask:{name}`, `call:{name}` or `keep:{name}`,
+  * then each with `:{phase}` after it. 1 to 200 characters, none a control character or `:`.
   */
 opaque type MoveName = String
 

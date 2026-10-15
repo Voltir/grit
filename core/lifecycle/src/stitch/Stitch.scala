@@ -21,7 +21,7 @@ object Stitch {
   import StitchJournal.given
 
   /** A placement made for the opening of `ref`, whose conversation's first entry is `root`. */
-  private final case class Placing(ref: StitchRef, root: EntryId, placed: Placed)
+  private final case class Made(ref: StitchRef, root: EntryId, placed: Placed)
 
   private def subject(ref: StitchRef): Subject = Subject.Conversation(ref.turn.conversationId)
 
@@ -34,8 +34,8 @@ object Stitch {
           .map(e => s"room unread: ${describe(e)}")
     }
 
-  private val record: Step[StitchEnv, Placing, Either[String, Boolean]] =
-    Step.transact[StitchEnv, Placing, Either[String, Boolean]](
+  private val record: Step[StitchEnv, Made, Either[String, Boolean]] =
+    Step.transact[StitchEnv, Made, Either[String, Boolean]](
       StepName("record-stitch"),
       p => subject(p.ref)
     )(env => p => env.reads.stitches.record(p.root, p.placed, env.clock.now()).left.map(describe))
@@ -49,7 +49,7 @@ object Stitch {
         StitchRef.fromWorkflowId(id).toRight(s"not a stitch: ${WorkflowId.value(id)}")
       })
       .andThen(Flow.decide(stitch) {
-        case (ref, Right(Some((root, placed)))) => Right(Placing(ref, root, placed))
+        case (ref, Right(Some((root, placed)))) => Right(Made(ref, root, placed))
         case (_, Right(None)) => Left("nothing asked")
         case (_, Left(why)) => Left(s"failed: $why")
       })
