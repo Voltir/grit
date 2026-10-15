@@ -170,10 +170,13 @@ object Sync {
             case Step.Relabel(key, from) =>
               val (floor, at) = (h.floor, source.at)
               val path = paths.getOrElse(key, CardKey.value(key))
-              // A copy reads nothing of the source: it is believed as the card it copies was.
+              // Withdrawals and copies are decided by the source's listings, so they are kept from
+              // what the run has read, as its writes are. Today a listing believed below a keep's
+              // need always stops the run at its directory's card first, since Walk emits the drop
+              // last; keeping from `read` makes that hold whatever the order.
               (
                 kept(
-                  moves.keep(CardMoves.of(Phase.Relabel, key), start)((_, keeper, now) =>
+                  moves.keep(CardMoves.of(Phase.Relabel, key), read)((_, keeper, now) =>
                     relabel(keeper, key, from, floor, at, now)
                   ),
                   s"relabelling the card of $path"
@@ -184,7 +187,7 @@ object Sync {
             case Step.Drop(gone) =>
               (
                 kept(
-                  moves.keep(CardMoves.Drop, start)((_, keeper, now) => drop(keeper, gone, now)),
+                  moves.keep(CardMoves.Drop, read)((_, keeper, now) => drop(keeper, gone, now)),
                   "withdrawing the cards gone"
                 ),
                 read,
