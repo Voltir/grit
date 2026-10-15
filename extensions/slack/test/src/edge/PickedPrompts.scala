@@ -26,6 +26,7 @@ import grit.core.triage.{
   Shadowed,
   Tags
 }
+import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 
 /** A review over `inbox`'s stores ([[reviews]]), and heard messages picked for it, as the kit
@@ -66,14 +67,14 @@ final class PickedPrompts(inbox: InMemoryInbox) {
     val decided: Either[StoreError, Boolean] = live match {
       case Settled.Held(why) =>
         inbox.speech.decided(
-          Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed),
+          Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed, Integrity.Member),
           Decision.Held(why),
           at
         )
       case Settled.Drafted(outcome) =>
         inbox.speech
           .decided(
-            Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed),
+            Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed, Integrity.Member),
             Decision.Drafting(turn),
             at
           )

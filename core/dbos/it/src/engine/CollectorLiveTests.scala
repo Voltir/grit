@@ -380,7 +380,8 @@ object CollectorLiveTests extends TestSuite {
       grit.core.place.Place.Everywhere,
       Instant.now(),
       grit.core.speech.Reach.Nowhere,
-      tags
+      tags,
+      Integrity.Member
     )
     LiveDb.transaction(config)(
       new SqlSpeechStore().decided(heard, grit.core.speech.Decision.Drafting(turn), Instant.now())

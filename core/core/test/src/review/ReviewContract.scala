@@ -139,7 +139,8 @@ abstract class ReviewContract extends TestSuite {
       room,
       at,
       Reach(Some("C/1"), Set.empty),
-      Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage)
+      Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
+      Integrity.Member
     )
     transaction {
       live match {

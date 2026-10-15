@@ -43,7 +43,8 @@ object SpeechTests extends TestSuite {
     room,
     now.minusSeconds(60),
     Reach(Some("C/1"), Set.empty),
-    tags()
+    tags(),
+    Integrity.Member
   )
 
   private val empty = Ledger(Vector.empty, Spend.Zero, Spend.Zero)
@@ -96,6 +97,14 @@ object SpeechTests extends TestSuite {
   val tests = Tests {
     test("a heard message that passes every check is drafted in its own turn") {
       assert(decide() == Decision.Drafting(turn))
+    }
+
+    test("a message heard from below outside starts no unprompted reply; one at outside does") {
+      assert(
+        decide(heard.copy(integrity = Integrity.Untrusted)) ==
+          held(Silence.Below(Integrity.Untrusted))
+      )
+      assert(decide(heard.copy(integrity = Integrity.Outside)) == Decision.Drafting(turn))
     }
 
     test("the checks, in order: each holds with its own silence") {

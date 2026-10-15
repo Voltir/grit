@@ -63,7 +63,15 @@ private[triage] object Speak {
       decided <- (found, conversation) match {
         case (Some(e), Some(c)) =>
           val heard =
-            Heard(turn, e.seq, c.origin.room, e.createdAt, reach.getOrElse(Reach.Nowhere), tags)
+            Heard(
+              turn,
+              e.seq,
+              c.origin.room,
+              e.createdAt,
+              reach.getOrElse(Reach.Nowhere),
+              tags,
+              e.integrity
+            )
           val decision = Speech.decide(speaking, heard, Ledger(spoken, speech, all), budget, now)
           for {
             kept <- records.speech.decided(heard, decision, now)

@@ -57,14 +57,14 @@ object Review {
   /** Whether live triage's gate passed: `Some(true)` for a draft, or a hold after the gate
     * (an unanswered earlier turn, a thread, room or deployment rate, the speech cap, the
     * budget); `Some(false)` for a hold at it (`Gated`, naming someone else); `None` when it was
-    * never reached (speaking off, no address, stale, untagged, `Unasked`).
+    * never reached (speaking off, no address, heard below `Outside`, stale, untagged, `Unasked`).
     */
   def gated(live: Settled): Option[Boolean] = live match {
     case Settled.Drafted(_) => Some(true)
     case Settled.Held(why) =>
       why match {
-        case Silence.Off | Silence.NoAddress | Silence.Stale(_) | Silence.Unweighed(_) |
-            Silence.Unasked(_) =>
+        case Silence.Off | Silence.NoAddress | Silence.Below(_) | Silence.Stale(_) |
+            Silence.Unweighed(_) | Silence.Unasked(_) =>
           None
         case Silence.Gated(_, _) | Silence.AskedOf(_) => Some(false)
         case Silence.Unanswered(_) | Silence.Thread(_) | Silence.Room(_) | Silence.Deployment(_) |

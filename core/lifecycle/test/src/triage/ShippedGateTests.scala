@@ -12,6 +12,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Decision, Heard, Ledger, Limits, Reach, Silence, Speaking, Speech}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.triage.{Gate, Kind, Reading, Tags}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -30,7 +31,8 @@ object ShippedGateTests extends TestSuite {
     Place.under(Namespace.Slack, Vector("T", "C")),
     now.minusSeconds(60),
     Reach(Some("C/1"), Set.empty),
-    tags
+    tags,
+    Integrity.Member
   )
 
   private def tags(kind: Kind, kindP: Double, helps: Double): Tags =

@@ -12,6 +12,7 @@ import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Tx}
 import grit.core.triage.{Gate, Reading, Tags}
+import grit.core.visibility.Integrity
 
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
   * never answered, as for a past message), and whom it names besides the assistant.
@@ -31,7 +32,8 @@ object Reach {
 }
 
 /** A heard message as [[Speech.decide]] weighs it: its `turn`, its position `seq` in its
-  * conversation, its `room`, when it was `said`, its reach, and triage's tags.
+  * conversation, its `room`, when it was `said`, its reach, triage's tags, and the
+  * `integrity` its heard entry is believed at.
   */
 final case class Heard(
     turn: TurnRef,
@@ -39,7 +41,8 @@ final case class Heard(
     room: Place,
     said: Instant,
     reach: Reach,
-    tags: Tags
+    tags: Tags,
+    integrity: Integrity
 )
 
 /** Where an unprompted turn has got to. */
@@ -90,6 +93,11 @@ enum Silence {
 
   /** The edge gave no reply address. */
   case NoAddress
+
+  /** The message heard is believed at `at`, below `Outside`: a message from where anyone can
+    * write does not start an unprompted reply.
+    */
+  case Below(at: Integrity)
 
   /** Said `age` before the decision, longer than `fresh`. */
   case Stale(age: FiniteDuration)
@@ -228,6 +236,10 @@ object Speech {
     val checks: Limits => Vector[() => Option[Silence]] = limits =>
       Vector(
         () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
+        () =>
+          Option.when(!heard.integrity.dominates(Integrity.Outside))(
+            Silence.Below(heard.integrity)
+          ),
         () => {
           val age = JDuration.between(heard.said, now).toNanos.nanos
           Option.when(age > limits.fresh)(Silence.Stale(age))

@@ -9,6 +9,7 @@ import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
 import grit.core.store.PayloadJson
 import grit.core.triage.{Bound, Gate, GateJson, Kind, Reading, Tags}
+import grit.core.visibility.Integrity
 
 /** The stored JSON forms of a [[Decision]], a [[Silence]] and an [[Outcome]]: the same in a
   * `grit.speech` row and in a workflow's journal. Written by hand and read totally, as
@@ -49,6 +50,7 @@ object SpeechJson {
   def writeSilence(s: Silence): ujson.Value = s match {
     case Silence.Off => kind("off")
     case Silence.NoAddress => kind("no_address")
+    case Silence.Below(at) => kind("below_outside", "at" -> ujson.Str(Integrity.written(at)))
     case Silence.Stale(age) => kind("stale", "seconds" -> ujson.Num(age.toSeconds.toDouble))
     case Silence.Unweighed(why) => kind("unweighed", "why" -> ujson.Str(why))
     case Silence.Gated(first, rest) =>
@@ -73,6 +75,7 @@ object SpeechJson {
       str(o, "kind").flatMap {
         case "off" => Right(Silence.Off)
         case "no_address" => Right(Silence.NoAddress)
+        case "below_outside" => str(o, "at").flatMap(Integrity.read).map(Silence.Below(_))
         case "stale" => long(o, "seconds").map(s => Silence.Stale(s.seconds))
         case "unweighed" => str(o, "why").map(Silence.Unweighed(_))
         case "gated" =>

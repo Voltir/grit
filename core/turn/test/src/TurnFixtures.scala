@@ -1652,7 +1652,8 @@ object TurnFixtures {
         Place.Everywhere,
         Instant.EPOCH,
         Reach(replyTo, Set.empty),
-        Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero)
+        Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero),
+        Integrity.Member
       ),
       replyTo.filter(_ => answering).fold(Decision.Drafting(turn))(Decision.Answering(turn, _)),
       Instant.EPOCH
