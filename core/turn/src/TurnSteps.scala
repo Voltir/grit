@@ -21,6 +21,7 @@ import grit.core.visibility.{Integrity, Label, Subject}
 
 import TurnRound.believedAt
 import TurnShown.{own, requestOf, shown}
+import TurnJournal.given
 
 /** The turn's steps besides its loop's ([[TurnRound]]), each a value: what it is recorded as,
   * what it reads off the wire, and its body, acting through an [[Env]]. [[TurnFlow]] puts them
@@ -258,8 +259,7 @@ private[turn] object TurnSteps {
     * its id the step's output, so a replay makes every call under the profile the turn started
     * with.
     */
-  val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfileId]] = {
-    import TurnJournal.given
+  val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfileId]] =
     Step.transact[Env, TurnRef, Either[TurnFailure, TurnProfileId]](
       Names.pinModels,
       Subject.Turn(_)
@@ -277,7 +277,6 @@ private[turn] object TurnSteps {
           } yield profile.id
         }
     )
-  }
 
   /** The profile kept under `id`, read through `env`'s `db`; `TurnFailure.Store` when none
     * is.
@@ -292,28 +291,22 @@ private[turn] object TurnSteps {
   /** `weigh` ([[Env.weigh]]). Taken by every turn, whatever the recipe, so a recovery under
     * another deployment's configuration replays the same steps.
     */
-  val weigh: Step[Env, OfTurn, Option[TurnWeighing.Weighed]] = {
-    import TurnJournal.given
+  val weigh: Step[Env, OfTurn, Option[TurnWeighing.Weighed]] =
     Step[Env, OfTurn, Option[TurnWeighing.Weighed]](Names.weigh)(r => in => r.weigh(in.turn))
-  }
 
   /** `route` ([[routeOf]]). Taken as weigh is, so a recovery under another deployment's
     * clearances replays it.
     */
-  val route: Step[Env, Weighed, Either[TurnFailure, Route]] = {
-    import TurnJournal.given
+  val route: Step[Env, Weighed, Either[TurnFailure, Route]] =
     Step[Env, Weighed, Either[TurnFailure, Route]](Names.route)(r =>
       in => routeOf(r.env, in.turn, in.profile)
     )
-  }
 
   /** `offer` ([[Env.offer]]), its transaction bounded as the turn was routed. */
-  val offer: Step[Env, Offering, Either[TurnFailure, TurnOffer.Recorded]] = {
-    import TurnJournal.given
+  val offer: Step[Env, Offering, Either[TurnFailure, TurnOffer.Recorded]] =
     Step.transact[Env, Offering, Either[TurnFailure, TurnOffer.Recorded]](Names.offer, onTurn)(r =>
       in => (tx: Tx^) ?=> r.offer(in.turn, in.weighed, in.route)
     )
-  }
 
   /** `record-failure`: for a turn that ended before its offer was made or read, `Failed` kept
     * as what became of it when it answers a heard message
@@ -322,8 +315,7 @@ private[turn] object TurnSteps {
     * `Uncleared`, and nothing otherwise. Taken by every turn that fails there, whatever it
     * answers, since which it answers is read inside the step.
     */
-  val recordFailure: Step[Env, Failed, Either[TurnFailure, Boolean]] = {
-    import TurnJournal.given
+  val recordFailure: Step[Env, Failed, Either[TurnFailure, Boolean]] =
     Step.transact[Env, Failed, Either[TurnFailure, Boolean]](Names.recordFailure, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -347,35 +339,29 @@ private[turn] object TurnSteps {
             .map(TurnFailure.ofStore)
         }
     )
-  }
 
   /** `stitched`: what the placement of the turn's message did, once it has ended, when the
     * message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store` when the
     * conversation cannot be read or the placement failed. Never fails the turn.
     */
-  val stitched: Step[Env, OfTurn, Either[TurnFailure, Option[String]]] = {
-    import TurnJournal.given
+  val stitched: Step[Env, OfTurn, Either[TurnFailure, Option[String]]] =
     Step[Env, OfTurn, Either[TurnFailure, Option[String]]](Names.stitched)(r =>
       in => placed(r.env, in.turn)
     )
-  }
 
   /** `classify`: the turn's message placed among its conversation's topics
     * ([[TurnTopics.classify]]).
     */
-  val classify: Step[Env, OfTurn, TurnTopics.Classification] = {
-    import TurnJournal.given
+  val classify: Step[Env, OfTurn, TurnTopics.Classification] =
     Step[Env, OfTurn, TurnTopics.Classification](Names.classify)(r =>
       in => {
         val (env, records) = (r.env, r.env.records)
         TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, in.turn)
       }
     )
-  }
 
   /** `record-topic`: the placement recorded ([[TurnTopics.record]]). */
-  val recordTopic: Step[Env, Placed, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
+  val recordTopic: Step[Env, Placed, Either[TurnFailure, EntryId]] =
     Step.transact[Env, Placed, Either[TurnFailure, EntryId]](Names.recordTopic, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -390,13 +376,11 @@ private[turn] object TurnSteps {
           )
         }
     )
-  }
 
   /** `assemble`: a fresh window over what came before the turn, at its offer's width, read as
     * its pins bound it.
     */
-  val assemble: Step[Env, Placed, Either[TurnFailure, Window]] = {
-    import TurnJournal.given
+  val assemble: Step[Env, Placed, Either[TurnFailure, Window]] =
     Step[Env, Placed, Either[TurnFailure, Window]](Names.assemble)(r =>
       in => {
         val (env, at) = (r.env, in.at)
@@ -410,24 +394,20 @@ private[turn] object TurnSteps {
           }
       }
     )
-  }
 
   /** `record-window`: the turn's window and the queries that chose it, recorded before the
     * model is called, so an edge sees them while the turn runs, and each document the window
     * holds counted as placed.
     */
-  val recordWindow: Step[Env, Assembled, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
+  val recordWindow: Step[Env, Assembled, Either[TurnFailure, EntryId]] =
     Step.transact[Env, Assembled, Either[TurnFailure, EntryId]](Names.recordWindow, onTurn)(r =>
       in => (tx: Tx^) ?=> windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now())
     )
-  }
 
   /** `record-verdict`: the model's verdict on the turn's topic, when the classifier was unsure
     * ([[TurnVerdict]]).
     */
-  val recordVerdict: Step[Env, Verdict, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
+  val recordVerdict: Step[Env, Verdict, Either[TurnFailure, EntryId]] =
     Step.transact[Env, Verdict, Either[TurnFailure, EntryId]](Names.recordVerdict, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -449,11 +429,9 @@ private[turn] object TurnSteps {
           )
         }
     )
-  }
 
   /** `append` ([[appended]]): the loop's answer kept as the turn's reply, or its draft. */
-  val append: Step[Env, Answered, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
+  val append: Step[Env, Answered, Either[TurnFailure, EntryId]] =
     Step.transact[Env, Answered, Either[TurnFailure, EntryId]](Names.append, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -476,19 +454,15 @@ private[turn] object TurnSteps {
             )
         }
     )
-  }
 
   /** `judge` ([[judgeDraft]]). */
-  val judge: Step[Env, OfTurn, TurnJudge.Judgement] = {
-    import TurnJournal.given
+  val judge: Step[Env, OfTurn, TurnJudge.Judgement] =
     Step[Env, OfTurn, TurnJudge.Judgement](Names.judge)(r => in => judgeDraft(r.env, in.turn))
-  }
 
   /** `record-speech` for a heard-rooted turn that failed: `Failed` kept as what became of its
     * draft.
     */
-  val speechFailed: Step[Env, Failed, Either[TurnFailure, Outcome]] = {
-    import TurnJournal.given
+  val speechFailed: Step[Env, Failed, Either[TurnFailure, Outcome]] =
     Step.transact[Env, Failed, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -500,23 +474,19 @@ private[turn] object TurnSteps {
             .map(_ => failed)
         }
     )
-  }
 
   /** `record-speech` for a heard-rooted turn's draft ([[recordSpeech]]). */
-  val speechSettled: Step[Env, Settled, Either[TurnFailure, Outcome]] = {
-    import TurnJournal.given
+  val speechSettled: Step[Env, Settled, Either[TurnFailure, Outcome]] =
     Step.transact[Env, Settled, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
       in => (tx: Tx^) ?=> recordSpeech(r.env, in.turn, in.settling, in.at.level, r.env.clock.now())
     )
-  }
 
   /** `summarise`: the summary of the turn whose reply is `answered`, asked of the summary's
     * pin, again while the summarizer is unavailable, as a reply is ([[Asking.reply]]), with
     * the name and description of its message's topic; its reasoning dropped.
     * `Uncleared` when no summary pin is cleared.
     */
-  val summarise: Step[Env, Summing, Either[TurnFailure, Message.Assistant]] = {
-    import TurnJournal.given
+  val summarise: Step[Env, Summing, Either[TurnFailure, Message.Assistant]] =
     Step[Env, Summing, Either[TurnFailure, Message.Assistant]](Names.summarise)(r =>
       in => {
         val (env, pins, turn) = (r.env, in.pins, in.turn)
@@ -550,11 +520,9 @@ private[turn] object TurnSteps {
           )
       }
     )
-  }
 
   /** `append-summary` ([[appendSummary]]). */
-  val appendSummary: Step[Env, Summary, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
+  val appendSummary: Step[Env, Summary, Either[TurnFailure, EntryId]] =
     Step.transact[Env, Summary, Either[TurnFailure, EntryId]](Names.appendSummary, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
@@ -570,7 +538,6 @@ private[turn] object TurnSteps {
           )
         }
     )
-  }
 
   /** [[Uncleared.reply]] kept as `turn`'s reply, dated `at`: what a turn said to grit is
     * answered when no turn pin is cleared for `classification`. No call was made, so no cost.

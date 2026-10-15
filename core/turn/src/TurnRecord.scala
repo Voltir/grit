@@ -9,6 +9,8 @@ import grit.core.speech.Outcome
 import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
 import grit.core.tool.ToolSets
 
+import TurnJournal.given
+
 /** A turn after the fact, read from the steps it recorded ([[Turn.Step]]) and the ids its
   * entries and ledger rows are kept under, by the turn's own codecs: for a tool reading a turn
   * it did not run, never for the turn itself.
@@ -19,7 +21,6 @@ object TurnRecord {
     * failure ([[failure]] says which). `Left` naming the step when its output does not read.
     */
   def offer(steps: Vector[StepRecord]): Either[String, Option[TurnOffer.Recorded]] = {
-    import TurnJournal.given
     read[Either[TurnFailure, TurnOffer.Recorded]](steps, Turn.Step.Offer).map(_.flatMap(_.toOption))
   }
 
@@ -27,7 +28,6 @@ object TurnRecord {
     * read.
     */
   def weighed(steps: Vector[StepRecord]): Either[String, Weigh] = {
-    import TurnJournal.given
     read[Option[TurnWeighing.Weighed]](steps, Turn.Step.Weigh)
       .map(_.fold(Weigh.Unrecorded)(Weigh.Recorded(_)))
   }
@@ -40,7 +40,6 @@ object TurnRecord {
       steps: Vector[StepRecord],
       root: TurnOffer.Root
   ): Either[String, Option[TurnJudge.Judgement]] = {
-    import TurnJournal.given
     root match {
       case TurnOffer.Root.Heard => read[TurnJudge.Judgement](steps, Turn.Step.Judge)
       case TurnOffer.Root.Addressed | TurnOffer.Root.Named | TurnOffer.Root.ByName => Right(None)
@@ -125,7 +124,6 @@ object TurnRecord {
     * a failure, or no output, is left out. `Left` naming the step when its output does not read.
     */
   def gates(steps: Vector[StepRecord]): Either[String, Vector[Gated]] = {
-    import TurnJournal.given
     val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, Gated]]]
     val rounds = steps
       .flatMap(s =>
@@ -164,7 +162,6 @@ object TurnRecord {
     * the step is not recorded, or recorded a failure. `Left` when its output does not read.
     */
   def speech(steps: Vector[StepRecord]): Either[String, Option[Outcome]] = {
-    import TurnJournal.given
     read[Either[TurnFailure, Outcome]](steps, Turn.Step.RecordSpeech).map(_.flatMap(_.toOption))
   }
 
@@ -172,7 +169,6 @@ object TurnRecord {
     * `n` and `j` of `tool:n:j`). A call whose edge answered in the end is not among them.
     */
   def givenUp(steps: Vector[StepRecord]): Map[(Int, Int), GivenUp] = {
-    import TurnJournal.given
     val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, RequestState]]]
     def state(s: StepRecord): Option[RequestState] =
       s.output.flatMap(journal.decode(_).toOption).flatMap(_.toOption)

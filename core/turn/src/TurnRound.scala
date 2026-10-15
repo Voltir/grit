@@ -19,6 +19,7 @@ import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Budget, Next, Pending, Round}
 import TurnTools.{Kind, Settled, Slot}
+import TurnJournal.given
 
 /** A turn's tool loop, as a flow: each round's `gate:n` when the turn is gated, its model call,
   * and, for a reply that calls tools ([[TurnLoop.next]]), its `record-call:n`, its free hosted
@@ -212,7 +213,6 @@ private[turn] object TurnRound {
 
   /** `ask:n:j`: a person asked about the call, shown what its tool asks them. */
   private[turn] val asked: Step[Env, Call, Either[TurnFailure, EntryId]] = {
-    import TurnJournal.given
     Step.transact[Env, Call, Either[TurnFailure, EntryId]](
       Names.ask,
       c => Subject.Turn(c.slot.turn)
@@ -253,7 +253,6 @@ private[turn] object TurnRound {
 
   /** One round: its gate, its call, and, when its reply called tools, those calls settled. */
   private def round(gates: Boolean): Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
-    import TurnJournal.given
     val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
     val gating: Flow[Env, Rounds, Stalled, Rounds] =
       if (gates) Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
@@ -299,7 +298,6 @@ private[turn] object TurnRound {
     * each call settled in order; then the round after.
     */
   private def settles: Flow[Env, Settle, Stalled, Rounds] = {
-    import TurnJournal.given
     val record = Step.transact[Env, Settle, Either[TurnFailure, EntryId]](
       Names.recordCall,
       s => Subject.Turn(s.at.looping.turn)
@@ -376,7 +374,6 @@ private[turn] object TurnRound {
 
   /** A send: `dispatch:n` to the offer's workspace, else `reach:n:{place}`. */
   private def sending: Flow[Env, Sending, Stalled, (Place, Boolean)] = {
-    import TurnJournal.given
     def sent(name: StepName[Sending]): Step[Env, Sending, Either[TurnFailure, Boolean]] =
       Step.transact[Env, Sending, Either[TurnFailure, Boolean]](
         name,
@@ -403,7 +400,6 @@ private[turn] object TurnRound {
     * to an edge when hosted.
     */
   private def one: Flow[Env, Call, Stalled, Unit] = {
-    import TurnJournal.given
     val here = Step[Env, Call, Either[TurnFailure, Settled]](Names.tool)(r => c => r.settle(c))
     val decided = Step[Env, Decided, Either[TurnFailure, Settled]](Names.tool)(r =>
       d => r.decide(d.call, d.approval)
