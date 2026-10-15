@@ -33,11 +33,36 @@ object Flows {
     * alone, as keyed and never every run's.
     */
   def names(flow: Flow[?, ?, ?, ?]): Vector[Family] = {
-    val reached = Flow.Pattern.families(Flow.pattern(flow), true)
+    val reached = Flow.Pattern.reached(Flow.pattern(flow), true).map(_.family)
     reached.map(_.name).distinct.map { name =>
       val all = reached.filter(_.name == name)
       Family(name, all.exists(_.keyed), all.exists(_.every))
     }
+  }
+
+  /** Every downgrade `flow` may make, each listed once, in the order [[names]] lists the
+    * families they are made at.
+    */
+  def downgrades(flow: Flow[?, ?, ?, ?]): Vector[Downgrading] = {
+    val listed = names(flow)
+    def at(family: Family): Family = listed.find(_.name == family.name).getOrElse(family)
+    Flow.Pattern
+      .reached(Flow.pattern(flow), true)
+      .flatMap(r => r.made.map(m => Downgrading(at(r.family), m.sits, m.node)))
+      .distinct
+  }
+
+  /** A downgrade `node` made at the family `at`, as `sits` says. */
+  final case class Downgrading(at: Family, sits: Sits, node: Flow.Node)
+
+  /** Where a downgrade is made. */
+  enum Sits {
+
+    /** On its step's recorded output ([[grit.core.durable.Flow.Node]] made by its node's `on`). */
+    case On
+
+    /** Within its step's body, or its program's code, which declares it. */
+    case Within
   }
 
   /** A name a flow records, or the family of the names it records under keys.

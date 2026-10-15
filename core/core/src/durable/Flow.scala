@@ -41,6 +41,9 @@ sealed trait Steps[+R] extends caps.ExclusiveCapability {
 
   /** `flow` from `in`, made next: how it ended, or what it passed. */
   def run[I, E, O](flow: Flow[R, I, E, O], in: I): Either[E, O]
+
+  /** Whether the program declared `node` in its `within`. */
+  def declares(node: Flow.Node): Boolean
 }
 
 object Flow {
@@ -116,12 +119,28 @@ object Flow {
     * result: a planner. A read runs `body` again over the history, so it may depend only on its
     * input and its steps' results, which its type enforces; a history its code would not have
     * made, as an older planner's may be, reads as `Diverged`. [[Flows.names]] sees only
-    * `family`.
+    * `family`. `within`: the downgrades its code may make, the only ones its `steps` declare
+    * ([[Steps.declares]]), listed by [[Flows.downgrades]].
     */
-  def program[R, I, O](family: String)(
+  def program[R, I, O](family: String, within: Vector[Node] = Vector())(
       body: (steps: Steps[R]^) -> I ->{steps} O
   ): Flow[R, I, Nothing, O] =
-    Program(family, body)
+    Program(family, within, body)
+
+  /** A downgrade as a flow's description shows it: what [[Flows.downgrades]] lists, and what
+    * a program declares. Equal nodes are one node.
+    */
+  trait Node extends caps.Pure {
+
+    /** It, in words for a reader. */
+    def shown: String
+  }
+
+  /** `s`, then `f` over its output, listed as `node` made directly on it. */
+  private[core] def downgraded[R, I, O, P](s: Step[R, I, O], node: Node)(
+      f: O -> P
+  ): Flow[R, I, Nothing, P] =
+    Downgraded(s, node, f)
 
   extension [R, I, E, O](f: Flow[R, I, E, O]) {
 
@@ -148,9 +167,11 @@ object Flow {
     * over without running it. `map`, `keeping` and `over` change nothing a reader sees.
     */
   private[durable] enum Pattern {
-    case Step(family: String, keyed: Boolean)
+
+    /** A step, and the downgrades made on its output or within its body. */
+    case Step(family: String, keyed: Boolean, made: Vector[Pattern.Made])
     case Wait(family: String, keyed: Boolean)
-    case Program(family: String)
+    case Program(family: String, within: Vector[Node])
     case Pass
     case Then(first: Pattern, next: Pattern)
     case Choice(left: Pattern, right: Pattern)
@@ -163,28 +184,37 @@ object Flow {
 
   private[durable] object Pattern {
 
+    /** A downgrade `node`, made where `sits` says. */
+    final case class Made(sits: Flows.Sits, node: Node)
+
+    /** A family a run reaches, and the downgrades made at it. */
+    final case class Reached(family: Flows.Family, made: Vector[Made])
+
     /** The families a flow of pattern `p` can record in the order a run reaches them, repeats
       * kept, each marked every run's when `every` says a finishing run reaches it and it records
-      * them whenever so.
+      * them whenever so, beside the downgrades made at each.
       */
-    def families(p: Pattern, every: Boolean): Vector[Flows.Family] = p match {
-      case Step(family, keyed) => Vector(Flows.Family(family, keyed, every))
-      case Wait(family, keyed) => Vector(Flows.Family(family, keyed, every))
-      case Program(family) => Vector(Flows.Family(family, true, false))
-      case Pass => Vector.empty
-      case Then(first, next) => families(first, every) ++ families(next, every && !ends(first))
-      case Choice(left, right) => families(left, false) ++ families(right, false)
-      case MayEnd(g) => families(g, every)
-      case Attempt(g) => families(g, every)
-      case Loop(round) => families(round, every)
-      case Each(one) => families(one, false)
-      case Patch(marker, before, after) =>
-        Flows.Family(marker, false, false) +: (families(before, false) ++ families(after, false))
-    }
+    def reached(p: Pattern, every: Boolean): Vector[Reached] =
+      p match {
+        case Step(family, keyed, made) => Vector(Reached(Flows.Family(family, keyed, every), made))
+        case Wait(family, keyed) => Vector(Reached(Flows.Family(family, keyed, every), Vector()))
+        case Program(family, within) =>
+          Vector(Reached(Flows.Family(family, true, false), within.map(Made(Flows.Sits.Within, _))))
+        case Pass => Vector.empty
+        case Then(first, next) => reached(first, every) ++ reached(next, every && !ends(first))
+        case Choice(left, right) => reached(left, false) ++ reached(right, false)
+        case MayEnd(g) => reached(g, every)
+        case Attempt(g) => reached(g, every)
+        case Loop(round) => reached(round, every)
+        case Each(one) => reached(one, false)
+        case Patch(marker, before, after) =>
+          Reached(Flows.Family(marker, false, false), Vector()) +:
+            (reached(before, false) ++ reached(after, false))
+      }
 
     /** Whether a flow of pattern `p` may end early. */
     def ends(p: Pattern): Boolean = p match {
-      case Step(_, _) | Wait(_, _) | Program(_) | Pass | Attempt(_) => false
+      case Step(_, _, _) | Wait(_, _) | Program(_, _) | Pass | Attempt(_) => false
       case MayEnd(_) => true
       case Then(first, next) => ends(first) || ends(next)
       case Choice(left, right) => ends(left) || ends(right)
@@ -196,7 +226,14 @@ object Flow {
 
   /** `f`'s pattern: the one fold over a flow's cases besides running and reading it. */
   private[durable] def pattern(f: Flow[?, ?, ?, ?]): Pattern = f match {
-    case One(s) => Pattern.Step(s.named.family, s.named.keyed)
+    case One(s) =>
+      Pattern.Step(s.named.family, s.named.keyed, s.within.map(Pattern.Made(Flows.Sits.Within, _)))
+    case Downgraded(s, node, _) =>
+      Pattern.Step(
+        s.named.family,
+        s.named.keyed,
+        Pattern.Made(Flows.Sits.On, node) +: s.within.map(Pattern.Made(Flows.Sits.Within, _))
+      )
     case AndThen(first, next) => Pattern.Then(pattern(first), pattern(next))
     case Mapped(g, _) => pattern(g)
     case MayEnd(g) => Pattern.MayEnd(pattern(g))
@@ -210,7 +247,7 @@ object Flow {
       Pattern.Patch(StepRecord.marker(name), pattern(before), pattern(after))
     case Recv(label, _, _) => Pattern.Wait(label.family, label.keyed)
     case Over(g, _) => pattern(g)
-    case Program(family, _) => Pattern.Program(family)
+    case Program(family, within, _) => Pattern.Program(family, within)
   }
 
   /** `walked` with `g` over the result it ended with, if it did. */
@@ -452,6 +489,18 @@ object Flow {
     }
   }
 
+  private final case class Downgraded[R, I, O, P](step: Step[R, I, O], node: Node, f: O -> P)
+      extends Flow[R, I, Nothing, P] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, P] =
+      Right(f(step.perform(env, in)))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, P]] =
+      ending[Nothing, O, Nothing, P](One(step).walk(in, at, history))(_.map(f))
+  }
+
   private[durable] final case class Over[R, R2, I, E, O](
       f: Flow[R, I, E, O],
       get: (r2: R2^) -> R^{r2}
@@ -467,12 +516,14 @@ object Flow {
 
   private final case class Program[R, I, O](
       family: String,
+      within: Vector[Node],
       body: (steps: Steps[R]^) -> I ->{steps} O
   ) extends Flow[R, I, Nothing, O] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, O] = {
       val steps = new Steps[R] {
         def run[I2, E2, O2](flow: Flow[R, I2, E2, O2], next: I2): Either[E2, O2] =
           flow.run(env, next)
+        def declares(node: Flow.Node): Boolean = within.contains(node)
       }
       Right(body(steps)(in))
     }
@@ -489,6 +540,7 @@ object Flow {
       var mark: Option[Either[Unreadable, Walk[Nothing, O]]] = None
       val ran = boundary[Either[Unreadable, Walk[Nothing, O]]] {
         val steps = new Steps[R] {
+          def declares(node: Flow.Node): Boolean = within.contains(node)
           def run[I2, E2, O2](flow: Flow[R, I2, E2, O2], next: I2): Either[E2, O2] =
             mark match {
               case Some(m) => boundary.break(m)

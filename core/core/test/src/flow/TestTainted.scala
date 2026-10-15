@@ -19,6 +19,9 @@ object TestTainted {
   def trusted[A](value: A, integrity: Integrity = Integrity.Authority): Trusted[A] =
     Mint.trusted(value, integrity)
 
+  /** `node`'s raise, for a fake that stands in for code a program or step hands one to. */
+  def raise[A, B](node: Downgrade[A, B]): Raise[A, B]^ = new Raise.Of(node.rule)
+
   /** The endorsement an extraction makes in a run at `at` ([[Mint.extraction]]). */
   def extraction(at: Integrity): Endorse.Extraction^ = Mint.extraction(at)
 

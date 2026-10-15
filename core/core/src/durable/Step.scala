@@ -87,6 +87,9 @@ sealed trait Step[-R, -I, +O] {
 
   private[durable] def named: StepName[I]
 
+  /** The downgrades its body makes. */
+  private[durable] def within: Vector[Flow.Node]
+
   /** The body, once, on `d`, handed `env`, recorded under [[name]]. */
   private[durable] def perform(env: R^, in: I)(using d: Durable^): O
 
@@ -105,7 +108,13 @@ object Step {
   def apply[R, I, O](name: StepName[I], observe: I -> Option[Observed] = (_: I) => None)(
       body: (r: R^) -> I ->{r} O
   )(using j: Journaled[O]): Step[R, I, O] =
-    Plain[R, I, O](name, observe, body, j)
+    Plain[R, I, O](name, observe, body, j, Vector())
+
+  /** As [[apply]], its body making `node`, which [[Flows.downgrades]] lists within it. */
+  private[core] def within[R, I, O](name: StepName[I], node: Flow.Node)(
+      body: (r: R^) -> I ->{r} O
+  )(using j: Journaled[O]): Step[R, I, O] =
+    Plain[R, I, O](name, (_: I) => None, body, j, Vector(node))
 
   /** As [[apply]], in one transaction opened for `subject` and committed with its record; the
     * `Tx` never leaves `body`. A failed statement aborts it and the step throws, which the
@@ -122,7 +131,8 @@ object Step {
       named: StepName[I],
       shown: I -> Option[Observed],
       body: (r: R^) -> I ->{r} O,
-      journaled: Journaled[O]
+      journaled: Journaled[O],
+      within: Vector[Flow.Node]
   ) extends Step[R, I, O] {
     def name(in: I): String = named(in)
     private[durable] def perform(env: R^, in: I)(using d: Durable^): O =
@@ -141,6 +151,7 @@ object Step {
     def name(in: I): String = named(in)
     private[durable] def perform(env: R^, in: I)(using d: Durable^): O =
       d.transact(name(in), subject(in))(body(env)(in))(using journaled)
+    private[durable] def within: Vector[Flow.Node] = Vector()
     private[durable] def decode(raw: String): Either[String, O] = journaled.decode(raw)
     private[durable] def observe(in: I): Option[Observed] = shown(in)
   }
