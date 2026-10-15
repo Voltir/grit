@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.{ActsFor, Gates}
 import grit.core.approval.Approval
-import grit.core.durable.{Durable, Journaled}
+import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{EdgeDirectory, Permit, RequestState, ToolRequest, ToolRequests}
 import grit.core.id.{CallSlot, PrincipalId, ToolCallId, TurnRef}
 import grit.core.identity.Principal
@@ -14,10 +14,16 @@ import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
 import grit.core.visibility.{Classification, Label, Subject}
 
-/** The steps a hosted call's wait takes when its edge is silent: `expire`, after
-  * [[Calling.ServeWithin]], and `abandon`, after [[Calling.RunWithin]] more.
+/** The steps a hosted call's wait takes when its edge is silent, named from its input: `expire`,
+  * after [[Calling.ServeWithin]], and `abandon`, after [[Calling.RunWithin]] more. A reader
+  * names each wait for the step that ends it when the edge stays silent.
   */
-final case class WaitSteps(expire: String, abandon: String)
+final case class WaitSteps[I](expire: StepName[I], abandon: StepName[I])
+
+/** What a sent request's wait reads: the request at `cs`, addressed to `place`, in steps
+  * opened for `subject`, while they know no more than `bound` (`None`: unbounded).
+  */
+final case class Waiting(cs: CallSlot, place: Option[Place], subject: Subject, bound: Option[Label])
 
 /** What a call's gate made of it. */
 enum Gated {
@@ -165,60 +171,74 @@ object Calling {
         )
   }
 
-  /** The wait for the request at `cs`, sent by a step that committed: `Rung` when its edge
-    * rings within [[ServeWithin]]; else `steps.expire` settles it (a transact step for
-    * `subject`): answered meanwhile, `Answered`; unclaimed, `Known` with a `Failed`
-    * naming `place`'s service, or saying no edge serves it; claimed, waited on [[RunWithin]]
-    * more, then `Rung`, or `steps.abandon`: answered meanwhile, `Answered`, else
-    * `Known(Interrupted)`. A step that cannot read the request is `Unread`, as is one whose
-    * transaction knows more than `bound` ([[Tx.within]], checked first, saying to ask again;
-    * `None`: unbounded). Its steps record what they found in `F`'s form.
+  /** The wait for the request `waiting` gives, sent by a step that committed, over the
+    * requests a run hands it: `Rung` when its edge rings within [[ServeWithin]]; else
+    * `steps.expire` settles it (a transact step for the wait's subject): answered meanwhile,
+    * `Answered`; unclaimed, `Known` with a `Failed` naming its place's service, or saying no
+    * edge serves it; claimed, waited on [[RunWithin]] more, then `Rung`, or `steps.abandon`:
+    * answered meanwhile, `Answered`, else `Known(Interrupted)`. A step that cannot read the
+    * request is `Unread`, as is one whose transaction knows more than the wait's bound
+    * ([[Tx.within]], checked first, saying to ask again). Its steps record what they found in
+    * `F`'s form.
     */
-  def await[F](
-      requests: ToolRequests,
-      cs: CallSlot,
-      place: Option[Place],
-      steps: WaitSteps,
-      subject: Subject,
-      bound: Option[Label]
-  )(using
-      d: Durable^,
+  def await[I, F](steps: WaitSteps[I], waiting: I -> Waiting)(using
       faults: Faults[F],
       recorded: Journaled[Either[F, RequestState]]
-  ): Awaited[F] =
+  ): Flow[ToolRequests, I, Nothing, Awaited[F]] = {
+    val expire = Step.transact[ToolRequests, I, Either[F, RequestState]](
+      steps.expire,
+      i => waiting(i).subject
+    )(requests =>
+      i => {
+        val w = waiting(i)
+        standing(bounded(w.bound).flatMap(_ => requests.settle(w.cs)))
+      }
+    )
+    val abandon = Step.transact[ToolRequests, I, Either[F, RequestState]](
+      steps.abandon,
+      i => waiting(i).subject
+    )(requests =>
+      i => {
+        val w = waiting(i)
+        standing(bounded(w.bound).flatMap(_ => requests.abandon(w.cs)))
+      }
+    )
     // A recorded message, a ring or (from an earlier build) a whole outcome, is only a wake-up.
-    d.recv(cs.key, ServeWithin) match {
-      case Some(_) => Awaited.Rung(cs)
-      case None =>
-        d.transact(steps.expire, subject)(
-          standing(within(bound).flatMap(_ => requests.settle(cs)))
-        ) match {
+    def rung(label: StepName[I], wait: FiniteDuration): Flow[Any, I, Awaited[F], I] =
+      Flow.mayEnd(Flow.recv(label, i => waiting(i).cs.key, _ => wait).keeping.map {
+        case (i, Some(_)) => Left(Awaited.Rung(waiting(i).cs))
+        case (i, None) => Right(i)
+      })
+    val waited: Flow[ToolRequests, I, Awaited[F], Awaited[F]] =
+      rung(steps.expire, ServeWithin)
+        .andThen(Flow.decide(expire) {
+          case (_, Left(failure)) => Left(Awaited.Unread(failure))
+          case (_, Right(RequestState.Answered(o))) => Left(Awaited.Answered(o))
+          case (i, Right(RequestState.Expired)) =>
+            val place = waiting(i).place
+            Left(Awaited.Known(Outcome.Failed(place.flatMap(_.service).fold(NoEdge)(noService))))
+          case (i, Right(RequestState.Claimed)) => Right(i)
+        })
+        .andThen(rung(steps.abandon, RunWithin))
+        .andThen(Flow.step(abandon).map {
           case Left(failure) => Awaited.Unread(failure)
           case Right(RequestState.Answered(o)) => Awaited.Answered(o)
-          case Right(RequestState.Expired) =>
-            Awaited.Known(Outcome.Failed(place.flatMap(_.service).fold(NoEdge)(noService)))
-          case Right(RequestState.Claimed) =>
-            d.recv(cs.key, RunWithin) match {
-              case Some(_) => Awaited.Rung(cs)
-              case None =>
-                d.transact(steps.abandon, subject)(
-                  standing(within(bound).flatMap(_ => requests.abandon(cs)))
-                ) match {
-                  case Left(failure) => Awaited.Unread(failure)
-                  case Right(RequestState.Answered(o)) => Awaited.Answered(o)
-                  case Right(_) => Awaited.Known(Outcome.Interrupted)
-                }
-            }
-        }
-    }
+          case Right(_) => Awaited.Known(Outcome.Interrupted)
+        })
+    Flow.attempt(waited).map(_.merge)
+  }
 
-  /** A person's answer to the gated call `call`, waited for up to `within`
-    * ([[grit.core.durable.Durable.recv]] on [[Approval.topic]]): [[Approval.TimedOut]] when
-    * none came; [[Approval.Declined]], saying why, when the message does not read, so the call
-    * does not run.
+  /** A person's answer to the gated call `call` gives, waited for up to `within` on
+    * [[Approval.topic]], a reader naming the wait `label`: [[Approval.TimedOut]] when none
+    * came; [[Approval.Declined]], saying why, when the message does not read, so the call does
+    * not run.
     */
-  def approval(call: ToolCallId, within: FiniteDuration)(using d: Durable^): Approval =
-    d.recv(Approval.topic(call), within) match {
+  def approval[I](
+      label: StepName[I],
+      call: I -> ToolCallId,
+      within: I -> FiniteDuration
+  ): Flow[Any, I, Nothing, Approval] =
+    Flow.recv(label, i => Approval.topic(call(i)), within).map {
       case None => Approval.TimedOut
       case Some(message) =>
         Approval
@@ -244,7 +264,7 @@ object Calling {
       case Left(e) => Left(faults.store(e.toString))
     }
 
-  private def within(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
+  private def bounded(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
     bound.fold(Right(()))(Tx.within(_))
 
   private def standing[F](state: Either[StoreError, RequestState])(using

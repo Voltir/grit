@@ -2,7 +2,17 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Awaited, Calling, Classifying, Hearing, Shaped, Shaping, WaitSteps}
+import grit.act.phase.{
+  Asking,
+  Awaited,
+  Calling,
+  Classifying,
+  Hearing,
+  Shaped,
+  Shaping,
+  WaitSteps,
+  Waiting
+}
 import grit.core.act.{
   Acting,
   Allowance,
@@ -20,7 +30,7 @@ import grit.core.act.{
 import grit.core.classify.{Answer, AnswersJson, Ask, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
-import grit.core.durable.{Durable, Journaled}
+import grit.core.durable.{Durable, Flows, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
 import grit.core.flow.{Endorse, Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
@@ -382,14 +392,11 @@ object DurableMoves {
         case CallMade.Sent(_) =>
           // Waited on even when the input diverged, so the run's later steps keep their places.
           val requests = records.requests
-          val waited = Calling.await[String](
-            requests,
-            cs,
-            Some(service.place),
-            WaitSteps(MoveSteps.expire(name), MoveSteps.abandon(name)),
-            subject,
-            None
-          ) match {
+          val awaiting = Calling.await[MoveName, String](
+            WaitSteps(MoveSteps.Expire, MoveSteps.Abandon),
+            _ => Waiting(cs, Some(service.place), subject, None)
+          )
+          val waited = Flows.run(awaiting, requests, name).merge match {
             case Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _)) =>
               d.transact(MoveSteps.answer(name), subject)((tx: Tx^) ?=>
                 Calling

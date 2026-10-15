@@ -435,7 +435,7 @@ object RunTests extends TestSuite {
         Vector(
           Run.Step.ReadSlot,
           MoveSteps.call(move("c")),
-          MoveSteps.expire(move("c")),
+          MoveSteps.Expire(move("c")),
           Run.Step.Reply
         )
       )

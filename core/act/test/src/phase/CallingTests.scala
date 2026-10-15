@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.{ActsFor, Gates, Moves}
 import grit.core.approval.Approval
-import grit.core.durable.{InMemoryDurable, Journaled}
+import grit.core.durable.{Flow, FlowFixtures, Flows, InMemoryDurable, Journaled, StepName}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Permit, RequestState, ToolRequest, ToolRequests}
 import grit.core.flow.Trusted
 import grit.core.id.{
@@ -129,7 +129,17 @@ object CallingTests extends TestSuite {
         }
     )
 
-  private val steps = WaitSteps("expire:0:0", "abandon:0:0")
+  private val steps = WaitSteps(
+    StepName.keyed[CallSlot]("expire")(_ => "0:0"),
+    StepName.keyed[CallSlot]("abandon")(_ => "0:0")
+  )
+
+  /** The wait for `cs`, addressed to `place` and bounded by `bound`, as a flow. */
+  private def awaiting(
+      place: Option[Place],
+      bound: Option[Label]
+  ): Flow[ToolRequests, CallSlot, Nothing, Awaited[String]] =
+    Calling.await[CallSlot, String](steps, s => Waiting(s, place, Subject.Turn(turn), bound))
 
   /** What happens to a request while the wait is in a step: nothing, its edge rings, or it is
     * answered `outcome`.
@@ -205,7 +215,7 @@ object CallingTests extends TestSuite {
     val got = durable.run(id) { _ =>
       // Rung before the wait begins, as an edge that answered at once has.
       if (rung) durable.send(id, cs.key, "rang")
-      Calling.await(requests, cs, place, steps, Subject.Turn(turn), bound).toString
+      Flows.run(awaiting(place, bound), requests, cs).merge.toString
     }
     (got, durable.recordedSteps(id).filterNot(_.startsWith("DBOS.")))
   }
@@ -391,6 +401,31 @@ object CallingTests extends TestSuite {
       )
     }
 
+    test(
+      "a wait read over what it recorded names each record next, a wait for the step that ends it when its edge is silent, and as a whole has ended"
+    ) {
+      val durable = new InMemoryDurable()
+      val (edges, _) = sent(claimed = true)
+      val _ = waited(durable, edges)
+      val records = durable.history(id).map(FlowFixtures.recorded)
+      val flow = awaiting(Some(github.place), None)
+      val named = records.indices.toVector.map { k =>
+        Flows.read(flow, cs, records.take(k)).map(_.at) match {
+          case Right(Flows.Read.Next(step, at)) if at == k => step
+          case other => s"at $k: $other"
+        }
+      }
+      val whole = Flows.read(flow, cs, records).map(_.at) match {
+        case Right(Flows.Read.Ended(result, steps)) => s"$result after $steps"
+        case other => s"$other"
+      }
+      (named, whole) ==> (
+        Vector.fill(2)("expire:0:0") ++ Vector("expire:0:0") ++
+          Vector.fill(2)("abandon:0:0") ++ Vector("abandon:0:0"),
+        "Right(Known(Interrupted)) after 6"
+      )
+    }
+
     test("a request that cannot be read is unread, its failure in its caller's form") {
       val durable = new InMemoryDurable()
       waited(durable, new InMemoryEdges) ==> (
@@ -407,7 +442,8 @@ object CallingTests extends TestSuite {
         val durable = new InMemoryDurable()
         val got = durable.run(id) { _ =>
           message.foreach(durable.send(id, Approval.topic(call), _))
-          Approval.encode(Calling.approval(call, 1.minute))
+          val approving = Calling.approval(StepName("wait"), (c: ToolCallId) => c, _ => 1.minute)
+          Approval.encode(Flows.run(approving, (), call).merge)
         }
         Approval.decode(got).fold(e => throw new java.lang.AssertionError(e), identity)
       }

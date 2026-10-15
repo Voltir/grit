@@ -2,11 +2,11 @@ package grit.turn
 
 import scala.concurrent.duration.*
 
-import grit.act.phase.{Awaited, Calling, Gated, WaitSteps}
+import grit.act.phase.{Awaited, Calling, Gated, WaitSteps, Waiting}
 import grit.core.act.Gates
 import grit.core.approval.Approval
 import grit.core.clock.Clock
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, Flow, Flows, StepName}
 import grit.core.edge.Permit
 import grit.core.id.{ToolCallId, TurnRef}
 import grit.core.place.{Directory, Place}
@@ -107,7 +107,7 @@ object TurnHosted {
           d.transact(slot.askStep, Subject.Turn(slot.turn))(
             TurnTools.ask(entries, slot, call, asked, clock.now())
           ).flatMap { _ =>
-            Calling.approval(call, within) match {
+            Flows.run(TurnHosted.approval(within), (), (slot, call)).merge match {
               case Approval.Declined(reason) =>
                 Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason))))
               case Approval.TimedOut => Right(Waited.Phase(Awaited.Known(Outcome.Unanswered)))
@@ -185,6 +185,14 @@ object TurnHosted {
 
   private val NoAsker = "This turn has no asker to make this call for, so it did not run."
 
+  /** A person's answer about the gated call at a slot, waited for up to `within`
+    * ([[Calling.approval]]), the wait named `wait:n:j`.
+    */
+  private[turn] def approval(
+      within: FiniteDuration
+  ): Flow[Any, (TurnTools.Slot, ToolCallId), Nothing, Approval] =
+    Calling.approval(TurnHostedSteps.Wait, _._2, _ => within)
+
   /** The request of the call at `slot` waited on ([[Calling.await]]), its silent edge's steps
     * `expire:n:j` and `abandon:n:j`.
     */
@@ -195,14 +203,11 @@ object TurnHosted {
       bound: Option[Label]
   )(using d: Durable^): Awaited[TurnFailure] = {
     import TurnJournal.given
-    Calling.await(
-      hosting.requests,
-      slot.call,
-      workspace,
-      WaitSteps(TurnHostedSteps.expire(slot), TurnHostedSteps.abandon(slot)),
-      Subject.Turn(slot.turn),
-      bound
+    val awaiting = Calling.await[TurnTools.Slot, TurnFailure](
+      WaitSteps(TurnHostedSteps.Expire, TurnHostedSteps.Abandon),
+      s => Waiting(s.call, workspace, Subject.Turn(s.turn), bound)
     )
+    Flows.run(awaiting, hosting.requests, slot).merge
   }
 
   private def unreadable(failure: TurnFailure): Outcome =
@@ -222,9 +227,23 @@ object TurnHosted {
     )
 }
 
-/** The names of the steps a hosted call takes besides the loop's own. */
+/** The names of the steps a hosted call takes besides the loop's own, and of its waits: each
+  * the name [[Turn.Step]] gives it, which the turn's histories pin.
+  */
 private object TurnHostedSteps {
   def dispatchOne(slot: TurnTools.Slot): String = Turn.Step.dispatchOne(slot.round, slot.index)
-  def expire(slot: TurnTools.Slot): String = Turn.Step.expire(slot.round, slot.index)
-  def abandon(slot: TurnTools.Slot): String = Turn.Step.abandon(slot.round, slot.index)
+
+  /** `expire:n:j` ([[Turn.Step.expire]]). */
+  val Expire: StepName[TurnTools.Slot] = StepName.keyed[TurnTools.Slot]("expire")(key)
+
+  /** `abandon:n:j` ([[Turn.Step.abandon]]). */
+  val Abandon: StepName[TurnTools.Slot] = StepName.keyed[TurnTools.Slot]("abandon")(key)
+
+  /** `wait:n:j`, a person's time to answer about the call ([[Turn.Step.Wait]]): a wait's label,
+    * never recorded.
+    */
+  val Wait: StepName[(TurnTools.Slot, ToolCallId)] =
+    StepName.keyed[(TurnTools.Slot, ToolCallId)]("wait")((slot, _) => key(slot))
+
+  private def key(slot: TurnTools.Slot): String = s"${slot.round.index}:${slot.index}"
 }

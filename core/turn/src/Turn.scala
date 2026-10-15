@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.act.phase.{Asking, Calling, Hearing, Shaped, Shaping}
+import grit.act.phase.{Asking, Hearing, Shaped, Shaping}
 import grit.core.act.{Extraction, Posed}
 import grit.core.allot.{Allotment, Router}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
@@ -1300,7 +1300,10 @@ object Turn {
                   d.transact(slot.askStep, Subject.Turn(turn))(
                     TurnTools.ask(entries, slot, call, shown, clock.now())
                   ).flatMap { _ =>
-                    val approval = Calling.approval(call, answerWithin)(using d)
+                    val approval =
+                      grit.core.durable.Flows
+                        .run(TurnHosted.approval(answerWithin), (), (slot, call))(using d)
+                        .merge
                     d.step(slot.step) { () =>
                       settling.decide(slot, call, gated, approval, level, clock.now())
                     }
