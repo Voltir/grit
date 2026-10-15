@@ -3,7 +3,7 @@ package grit.lifecycle.replay
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.period.ClosingJson
 import grit.core.triage.{ShadowAnswers, Shadowed, ShadowedJson}
-import grit.lifecycle.close.{Close, CloseFixtures}
+import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
 import grit.lifecycle.shadow.ShadowFixtures
