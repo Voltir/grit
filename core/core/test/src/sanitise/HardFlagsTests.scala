@@ -32,16 +32,19 @@ object HardFlagsTests extends TestSuite {
       ) ==> (Vector(Reason.Hidden), Vector())
     }
 
-    test("a base64 run of 32 with both cases and a digit is encoded, and so is a PEM key") {
+    test(
+      "a base64 run of 32 with both cases and a digit is encoded, one of 31 or with no digit is not, and a PEM key is"
+    ) {
       (
-        fired("payload aGVsbG8gd29ybGQgaGVsbG8gd29ybGQgaGVsbG8K here"),
-        fired("payload aGVsbG8gd29ybGQgaGVsbG8gd29yb here"),
+        fired("payload aGVsbG8gd29ybGQgaGVsbG8gd29ybGQx here"),
+        fired("payload aGVsbG8gd29ybGQgaGVsbG8gd29ybGQ here"),
+        fired("payload AbcdefghijKlmnopqrstUvwxyzABCDEFGHIJabcd here"),
         fired(
           "-----BEGIN PUBLIC KEY-----\n" +
             "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo\n" +
             "-----END PUBLIC KEY-----"
         )
-      ) ==> (Vector(Reason.Encoded), Vector(), Vector(Reason.Encoded))
+      ) ==> (Vector(Reason.Encoded), Vector(), Vector(), Vector(Reason.Encoded))
     }
 
     test("a run of more than 64 hex digits is encoded; a SHA-256 digest is not") {
