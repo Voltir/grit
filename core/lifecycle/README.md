@@ -1,7 +1,8 @@
 # grit.lifecycle
 
-The engine's own workflows besides the turn (ADR 0011). Written against `grit.core`'s
-traits and `Durable`, never DBOS, so its tests run them over core's in-memory fakes. Not in
+The engine's own workflows besides the turn (ADR 0011). Each is a flow of step values
+(ADR 0038), its `body` that flow run over `Durable`, never DBOS, so its tests run them over
+core's in-memory fakes, and its histories are read over the same flow. Not in
 `grit.turn`: that module is the turn's body, and its epoch's replay gate is the turn's; each
 workflow here has its own recorded histories, replayed under the engine's epoch
 (`Turn.Epoch`). Each workflow's steps and the environment it works with are the code's
@@ -46,6 +47,7 @@ signatures do not say.
 
 `close`, `settle`, `stitch`, `triage` and `post` never name each other; `shadow` names
 `triage` alone, whose question it asks again. Their replay gate, `LifecycleReplayTests`, with
-`RecordLifecycleHistories` writing its histories, is in the test tree's `replay`.
+`RecordLifecycleHistories` writing its histories, is in the test tree's `replay`, beside
+their read gate, `LifecycleReadTests`.
 
 No source file sits at the module's root, and the test tree mirrors it, with `replay` beside.
