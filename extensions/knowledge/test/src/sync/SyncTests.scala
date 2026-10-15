@@ -443,6 +443,27 @@ object SyncTests extends TestSuite {
     }
 
     test(
+      "an untrusted file holding an encoded blob is left unwritten as holding it, not as steering"
+    ) {
+      val k = keeping(
+        floor,
+        new InMemoryDocuments,
+        answers = repo(aText =
+          "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n" +
+            "-----END PRIVATE KEY-----\n"
+        ),
+        believedAt = untrusted,
+        judged = Some(0.1)
+      )
+      val reply = runOf(k)
+      (reply, held(k)) ==> (
+        "repo: 1 written, 0 relabelled, 0 withdrawn, 0 unchanged, 1 left for the next run; " +
+          "not written: docs/a.md (it holds hidden or encoded text, so it is not trusted enough to keep)",
+        Vector(("docs/b.md", floor))
+      )
+    }
+
+    test(
       "an untrusted file the classifier finds out of place is left unwritten, saying so"
     ) {
       val k = keeping(

@@ -31,16 +31,17 @@ import grit.knowledge.github.{Fetched, GitHubCards, Listing}
   * source's results ([[grit.core.visibility.Visibility.outputOf]]) and the summaries asked of
   * them. A listing or file answered below `Outside` is first checked by the integrity tree
   * ([[grit.core.act.Moves.vet]]), its paths or its head a window at a time: raised, it is
-  * believed as raised; otherwise its unit is left unwritten, saying why (it looks written to
-  * steer its reader, part of it looks out of place, it could not be checked, or it is over
-  * [[Sync.MostWindows]] windows), and nothing beneath a withheld directory is reached. Replies
-  * [[Synced.line]]: written, relabelled, withdrawn, unchanged, and left for the next run (past
-  * `perRun`, or unwritten), or why it stopped: an ask or a check refused or unread, a call
-  * failed (naming the service and why), a keep the store refused, such as a key written by
-  * another run meanwhile (naming the card's path), a run believed less than `Outside`, or
-  * parameters naming no source of its. Its `limits`: asks, the largest `perRun` among its
-  * sources' syncs; calls, that plus the largest `maxUnits`; judgments, [[Sync.MostWindows]] a
-  * call. Parameters asking for more stop at the limit, and the reply says so.
+  * believed as raised; otherwise its unit is left unwritten, saying why (it holds hidden or
+  * encoded text, it looks written to steer its reader, part of it looks out of place, it could
+  * not be checked, or it is over [[Sync.MostWindows]] windows), and nothing beneath a withheld
+  * directory is reached. Replies [[Synced.line]]: written, relabelled, withdrawn, unchanged, and
+  * left for the next run (past `perRun`, or unwritten), or why it stopped: an ask or a check
+  * refused or unread, a call failed (naming the service and why), a keep the store refused,
+  * such as a key written by another run meanwhile (naming the card's path), a run believed less
+  * than `Outside`, or parameters naming no source of its. Its `limits`: asks, the largest
+  * `perRun` among its sources' syncs; calls, that plus the largest `maxUnits`; judgments,
+  * [[Sync.MostWindows]] a call. Parameters asking for more stop at the limit, and the reply says
+  * so.
   */
 final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
 
@@ -251,7 +252,9 @@ object Sync {
                 case Right(v) =>
                   v.verdict match {
                     case Verdict.Raised(_) => go(i + 1, more, done.zip(v.text).map(_ + _))
-                    case Verdict.Suspicious(_) => Right(Left(Suspected))
+                    case Verdict.Suspicious(reasons) =>
+                      val hiding = reasons.exists(r => r == Reason.Hidden || r == Reason.Encoded)
+                      Right(Left(if (hiding) Hiding else Suspected))
                     case Verdict.Kept(reasons) =>
                       Right(Left(if (reasons.contains(Reason.Unjudged)) Unchecked else Misplaced))
                   }
@@ -389,6 +392,11 @@ object Sync {
 
   /** Why a unit is left unwritten when what it read looks written to steer its reader. */
   private val Suspected = "it looks written to steer whoever reads it"
+
+  /** Why a unit is left unwritten when what it read holds characters a reader does not see, a
+    * word of mixed scripts, or an encoded blob: what code found, which accuses it of nothing.
+    */
+  private val Hiding = "it holds hidden or encoded text, so it is not trusted enough to keep"
 
   /** Why a unit is left unwritten when what it read could not be checked. */
   private val Unchecked = "it could not be checked, so it is not trusted enough to keep"
