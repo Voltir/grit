@@ -114,11 +114,24 @@ object Stitching {
   ): Either[StoreError, Option[(EntryId, Placed)]] =
     Routed
       .reading(db)((routed, bounded) =>
-        opening(reads, bounded, turn, tuning, keptAsks = false).map(
+        unplaced(reads, bounded, turn, tuning).map(
           _.map((first, offer) => first -> place(classifier.asking(routed), offer, tuning))
         )
       )
       .flatten
+
+  /** `turn`'s message, read through `db` from `reads` under `tuning` in the scope in force, when
+    * it is an [[Opening]] with no placement kept for it: its entry and what it is offered
+    * ([[offer]]). `None` when it is not one, a placement is kept for it, or nothing is offered;
+    * `Left` when the store fails.
+    */
+  def unplaced(
+      reads: StitchReads,
+      db: Reads^,
+      turn: TurnRef,
+      tuning: Tuning
+  ): Either[StoreError, Option[(EntryId, Offer)]] =
+    opening(reads, db, turn, tuning, keptAsks = false)
 
   /** `turn`'s message, when it is an [[Opening]], and what it is offered; a message with a
     * placement kept for it is offered nothing unless `keptAsks`.
@@ -312,7 +325,23 @@ object Stitching {
     * choice when it is an exchange at `tuning.followsAt` or above, else [[Placed.Begins]];
     * [[Placed.Unread]] when the classifier fails or its answer does not read.
     */
-  def place(classifier: Classifier^, offer: Offer, tuning: Tuning): Placed = {
+  def place(classifier: Classifier^, offer: Offer, tuning: Tuning): Placed =
+    question(offer, tuning).fold(identity, q => q.placed(classifier.ask(q.state, q.choice)))
+
+  /** What placing `offer`'s message under `tuning` asks ([[place]]): the question's state, its
+    * choice among the exchanges' keys and [[NewKey]], and where an answer, or why there is
+    * none, places the message.
+    */
+  final case class Question private[stitch] (
+      state: State,
+      choice: Ask[State, Decision[Option[ConversationId]]],
+      placed: Either[ClassifierError, Answered[Decision[Option[ConversationId]]]] -> Placed
+  )
+
+  /** The question [[place]] asks about `offer` under `tuning`; `Left`, the placement made with
+    * none asked, [[Placed.Unread]], when its choice cannot be made.
+    */
+  def question(offer: Offer, tuning: Tuning): Either[Placed, Question] = {
     val sent = shown(offer)
     def seen(p: Option[Decision[Option[ConversationId]]]): Seen =
       Seen(
@@ -326,27 +355,33 @@ object Stitching {
         ),
         tuning
       )
-    question(offer) match {
-      case Left(why) => Placed.Unread(why, seen(None))
+    choice(offer) match {
+      case Left(why) => Left(Placed.Unread(why, seen(None)))
       case Right((state, ask)) =>
-        classifier.ask(state, ask) match {
-          case Left(ClassifierError.Unavailable(why)) =>
-            Placed.Unread(s"unavailable: $why", seen(None))
-          case Left(ClassifierError.Unreadable(why)) =>
-            Placed.Unread(s"unreadable: $why", seen(None))
-          case Right(Answered(d, usage, model)) =>
-            val top = Probability.clamped(d.top)
-            d.choice match {
-              case Some(root) if top >= tuning.followsAt =>
-                Placed.Follows(root, top, seen(Some(d)), model, usage)
-              case _ =>
-                val likeliest = offer.exchanges
-                  .map(e => d.probability(Some(e.root)))
-                  .maxOption
-                  .getOrElse(0.0)
-                Placed.Begins(Probability.clamped(likeliest), seen(Some(d)), model, usage)
+        Right(
+          Question(
+            state,
+            ask,
+            {
+              case Left(ClassifierError.Unavailable(why)) =>
+                Placed.Unread(s"unavailable: $why", seen(None))
+              case Left(ClassifierError.Unreadable(why)) =>
+                Placed.Unread(s"unreadable: $why", seen(None))
+              case Right(Answered(d, usage, model)) =>
+                val top = Probability.clamped(d.top)
+                d.choice match {
+                  case Some(root) if top >= tuning.followsAt =>
+                    Placed.Follows(root, top, seen(Some(d)), model, usage)
+                  case _ =>
+                    val likeliest = offer.exchanges
+                      .map(e => d.probability(Some(e.root)))
+                      .maxOption
+                      .getOrElse(0.0)
+                    Placed.Begins(Probability.clamped(likeliest), seen(Some(d)), model, usage)
+                }
             }
-        }
+          )
+        )
     }
   }
 
@@ -357,7 +392,7 @@ object Stitching {
     * repeats a key.
     */
   def request(offer: Offer): Option[Request] =
-    question(offer).toOption.map((state, ask) => Request.of(state, ask))
+    choice(offer).toOption.map((state, ask) => Request.of(state, ask))
 
   /** `offer` as the question's state, each exchange under its key. */
   private def state(offer: Offer): State =
@@ -368,10 +403,10 @@ object Stitching {
       offer.speakers
     )
 
-  /** The question [[place]] asks about `offer`: its state and the choice among its exchanges'
-    * keys and [[NewKey]]; why not, when the choice cannot be made.
+  /** What [[question]] asks about `offer`: its state and the choice among its exchanges' keys
+    * and [[NewKey]]; why not, when the choice cannot be made.
     */
-  private def question(
+  private def choice(
       offer: Offer
   ): Either[String, (State, Ask[State, Decision[Option[ConversationId]]])] = {
     val s = state(offer)
@@ -445,32 +480,34 @@ object Stitching {
   /** The stitch question's state: `{new_message, author, exchanges: [{key, opening, latest,
     * record}]}`, each message `{from, text, ago}`.
     */
-  private final case class State(
+  final case class State private[stitch] (
       first: Said,
       author: String,
       exchanges: Vector[(String, Exchange)],
       speakers: Speakers
   )
 
-  private given StateJson[State] = StateJson.instance { s =>
-    val at = s.first.entry.createdAt
-    def said(m: Said): ujson.Value = ujson.Obj(
-      "from" -> speaker(m, s.speakers),
-      "text" -> spoken(m).getOrElse("").take(MessageChars),
-      "ago" -> ago(m.entry.createdAt, at)
-    )
-    ujson.Obj(
-      "new_message" -> spoken(s.first).getOrElse("").take(MessageChars),
-      "author" -> s.author,
-      "exchanges" -> ujson.Arr.from(s.exchanges.map { (key, e) =>
-        ujson.Obj(
-          "key" -> key,
-          "opening" -> said(e.opening),
-          "latest" -> ujson.Arr.from(e.latest.map(said)),
-          "record" -> e.record.fold[ujson.Value](ujson.Null)(ujson.Str(_))
-        )
-      })
-    )
+  object State {
+    given StateJson[State] = StateJson.instance { s =>
+      val at = s.first.entry.createdAt
+      def said(m: Said): ujson.Value = ujson.Obj(
+        "from" -> speaker(m, s.speakers),
+        "text" -> spoken(m).getOrElse("").take(MessageChars),
+        "ago" -> ago(m.entry.createdAt, at)
+      )
+      ujson.Obj(
+        "new_message" -> spoken(s.first).getOrElse("").take(MessageChars),
+        "author" -> s.author,
+        "exchanges" -> ujson.Arr.from(s.exchanges.map { (key, e) =>
+          ujson.Obj(
+            "key" -> key,
+            "opening" -> said(e.opening),
+            "latest" -> ujson.Arr.from(e.latest.map(said)),
+            "record" -> e.record.fold[ujson.Value](ujson.Null)(ujson.Str(_))
+          )
+        })
+      )
+    }
   }
 
   /** How long before `at` `past` was, in the largest whole unit: "40 seconds", "3 minutes",

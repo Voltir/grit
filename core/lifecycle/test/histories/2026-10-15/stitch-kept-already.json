@@ -5,8 +5,8 @@
   "source": "recorded",
   "steps": [
     {
-      "name": "stitch",
-      "output": "{\"ok\":null}"
+      "name": "ask:stitch",
+      "output": "{\"made\":\"{\\\"ok\\\":null}\",\"calls\":[]}"
     }
   ]
 }

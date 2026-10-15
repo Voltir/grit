@@ -270,22 +270,28 @@ object TriageFixtures {
         .flatMap(e => this.triage.of(Vector(e.id))(using TestTx.fake).toOption.flatMap(_.get(e.id)))
 
     /** An opening's placement over this world, asking `classifier`, at `minutes`, reading
-      * through `db`.
+      * through `db`, its ask admitted under `cap` against what [[ledger]] recorded that day.
       */
-    def placement(classifier: Classifier^, minutes: Long, db: Db^ = FakeDb)(id: WorkflowId)(using
+    def placement(
+        classifier: Classifier^,
+        minutes: Long,
+        db: Db^ = FakeDb,
+        cap: Option[DailyCap] = None
+    )(id: WorkflowId)(using
         Durable^
-    ): String =
+    ): String = {
+      val clock = new Stopped(at(minutes))
       Stitch.body(
         StitchEnv(
           reads,
-          grit.core.classify.TestClassifiers.cleared(classifier),
+          TestMoves.of(ledger, classifier, db, clock),
+          Budget(ZoneOffset.UTC, cap),
           db,
-          new Stopped(at(minutes)),
+          clock,
           Tuning.Default
         )
-      )(
-        id
-      )
+      )(id)
+    }
 
     /** The openings whose placements a triage waited for, in order. */
     // Replaced whole by the fake's own methods, which the test calls on its one thread.

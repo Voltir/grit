@@ -10,7 +10,7 @@ import grit.core.stitch.{Placed, StitchJson}
   */
 private[stitch] object StitchJournal {
 
-  /** A `stitch` step's output: the opening and where it was placed
+  /** What an `ask:stitch` step made: the opening and where it was placed
     * ([[StitchJson.writeKept]]), or `null` when nothing was asked.
     */
   given stitched: Journaled[Either[String, Option[(EntryId, Placed)]]] =

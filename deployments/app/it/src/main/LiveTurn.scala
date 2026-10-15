@@ -153,7 +153,8 @@ object LiveTurn {
         CharEstimate,
         grit.core.stitch.Tuning.Default
       )
-    // What the close's, settle's and triage's asks are made with: no classifier, no cap.
+    // What the close's, settle's, triage's and placement's asks are made with: no classifier,
+    // no cap.
     val clock: Clock^ = Clock.system()
     val unasked: grit.core.classify.ClearedClassifier^ =
       grit.core.classify.ClearedClassifier.none("no classifier")
@@ -291,7 +292,8 @@ object LiveTurn {
               engine.search,
               engine.principals
             ),
-            grit.core.classify.ClearedClassifier.none("no classifier"),
+            moves,
+            uncapped,
             engine.db,
             Clock.system(),
             grit.core.stitch.Tuning.Default

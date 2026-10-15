@@ -296,7 +296,8 @@ private[grit] object Launch {
               engine.search,
               engine.principals
             ),
-            classifier,
+            moves,
+            d.budget,
             engine.db,
             clock,
             grit.core.stitch.Tuning.Default

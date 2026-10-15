@@ -110,8 +110,14 @@ object CaptureTests extends TestSuite {
                 engine.search,
                 engine.principals
               ),
-              grit.core.classify.ClearedClassifier
-                .of(grit.models.StubClassifier.Service, new StubClassifier),
+              grit.kit.run.Launch.moves(
+                engine,
+                new grit.models.StubModels,
+                grit.core.classify.ClearedClassifier
+                  .of(grit.models.StubClassifier.Service, new StubClassifier),
+                Clock.system()
+              ),
+              engine.budget,
               engine.db,
               Clock.system(),
               Tuning.Default

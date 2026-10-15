@@ -1,7 +1,10 @@
 package grit.lifecycle.stitch
 
+import grit.act.moves.Judging
+import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, StitchRef, WorkflowId}
+import grit.core.route.Routed
 import grit.core.stitch.{Placed, StitchJson, Stitching}
 import grit.core.store.StoreError
 import grit.core.visibility.Subject
@@ -11,9 +14,12 @@ import grit.core.visibility.Subject
   * every opening is placed after those queued before it in its room (ADR 0023). Each step's
   * output is recorded, so a placement resumed after a crash never asks the classifier twice.
   *
-  *   1. `stitch` — where the opening goes among its room's exchanges ([[Stitching.turn]]);
-  *      nothing is asked when it is not an opening, is gone, is placed already, or nothing is
-  *      offered.
+  *   1. `ask:stitch` — where the opening goes among its room's exchanges
+  *      ([[Stitching.place]]), a move ([[grit.act.moves.Judging]]): admitted against the day's
+  *      cap, so one over it is unread; nothing is asked when it is not an opening, is gone, is
+  *      placed already, or nothing is offered. `ask:stitch:record` — when the classifier
+  *      replied, its cost in the ledger, charged to the opening's turn; a store that fails it
+  *      fails the placement, kept nowhere.
   *   1. `record-stitch` — that placement kept ([[grit.core.stitch.StitchStore.record]]),
   *      only when one was made.
   */
@@ -25,14 +31,40 @@ object Stitch {
 
   private def subject(ref: StitchRef): Subject = Subject.Conversation(ref.turn.conversationId)
 
-  private val stitch: Step[StitchEnv, StitchRef, Either[String, Option[(EntryId, Placed)]]] =
-    Step[StitchEnv, StitchRef, Either[String, Option[(EntryId, Placed)]]](StepName("stitch")) {
-      env => ref =>
-        Stitching
-          .turn(env.classifier, env.reads, env.db.as(subject(ref)), ref.turn, env.tuning)
-          .left
-          .map(e => s"room unread: ${describe(e)}")
-    }
+  private val stitch: Flow[StitchEnv, StitchRef, Nothing, Judging.Judged[
+    Either[String, Option[(EntryId, Placed)]]
+  ]] =
+    Judging.flow[StitchEnv, StitchRef, Either[String, Option[(EntryId, Placed)]]](
+      MoveName("stitch"),
+      ref => Judging.Charged(ref.turn, ref.workflowId, subject(ref))
+    )(_.moves, _.budget)(env => ref => placing(env, ref))
+
+  /** The `ask:stitch` step: where `ref`'s opening goes among its room's exchanges, the
+    * classifier asked only when its service is cleared for what was read; `None` when nothing
+    * is asked, why not when the room cannot be read.
+    */
+  private def placing(
+      env: StitchEnv^,
+      ref: StitchRef
+  ): Judging.Pose[Either[String, Option[(EntryId, Placed)]]]^{env} = {
+    def unread(e: StoreError) = Judging.Pose.Made(Left(s"room unread: ${describe(e)}"))
+    Routed
+      .reading(env.db.as(subject(ref))) { (routed, bounded) =>
+        Stitching.unplaced(env.reads, bounded, ref.turn, env.tuning) match {
+          case Left(e) => unread(e)
+          case Right(None) => Judging.Pose.Made(Right(None))
+          case Right(Some((first, offer))) =>
+            Stitching.question(offer, env.tuning) match {
+              case Left(placed) => Judging.Pose.Made(Right(Some(first -> placed)))
+              case Right(q) =>
+                Judging.Pose.asking(env.moves.classifier, routed, q.state, q.choice)((a, _) =>
+                  Right(Some(first -> q.placed(a)))
+                )
+            }
+        }
+      }
+      .fold(unread, identity)
+  }
 
   private val record: Step[StitchEnv, Made, Either[String, Boolean]] =
     Step.transact[StitchEnv, Made, Either[String, Boolean]](
@@ -48,11 +80,13 @@ object Stitch {
       .mayEnd(Flow.pass[WorkflowId].map { id =>
         StitchRef.fromWorkflowId(id).toRight(s"not a stitch: ${WorkflowId.value(id)}")
       })
-      .andThen(Flow.decide(stitch) {
-        case (ref, Right(Some((root, placed)))) => Right(Made(ref, root, placed))
-        case (_, Right(None)) => Left("nothing asked")
-        case (_, Left(why)) => Left(s"failed: $why")
-      })
+      .andThen(Flow.mayEnd(stitch.keeping.map {
+        case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
+        case (ref, Judging.Judged(Right(Some((root, placed))), Right(()))) =>
+          Right(Made(ref, root, placed))
+        case (_, Judging.Judged(Right(None), Right(()))) => Left("nothing asked")
+        case (_, Judging.Judged(Left(why), Right(()))) => Left(s"failed: $why")
+      }))
       .andThen(Flow.step(record).keeping)
       .map {
         case (p, Right(true)) => s"stitched: ${StitchJson.kindOf(p.placed)}"

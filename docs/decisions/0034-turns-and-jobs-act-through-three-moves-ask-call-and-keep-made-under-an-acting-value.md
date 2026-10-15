@@ -82,7 +82,7 @@ model call or tool request made outside a move is a review finding. The step seq
 generic in their caller's failure type and recorded forms, which costs some indirection. A
 call's answer is read in one place, in a transaction for its actor, where labels per item can
 filter it; a model is chosen where a turn's or ask's pin is made, where trust can route it.
-Lifecycle's classifier calls are moves (`Judging`); the close's summary model call is not yet. Every store behind a keep must
+Lifecycle's workflows' classifier calls are moves (`Judging`); the close's summary model call is not yet, and those a turn makes through `Mentions` are the turn's own. Every store behind a keep must
 give savepoints. Enforced by the types (a job is pure and is handed only moves; a keeping job
 exists only with its plugin's terms; a keep's body captures nothing and returns a pure value),
 capture probes, one contract run against the moves and their fake, the moves' recorded forms
@@ -91,7 +91,7 @@ alone; jobs name no turn).
 
 Consequences of the 2026-10-09 amendment: a classifier's calls made by a move are in the ledger
 and count against the daily cap; since the second 2026-10-15 revision, so are the settle's,
-triage's, the shadow's and the close gate's, each charged to its turn under its own workflow. A
+triage's, the shadow's, the close gate's and the placement's, each charged to its turn under its own workflow. A
 planner's classifier is the deployment's, chosen at launch, not a catalog pin. JSON replies rely
 on `tool_choice: required`; `response_format` waits for a measured setting. The classifier, like the model's provider, is trusted with
 everything the deployment sends it; nothing checks what an ask sends either, until trust routes

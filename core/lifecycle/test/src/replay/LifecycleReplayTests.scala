@@ -31,8 +31,9 @@ object LifecycleReplayTests extends TestSuite {
     "check" -> 512, // what is due, and close's known record of the conversation
     "summarise" -> 1600, // the closing close drew up, whole
     "seal" -> 64, // the closing's id
-    // triage's, settle's and shadow's answers, with their weights, and which of close's
-    // sections its gate let through, and why; each with its call's cost
+    // triage's, settle's and shadow's answers, with their weights, which of close's
+    // sections its gate let through, and why, and a placement with what it was shown; each
+    // with its call's cost
     "ask" -> 1100,
     "ask:record" -> 64, // whether an ask's classifier cost was recorded
     "record" -> 64, // whether the answers were kept
@@ -40,7 +41,6 @@ object LifecycleReplayTests extends TestSuite {
     "start" -> 64, // the turn triage started, or why not
     "unstarted" -> 64, // whether triage's unstarted row was kept
     "stitched" -> 64, // what a placement did, in a line
-    "stitch" -> 1200, // a placement and its call's cost
     "record-stitch" -> 64, // whether the placement was kept
     "post" -> 64 // what the post came to
   )
@@ -68,10 +68,11 @@ object LifecycleReplayTests extends TestSuite {
     ) {
       def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
         historiesOf(epoch).collect { case (p, Right(h)) => p.last -> named(h) }.toMap
-      // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, and a close's
-      // `gate` is `ask:gate`, each one's cost then recorded in its `:record` step when the
-      // classifier replied: a reply names its model, and a gate's leaves no note. A close
-      // unearned or ran asks no gate, and records no step for it.
+      // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, a placement's
+      // `stitch` is `ask:stitch`, and a close's `gate` is `ask:gate`, each one's cost then
+      // recorded in its `:record` step when the classifier replied: a reply names its model,
+      // and a gate's leaves no note. A close unearned or ran asks no gate, and records no step
+      // for it.
       def renamed(h: History): Vector[String] = h.steps.flatMap { s =>
         val out = s.outcome.toString
         (h.workflow, s.name) match {
@@ -82,6 +83,9 @@ object LifecycleReplayTests extends TestSuite {
           case (w @ ("settle" | "triage" | "shadow"), "ask") if out.contains("\"model\"") =>
             Vector(s"ask:$w", s"ask:$w:record")
           case (w @ ("settle" | "triage" | "shadow"), "ask") => Vector(s"ask:$w")
+          case ("stitch", "stitch") if out.contains("\"model\"") =>
+            Vector("ask:stitch", "ask:stitch:record")
+          case ("stitch", "stitch") => Vector("ask:stitch")
           case (_, name) => Vector(name)
         }
       }

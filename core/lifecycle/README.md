@@ -10,7 +10,8 @@ workflow here has its own recorded histories, replayed under the engine's epoch
 signatures do not say. A workflow's classifier call is a move (`grit.act.moves.Judging`):
 admitted under the deployment's daily cap, unavailable when over it, and its cost kept in the
 ledger, charged to its turn under the workflow's own id. The close's summary model call is not
-yet one.
+yet one, nor are `Mentions`' asks: the turn makes them inside its own `weigh` and `route` steps
+and keeps their costs in the ledger under itself.
 
 - **`transcript`**: a period's entries as a classifier and the summary model read them. What
   its windows showed from other conversations a close treats as known, never as its own; a
