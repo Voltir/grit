@@ -280,10 +280,11 @@ object DigestTests extends TestSuite {
         Origin.Slack("T1", "random", "1700.2"),
         CloseReason.Lapsed,
         closing("A guest asked.", None),
-        "2026-09-23T10:00:00Z",
+        "2026-09-21T12:00:00Z",
         Integrity.Outside
       )
-      run(new FakeDb, posted((periods :+ heard)*)) match {
+      // Posted, and dated, between the others: neither the first document read nor the last.
+      run(new FakeDb, posted((periods.take(2) ++ Vector(heard) ++ periods.drop(2))*)) match {
         case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
         case other => sys.error(s"not done: $other")
       }
