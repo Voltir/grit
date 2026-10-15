@@ -37,6 +37,11 @@ trait DurableRuntime {
   /** The names of every operation recorded for `id`, in order. */
   def recordedSteps(id: WorkflowId): Vector[String]
 
+  /** Every operation recorded for `id`, in order, as a reader of its history sees it, without
+    * when each started.
+    */
+  def recorded(id: WorkflowId): Vector[StepRecord]
+
   /** Every piece written to the stream `key` of `id`, in order, across its runs. */
   def streamed(id: WorkflowId, key: String): Vector[String]
 
@@ -414,6 +419,53 @@ abstract class DurableContract extends TestSuite {
       rt.send(id, "t", "approved", Some("k"))
       rt.send(id, "t", "declined", Some("k"))
       rt.unreceived(id, "t") ==> Vector("approved")
+    }
+
+    test(
+      "a flow records what its read expects at every prefix: a taken patch, then a labelled wait"
+    ) {
+      import FlowFixtures.{Env, named, tagged}
+      val rt = runtime
+      val id = rt.freshId()
+      def ready(using d: Durable^): String = d.step("ready") { () => rt.crash() }
+      // Started, and so known to the runtime, before anything is sent to it.
+      rt.run(id)(_ => ready) ==> Settled.Crashed
+      rt.send(id, "t", "hello", None)
+      val heard = Step[Env, Option[String], String](named("heard"))(r => got => r.tag + got)
+      val flow = Flow
+        .patch("p")(Flow.step(tagged("old")), Flow.step(tagged("new")))
+        .andThen(
+          Flow.recv[String](
+            named("wait"),
+            _ => "t",
+            _ => scala.concurrent.duration.FiniteDuration(100, "ms")
+          )
+        )
+        .andThen(Flow.step(heard))
+      val env = new Env("e")
+      rt.run(id)(_ => Flows.run(flow, env, "x").toString) ==> Settled.Returned(
+        "Right(eSome(hello))"
+      )
+      val history = rt.recorded(id)
+      val read = (0 to history.size).toVector.map(k =>
+        Flows.read(flow, "x", history.take(k)).map(_.at) match {
+          case Right(Flows.Read.Next(step, at)) => s"$at:$step"
+          case Right(Flows.Read.Ended(result, steps)) => s"ended $steps: $result"
+          case Left(why) => why.toString
+        }
+      )
+      (history.map(_.name), read) ==>
+        (
+          Vector(StepRecord.marker("p"), "new", StepRecord.Received, StepRecord.Slept, "heard"),
+          Vector(
+            "0:DBOS.patch-p",
+            "1:new",
+            "2:wait",
+            "3:wait",
+            "4:heard",
+            "ended 5: Right(eSome(hello))"
+          )
+        )
     }
   }
 }

@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 import scala.util.Using
 
-import grit.core.durable.{Durable, DurableContract, DurableRuntime, Settled}
+import grit.core.durable.{Durable, DurableContract, DurableRuntime, Settled, StepRecord}
 import grit.core.id.WorkflowId
 import grit.core.visibility.Visibility
 import grit.dbos.sql.{DbConfig, Opener, TestPostgres}
@@ -191,6 +191,16 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
       .toVector
       .sortBy(_.functionId())
       .map(_.functionName())
+
+  def recorded(id: WorkflowId): Vector[StepRecord] =
+    dbos
+      .listWorkflowSteps(WorkflowId.value(id))
+      .asScala
+      .toVector
+      .sortBy(_.functionId())
+      .map(s =>
+        StepRecord(s.functionName(), Option(s.output()).collect { case o: String => o }, None)
+      )
 
   def streamed(id: WorkflowId, key: String): Vector[String] =
     strings(

@@ -32,6 +32,9 @@ object InMemoryDurableTests extends DurableContract {
 
     def recordedSteps(id: WorkflowId): Vector[String] = durable.recordedSteps(id)
 
+    def recorded(id: WorkflowId): Vector[StepRecord] =
+      durable.history(id).map(FlowFixtures.recorded)
+
     def streamed(id: WorkflowId, key: String): Vector[String] = durable.streamed(id, key)
 
     def crash(): Nothing = throw new InMemoryDurable.Crash
