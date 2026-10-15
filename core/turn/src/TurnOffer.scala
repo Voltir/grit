@@ -224,7 +224,7 @@ object TurnOffer {
       if (kept) advertised.map(_.name) else Vector.empty,
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
       Some(TurnShape(shaping.width, whole.id, took))
-    )).left.map(e => TurnFailure.Store(describe(e)))
+    )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
     * `knowledge` says supply it and `weighed`'s answers: `workspace`'s, when it is a service,
@@ -294,7 +294,7 @@ object TurnOffer {
         recorded.shaped.fold(Width.Deployed)(_.width)
       )
     }.left
-      .map(e => TurnFailure.Store(describe(e)))
+      .map(TurnFailure.ofStore)
 
   /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
     * tool, else its hosted one, else, for a name `offer` took from an advert, its
@@ -379,10 +379,4 @@ object TurnOffer {
         } yield (done._1 :+ (service, offered), done._2 ++ entries.map(_.name))
       }
       .map(_._1)
-
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${grit.core.id.EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-  }
 }

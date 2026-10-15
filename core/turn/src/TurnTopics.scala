@@ -139,7 +139,13 @@ object TurnTopics {
       )
       .flatten match {
       case Left(error) =>
-        Classification(Vector.empty, None, Vector.empty, None, Some(s"store: ${describe(error)}"))
+        Classification(
+          Vector.empty,
+          None,
+          Vector.empty,
+          None,
+          Some(s"store: ${TurnFailure.describe(error)}")
+        )
       case Right((routed, all)) => place(classifier.asking(routed), estimator, turn, all)
     }
 
@@ -312,7 +318,7 @@ object TurnTopics {
         _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, upstream, usage, estimate) =>
           ledger.record(id, turn, turn.workflowId, model, upstream, grade, usage, estimate)
         }
-      } yield id).left.map(e => TurnFailure.Store(describe(e)))
+      } yield id).left.map(TurnFailure.ofStore)
 
   /** The id of the entry recording the description `turn`'s summary gave its topic. */
   def describedId(turn: TurnRef): EntryId =
@@ -407,11 +413,5 @@ object TurnTopics {
   private def why(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"unavailable: $cause"
     case ClassifierError.Unreadable(cause) => s"unreadable: $cause"
-  }
-
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
   }
 }
