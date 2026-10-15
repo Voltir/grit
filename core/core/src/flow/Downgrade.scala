@@ -36,6 +36,9 @@ final class Downgrade[-A, +B] private[flow] (
   /** This downgrade, for a program's code: `None` unless the program whose steps these are
     * declared it in its `within`.
     */
+  // Not `Raise[A, B]^{steps}`: a new capability is a root of its own, never narrowed to
+  // another's set (docs/capture-checking.md). The fresh root is made inside the program's body,
+  // so it is no more visible past the program than `steps` is (DowngradeCaptureTests).
   def raise(using steps: Steps[?]^): Option[Raise[A, B]^] =
     if (steps.declares(this)) Some(new Raise.Of(rule)) else None
 

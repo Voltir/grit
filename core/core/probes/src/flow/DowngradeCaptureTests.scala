@@ -5,7 +5,8 @@ import grit.core.durable.Probes
 import utest.*
 
 /** What the compiler rejects about downgrades, from code outside their package: a node made
-  * after glue, free text endorsed, a description or raise forged, a raise kept past its body.
+  * after glue, free text endorsed, a description or raise forged, a raise returned past the
+  * body or program it was handed to.
   * Each probe holds one breach; the controls must compile.
   *
   * Expires: delete once capture and separation checking are no longer experimental. Until then
@@ -42,11 +43,22 @@ object DowngradeCaptureTests extends TestSuite {
       |  raise((value = Trusted.literal("x").tainted.map(_ == in), level = Integrity.Member)).extract.toString)
       |""".stripMargin
   private val raiseKept =
-    """var held: Option[Raise[(value: Tainted[Boolean], level: Integrity), Trusted[Boolean]]^] = None
-      |val st = node.step[Any, String, String](StepName("t"))(_ => raise => in => {
-      |  held = Some(raise)
-      |  in
-      |})""".stripMargin
+    """type Held = Option[Raise[(value: Tainted[Boolean], level: Integrity), Trusted[Boolean]]^]
+      |val st = node.step[Any, String, Held](StepName("t"))(_ => raise => in => Some(raise))(
+      |  using Journaled.json[Held](_ => ujson.Null, _ => Right(None)))
+      |""".stripMargin
+  private val programControl =
+    """val p = Flow.program[Any, String, String]("p", Vector(node))(steps => in =>
+      |  node.raise(using steps) match {
+      |    case Some(r) =>
+      |      r((value = Trusted.literal("x").tainted.map(_ == in), level = Integrity.Member)).extract.toString
+      |    case None => in
+      |  })
+      |""".stripMargin
+  private val programKept =
+    """type Held = Option[Raise[(value: Tainted[Boolean], level: Integrity), Trusted[Boolean]]^]
+      |val p = Flow.program[Any, String, Held]("p", Vector(node))(steps => in => node.raise(using steps))
+      |""".stripMargin
 
   private lazy val compiled = Probes.batch(
     prelude,
@@ -61,15 +73,18 @@ object DowngradeCaptureTests extends TestSuite {
       raiseMinted,
       raiseForged,
       raiseControl,
-      raiseKept
+      raiseKept,
+      programControl,
+      programKept
     )
   )
 
   private def probe(body: String): List[String] = compiled.errors(body)
 
   val tests = Tests {
-    test("controls: a node on a step, a bounded value, a raise used in its body") {
-      (probe(onControl), probe(boundedControl), probe(raiseControl)) ==> (Nil, Nil, Nil)
+    test("controls: a node on a step, a bounded value, a raise used in its body or program") {
+      (probe(onControl), probe(boundedControl), probe(raiseControl), probe(programControl)) ==>
+        (Nil, Nil, Nil, Nil)
     }
 
     test("a node made after map, on glue rather than a step's output, is refused") {
@@ -99,8 +114,12 @@ object DowngradeCaptureTests extends TestSuite {
       ) ==> (true, true)
     }
 
-    test("a raise kept past its step's body is refused") {
-      probe(raiseKept).exists(_.contains("raise")) ==> true
+    test("a raise returned past its step's body is refused") {
+      probe(raiseKept).exists(_.contains("outlives its scope")) ==> true
+    }
+
+    test("a program's raise returned past the program is refused") {
+      probe(programKept).exists(_.contains("is not visible from")) ==> true
     }
   }
 }
