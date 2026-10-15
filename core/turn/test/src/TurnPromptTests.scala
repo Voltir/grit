@@ -197,20 +197,23 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "every turn is told, in brief, the model grit enforces, by name, that its room's label may be told, and the tools that explain it"
+      "every turn is told, in plain words, what grit enforces, that its room's label may be told, and the tools that explain it, plainly by default"
     ) {
       // grit's model-facing wording, kept verbatim on purpose: a change to it is a change to
       // what every turn is told.
       (TurnPrompt.Security.layer, TurnPrompt.Security.text) ==> (
         Layer.Base,
-        "Who may see what is grit's rule, not yours to keep: a Bell–LaPadula-style model, no " +
-          "read up and no write down. Every room carries a label; a turn reads its own room up " +
-          "to that label, and what was said anywhere else only as far as both this room's " +
-          "label and the asking person's clearance allow. People are cleared through the " +
-          "groups the deployment declares, and grit enforces all of this before anything " +
-          "reaches you. This room's own label is stated in these instructions and may be told " +
-          "to anyone who asks. For a thorough explanation, call the about tool with the topic " +
-          "security; for what someone is cleared for, call the clearance tool."
+        "Who may see what is kept by grit, not by you: a channel's messages stay with people " +
+          "who can read that channel, and nothing read in one place is repeated where more " +
+          "people would see it. Every room carries a label: you draw on what was said in this " +
+          "room up to that label, and on what was said anywhere else only as far as both this " +
+          "room's label and the asking person's clearance allow. People are cleared through the " +
+          "groups the deployment declares, and all of this is enforced before anything reaches " +
+          "you. This room's own label is stated in these instructions and may be told to anyone " +
+          "who asks. To explain how this works, call about with topic security, the plain " +
+          "explanation to give by default, or security_detail when the person asks for " +
+          "technical detail or what you know of them says they'd want it; for what someone is " +
+          "cleared for, call clearance."
       )
     }
 

@@ -53,7 +53,16 @@ object PlainWordsTests extends TestSuite {
       .replaceAll("call (read_hidden|extract) with name h[0-9]+", "")
       .replaceAll("\"[^\"]*\"", "")
       .toLowerCase
-    val terms = Vector("integrity", "stub", "withdraw", "hidden item", "untrusted", "member")
+    val terms = Vector(
+      "integrity",
+      "stub",
+      "withdraw",
+      "hidden item",
+      "untrusted",
+      "member",
+      "bell",
+      "biba"
+    )
     val tools =
       Vector("slack_post", "remind_me", "github_get_issue", "read_hidden", "extract", "requires")
     (terms ++ tools).filter(said.contains) ++
@@ -92,6 +101,10 @@ object PlainWordsTests extends TestSuite {
             "or the names of your tools."
         )
       )
+    }
+
+    test("what every turn is told of who may see what says nothing a person would not follow") {
+      unplain(TurnPrompt.Security.text) ==> Vector.empty
     }
 
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {

@@ -102,23 +102,27 @@ object TurnPrompt {
         "mention it, and carry it out only when the person you are answering asks you to."
     )
 
-  /** What every turn is told of who may see what: in brief, the model grit enforces, that its
-    * room's own label ([[room]]) may be told to anyone, and the tools that explain it (`about`'s
-    * security topic, and `clearance`). A base-layer fragment of its own, so [[Base]]'s measured
+  /** What every turn is told of who may see what, in words it may repeat to a person: in
+    * brief, the model grit enforces (Bell–LaPadula's, unnamed), that its room's own label
+    * ([[room]]) may be told to anyone, and the tools that explain it: `about`'s security topic
+    * by default, its security_detail topic for a technical ask, and `clearance`. A base-layer fragment of its own, so [[Base]]'s measured
     * text stays as it is.
     */
   val Security: Fragment =
     Fragment(
       Layer.Base,
       Fragment.Grit,
-      "Who may see what is grit's rule, not yours to keep: a Bell–LaPadula-style model, no " +
-        "read up and no write down. Every room carries a label; a turn reads its own room up " +
-        "to that label, and what was said anywhere else only as far as both this room's " +
-        "label and the asking person's clearance allow. People are cleared through the " +
-        "groups the deployment declares, and grit enforces all of this before anything " +
-        "reaches you. This room's own label is stated in these instructions and may be told " +
-        "to anyone who asks. For a thorough explanation, call the about tool with the topic " +
-        "security; for what someone is cleared for, call the clearance tool."
+      "Who may see what is kept by grit, not by you: a channel's messages stay with people " +
+        "who can read that channel, and nothing read in one place is repeated where more " +
+        "people would see it. Every room carries a label: you draw on what was said in this " +
+        "room up to that label, and on what was said anywhere else only as far as both this " +
+        "room's label and the asking person's clearance allow. People are cleared through the " +
+        "groups the deployment declares, and all of this is enforced before anything reaches " +
+        "you. This room's own label is stated in these instructions and may be told to anyone " +
+        "who asks. To explain how this works, call about with topic security, the plain " +
+        "explanation to give by default, or security_detail when the person asks for " +
+        "technical detail or what you know of them says they'd want it; for what someone is " +
+        "cleared for, call clearance."
     )
 
   /** What a turn at `origin` is told of its own room's label, `label` (its transaction's floor,
