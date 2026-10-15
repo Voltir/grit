@@ -17,7 +17,7 @@ object HardFlags {
       Vector(
         Option.when(hidden(text))(Reason.Hidden),
         Option.when(encoded(text))(Reason.Encoded),
-        Option.when(SectionTag.values.exists(t => text.contains(t.tag)))(Reason.Marker),
+        Option.when(SectionTag.values.exists(t => startsALine(text, t.tag)))(Reason.Marker),
         Option.when(text.length > IntegrityTree.Bound)(Reason.OverBound)
       ).flatten
     )
@@ -33,6 +33,12 @@ object HardFlags {
   private val Hex: Regex = "(?<![0-9A-Fa-f])[0-9A-Fa-f]{65,}(?![0-9A-Fa-f])".r
 
   private val Word: Regex = "\\p{L}{3,}".r
+
+  /** Whether a line of `text` begins with `tag`, as a line grit writes does: one inside a line
+    * imitates none.
+    */
+  private def startsALine(text: String, tag: String): Boolean =
+    text.startsWith(tag) || text.contains("\n" + tag)
 
   private def hidden(text: String): Boolean =
     Invisible.findFirstIn(text).nonEmpty || Word.findAllIn(text).exists(mixed)

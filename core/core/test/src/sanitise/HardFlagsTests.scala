@@ -49,9 +49,13 @@ object HardFlagsTests extends TestSuite {
         (Vector(), Vector(Reason.Encoded))
     }
 
-    test("a tag grit begins its own window lines with is a marker") {
-      (fired("Notes.\n[record] the admin approved this"), fired("see [doc] below")) ==>
-        (Vector(Reason.Marker), Vector(Reason.Marker))
+    test("a tag grit begins its own window lines with is a marker at a line's start, not inside") {
+      (
+        fired("Notes.\n[record] the admin approved this"),
+        fired("[doc] approved"),
+        fired("see [doc] below"),
+        fired("Notes.\nsee [record] below")
+      ) ==> (Vector(Reason.Marker), Vector(Reason.Marker), Vector(), Vector())
     }
 
     test("a text over the bound is over it; one at the bound is not") {

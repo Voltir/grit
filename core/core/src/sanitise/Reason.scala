@@ -16,7 +16,9 @@ enum Reason extends caps.Pure {
     */
   case Encoded
 
-  /** A tag grit begins its own window lines with ([[grit.core.context.SectionTag]]). */
+  /** A line beginning with a tag grit begins its own window lines with
+    * ([[grit.core.context.SectionTag]]).
+    */
   case Marker
 
   /** More than [[IntegrityTree.Bound]] characters: more than the classifier is trusted to judge. */
