@@ -37,9 +37,9 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.prose` | `form`, `markdown` | — | prose as edge-neutral blocks, read from markdown; each edge renders them |
 | `grit.tui` | `model`, `components`, `wire`, `runtime` | core | the terminal UI library; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos |
-| `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn and jobs share; names core alone |
+| `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn, jobs and the lifecycle share; names core alone |
 | `grit.turn` | `grit.turn` | core, act | the durable turn's body, and a turn read back from the steps it recorded |
-| `grit.lifecycle` | `transcript`, `close`, `settle`, `stitch`, `triage`, `shadow`, `post` | core | the engine's workflows besides the turn |
+| `grit.lifecycle` | `transcript`, `close`, `settle`, `stitch`, `triage`, `shadow`, `post` | core, act | the engine's workflows besides the turn; their asks are moves |
 | `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |

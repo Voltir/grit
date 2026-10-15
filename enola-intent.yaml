@@ -11,7 +11,8 @@
 #      grit.digest or grit.remind, names core and plugin extensions), and the kit names no
 #      plugin, edge extension, terminal UI or deployment (ADRs 0021, 0027; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
-#   6. grit.act names core alone: the turn and a job's moves share its phases (ADR 0034)
+#   6. grit.act names core alone: the turn, a job's moves and the lifecycle's asks share its
+#      phases (ADR 0034)
 #   7. grit.knowledge names grit.core alone, and its card package names nothing of GitHub's
 #      (extensions/knowledge/README.md)
 #
@@ -99,8 +100,8 @@ components:
             "core/assembly/src", "core/assembly/src/**", "core/prose/src", "core/prose/src/**",
             "core/edge/src", "core/edge/src/**", "core/job/src", "core/job/src/**",
             "core/act/src", "core/act/src/**"]
-  # grit.act's sources, for its rule: the phases name core alone, as the turn and jobs both
-  # build on them.
+  # grit.act's sources, for its rule: the phases name core alone, as the turn, jobs and the
+  # lifecycle build on them.
   - {name: act-code,       kind: module, match: ["core/act/src", "core/act/src/**"]}
   - {name: models-code,    kind: module, match: ["extensions/models/src", "extensions/models/src/**"]}
   - {name: host-code,      kind: module, match: ["extensions/host/src", "extensions/host/src/**"]}
