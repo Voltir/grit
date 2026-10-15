@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.mcp.Server
-import grit.outline.query.{Answer, Config, Help, Query, Roots, Status}
+import grit.outline.query.{Answer, Config, Entry, Help, Query, Roots, Status}
 import grit.outline.render.TestsShown
 
 object Main {
@@ -69,11 +69,31 @@ object Main {
     case flag :: _ => Left(s"unknown argument $flag")
   }
 
-  /** The nearest directory at or above `dir` holding `build.mill`. */
   /** The directory `--root` names, else the repository above `cwd`. */
   private def rootDir(explicit: Option[String], cwd: os.Path): Option[os.Path] =
     explicit.map(os.Path(_, cwd)).orElse(repoAbove(cwd))
 
+  /** What a query run from `cwd` with no `--root` says when no repository is above it. */
+  private def noRoot(cwd: os.Path): String = s"no build.mill above $cwd: pass --root DIR"
+
+  /** `query`'s exit code and text, run at `rootDir(explicit, cwd)` with its `.outline.conf`. Exit 2, with
+    * `entry`'s usage, when there is no root, and with the reason when its `.outline.conf` does not read.
+    */
+  private def atRoot(explicit: Option[String], cwd: os.Path, entry: Entry)(
+      query: (Root, Config) => (Answer, Roots)
+  ): (Int, String) =
+    rootDir(explicit, cwd) match {
+      case None => (2, s"${noRoot(cwd)}\n${Help.usage(entry)}")
+      case Some(dir) =>
+        Config.read(Root(dir)) match {
+          case Left(message) => (2, message)
+          case Right(config) =>
+            val (answer, _) = query(Root(dir), config)
+            (exitCode(answer.status), answer.text)
+        }
+    }
+
+  /** The nearest directory at or above `dir` holding `build.mill`. */
   private def repoAbove(dir: os.Path): Option[os.Path] =
     if (os.exists(dir / "build.mill")) Some(dir)
     else {
@@ -120,30 +140,20 @@ object Main {
         parse(rest, defaults) match {
           case Left(message) => (2, s"$message\n${Help.usage(Help.show)}")
           case Right(o) =>
-            rootDir(o.root, cwd) match {
-              case None =>
-                (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.show)}")
-              case Some(d) =>
-                val syms = sym.split(',').toVector.filter(_.nonEmpty)
-                Config.read(Root(d)) match {
-                  case Left(message) => (2, message)
-                  case Right(config) =>
-                    val (answer: Answer, _) =
-                      Query.show(
-                        Root(d),
-                        new MemoLayout(MillLayout),
-                        config,
-                        Roots.empty(6000),
-                        syms,
-                        o.depth,
-                        o.bodies,
-                        o.withPrivate,
-                        o.cap,
-                        o.tests,
-                        o.fullDocs
-                      )
-                    (exitCode(answer.status), answer.text)
-                }
+            atRoot(o.root, cwd, Help.show) { (root, config) =>
+              Query.show(
+                root,
+                new MemoLayout(MillLayout),
+                config,
+                Roots.empty(6000),
+                sym.split(',').toVector.filter(_.nonEmpty),
+                o.depth,
+                o.bodies,
+                o.withPrivate,
+                o.cap,
+                o.tests,
+                o.fullDocs
+              )
             }
         }
       case "family" :: name :: rest if !name.startsWith("--") =>
@@ -173,25 +183,17 @@ object Main {
     parseFamily(rest, FamilyOptions(None, false, Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.family)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.family)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) =
-                  Query.family(
-                    Root(d),
-                    new MemoLayout(MillLayout),
-                    config,
-                    Roots.empty(6000),
-                    name,
-                    o.member,
-                    o.withBody,
-                    o.cap
-                  )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.family) { (root, config) =>
+          Query.family(
+            root,
+            new MemoLayout(MillLayout),
+            config,
+            Roots.empty(6000),
+            name,
+            o.member,
+            o.withBody,
+            o.cap
+          )
         }
     }
 
@@ -230,26 +232,18 @@ object Main {
     ) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.uses)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.uses)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) =
-                  Query.uses(
-                    Root(d),
-                    new MemoLayout(MillLayout),
-                    config,
-                    Roots.empty(6000),
-                    syms.split(',').toVector.filter(_.nonEmpty),
-                    o.in,
-                    o.outside,
-                    o.cap,
-                    o.allSites
-                  )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.uses) { (root, config) =>
+          Query.uses(
+            root,
+            new MemoLayout(MillLayout),
+            config,
+            Roots.empty(6000),
+            syms.split(',').toVector.filter(_.nonEmpty),
+            o.in,
+            o.outside,
+            o.cap,
+            o.allSites
+          )
         }
     }
 
@@ -285,24 +279,16 @@ object Main {
     parseArea(rest, AreaOptions(1, Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.area)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.area)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) =
-                  Query.area(
-                    Root(d),
-                    new MemoLayout(MillLayout),
-                    config,
-                    Roots.empty(6000),
-                    names.split(',').toVector.filter(_.nonEmpty),
-                    o.level,
-                    o.cap
-                  )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.area) { (root, config) =>
+          Query.area(
+            root,
+            new MemoLayout(MillLayout),
+            config,
+            Roots.empty(6000),
+            names.split(',').toVector.filter(_.nonEmpty),
+            o.level,
+            o.cap
+          )
         }
     }
 
@@ -330,24 +316,16 @@ object Main {
     parseFind(rest, FindOptions(Help.defaultMaxKb * 1024, leadingRoot, withPrivate = false)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.find)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.find)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) =
-                  Query.find(
-                    Root(d),
-                    new MemoLayout(MillLayout),
-                    config,
-                    Roots.empty(6000),
-                    pattern,
-                    o.withPrivate,
-                    o.cap
-                  )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.find) { (root, config) =>
+          Query.find(
+            root,
+            new MemoLayout(MillLayout),
+            config,
+            Roots.empty(6000),
+            pattern,
+            o.withPrivate,
+            o.cap
+          )
         }
     }
 
@@ -375,23 +353,8 @@ object Main {
     parseCommon(rest, Common(Help.defaultMaxKb * 1024, leadingRoot)) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.file)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.file)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) =
-                  Query.file(
-                    Root(d),
-                    new MemoLayout(MillLayout),
-                    config,
-                    Roots.empty(6000),
-                    target,
-                    o.cap
-                  )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.file) { (root, config) =>
+          Query.file(root, new MemoLayout(MillLayout), config, Roots.empty(6000), target, o.cap)
         }
     }
 
@@ -431,25 +394,18 @@ object Main {
     ) match {
       case Left(message) => (2, s"$message\n${Help.usage(Help.tests)}")
       case Right(o) =>
-        rootDir(o.root, cwd) match {
-          case None => (2, s"no build.mill above $cwd: pass --root DIR\n${Help.usage(Help.tests)}")
-          case Some(d) =>
-            Config.read(Root(d)) match {
-              case Left(message) => (2, message)
-              case Right(config) =>
-                val (answer, _) = Query.tests(
-                  Root(d),
-                  new MemoLayout(MillLayout),
-                  config,
-                  Roots.empty(6000),
-                  suite,
-                  o.test,
-                  o.bodies,
-                  o.cap,
-                  o.fixtures
-                )
-                (exitCode(answer.status), answer.text)
-            }
+        atRoot(o.root, cwd, Help.tests) { (root, config) =>
+          Query.tests(
+            root,
+            new MemoLayout(MillLayout),
+            config,
+            Roots.empty(6000),
+            suite,
+            o.test,
+            o.bodies,
+            o.cap,
+            o.fixtures
+          )
         }
     }
 
@@ -466,10 +422,10 @@ object Main {
   def main(args: Array[String]): Unit =
     leadingRoots(args.toList, None) match {
       case (root, List("mcp")) =>
-        root.map(os.Path(_, os.pwd)).orElse(repoAbove(os.pwd)) match {
+        rootDir(root, os.pwd) match {
           case Some(dir) => Server.serve(Root(dir))
           case None =>
-            System.err.println(s"no build.mill above ${os.pwd}: pass --root DIR")
+            System.err.println(noRoot(os.pwd))
             sys.exit(2)
         }
       case _ =>
