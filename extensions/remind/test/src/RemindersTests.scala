@@ -325,9 +325,11 @@ object RemindersTests extends TestSuite {
         Reminders.RemindMe,
         d.asked(2, believed = Integrity.Outside),
         "text" -> "tea",
-        "in_minutes" -> 10
+        "in_minutes" -> 20
       )
-      d.run(Reminders.List, d.asked(3)) match {
+      d.run(Reminders.RemindMe, d.asked(3), "text" -> "nap", "in_minutes" -> 10)
+      // Due between the others: neither the first reminder read nor the last.
+      d.run(Reminders.List, d.asked(4)) match {
         case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
         case other => sys.error(s"not done: $other")
       }
