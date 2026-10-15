@@ -21,7 +21,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.flow.{Tainted, TestTainted, Trusted}
+import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
   CallSlot,
   ConversationId,

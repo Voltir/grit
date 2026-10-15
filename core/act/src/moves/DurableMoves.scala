@@ -2,7 +2,6 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Calling}
 import grit.core.act.{
   Acting,
   Asked,
@@ -30,7 +29,9 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 
-/** A planner's moves as durable steps, over [[Asking]] and [[Calling]]. */
+/** A planner's moves as durable steps ([[Act]]'s), over `grit.act.phase`'s `Asking` and
+  * `Calling`.
+  */
 object DurableMoves {
 
   /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`,
