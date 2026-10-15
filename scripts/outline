@@ -35,12 +35,14 @@ cache="${XDG_CACHE_HOME:-$HOME/.cache}/grit-outline/$(printf '%s' "$here" | sha2
 # server that dies later says why nowhere else. The log is cut to its last 2000 lines at each start.
 log="$cache/mcp.log"
 note() { :; }
+if [ "${1:-}" = mcp ] || [ "${1:-}" = --build-behind ]; then
+  mkdir -p "$cache"
+  note() { printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" "$*" >> "$log"; }
+fi
 if [ "${1:-}" = mcp ]; then
-  mkdir -p "${log%/*}"
   if [ -f "$log" ] && [ "$(wc -l < "$log")" -gt 2000 ]; then
     tail -n 2000 "$log" > "$log.$$" && mv "$log.$$" "$log"
   fi
-  note() { printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" "$*" >> "$log"; }
   parent=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null || echo '?')
   parent=${parent% }
   note "invoked: root $root, parent $PPID ${parent:0:200}"
@@ -48,25 +50,97 @@ if [ "${1:-}" = mcp ]; then
   trap 'st=$?; note "ended with status $st before the server started"' EXIT
 fi
 
-newer=""
-if [ -f "$launcher" ]; then
-  newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
-fi
-if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ] || [ -n "$newer" ]; then
-  # On stderr, so an MCP client's stdout stays JSON-RPC; the build is otherwise silent for its first minute or two.
-  if [ -n "$newer" ]; then why="${newer#"$here"/} is newer than it"; else why="it is not built yet"; fi
-  echo "outline: building the query tool first, since $why; a cold build takes a minute or two" >&2
-  note "building the launcher, since $why"
-  build_mill grit.outline.launcher >&2
-  note "built the launcher"
+# Builds the launcher and its JAVA_HOME file; Mill's output goes to stdout. The returns are explicit, since
+# a caller testing the status turns `set -e` off inside.
+build_launcher() {
+  build_mill grit.outline.launcher || return
   # Mill rewrites the launcher only when a source's content changed; a source merely touched (a checkout,
   # a branch switch) would otherwise stay newer than it and send every query back through Mill.
-  touch "$launcher"
-  mkdir -p "$dir"
-  path_of grit.outline.javaHome > "$java_home_file"
+  touch "$launcher" || return
+  mkdir -p "$dir" || return
+  path_of grit.outline.javaHome > "$java_home_file.$$" || return
+  mv "$java_home_file.$$" "$java_home_file"
+}
+
+# The last good build, for an MCP server to start from at once while a newer launcher builds: `good` is a
+# link to a good.<epoch>.<pid> directory holding the launcher (run), its classes and java_home.txt. The link
+# is replaced by a rename, and the build before is kept, since a server starting may still be copying it.
+good="$cache/good"
+save_good() {
+  local next
+  next="$cache/good.$(date +%s).$$"
+  mkdir -p "$next"
+  cp -r "$dir/compile.dest/classes" "$next/classes"
+  cp "$java_home_file" "$next/java_home.txt"
+  cp "$launcher" "$next/run"
+  ln -sfn "${next##*/}" "$good.$$"
+  mv -T "$good.$$" "$good"
+  local old
+  for old in $(find "$cache" -maxdepth 1 -name 'good.*.*' -type d -printf '%f\n' | sort | head -n -2); do
+    rm -rf "${cache:?}/$old"
+  done
+  note "saved the launcher as the last good build, ${next##*/}"
+}
+
+# The background build an MCP server's start leaves behind it (see below): one at a time per checkout, its
+# output in the log, its result saved as the last good build.
+if [ "${1:-}" = --build-behind ]; then
+  exec 9> "$cache/build.lock"
+  if ! flock -n 9; then
+    note "background build: another is running, so none is started"
+    exit 0
+  fi
+  note "background build: started"
+  status=0
+  build_launcher 2>&1 | while IFS= read -r line; do note "build: $line"; done || status=$?
+  if [ "$status" -eq 0 ]; then
+    save_good
+    note "background build: done"
+  else
+    note "background build: failed, status $status"
+  fi
+  exit "$status"
 fi
 
-JAVA_HOME=$(cat "$java_home_file")
+# Why the launcher must be built first, if it must: it is missing, or a source is newer than it.
+why=""
+if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ]; then
+  why="it is not built yet"
+else
+  newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
+  if [ -n "$newer" ]; then why="${newer#"$here"/} is newer than it"; fi
+fi
+
+# What the query runs from: the launcher, or for an MCP server whose launcher is not ready, the last good
+# build. A client gives a server about 30 s to answer `initialize`, and a cold build takes a minute or two.
+run_from="$launcher"
+classes_from="$dir/compile.dest/classes"
+java_home_from="$java_home_file"
+if [ -n "$why" ] && [ "${1:-}" = mcp ] && [ -d "$good/" ]; then
+  last=$(readlink -f "$good")
+  echo "outline: starting from the last good build, since the launcher $why; a new one builds in the background for the next start" >&2
+  note "starting from the last good build ${last##*/}, since the launcher $why"
+  run_from="$last/run"
+  classes_from="$last/classes"
+  java_home_from="$last/java_home.txt"
+  # In its own session, so the client's ending this server's process group does not end the build.
+  setsid "${BASH_SOURCE[0]}" --build-behind < /dev/null >> "$log" 2>&1 &
+  note "background build: pid $!"
+elif [ -n "$why" ]; then
+  # On stderr, so an MCP client's stdout stays JSON-RPC; the build is otherwise silent for its first minute or two.
+  if [ "${1:-}" = mcp ]; then
+    echo "outline: no last good build to start from, so the server waits for this one; a client may time out first" >&2
+    note "no last good build to start from: building the launcher first, since $why"
+  fi
+  echo "outline: building the query tool first, since $why; a cold build takes a minute or two" >&2
+  build_launcher >&2
+  note "built the launcher"
+  if [ "${1:-}" = mcp ]; then save_good; fi
+elif [ "${1:-}" = mcp ] && { [ ! -d "$good/" ] || [ "$launcher" -nt "$good/run" ]; }; then
+  save_good
+fi
+
+JAVA_HOME=$(cat "$java_home_from")
 export JAVA_HOME
 
 # The MCP server runs from a copy of the classes, in the cache. A query rebuilds compile.dest/classes in
@@ -87,8 +161,9 @@ if [ "${1:-}" = mcp ]; then
   rm -rf "$snap"
   mkdir -p "$snap"
   trap 'st=$?; rm -rf "$snap"; note "ended with status $st before the server started"' EXIT
-  cp -r "$dir/compile.dest/classes" "$snap/classes"
-  sed "s|$dir/compile.dest/classes|$snap/classes|" "$launcher" > "$snap/run"
+  cp -r "$classes_from" "$snap/classes"
+  # A launcher names its classes by the path Mill built them at, a last good build's too.
+  sed "s|$dir/compile.dest/classes|$snap/classes|" "$run_from" > "$snap/run"
   chmod +x "$snap/run"
   # The server's stderr reaches the client as before and the log line by line; stdout stays the JSON-RPC.
   exec 3> >(while IFS= read -r line; do
@@ -115,4 +190,4 @@ if [ "${1:-}" = mcp ]; then
   exit "$status"
 fi
 
-exec "$launcher" --root "$root" "$@"
+exec "$run_from" --root "$root" "$@"
