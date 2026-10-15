@@ -1,6 +1,6 @@
 package grit.lifecycle.settle
 
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, SettleRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
 import grit.core.route.Routed
@@ -23,13 +23,6 @@ import grit.lifecycle.transcript.PeriodTranscript
   */
 object Settle {
 
-  /** The settle's steps, as DBOS records their names, in the order they run. */
-  object Step {
-    val Check = "check"
-    val Ask = "ask"
-    val Record = "record"
-  }
-
   /** What `check` found. */
   enum Checked {
 
@@ -40,61 +33,91 @@ object Settle {
     case Abandoned(why: String)
   }
 
-  /** The settle workflow's body, for the question whose workflow id is `workflowId`.
-    * Returns what it did, for logs: the verdict is in the store.
+  import SettleJournal.given
+
+  /** The question `ref`, to be asked over its period's turns from `first`. */
+  private final case class Asking(ref: SettleRef, first: TurnSeq)
+
+  /** The question `ref`, and its answer. */
+  private final case class Judged(ref: SettleRef, judgement: Judgement)
+
+  private def subject(ref: SettleRef): Subject = Subject.Conversation(ref.period.conversationId)
+
+  private val checked: Step[SettleEnv, SettleRef, Either[String, Checked]] =
+    Step.transact[SettleEnv, SettleRef, Either[String, Checked]](StepName("check"), subject)(env =>
+      ref => check(env.records, ref)
+    )
+
+  private val asked: Step[SettleEnv, Asking, Judgement] =
+    Step[SettleEnv, Asking, Judgement](StepName("ask"))(env => a => judge(env, a.ref, a.first))
+
+  private val recorded: Step[SettleEnv, Judged, Either[String, Boolean]] =
+    Step.transact[SettleEnv, Judged, Either[String, Boolean]](
+      StepName("record"),
+      j => subject(j.ref)
+    )(env =>
+      j => {
+        val verdict = Verdict(env.clock.now(), j.ref.last, j.judgement)
+        env.records.periods.judged(j.ref.period, verdict).left.map(describe)
+      }
+    )
+
+  /** The settle workflow, from the question's workflow id: what it did, for logs, at whichever
+    * end; the verdict is in the store.
     */
+  val flow: Flow[SettleEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        SettleRef.fromWorkflowId(id).toRight(s"not a settle: ${WorkflowId.value(id)}")
+      })
+      .andThen(Flow.decide(checked) {
+        case (_, Left(why)) => Left(s"failed: $why")
+        case (_, Right(Checked.Abandoned(why))) => Left(s"abandoned: $why")
+        case (ref, Right(Checked.Asking(first))) => Right(Asking(ref, first))
+      })
+      .andThen(Flow.step(asked).keeping.map((a, judgement) => Judged(a.ref, judgement)))
+      .andThen(Flow.step(recorded).keeping)
+      .map {
+        case (_, Left(why)) => s"failed: $why"
+        case (_, Right(false)) => "ignored: a turn came in while it was asked"
+        case (j, Right(true)) => s"judged: ${shown(j.judgement)}"
+      }
+
+  /** The settle workflow for the question whose workflow id is `workflowId`: [[flow]] run. */
   def body(env: SettleEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
-    SettleRef.fromWorkflowId(workflowId) match {
-      case None => s"not a settle: ${WorkflowId.value(workflowId)}"
-      case Some(question) =>
-        import SettleJournal.given
-        val records = env.records
-        val subject = Subject.Conversation(question.period.conversationId)
-        val reads = env.db.as(subject)
-        d.transact(Step.Check, subject)(check(records, question)) match {
-          case Left(why) => s"failed: $why"
-          case Right(Checked.Abandoned(why)) => s"abandoned: $why"
-          case Right(Checked.Asking(first)) =>
-            val judgement = d.step(Step.Ask) { () =>
-              // The classifier is asked only when its service is cleared for what was read.
-              Routed
-                .reading(reads) { (routed, bounded) =>
-                  val entries = PeriodTranscript.entries(
-                    bounded,
-                    env.records.entries,
-                    question.period,
-                    first,
-                    question.last
-                  )
-                  entries match {
-                    case Left(error) =>
-                      Judgement.Unanswered(s"transcript unread: ${describe(error)}")
-                    case Right(own) =>
-                      // Unread names are no names: each line is then its role's.
-                      val names = PeriodTranscript
-                        .speakers(bounded, env.records.principals, own)
-                        .getOrElse(Speakers.none)
-                      SettleQuestion.judge(
-                        env.classifier.asking(routed),
-                        SettleQuestion.Transcript(PeriodTranscript.of(own, names))
-                      )
-                  }
-                }
-                .fold(
-                  error => Judgement.Unanswered(s"transcript unread: ${describe(error)}"),
-                  identity
-                )
-            }
-            val verdict = Verdict(env.clock.now(), question.last, judgement)
-            d.transact(Step.Record, subject)(
-              records.periods.judged(question.period, verdict).left.map(describe)
-            ) match {
-              case Left(why) => s"failed: $why"
-              case Right(false) => "ignored: a turn came in while it was asked"
-              case Right(true) => s"judged: ${shown(judgement)}"
-            }
+    Flows.run(flow, env, workflowId).merge
+
+  /** The `ask` step: one classifier call over the transcript of `question`'s period from
+    * `first`, asked only when its service is cleared for what was read.
+    */
+  private def judge(env: SettleEnv^, question: SettleRef, first: TurnSeq): Judgement =
+    Routed
+      .reading(env.db.as(subject(question))) { (routed, bounded) =>
+        val entries = PeriodTranscript.entries(
+          bounded,
+          env.records.entries,
+          question.period,
+          first,
+          question.last
+        )
+        entries match {
+          case Left(error) =>
+            Judgement.Unanswered(s"transcript unread: ${describe(error)}")
+          case Right(own) =>
+            // Unread names are no names: each line is then its role's.
+            val names = PeriodTranscript
+              .speakers(bounded, env.records.principals, own)
+              .getOrElse(Speakers.none)
+            SettleQuestion.judge(
+              env.classifier.asking(routed),
+              SettleQuestion.Transcript(PeriodTranscript.of(own, names))
+            )
         }
-    }
+      }
+      .fold(
+        error => Judgement.Unanswered(s"transcript unread: ${describe(error)}"),
+        identity
+      )
 
   /** The `check` step. */
   private def check(records: SettleRecords, question: SettleRef)(using
