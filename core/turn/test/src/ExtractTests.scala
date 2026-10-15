@@ -226,7 +226,7 @@ object ExtractTests extends TestSuite {
         Left("the answer is not at most 4 characters of A-Z, a-z, 0-9, _ and -: \"ab cd\"")
     }
 
-    test("each model call of an extraction is kept in the ledger under the call's slot") {
+    test("an extraction's model calls are costed under ids of its call's slot, the first unnumbered") {
       val slot = TestCallSlots.at(round = 2, index = 1)
       val wf = WorkflowId.value(slot.turn.workflowId)
       Vector(Extract.costId(slot, 0), Extract.costId(slot, 1)) ==>
