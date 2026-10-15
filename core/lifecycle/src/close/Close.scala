@@ -2,7 +2,7 @@ package grit.lifecycle.close
 
 import java.time.Instant
 
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, Flow, Flows as DurableFlows, Step, StepName}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -63,14 +63,6 @@ import grit.lifecycle.transcript.PeriodTranscript
   */
 object Close {
 
-  /** The close's steps, as DBOS records their names, in the order they run. */
-  object Step {
-    val Check = "check"
-    val Gate = "gate"
-    val Summarise = "summarise"
-    val Seal = "seal"
-  }
-
   /** What `check` found. */
   enum Checked {
 
@@ -101,55 +93,103 @@ object Close {
     */
   final case class Summarised(closing: Option[Closing], cost: Option[Cost], note: Option[String])
 
-  /** The close workflow's body, for the attempt whose workflow id is `workflowId`. Returns
-    * what the close did, for logs: the closing entry is in the store.
+  import CloseJournal.given
+
+  /** The attempt `ref`, due: its period closes for `reason`, its turns from `first`, opened
+    * with `known` and held to `cap` bytes.
     */
-  def body(env: CloseEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
-    CloseRef.fromWorkflowId(workflowId) match {
-      case None => s"not a close: ${WorkflowId.value(workflowId)}"
-      case Some(attempt) =>
-        import CloseJournal.given
-        val records = env.records
-        d.transact(Step.Check, Subject.Conversation(attempt.period.conversationId))(
-          check(records, attempt)
-        ) match {
-          case Left(why) => s"failed: $why"
-          case Right(Checked.Closed) => "already closed"
-          case Right(Checked.Abandoned(why)) => s"abandoned: $why"
-          case Right(Checked.Due(first, reason, known, cap)) =>
-            val gated = d.step(Step.Gate) { () =>
-              if (reason == CloseReason.Unearned) (Asked.NoPart, Some("unearned"))
-              else if (reason == CloseReason.Ran) (Asked.NoPart, Some("ran"))
-              else
-                // The classifier is asked only when its service is cleared for what was read.
-                Routed
-                  .reading(reads(env, attempt)) { (routed, bounded) =>
-                    val entries = own(bounded, env, attempt, first)
-                    CloseGate.asked(
-                      env.classifier.asking(routed),
-                      CloseGate.Transcript(
-                        known,
-                        elsewhere(bounded, env, entries),
-                        transcript(bounded, env, entries)
-                      )
-                    )
-                  }
-                  .fold(e => (Asked.Every, Some(s"gate unread: ${describe(e)}")), identity)
-            }
-            val summarised = d.step(Step.Summarise) { () =>
-              summarise(env, attempt, first, gated._1, known, cap, reason)
-            }
-            val noted = (gated._2 ++ summarised.note).map(n => s"; $n").mkString
-            d.transact(Step.Seal, Subject.Conversation(attempt.period.conversationId))(
-              seal(records, attempt, reason, summarised, env.clock.now())
-            ) match {
-              case Left(why) => s"failed: $why$noted"
-              case Right(Sealed.Closed(entry)) => s"closed: ${EntryId.value(entry)}$noted"
-              case Right(Sealed.Abandoned) =>
-                s"abandoned: a turn came in while it was summarised$noted"
-            }
-        }
+  private final case class Attempt(
+      ref: CloseRef,
+      first: TurnSeq,
+      reason: CloseReason,
+      known: Balance,
+      cap: Int
+  )
+
+  /** The attempt `at`, with the parts of its closing the gate found new, and why no
+    * classifier did.
+    */
+  private final case class Gated(at: Attempt, asked: Asked, note: Option[String])
+
+  /** The gated attempt `gated`, and what its summary wrote. */
+  private final case class Written(gated: Gated, summarised: Summarised) {
+
+    /** Why no classifier or model did, for logs. */
+    def noted: String = (gated.note ++ summarised.note).map(n => s"; $n").mkString
+  }
+
+  private def subject(ref: CloseRef): Subject = Subject.Conversation(ref.period.conversationId)
+
+  private val checked: Step[CloseEnv, CloseRef, Either[String, Checked]] =
+    Step.transact[CloseEnv, CloseRef, Either[String, Checked]](StepName("check"), subject)(env =>
+      ref => check(env.records, ref)
+    )
+
+  private val gated: Step[CloseEnv, Attempt, (Asked, Option[String])] =
+    Step[CloseEnv, Attempt, (Asked, Option[String])](StepName("gate"))(env => at => gate(env, at))
+
+  private val summarised: Step[CloseEnv, Gated, Summarised] =
+    Step[CloseEnv, Gated, Summarised](StepName("summarise")) { env => g =>
+      summarise(env, g.at.ref, g.at.first, g.asked, g.at.known, g.at.cap, g.at.reason)
     }
+
+  private val sealedUp: Step[CloseEnv, Written, Either[String, Sealed]] =
+    Step.transact[CloseEnv, Written, Either[String, Sealed]](
+      StepName("seal"),
+      w => subject(w.gated.at.ref)
+    )(env =>
+      w => seal(env.records, w.gated.at.ref, w.gated.at.reason, w.summarised, env.clock.now())
+    )
+
+  /** The close workflow, from the attempt's workflow id: what the close did, for logs, at
+    * whichever end; the closing entry is in the store.
+    */
+  val flow: Flow[CloseEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        CloseRef.fromWorkflowId(id).toRight(s"not a close: ${WorkflowId.value(id)}")
+      })
+      .andThen(Flow.decide(checked) {
+        case (_, Left(why)) => Left(s"failed: $why")
+        case (_, Right(Checked.Closed)) => Left("already closed")
+        case (_, Right(Checked.Abandoned(why))) => Left(s"abandoned: $why")
+        case (ref, Right(Checked.Due(first, reason, known, cap))) =>
+          Right(Attempt(ref, first, reason, known, cap))
+      })
+      .andThen(Flow.step(gated).keeping.map { case (at, (asked, note)) => Gated(at, asked, note) })
+      .andThen(Flow.step(summarised).keeping.map((g, s) => Written(g, s)))
+      .andThen(Flow.step(sealedUp).keeping)
+      .map {
+        case (w, Left(why)) => s"failed: $why${w.noted}"
+        case (w, Right(Sealed.Closed(entry))) => s"closed: ${EntryId.value(entry)}${w.noted}"
+        case (w, Right(Sealed.Abandoned)) =>
+          s"abandoned: a turn came in while it was summarised${w.noted}"
+      }
+
+  /** The close workflow for the attempt whose workflow id is `workflowId`: [[flow]] run. */
+  def body(env: CloseEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
+    DurableFlows.run(flow, env, workflowId).merge
+
+  /** The `gate` step: what of `at`'s closing is new, asked of the classifier only when its
+    * service is cleared for what was read; none, asking nothing, when unearned or ran.
+    */
+  private def gate(env: CloseEnv^, at: Attempt): (Asked, Option[String]) =
+    if (at.reason == CloseReason.Unearned) (Asked.NoPart, Some("unearned"))
+    else if (at.reason == CloseReason.Ran) (Asked.NoPart, Some("ran"))
+    else
+      Routed
+        .reading(reads(env, at.ref)) { (routed, bounded) =>
+          val entries = own(bounded, env, at.ref, at.first)
+          CloseGate.asked(
+            env.classifier.asking(routed),
+            CloseGate.Transcript(
+              at.known,
+              elsewhere(bounded, env, entries),
+              transcript(bounded, env, entries)
+            )
+          )
+        }
+        .fold(e => (Asked.Every, Some(s"gate unread: ${describe(e)}")), identity)
 
   /** The `check` step. */
   private def check(records: CloseRecords, attempt: CloseRef)(using

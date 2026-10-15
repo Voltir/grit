@@ -176,7 +176,7 @@ object LifecycleReplayTests extends TestSuite {
         parsed.toOption.toVector
           .filter(h =>
             h.steps.exists(s =>
-              s.name == Close.Step.Check && (s.outcome match {
+              s.name == "check" && (s.outcome match {
                 case InMemoryDurable.Outcome.Output(text) =>
                   ujson.read(text).obj.get("ok").flatMap(_.obj.get("due")).flatMap(_.strOpt) ==
                     Some("ran")

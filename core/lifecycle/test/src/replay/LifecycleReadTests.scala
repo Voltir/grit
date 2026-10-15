@@ -2,6 +2,7 @@ package grit.lifecycle.replay
 
 import grit.core.durable.{Flow, FlowFixtures, Flows, History, StepRecord}
 import grit.core.id.WorkflowId
+import grit.lifecycle.close.Close
 import grit.lifecycle.post.Posting
 import grit.lifecycle.settle.Settle
 import grit.lifecycle.shadow.Shadow
@@ -32,7 +33,8 @@ object LifecycleReadTests extends TestSuite {
     "stitch" -> Stitch.flow,
     "shadow" -> Shadow.flow,
     "settle" -> Settle.flow,
-    "post" -> Posting.flow(Vector(RecordLifecycleHistories.Posted))
+    "post" -> Posting.flow(Vector(RecordLifecycleHistories.Posted)),
+    "close" -> Close.flow
   )
 
   /** Where `history` reads otherwise than as its run recorded it, over `flow`. */
