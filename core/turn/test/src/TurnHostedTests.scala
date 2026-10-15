@@ -448,6 +448,35 @@ object TurnHostedTests extends TestSuite {
     }
 
     test(
+      "a hosted call at a service is believed at its service's declared output, whatever its tool declares"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      // The tool declares member; github declares nothing, so its results are untrusted.
+      val trusted = hostedFetch.believed(Integrity.Member)
+      val edge = new Served(
+        new InMemoryEdges,
+        durable,
+        _ => Serve.Now(Outcome.Done("read", Some(Integrity.Authority))),
+        github.place
+      )
+      edge.advertise(Vector(trusted))
+      durable.run(turn.workflowId)(
+        hostedBody(
+          entries,
+          model(("t1", "fetch", "a.txt")),
+          edge,
+          hosted = Vector(trusted),
+          from = Origin.Slack("T1", "C1", "1.0"),
+          worksIn = Vector(WorksIn(Place.Everywhere, github))
+        )
+      ) ==> Done
+      entries
+        .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
+        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Untrusted))
+    }
+    test(
       "an answer no edge gave is grit's own, believed at the turn's level; an edge's, at its service's"
     ) {
       def believed(serve: Serve): Option[Integrity] = {

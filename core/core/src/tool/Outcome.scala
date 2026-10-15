@@ -11,7 +11,8 @@ import grit.core.visibility.Integrity
 enum Outcome {
 
   /** It ran; `text` is what the model reads, believed at `integrity` when the tool knows (the
-    * meet of the rows it read), else at its tool's ([[Tool.Offered.output]]).
+    * meet of the rows it read), else at its tool's ([[Believed]]). Only a tool grit runs is
+    * believed when it says: an edge's `integrity` is not read.
     */
   case Done(text: String, integrity: Option[Integrity] = None)
 

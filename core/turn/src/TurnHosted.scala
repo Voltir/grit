@@ -126,10 +126,10 @@ object TurnHosted {
       }
     val (requests, askers) = (hosting.requests, hosting.askers)
     // An edge's answer is believed at the declared output of the service the call went to; at
-    // no service (a directory, this machine), its tool's. One no edge gave is grit's own words,
-    // believed at the turn's level as a refusal is; but a person's reason for declining is
-    // theirs, and believed as the edge's would be.
-    val from = place.flatMap(_.service).toRight(TurnTools.believedAs(hosted.output, level))
+    // no service (a directory, this machine), its tool's ([[Believed.at]]); the edge's own claim
+    // never. One no edge gave is grit's own words, believed at the turn's level as a refusal
+    // is; but a person's reason for declining is theirs, and believed as the edge's would be.
+    val from = place.flatMap(_.service).toRight(hosted.output.at(level))
     val own = Left(level)
     outcome.flatMap {
       case Waited.Unsent =>

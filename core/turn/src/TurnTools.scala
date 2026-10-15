@@ -10,7 +10,7 @@ import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
-import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
@@ -132,7 +132,7 @@ object TurnTools {
     * and keeps its result as a [[Payload.Result]] entry at [[Slot.resultId]], dated `at`,
     * after everything in the conversation, with the call as it is shown ([[Bound.shown]]).
     * One run here is believed at what its outcome says ([[Outcome.Done.integrity]]), else at
-    * its tool's ([[Bound.Runs.output]], as [[believedAs]] reads it at the turn's `level`); one
+    * its tool's ([[Bound.Runs.output]], read at the turn's `level`: [[grit.core.tool.Believed.at]]); one
     * answered, at `from`: the declared output of the
     * service it went to ([[grit.core.visibility.Visibility.outputOf]]), else the integrity
     * given. A
@@ -179,7 +179,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, Belief.Ran(believedAs(free.output, level)), at)(() =>
+      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at)(() =>
         Right(free(slot.call))
       )
 
@@ -195,7 +195,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, Belief.Ran(believedAs(gated.output, level)), at)(() =>
+      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -279,14 +279,6 @@ object TurnTools {
         case other => other.left.map(storeFailure)
       }
     }
-  }
-
-  /** What a result declared `output` is believed at in a turn at `level`: grit's own words
-    * at `level`, which they never lower.
-    */
-  private[turn] def believedAs(output: Believed, level: Integrity): Integrity = output match {
-    case Believed.At(integrity) => integrity
-    case Believed.Own => level
   }
 
   /** How a call's result is believed: as answered (`From`, a service's declared output or the

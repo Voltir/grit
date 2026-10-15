@@ -101,9 +101,18 @@ object Integrity {
 
 /** The deployment declares what `service`'s results are believed at: a service that relays
   * others' text (mail, the web) declares [[Integrity.Untrusted]]. An undeclared service's are
-  * `Untrusted`.
+  * believed at [[Output.Undeclared]].
   */
 final case class Output(service: Service, integrity: Integrity) derives CanEqual
+
+object Output {
+
+  /** What a result no declaration covers is believed at: the least, [[Integrity.Untrusted]].
+    * A service the deployment does not declare is believed here, and so is a tool that
+    * declares nothing.
+    */
+  val Undeclared: Integrity = Integrity.Untrusted
+}
 
 /** An integrity as the level and compartments it is stored as (`grit.integrity_labels`), for the
   * code that stores and checks integrity (`grit.core.visibility`, `grit.dbos`) and for nothing

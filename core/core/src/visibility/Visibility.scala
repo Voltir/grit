@@ -22,10 +22,10 @@ final case class Visibility private (
 ) {
 
   /** What `service`'s results are believed at: its declared [[Output]], else
-    * [[Integrity.Untrusted]].
+    * [[Output.Undeclared]].
     */
   def outputOf(service: Service): Integrity =
-    outputs.find(_.service == service).fold(Integrity.Untrusted)(_.integrity)
+    outputs.find(_.service == service).fold(Output.Undeclared)(_.integrity)
 
   /** The most `room`'s speech is believed at, whoever said it; `None`: no cap. */
   def capOf(room: Room): Option[Integrity] = capped(room)
