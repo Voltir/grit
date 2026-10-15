@@ -96,15 +96,21 @@ object LabelledTests extends TestSuite {
       t.ground(Vector("h1", "a3")) ==> Some(Ground.Claimed)
     }
 
-    test("an untrusted line grounds nothing, as a heard one does: cited alone it gives no ground") {
+    test(
+      "an untrusted line grounds nothing, as a heard one does: cited alone it gives no ground, where one at Outside does"
+    ) {
       val t = labelledBy(Map(1L -> "Ana"))(
         result(0, "search", "42 hits").copy(integrity = Integrity.Untrusted),
         said(1, "The freeze is on Friday, then."),
         replied(2, "Noted.")
       )
+      val outside = labelledBy(Map(0L -> "Ana"))(
+        said(0, "The freeze is on Friday, then.").copy(integrity = Integrity.Outside)
+      )
       t.ground(Vector("t1")) ==> None
       t.ground(Vector("t1", "u2")) ==> Some(Ground.Person)
       t.ground(Vector("t1", "a3")) ==> Some(Ground.Claimed)
+      outside.ground(Vector("u1")) ==> Some(Ground.Person)
     }
 
     test("a tool line whose result is an error grounds nothing") {
