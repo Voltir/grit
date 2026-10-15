@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.classify.{Ask, Classifier, ClassifierError, StateJson}
+import grit.core.classify.{Ask, Classifier, StateJson}
 import grit.core.context.{Shown, Window}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
@@ -101,8 +101,7 @@ object TurnJudge {
             ),
             estimator.system(ujson.write(StateJson[State].json(state)))
           )
-        case Left(ClassifierError.Unavailable(why)) => Judgement.Unjudged(s"unavailable: $why")
-        case Left(ClassifierError.Unreadable(why)) => Judgement.Unjudged(s"unreadable: $why")
+        case Left(error) => Judgement.Unjudged(error.said)
       }
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,

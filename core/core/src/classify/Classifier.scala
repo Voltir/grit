@@ -87,6 +87,14 @@ enum ClassifierError {
     case Unavailable(_) => ClassifierError.Kind.Unavailable
     case Unreadable(_) => ClassifierError.Kind.Unreadable
   }
+
+  /** Its kind and its words, as a record of an unanswered question keeps them:
+    * `unavailable: <cause>` or `unreadable: <why>`.
+    */
+  def said: String = this match {
+    case Unavailable(cause) => s"unavailable: $cause"
+    case Unreadable(why) => s"unreadable: $why"
+  }
 }
 
 object ClassifierError {

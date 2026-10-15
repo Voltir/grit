@@ -91,7 +91,6 @@ object CloseGate {
   private def read(answered: Either[ClassifierError, Answered[Asked]]): (Asked, Option[String]) =
     answered match {
       case Right(answered) => (answered.value, None)
-      case Left(ClassifierError.Unavailable(why)) => (Asked.Every, Some(s"gate unavailable: $why"))
-      case Left(ClassifierError.Unreadable(why)) => (Asked.Every, Some(s"gate unreadable: $why"))
+      case Left(error) => (Asked.Every, Some(s"gate ${error.said}"))
     }
 }

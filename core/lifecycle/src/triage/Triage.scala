@@ -3,7 +3,7 @@ package grit.lifecycle.triage
 import grit.act.moves.Judging
 import grit.act.phase.Placing
 import grit.core.act.MoveName
-import grit.core.classify.{Answer, ClassifierError}
+import grit.core.classify.Answer
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
@@ -234,10 +234,7 @@ object Triage {
                 env.questions.asked(sources)
               ) {
                 case (Right(a), _) => Right((entry, Tags.Weighed(a.value, a.model, a.usage)))
-                case (Left(ClassifierError.Unavailable(why)), _) =>
-                  Right((entry, Tags.Unanswered(s"unavailable: $why")))
-                case (Left(ClassifierError.Unreadable(why)), _) =>
-                  Right((entry, Tags.Unanswered(s"unreadable: $why")))
+                case (Left(error), _) => Right((entry, Tags.Unanswered(error.said)))
               }
             }
           )

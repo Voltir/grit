@@ -287,16 +287,11 @@ object TriageTests extends TestSuite {
       w.hear("Is this a real question", "David", 1, in = b)
       val second = w.hear("and another", "David", 2, in = b)
       val turn = TurnRef(b, second.turn)
-      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
-      Stitching.offered(w.reads, FakeDb.as(Subject.Public), turn, Tuning.Default) ==> Right(None)
-      Stitching.turn(
-        grit.core.classify.TestClassifiers.cleared(classifier),
-        w.reads,
-        FakeDb.as(Subject.Public),
-        turn,
-        Tuning.Default
-      ) ==> Right(None)
-      classifier.calls ==> 0
+      val db = FakeDb.as(Subject.Public)
+      (
+        Stitching.offered(w.reads, db, turn, Tuning.Default),
+        Stitching.unplaced(w.reads, db, turn, Tuning.Default)
+      ) ==> (Right(None), Right(None))
     }
 
     test("an absent classifier's tags are unanswered, and kept") {

@@ -7,7 +7,6 @@ import grit.core.classify.{
   Ask,
   Classifier,
   ClassifierError,
-  ClearedClassifier,
   Criterion,
   Decision,
   Request,
@@ -18,7 +17,6 @@ import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.Probability
 import grit.core.place.{Place, Scope}
-import grit.core.route.Routed
 import grit.core.store.{
   Conversation,
   ConversationStore,
@@ -98,27 +96,6 @@ object Stitching {
       tuning: Tuning
   ): Either[StoreError, Option[Offer]] =
     opening(reads, db, turn, tuning, keptAsks = true).map(_.map(_._2))
-
-  /** Where `turn`'s message goes ([[place]]), when it is an [[Opening]], in the scope in
-    * force, read through `db` from `reads`: its entry and its placement. `None`, asking
-    * nothing, otherwise, when a placement is kept for it already, or when nothing is offered.
-    * `classifier` is asked only when its service is cleared for what the read knew
-    * ([[ClearedClassifier.at]]). `Left` when the store fails.
-    */
-  def turn(
-      classifier: ClearedClassifier^,
-      reads: StitchReads,
-      db: Reads^,
-      turn: TurnRef,
-      tuning: Tuning
-  ): Either[StoreError, Option[(EntryId, Placed)]] =
-    Routed
-      .reading(db)((routed, bounded) =>
-        unplaced(reads, bounded, turn, tuning).map(
-          _.map((first, offer) => first -> place(classifier.asking(routed), offer, tuning))
-        )
-      )
-      .flatten
 
   /** `turn`'s message, read through `db` from `reads` under `tuning` in the scope in force, when
     * it is an [[Opening]] with no placement kept for it: its entry and what it is offered
@@ -363,10 +340,7 @@ object Stitching {
             state,
             ask,
             {
-              case Left(ClassifierError.Unavailable(why)) =>
-                Placed.Unread(s"unavailable: $why", seen(None))
-              case Left(ClassifierError.Unreadable(why)) =>
-                Placed.Unread(s"unreadable: $why", seen(None))
+              case Left(error) => Placed.Unread(error.said, seen(None))
               case Right(Answered(d, usage, model)) =>
                 val top = Probability.clamped(d.top)
                 d.choice match {

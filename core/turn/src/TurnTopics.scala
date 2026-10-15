@@ -6,7 +6,6 @@ import grit.core.classify.{
   Answered,
   Ask,
   Classifier,
-  ClassifierError,
   ClearedClassifier,
   Criterion,
   Decision,
@@ -190,7 +189,7 @@ object TurnTopics {
         classifier.ask(sameState, same) match {
           case Left(error) =>
             classification(
-              Vector(placed(Weights.whole(shown.id), Placement.Unclassified(why(error)))),
+              Vector(placed(Weights.whole(shown.id), Placement.Unclassified(error.said))),
               None
             )
           case Right(Answered(p, u1, model)) =>
@@ -209,7 +208,7 @@ object TurnTopics {
                     val whichState = WhichTopic(topic, recent, asked)
                     which(latest, older).left
                       .map(d => s"two options share the key ${d.key}")
-                      .flatMap(classifier.ask(whichState, _).left.map(why)) match {
+                      .flatMap(classifier.ask(whichState, _).left.map(_.said)) match {
                       case Left(reason) =>
                         classification(
                           Vector(
@@ -409,9 +408,4 @@ object TurnTopics {
       .takeRight(2)
 
   private def sum(a: Usage, b: Usage): Usage = a + b
-
-  private def why(error: ClassifierError): String = error match {
-    case ClassifierError.Unavailable(cause) => s"unavailable: $cause"
-    case ClassifierError.Unreadable(cause) => s"unreadable: $cause"
-  }
 }

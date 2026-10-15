@@ -1,7 +1,7 @@
 package grit.lifecycle.settle
 
 import grit.act.moves.Judging
-import grit.core.classify.{Ask, ClassifierError, ClearedClassifier, Criterion, StateJson}
+import grit.core.classify.{Ask, ClearedClassifier, Criterion, StateJson}
 import grit.core.period.{Judgement, Probability}
 import grit.core.route.Routed
 
@@ -64,10 +64,7 @@ object SettleQuestion {
               p(Standing.OnOther),
               answered.model
             )
-          case (Left(ClassifierError.Unavailable(why)), _) =>
-            Judgement.Unanswered(s"unavailable: $why")
-          case (Left(ClassifierError.Unreadable(why)), _) =>
-            Judgement.Unanswered(s"unreadable: $why")
+          case (Left(error), _) => Judgement.Unanswered(error.said)
         }
     }
 }
