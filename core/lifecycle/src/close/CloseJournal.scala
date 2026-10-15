@@ -1,6 +1,7 @@
 package grit.lifecycle.close
 
 import grit.core.durable.Journaled
+import grit.core.durable.Journaled.outcome
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.Tokens
 import grit.core.period.ClosingJson
@@ -162,26 +163,5 @@ private[close] object CloseJournal {
             .toRight("sealed: expected {closed}")
         case _ => Left("sealed: expected \"abandoned\" or an object")
       }
-    )
-
-  private def outcome[A](
-      write: A -> ujson.Value,
-      read: ujson.Value -> Either[String, A]
-  ): Journaled[Either[String, A]] =
-    Journaled.json[Either[String, A]](
-      {
-        case Right(a) => ujson.Obj("ok" -> write(a))
-        case Left(reason) => ujson.Obj("failed" -> reason)
-      },
-      v =>
-        v.objOpt match {
-          case None => Left("expected an object")
-          case Some(o) =>
-            (o.get("ok"), o.get("failed").flatMap(_.strOpt)) match {
-              case (Some(value), None) => read(value).map(Right(_))
-              case (None, Some(reason)) => Right(Left(reason))
-              case _ => Left("expected {ok} or {failed}")
-            }
-        }
     )
 }

@@ -34,6 +34,31 @@ object Journaled {
       def decode(s: String): Either[String, A] =
         scala.util.Try(ujson.read(s)).toEither.left.map(_.getMessage).flatMap(read)
     }
+
+  /** A step's outcome: its value in `write`'s form, as `{"ok": value}`, or why it failed, as
+    * `{"failed": reason}`. A recorded output that is not an object, or holds both or neither,
+    * fails to decode.
+    */
+  def outcome[A](
+      write: A -> ujson.Value,
+      read: ujson.Value -> Either[String, A]
+  ): Journaled[Either[String, A]] =
+    json[Either[String, A]](
+      {
+        case Right(a) => ujson.Obj("ok" -> write(a))
+        case Left(reason) => ujson.Obj("failed" -> reason)
+      },
+      v =>
+        v.objOpt match {
+          case None => Left("expected an object")
+          case Some(o) =>
+            (o.get("ok"), o.get("failed").flatMap(_.strOpt)) match {
+              case (Some(value), None) => read(value).map(Right(_))
+              case (None, Some(reason)) => Right(Left(reason))
+              case _ => Left("expected {ok} or {failed}")
+            }
+        }
+    )
 }
 
 /** A recorded step output that the current code cannot decode: the workflow was started

@@ -1,6 +1,7 @@
 package grit.lifecycle.triage
 
 import grit.core.durable.Journaled
+import grit.core.durable.Journaled.outcome
 import grit.core.id.{EntryId, WorkflowId}
 import grit.core.speech.{Decision, SpeechJson}
 import grit.core.stitch.{Placed, StitchJson}
@@ -55,25 +56,4 @@ private[triage] object TriageJournal {
 
   given recorded: Journaled[Either[String, Boolean]] =
     outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
-
-  private def outcome[A](
-      write: A -> ujson.Value,
-      read: ujson.Value -> Either[String, A]
-  ): Journaled[Either[String, A]] =
-    Journaled.json[Either[String, A]](
-      {
-        case Right(a) => ujson.Obj("ok" -> write(a))
-        case Left(reason) => ujson.Obj("failed" -> reason)
-      },
-      v =>
-        v.objOpt match {
-          case None => Left("expected an object")
-          case Some(o) =>
-            (o.get("ok"), o.get("failed").flatMap(_.strOpt)) match {
-              case (Some(value), None) => read(value).map(Right(_))
-              case (None, Some(reason)) => Right(Left(reason))
-              case _ => Left("expected {ok} or {failed}")
-            }
-        }
-    )
 }
