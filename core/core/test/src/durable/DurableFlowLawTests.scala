@@ -100,6 +100,60 @@ object DurableFlowLawTests extends TestSuite {
         (("Right(Left(3))", Vector()), ("Right(Right(ta(x)))", Vector("a")))
     }
 
+    // The arrow-with-choice laws, each side compared on what runs over the same inputs came to
+    // and recorded, and, where the law holds of the description too, on Flows.names.
+
+    test("law: right of a composition is the composition of rights") {
+      val (f, g) = (stopping, Flow.step(b))
+      val (lhs, rhs) = (f.andThen(g).right[Int], f.right[Int].andThen(g.right[Int]))
+      val ins = Vector(Left(1), Right("x"), Right("stop"))
+      (ins.map(ran(lhs, env, _)), Flows.names(lhs)) ==> (
+        ins.map(ran(rhs, env, _)),
+        Flows.names(rhs)
+      )
+    }
+
+    test("law: right of a map on the wire is a map of the Right") {
+      val g = (s: String) => s.length
+      val (lhs, rhs) =
+        (Flow.pass[String].map(g).right[Int], Flow.pass[Either[Int, String]].map(_.map(g)))
+      val ins = Vector(Left(1), Right("xy"))
+      (ins.map(ran(lhs, env, _)), Flows.names(lhs)) ==> (
+        ins.map(ran(rhs, env, _)),
+        Flows.names(rhs)
+      )
+    }
+
+    test("law: a Right injected, then right, runs as the flow then the injection") {
+      val lhs = Flow.pass[String].map[Either[Int, String]](Right(_)).andThen(stopping.right[Int])
+      val rhs = stopping.map[Either[Int, String]](Right(_))
+      // Not on Flows.names: there the arm of an either is not every run's, whatever its input.
+      Vector("x", "stop").map(ran(lhs, env, _)) ==> Vector("x", "stop").map(ran(rhs, env, _))
+    }
+
+    test("law: either after a Left or a Right injected runs as that arm alone") {
+      val (l, r) = (stopping, Flow.step(b))
+      val ins = Vector("x", "stop")
+      val lefts = Flow.pass[String].map[Either[String, String]](Left(_)).andThen(Flow.either(l, r))
+      val rights =
+        Flow.pass[String].map[Either[String, String]](Right(_)).andThen(Flow.either(l, r))
+      // Not on Flows.names, as above: both arms are in the description.
+      (ins.map(ran(lefts, env, _)), ins.map(ran(rights, env, _))) ==>
+        (ins.map(ran(l, env, _)), ins.map(ran(r, env, _)))
+    }
+
+    test("law: branch is the split on the wire, then either") {
+      val split = (s: String) => if (s.startsWith("s")) Left(s) else Right(s)
+      val (l, r) = (stopping, Flow.step(b))
+      val (lhs, rhs) =
+        (Flow.branch(split)(l, r), Flow.pass[String].map(split).andThen(Flow.either(l, r)))
+      val ins = Vector("x", "stop", "same")
+      (ins.map(ran(lhs, env, _)), Flows.names(lhs)) ==> (
+        ins.map(ran(rhs, env, _)),
+        Flows.names(rhs)
+      )
+    }
+
     test("attempt passes an end as a Left, and the flow goes on") {
       val kept = Flow.attempt(stopping).map(_.toString).andThen(Flow.step(b))
       ran(kept, env, "stop") ==> ("Right(tb(Left(stopped at t(stop))))", Vector("item:stop", "b"))
