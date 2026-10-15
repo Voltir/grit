@@ -52,9 +52,7 @@ object DowngradeTests extends TestSuite {
     }
 
     test("on records only its step, and passes its output beside what the node made of it") {
-      val flow = extraction.on(a)(o =>
-        Some((value = Mint.tainted(Some(o == "x"), Integrity.Untrusted), level = Integrity.Member))
-      )
+      val flow = extraction.on(a)(o => Some((answer = Some(o == "x"), level = Integrity.Member)))
       val durable = new InMemoryDurable()
       val out = durable.run(WorkflowId("on:1"))(_ =>
         Flows.run(flow, (), "x").map((o, t) => s"$o ${t.map(t => (t.extract, t.integrity))}").merge
@@ -63,12 +61,9 @@ object DowngradeTests extends TestSuite {
         (s"x Some((Some(true),${Integrity.Member}))", Vector("a"))
     }
 
-    test("an extraction trusts at the run's level met with Member, whatever it was believed at") {
+    test("an extraction trusts its answer at the run's level met with Member") {
       def at(level: Integrity): Integrity =
-        raised(
-          extraction,
-          (value = Mint.tainted(Some(true), Integrity.Untrusted), level = level)
-        ).integrity
+        raised(extraction, (answer = Some(true), level = level)).integrity
       (at(Integrity.at(Level.Authority, team)), at(Integrity.Outside)) ==>
         (Integrity.Member, Integrity.Outside)
     }

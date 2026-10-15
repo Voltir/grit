@@ -271,13 +271,11 @@ object DurableMoves {
         case Left(why) => Left(MoveError.Model(why))
         case Right(typed) =>
           val messages = Extraction.messages(Trusted.asIs(from).extract, question, shape)
-          // Believed at nothing: an extraction trusts its answer at the recorded level alone.
           type Said = Option[Trusted[Option[Extracted]]]
           val flow: Flow[MovesEnv, Act.Json[Option[Extracted]], Nothing, (Act.Settling, Said)] =
             Act.raised(Act.json[Option[Extracted]], Extraction.Node) {
               case AskMade.Shaped(_, written, _, level, _) =>
-                readBack(typed, written).toOption
-                  .map(a => (value = Mint.tainted(a, Integrity.Untrusted), level = level))
+                readBack(typed, written).toOption.map(a => (answer = a, level = level))
               case _ => None
             }
           shaped(name, Extraction.System, messages, typed, from.integrity)(flow).map((_, said) =>

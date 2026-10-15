@@ -43,7 +43,7 @@ object ExtractTests extends TestSuite {
       asked = asked :+ ((item, question, shape, slot))
       answer(shape).map(a =>
         TestTainted.raise(Extraction.Node)(
-          (value = TestTainted.at(a, item.integrity), level = level)
+          (answer = a, level = level)
         )
       )
     }

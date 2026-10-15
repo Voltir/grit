@@ -131,16 +131,15 @@ object Downgrade {
     case Text
   }
 
-  /** An extraction's endorsement: `value`, an answer or that there is none, trusted at `level`
-    * met with `Member`, whatever it was believed at, so an extraction never reaches
-    * `Authority`. Its capacity is the answer's bits and one for whether there is one. Free text
-    * has no `Bounded`, so is never endorsed.
+  /** An extraction's endorsement: `answer`, or that there is none, trusted at `level` met with
+    * `Member`, so an extraction never reaches `Authority`. Its capacity is the answer's bits
+    * and one for whether there is one. Free text has no `Bounded`, so is never endorsed.
     */
   def extraction[T, B <: Int](using
       Bounded[T, B],
       (B <= Bounded.K) =:= true,
       ValueOf[B]
-  ): Downgrade[(value: Tainted[Option[T]], level: Integrity), Trusted[Option[T]]] =
+  ): Downgrade[(answer: Option[T], level: Integrity), Trusted[Option[T]]] =
     new Downgrade(
       Described(
         "extraction",
@@ -148,7 +147,7 @@ object Downgrade {
         Authority.Rule(Integrity.Member),
         Capacity.Bits(valueOf[B] + 1)
       ),
-      in => Trusted.at(in.value.open, in.level.meet(Integrity.Member))
+      in => Trusted.at(in.answer, in.level.meet(Integrity.Member))
     )
 
   /** A text raised from below `Outside` to it, in the same compartments, when `judge` says so

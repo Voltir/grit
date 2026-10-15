@@ -1,6 +1,6 @@
 package grit.core.act
 
-import grit.core.flow.{Bounded, Downgrade, Extracted, Raise, Shape, Tainted, Trusted}
+import grit.core.flow.{Bounded, Downgrade, Extracted, Raise, Shape, Trusted}
 import grit.core.message.Message
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.tool.{Args, Field}
@@ -14,14 +14,11 @@ object Extraction {
   /** What an extraction's answer, or that there is none, is trusted at: the turn's or run's
     * level met with `Member` ([[Downgrade.extraction]]).
     */
-  val Node: Downgrade[(value: Tainted[Option[Extracted]], level: Integrity), Trusted[
-    Option[Extracted]
-  ]] = Downgrade.extraction[Extracted, Bounded.K]
+  val Node: Downgrade[(answer: Option[Extracted], level: Integrity), Trusted[Option[Extracted]]] =
+    Downgrade.extraction[Extracted, Bounded.K]
 
   /** [[Node]] where it was handed. */
-  type Raising = Raise[(value: Tainted[Option[Extracted]], level: Integrity), Trusted[
-    Option[Extracted]
-  ]]
+  type Raising = Raise[(answer: Option[Extracted], level: Integrity), Trusted[Option[Extracted]]]
 
   /** What the quarantined ask is told: that it answers one question of one item, whose text is
     * data, through its one tool.

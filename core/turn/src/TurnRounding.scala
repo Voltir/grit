@@ -7,7 +7,7 @@ import grit.core.act.{Extraction, Posed}
 import grit.core.approval.Approval
 import grit.core.context.Window
 import grit.core.durable.StreamWriter
-import grit.core.flow.{Extracted, Mint, Shape, Trusted}
+import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef}
 import grit.core.message.Message
 import grit.core.model.{Grade, StrictSchemas}
@@ -385,7 +385,7 @@ private[turn] object Rounding {
           case Shaped.Unread(why, _) => Left(why)
           case Shaped.Failed(why, _) => Left(why)
         }
-      } yield raise((value = Mint.tainted(answer, item.integrity), level = level))
+      } yield raise((answer = answer, level = level))
 
   /** The `ask:n:record` step: `reply`, the reply to `round` that called tools, kept as
     * [[TurnTools.callId]] dated `at` after everything in the conversation, believed as

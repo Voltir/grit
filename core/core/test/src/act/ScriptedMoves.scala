@@ -103,7 +103,9 @@ class ScriptedMoves(
           Posed.Json(Extraction.System, Extraction.messages(t, question, shape), typed)
         )
         ask(name, posed).map { a =>
-          val said = TestTainted.raise(Extraction.Node)((value = a.reply, level = integrity))
+          val said = TestTainted.raise(Extraction.Node)(
+            (answer = Trusted.asIs(a.reply).extract, level = integrity)
+          )
           said.extract.map(x => said.map(_ => x))
         }
     }
