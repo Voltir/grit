@@ -203,21 +203,49 @@ private[turn] object TurnFlow {
     * and its summary made when it is posted; an addressed turn's summary.
     */
   private def ending: Flow[Env, Ended, Nothing, String] =
-    Flow.branch((e: Ended) =>
-      (e.result, e.at.offer.root) match {
-        case (Left(failure), TurnOffer.Root.Addressed) => Left(s"failed: $failure${e.notes}")
-        case (Right(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Right(Left((e, draft)))
-        case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
-          Right(Right(Left((e, Failed(e.turn, failure)))))
-        case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
-          Right(Right(Right((e, reply))))
-      }
-    )(
+    Flow.branch((e: Ended) => Ending.of(e).split)(
       Flow.pass[String],
       // A draft's branch first: a reader names the steps in the order a run reaches them,
       // and a drafting turn judges before it records its speech.
       Flow.either(drafted, Flow.either(speechFailing, summarised("replied")))
     )
+
+  /** What a turn's steps came to, by what its root is: what [[ending]] goes on with. */
+  private enum Ending {
+
+    /** An addressed turn that failed: what it did, said; nothing follows. */
+    case Stopped(said: String)
+
+    /** A heard or named turn's `draft`, to settle. */
+    case Drafted(at: Ended, draft: EntryId)
+
+    /** A heard, named or by-name turn that failed: `failed`, kept as what became of its draft. */
+    case Unsettled(at: Ended, failed: Failed)
+
+    /** An addressed or by-name turn's `reply`, to summarise. */
+    case Replied(at: Ended, reply: EntryId)
+
+    /** The arm of [[ending]] that goes on with it, in the order the arms are written. */
+    def split: Either[String, Either[(Ended, EntryId), Either[(Ended, Failed), (Ended, EntryId)]]] =
+      this match {
+        case Stopped(said) => Left(said)
+        case Drafted(at, draft) => Right(Left((at, draft)))
+        case Unsettled(at, failed) => Right(Right(Left((at, failed))))
+        case Replied(at, reply) => Right(Right(Right((at, reply))))
+      }
+  }
+
+  private object Ending {
+
+    /** What `e` came to, by its result and its offer's root. */
+    def of(e: Ended): Ending = (e.result, e.at.offer.root) match {
+      case (Left(failure), TurnOffer.Root.Addressed) => Stopped(s"failed: $failure${e.notes}")
+      case (Right(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
+      case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
+        Unsettled(e, Failed(e.turn, failure))
+      case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) => Replied(e, reply)
+    }
+  }
 
   /** A heard-rooted turn that failed: `Failed` kept as what became of its draft. */
   private def speechFailing: Flow[Env, (Ended, Failed), Nothing, String] =

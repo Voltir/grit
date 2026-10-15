@@ -159,6 +159,15 @@ private[turn] object TurnRound {
   final case class Call(at: Rounds, slot: Slot, pending: Pending, kind: Kind, sent: Boolean)
       extends OfCall {
     def id: ToolCallId = pending.call.id
+
+    /** Which steps settle it, by its kind: its own step (`Left`), its own step once a person
+      * approves it (`Right(Left)`), or an edge's (`Right(Right)`).
+      */
+    def routing: Either[Call, Either[Call, Hosting]] = kind match {
+      case Kind.Refused | Kind.Free => Left(this)
+      case Kind.Gated => Right(Left(this))
+      case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(this, tool, asks, place)))
+    }
   }
 
   /** `call`, of a hosted tool `tool` at `place`, which `asks` a person first or not. */
@@ -467,13 +476,10 @@ private[turn] object TurnRound {
     val gated = approved.keeping
       .map((c, answer) => answer.map(Decided(c, _)))
       .andThen(Flow.step(decided).right[TurnFailure].map(_.flatten))
-    val routed = Flow.branch((c: Call) =>
-      c.kind match {
-        case Kind.Refused | Kind.Free => Left(c)
-        case Kind.Gated => Right(Left(c))
-        case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(c, tool, asks, place)))
-      }
-    )(Flow.step(here), Flow.either(gated, TurnHosted.settle))
+    val routed = Flow.branch((c: Call) => c.routing)(
+      Flow.step(here),
+      Flow.either(gated, TurnHosted.settle)
+    )
     routed.decided((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at)))
   }
 }
