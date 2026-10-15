@@ -107,6 +107,11 @@ File text: in show and family, each definition's lines after its NN-MM header ar
 
 The launcher is built on first use, without a daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never disturbed), and rebuilt when a source under `dev/outline/src` is newer; either build first says so on stderr, in one `outline: building` line.
 
+An MCP server runs from its own copy of the classes, outside `out/` so that neither a rebuild nor
+`./mill clean` reaches it: `${XDG_CACHE_HOME:-~/.cache}/grit-outline/<hash of the checkout's path>/mcp/<pid>`.
+Its log is `mcp.log` beside that `mcp/` directory: when and by whom each server was started, its
+stderr, and how it ended.
+
 A request the server fails on gets a JSON-RPC error (-32603) naming the failure, and the server goes on
 serving. Three requests in a row that fail to link, its classes gone or changed under it, end it; it
 says on stderr why it ends, then or when stdin closes.

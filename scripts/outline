@@ -25,10 +25,15 @@ build_mill() { (cd "$here" && MILL_OUTPUT_DIR=out/outline ./mill --no-daemon --t
 # `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
 path_of() { build_mill show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
 
-# An MCP server's life goes to out/outline/mcp.log: who started it, the server's stderr, what removed which
-# snapshot, and how it ended. The client shows a server's stderr only when it fails to connect, so a
+# What an MCP server runs from, and its log, live outside out/, in a cache directory for this checkout:
+# `./mill clean` removes out/outline whole, and a server whose classes went with it fails on the first
+# class it had not yet loaded.
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/grit-outline/$(printf '%s' "$here" | sha256sum | cut -c1-12)"
+
+# An MCP server's life goes to mcp.log in the cache: who started it, the server's stderr, what removed
+# which snapshot, and how it ended. The client shows a server's stderr only when it fails to connect, so a
 # server that dies later says why nowhere else. The log is cut to its last 2000 lines at each start.
-log="$here/out/outline/mcp.log"
+log="$cache/mcp.log"
 note() { :; }
 if [ "${1:-}" = mcp ]; then
   mkdir -p "${log%/*}"
@@ -64,11 +69,12 @@ fi
 JAVA_HOME=$(cat "$java_home_file")
 export JAVA_HOME
 
-# The MCP server runs from a copy of the classes. A query rebuilds compile.dest/classes in place, and a JVM
-# that has loaded a class of the old build then fails on one it loads from the new. The copy is named for
-# this wrapper's pid, which lives as long as the server; snapshots of dead servers are removed at start.
+# The MCP server runs from a copy of the classes, in the cache. A query rebuilds compile.dest/classes in
+# place, and a JVM that has loaded a class of the old build then fails on one it loads from the new. The
+# copy is named for this wrapper's pid, which lives as long as the server; snapshots of dead servers are
+# removed at start.
 if [ "${1:-}" = mcp ]; then
-  snaps="$here/out/outline/mcp"
+  snaps="$cache/mcp"
   mkdir -p "$snaps"
   for old in "$snaps"/*; do
     [ -d "$old" ] || continue
