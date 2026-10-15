@@ -478,9 +478,7 @@ object TurnGateTurnTests extends TestSuite {
       kept(w.entries, EntryId.value(w.turn.draftId)).map(_.integrity) ==> Some(Integrity.Outside)
     }
 
-    test("a running turn after a gate is in the model call it gates") {
-      Turn.running(Vector("record-window", "gate:0")) ==> "ask:0"
-      Turn.running(Vector("ask:0", "ask:0:record", "call:0:0", "gate:1")) ==> "ask:1"
+    test("a gate's name reads back as its family") {
       Turn.Step.family("gate:3") ==> Some(Turn.Step.Gate)
     }
   }

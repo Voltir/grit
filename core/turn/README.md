@@ -12,7 +12,7 @@ Written against `grit.core`'s seams and `Durable`, never DBOS, so its tests run 
 core's in-memory fakes (`InMemoryDurable`, `InMemoryEntryStore`).
 
 The turn is one flow (`grit.core.durable.Flow`), its files in this order, each reading those
-before it and, of `Turn`, only its names, patches and pins:
+before it and, of `Turn`, only its names and pins:
 
 - **`TurnShown`**: what the model is shown: the tools each call offers, the lines a gate
   adds, the request built from the window and the turn's own entries, the items it shows.
@@ -22,10 +22,10 @@ before it and, of `Turn`, only its names, patches and pins:
   a step's body goes through its one rebinding.
 - **`TurnSteps`**: every other step as a value, with its body; what they act through (`Env`)
   and its implementation, `Turning`; what crosses between them.
-- **`TurnFlow`**: the description: the steps in order, the patch that keeps a failure before
-  the offer, and what follows the reply.
-- **`Turn`**: the body that runs the flow and the readers of a recorded turn (`running`,
-  `rebuilt`), beside the step names, patches and pins.
+- **`TurnFlow`**: the description: the steps in order, which run when, and what follows the
+  reply. Which steps a turn records, and in what order, is read from it alone.
+- **`Turn`**: the body that runs the flow and the readers of a recorded turn, each reading it
+  over the flow (`running`, `rebuilt`), beside the step names and pins.
 
 The other files are the helpers these steps call: an offer (`TurnOffer`), a route
 (`TurnRoute`), topics, a verdict, a summary, a judge, a gate (`TurnGate`), hosted calls

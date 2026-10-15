@@ -199,25 +199,14 @@ final case class TurnPanel(look: Look, budget: Tokens) {
   }
 
   /** One row per step of the turn: recorded ones in the order they ran, with their time
-    * and a bar to scale; while it runs, the running one lit, then the steps every turn
-    * takes after it, dim. A step only some turns take, and each step of a tool loop, shows
-    * once it is recorded or running.
+    * and a bar to scale; while it runs, the running one lit. Which steps follow it is the
+    * turn's flow's to decide, from what each step returns, so none is shown before it runs.
     */
   private def steps(v: TurnView, runningMs: Long): Vector[Block] = {
     val longest = math.max(1L, (v.steps.flatMap(_.ms) :+ runningMs).max)
     def bar(ms: Long): Int = math.max(1, math.round(ms.toDouble / longest * BarCells).toInt)
     val recorded = v.steps.map(_.name).filter(Turn.Step.family(_).nonEmpty)
-    // A loop's record and tools run where its model calls do.
-    def at(name: String): Int = Turn.Step.family(name) match {
-      case Some(Turn.Step.Record) | Some(Turn.Step.Approve) | Some(Turn.Step.Wait) |
-          Some(Turn.Step.Call) =>
-        Turn.Step.all.indexOf(Turn.Step.Ask)
-      case family => family.fold(-1)(Turn.Step.all.indexOf)
-    }
-    val ahead = v.running.toVector.flatMap { now =>
-      now +: Turn.Step.all.drop(at(now) + 1).filterNot(Turn.Step.optional.contains)
-    }
-    val shown = (recorded ++ ahead.filterNot(recorded.contains)).distinct
+    val shown = (recorded ++ v.running.toVector.filterNot(recorded.contains)).distinct
     shown.map { name =>
       val rune = Look.Runes.stepRune(name)
       val label = s"$rune ${name.padTo(NameCols, ' ')}"

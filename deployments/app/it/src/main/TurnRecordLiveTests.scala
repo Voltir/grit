@@ -26,13 +26,24 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        // Every turn's steps, its first model call after its gate.
-        steps.map(_.name) ==> Turn.Step.all.filterNot(Turn.Step.optional.contains).flatMap {
-          case Turn.Step.Ask =>
-            Vector("gate:0", "ask:0")
-          case step => Vector(step)
-        }
-        val own = steps.filter(s => Turn.Step.all.contains(s.name))
+        // An addressed turn that answers at its first model call, after its gate.
+        steps.map(_.name) ==> Vector(
+          "pin-models",
+          "weigh",
+          "route",
+          "offer",
+          "stitched",
+          "classify",
+          "record-topic",
+          "assemble",
+          "record-window",
+          "gate:0",
+          "ask:0",
+          "append",
+          "summarise",
+          "append-summary"
+        )
+        val own = steps.filter(s => Turn.Step.family(s.name).nonEmpty)
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
 

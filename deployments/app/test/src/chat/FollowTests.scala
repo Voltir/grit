@@ -2,6 +2,7 @@ package grit.app.chat
 
 import java.time.Instant
 
+import grit.core.durable.StepRecord
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
@@ -43,12 +44,13 @@ object FollowTests extends TestSuite {
     )
   )
 
-  /** A turn running, having recorded `recorded`. The step names here and in what the screen
-    * is told ("assemble", "record-window", "call:0:0:approve") are grit.turn's (`Turn.Step`,
-    * `Turn.running`), not Follow's: these tests pin that Follow passes them on.
+  /** A turn running, having recorded `recorded`, each with no output. The step the screen is
+    * told is grit.turn's (`Turn.running`), not Follow's: these tests pin that Follow passes it
+    * on. Records with no outputs do not read as a turn of this build, which `Turn.running`
+    * shows in its last record; with none recorded, in `pin-models`.
     */
   private def running(recorded: String*): TurnStatus =
-    TurnStatus.Running(recorded.toVector.map(RecordedStep(_, None, None)))
+    TurnStatus.Running(recorded.toVector.map(n => RecordedStep(StepRecord(n, None, None), None)))
 
   private def all(status: TurnStatus): TurnRef => TurnStatus = _ => status
 
@@ -217,7 +219,7 @@ object FollowTests extends TestSuite {
       val asked = Vector(user(0, 0, "hi"))
       val (assembling, _) = Follow.step(Follow.start, asked, all(running()))
       val (answering, moved) = Follow.step(assembling, asked, all(running("assemble")))
-      moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("record-window")))
+      moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("assemble")))
       Follow.step(answering, asked, all(running("assemble")))._2 ==> Vector.empty
     }
 

@@ -54,7 +54,8 @@ object Follow {
       .filterNot(e => replied.contains(e.turnSeq))
       .map(e => TurnRef(e.conversationId, e.turnSeq))
     val (step, failure) = open.map(t => (t, status(t))) match {
-      case Some((_, TurnStatus.Running(steps))) => (Some(Turn.running(steps.map(_.name))), None)
+      case Some((t, TurnStatus.Running(steps))) =>
+        (Some(Turn.running(t, steps.map(_.record))), None)
       case Some((t, TurnStatus.Finished(outcome))) if !state.reported.contains(t.turnSeq) =>
         (None, Some(t.turnSeq -> outcome))
       case _ => (None, None)

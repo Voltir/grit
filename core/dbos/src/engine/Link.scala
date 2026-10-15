@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.document.DocumentSearch
+import grit.core.durable.StepRecord
 import grit.core.edge.{Desk, DeskError, Desks}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
@@ -182,19 +183,29 @@ object Link {
       }
     } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
 
-  /** `turn`'s recorded steps through `client` ([[Link.steps]]). */
-  private[engine] def steps(client: DBOSClient, turn: TurnRef): Vector[RecordedStep] =
-    try
-      client
-        .listWorkflowSteps(WorkflowId.value(turn.workflowId))
-        .asScala
-        .toVector
-        .sortBy(_.functionId())
-        .flatMap { step =>
-          Option(step.functionName()).map(
-            RecordedStep(_, Option(step.startedAt()), Option(step.completedAt()))
+  /** The steps the workflow `id` recorded, in order, through `client`, as a reader of its
+    * history sees them ([[RecordedStep]]); a step DBOS keeps no name for is left out. Throws
+    * what `client` throws.
+    */
+  private[dbos] def recorded(client: DBOSClient, id: WorkflowId): Vector[RecordedStep] =
+    client
+      .listWorkflowSteps(WorkflowId.value(id))
+      .asScala
+      .toVector
+      .sortBy(_.functionId())
+      .flatMap { step =>
+        Option(step.functionName()).map { name =>
+          val output = Option(step.output()).collect { case s: String => s }
+          RecordedStep(
+            StepRecord(name, output, Option(step.startedAt())),
+            Option(step.completedAt())
           )
         }
+      }
+
+  /** `turn`'s recorded steps through `client` ([[Link.steps]]). */
+  private[engine] def steps(client: DBOSClient, turn: TurnRef): Vector[RecordedStep] =
+    try recorded(client, turn.workflowId)
     catch { case NonFatal(_) => Vector.empty }
 
   /** `turn`'s stream `key` through `client` ([[Link.stream]]). */

@@ -6,43 +6,10 @@ import grit.core.speech.{Outcome, SpeechJson}
 
 import TurnSteps.*
 
-/** The durable turn, as one flow: what [[Turn.body]] runs. Its steps, as [[Turn.Step]] names
-  * them, in order:
-  *   1. `pin-models` — the catalog in force, pinned as the turn's profile, which a rerun runs
-  *      under; recorded by its id.
-  *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
-  *      the turn.
-  *   1. `route` — the pin each role's calls are made under, and the effort laid over the turn's
-  *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn. Recorded with each
-  *      pin by its place in the profile, which each step that makes a call reads back
-  *      ([[Turn.Routed.picked]]).
-  *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
-  *      and of its task questions; recorded by reference, its tool set and prompt by id, which
-  *      each step that needs them reads back ([[TurnOffer.load]]).
-  *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
-  *      ([[TurnSteps.recordFailure]]).
-  *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
-  *      Never fails the turn.
-  *   1. `classify`, `record-topic` — the message placed among its conversation's topics, and that
-  *      placement recorded ([[TurnTopics]]). Never fail the turn.
-  *   1. `assemble` — a fresh window over what came before the turn, at its offer's width.
-  *   1. `record-window` — the window and its queries recorded before the model is called, so an
-  *      edge sees what the model will see, and the loop's limits, once its tools are checked to
-  *      make one toolbox.
-  *   1. The tool loop ([[TurnRound]]), from `ask:0`, until a reply calls no tool or the
-  *      budget's last call.
-  *   1. `record-verdict` — when the classifier was unsure, the model's verdict ([[TurnVerdict]]),
-  *      once the loop has a reply. Never fails the turn.
-  *   1. `append` — the reply recorded as the turn's entry, or as a draft when its root is a
-  *      heard message it drafts a reply to ([[TurnOffer.Root]]).
-  *   1. `judge` — an unprompted turn's draft scored against its thread ([[TurnJudge]]).
-  *   1. `record-speech` — what becomes of a heard-rooted turn's draft
-  *      ([[grit.core.speech.Speech]]), or `Failed` when the turn failed before it. Only a posted
-  *      draft goes on.
-  *   1. `summarise`, `append-summary` — the turn's summary ([[TurnSummary]]), recorded after the
-  *      reply. A failed summary leaves the reply standing.
-  * It passes what the turn did, for logs: its reply and summary are in the store, never in
-  * this string.
+/** The durable turn, as one flow: what [[Turn.body]] runs. Its steps, their order and which
+  * run when, are its description: each part below says what its steps do ([[Turn.Step.all]]
+  * lists them). It passes what the turn did, for logs: its reply and summary are in the store,
+  * never in this string.
   */
 private[turn] object TurnFlow {
 

@@ -206,7 +206,7 @@ object TurnView {
       own
         .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _, _) => t }
         .getOrElse(""),
-      Option.when(running)(Turn.running(steps.map(_.name))),
+      Option.when(running)(Turn.running(turn, steps.map(_.record))),
       timed(steps),
       own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _, _) => q },
       window,

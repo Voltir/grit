@@ -30,7 +30,7 @@ import grit.core.store.{
 import grit.core.tool.ToolSets
 import grit.core.triage.{TriageShadows, TriageStore}
 import grit.core.visibility.{Subject, Visibility}
-import grit.dbos.engine.Build
+import grit.dbos.engine.{Build, Link}
 import grit.dbos.sql.{
   DbConfig,
   Opener,
@@ -216,24 +216,8 @@ object Reader {
       } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
     def steps(id: WorkflowId): Either[StoreError, Vector[StepRecord]] =
-      try {
-        Right(
-          client
-            .listWorkflowSteps(WorkflowId.value(id))
-            .asScala
-            .toVector
-            .sortBy(_.functionId())
-            .flatMap(step =>
-              Option(step.functionName()).map(
-                StepRecord(
-                  _,
-                  Option(step.output()).collect { case s: String => s },
-                  Option(step.startedAt())
-                )
-              )
-            )
-        )
-      } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+      try Right(Link.recorded(client, id).map(_.record))
+      catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
     def workflow(id: WorkflowId): Option[Recorded] =
       try {

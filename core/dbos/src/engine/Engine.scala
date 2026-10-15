@@ -11,7 +11,7 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.document.{DocumentKeeper, DocumentStore, DocumentTerms}
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, StepRecord}
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
@@ -760,7 +760,10 @@ enum TurnStatus {
   case Unknown
 }
 
-/** A step a turn's workflow recorded: its `name`, and when it started and completed, as
-  * far as DBOS kept them.
+/** A step a turn's workflow recorded: what a reader of its history sees of it (`record`), and
+  * when it completed, as far as DBOS kept it.
   */
-final case class RecordedStep(name: String, started: Option[Instant], completed: Option[Instant])
+final case class RecordedStep(record: StepRecord, completed: Option[Instant]) {
+  def name: String = record.name
+  def started: Option[Instant] = record.started
+}

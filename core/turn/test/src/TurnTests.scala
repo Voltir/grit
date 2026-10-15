@@ -14,7 +14,7 @@ import grit.core.context.{
   Shown,
   Window
 }
-import grit.core.durable.{Flows, InMemoryDurable}
+import grit.core.durable.{FlowFixtures, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -58,35 +58,24 @@ object TurnTests extends TestSuite {
 
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
-  private val AllSteps: Vector[String] =
+  /** What an addressed turn that answers at its first model call, its topic sure, records. */
+  private val Recorded: Vector[String] =
     Vector(
       "pin-models",
       "weigh",
       "route",
       "offer",
-      "record-failure",
       "stitched",
       "classify",
       "record-topic",
       "assemble",
       "record-window",
-      "ask",
-      "record-verdict",
+      "gate:0",
+      "ask:0",
       "append",
-      "judge",
-      "record-speech",
       "summarise",
       "append-summary"
     )
-
-  /** The steps every turn takes. */
-  private val Always: Vector[String] = AllSteps.filterNot(Turn.Step.optional.contains)
-
-  /** What a turn records: the steps every turn takes, its first model call after its gate. */
-  private val Recorded: Vector[String] = Always.flatMap {
-    case "ask" => Vector("gate:0", "ask:0")
-    case step => Vector(step)
-  }
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -147,29 +136,40 @@ object TurnTests extends TestSuite {
         Vector(Some(Message.User("Someone said, not to you:\nis the freeze still on?")))
     }
 
-    test("the step names are the recorded ones, and a running turn is in the next") {
-      Turn.Step.all ==> AllSteps
-      Turn.running(Vector.empty) ==> "pin-models"
-      Turn.running(Vector("pin-models")) ==> "weigh"
-      Turn.running(Vector("pin-models", "weigh")) ==> "route"
-      Turn.running(Vector("pin-models", "weigh", "route")) ==> "offer"
-      Turn.running(Vector("pin-models", "offer")) ==> "stitched"
-      Turn.running(Vector("pin-models", "offer", "stitched")) ==> "classify"
-      Turn.running(Vector("classify")) ==> "record-topic"
-      Turn.running(Vector("classify", "record-topic")) ==> "assemble"
-      Turn.running(Vector("assemble")) ==> "record-window"
-      Turn.running(Vector("assemble", "record-window")) ==> "ask:0"
-      // A name that is none of the turn's steps, such as DBOS's own, is skipped.
-      Turn.running(Vector("assemble", "DBOS.patch", "ask:0", "append")) ==> "summarise"
-      Turn.running(AllSteps) ==> "append-summary"
-      // A step only some turns take is never named before it is recorded.
-      Turn.running(Vector("assemble", "record-window", "ask:0")) ==> "append"
-      Turn.running(Vector("ask:0", "record-verdict")) ==> "append"
+    test("the turn's steps are its flow's families, in the order a run first reaches each") {
+      Turn.Step.all ==> Vector(
+        "pin-models",
+        "weigh",
+        "route",
+        "offer",
+        "record-failure",
+        "stitched",
+        "classify",
+        "record-topic",
+        "assemble",
+        "record-window",
+        "gate",
+        "ask",
+        "call",
+        "record-verdict",
+        "append",
+        "judge",
+        "record-speech",
+        "summarise",
+        "append-summary"
+      )
     }
 
-    test("the turn's flow records the steps Step.all names, each first reached in its order") {
-      val outer = Flows.names(TurnFlow.flow).map(_.name).filter(Turn.Step.all.contains)
-      outer ==> Turn.Step.all
+    test(
+      "a running turn is in the step its flow names next, and once every one is recorded, the last"
+    ) {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(store, "hello")
+      runTurn(durable, store, new RecordingProvider, turn) ==> Done
+      val records = durable.history(turn.workflowId).map(FlowFixtures.recorded)
+      (records.indices.map(k => Turn.running(turn, records.take(k))) :+
+        Turn.running(turn, records)) ==> (Recorded :+ "append-summary")
     }
 
     test("each loop step's name reads back as the step, a place's colons kept whole") {
@@ -205,29 +205,30 @@ object TurnTests extends TestSuite {
         Vector(None, None, None, None, None)
     }
 
-    test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
+    test("a tool loop's steps are named from its rounds, and each name reads back as its family") {
       val round1 = TurnLoop.Round.First.next
       val at = new TurnRound.OfRound { def round: TurnLoop.Round = round1 }
       (TurnRound.Names.ask(at), TurnRound.Names.record(at), TurnRound.Names.send(at)) ==>
         ("ask:1", "ask:1:record", "call:1:send")
-      Vector("ask:3", "ask:0:record", "call:1:2", "DBOS.sleep", "call:x:1", "call:1:send:fs:/a")
-        .map(Turn.Step.family) ==>
-        Vector(Some("ask"), Some("ask:record"), Some("call"), None, None, Some("call:send"))
-      val loop = Vector("record-window", "ask:0")
-      Turn.running(loop :+ "ask:0:record") ==> "call:0:0"
-      Turn.running(loop ++ Vector("ask:0:record", "call:0:0")) ==> "ask:1"
-      // Waiting for a person: DBOS records the wait's end as it begins, which is no step, so
-      // the turn is waiting on them; once the wait ends, answered or not, the tool runs.
-      val asked = loop ++ Vector("ask:0:record", "call:0:0:approve", "DBOS.sleep")
-      Turn.running(asked) ==> "call:0:0:wait"
-      Turn.running(asked :+ "DBOS.recv") ==> "call:0:0"
-      Turn.running(asked ++ Vector("DBOS.recv", "call:0:0")) ==> "ask:1"
-      Turn.Step.family("call:0:1:wait") ==> Some("call:wait")
-      Turn.Step.family("call:0:1:approve") ==> Some("call:approve")
-      Turn.running(loop ++ Vector("ask:0:record", "call:0:1", "ask:1")) ==> "append"
-      Turn.running(loop ++ Vector("ask:0:record", "call:0:0", "ask:1", "append")) ==>
-        "summarise"
-      Turn.running(loop ++ Vector("ask:0:record", "call:0:0", "record-verdict")) ==> "append"
+      Vector(
+        "ask:3",
+        "ask:0:record",
+        "call:1:2",
+        "DBOS.sleep",
+        "call:x:1",
+        "call:1:send:fs:/a",
+        "call:0:1:wait",
+        "call:0:1:approve"
+      ).map(Turn.Step.family) ==> Vector(
+        Some("ask"),
+        Some("ask:record"),
+        Some("call"),
+        None,
+        None,
+        Some("call:send"),
+        Some("call:wait"),
+        Some("call:approve")
+      )
     }
 
     test("a wait for a person is named for the call it waits on, once it has ended") {

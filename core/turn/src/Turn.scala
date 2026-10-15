@@ -30,7 +30,9 @@ object Turn {
     */
   val Epoch = "2026-10-15"
 
-  /** The turn's steps, as DBOS records their names, in the order they run. */
+  /** The names of the turn's steps, as DBOS records them; which run, and in what order, is
+    * [[TurnFlow.flow]]'s ([[all]]).
+    */
   object Step {
     val PinModels: String = TurnSteps.Names.pinModels.family
     val Weigh: String = TurnSteps.Names.weigh.family
@@ -50,38 +52,10 @@ object Turn {
     val Summarise: String = TurnSteps.Names.summarise.family
     val AppendSummary: String = TurnSteps.Names.appendSummary.family
 
-    /** The steps only some turns take: `record-verdict`, a turn whose model was asked about
-      * its topic; `judge`, an unprompted turn, and `record-speech`, a turn rooted on a heard
-      * message; `record-failure`, a turn that failed before its offer was made or read.
+    /** The families the turn's flow records, in the order a run first reaches each
+      * ([[Flows.names]]): a tool loop's by their family alone (`gate`, `ask`, `call`).
       */
-    val optional: Vector[String] =
-      Vector(
-        RecordFailure,
-        RecordVerdict,
-        Judge,
-        RecordSpeech
-      )
-
-    val all: Vector[String] =
-      Vector(
-        PinModels,
-        Weigh,
-        Route,
-        Offer,
-        RecordFailure,
-        Stitched,
-        Classify,
-        RecordTopic,
-        Assemble,
-        RecordWindow,
-        Ask,
-        RecordVerdict,
-        Append,
-        Judge,
-        RecordSpeech,
-        Summarise,
-        AppendSummary
-      )
+    val all: Vector[String] = Flows.names(TurnFlow.flow).map(_.name)
 
     /** The family of `ask:n:record`, the tool loop's record of round n's reply that called
       * tools.
@@ -170,40 +144,19 @@ object Turn {
   /** A step of the tool loop, by what its name says. */
   private val Loop = TurnRound.Names.Step
 
-  /** The step a running turn is in, given the names of the steps it has `recorded` (a step
-    * is recorded when it completes). After a loop's `ask:n:record`, its first call,
-    * `call:n:0`; after `call:n:j:approve`, `call:n:j:wait`, a person's time to answer
-    * ([[Step.Wait]]); once the wait has ended, `call:n:j`; after `call:n:j`, the next model
-    * call, `ask:n+1`, which takes far longer than any further tool, and its gate; after
-    * `gate:n`, the model call it gates. Otherwise the next step after the last recorded that
-    * every turn takes ([[Step.optional]] ones only once recorded), `ask:n` counting as
-    * [[Step.Ask]], whose next is `ask:0`. Names that are not the turn's steps are skipped; once
-    * the last step is recorded the turn is finishing, and that step is named.
+  /** The step `turn` is in, given what its workflow has `recorded` (a step is recorded when it
+    * completes): the step [[Flows.read]] names next over the turn's flow, a person's wait by
+    * its label (`call:n:j:wait`, [[Step.Wait]]); once every step is recorded, the last, named
+    * as [[Step.named]] names it. A history that does not read as this build's turn (one of
+    * another epoch) is in its last record, as recorded.
     */
-  def running(recorded: Vector[String]): String = {
-    val own = Step.named(recorded).filter(Step.family(_).nonEmpty)
-    own.lastOption.flatMap(Loop.of) match {
-      case Some(Loop.Record(n)) => Loop.Call(n, 0).name
-      case Some(Loop.Gate(n)) => Loop.Ask(n).name
-      case Some(Loop.Approve(n, j)) => Loop.Wait(n, j).name
-      case Some(Loop.Wait(n, j)) => Loop.Call(n, j).name
-      case Some(Loop.Call(n, _)) => Loop.Ask(n + 1).name
-      case Some(Loop.Send(n, _)) => Loop.Call(n, 0).name
-      case Some(Loop.Dispatch(n, j)) => Loop.Call(n, j).name
-      case Some(Loop.Expire(n, j)) => Loop.Call(n, j).name
-      case Some(Loop.Abandon(n, j)) => Loop.Call(n, j).name
-      case _ =>
-        val done =
-          own.flatMap(Step.family).map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
-        val next = Step.all
-          .drop(done + 1)
-          .find(!Step.optional.contains(_))
-          .orElse(Step.all.lastOption)
-          .getOrElse(Step.Assemble)
-        // The loop is reached at its first round's model call.
-        if (next == Step.Ask) Loop.Ask(0).name else next
+  def running(turn: TurnRef, recorded: Vector[StepRecord]): String =
+    Flows.read(TurnFlow.flow, turn, recorded).map(_.at) match {
+      case Right(Flows.Read.Next(step, _)) => step
+      case Right(Flows.Read.Ended(_, _)) =>
+        Step.named(recorded.map(_.name)).lastOption.getOrElse(Step.PinModels)
+      case Left(_) => recorded.lastOption.fold(Step.PinModels)(_.name)
     }
-  }
 
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`: its flow
     * ([[TurnFlow]]), its model offered the tools its `offer` step recorded from `tooling`'s.

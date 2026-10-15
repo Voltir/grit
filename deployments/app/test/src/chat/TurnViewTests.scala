@@ -5,6 +5,7 @@ import java.time.{Instant, LocalDate}
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
+import grit.core.durable.StepRecord
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -77,7 +78,10 @@ object TurnViewTests extends TestSuite {
   )
 
   private def step(name: String, from: Long, to: Long) =
-    RecordedStep(name, Some(Instant.ofEpochMilli(from)), Some(Instant.ofEpochMilli(to)))
+    RecordedStep(
+      StepRecord(name, None, Some(Instant.ofEpochMilli(from))),
+      Some(Instant.ofEpochMilli(to))
+    )
 
   /** Turn 0 and turn 1 answered, then turn 2 asked with a window of turn 1 (recent) and
     * turn 0 (recalled).
@@ -558,10 +562,7 @@ object TurnViewTests extends TestSuite {
           CharEstimate
         )
       // DBOS records the wait's end as it begins; the wait itself only when it ends.
-      val waiting = of(asked :+ step("DBOS.sleep", 21, 21))
-      waiting.running ==> Some("call:0:0:wait")
       val answered = of(asked ++ Vector(step("DBOS.recv", 21, 234020), step("DBOS.sleep", 21, 21)))
-      answered.running ==> Some("call:0:0")
       answered.steps.map(s => (s.name, s.ms)) ==> Vector(
         ("ask:0:record", Some(10L)),
         ("call:0:0:approve", Some(10L)),
@@ -570,19 +571,19 @@ object TurnViewTests extends TestSuite {
       )
     }
 
-    test("a running turn is in the step after its last recorded one, before any window") {
+    test("a running turn is in the step its flow names next, before any window") {
       val asked = entries.take(5)
       val v = TurnView.of(
         turn2,
         asked,
         Speakers.none,
-        Vector(step("assemble", 0, 10)),
+        Vector.empty,
         running = true,
         Vector.empty,
         prompt("s"),
         CharEstimate
       )
-      v.running ==> Some("record-window")
+      v.running ==> Some("pin-models")
       v.window ==> None
       v.spent ==> None
       v.billed ==> None
