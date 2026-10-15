@@ -6,14 +6,14 @@ import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.ToolUse
 
 import utest.*
-import TurnLoop.{Budget, Next, Pending, Round}
+import TurnLoop.{Next, Pending, Round, Rounds}
 
 /** What [[TurnLoop]] decides, as tables: a turn's budget, what it does after each reply, and
   * what each call is told. The steps its rounds make are [[TurnRoundTests]]'.
   */
 object TurnLoopTests extends TestSuite {
 
-  private def budget(n: Int): Budget = Budget.of(n) match {
+  private def budget(n: Int): Rounds = Rounds.of(n) match {
     case Right(b) => b
     case Left(why) => throw new java.lang.AssertionError(why)
   }
@@ -37,18 +37,18 @@ object TurnLoopTests extends TestSuite {
 
   val tests = Tests {
     test("a budget is at least 2 calls") {
-      Budget.of(1).isLeft ==> true
-      Budget.of(2).map(_.calls) ==> Right(2)
+      Rounds.of(1).isLeft ==> true
+      Rounds.of(2).map(_.calls) ==> Right(2)
     }
 
     test("an allotment scales the deployment's budget, keeps it, or makes it the fewest, two") {
       import grit.core.allot.Allotment.Calls
       val thrice = Calls.Scaled.of(3).getOrElse(throw new java.lang.AssertionError())
       Vector[Calls](Calls.Default, thrice, Calls.Fewest).map(
-        Budget.allotted(budget(5), _).calls
+        Rounds.allotted(budget(5), _).calls
       ) ==>
         Vector(5, 15, 2)
-      Budget.Fewest.calls ==> 2
+      Rounds.Fewest.calls ==> 2
     }
 
     test("next") {

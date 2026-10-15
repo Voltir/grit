@@ -280,7 +280,7 @@ private[turn] object TurnJournal {
         for {
           o <- v.objOpt.toRight("limits: expected an object")
           calls <- o.get("budget").flatMap(_.numOpt).toRight("limits: no budget")
-          budget <- TurnLoop.Budget.of(calls.toInt).left.map(e => s"limits: $e")
+          budget <- TurnLoop.Rounds.of(calls.toInt).left.map(e => s"limits: $e")
           within <- o.get("answer-within").flatMap(_.numOpt).toRight("limits: no answer-within")
         } yield TurnRound.Limits(
           budget,

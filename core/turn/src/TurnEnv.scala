@@ -181,7 +181,7 @@ final case class TurnTooling[C^](
     operator: Toolbox[C],
     hosted: Vector[Tool.Offered],
     jot: Jot^,
-    budget: TurnLoop.Budget,
+    budget: TurnLoop.Rounds,
     answerWithin: FiniteDuration = TurnTools.AnswerWithin,
     worksIn: Vector[WorksIn] = Vector.empty,
     reaches: Vector[Reaches] = Vector.empty,

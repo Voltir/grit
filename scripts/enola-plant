@@ -29,6 +29,8 @@ Where the plants go is read from the tree, so a layout change needs no edit here
   process   the process grep: `new ProcessBuilder` with no import in every production source
             root but grit.host's (the outline tool's test fixture's included: a `src` root),
             each of which it must list.
+  paths     the component path check: a folder that does not exist added to the last
+            component's `match` in enola-intent.yaml, restored after the run.
 Each catch is read from its own part of the law's output: a rule from enola's `constraint
 <id> violated`, every other kind from the lines under its check's heading.
 
@@ -198,6 +200,24 @@ def plant_process():
     return files
 
 
+PATH = PLANT + "/missing"  # the folder the paths plant names, which no checkout holds
+
+
+def plant_paths():
+    """Adds PATH to the last component's `match` in enola-intent.yaml's text; returns the text
+    as it was, for restoring, and the line the check must print."""
+    with open("enola-intent.yaml") as f:
+        text = f.read()
+    with open("enola-intent.yaml") as f:
+        last = yaml.safe_load(f)["components"][-1]["name"]
+    at = text.index("\nrules:")
+    head, tail = text[:at], text[at:]
+    m = list(re.finditer(r"match: \[", head))[-1]
+    with open("enola-intent.yaml", "w") as f:
+        f.write(head[: m.end()] + f'"{PATH}", ' + head[m.end():] + tail)
+    return text, f"{last}: {PATH}"
+
+
 def block(output, heading):
     """The lines indented two spaces under the line containing `heading`, stripped."""
     lines = output.splitlines()
@@ -227,12 +247,14 @@ def main():
         print(out[-3000:])
         fail("the law fails on the clean tree; plants could not be told apart from what is there")
     ok = True
+    intent_text = None
     try:
         ids = plant_rules(intent)
         cycle = plant_cycle()
         names = plant_names()
         classes = plant_unruled()
         files = plant_process()
+        intent_text, path = plant_paths()
         rc, out = law()
         clean()
         ok &= rc != 0
@@ -243,8 +265,12 @@ def main():
                      {path for heading, path in names.items() if path in block(out, heading)})
         ok &= report("unruled grep", classes, block(out, "no rule in enola-intent.yaml names"))
         ok &= report("process grep", files, block(out, "Only grit.host may start a process"))
+        ok &= report("paths check", {path}, block(out, "A component names a path that is no folder"))
     finally:
         clean()
+        if intent_text is not None:
+            with open("enola-intent.yaml", "w") as f:
+                f.write(intent_text)
     rc, out = law()
     print("law on the clean tree: " + ("passed" if rc == 0 else "FAILED"))
     if rc != 0:

@@ -290,4 +290,7 @@ object `package` extends ScalaModule {
 
 It names `grit.kit.*`, core's types and each extension's entry object (`SlackEdge`,
 `McpEdge`, `Digest`, `Reminders`), and runs its `Deployment` with `Kit.serve` or `Kit.catchUp`
-([`kit/README.md`](../kit/README.md)).
+([`kit/README.md`](../kit/README.md)). The few types a declaration takes from past the kit
+(`Rounds`, `ShadowVariant`, `TriageQuestions`, `Seed`) are exported from
+`grit.kit.deployment`. That surface, folder by folder, is the `deployment-surface` component
+in [`enola-intent.yaml`](../enola-intent.yaml).

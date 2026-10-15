@@ -1048,13 +1048,13 @@ object Main {
   /** The turn's budget of model calls from `GRIT_TOOL_ROUNDS`, a whole number of at least 2;
     * [[DefaultToolRounds]] when unset.
     */
-  private[main] def toolRounds(env: Map[String, String]): Either[String, TurnLoop.Budget] =
+  private[main] def toolRounds(env: Map[String, String]): Either[String, TurnLoop.Rounds] =
     env.get(ToolRoundsVar) match {
-      case None => TurnLoop.Budget.of(DefaultToolRounds)
+      case None => TurnLoop.Rounds.of(DefaultToolRounds)
       case Some(raw) =>
         raw.trim.toIntOption
           .toRight(s"$ToolRoundsVar is not a whole number")
-          .flatMap(TurnLoop.Budget.of(_).left.map(why => s"$ToolRoundsVar: $why"))
+          .flatMap(TurnLoop.Rounds.of(_).left.map(why => s"$ToolRoundsVar: $why"))
     }
 
   private val ToolsVar = "GRIT_TOOLS"

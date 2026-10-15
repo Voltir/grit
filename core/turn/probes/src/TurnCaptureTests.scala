@@ -42,14 +42,14 @@ object TurnCaptureTests extends TestSuite {
 
   /** The planted breach: [[TurnTooling]]'s shape, its hosted tools allowed to capture. */
   private val breach =
-    """final case class Breached[C^](tools: Toolbox[C], operator: Toolbox[C], hosted: Vector[Tool.Offered^], jot: Jot^, budget: TurnLoop.Budget)
+    """final case class Breached[C^](tools: Toolbox[C], operator: Toolbox[C], hosted: Vector[Tool.Offered^], jot: Jot^, budget: TurnLoop.Rounds)
       |""".stripMargin
 
   /** A toolbox that edits through `e`, handed to `tooling` as the tools of a turn whose own
     * tools act through `ws` alone.
     */
   private val editing =
-    """def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): TurnTooling[{ws}]^{j} =
+    """def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Rounds): TurnTooling[{ws}]^{j} =
       |  TurnTooling(box, Toolbox.Empty, Vector.empty, j, b)
       |""".stripMargin
 
@@ -57,7 +57,7 @@ object TurnCaptureTests extends TestSuite {
     * which must act through nothing here.
     */
   private def smuggled(tooling: String) =
-    s"""def offered(e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[$tooling[{}]^{j, e}] =
+    s"""def offered(e: Edits^, j: Jot^, b: TurnLoop.Rounds): Option[$tooling[{}]^{j, e}] =
       |  Toolbox.of().toOption.map(box => $tooling(box, Toolbox.Empty, Vector(writes(e)), j, b))
       |""".stripMargin
 
@@ -95,7 +95,7 @@ object TurnCaptureTests extends TestSuite {
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
   private val reading =
-    """def reading(ws: Workspace^, e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling[{ws, e}]^{j}] =
+    """def reading(ws: Workspace^, e: Edits^, j: Jot^, b: TurnLoop.Rounds): Option[TurnTooling[{ws, e}]^{j}] =
       |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Toolbox.Empty, Vector(spec.hosted), j, b))
       |""".stripMargin
 

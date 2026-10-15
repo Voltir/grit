@@ -18,7 +18,7 @@ import grit.core.store.{EntryStore, Tx}
 import grit.core.tool.{Bound, ToolName}
 import grit.core.visibility.{Integrity, Subject}
 
-import TurnLoop.{Budget, Next, Pending, Round}
+import TurnLoop.{Next, Pending, Round}
 import TurnTools.{Kind, Settled, Slot}
 import TurnJournal.given
 
@@ -111,7 +111,7 @@ private[turn] object TurnRound {
       routed: Turn.Routed,
       seen: Window,
       asked: Option[TurnTopics.Classification],
-      budget: Budget,
+      budget: TurnLoop.Rounds,
       answerWithin: FiniteDuration
   )
 
@@ -141,7 +141,7 @@ private[turn] object TurnRound {
     * call that asks a person first waits for them. Recorded with the turn's window, so a
     * rerun keeps the limits its turn started under.
     */
-  final case class Limits(budget: Budget, answerWithin: FiniteDuration)
+  final case class Limits(budget: TurnLoop.Rounds, answerWithin: FiniteDuration)
 
   /** What a round whose reply called tools kept: the reply, as `reply`, and what each of its
     * calls is, in order, as the run that kept it read them.

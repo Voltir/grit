@@ -185,7 +185,7 @@ object TurnCaptureTests extends TestSuite {
       Toolbox.Empty,
       Vector.empty,
       engine.jot,
-      right(TurnLoop.Budget.of(4))
+      right(TurnLoop.Rounds.of(4))
     )
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =

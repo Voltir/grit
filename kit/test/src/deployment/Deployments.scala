@@ -74,7 +74,7 @@ object Deployments {
       worksIn = worksIn,
       plugins = plugins,
       policy = Policy.one(assigned, assigned, assigned, assigned),
-      offer = Offer(tools, TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
+      offer = Offer(tools, TurnLoop.Rounds.of(4).getOrElse(sys.error("rounds"))),
       assembly = Assembly.Linear(Tokens(1000)),
       topics = topics,
       lifecycle = LifecycleSettings.Default,

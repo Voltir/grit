@@ -180,5 +180,21 @@ if [ "$rc" -eq 3 ]; then
   echo "  tools/enola baseline pin mcp-arch.yaml" >&2
 fi
 [ "$rc" -eq 0 ] || failed=1
+# TRAP: lint's "matches nothing" sees a component none of whose paths match, not one path of
+# many mistyped: the component still matches through the others, and loses that folder
+# silently. Every path a component names (a folder, or a folder's `/**`) must be a folder.
+missing=$(python3 -c '
+import os, yaml
+for c in yaml.safe_load(open("enola-intent.yaml"))["components"]:
+    for p in c["match"]:
+        folder = p[: -len("/**")] if p.endswith("/**") else p
+        if not os.path.isdir(folder):
+            print("  " + c["name"] + ": " + p)
+')
+if [ -n "$missing" ]; then
+  echo "A component names a path that is no folder, so the rules naming it miss that code:" >&2
+  printf '%s\n' "$missing" >&2
+  failed=1
+fi
 
 exit "$failed"

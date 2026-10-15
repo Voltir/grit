@@ -137,7 +137,7 @@ private[turn] object TurnSteps {
         .flatMap(o => TurnShown.offered(TurnOffer.toolbox(tooling, o), asked))
         .map(_ =>
           TurnRound.Limits(
-            TurnLoop.Budget.allotted(tooling.budget, routed.calls),
+            TurnLoop.Rounds.allotted(tooling.budget, routed.calls),
             tooling.answerWithin
           )
         )

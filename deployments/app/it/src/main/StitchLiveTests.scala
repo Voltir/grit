@@ -53,7 +53,7 @@ object StitchLiveTests extends TestSuite {
         worksIn = Vector.empty,
         plugins = Vector.empty,
         policy = Policy.one(assigned, assigned, assigned, assigned),
-        offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
+        offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Retrieval(Tokens(8000), Tokens(2000)),
         topics = Topics.Stub,
         lifecycle = LifecycleSettings.Default,

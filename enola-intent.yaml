@@ -127,6 +127,21 @@ components:
   - {name: kit-environment, kind: module, match: ["kit/src/environment", "kit/src/environment/**"]}
   # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
   # and edge generic: GitHub's names are a package a deployment uses, never one they import.
+  # The deployment surface: what a deployment outside grit names (docs/extending.md, "Outside
+  # grit"). Core, the kit (which exports the few types its signatures take from past it), and
+  # each extension's entry folders. No rule names it: code outside `grit` is held to it by the
+  # compiler, since what is past it is private[grit] (the kit's BoundaryTests probe), and an
+  # in-repo deployment is grit's own. Its one home is here, and lint's "matches nothing" check
+  # keeps every path in it real.
+  - name: deployment-surface
+    kind: module
+    match: ["core/core/src", "core/core/src/**", "kit/src", "kit/src/**",
+            "extensions/slack/src/edge", "extensions/slack/src/edge/**", "extensions/slack/src/event", "extensions/slack/src/event/**",
+            "extensions/mcp/src/client", "extensions/mcp/src/client/**", "extensions/mcp/src/edge", "extensions/mcp/src/edge/**",
+            "extensions/mcp/src/scope", "extensions/mcp/src/scope/**", "extensions/mcp/src/github", "extensions/mcp/src/github/**",
+            "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
+            "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
+            "extensions/knowledge/src/github", "extensions/knowledge/src/github/**"]
   - name: mcp-generic
     kind: module
     match: ["extensions/mcp/src/wire", "extensions/mcp/src/wire/**", "extensions/mcp/src/scope", "extensions/mcp/src/scope/**",

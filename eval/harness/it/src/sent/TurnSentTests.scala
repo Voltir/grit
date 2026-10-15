@@ -169,7 +169,7 @@ object TurnSentTests extends TestSuite {
           Toolbox.Empty,
           Vector.empty,
           engine.jot,
-          right(TurnLoop.Budget.of(4))
+          right(TurnLoop.Rounds.of(4))
         )
       ),
       nothing,

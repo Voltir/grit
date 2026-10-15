@@ -905,8 +905,8 @@ object TurnFixtures {
   }
 
   /** `calls` model calls as a turn's budget. */
-  def budget(calls: Int): TurnLoop.Budget =
-    TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
+  def budget(calls: Int): TurnLoop.Rounds =
+    TurnLoop.Rounds.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** An entry store that dies, once, on the first insert of an entry `when` picks. */
   final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean) extends EntryStore {

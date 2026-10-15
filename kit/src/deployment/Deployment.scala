@@ -34,11 +34,12 @@ import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading}
 import grit.core.visibility.{Compartment, Label, Visibility}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
+import grit.models.JevClassifier
 import grit.tools.Names
 import grit.turn.{TurnLoop, TurnVerdict}
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
-final case class Offer(tools: Offered, rounds: TurnLoop.Budget)
+final case class Offer(tools: Offered, rounds: TurnLoop.Rounds)
 
 /** Which tools a turn's model is offered. */
 enum Offered {
@@ -76,6 +77,14 @@ enum Topics {
 
   /** By none, for `reason`: every message after a conversation's first stays where it is. */
   case Off(reason: String)
+}
+
+object Topics {
+
+  /** The service Jev's states go to, `service:jev`: the party a deployment clears when its
+    * topics are Jev's.
+    */
+  val JevService: Service = JevClassifier.Service
 }
 
 /** A review a deployment declares ([[Deployment.of]]): `reviewing`; `gate`, the gate of the
@@ -369,8 +378,8 @@ object Deployment {
     * that holds.
     */
   def of(
-      edges: Vector[ServedEdge],
-      worksIn: Vector[WorksIn],
+      edges: Vector[ServedEdge] = Vector.empty,
+      worksIn: Vector[WorksIn] = Vector.empty,
       plugins: Vector[Plugin],
       policy: Policy,
       offer: Offer,

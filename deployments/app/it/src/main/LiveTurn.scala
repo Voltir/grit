@@ -298,7 +298,7 @@ object LiveTurn {
         ),
         Vector.empty
       )
-    val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
+    val budget = TurnLoop.Rounds.of(5).fold(why => sys.error(why), identity)
     val hosted = if (all) Coding.hosted else Coding.readOnlyHosted
     val none = Toolbox.of[{}]().fold(d => sys.error(d.toString), identity)
     launch(

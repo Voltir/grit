@@ -15,7 +15,7 @@ import grit.core.tool.{Bound, ToolSet}
 import grit.core.visibility.Integrity
 
 import utest.*
-import TurnLoop.{Budget, Pending, Round}
+import TurnLoop.{Pending, Round, Rounds}
 
 /** [[TurnRound.flow]] over a scripted [[TurnRound.Env]], run on [[InMemoryDurable]]: the steps
   * a turn's rounds record, in order, and what its loop comes to.
@@ -24,7 +24,7 @@ object TurnRoundTests extends TestSuite {
   import TurnFixtures.*
   import TurnJournal.given
 
-  private def budget(n: Int): Budget = Budget.of(n) match {
+  private def budget(n: Int): Rounds = Rounds.of(n) match {
     case Right(b) => b
     case Left(why) => throw new java.lang.AssertionError(why)
   }

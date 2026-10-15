@@ -52,7 +52,7 @@ object McpEdgeLiveTests extends TestSuite {
         worksIn = Vector(WorksIn(Place.under(Namespace.Task, Vector.empty), Github)),
         plugins = Vector.empty,
         policy = Policy.one(assigned, assigned, assigned, assigned),
-        offer = Offer(Offered.Read, TurnLoop.Budget.of(2).getOrElse(sys.error("rounds"))),
+        offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(4000)),
         topics = Topics.Off("no classifier here"),
         lifecycle = LifecycleSettings.Default,

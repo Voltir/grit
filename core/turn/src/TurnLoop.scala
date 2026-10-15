@@ -16,23 +16,23 @@ object TurnLoop {
   /** How many model calls one turn may make. The last is made with tools off, so a turn
     * that keeps calling tools still ends in text.
     */
-  final case class Budget private (calls: Int)
+  final case class Rounds private (calls: Int)
 
-  object Budget {
+  object Rounds {
 
     /** `calls` as a budget; `Left` when it is under 2, which leaves no call with tools on. */
-    def of(calls: Int): Either[String, Budget] =
-      if (calls >= 2) Right(Budget(calls))
+    def of(calls: Int): Either[String, Rounds] =
+      if (calls >= 2) Right(Rounds(calls))
       else Left(s"a turn's budget is at least 2 model calls, not $calls")
 
     /** Two calls: the fewest a turn makes, the first with tools on. */
-    val Fewest: Budget = Budget(2)
+    val Fewest: Rounds = Rounds(2)
 
     /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls. */
-    def allotted(default: Budget, calls: Allotment.Calls): Budget = calls match {
+    def allotted(default: Rounds, calls: Allotment.Calls): Rounds = calls match {
       case Allotment.Calls.Default => default
       // Scaled is at least once by construction, so this is at least `default`, at least 2.
-      case Allotment.Calls.Scaled(times) => Budget(default.calls * times)
+      case Allotment.Calls.Scaled(times) => Rounds(default.calls * times)
       case Allotment.Calls.Fewest => Fewest
     }
   }
@@ -99,7 +99,7 @@ object TurnLoop {
     * settled, each run, or each refused with [[CutOff]] when the reply stopped at max
     * tokens; then the next call is made.
     */
-  def next(budget: Budget, round: Round, reply: Message.Assistant): Next = {
+  def next(budget: Rounds, round: Round, reply: Message.Assistant): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
     val last = budget.calls - 1
     if (calls.isEmpty || round >= last) {
@@ -123,7 +123,7 @@ object TurnLoop {
   /** Whether `round`'s call offers tools the model may call: [[ToolUse.Off]] for the
     * budget's last call and any after it, [[ToolUse.Auto]] before.
     */
-  def use(budget: Budget, round: Round): ToolUse =
+  def use(budget: Rounds, round: Round): ToolUse =
     if (round >= budget.calls - 1) ToolUse.Off else ToolUse.Auto
 
   /** What the model is told on a call made with tools off, after everything else it is

@@ -114,7 +114,7 @@ object RebuildTests extends TestSuite {
       Toolbox.Empty,
       Vector.empty,
       engine.jot,
-      right(TurnLoop.Budget.of(2))
+      right(TurnLoop.Rounds.of(2))
     )
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
