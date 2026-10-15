@@ -30,7 +30,8 @@ object Flows {
 
   /** The families `flow` can record, in the order a run first reaches each, each listed once. A
     * wait is listed by its label, a taken patch by its marker, and a program by its family
-    * alone, as keyed and never every run's.
+    * alone, as keyed and never every run's; what no step records ([[Flow.unrecorded]]) is not
+    * listed.
     */
   def names(flow: Flow[?, ?, ?, ?]): Vector[Family] = {
     val reached = Flow.families(flow, true)
@@ -90,5 +91,10 @@ object Flows {
 
     /** The `at`-th step recorded no output: it threw. */
     case Unrecorded(at: Int, name: String)
+
+    /** From the `at`-th step on, the flow follows a computation no step records
+      * ([[Flow.unrecorded]]), so its history cannot be read past it.
+      */
+    case Opaque(at: Int)
   }
 }

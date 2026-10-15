@@ -104,6 +104,13 @@ object Flow {
   ): Flow[R, I, Nothing, O] =
     Program(family, body)
 
+  /** `f` over its input, computed again by every run and never recorded; a read stops at it
+    * ([[Flows.Unreadable.Opaque]]). For a computation over the environment whose result no
+    * step keeps yet.
+    */
+  private[grit] def unrecorded[R, I, O](f: (r: R^) -> I ->{r} O): Flow[R, I, Nothing, O] =
+    Unrecorded[R, I, O](f)
+
   extension [R, I, E, O](f: Flow[R, I, E, O]) {
 
     /** `f`, then `next` over what `f` passed. */
@@ -138,11 +145,12 @@ object Flow {
       case Recv(label, _, _) => Vector(Flows.Family(label.family, label.keyed, every))
       case Over(g, _) => families(g, every)
       case Program(family, _) => Vector(Flows.Family(family, true, false))
+      case Unrecorded(_) => Vector.empty
     }
 
   /** Whether `f` may end early. */
   private def ends(f: Flow[?, ?, ?, ?]): Boolean = f match {
-    case One(_) | Pass() | Attempt(_) | Recv(_, _, _) | Program(_, _) => false
+    case One(_) | Pass() | Attempt(_) | Recv(_, _, _) | Program(_, _) | Unrecorded(_) => false
     case MayEnd(_) => true
     case AndThen(first, next) => ends(first) || ends(next)
     case Mapped(g, _) => ends(g)
@@ -404,6 +412,17 @@ object Flow {
         at: At,
         history: Vector[StepRecord]
     ): Either[Unreadable, Walk[E, O]] = f.walk(in, at, history)
+  }
+
+  private final case class Unrecorded[R, I, O](f: (r: R^) -> I ->{r} O)
+      extends Flow[R, I, Nothing, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, O] =
+      Right(f(env)(in))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, O]] = Left(Unreadable.Opaque(at.step))
   }
 
   private final case class Program[R, I, O](

@@ -69,6 +69,12 @@ object DurableFlowNamesTests extends TestSuite {
         Vector(Family("a", false, true), Family("b", false, false))
     }
 
+    test("what no step records lists nothing, and what follows it is every run's") {
+      val unkept = Flow.unrecorded[Env, String, String](r => in => r.tag + in)
+      Flows.names(Flow.step(a).andThen(unkept).andThen(Flow.step(b))) ==>
+        Vector(Family("a", false, true), Family("b", false, true))
+    }
+
     test("a flow over a larger environment lists what the flow lists") {
       Flows.names(stopping.andThen(Flow.step(b)).over[Wide](w => w.inner)) ==>
         Vector(Family("item", true, true), Family("b", false, false))
