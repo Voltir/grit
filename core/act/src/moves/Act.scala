@@ -14,7 +14,7 @@ import grit.act.phase.{
   Waiting
 }
 import grit.core.act.{Acting, Allowance, Called, MoveError, MoveName, Posed}
-import grit.core.classify.{Answers, AnswersJson, Ask, ClassifierError, Request}
+import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Step, StepName}
@@ -233,15 +233,14 @@ private[moves] object Act {
             env.classifier.at(routed) match {
               case Left(u) => uncleared(u, "no classifier", j.digest)
               case Right(asked) =>
-                Classifying.answers(asked, j.request, env.clock) match {
+                Classifying.replied(asked, j.request, env.clock) match {
                   case Left(error) =>
                     AskMade.Refused(AskMade.Kind.Model, unanswered(error), j.digest)
-                  case Right(answers) =>
-                    val call =
-                      classified(env.records, j.request, answers, env.classifier.upstream)
-                    j.questions.read(answers.answers) match {
+                  case Right(reply) =>
+                    val call = classified(env.records, j.request, reply, env.classifier.upstream)
+                    reply.answers.flatMap(a => j.questions.read(a.answers).map(_ => a)) match {
                       case Left(error) => AskMade.Unjudged(j.digest, unanswered(error), call)
-                      case Right(_) =>
+                      case Right(answers) =>
                         val written =
                           ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
                         AskMade.Judged(j.digest, written, at, call)
@@ -455,16 +454,18 @@ private[moves] object Act {
       Asking.admits(allowance, records.spending, clock.now()).map((_, Tx.floor(tx), Routed.of))
     )
 
-  /** The cost of a classifier's call, answering `answers` to `request`, served by `upstream`. */
+  /** The cost of a classifier's call, replying `reply` to `request`, served by `upstream`:
+    * charged however its answers read.
+    */
   private[moves] def classified(
       records: MoveRecords,
       request: Request,
-      answers: Answers,
+      reply: Reply,
       upstream: Option[String]
   ): AskMade.Call =
     AskMade.Call(
-      answers.model,
-      answers.usage,
+      reply.model,
+      reply.usage,
       records.estimator.system(Request.json(request).render()),
       upstream
     )

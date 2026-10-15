@@ -24,15 +24,26 @@ trait Classifier extends caps.SharedCapability {
     * or a score weighs each level, is [[Ask.read]]'s to say. [[ask]] is the two together.
     */
   final def answers(request: Request): Either[ClassifierError, Answers] =
-    answer(request.state, request.questions).flatMap { a =>
-      Ask
-        .counted(request.questions, a.answers)
-        .orElse(Ask.kinds(request.questions, a.answers))
-        .toLeft(a)
+    replied(request).flatMap(_.answers)
+
+  /** The classifier's reply to `request`, what it consumed and the model that answered kept
+    * however its answers read: `Left` only when there was no reply. What a call's cost is
+    * read from; [[answers]] is its answers.
+    */
+  final def replied(request: Request): Either[ClassifierError, Reply] =
+    answer(request.state, request.questions).map { a =>
+      Reply(
+        a.usage,
+        a.model,
+        Ask
+          .counted(request.questions, a.answers)
+          .orElse(Ask.kinds(request.questions, a.answers))
+          .toLeft(a)
+      )
     }
 
   /** One answer per question, in the questions' order and of each one's kind. Called only by
-    * [[answers]], with a request's questions, never empty.
+    * [[replied]], with a request's questions, never empty.
     */
   protected def answer(
       state: ujson.Value,
@@ -44,6 +55,20 @@ trait Classifier extends caps.SharedCapability {
   * that answered.
   */
 final case class Answers(answers: Vector[Answer], usage: Usage, model: String)
+
+/** A classifier's reply: what its request consumed, the model that answered, and its
+  * `answers`, `Unreadable` when they are not one per question, in the questions' order and of
+  * each one's kind ([[Classifier.answers]]).
+  */
+final case class Reply private[classify] (
+    usage: Usage,
+    model: String,
+    answers: Either[ClassifierError, Answers]
+) {
+
+  /** This reply, its answers' failure, when they do not read, in `f`'s words. */
+  def failing(f: ClassifierError -> ClassifierError): Reply = copy(answers = answers.left.map(f))
+}
 
 /** A typed answer, what the request consumed, and the model that answered. */
 final case class Answered[T](value: T, usage: Usage, model: String)

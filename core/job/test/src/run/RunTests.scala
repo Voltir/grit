@@ -818,6 +818,17 @@ object RunTests extends TestSuite {
       )
     }
 
+    test("a judgment whose reply holds too few answers is Model, the classifier's cost recorded") {
+      val short = Answers(Triaged.answers("docs").take(1), Judged, "test/judge")
+      val w = new World(judged = Vector(Right(short)))
+      val turn = w.started(w.declared("standup"))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(judging(new Seen))))
+      (w.reply(turn), w.ledger.rows.map(r => EntryId.value(r._1))) ==> (
+        Some("Model(the classifier's answers do not read: 1 answers to 2 questions)"),
+        Vector(s"move:${WorkflowId.value(turn.workflowId)}:j")
+      )
+    }
+
     test(
       "a judgment whose state changed on a rerun is Diverged, its recorded call's cost recorded once"
     ) {

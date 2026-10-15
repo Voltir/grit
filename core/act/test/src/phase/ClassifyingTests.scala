@@ -29,7 +29,7 @@ object ClassifyingTests extends TestSuite {
     ) {
       val classifier = new Judging(Vector(down))
       val clock = new SetClock(start)
-      val got = Classifying.answers(classifier, request, clock)
+      val got = Classifying.replied(classifier, request, clock).flatMap(_.answers)
       (got, classifier.calls, clock.at) ==>
         (
           Left(ClassifierError.Unavailable("upstream down (after 3 tries)")),
@@ -41,21 +41,21 @@ object ClassifyingTests extends TestSuite {
     test("a classifier back on its second try answers, after the clock slept 2 s") {
       val classifier = new Judging(Vector(down, Right(yes)))
       val clock = new SetClock(start)
-      val got = Classifying.answers(classifier, request, clock)
+      val got = Classifying.replied(classifier, request, clock).flatMap(_.answers)
       (got, classifier.calls, clock.at) ==> (Right(yes), 2, start.plusSeconds(2))
     }
 
     test("an unreadable reply is not asked again, and names no tries") {
       val classifier = new Judging(Vector(Left(ClassifierError.Unreadable("garbled")), Right(yes)))
       val clock = new SetClock(start)
-      val got = Classifying.answers(classifier, request, clock)
+      val got = Classifying.replied(classifier, request, clock).flatMap(_.answers)
       (got, classifier.calls, clock.at) ==> (Left(ClassifierError.Unreadable("garbled")), 1, start)
     }
 
     test("unreadable after an unavailable try is the last failure, naming both tries") {
       val classifier = new Judging(Vector(down, Left(ClassifierError.Unreadable("garbled"))))
       val clock = new SetClock(start)
-      val got = Classifying.answers(classifier, request, clock)
+      val got = Classifying.replied(classifier, request, clock).flatMap(_.answers)
       (got, classifier.calls, clock.at) ==>
         (Left(ClassifierError.Unreadable("garbled (after 2 tries)")), 2, start.plusSeconds(2))
     }

@@ -105,6 +105,18 @@ object SettleTests extends TestSuite {
       rows(t.workflowId) ==> Right(Vector())
     }
 
+    test(
+      "a settle's classifier reply holding no answer is unreadable, its call still in the ledger"
+    ) {
+      val w = new World
+      val _ = w.turn("deploy staging?", 0)
+      val id = w.question.workflowId
+      new InMemoryDurable().run(id)(w.body(new Weigher(Some(Vector())), 90)) ==>
+        "judged: unanswered: unreadable: 0 answers to 1 questions"
+      w.ledger.of(id)(using TestTx.fake).map(_.map(r => EntryId.value(r.entry))) ==>
+        Right(Vector(s"move:${WorkflowId.value(id)}:settle"))
+    }
+
     test("an absent classifier is a verdict too, and the same quiet stretch is not asked again") {
       val w = new World
       val t = w.turn("hello", 0)

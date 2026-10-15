@@ -7,6 +7,7 @@ import grit.core.classify.{
   Ask,
   ClassifierError,
   ClearedClassifier,
+  Reply,
   Request,
   StateJson
 }
@@ -91,19 +92,19 @@ object Judging {
             case Pose.Asking(cleared, routed, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val allowance: Allowance = Allowance.Daily(budget(r))
-              val answers: Either[ClassifierError, Answers] =
+              val reply: Either[ClassifierError, Reply] =
                 Act.admission(env.records, env.db, env.clock, allowance, p.charged.subject) match {
                   case Left(e) =>
                     Left(
                       ClassifierError.Unavailable(s"the day's spend is unread: ${Act.describe(e)}")
                     )
                   case Right((false, _, _)) => Left(ClassifierError.Unavailable(Act.Capped))
-                  case Right((true, _, _)) => cleared.asking(routed).answers(request)
+                  case Right((true, _, _)) => cleared.asking(routed).replied(request)
                 }
-              val calls = answers.toOption.toVector.map(a =>
+              val calls = reply.toOption.toVector.map(a =>
                 Act.classified(env.records, request, a, cleared.upstream)
               )
-              Posed(read(answers), calls)
+              Posed(read(reply.flatMap(_.answers)), calls)
           }
       )
     Flow
