@@ -8,6 +8,13 @@ import Flows.{At, Unreadable, Walk}
 
 /** A durable program from an `I`, as a pure value: ends early with an `E` or passes an `O`,
   * its steps' bodies acting only through the `R` a run hands them.
+  *
+  * An arrow with choice, as Haskell's `ArrowChoice` and selective functors name it: `andThen`
+  * is `>>>`, `pass.map` is `arr`, `either` is `|||`, `right` and `branch` are theirs. It is
+  * deliberately not a monad, so every arm is in the description, and [[Flows.names]] and
+  * [[Flows.read]] see each one without running a body. [[Flow.program]] is the one monadic
+  * exception: `names` lists it by its family alone, and `read` follows it only by running its
+  * code again over the results a history holds.
   */
 sealed trait Flow[-R, -I, +E, +O] {
 
