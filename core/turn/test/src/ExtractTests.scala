@@ -2,6 +2,7 @@ package grit.turn
 
 import java.time.LocalDate
 
+import grit.core.act.Extraction
 import grit.core.flow.{Extracted, Shape, TestTainted}
 import grit.core.id.{CallSlot, EntryId, TestCallSlots, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
@@ -187,7 +188,7 @@ object ExtractTests extends TestSuite {
       val request = Extract
         .request("Issue 7: the build fails.", "Is it closed?", Shape.YesNo, StrictSchemas.Enforced)
         .fold(e => throw new java.lang.AssertionError(e), identity)
-      request.system ==> Extract.System
+      request.system ==> Extraction.System
       request.messages ==> Vector(
         Message.User(
           "BEGIN ITEM\nIssue 7: the build fails.\nEND ITEM\n\nQuestion: Is it closed?\n\n" +
@@ -200,7 +201,7 @@ object ExtractTests extends TestSuite {
 
     test("its reply reads an answer in the shape, null as not said, and refuses any other") {
       def read(shape: Shape, answer: ujson.Value) =
-        Extract
+        Extraction
           .reply(shape)
           .flatMap(t =>
             t.schema

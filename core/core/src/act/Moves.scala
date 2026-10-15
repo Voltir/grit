@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
-import grit.core.flow.Tainted
+import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -145,6 +145,21 @@ trait Moves {
       tool: ToolName,
       arguments: Tainted[ujson.Obj]
   ): Either[MoveError, Called]
+
+  /** `question` of `from`, asked as a JSON ask of [[Extraction]] is ([[ask]]), its reply read
+    * in `shape` ([[Extraction.reply]]): the answer, or `None` when `from` does not say. The
+    * answer is trusted at the acting's integrity ([[Acting.integrity]]) met with
+    * [[grit.core.visibility.Integrity.Member]], whatever `from` is believed at: an `Authority`
+    * run's is `Member`, never higher. Made, limited and refused as an ask, [[MoveError.Model]]
+    * when the reply does not read in `shape` after its repair; and [[MoveError.Model]], no move
+    * made, when `shape` writes no schema (a reversed range).
+    */
+  def extract(
+      name: MoveName,
+      from: Tainted[String],
+      question: String,
+      shape: Shape
+  ): Either[MoveError, Option[Trusted[Extracted]]]
 }
 
 /** [[Moves]], and the acting plugin's own documents. */

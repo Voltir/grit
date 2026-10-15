@@ -8,6 +8,7 @@ import grit.core.act.{
   Allowance,
   Asked,
   Called,
+  Extraction,
   Keeping,
   MoveError,
   MoveKind,
@@ -21,7 +22,7 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.flow.{Mint, Tainted, Trusted}
+import grit.core.flow.{Endorse, Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.job.JobRun
 import grit.core.message.{AssistantBlock, Message}
@@ -337,6 +338,22 @@ object DurableMoves {
           case None => Left(MoveError.Store(s"no call slot ${calls - 1}"))
           case Some(cs) => sent(name, cs, service, tool, arguments)
         }
+      }
+
+    def extract(
+        name: MoveName,
+        from: Tainted[String],
+        question: String,
+        shape: Shape
+    ): Either[MoveError, Option[Trusted[Extracted]]] =
+      Extraction.reply(shape) match {
+        case Left(why) => Left(MoveError.Model(why))
+        case Right(typed) =>
+          given (Endorse^) = Mint.extraction(acting.integrity)
+          val messages = Extraction.messages(Trusted.asIs(from).extract, question, shape)
+          json(name, Extraction.System, messages, typed, from.integrity).map(a =>
+            Trusted.asIs(a.reply).extract.map(x => Trusted.endorse(a.reply.map(_ => x)))
+          )
       }
 
     private def sent(

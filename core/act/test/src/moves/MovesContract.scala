@@ -18,7 +18,7 @@ import grit.core.act.{
 import grit.core.classify.{Answer as Judged, Ask, StateJson}
 import grit.core.document.{DocText, Document, DocumentKeeper}
 import grit.core.durable.Journaled
-import grit.core.flow.{Tainted, TestTainted}
+import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.DocKey
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Namespace, Place, Service}
@@ -338,6 +338,40 @@ abstract class MovesContract extends TestSuite {
       got ==> Seen(Vector(Right(Integrity.written(ProbeOutput)), Right("outside")))
     }
 
+    test(
+      "an extraction answers in its shape, or that its text does not say, trusted at the run's integrity met with Member whatever its text is believed at"
+    ) {
+      val replies = Vector(ujson.Obj("answer" -> true), ujson.Obj("answer" -> ujson.Null))
+      val got = within(limits(2, 0), shapes = replies) { m =>
+        Seen(Vector("x", "y").map(n => extracted(m, n, Shape.YesNo)))
+      }
+      got ==> Seen(Vector(Right("Yes(true) at member"), Right("not said")))
+    }
+
+    test(
+      "an extraction is made as an ask, its name spent and counted against asks; one in a shape writing no schema makes no move"
+    ) {
+      val got = within(limits(1, 0)) { m =>
+        Seen(
+          Vector(
+            extracted(m, "a", Shape.Number(5, 1)),
+            extracted(m, "a", Shape.OneOf(Vector(Answer))),
+            extracted(m, "a", Shape.OneOf(Vector(Answer))),
+            asked(m, "b")
+          )
+        )
+      }
+      got.moves.map(_.left.map {
+        case MoveError.Model(_) => "Model"
+        case other => kind(other)
+      }) ==> Vector(
+        Left("Model"),
+        Right(s"Chosen($Answer) at member"),
+        Left("Repeated(a)"),
+        Left("OverLimit(Ask,1)")
+      )
+    }
+
     test("a keep writes at no less than its floor: below it at the floor, above it as asked") {
       val above = Label.at(Level.Restricted)
       val (got, docs) = keeping(MoveLimits.Zero) { m =>
@@ -448,6 +482,13 @@ object MovesContract {
     m.ask(name(n), posed(Posed.judge(State, Ask.yesNo[String]("Is `text` urgent?", None, None))))
       .map(a => s"${replied(a)} at ${a.at}")
   }
+
+  /** The extraction `n` of whether an untrusted item is closed, in `shape`, through `m`: its
+    * answer and what it is trusted at, or that the item does not say.
+    */
+  def extracted(m: Moves^, n: String, shape: Shape): Either[MoveError, String] =
+    m.extract(name(n), TestTainted.at("Issue 7 is closed.", Integrity.Untrusted), "Closed?", shape)
+      .map(_.fold("not said")(t => s"${t.extract} at ${Integrity.written(t.integrity)}"))
 
   /** The state every judgment is about. */
   val State = "the build is red"

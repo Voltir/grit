@@ -18,4 +18,7 @@ object TestTainted {
     */
   def trusted[A](value: A, integrity: Integrity = Integrity.Authority): Trusted[A] =
     Mint.trusted(value, integrity)
+
+  /** The endorsement an extraction makes in a run at `at` ([[Mint.extraction]]). */
+  def extraction(at: Integrity): Endorse^ = Mint.extraction(at)
 }

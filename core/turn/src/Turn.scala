@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.act.phase.{Asking, Calling, Hearing, Shaped, Shaping}
-import grit.core.act.Posed
+import grit.core.act.{Extraction, Posed}
 import grit.core.allot.{Allotment, Router}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch, Pointer}
@@ -1443,7 +1443,7 @@ object Turn {
           .map(describe)
         text <- textOf(showing, window, item.ref).toRight("the item is no longer kept")
         request <- Extract.request(text, question, shape, pin.settings.strict)
-        typed <- Extract.reply(shape)
+        typed <- Extraction.reply(shape)
         shaped = Shaping.shaped(
           env.models.provider(pin),
           request,

@@ -1,11 +1,12 @@
 package grit.core.act
 
 import grit.core.classify.{Answer, ClassifierError, Request}
-import grit.core.flow.{Tainted, TestTainted, Trusted}
+import grit.core.flow.{Endorse, Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolName
+import grit.core.visibility.Integrity
 
 /** [[Moves]] for a job's tests: each text ask answered by `asks`; each JSON ask by `jsons`
   * (of its system text and messages), the reply then checked by its schema, with no argument
@@ -20,7 +21,8 @@ import grit.core.tool.ToolName
   * which `grit.act.moves.MovesContract` holds it to beside the durable moves: a name made once,
   * by either kind, is [[MoveError.Repeated]] after, whatever the move came to; past `limits`, a
   * move is [[MoveError.OverLimit]]; a refused move is not made. It never diverges: it is one
-  * run, never rerun. [[made]] is each move made, in order.
+  * run, never rerun. An extraction is a JSON ask of [[Extraction]], its answer trusted at
+  * `integrity`, the run's, met with `Member`. [[made]] is each move made, in order.
   */
 class ScriptedMoves(
     limits: MoveLimits,
@@ -29,7 +31,8 @@ class ScriptedMoves(
     jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] = (_, _) =>
       Left(MoveError.Model("no JSON reply scripted")),
     judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = _ =>
-      Left(MoveError.Model("no judgment scripted"))
+      Left(MoveError.Model("no judgment scripted")),
+    integrity: Integrity = Integrity.Authority
 ) extends Moves {
 
   // Holds immutable values; the fake is one test's, read on its one thread.
@@ -85,6 +88,24 @@ class ScriptedMoves(
         case other => other
       }
     )
+
+  def extract(
+      name: MoveName,
+      from: Tainted[String],
+      question: String,
+      shape: Shape
+  ): Either[MoveError, Option[Trusted[Extracted]]] =
+    Extraction.reply(shape) match {
+      case Left(why) => Left(MoveError.Model(why))
+      case Right(typed) =>
+        given (Endorse^) = TestTainted.extraction(integrity)
+        val posed = from.map(t =>
+          Posed.Json(Extraction.System, Extraction.messages(t, question, shape), typed)
+        )
+        ask(name, posed).map(a =>
+          Trusted.asIs(a.reply).extract.map(x => Trusted.endorse(a.reply.map(_ => x)))
+        )
+    }
 
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {
