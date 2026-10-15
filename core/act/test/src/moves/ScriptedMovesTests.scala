@@ -51,9 +51,10 @@ object ScriptedMovesTests extends MovesContract {
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))
         else Right(Asked(TestTainted.authority(replies.next()), Floor)),
-      _ =>
+      request =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(TestTainted.authority(Vector(judgment)), Floor))
+        else
+          Right(Asked(TestTainted.authority(request.questions.map(_ => judgment)), Floor))
     )
   }
 

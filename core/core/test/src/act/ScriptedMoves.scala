@@ -107,6 +107,8 @@ class ScriptedMoves(
         )
     }
 
+  protected def sanitiser: Endorse^ = TestTainted.sanitiser
+
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"

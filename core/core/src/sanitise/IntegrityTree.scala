@@ -39,13 +39,16 @@ object IntegrityTree {
   val SuspectFrom: Probability = Probability.clamped(0.5)
 
   /** The verdict on a text believed at `source`, by `flags` and the classifier's `answers`
-    * (`None`: not asked, unavailable or uncleared, [[Reason.Unjudged]]): `Suspicious` on any
-    * flag or a genre at least [[SuspectFrom]]; `Raised` when `source` is below `Outside`, no flag
-    * fired and genre is under [[RaiseBelow]]; otherwise `Kept`. Directive, identity, act and
-    * pressure at least [[SuspectFrom]] add their reasons and never gate.
+    * (`None`: not asked, unavailable or uncleared): `Suspicious` on any flag or a genre at least
+    * [[SuspectFrom]]; `Raised` when `source` is below `Outside`, no flag fired and genre is under
+    * [[RaiseBelow]]; otherwise `Kept`, [[Reason.Unjudged]] when `source` is below `Outside`,
+    * nothing fired and there are no answers. Directive, identity, act and pressure at least
+    * [[SuspectFrom]] add their reasons and never gate.
     */
   def decide(source: Integrity, flags: HardFlags, answers: Option[Suspicions]): Verdict = {
-    val judged = answers.fold(Vector(Reason.Unjudged)) { s =>
+    val below = !source.dominates(Integrity.Outside)
+    val unjudged = below && flags.fired.isEmpty
+    val judged = answers.fold(if (unjudged) Vector(Reason.Unjudged) else Vector()) { s =>
       Vector(
         Option.when(s.directive >= SuspectFrom)(Reason.Directive),
         Option.when(s.identity >= SuspectFrom)(Reason.Identity),
@@ -54,11 +57,11 @@ object IntegrityTree {
         Option.when(s.genre >= RaiseBelow)(Reason.OutOfPlace)
       ).flatten
     }
-    if (flags.fired.nonEmpty) Verdict.Suspicious(flags.fired ++ judged.filter(_ != Reason.Unjudged))
+    if (flags.fired.nonEmpty) Verdict.Suspicious(flags.fired ++ judged)
     else
       answers match {
         case Some(s) if s.genre >= SuspectFrom => Verdict.Suspicious(judged)
-        case Some(s) if !source.dominates(Integrity.Outside) && !(s.genre >= RaiseBelow) =>
+        case Some(s) if below && !(s.genre >= RaiseBelow) =>
           Verdict.Raised(judged)
         case _ => Verdict.Kept(judged)
       }

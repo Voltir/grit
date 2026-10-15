@@ -15,7 +15,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
+import grit.core.flow.{Endorse, Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
@@ -268,6 +268,8 @@ object SyncTests extends TestSuite {
         question: String,
         shape: Shape
     ): Either[MoveError, Option[Trusted[Extracted]]] = inner.extract(name, from, question, shape)
+
+    protected def sanitiser: Endorse^ = TestTainted.sanitiser
 
     def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
         body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]

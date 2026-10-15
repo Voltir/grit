@@ -115,6 +115,8 @@ object DurableMoves {
     private val turn = acting.turn
     protected val subject = acting.subject
 
+    protected def sanitiser: Endorse^ = Mint.sanitiser
+
     /** Why a move `name` of `kind` may not be made now; when it may, its name is spent and its
       * kind counted.
       */

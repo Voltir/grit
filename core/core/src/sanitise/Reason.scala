@@ -37,6 +37,8 @@ enum Reason extends caps.Pure {
   /** A part of it is out of place for its kind of document. */
   case OutOfPlace
 
-  /** The classifier was not asked: unavailable, or not cleared for what the text was read under. */
+  /** The classifier gave no answer it could have raised the text on: unavailable, not cleared
+    * for what the text was read under, or answering what does not read.
+    */
   case Unjudged
 }

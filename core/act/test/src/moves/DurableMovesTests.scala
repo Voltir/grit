@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar, Summary}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
-import grit.core.classify.{Answer as Judged, Answers, Classifier}
+import grit.core.classify.{Answer as Judged, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.SetClock
 import grit.core.document.{
   DocLabel,
@@ -57,8 +57,16 @@ object DurableMovesTests extends MovesContract {
       judgment: Judged
   )(use: Moves^ -> A): A = {
     val w = new MovesWorld(broken, MovesContract.Floor)
-    val classifier = new Judging(Vector(Right(Answers(Vector(judgment), Spent, "test/judge"))))
-    w.run(limits, shapes, classifier)(use)
+    w.run(limits, shapes, new Each(judgment))(use)
+  }
+
+  /** A classifier answering `judgment` to every question it is asked, at [[Spent]]'s cost. */
+  private final class Each(judgment: Judged) extends Classifier {
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] =
+      Right(Answers(questions.map(_ => judgment), Spent, "test/judge"))
   }
 
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document]) = {

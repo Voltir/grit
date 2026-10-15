@@ -91,7 +91,7 @@ In dependency order, each with the core packages it imports:
   `triage`, `context`, `stitch`
 - **`act`**: what an actor may do, and under what (ADR 0034): who acts, its moves within their
   limits, and what they come to. ← `id`, `place`, `visibility`, `message`, `classify`, `store`,
-  `document`, `spend`, `durable`, `provider`, `tool`, `schema`
+  `document`, `spend`, `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`
 - **`job`**: jobs and their schedules (ADRs 0021, 0029). ← `id`, `clock`, `visibility`,
   `message`, `store`
 - **`inbox`**: the `Inbox` trait the engine takes messages through. ← `id`, `identity`,
