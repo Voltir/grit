@@ -14,19 +14,7 @@ import grit.core.document.{DocumentStore, InMemoryDocuments}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.InMemoryDeliveries
 import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
-import grit.core.host.{
-  Clipped,
-  EditError,
-  Edited,
-  Edits,
-  HostError,
-  Lines,
-  Ran,
-  RelPath,
-  Replace,
-  Shell,
-  Workspace
-}
+import grit.core.host.{Clipped, HostError, Lines, RelPath, Workspace}
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -485,23 +473,6 @@ object TurnFixtures {
     def list(dir: RelPath, depth: Int): Either[HostError, Clipped] = Left(HostError.NotFound(dir))
     def search(pattern: String, under: RelPath): Either[HostError, Clipped] =
       Left(HostError.NotFound(under))
-  }
-
-  /** Edits that change nothing: every write and edit fails. */
-  object NoEdits extends Edits {
-    def write(path: RelPath, text: String): Either[HostError, Unit] =
-      Left(HostError.Failed("no edits"))
-    def edit(path: RelPath, edits: Seq[Replace]): Either[EditError, Edited] =
-      Left(EditError.Host(HostError.Failed("no edits")))
-  }
-
-  /** A shell that runs nothing: every command fails to start. */
-  object NoShell extends Shell {
-    def run(
-        command: String,
-        timeout: scala.concurrent.duration.FiniteDuration
-    ): Either[HostError, Ran] =
-      Left(HostError.Failed("no shell"))
   }
 
   /** A checkout of `files`, by path, counting the reads made of it. It lists and searches
