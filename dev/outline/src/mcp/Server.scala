@@ -215,7 +215,9 @@ object Server {
       try {
         val (reply, next, tool) = step(line, state)
         tool.foreach(name =>
-          log(s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B")
+          log(
+            s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B"
+          )
         )
         reply.foreach(write)
         state = next
@@ -339,7 +341,11 @@ object Server {
             val noted =
               if (named.isEmpty && state.namedOther) body.map(forDefault(_, state.defaultRoot))
               else body
-            (noted, next.copy(namedOther = state.namedOther || named.exists(_ != state.defaultRoot)), tool)
+            (
+              noted,
+              next.copy(namedOther = state.namedOther || named.exists(_ != state.defaultRoot)),
+              tool
+            )
         }
     }
 
@@ -356,7 +362,8 @@ object Server {
     text match {
       case Some(t) if !failed && t.startsWith("## root") =>
         val (first, rest) = t.span(_ != '\n')
-        val note = s"-- answered for the default checkout, ${root.dir}; pass root to ask about another"
+        val note =
+          s"-- answered for the default checkout, ${root.dir}; pass root to ask about another"
         toolResult(s"$first\n$note$rest", isError = false)
       case _ => result
     }

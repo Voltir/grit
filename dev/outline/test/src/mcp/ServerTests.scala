@@ -235,7 +235,9 @@ object ServerTests extends TestSuite {
       assert(textOf(c).exists(_.contains("def f(a: Int): Int")))
     }
 
-    test("a call without root, after one that named another, says it answers for the default checkout") {
+    test(
+      "a call without root, after one that named another, says it answers for the default checkout"
+    ) {
       val r1 = checkout("default", one)
       val r2 = checkout("other", two)
       val (_, s1) = reply(
