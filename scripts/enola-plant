@@ -22,7 +22,8 @@ Where the plants go is read from the tree, so a layout change needs no edit here
             between production packages only.
   names     the name greps: each name written fully qualified, with no import (so no edge for
             a rule to see), in the main sources of a module that may not name it: the kit's
-            for every name but Mint, which the kit may name, and grit.edge's for Mint.
+            for every name but Mint, which the kit may name, grit.edge's for Mint, and
+            grit.act's for sanitised, the method only the integrity tree may call.
   unruled   the quarantine grep: one unruled class imported in each of grit.dbos, grit.models,
             grit.mcp, grit.host and grit.slack's sources, each of which it must list.
   process   the process grep: `new ProcessBuilder` with no import in every production source
@@ -156,6 +157,7 @@ NAMES = {
     "may name grit.dbos.internal": ("grit.dbos.internal.Reader", "grit.kit"),
     "may name PrincipalIds": ("grit.core.id.PrincipalIds", "grit.kit"),
     "may name Mint": ("grit.core.flow.Mint", "grit.edge"),
+    "may name sanitised": ("grit.core.flow.Endorse.sanitised", "grit.act"),
 }
 
 

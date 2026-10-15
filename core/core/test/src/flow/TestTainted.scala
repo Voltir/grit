@@ -21,4 +21,7 @@ object TestTainted {
 
   /** The endorsement an extraction makes in a run at `at` ([[Mint.extraction]]). */
   def extraction(at: Integrity): Endorse^ = Mint.extraction(at)
+
+  /** The integrity tree's endorsement ([[Mint.sanitiser]]). */
+  def sanitiser: Endorse^ = Mint.sanitiser
 }

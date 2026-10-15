@@ -137,6 +137,17 @@ if [ -n "$mint" ]; then
   failed=1
 fi
 
+# TRAP: a method makes no import edge, so no rule can see a call of Endorse.sanitised. Only the
+# integrity tree may raise a text to Outside, and only on its verdict (ADR 0036): grep every
+# source for the name. Endorse itself and core's flow tests and probes may write it too.
+sanitised=$(names -w 'sanitised' |
+  grep -vE '^core/core/src/flow/Endorse\.scala$|^core/core/src/sanitise/IntegrityTree\.scala$|^core/core/(test/src|probes/src)/flow/' || true)
+if [ -n "$sanitised" ]; then
+  echo "Only the integrity tree (IntegrityTree.vet) may name sanitised; these sources do:" >&2
+  printf '  %s\n' $sanitised >&2
+  failed=1
+fi
+
 # TRAP: `check` grades cycles as NEW against the pinned baseline, so a cycle present when a
 # baseline was pinned (by this script when none exists, or by anyone) passes from then on.
 # There are none, so any cycle finding fails, at every confidence: `check` counts only those at

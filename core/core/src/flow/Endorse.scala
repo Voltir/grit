@@ -9,7 +9,8 @@ import grit.core.visibility.Integrity
 sealed abstract class Endorse private[flow] (val at: Integrity) extends caps.SharedCapability {
 
   /** `t` at `Outside`, in the same compartments, when it is `Untrusted` and this is a
-    * sanitiser's; else `t`.
+    * sanitiser's; else `t`. Named only by [[grit.core.sanitise.IntegrityTree.vet]] (the law),
+    * which calls it on a `Raised` verdict alone.
     */
   def sanitised[T](t: Tainted[T]): Tainted[T]
 }

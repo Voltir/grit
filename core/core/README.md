@@ -82,6 +82,10 @@ In dependency order, each with the core packages it imports:
   key, or a withdrawal, supersedes it. ← `id`, `place`, `visibility`, `store`, `tool`
 - **`context`**: the `ContextAssembler` trait, and what the model is shown of a window. ← `id`,
   `place`, `message`, `period`, `store`, `document`
+- **`sanitise`**: the integrity tree (ADR 0036): what code flags in a text, what the classifier
+  is asked of it, and the one decision that raises an untrusted text to `Outside`, which alone
+  calls the sanitiser's `Endorse.sanitised` (`scripts/enola-law.sh`). ← `period`, `visibility`,
+  `classify`, `flow`, `context`
 - **`recipe`**: what a call's input shows beyond its own thread, and how a turn is shaped.
   Nothing in core imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`,
   `triage`, `context`, `stitch`
