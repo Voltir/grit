@@ -1,6 +1,8 @@
 package grit.core.durable
 
-/** The interpreters of a [[Flow]]: [[run]] over a `Durable`, [[read]] over a history. */
+/** The interpreters of a [[Flow]]: [[run]] over a `Durable`, [[read]] over a history, and
+  * [[names]] over the description alone.
+  */
 object Flows {
 
   /** `flow` from `in` on `d`, its bodies handed `env`: each body at most once, recorded under
@@ -25,6 +27,27 @@ object Flows {
       case Walk.Stopped(next, at) => Reading(Read.Next(next, at.step), at.observed)
       case Walk.Done(result, at) => Reading(Read.Ended(result, at.step), at.observed)
     }
+
+  /** The families `flow` can record, in the order a run first reaches each, each listed once. A
+    * wait is listed by its label, a taken patch by its marker, and a program by its family
+    * alone, as keyed and never every run's.
+    */
+  def names(flow: Flow[?, ?, ?, ?]): Vector[Family] = {
+    val reached = Flow.families(flow, true)
+    reached.map(_.name).distinct.map { name =>
+      val all = reached.filter(_.name == name)
+      Family(name, all.exists(_.keyed), all.exists(_.every))
+    }
+  }
+
+  /** A name a flow records, or the family of the names it records under keys.
+    *
+    * @param every
+    *   recorded by every run that finishes, whether it ends early or passes: a step in a loop's
+    *   first round is; a step in an arm of `either`, in either branch of a patch or its marker,
+    *   in an `each` (whose items may be none), or after a flow that may end early, is not
+    */
+  final case class Family(name: String, keyed: Boolean, every: Boolean)
 
   /** A place in a history, and what the steps before it showed. */
   private[durable] final case class At(step: Int, observed: Vector[Observed]) {

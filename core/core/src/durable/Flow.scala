@@ -113,6 +113,43 @@ object Flow {
     def over[R2](get: (r2: R2^) -> R^{r2}): Flow[R2, I, E, O] = Over[R, R2, I, E, O](f, get)
   }
 
+  /** The families `f` can record in the order a run reaches them, repeats kept, each marked
+    * every run's when `every` says a finishing run reaches `f` and `f` records it whenever so.
+    */
+  private[durable] def families(f: Flow[?, ?, ?, ?], every: Boolean): Vector[Flows.Family] =
+    f match {
+      case One(s) => Vector(Flows.Family(s.named.family, s.named.keyed, every))
+      case AndThen(first, next) => families(first, every) ++ families(next, every && !ends(first))
+      case Mapped(g, _) => families(g, every)
+      case MayEnd(g) => families(g, every)
+      case Keeping(g) => families(g, every)
+      case Pass() => Vector.empty
+      case Split(left, right) => families(left, false) ++ families(right, false)
+      case Attempt(g) => families(g, every)
+      case Loop(round) => families(round, every)
+      case Each(_, one) => families(one, false)
+      case Patch(name, before, after) =>
+        Flows.Family(StepRecord.marker(name), false, false) +:
+          (families(before, false) ++ families(after, false))
+      case Recv(label, _, _) => Vector(Flows.Family(label.family, label.keyed, every))
+      case Over(g, _) => families(g, every)
+      case Program(family, _) => Vector(Flows.Family(family, true, false))
+    }
+
+  /** Whether `f` may end early. */
+  private def ends(f: Flow[?, ?, ?, ?]): Boolean = f match {
+    case One(_) | Pass() | Attempt(_) | Recv(_, _, _) | Program(_, _) => false
+    case MayEnd(_) => true
+    case AndThen(first, next) => ends(first) || ends(next)
+    case Mapped(g, _) => ends(g)
+    case Keeping(g) => ends(g)
+    case Split(left, right) => ends(left) || ends(right)
+    case Loop(round) => ends(round)
+    case Each(_, one) => ends(one)
+    case Patch(_, before, after) => ends(before) || ends(after)
+    case Over(g, _) => ends(g)
+  }
+
   /** `walked` with `g` over the result it ended with, if it did. */
   private def ending[E, O, E2, O2](walked: Either[Unreadable, Walk[E, O]])(
       g: Either[E, O] -> Either[E2, O2]
