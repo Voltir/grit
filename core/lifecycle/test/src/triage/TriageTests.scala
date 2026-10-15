@@ -374,13 +374,13 @@ object TriageTests extends TestSuite {
       new InMemoryDurable().run(second.workflowId)(w.body(asking, 2, within))
       val (one, two) = (TurnRef(c, first.turn), TurnRef(c, second.turn))
       (
-        log.endsWith("drafting, not started: the queue is down"),
+        log,
         durable.recordedSteps(first.workflowId),
         w.speech.outcomes.get(one).map(_._1),
         w.speech.decisions.map(_._2),
         w.started
       ) ==> (
-        true,
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor 0.125, anchor-record 0.125 (jev-1.13.0); drafting, not started: the queue is down",
         Vector("stitched", "ask", "record", "consider", "start", "unstarted"),
         Some(Outcome.Failed("not started: the queue is down")),
         Vector(Decision.Drafting(one), Decision.Drafting(two)),

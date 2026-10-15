@@ -7,6 +7,7 @@ import grit.lifecycle.post.Posting
 import grit.lifecycle.settle.Settle
 import grit.lifecycle.shadow.Shadow
 import grit.lifecycle.stitch.Stitch
+import grit.lifecycle.triage.Triage
 import grit.turn.Turn
 
 import utest.*
@@ -34,7 +35,8 @@ object LifecycleReadTests extends TestSuite {
     "shadow" -> Shadow.flow,
     "settle" -> Settle.flow,
     "post" -> Posting.flow(Vector(RecordLifecycleHistories.Posted)),
-    "close" -> Close.flow
+    "close" -> Close.flow,
+    "triage" -> Triage.flow
   )
 
   /** Where `history` reads otherwise than as its run recorded it, over `flow`. */
@@ -61,7 +63,7 @@ object LifecycleReadTests extends TestSuite {
         case (path, Left(why)) => Vector(s"${path.last}: $why")
         case (path, Right(history)) =>
           flows.get(history.workflow) match {
-            case None => Vector.empty
+            case None => Vector(s"${path.last}: no flow for ${history.workflow}")
             case Some(flow) => misread(flow, history).map(m => s"${path.last}: $m")
           }
       }

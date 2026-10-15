@@ -1,7 +1,7 @@
 package grit.lifecycle.triage
 
 import grit.core.classify.{Answer, ClassifierError}
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.speech.{Decision, Outcome, SpeechJson}
@@ -39,90 +39,138 @@ import grit.core.visibility.Subject
   */
 object Triage {
   import TriageInput.describe
+  import TriageJournal.given
 
-  /** The triage's steps, as DBOS records their names, in the order they run. */
-  object Step {
-    val Stitched = "stitched"
-    val Ask = "ask"
-    val Record = "record"
-    val Consider = "consider"
-    val Start = "start"
+  /** The triage `ref`, with what its placement did, for logs (`kept`, empty or ending `; `). */
+  private final case class Waited(ref: TriageRef, kept: String)
 
-    /** Keeps a drafting turn whose start failed settled as failed, so it holds no later
-      * message in its thread.
-      */
-    val Unstarted = "unstarted"
+  /** The triage `at`, its placement waited for, and what the classifier made of its heard message, `entry`. */
+  private final case class Tagged(at: Waited, entry: EntryId, tags: Tags) {
+
+    /** What the run did, for logs: its placement, its tags, then `what`. */
+    def said(what: String): String = s"${at.kept}tagged: ${shown(tags)}; $what"
   }
 
-  /** The triage workflow's body, for the heard message whose workflow id is `workflowId`.
-    * Returns what it did, for logs: the tags are in the store. A drafting turn whose start
-    * fails is kept settled as [[grit.core.speech.Outcome.Failed]], with why; one answering as
-    * said to grit stays awaited, and its edge starts it again when it next starts.
+  /** The tagged triage `at`, whose own turn `turn` starts, drafting or answering. */
+  private final case class Starting(at: Tagged, turn: TurnRef, drafting: Boolean)
+
+  /** The drafting turn of `at`, whose start failed for `why`. */
+  private final case class Unstarted(at: Starting, why: String)
+
+  private def subject(ref: TriageRef): Subject = Subject.Conversation(ref.period.conversationId)
+
+  private val stitched: Step[TriageEnv, TriageRef, Either[String, Option[String]]] =
+    Step[TriageEnv, TriageRef, Either[String, Option[String]]](StepName("stitched"))(env =>
+      ref => placed(env, ref)
+    )
+
+  private val asked: Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]] =
+    Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]](StepName("ask"))(env =>
+      p => ask(env, p.ref)
+    )
+
+  private val recorded: Step[TriageEnv, Tagged, Either[String, Boolean]] =
+    Step.transact[TriageEnv, Tagged, Either[String, Boolean]](
+      StepName("record"),
+      t => subject(t.at.ref)
+    )(env => t => env.records.triage.record(t.entry, t.tags, env.clock.now()).left.map(describe))
+
+  private val considered: Step[TriageEnv, Tagged, Either[String, Decision]] =
+    Step.transact[TriageEnv, Tagged, Either[String, Decision]](
+      StepName("consider"),
+      t => subject(t.at.ref)
+    )(env =>
+      t =>
+        Speak.consider(
+          env.records,
+          env.speech.speaking,
+          env.speech.budget,
+          t.at.ref,
+          t.entry,
+          t.tags,
+          env.clock.now()
+        )
+    )
+
+  private val started: Step[TriageEnv, Starting, Either[String, WorkflowId]] =
+    Step[TriageEnv, Starting, Either[String, WorkflowId]](StepName("start"))(env =>
+      s => env.speech.start(s.turn).map(_ => s.turn.workflowId)
+    )
+
+  /** Keeps a drafting turn whose start failed settled as failed, so it holds no later message
+    * in its thread. An enqueue that committed yet reported a failure still runs its turn, which
+    * posts while the ledger says settled: the hold is released either way.
+    */
+  private val unstarted: Step[TriageEnv, Unstarted, Either[String, Boolean]] =
+    Step.transact[TriageEnv, Unstarted, Either[String, Boolean]](
+      StepName("unstarted"),
+      u => subject(u.at.at.at.ref)
+    )(env =>
+      u =>
+        env.records.speech
+          .drafted(u.at.turn, Outcome.Failed(s"not started: ${u.why}"), None, env.clock.now())
+          .left
+          .map(describe)
+    )
+
+  /** The triage workflow, from the heard message's workflow id: what it did, for logs, at
+    * whichever end; the tags are in the store. A drafting turn whose start fails is kept
+    * settled as [[grit.core.speech.Outcome.Failed]], with why; one answering as said to grit
+    * stays awaited, and its edge starts it again when it next starts.
+    */
+  val flow: Flow[TriageEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        TriageRef.fromWorkflowId(id).toRight(s"not a triage: ${WorkflowId.value(id)}")
+      })
+      .andThen(Flow.step(stitched).keeping.map { (ref, placement) =>
+        Waited(
+          ref,
+          placement match {
+            case Right(Some(what)) => s"placed: $what; "
+            case Right(None) => ""
+            case Left(why) => s"not placed: $why; "
+          }
+        )
+      })
+      .andThen(Flow.decide(asked) {
+        case (p, Left(why)) => Left(s"${p.kept}failed: $why")
+        case (p, Right((entry, tags))) => Right(Tagged(p, entry, tags))
+      })
+      .andThen(Flow.decide(recorded) {
+        case (t, Left(why)) => Left(s"${t.at.kept}failed: $why")
+        case (t, Right(false)) =>
+          Left(s"${t.at.kept}ignored: the message is gone or tagged already")
+        case (t, Right(true)) => Right(t)
+      })
+      .andThen(Flow.decide(considered) {
+        case (t, Left(why)) => Left(t.said(s"not considered: $why"))
+        case (t, Right(Decision.Held(why))) =>
+          Left(t.said(s"held: ${SpeechJson.writeSilence(why).render()}"))
+        case (t, Right(Decision.Drafting(turn))) => Right(Starting(t, turn, drafting = true))
+        // Left unsettled when its start fails: its reply was awaited in `consider`'s
+        // transaction, so its edge starts it when it next starts, and an answering row counts
+        // in no rate and holds no later message.
+        case (t, Right(Decision.Answering(turn, _))) => Right(Starting(t, turn, drafting = false))
+      })
+      .andThen(Flow.decide(started) {
+        case (s, Right(queued)) =>
+          val what = if (s.drafting) "drafting" else "answering"
+          Left(s.at.said(s"$what: ${WorkflowId.value(queued)}"))
+        case (s, Left(why)) if !s.drafting => Left(s.at.said(s"answering, not started: $why"))
+        case (s, Left(why)) => Right(Unstarted(s, why))
+      })
+      .andThen(Flow.step(unstarted).keeping)
+      .map {
+        case (u, Left(e)) => u.at.at.said(s"drafting, not started: ${u.why}; not settled: $e")
+        case (u, Right(_)) => u.at.at.said(s"drafting, not started: ${u.why}")
+      }
+
+  /** The triage workflow for the heard message whose workflow id is `workflowId`: [[flow]]
+    * run.
     */
   def body(env: TriageEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
-    TriageRef.fromWorkflowId(workflowId) match {
-      case None => s"not a triage: ${WorkflowId.value(workflowId)}"
-      case Some(triage) =>
-        import TriageJournal.given
-        val subject = Subject.Conversation(triage.period.conversationId)
-        val kept = d.step(Step.Stitched)(() => placed(env, triage)) match {
-          case Right(Some(what)) => s"placed: $what; "
-          case Right(None) => ""
-          case Left(why) => s"not placed: $why; "
-        }
-        val asked = d.step(Step.Ask)(() => ask(env, triage))
-        kept + (asked match {
-          case Left(why) => s"failed: $why"
-          case Right((entry, tags)) =>
-            val at = env.clock.now()
-            d.transact(Step.Record, subject)(
-              env.records.triage.record(entry, tags, at).left.map(describe)
-            ) match {
-              case Left(why) => s"failed: $why"
-              case Right(false) => "ignored: the message is gone or tagged already"
-              case Right(true) =>
-                val now = env.clock.now()
-                val (records, speech) = (env.records, env.speech)
-                def started(turn: TurnRef): Either[String, WorkflowId] = {
-                  val start = speech.start
-                  d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId))
-                }
-                val considered = d.transact(Step.Consider, subject)(
-                  Speak.consider(records, speech.speaking, speech.budget, triage, entry, tags, now)
-                )
-                s"tagged: ${shown(tags)}; " + (considered match {
-                  case Left(why) => s"not considered: $why"
-                  case Right(Decision.Held(why)) =>
-                    s"held: ${SpeechJson.writeSilence(why).render()}"
-                  case Right(Decision.Drafting(turn)) =>
-                    started(turn) match {
-                      case Right(queued) => s"drafting: ${WorkflowId.value(queued)}"
-                      case Left(why) =>
-                        // A drafting row left unsettled holds every later unprompted message
-                        // in its thread unanswered, so it is settled failed. An enqueue that
-                        // committed yet reported a failure still runs its turn, which posts
-                        // while the ledger says settled: the hold is released either way.
-                        val failed = Outcome.Failed(s"not started: $why")
-                        val store = records.speech
-                        d.transact(Step.Unstarted, subject)(
-                          store.drafted(turn, failed, None, now).left.map(describe)
-                        ) match {
-                          case Left(e) => s"drafting, not started: $why; not settled: $e"
-                          case Right(_) => s"drafting, not started: $why"
-                        }
-                    }
-                  // Left unsettled: its reply was awaited in `consider`'s transaction, so its
-                  // edge starts it when it next starts, and an answering row counts in no rate
-                  // and holds no later message.
-                  case Right(Decision.Answering(turn, _)) =>
-                    started(turn) match {
-                      case Right(queued) => s"answering: ${WorkflowId.value(queued)}"
-                      case Left(why) => s"answering, not started: $why"
-                    }
-                })
-            }
-        })
-    }
+    Flows.run(flow, env, workflowId).merge
 
   /** The `stitched` step: what the placement of the heard message that is `triage`'s turn
     * did, once it has ended, when the message is an [[Opening]]; `None` when it is not, or is
