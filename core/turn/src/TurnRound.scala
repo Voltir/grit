@@ -32,7 +32,9 @@ private[turn] object TurnRound {
 
   /** What a turn's rounds act through: each member the body of a step, or what one reads. A
     * call is read against what its round offers, stamped at `at.level` ([[TurnTools.read]]),
-    * by each member that takes it, every time: what it binds to never leaves this.
+    * by each member that takes it, every time: what it binds to never leaves this. It has no
+    * capture-set parameter, and everything it hands out is pure or captures it alone, so no
+    * runner of a call can reach the loop's state on the wire.
     */
   trait Env {
 
