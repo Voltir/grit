@@ -1197,6 +1197,9 @@ object SlackEdge {
     // "slack" is a service's name by Service.of's rule, so the Left is never taken.
     Service.of("slack").fold(why => throw new IllegalStateException(why), identity)
 
+  /** What a person can no longer have done when the posting tool is withheld. */
+  val PostsAction: String = "post to channels"
+
   /** What every channel grit's bot is a member of said over the `days` before the catch-up
     * opens that the database has not recorded, one [[grit.core.edge.Unheard]] per channel, in
     * the channel's room; heard at the times it was said, a past mention of grit never

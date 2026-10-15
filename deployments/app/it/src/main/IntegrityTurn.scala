@@ -228,7 +228,8 @@ object IntegrityTurn {
             ),
             asks = false,
             Retry.Interrupt,
-            Some(writes)
+            Some(writes),
+            action = Some(SlackEdge.PostsAction)
           )
         )
       )
