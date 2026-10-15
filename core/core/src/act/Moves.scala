@@ -193,8 +193,8 @@ trait Moves {
     answers.map(IntegrityTree.vet(text, _)(using sanitiser))
   }
 
-  /** The integrity tree's endorsement, which [[vet]] alone raises with. */
-  protected def sanitiser: Endorse^
+  /** The integrity tree's endorsement, for [[vet]]. */
+  protected def sanitiser: Endorse.Sanitiser^
 }
 
 /** [[Moves]], and the acting plugin's own documents. */

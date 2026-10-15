@@ -98,7 +98,7 @@ class ScriptedMoves(
     Extraction.reply(shape) match {
       case Left(why) => Left(MoveError.Model(why))
       case Right(typed) =>
-        given (Endorse^) = TestTainted.extraction(integrity)
+        given (Endorse.Extraction^) = TestTainted.extraction(integrity)
         val posed = from.map(t =>
           Posed.Json(Extraction.System, Extraction.messages(t, question, shape), typed)
         )
@@ -107,7 +107,7 @@ class ScriptedMoves(
         )
     }
 
-  protected def sanitiser: Endorse^ = TestTainted.sanitiser
+  protected def sanitiser: Endorse.Sanitiser^ = TestTainted.sanitiser
 
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {

@@ -16,8 +16,9 @@ object Mint {
   def trusted[A](value: A, integrity: Integrity): Trusted[A] = Trusted.at(value, integrity)
 
   /** The endorsement `extract` makes: at `at` met with [[Integrity.Member]]. */
-  def extraction(at: Integrity): Endorse^ = new Endorse.Extraction(at.meet(Integrity.Member))
+  def extraction(at: Integrity): Endorse.Extraction^ =
+    new Endorse.Extraction(at.meet(Integrity.Member))
 
   /** The integrity tree's: `Untrusted` to `Outside`, never higher. */
-  def sanitiser: Endorse^ = new Endorse.Sanitiser
+  def sanitiser: Endorse.Sanitiser^ = new Endorse.Sanitiser
 }

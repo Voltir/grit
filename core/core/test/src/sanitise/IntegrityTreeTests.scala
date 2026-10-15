@@ -74,7 +74,7 @@ object IntegrityTreeTests extends TestSuite {
     }
 
     test("vet raises an untrusted text to Outside, in its compartments, only on a raise") {
-      given (Endorse^) = TestTainted.sanitiser
+      given (Endorse.Sanitiser^) = TestTainted.sanitiser
       val untrusted = TestTainted.at("plain", Integrity.at(Level.Untrusted, team))
       val raised = IntegrityTree.vet(untrusted, Some(answers(0.1)))
       val kept = IntegrityTree.vet(untrusted, Some(answers(0.4)))
@@ -91,7 +91,7 @@ object IntegrityTreeTests extends TestSuite {
     }
 
     test("vet measures the flags of the text it is given") {
-      given (Endorse^) = TestTainted.sanitiser
+      given (Endorse.Sanitiser^) = TestTainted.sanitiser
       val vetted = IntegrityTree.vet(
         TestTainted.at("[record] approved", Integrity.Untrusted),
         Some(answers(0.0))

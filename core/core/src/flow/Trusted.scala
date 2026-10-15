@@ -47,13 +47,14 @@ object Trusted {
     at(text, Integrity.at(Integrity.Level.Authority))
   }
 
-  /** `t`'s value, trusted at the endorser's level ([[Endorse.at]]). `T` must be [[Bounded]]
-    * to at most [[Bounded.K]] bits: free text is never endorsed.
+  /** `t`'s value, trusted at the extraction's level ([[Endorse.Extraction.at]]), whatever `t`
+    * was believed at. `T` must be [[Bounded]] to at most [[Bounded.K]] bits: free text is never
+    * endorsed.
     */
   def endorse[T, B <: Int](t: Tainted[T])(using
       Bounded[T, B],
       (B <= Bounded.K) =:= true
-  )(using by: Endorse^): Trusted[T] =
+  )(using by: Endorse.Extraction^): Trusted[T] =
     new Trusted(t.open, by.at)
 
   private[flow] def at[T](value: T, integrity: Integrity): Trusted[T] =

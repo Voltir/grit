@@ -53,7 +53,7 @@ object FlowTests extends TestSuite {
     }
 
     test("endorse trusts at the endorser's level, whatever the value was believed at") {
-      given (Endorse^) = Mint.extraction(Integrity.Member)
+      given (Endorse.Extraction^) = Mint.extraction(Integrity.Member)
       val endorsed = Trusted.endorse(Mint.tainted(true, Integrity.Untrusted))
       (endorsed.extract, endorsed.integrity) ==> (true, Integrity.Member)
     }
@@ -79,13 +79,6 @@ object FlowTests extends TestSuite {
         Integrity.Member,
         Integrity.at(Level.Outside, team)
       )
-    }
-
-    test("an extraction's endorser sanitises nothing") {
-      Mint
-        .extraction(Integrity.Member)
-        .sanitised(Mint.tainted(0, Integrity.Untrusted))
-        .integrity ==> Integrity.Untrusted
     }
 
     test("a taint falls to the meet of its level and each lowering, and never rises") {

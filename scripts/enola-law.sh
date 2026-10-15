@@ -137,7 +137,7 @@ if [ -n "$mint" ]; then
   failed=1
 fi
 
-# TRAP: a method makes no import edge, so no rule can see a call of Endorse.sanitised. Only the
+# TRAP: a method makes no import edge, so no rule can see a call of Endorse.Sanitiser.sanitised. Only the
 # integrity tree may raise a text to Outside, and only on its verdict (ADR 0036): grep every
 # source for the name. Endorse itself and core's flow tests and probes may write it too.
 sanitised=$(names -w 'sanitised' |

@@ -66,7 +66,8 @@ In dependency order, each with the core packages it imports:
   day; kept after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`, `speech`
 - **`durable`**: steps that survive a crash, and waits for a message. ← `id`, `store`
 - **`flow`**: values that carry the integrity they are believed at (ADR 0036): unchecked
-  (`Tainted`) or checked (`Trusted`), raised only by an endorser holding `Endorse`, and a turn's
+  (`Tainted`) or checked (`Trusted`), raised only by a holder of one of `Endorse`'s two roles:
+  an extraction's endorses a bounded value, the sanitiser's raises a text; and a turn's
   cell, which only falls. Raw values become these only through `Mint`, which only `grit.turn`,
   `grit.act` and `grit.kit` may name (enola-intent.yaml). ← `visibility`, `durable`
 - **`approval`**: a person's answer to a gated tool call. ← `id`
@@ -84,7 +85,7 @@ In dependency order, each with the core packages it imports:
   `place`, `message`, `period`, `store`, `document`
 - **`sanitise`**: the integrity tree (ADR 0036): what code flags in a text, what the classifier
   is asked of it, and the one decision that raises an untrusted text to `Outside`, which alone
-  calls the sanitiser's `Endorse.sanitised` (`scripts/enola-law.sh`). ← `period`, `visibility`,
+  calls `Endorse.Sanitiser.sanitised` (`scripts/enola-law.sh`). ← `period`, `visibility`,
   `classify`, `flow`, `context`
 - **`recipe`**: what a call's input shows beyond its own thread, and how a turn is shaped.
   Nothing in core imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`,

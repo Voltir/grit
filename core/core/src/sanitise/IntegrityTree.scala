@@ -72,7 +72,7 @@ object IntegrityTree {
     * [[Suspicions.questions]] about this `text`.
     */
   def vet(text: Tainted[String], answers: Option[Suspicions])(using
-      sanitiser: Endorse^
+      sanitiser: Endorse.Sanitiser^
   ): Vetted = {
     val verdict = decide(text.integrity, HardFlags.of(Trusted.asIs(text).extract), answers)
     verdict match {

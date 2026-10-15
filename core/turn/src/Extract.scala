@@ -111,7 +111,7 @@ object Extract {
         hidden.get(a.name) match {
           case None => Outcome.Done(s"Nothing in the request you answered is hidden as $n.")
           case Some(item) =>
-            given (Endorse^) = Mint.extraction(level)
+            given (Endorse.Extraction^) = Mint.extraction(level)
             answer(item, a.question, a.shape, slot) match {
               case Left(_) => Outcome.Failed(s"$n gave no answer that reads as ${named(a.shape)}.")
               case Right(None) =>

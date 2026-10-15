@@ -115,8 +115,7 @@ object DurableMoves {
     private val turn = acting.turn
     protected val subject = acting.subject
 
-    protected def sanitiser: Endorse^ = Mint.sanitiser
-
+    protected def sanitiser: Endorse.Sanitiser^ = Mint.sanitiser
     /** Why a move `name` of `kind` may not be made now; when it may, its name is spent and its
       * kind counted.
       */
@@ -351,7 +350,7 @@ object DurableMoves {
       Extraction.reply(shape) match {
         case Left(why) => Left(MoveError.Model(why))
         case Right(typed) =>
-          given (Endorse^) = Mint.extraction(acting.integrity)
+          given (Endorse.Extraction^) = Mint.extraction(acting.integrity)
           val messages = Extraction.messages(Trusted.asIs(from).extract, question, shape)
           json(name, Extraction.System, messages, typed, from.integrity).map(a =>
             Trusted.asIs(a.reply).extract.map(x => Trusted.endorse(a.reply.map(_ => x)))

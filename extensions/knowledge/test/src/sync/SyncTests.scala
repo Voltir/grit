@@ -283,7 +283,7 @@ object SyncTests extends TestSuite {
         shape: Shape
     ): Either[MoveError, Option[Trusted[Extracted]]] = inner.extract(name, from, question, shape)
 
-    protected def sanitiser: Endorse^ = TestTainted.sanitiser
+    protected def sanitiser: Endorse.Sanitiser^ = TestTainted.sanitiser
 
     def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
         body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]

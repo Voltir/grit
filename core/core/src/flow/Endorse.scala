@@ -2,28 +2,21 @@ package grit.core.flow
 
 import grit.core.visibility.Integrity
 
-/** Lets its holder raise a [[Tainted]] value: to [[Trusted]] by [[Trusted.endorse]], at its
-  * own level, or, for a sanitiser's, an `Untrusted` one to `Outside` by [[sanitised]]. Minted
-  * only by [[Mint]].
+/** The two capabilities that raise a [[Tainted]] value, one per role, each minted only by
+  * [[Mint]].
   */
-sealed abstract class Endorse private[flow] (val at: Integrity) extends caps.SharedCapability {
+object Endorse {
 
-  /** `t` at `Outside`, in the same compartments, when it is `Untrusted` and this is a
-    * sanitiser's; else `t`. Named only by [[grit.core.sanitise.IntegrityTree.vet]] (the law),
-    * which calls it on a `Raised` verdict alone.
-    */
-  def sanitised[T](t: Tainted[T]): Tainted[T]
-}
+  /** An extraction's: raises a bounded value to [[Trusted]] at `at`, by [[Trusted.endorse]]. */
+  final class Extraction private[flow] (val at: Integrity) extends caps.SharedCapability
 
-private[flow] object Endorse {
+  /** The integrity tree's: raises a text believed `Untrusted` to `Outside`, by [[sanitised]]. */
+  final class Sanitiser private[flow] () extends caps.SharedCapability {
 
-  /** An extraction's: raises to [[Trusted]] at `at`, and sanitises nothing. */
-  final class Extraction(at: Integrity) extends Endorse(at) {
-    def sanitised[T](t: Tainted[T]): Tainted[T] = t
-  }
-
-  /** The integrity tree's: `Untrusted` to `Outside`, keeping its compartments. */
-  final class Sanitiser extends Endorse(Integrity.Outside) {
+    /** `t` at `Outside`, in the same compartments, when it is `Untrusted`; else `t`. Named only
+      * by [[grit.core.sanitise.IntegrityTree.vet]] (the law), which calls it on a `Raised`
+      * verdict alone.
+      */
     def sanitised[T](t: Tainted[T]): Tainted[T] =
       if (t.integrity.dominates(Integrity.Outside)) t
       else new Tainted(t.open, t.integrity.join(Integrity.Outside))
