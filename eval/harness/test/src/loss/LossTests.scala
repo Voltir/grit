@@ -35,6 +35,7 @@ object LossTests extends TestSuite {
   private val nearbyClosing = """{"kind":"nearby","conversation":"c9","seq":4}"""
   private val post = """{"tool":"post","requires":"member"}"""
   private val peek = """{"tool":"peek","requires":"outside"}"""
+  private val grant = """{"tool":"grant","requires":"authority"}"""
 
   private def turn(conversation: String, seq: Long): TurnRef =
     TurnRef(ConversationId(conversation), TurnSeq(seq))
@@ -44,22 +45,30 @@ object LossTests extends TestSuite {
   private val open = Gates(Vector.empty, 0, 0)
 
   val tests = Tests {
-    test("a turn's withheld tools are each named once, and only those requiring member write out") {
+    test(
+      "a turn's withheld tools are each named once, and only those requiring member or above write out"
+    ) {
       val gates = Gates.of(
         Vector(
           StepRecord("record-window", Some("""{"ok":[]}"""), None),
           gate(0, "member", "", ""),
           gate(1, "untrusted", lowered(result, "peek"), s"$post,$peek"),
-          gate(2, "untrusted", "", post)
+          gate(2, "untrusted", "", s"$post,$grant")
         )
       )
       gates.map(g => (g.withheld.map(_.tool), g.writesOut.map(_.tool))) ==>
-        Right((Vector(ToolName("post"), ToolName("peek")), Vector(ToolName("post"))))
+        Right(
+          (
+            Vector(ToolName("post"), ToolName("peek"), ToolName("grant")),
+            Vector(ToolName("post"), ToolName("grant"))
+          )
+        )
     }
 
     test("the items hidden are those the last round still hid, closing records counted apart") {
       // Round 0 hid a result and two closings; round 1 shows the result, lowering, and still
-      // hides both closings, its own conversation's and a nearby one's.
+      // hides both closings, its own conversation's and a nearby one's: no round but the
+      // last counts (0, 2).
       val gates = Gates.of(
         Vector(
           gate(
@@ -78,14 +87,13 @@ object LossTests extends TestSuite {
             Vector(
               lowered(result, "peek"),
               hidden(closing, "a closing record", "h2"),
-              hidden(nearbyClosing, "a closing record", "h3"),
-              hidden("""{"kind":"result","call":"t2"}""", "fetch", "h4")
+              hidden(nearbyClosing, "a closing record", "h3")
             ).mkString(","),
             post
           )
         )
       )
-      gates.map(g => (g.hidden, g.closings)) ==> Right((1, 2))
+      gates.map(g => (g.hidden, g.closings)) ==> Right((0, 2))
     }
 
     test("a gate whose output does not read is named") {
