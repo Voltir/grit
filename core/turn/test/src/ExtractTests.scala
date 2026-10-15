@@ -213,13 +213,14 @@ object ExtractTests extends TestSuite {
       read(Shape.YesNo, ujson.Bool(true)) ==> Right(Some(Extracted.Yes(true)))
       read(Shape.YesNo, ujson.Null) ==> Right(None)
       read(Shape.Number(1, 9), ujson.Num(4)) ==> Right(Some(Extracted.Number(4)))
-      assert(read(Shape.Number(1, 9), ujson.Num(12)).isLeft)
+      read(Shape.Number(1, 9), ujson.Num(12)) ==> Left("Mismatch(answer,expected at most 9, got 12)")
       read(Shape.Day, ujson.Str("2026-03-09")) ==>
         Right(Some(Extracted.Day(LocalDate.of(2026, 3, 9))))
       read(Shape.Day, ujson.Str("soon")) ==> Left("the answer is not an ISO date: \"soon\"")
       read(Shape.OneOf(Vector("open", "closed")), ujson.Str("closed")) ==>
         Right(Some(Extracted.Chosen("closed")))
-      assert(read(Shape.OneOf(Vector("open", "closed")), ujson.Str("merged")).isLeft)
+      read(Shape.OneOf(Vector("open", "closed")), ujson.Str("merged")) ==>
+        Left("Mismatch(answer,expected one of \"open\", \"closed\", null, got \"merged\")")
       read(Shape.Token(4), ujson.Str("ab-1")) ==> Right(Some(Extracted.Token("ab-1")))
       read(Shape.Token(4), ujson.Str("ab cd")) ==>
         Left("the answer is not at most 4 characters of A-Z, a-z, 0-9, _ and -: \"ab cd\"")
