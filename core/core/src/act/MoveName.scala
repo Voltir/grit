@@ -1,5 +1,8 @@
 package grit.core.act
 
+import scala.compiletime.ops.string.Matches
+import scala.compiletime.{constValue, constValueOpt, error}
+
 /** A move's name within its run, and its steps': `move:{name}`, then `move:{name}:{phase}`. 1 to
   * 200 characters, none a control character or `:`.
   */
@@ -14,6 +17,17 @@ object MoveName {
     else if (text.exists(c => c == ':' || c.isControl))
       Left("a move's name holds no ':' and no control character")
     else Right(text)
+
+  /** The literal `name`, which [[of]] would read: a literal it would refuse, or a name that is
+    * not a literal, does not compile.
+    */
+  inline def apply[N <: String & Singleton](inline name: N): MoveName =
+    inline constValueOpt[N] match {
+      case None => error("a move's name is a literal; MoveName.of reads one made at run time")
+      case Some(_) =>
+        inline if (constValue[Matches[N, "[^:\\p{Cc}]{1,200}"]]) name
+        else error("a move's name is 1 to 200 characters, none of them ':' or a control character")
+    }
 
   def value(name: MoveName): String = name
 }
