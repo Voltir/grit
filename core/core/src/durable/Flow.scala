@@ -58,6 +58,21 @@ object Flow {
   ): Flow[R1 & R2, Either[A, B], E, O] =
     Split[R1 & R2, A, B, E, O](left, right)
 
+  /** `left` over what `split` puts in a `Left`, `right` over its `Right`: [[either]] after a
+    * split on the wire, which records nothing.
+    */
+  def branch[R1, R2, I, A, B, E, O](split: I -> Either[A, B])(
+      left: Flow[R1, A, E, O],
+      right: Flow[R2, B, E, O]
+  ): Flow[R1 & R2, I, E, O] =
+    pass[I].map(split).andThen(either(left, right))
+
+  /** A `Left` passed on as it came, `f` over a `Right`. */
+  def onRight[R, F, A, E, B](
+      f: Flow[R, A, E, Either[F, B]]
+  ): Flow[R, Either[F, A], E, Either[F, B]] =
+    either(pass[F].map[Either[F, B]](Left(_)), f)
+
   /** `f`, its end passed as a `Left`. */
   def attempt[R, I, E, O](f: Flow[R, I, E, O]): Flow[R, I, Nothing, Either[E, O]] = Attempt(f)
 

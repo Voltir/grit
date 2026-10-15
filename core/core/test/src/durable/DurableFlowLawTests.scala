@@ -86,6 +86,20 @@ object DurableFlowLawTests extends TestSuite {
         (("Right(ta(x))", Vector("a")), ("Right(tt)", Vector("n")))
     }
 
+    test("branch runs only the arm its split names, recording nothing of its own") {
+      val counted = Step[Env, Int, String](StepName("n"))(r => n => r.tag * n)
+      val split =
+        Flow.branch((s: String) => s.toIntOption.toRight(s))(Flow.step(a), Flow.step(counted))
+      (ran(split, env, "x"), ran(split, env, "2")) ==>
+        (("Right(ta(x))", Vector("a")), ("Right(tt)", Vector("n")))
+    }
+
+    test("onRight passes a Left as it came, recording nothing, and runs its flow over a Right") {
+      val checked = Flow.onRight(Flow.step(a).map[Either[Int, String]](Right(_)))
+      (ran(checked, env, Left(3)), ran(checked, env, Right("x"))) ==>
+        (("Right(Left(3))", Vector()), ("Right(Right(ta(x)))", Vector("a")))
+    }
+
     test("attempt passes an end as a Left, and the flow goes on") {
       val kept = Flow.attempt(stopping).map(_.toString).andThen(Flow.step(b))
       ran(kept, env, "stop") ==> ("Right(tb(Left(stopped at t(stop))))", Vector("item:stop", "b"))
