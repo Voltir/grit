@@ -3,6 +3,7 @@ package grit.core.act
 import grit.core.flow.{Extracted, Shape}
 import grit.core.message.Message
 import grit.core.schema.{JsonSchema, Typed}
+import grit.core.tool.{Args, Field}
 
 /** The quarantined ask an extraction makes, the turn's `extract` tool's and a planner's
   * ([[Moves.extract]]) alike: one question of one text, answered in a shape.
@@ -31,36 +32,23 @@ object Extraction {
 
   /** The quarantined ask's reply, `{"answer": …}`: the answer read in `shape`
     * ([[Shape.answer]]), `None` when it is `null`; refused, saying why in words the model can
-    * act on, when it does not read. Why not, when `shape` writes no schema (a reversed range).
+    * act on, when it does not read. Why not, when `shape` writes no schema (a reversed range, or
+    * no options).
     */
   def reply(shape: Shape): Either[String, Typed[Option[Extracted]]] = {
-    val answer: ujson.Obj = shape match {
-      case Shape.YesNo => ujson.Obj("type" -> ujson.Arr("boolean", "null"))
-      case Shape.Number(min, max) =>
-        ujson.Obj(
-          "type" -> ujson.Arr("integer", "null"),
-          "minimum" -> ujson.Num(min.toDouble),
-          "maximum" -> ujson.Num(max.toDouble)
-        )
-      case Shape.Day | Shape.Token(_) => ujson.Obj("type" -> ujson.Arr("string", "null"))
-      case Shape.OneOf(options) =>
-        ujson.Obj(
-          "type" -> ujson.Arr("string", "null"),
-          "enum" -> ujson.Arr.from(options.map(ujson.Str(_)) :+ ujson.Null)
-        )
+    val meaning = s"${described(shape).capitalize}, or null when the item does not say."
+    // Only the schema is the field's: the answer is read as the shape reads it, below.
+    def asked[A](answer: Field[A]): ujson.Obj =
+      Args.of((answer = answer.optional)).schema(strict = true)
+    val schema: Either[String, ujson.Obj] = shape match {
+      case Shape.YesNo => Right(asked(Field.flag(meaning)))
+      case Shape.Number(min, max) => Right(asked(Field.integer(meaning, min, max)))
+      case Shape.Day | Shape.Token(_) => Right(asked(Field.text(meaning)))
+      case Shape.OneOf(first +: rest) => Right(asked(Field.oneOf(meaning, first, rest*)))
+      case Shape.OneOf(_) => Left(s"one_of lists 1 to ${Shape.MaxOptions} options, not 0")
     }
-    answer("description") = s"${described(shape).capitalize}, or null when the item does not say."
-    JsonSchema
-      .read(
-        ujson.Obj(
-          "type" -> "object",
-          "properties" -> ujson.Obj("answer" -> answer),
-          "required" -> ujson.Arr("answer"),
-          "additionalProperties" -> false
-        )
-      )
-      .left
-      .map(_.toString)
+    schema
+      .flatMap(JsonSchema.read(_).left.map(_.toString))
       .map(schema =>
         Typed(
           schema,

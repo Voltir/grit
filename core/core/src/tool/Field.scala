@@ -70,13 +70,22 @@ object Field {
     * [[ArgRepair.QuotedNumber]] ([[Repair.quotedNumber]]).
     * With `min > max` no value is accepted.
     */
-  def count(meaning: String, min: Int, max: Int): Field[Int] =
+  def count(meaning: String, min: Int, max: Int): Field[Int] = whole(meaning, min, max, _.toInt)
+
+  /** A whole number from `min` to `max` inclusive, as [[count]] reads one, for bounds past
+    * `Int`. With `min > max` no value is accepted.
+    */
+  def integer(meaning: String, min: Long, max: Long): Field[Long] =
+    whole(meaning, min, max, _.toLong)
+
+  /* A whole number from `min` to `max`, read as `as` makes it. */
+  private def whole[A](meaning: String, min: Long, max: Long, as: Double -> A): Field[A] =
     plain(
       () =>
         ujson.Obj(
           "type" -> "integer",
-          "minimum" -> min,
-          "maximum" -> max,
+          "minimum" -> ujson.Num(min.toDouble),
+          "maximum" -> ujson.Num(max.toDouble),
           "description" -> meaning
         ),
       s"a whole number from $min to $max",
@@ -84,8 +93,8 @@ object Field {
         Repair
           .quotedNumber(v, repairs)
           .numOpt
-          .filter(n => n.isWhole && n >= min && n <= max)
-          .map(_.toInt)
+          .filter(n => n.isWhole && n >= min.toDouble && n <= max.toDouble)
+          .map(as)
     )
 
   /** `true` or `false`. */
