@@ -50,7 +50,7 @@ private[turn] object TurnFlow {
   def flow: Flow[Env, TurnRef, Nothing, String] =
     Flow
       .attempt(early)
-      .andThen(Flow.either(failing, Flow.attempt(ran).map(_.merge).andThen(ending)))
+      .andThen(Flow.either(failing, ran.andThen(ending)))
 
   /** From `pin-models` to `offer`: what the turn offers, or why it ended before it did. */
   private def early: Flow[Env, TurnRef, Failed, Offered] = {
@@ -89,10 +89,10 @@ private[turn] object TurnFlow {
         kept.fold(e => s"failed: ${f.failure}; not recorded: $e", _ => s"failed: ${f.failure}")
       )
 
-  /** From `stitched` to `append`: what the turn's steps came to. Ends with a turn that failed
-    * before its loop, or in it, its verdict recorded when the loop had a reply.
+  /** From `stitched` to `append`: what the turn's steps came to, whether it failed before its
+    * loop, in it, or answered; its verdict recorded when the loop had a reply.
     */
-  private def ran: Flow[Env, Offered, Ended, Ended] = {
+  private def ran: Flow[Env, Offered, Nothing, Ended] = {
     val placed =
       (stitched: Flow[Env, Offered, Nothing, Either[TurnFailure, Option[String]]]).keeping
         .map((o, s) => o.copy(notes = o.notes + s.fold(f => s"; not placed: $f", _ => "")))
@@ -125,13 +125,15 @@ private[turn] object TurnFlow {
       .keeping
       .map((started, loop) => (started._1, loop))
     placed
-      .andThen(assembled)
-      .andThen(looped)
+      .andThen(Flow.attempt(assembled))
       .andThen(
-        Flow.mayEnd(
-          Flow.branch((started: (Assembled, Either[TurnRound.Stalled, TurnRound.Looped])) =>
-            started._2.left.map((started._1, _)).map(Answered(started._1, _))
-          )(stalled.map(Left(_)), answered.map(Right(_)))
+        Flow.either(
+          Flow.pass[Ended],
+          looped.andThen(
+            Flow.branch((started: (Assembled, Either[TurnRound.Stalled, TurnRound.Looped])) =>
+              started._2.left.map((started._1, _)).map(Answered(started._1, _))
+            )(stalled, answered)
+          )
         )
       )
   }
