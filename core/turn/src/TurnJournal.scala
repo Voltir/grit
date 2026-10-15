@@ -30,7 +30,7 @@ import grit.core.visibility.{Integrity, Label}
   * `{"failed": kind, "reason": text}`, an uncleared turn's reason its classification's
   * written label. In-flight turns must read back what an earlier build wrote: an encoding
   * only grows, a field absent reading as it did before it existed, and any other change is a
-  * patch or a new epoch (ADR 0004, [[Turn.Patches]]).
+  * patch or a new epoch (ADR 0004).
   */
 private[turn] object TurnJournal {
 
@@ -217,7 +217,7 @@ private[turn] object TurnJournal {
       v => v.strOpt.map(EntryId(_)).toRight("entry id: expected a string")
     )
 
-  /** A `record-call:n` step's output: `{"reply": entry id, "kinds": [kind, …]}`, each call's
+  /** A `ask:n:record` step's output: `{"reply": entry id, "kinds": [kind, …]}`, each call's
     * kind in order: `"refused"`, `"free"`, `"gated"`, or `{"hosted": tool, "asks": boolean,
     * "place": place written | null}`.
     */
@@ -288,7 +288,7 @@ private[turn] object TurnJournal {
         )
     )
 
-  /** A `tool:n:j` step's output: `{"result": entry id, "failed": boolean}`. */
+  /** A `call:n:j` step's output: `{"result": entry id, "failed": boolean}`. */
   given settled: Journaled[Either[TurnFailure, TurnTools.Settled]] =
     outcome(
       s => ujson.Obj("result" -> EntryId.value(s.result), "failed" -> s.failed),
@@ -783,8 +783,8 @@ private[turn] object TurnJournal {
     case Weighing.Unweighed.Late => "timeout"
   }
 
-  /** A step's output that is yes or no: a `dispatch` step's, whether its requests were sent
-    * to a serving edge (`true`) or no edge was serving the workspace (`false`); a
+  /** A step's output that is yes or no: a send or `dispatch` step's, whether its requests were
+    * sent to a serving edge (`true`) or no edge was serving the workspace (`false`); a
     * `record-failure` step's, whether a failure was kept for the turn's heard message.
     */
   given yesNo: Journaled[Either[TurnFailure, Boolean]] =

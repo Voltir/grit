@@ -28,7 +28,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-10-14"
+  val Epoch = "2026-10-15"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
@@ -170,24 +170,6 @@ object Turn {
   /** A step of the tool loop, by what its name says. */
   private val Loop = TurnRound.Names.Step
   private type Loop = TurnRound.Names.Step
-
-  /** The patches the turn's steps take within this epoch (ADR 0004). */
-  object Patches {
-
-    /** A turn that fails at `pin-models`, `route` or `offer` keeps its failure in
-      * `record-failure` ([[TurnFlow]]). Never retired: a rerun whose `pin-models` or `offer`
-      * output is read back and then fails to load has recorded later steps at this point, does
-      * not take it, and records nothing more.
-      */
-    val RecordFailure = "record-failure"
-
-    /** A turn gates each model call by its integrity ([[Step.Gate]]), its rows believed at
-      * it. Taken once, before the first `gate:0`: a turn that passed that point before it
-      * shipped finishes ungated, every call stamped at [[Integrity.Authority]] and every tool
-      * offered, its rows believed as its entries say ([[grit.core.store.EntryStore.believed]]).
-      */
-    val Integrity = "integrity"
-  }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
     * is recorded when it completes). After a loop's `ask:n:record`, its first call,

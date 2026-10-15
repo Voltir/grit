@@ -21,15 +21,13 @@ import TurnLoop.{Budget, Next, Pending, Round}
 import TurnTools.{Kind, Settled, Slot}
 import TurnJournal.given
 
-/** A turn's tool loop, as a flow: each round's `gate:n` when the turn is gated, its model call
+/** A turn's tool loop, as a flow: each round's `gate:n`, its model call
   * `ask:n`, and, for a reply that calls tools ([[TurnLoop.next]]), its `ask:n:record`, its free
   * hosted calls sent to each place together (`call:n:send` to the workspace,
   * `call:n:send:{place}` to a service it reaches), and each call settled in order: in its
   * `call:n:j`, after `call:n:j:approve` and a person's answer for one that asks, and after a
-  * hosted call's own steps
-  * ([[TurnHosted.settle]]). Until a reply answers, or a step fails. A turn that reached its loop
-  * before the patch [[Turn.Patches.Integrity]] shipped runs ungated. Its bodies act through an
-  * [[Env]]; what crosses its rounds is [[Rounds]], on the wire.
+  * hosted call's own steps ([[TurnHosted.settle]]). Until a reply answers, or a step fails. Its
+  * bodies act through an [[Env]]; what crosses its rounds is [[Rounds]], on the wire.
   */
 private[turn] object TurnRound {
 
@@ -123,24 +121,18 @@ private[turn] object TurnRound {
   final case class Rounds(
       looping: Looping,
       round: Round,
-      gating: Option[Map[Int, Gated]],
+      gates: Map[Int, Gated],
       replies: Vector[Message.Assistant]
   ) extends OfRound {
 
-    /** Each round's gate so far, by its index: none for an ungated turn. */
-    def gates: Map[Int, Gated] = gating.getOrElse(Map.empty)
-
-    /** The turn's level: its first gate's, met with each later one's in turn;
-      * [[Integrity.Authority]] before any.
+    /** The turn's level, what its rows are believed at: its first gate's, met with each later
+      * one's in turn; [[Integrity.Authority]] before any.
       */
     def level: Integrity =
       gates.values.map(_.level).reduceOption(_.meet(_)).getOrElse(Integrity.Authority)
 
-    /** What the turn's rows are believed at: its level, when it is gated. */
-    def believed: Option[Integrity] = gating.map(_ => level)
-
     private[TurnRound] def gatedBy(gate: Gated): Rounds =
-      copy(gating = gating.map(_.updated(round.index, gate)))
+      copy(gates = gates.updated(round.index, gate))
   }
 
   /** What a turn's loop is allowed: `budget`, its model calls, and `answerWithin`, how long a
@@ -274,18 +266,15 @@ private[turn] object TurnRound {
   /** The loop from its first round, run under its input: its hosted calls go to the places its
     * offer gives them, sent as its pins say.
     */
-  def flow: Flow[Env, Looping, Stalled, Looped] = {
-    def from(gated: Boolean): Flow[Env, Looping, Stalled, Looped] =
-      Flow
-        .pass[Looping]
-        .map(l => Rounds(l, Round.First, Option.when(gated)(Map.empty), Vector.empty))
-        .andThen(Flow.loop(round(gated)))
-    Flow.patch(Turn.Patches.Integrity)(from(false), from(true))
-  }
+  def flow: Flow[Env, Looping, Stalled, Looped] =
+    Flow
+      .pass[Looping]
+      .map(l => Rounds(l, Round.First, Map.empty, Vector.empty))
+      .andThen(Flow.loop(round))
 
-  /** What a row `turn` writes after its first gate is believed at: `believed`, its level then
-    * ([[Rounds.believed]]), or, for a turn ungated ([[Turn.Patches.Integrity]]), what its
-    * entries say ([[EntryStore.believed]]).
+  /** What a row `turn` writes is believed at: `believed`, its level once it reached its loop
+    * ([[Rounds.level]]), or, for a turn that ended before it, what its entries say
+    * ([[EntryStore.believed]]).
     */
   private[turn] def believedAt(entries: EntryStore, turn: TurnRef, believed: Option[Integrity])(
       using Tx^
@@ -341,11 +330,9 @@ private[turn] object TurnRound {
   }
 
   /** One round: its gate, its call, and, when its reply called tools, those calls settled. */
-  private def round(gates: Boolean): Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
+  private def round: Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
     val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
-    val gating: Flow[Env, Rounds, Stalled, Rounds] =
-      if (gates) Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
-      else Flow.pass[Rounds]
+    val gating = Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
     val calling = Flow.step(
       Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
         at => r.call(at, TurnLoop.use(at.looping.budget, at.round))

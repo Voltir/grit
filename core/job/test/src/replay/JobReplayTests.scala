@@ -14,14 +14,33 @@ import utest.*
   */
 object JobReplayTests extends TestSuite {
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
+  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+
+  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
+    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
     if (!os.isDir(dir)) Vector.empty
     else
       os.list(dir)
         .filter(_.ext == "json")
         .toVector
         .map(p => p -> History.read(ujson.read(os.read(p))))
+  }
+
+  /** Each history of `epoch`, by its file's name, as the names of its steps. */
+  private def namesOf(epoch: String): Map[String, Vector[String]] =
+    historiesOf(epoch).collect { case (path, Right(h)) => path.last -> h.steps.map(_.name) }.toMap
+
+  /** The name the previous epoch's step `name` has in this one: a move's `move:{name}` named
+    * for what it is, by the moves the recorder's jobs make (`a` and `j` ask, `c` calls, `note`
+    * keeps).
+    */
+  private def renamed(name: String): String = {
+    val Move = """move:([^:]+)(:.*)?""".r
+    val kinds = Map("a" -> "ask", "j" -> "ask", "c" -> "call", "note" -> "keep")
+    name match {
+      case Move(move, phase) => s"${kinds.getOrElse(move, "move")}:$move${Option(phase).mkString}"
+      case other => other
+    }
   }
 
   /** Whether `history` made a move: a step `grit.act.moves.ActName` names. */
@@ -67,6 +86,14 @@ object JobReplayTests extends TestSuite {
     }
 
   val tests = Tests {
+    test(
+      "each run history of the previous epoch, its moves renamed, is its scenario's in this one"
+    ) {
+      val (before, after) = (namesOf("2026-10-14"), namesOf(Turn.Epoch))
+      (before.size, before.keySet == after.keySet) ==> (19, true)
+      before.map((file, names) => file -> names.map(renamed)) ==> after
+    }
+
     test("the current epoch has run histories to replay, redeployed ones and moves among them") {
       // Without them the gates below pass vacuously.
       val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path.last }
@@ -146,7 +173,7 @@ object JobReplayTests extends TestSuite {
           new InMemoryDurable().replay(h.id, h.steps)(Run.body(new World().env(), jobs(2)))
       }
       replayed.map(_.left.map(_.replaceAll("workflow \\S+ ", "workflow "))) ==>
-        Vector(Left("workflow step 1: ran 'reply', recorded 'move:a'"))
+        Vector(Left("workflow step 1: ran 'reply', recorded 'ask:a'"))
     }
   }
 }

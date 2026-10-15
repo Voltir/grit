@@ -46,8 +46,8 @@ object Run {
   /** The workflow of a job's run, the turn whose workflow id it starts from:
     *   1. `read-slot` — which slot it runs, its schedule, and the version it was started at;
     *   1. under its job's current version in `jobs`, the job's run: the moves it makes, each as
-    *      `ask:{name}`, `call:{name}` or `keep:{name}` and its phases ([[grit.act.moves.ActName]]), for its schedule's
-    *      principal, each ask admitted by `budget` against the day's spend, a call whose tool
+    *      `ask:{name}`, `call:{name}` or `keep:{name}` and its phases
+    *      ([[grit.act.moves.ActName]]), for its schedule's principal, each ask admitted by `budget` against the day's spend, a call whose tool
     *      asks a person first never sent ([[grit.core.act.Gates.Closed]]), within the job's
     *      limits, and a plugin's keeping job's keeps over its plugin's documents, as `keepers`
     *      gives them;

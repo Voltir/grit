@@ -33,15 +33,12 @@ object RecordTurnHistories {
   }
 
   private def recorded(durable: InMemoryDurable, turn: TurnRef): History = {
-    val steps = durable.history(turn.workflowId)
-    History("turn", turn.workflowId, Turn.Epoch, "recorded", steps, keptBy(steps))
+    History("turn", turn.workflowId, Turn.Epoch, "recorded", durable.history(turn.workflowId))
   }
 
   /** `history` as it stood once its first `n` steps were recorded: a turn in flight. */
-  private def inFlight(history: History, n: Int): History = {
-    val steps = history.steps.take(n)
-    history.copy(steps = steps, kept = keptBy(steps))
-  }
+  private def inFlight(history: History, n: Int): History =
+    history.copy(steps = history.steps.take(n))
 
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.

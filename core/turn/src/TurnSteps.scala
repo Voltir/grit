@@ -203,7 +203,7 @@ private[turn] object TurnSteps {
 
   /** What `at`'s steps from `assemble` to `append` came to: its reply entry, or why it has
     * none; the verdict's record when it failed without failing the turn; and the turn's level
-    * at its end, `None` when it is ungated ([[TurnRound.Rounds.believed]]).
+    * at its end, `None` when it ended before its loop had a reply ([[TurnRound.Rounds.level]]).
     */
   final case class Ended(
       at: Offered,
@@ -436,7 +436,7 @@ private[turn] object TurnSteps {
                 in.looped.answer,
                 a.pins.turn.grade,
                 shape,
-                rounds.believed,
+                Some(rounds.level),
                 env.clock.now()
               )
             )

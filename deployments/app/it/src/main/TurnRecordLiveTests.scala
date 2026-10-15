@@ -26,10 +26,10 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        // Every turn's steps, its model call after the integrity patch's marker and its gate.
+        // Every turn's steps, its first model call after its gate.
         steps.map(_.name) ==> Turn.Step.all.filterNot(Turn.Step.optional.contains).flatMap {
           case Turn.Step.Ask =>
-            Vector("DBOS.patch-integrity", "gate:0", "ask:0")
+            Vector("gate:0", "ask:0")
           case step => Vector(step)
         }
         val own = steps.filter(s => Turn.Step.all.contains(s.name))

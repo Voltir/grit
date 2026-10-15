@@ -7,7 +7,7 @@ import grit.core.provider.Delta
 
 /** What a turn tells edges while its model answers: the stream [[Key]] of its workflow,
   * pieces of reasoning and text, and the name of each tool call as it begins, each tagged
-  * with the attempt at the call-model step that wrote it. The stream is at least once (ADR
+  * with the attempt at the `ask:n` step that wrote it. The stream is at least once (ADR
   * 0006): a step cut short by a crash leaves its pieces, and the rerun writes its own after
   * them, so a reader keeps only the latest attempt's ([[Heard]]). The recorded reply, not
   * the stream, is the turn's answer.
@@ -17,7 +17,7 @@ object TurnStream {
   /** The turn workflow's stream of its reply. */
   val Key = "reply"
 
-  /** A piece of the reply, written by the call-model run `attempt`. */
+  /** A piece of the reply, written by the `ask:n` run `attempt`. */
   final case class Piece(attempt: String, delta: Delta)
 
   def encode(piece: Piece): String = {

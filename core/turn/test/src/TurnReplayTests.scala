@@ -13,8 +13,10 @@ import utest.*
 object TurnReplayTests extends TestSuite {
   import TurnFixtures.*
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
+  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+
+  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
+    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
     if (!os.isDir(dir)) Vector.empty
     else
       os.list(dir)
@@ -23,7 +25,62 @@ object TurnReplayTests extends TestSuite {
         .map(p => p -> History.read(ujson.read(os.read(p))))
   }
 
+  /** The epoch before this one, whose histories the rename map is checked against. */
+  private val Previous = "2026-10-14"
+
+  /** The name the previous epoch's step `name` has in this one; `None` for a retired patch's
+    * marker, which this epoch's turns no longer record.
+    */
+  private def renamed(name: String): Option[String] = {
+    val Call = """call-model:(\d+)""".r
+    val Record = """record-call:(\d+)""".r
+    val Tool = """tool:(\d+):(\d+)""".r
+    val Ask = """ask:(\d+):(\d+)""".r
+    val Send = """dispatch:(\d+)""".r
+    val Dispatch = """dispatch:(\d+):(\d+)""".r
+    val Reach = """reach:(\d+):(.+)""".r
+    val Expire = """expire:(\d+):(\d+)""".r
+    val Abandon = """abandon:(\d+):(\d+)""".r
+    name match {
+      case "DBOS.patch-integrity" | "DBOS.patch-record-failure" => None
+      case "call-model" => Some("ask:0")
+      case Call(n) => Some(s"ask:$n")
+      case Record(n) => Some(s"ask:$n:record")
+      case Tool(n, j) => Some(s"call:$n:$j")
+      case Ask(n, j) => Some(s"call:$n:$j:approve")
+      case Send(n) => Some(s"call:$n:send")
+      case Dispatch(n, j) => Some(s"call:$n:$j:dispatch")
+      case Reach(n, place) => Some(s"call:$n:send:$place")
+      case Expire(n, j) => Some(s"call:$n:$j:expire")
+      case Abandon(n, j) => Some(s"call:$n:$j:abandon")
+      case other => Some(other)
+    }
+  }
+
+  /** Each history of `epoch`, by its file's name, as the names of its steps. */
+  private def namesOf(epoch: String): Map[String, Vector[String]] =
+    historiesOf(epoch).collect { case (path, Right(h)) => path.last -> h.steps.map(_.name) }.toMap
+
   val tests = Tests {
+    test(
+      "each history of the previous epoch, its steps renamed, is its scenario's in this one, less the retired patches' markers"
+    ) {
+      val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
+      // A history recorded before the integrity patch shipped did not take it, and ran its
+      // loop ungated: under this epoch every round's model call follows its gate.
+      val Asked = """ask:(\d+)""".r
+      def now(names: Vector[String]): Vector[String] = {
+        val renaming = names.flatMap(renamed)
+        if (names.contains("DBOS.patch-integrity")) renaming
+        else
+          renaming.flatMap {
+            case n @ Asked(round) => Vector(s"gate:$round", n); case n => Vector(n)
+          }
+      }
+      (before.size, before.keySet == after.keySet) ==> (57, true)
+      before.map((file, names) => file -> now(names)) ==> after
+    }
+
     test("the current epoch has histories to replay") {
       // Without them the gate below passes vacuously.
       assert(histories.nonEmpty)
@@ -36,23 +93,20 @@ object TurnReplayTests extends TestSuite {
           else {
             val entries = new InMemoryEntryStore
             // The tools the recorder offered: a gated call asks before its step, so the
-            // steps a history holds depend on which tools its calls bind to. What its offer
-            // step names by id is read back from the rows the history keeps.
-            keepAll(history.kept).flatMap { _ =>
-              new InMemoryDurable().replay(history.id, history.steps)(
-                tooledBody(
-                  entries,
-                  new RecordingProvider,
-                  new InMemoryUsageLedger,
-                  new grit.models.StubProvider(),
-                  NoClassifier,
-                  NoCheckout,
-                  tools(NoCheckout),
-                  5,
-                  hosted = hostedTools
-                )
+            // steps a history holds depend on which tools its calls bind to.
+            new InMemoryDurable().replay(history.id, history.steps)(
+              tooledBody(
+                entries,
+                new RecordingProvider,
+                new InMemoryUsageLedger,
+                new grit.models.StubProvider(),
+                NoClassifier,
+                NoCheckout,
+                tools(NoCheckout),
+                5,
+                hosted = hostedTools
               )
-            }
+            )
           }
         }
         outcome.left.toOption.map(why => s"${path.last}: $why")

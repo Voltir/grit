@@ -139,7 +139,7 @@ object TurnModelsTests extends TestSuite {
         modelsBody(entries, models, new InMemoryModelProfileStore, NoCheckout, noTools)
       ) ==> "failed: Model(no model catalog: catalog.json is not JSON)"
       durable.recordedSteps(turn.workflowId) ==>
-        Vector("pin-models", "DBOS.patch-record-failure", "record-failure")
+        Vector("pin-models", "record-failure")
       models.asked ==> Vector.empty
     }
 

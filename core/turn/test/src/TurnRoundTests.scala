@@ -144,9 +144,9 @@ object TurnRoundTests extends TestSuite {
       Flows.run(TurnRound.flow, env, looping) match {
         case Right(TurnRound.Looped(answer, at)) =>
           s"answered ${text(answer)} at ${at.round.index} of ${at.replies.size}, " +
-            s"believed ${at.believed}"
+            s"believed ${at.level}"
         case Left(TurnRound.Stalled(failure, at)) =>
-          s"stalled $failure after ${at.replies.size}, believed ${at.believed}"
+          s"stalled $failure after ${at.replies.size}, believed ${at.level}"
       }
     )
     val settled = summon[grit.core.durable.Journaled[Either[TurnFailure, TurnTools.Settled]]]
@@ -159,13 +159,11 @@ object TurnRoundTests extends TestSuite {
     (out, steps)
   }
 
-  private val marker = StepRecord.marker(Turn.Patches.Integrity)
-
   val tests = Tests {
     test("a reply that calls no tool answers at once, its round gated before its call") {
       rounds(3, replying(Right(reply("hi")))) ==> (
-        "answered hi at 0 of 1, believed Some(member)",
-        Vector(marker, "gate:0", "ask:0")
+        "answered hi at 0 of 1, believed member",
+        Vector("gate:0", "ask:0")
       )
     }
 
@@ -173,9 +171,8 @@ object TurnRoundTests extends TestSuite {
       val first = reply("", Vector("a", "b"))
       val second = reply("more", Vector("c"))
       rounds(4, replying(Right(first), Right(second), Right(reply("answer")))) ==> (
-        "answered answer at 2 of 3, believed Some(member)",
+        "answered answer at 2 of 3, believed member",
         Vector(
-          marker,
           "gate:0",
           "ask:0",
           "ask:0:record",
@@ -195,9 +192,8 @@ object TurnRoundTests extends TestSuite {
       val script: (Round, ToolUse) -> Either[TurnFailure, Message.Assistant] = (round, use) =>
         Right(if (round.index == 0) reply("", Vector("a")) else reply(s"so $use", Vector("b")))
       rounds(2, script) ==> (
-        "answered so Off at 1 of 2, believed Some(member)",
+        "answered so Off at 1 of 2, believed member",
         Vector(
-          marker,
           "gate:0",
           "ask:0",
           "ask:0:record",
@@ -212,7 +208,7 @@ object TurnRoundTests extends TestSuite {
       val (out, steps) = rounds(3, replying(Right(reply("", Vector("a"))), Right(reply(""))))
       (out, steps.lastOption) ==> (
         "stalled Model(the reply to ask:1 said nothing and called no tool) after 2, " +
-          "believed Some(member)",
+          "believed member",
         Some("ask:1")
       )
     }
@@ -220,9 +216,8 @@ object TurnRoundTests extends TestSuite {
     test("a reply cut off at max tokens has its calls refused, not run") {
       val cut = reply("", Vector("a"), StopReason.MaxTokens)
       rounds(3, replying(Right(cut), Right(reply("ok")))) ==> (
-        "answered ok at 1 of 2, believed Some(member)",
+        "answered ok at 1 of 2, believed member",
         Vector(
-          marker,
           "gate:0",
           "ask:0",
           "ask:0:record",
@@ -237,7 +232,7 @@ object TurnRoundTests extends TestSuite {
       val down = TurnFailure.Model("HTTP 529")
       val (out, steps) = rounds(3, replying(Right(reply("", Vector("a"))), Left(down)))
       (out, steps.lastOption) ==> (
-        "stalled Model(HTTP 529) after 1, believed Some(member)",
+        "stalled Model(HTTP 529) after 1, believed member",
         Some("ask:1")
       )
     }
@@ -248,8 +243,8 @@ object TurnRoundTests extends TestSuite {
         replying(Right(reply("", Vector("a")))),
         kept = Left(TurnFailure.Store("disk"))
       ) ==> (
-        "stalled Store(disk) after 1, believed Some(member)",
-        Vector(marker, "gate:0", "ask:0", "ask:0:record")
+        "stalled Store(disk) after 1, believed member",
+        Vector("gate:0", "ask:0", "ask:0:record")
       )
     }
 
@@ -258,24 +253,13 @@ object TurnRoundTests extends TestSuite {
         Vector(Integrity.Member, Integrity.Outside, Integrity.Member)(_)
       val script =
         replying(Right(reply("", Vector("a"))), Right(reply("", Vector("b"))), Right(reply("so")))
-      rounds(4, script, levels)._1 ==> "answered so at 2 of 3, believed Some(outside)"
+      rounds(4, script, levels)._1 ==> "answered so at 2 of 3, believed outside"
       // A gate's compartments are kept: the level starts at the first gate's, not above it.
       val team = grit.core.visibility.Compartment
         .of("team")
         .getOrElse(throw new java.lang.AssertionError("team is a compartment"))
       val inTeam = Integrity.at(Integrity.Level.Member, team)
-      rounds(4, script, _ => inTeam)._1 ==> s"answered so at 2 of 3, believed ${Some(inTeam)}"
-    }
-
-    test("a turn that reached its loop before the integrity patch shipped runs ungated") {
-      rounds(
-        3,
-        replying(Right(reply("hi"))),
-        durable = new InMemoryDurable(unpatched = Set(Turn.Patches.Integrity))
-      ) ==> (
-        "answered hi at 0 of 1, believed None",
-        Vector("ask:0")
-      )
+      rounds(4, script, _ => inTeam)._1 ==> s"answered so at 2 of 3, believed $inTeam"
     }
   }
 }

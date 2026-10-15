@@ -21,8 +21,10 @@ object LifecycleReplayTests extends TestSuite {
   import CloseFixtures.*
   import RecordLifecycleHistories.{Posted, postWorld}
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
+  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+
+  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
+    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
     if (!os.isDir(dir)) Vector.empty
     else
       os.list(dir)
@@ -32,6 +34,15 @@ object LifecycleReplayTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "each lifecycle history of the previous epoch names its steps as its scenario's in this one"
+    ) {
+      def namesOf(epoch: String): Map[String, Vector[String]] =
+        historiesOf(epoch).collect { case (p, Right(h)) => p.last -> h.steps.map(_.name) }.toMap
+      val (before, after) = (namesOf("2026-10-14"), namesOf(Turn.Epoch))
+      (before.size, before == after) ==> (33, true)
+    }
+
     test(
       "the current epoch has close, settle, posting, triage, placement and shadow histories to replay"
     ) {

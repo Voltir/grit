@@ -106,7 +106,6 @@ object TurnGateTurnTests extends TestSuite {
       gatedRun(durable, entries, turn)(provider) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-window").drop(1) ==> Vector(
-        "DBOS.patch-integrity",
         "gate:0",
         "ask:0",
         "ask:0:record",
@@ -479,24 +478,8 @@ object TurnGateTurnTests extends TestSuite {
       kept(w.entries, EntryId.value(w.turn.draftId)).map(_.integrity) ==> Some(Integrity.Outside)
     }
 
-    test("a turn that passed the gate's point before it shipped finishes ungated") {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable(unpatched = Set(Turn.Patches.Integrity))
-      val provider = gatedScript
-      val turn = say(entries, "read and post")
-      gatedRun(durable, entries, turn)(provider)
-      durable.recordedSteps(turn.workflowId).filter(_.startsWith("gate")) ==> Vector.empty
-      provider.requests.map(_.tools.map(_.name)) ==> Vector.fill(3)(Vector("peek", "post"))
-      kept(entries, "result:c1:0:1:0").map(_.payload) ==> Some(
-        Payload.Result(
-          Message.ToolResult(ToolCallId("t2"), "posted", false),
-          "post a.txt"
-        )
-      )
-    }
-
     test("a running turn after a gate is in the model call it gates") {
-      Turn.running(Vector("record-window", "DBOS.patch-integrity", "gate:0")) ==> "ask:0"
+      Turn.running(Vector("record-window", "gate:0")) ==> "ask:0"
       Turn.running(Vector("ask:0", "ask:0:record", "call:0:0", "gate:1")) ==> "ask:1"
       Turn.Step.family("gate:3") ==> Some(Turn.Step.Gate)
     }

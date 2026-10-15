@@ -1,7 +1,8 @@
 # 0034. Turns and jobs act through three moves, ask, call and keep, made under an acting value
 
 Status: accepted (2026-10-08); amended (2026-10-09): what a move is, and one ask in shapes;
-amended (2026-10-13) by ADR 0037: an ask goes to a cleared pair or is not made
+amended (2026-10-13) by ADR 0037: an ask goes to a cleared pair or is not made;
+revised (2026-10-15): one step grammar, by 0038
 
 Context: The turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps, and its requests recorded
@@ -49,8 +50,9 @@ Decision:
   conversation grit begins does not give it.
 - The rules are written once: the acting value and the planner's moves in core, and their
   durable steps in one module the turn and jobs share, each step sequence taking its caller's
-  step names and recorded forms. The turn keeps its names and forms; a planner's moves are
-  named `move:{name}`.
+  step names and recorded forms. The turn and a planner's moves share one step grammar (ADR
+  0038): a planner's moves are named `ask:{name}`, `call:{name}` and `keep:{name}`, the turn's
+  `ask:n` and `call:n:j`.
 - A planner (a job, later a smart job) makes its moves through `Moves`: each named, at most once
   per run, its asks and calls within its job's limits, with a digest of each ask's and call's
   input in a form the moves own; a rerun whose input differs is refused. A keep records what its

@@ -7,17 +7,14 @@ import grit.core.id.WorkflowId
   * which epoch, and its steps in order. Written by a recorder over [[InMemoryDurable]] or
   * captured from Postgres (`scripts/capture-history.sh`); both write this one shape. A
   * step's JSON has its `output`, or its `error`: the message, `null` for an exception
-  * without one; a patch marker has neither. `kept` holds the content-addressed rows the
-  * steps name by id (a turn's tool sets and prompt fragments), as the store keeps them
-  * forever: a replay reads them back from there; written only when there are any.
+  * without one; a patch marker has neither.
   */
 final case class History(
     workflow: String,
     id: WorkflowId,
     epoch: String,
     source: String,
-    steps: Vector[InMemoryDurable.Step],
-    kept: ujson.Obj = ujson.Obj()
+    steps: Vector[InMemoryDurable.Step]
 )
 
 object History {
@@ -37,10 +34,7 @@ object History {
         }
         ujson.Obj.from(("name" -> ujson.Str(s.name)) +: outcome)
       })
-    ) match {
-      case o if h.kept.value.isEmpty => o
-      case o => o("kept") = h.kept; o
-    }
+    )
 
   def read(v: ujson.Value): Either[String, History] = {
     def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
@@ -70,7 +64,6 @@ object History {
             }
           } yield done :+ InMemoryDurable.Step(name, outcome)
         }
-      kept = o.get("kept").flatMap(_.objOpt).fold(ujson.Obj())(k => ujson.Obj.from(k))
-    } yield History(workflow, WorkflowId(id), epoch, source, steps, kept)
+    } yield History(workflow, WorkflowId(id), epoch, source, steps)
   }
 }

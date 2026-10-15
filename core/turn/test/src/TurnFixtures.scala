@@ -884,63 +884,6 @@ object TurnFixtures {
     )(id)
   }
 
-  /** The rows the `offer` step among `steps` names, from the fixture stores: its tool set
-    * and prompt fragments, as a history keeps them ([[grit.core.durable.History.kept]]).
-    */
-  def keptBy(steps: Vector[InMemoryDurable.Step]): ujson.Obj = {
-    val offered = steps.collectFirst {
-      case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) =>
-        ujson.read(out)
-    }
-    val ok = offered.flatMap(_.objOpt).flatMap(_.get("ok")).flatMap(_.objOpt)
-    val set = ok
-      .flatMap(_.get("tools"))
-      .flatMap(_.strOpt)
-      .flatMap(id => ToolSets.sets.find(s => grit.core.tool.ToolSetId.value(s.id) == id))
-    val ids = ok
-      .flatMap(_.get("prompt"))
-      .flatMap(_.arrOpt)
-      .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
-    val fragments =
-      ids.flatMap(id => Prompts.fragments.find(f => grit.core.prompt.FragmentId.value(f.id) == id))
-    if (offered.isEmpty) ujson.Obj()
-    else
-      ujson.Obj(
-        "toolSets" -> ujson.Arr.from(set.toVector.map(ToolSet.write)),
-        "fragments" -> ujson.Arr.from(fragments.map(Fragment.write))
-      )
-  }
-
-  /** Keeps in the fixture stores the rows a history holds ([[keptBy]]'s form). */
-  def keepAll(kept: ujson.Obj): Either[String, Unit] = {
-    val sets =
-      kept.value.get("toolSets").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
-    val fragments =
-      kept.value.get("fragments").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
-    for {
-      read <- sets.foldLeft[Either[String, Vector[ToolSet]]](Right(Vector.empty))((acc, v) =>
-        acc.flatMap(d => ToolSet.read(v).map(d :+ _))
-      )
-      frags <- fragments.foldLeft[Either[String, Vector[Fragment]]](Right(Vector.empty)) {
-        (acc, v) =>
-          acc.flatMap { d =>
-            (for {
-              o <- v.objOpt
-              layer <- o.get("layer").flatMap(_.strOpt).flatMap(grit.core.prompt.Layer.of)
-              source <- o.get("source").flatMap(_.strOpt)
-              text <- o.get("text").flatMap(_.strOpt)
-            } yield Fragment(layer, source, text))
-              .map(d :+ _)
-              .toRight("a kept fragment does not read")
-          }
-      }
-    } yield {
-      read.foreach(ToolSets.keep(_)(using TestTx.fake))
-      Prompts.keep(frags)(using TestTx.fake)
-      ()
-    }
-  }
-
   /** `calls` model calls as a turn's budget. */
   def budget(calls: Int): TurnLoop.Budget =
     TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)

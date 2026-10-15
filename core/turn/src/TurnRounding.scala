@@ -71,7 +71,7 @@ private[turn] final class Rounding[C^](
         reply,
         l.pins.turn.grade,
         shape,
-        at.believed,
+        Some(at.level),
         env.clock.now()
       )
     } yield TurnRound.Kept(kept, kinds)
@@ -322,7 +322,7 @@ private[turn] object Rounding {
         }
       } yield answer
 
-  /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as
+  /** The `ask:n:record` step: `reply`, the reply to `round` that called tools, kept as
     * [[TurnTools.callId]] dated `at` after everything in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`, and what it cost in the ledger beside the
     * estimate of its request, rebuilt by `shape` from the same window and entries, each item

@@ -17,8 +17,7 @@ import TurnSteps.*
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
   *      and of its task questions; recorded with its tool set and prompt.
   *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
-  *      ([[TurnSteps.recordFailure]]). A turn that failed there before the patch
-  *      [[Turn.Patches.RecordFailure]] shipped records nothing more.
+  *      ([[TurnSteps.recordFailure]]).
   *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
   *      Never fails the turn.
   *   1. `classify`, `record-topic` — the message placed among its conversation's topics, and that
@@ -27,7 +26,7 @@ import TurnSteps.*
   *   1. `record-window` — the window and its queries recorded before the model is called, so an
   *      edge sees what the model will see, and the loop's limits, once its tools are checked to
   *      make one toolbox.
-  *   1. The tool loop ([[TurnRound]]), from `call-model`, until a reply calls no tool or the
+  *   1. The tool loop ([[TurnRound]]), from `ask:0`, until a reply calls no tool or the
   *      budget's last call.
   *   1. `record-verdict` — when the classifier was unsure, the model's verdict ([[TurnVerdict]]),
   *      once the loop has a reply. Never fails the turn.
@@ -76,17 +75,14 @@ private[turn] object TurnFlow {
     routed.andThen(offered)
   }
 
-  /** A turn ended before its offer: `record-failure`, once the patch for it shipped. */
+  /** A turn ended before its offer: `record-failure`. */
   private def failing: Flow[Env, Failed, Nothing, String] =
-    Flow.patch(Turn.Patches.RecordFailure)(
-      Flow.pass[Failed].map(f => s"failed: ${f.failure}"),
-      Flow
-        .step(recordFailure)
-        .keeping
-        .map((f, kept) =>
-          kept.fold(e => s"failed: ${f.failure}; not recorded: $e", _ => s"failed: ${f.failure}")
-        )
-    )
+    Flow
+      .step(recordFailure)
+      .keeping
+      .map((f, kept) =>
+        kept.fold(e => s"failed: ${f.failure}; not recorded: $e", _ => s"failed: ${f.failure}")
+      )
 
   /** From `stitched` to `append`: what the turn's steps came to. Ends with a turn that failed
     * before its loop, or in it, its verdict recorded when the loop had a reply.
@@ -160,7 +156,7 @@ private[turn] object TurnFlow {
           a.at,
           Left(s.failure),
           unrecorded,
-          s.at.replies.headOption.flatMap(_ => s.at.believed)
+          s.at.replies.headOption.map(_ => s.at.level)
         )
       }
 
@@ -178,7 +174,7 @@ private[turn] object TurnFlow {
           .andThen(Flow.step(append))
           .keeping
           .map { case ((a, unrecorded), kept) =>
-            Ended(a.at.at, kept, unrecorded, a.looped.at.believed)
+            Ended(a.at.at, kept, unrecorded, Some(a.looped.at.level))
           }
       )
 

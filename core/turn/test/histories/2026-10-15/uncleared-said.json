@@ -1,0 +1,24 @@
+{
+  "workflow": "turn",
+  "id": "c1:0",
+  "epoch": "2026-10-15",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":{\"turn\":[{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-open\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-flash\",\"upstream\":\"fireworks\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}}],\"summary\":{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-summary\",\"upstream\":\"deepinfra\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"query\":{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-query\",\"upstream\":\"together\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}}}}"
+    },
+    {
+      "name": "weigh",
+      "output": "null"
+    },
+    {
+      "name": "route",
+      "output": "{\"failed\":\"uncleared\",\"reason\":\"internal\"}"
+    },
+    {
+      "name": "record-failure",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}
