@@ -213,12 +213,15 @@ object Turn {
   def body[C^](env: TurnEnv^, tooling: TurnTooling[C]^)(
       workflowId: WorkflowId
   )(using d: Durable^): String =
-    TurnRef.fromWorkflowId(workflowId) match {
-      case None => s"not a turn: ${WorkflowId.value(workflowId)}"
-      case Some(turn) =>
-        val turning = new TurnSteps.Turning(env, tooling, d.stream(TurnStream.Key))
-        Flows.run(TurnFlow.flow, turning, turn).merge
-    }
+    WorkflowId
+      .as("turn", TurnRef.fromWorkflowId)(workflowId)
+      .fold(
+        identity,
+        turn => {
+          val turning = new TurnSteps.Turning(env, tooling, d.stream(TurnStream.Key))
+          Flows.run(TurnFlow.flow, turning, turn).merge
+        }
+      )
 
   /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */
   def queryId(turn: TurnRef, i: Int): EntryId = {

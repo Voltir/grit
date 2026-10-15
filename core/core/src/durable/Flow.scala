@@ -51,9 +51,12 @@ object Flow {
   /** Ends with the `Left` `f` passes, else passes its `Right`; records nothing of its own. */
   def mayEnd[R, I, E, O](f: Flow[R, I, E, Either[E, O]]): Flow[R, I, E, O] = MayEnd(f)
 
+  /** `f` on the wire: ends with the `Left` it gives, else passes the `Right`; records nothing. */
+  def fromEither[I, E, O](f: I -> Either[E, O]): Flow[Any, I, E, O] = mayEnd(pass[I].map(f))
+
   /** `s`, then `f` over its input and output: ends with a `Left`, else passes the `Right`. */
   def decide[R, I, E, O, P](s: Step[R, I, O])(f: (I, O) -> Either[E, P]): Flow[R, I, E, P] =
-    mayEnd(step(s).keeping.map((i, o) => f(i, o)))
+    step(s).decided(f)
 
   /** Its input, unchanged: no step, nothing recorded. */
   def pass[I]: Flow[Any, I, Nothing, I] = Pass[I]()
@@ -131,6 +134,10 @@ object Flow {
 
     /** Its input beside its output. */
     def keeping: Flow[R, I, E, (I, O)] = Keeping(f)
+
+    /** `f`, then `g` over its input and output: ends with a `Left`, else passes the `Right`. */
+    def decided[E2 >: E, P](g: (I, O) -> Either[E2, P]): Flow[R, I, E2, P] =
+      mayEnd(f.keeping.map((i, o) => g(i, o)))
 
     /** `f` over a `Right`, a `Left` passed on as it came. */
     def right[F]: Flow[R, Either[F, I], E, Either[F, O]] =

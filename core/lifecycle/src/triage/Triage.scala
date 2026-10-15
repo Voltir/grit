@@ -141,9 +141,7 @@ object Triage {
     */
   val flow: Flow[TriageEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        TriageRef.fromWorkflowId(id).toRight(s"not a triage: ${WorkflowId.value(id)}")
-      })
+      .fromEither(WorkflowId.as("triage", TriageRef.fromWorkflowId))
       .andThen(stitched.keeping.map { (ref, placement) =>
         Waited(
           ref,
@@ -154,12 +152,12 @@ object Triage {
           }
         )
       })
-      .andThen(Flow.mayEnd(asked.keeping.map {
+      .andThen(asked.decided {
         case (p, Judging.Judged(_, Left(why))) =>
           Left(s"${p.kept}failed: its cost unrecorded: $why")
         case (p, Judging.Judged(Left(why), Right(()))) => Left(s"${p.kept}failed: $why")
         case (p, Judging.Judged(Right((entry, tags)), Right(()))) => Right(Tagged(p, entry, tags))
-      }))
+      })
       .andThen(Flow.decide(recorded) {
         case (t, Left(why)) => Left(s"${t.at.kept}failed: $why")
         case (t, Right(false)) =>

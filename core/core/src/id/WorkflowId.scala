@@ -8,4 +8,8 @@ opaque type WorkflowId = String
 object WorkflowId {
   def apply(value: String): WorkflowId = value
   def value(id: WorkflowId): String = id
+
+  /** What `from` reads `id` as, or, when it reads none, why: `not a <kind>: <id>`. */
+  def as[A](kind: String, from: WorkflowId -> Option[A])(id: WorkflowId): Either[String, A] =
+    from(id).toRight(s"not a $kind: $id")
 }

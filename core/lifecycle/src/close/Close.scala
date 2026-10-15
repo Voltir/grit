@@ -175,9 +175,7 @@ object Close {
     */
   val flow: Flow[CloseEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        CloseRef.fromWorkflowId(id).toRight(s"not a close: ${WorkflowId.value(id)}")
-      })
+      .fromEither(WorkflowId.as("close", CloseRef.fromWorkflowId))
       .andThen(Flow.decide(checked) {
         case (_, Left(why)) => Left(s"failed: $why")
         case (_, Right(Checked.Closed)) => Left("already closed")

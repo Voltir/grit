@@ -334,13 +334,11 @@ private[turn] object TurnRound {
   private def round: Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
     val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
     val gating = Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
-    val calling = Flow.step(
-      Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
-        at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
-      )
+    val calling = Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
+      at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
     )
     gating
-      .andThen(Flow.mayEnd(calling.keeping.map(replied)))
+      .andThen(Flow.decide(calling)(replied))
       .andThen(
         Flow.either(
           settles.map[Either[Rounds, Looped]](Left(_)),
@@ -455,7 +453,7 @@ private[turn] object TurnRound {
     val send = Flow.branch((s: Sending) =>
       if (s.at.looping.offer.workspace.contains(s.place)) Left(s) else Right(s)
     )(Flow.step(sent(Names.send)), Flow.step(sent(Names.sendTo)))
-    Flow.mayEnd(send.keeping.map((s, went) => went.map(s.place -> _).left.map(Stalled(_, s.at))))
+    send.decided((s, went) => went.map(s.place -> _).left.map(Stalled(_, s.at)))
   }
 
   /** One call settled: run or answered in its own step, asked about first when gated, or sent
@@ -476,6 +474,6 @@ private[turn] object TurnRound {
         case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(c, tool, asks, place)))
       }
     )(Flow.step(here), Flow.either(gated, TurnHosted.settle))
-    Flow.mayEnd(routed.keeping.map((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at))))
+    routed.decided((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at)))
   }
 }

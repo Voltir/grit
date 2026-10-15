@@ -60,14 +60,12 @@ object Shadow {
     */
   val flow: Flow[ShadowEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        ShadowRef.fromWorkflowId(id).toRight(s"not a shadow: ${WorkflowId.value(id)}")
-      })
-      .andThen(Flow.mayEnd(asked.keeping.map {
+      .fromEither(WorkflowId.as("shadow", ShadowRef.fromWorkflowId))
+      .andThen(asked.decided {
         case (_, Judging.Judged(_, Left(why))) => Left(s"not kept: its cost unrecorded: $why")
         case (ref, Judging.Judged(Right((entry, row)), Right(()))) => Right(Made(ref, entry, row))
         case (_, Judging.Judged(Left(why), Right(()))) => Left(s"not asked: $why")
-      }))
+      })
       .andThen(Flow.step(record).keeping)
       .map {
         case (_, Left(why)) => s"not kept: $why"

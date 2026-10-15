@@ -77,16 +77,14 @@ object Stitch {
     */
   val flow: Flow[StitchEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        StitchRef.fromWorkflowId(id).toRight(s"not a stitch: ${WorkflowId.value(id)}")
-      })
-      .andThen(Flow.mayEnd(stitch.keeping.map {
+      .fromEither(WorkflowId.as("stitch", StitchRef.fromWorkflowId))
+      .andThen(stitch.decided {
         case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
         case (ref, Judging.Judged(Right(Some((root, placed))), Right(()))) =>
           Right(Made(ref, root, placed))
         case (_, Judging.Judged(Right(None), Right(()))) => Left("nothing asked")
         case (_, Judging.Judged(Left(why), Right(()))) => Left(s"failed: $why")
-      }))
+      })
       .andThen(Flow.step(record).keeping)
       .map {
         case (p, Right(true)) => s"stitched: ${StitchJson.kindOf(p.placed)}"

@@ -80,18 +80,16 @@ object Settle {
     */
   val flow: Flow[SettleEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        SettleRef.fromWorkflowId(id).toRight(s"not a settle: ${WorkflowId.value(id)}")
-      })
+      .fromEither(WorkflowId.as("settle", SettleRef.fromWorkflowId))
       .andThen(Flow.decide(checked) {
         case (_, Left(why)) => Left(s"failed: $why")
         case (_, Right(Checked.Abandoned(why))) => Left(s"abandoned: $why")
         case (ref, Right(Checked.Asking(first))) => Right(Asking(ref, first))
       })
-      .andThen(Flow.mayEnd(asked.keeping.map {
+      .andThen(asked.decided {
         case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
         case (a, Judging.Judged(judgement, Right(()))) => Right(Judged(a.ref, judgement))
-      }))
+      })
       .andThen(Flow.step(recorded).keeping)
       .map {
         case (_, Left(why)) => s"failed: $why"

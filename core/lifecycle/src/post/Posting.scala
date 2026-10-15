@@ -50,9 +50,9 @@ object Posting {
   /** One period posted, or the run's end: at [[MaxPerRun]], with nothing left, or stopped. */
   private val round: Flow[PostEnv, Run, String, Either[Run, String]] =
     Flow
-      .mayEnd(Flow.pass[Run].map { run =>
+      .fromEither((run: Run) =>
         if (run.n == MaxPerRun) Left(s"posted ${run.n}; more to come") else Right(run)
-      })
+      )
       .andThen(Flow.step(posted).keeping)
       .map {
         case (run, Right(Some(_))) => Left(run.copy(n = run.n + 1))
@@ -66,19 +66,17 @@ object Posting {
     */
   def flow(plugins: Vector[Plugin]): Flow[PostEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        PostRef.fromWorkflowId(id) match {
-          case None => Left(s"not a post: ${WorkflowId.value(id)}")
-          case Some(ref) =>
-            plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
-              case None =>
-                Left(s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}")
-              case Some(plugin) if !plugin.posts =>
-                Left(s"plugin ${PluginName.value(ref.plugin)} posts nothing")
-              case Some(plugin) => Right(Run(ref, plugin, 0))
-            }
+      .fromEither((id: WorkflowId) =>
+        WorkflowId.as("post", PostRef.fromWorkflowId)(id).flatMap { ref =>
+          plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
+            case None =>
+              Left(s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}")
+            case Some(plugin) if !plugin.posts =>
+              Left(s"plugin ${PluginName.value(ref.plugin)} posts nothing")
+            case Some(plugin) => Right(Run(ref, plugin, 0))
+          }
         }
-      })
+      )
       .andThen(Flow.loop(round))
 
   /** The posting workflow for the run whose workflow id is `workflowId`: [[flow]] run. */

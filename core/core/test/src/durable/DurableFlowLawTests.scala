@@ -71,6 +71,38 @@ object DurableFlowLawTests extends TestSuite {
         )
     }
 
+    test(
+      "fromEither ends with the Left its function gives, and passes a Right, recording nothing"
+    ) {
+      val gated = Flow
+        .fromEither((s: String) => if (s == "stop") Left(s"stopped at $s") else Right(s))
+        .andThen(Flow.step(b))
+      (ran(gated, env, "stop"), ran(gated, env, "go")) ==>
+        (("Left(stopped at stop)", Vector()), ("Right(tb(go))", Vector("b")))
+    }
+
+    test("decided hands its function the flow's input and output, and ends with a Left") {
+      val twice = Flow.step(a).andThen(Flow.step(b))
+      val gated = twice
+        .decided((in, out) => if (in == "stop") Left(s"$in gave $out") else Right(out))
+        .andThen(Flow.step(b))
+      (ran(gated, env, "stop"), ran(gated, env, "go")) ==>
+        (
+          ("Left(stop gave tb(ta(stop)))", Vector("a", "b")),
+          ("Right(tb(tb(ta(go))))", Vector("a", "b", "b"))
+        )
+    }
+
+    test("law: decide is the flow of its step, then decided") {
+      val g = (in: String, out: String) => if (in == "stop") Left(out) else Right(s"$in/$out")
+      val (lhs, rhs) = (Flow.decide(a)(g), Flow.step(a).decided(g))
+      val ins = Vector("stop", "go")
+      (ins.map(ran(lhs, env, _)), Flows.names(lhs)) ==> (
+        ins.map(ran(rhs, env, _)),
+        Flows.names(rhs)
+      )
+    }
+
     test("map changes what passes on, recording nothing of its own") {
       ran(Flow.step(a).map(_.length), env, "x") ==> ("Right(5)", Vector("a"))
     }

@@ -67,9 +67,7 @@ object Run {
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper
   ): Flow[RunEnv, WorkflowId, String, String] =
     Flow
-      .mayEnd(Flow.pass[WorkflowId].map { id =>
-        TurnRef.fromWorkflowId(id).toRight(s"not a run: ${WorkflowId.value(id)}")
-      })
+      .fromEither(WorkflowId.as("run", TurnRef.fromWorkflowId))
       .andThen(Flow.decide(readSlot) {
         case (_, SlotRead.Unreadable(why)) => Left(s"unreadable: $why")
         case (turn, read: SlotRead.Read) => Right(planned(jobs, budget, turn, read))

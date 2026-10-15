@@ -205,10 +205,10 @@ object Calling {
     )
     // A recorded message, a ring or (from an earlier build) a whole outcome, is only a wake-up.
     def rung(label: StepName[I], wait: FiniteDuration): Flow[Any, I, Awaited[F], I] =
-      Flow.mayEnd(Flow.recv(label, i => waiting(i).cs.key, _ => wait).keeping.map {
+      Flow.recv(label, i => waiting(i).cs.key, _ => wait).decided {
         case (i, Some(_)) => Left(Awaited.Rung(waiting(i).cs))
         case (i, None) => Right(i)
-      })
+      }
     val waited: Flow[ToolRequests, I, Awaited[F], Awaited[F]] =
       rung(steps.expire, ServeWithin)
         .andThen(Flow.decide(expire) {
