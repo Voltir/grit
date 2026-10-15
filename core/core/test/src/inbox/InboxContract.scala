@@ -376,6 +376,36 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test("a post is believed as the turn that made it is, met with its room's cap") {
+      val capped = Origin.Task("capped-room", "posted")
+      val open = Origin.Task("inbox", "posted-open")
+      val asking = Origin.Task("inbox", "posting")
+      val capping = Visibility
+        .of(
+          Compartments.Shipped,
+          Visibility.Shipped.rooms,
+          Vector.empty,
+          Vector.empty,
+          capped = room => Option.when(room.place == capped.room)(Integrity.Outside)
+        )
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      withInbox(Uncapped, capping) { (inbox, store) =>
+        // The operator's turn, believed at authority, makes both posts.
+        val by = inbox
+          .ingest(asking, SourceId("m1"), said("post the summary"), Account.Local)
+          .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        val call = CallSlot
+          .of(by, 0, 1)
+          .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
+        inbox.posted(open, SourceId("root"), "the summary", PostedAt, call, Account.Local) ==>
+          Right(true)
+        inbox.posted(capped, SourceId("root"), "the summary", PostedAt, call, Account.Local) ==>
+          Right(true)
+        (store.believed(open), store.believed(capped)) ==>
+          (Vector(Integrity.at(Integrity.Level.Authority)), Vector(Integrity.Outside))
+      }
+    }
+
     test("a heard message keeps the reach it was heard with; heard again, the first stands") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "reach")

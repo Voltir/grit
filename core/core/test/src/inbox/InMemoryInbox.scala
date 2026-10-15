@@ -314,6 +314,8 @@ final class InMemoryInbox(
               next <- entries.lockNext(conversation.id)
               _ <- periods.openFor(conversation.id, next.turnSeq, at)
               posting <- entries.believed(request.turn)
+              // As the SQL inbox: the posting turn's integrity, met with its room's cap by the
+              // store.
               _ <- entries.insert(
                 Entry(
                   InboundId.of(conversation.id, source),
@@ -325,7 +327,7 @@ final class InMemoryInbox(
                   at,
                   posting
                 )
-              )
+              )(using capping)
             } yield {
               conversations.posts = conversations.posts.updated(conversation.id, request)
               true
