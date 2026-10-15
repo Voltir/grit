@@ -235,8 +235,8 @@ object TurnHostedTests extends TestSuite {
       val edge = served(durable, q => Serve.Now(Outcome.Done(s"read ${q.arguments("path").str}")))
       val provider = model(("t1", "fetch", "a.txt"), ("t2", "fetch", "b.txt"))
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge)) ==> Done
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(4) ==>
-        Vector("record-call:0", "dispatch:0", "DBOS.recv", "DBOS.sleep")
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:0:record").take(4) ==>
+        Vector("ask:0:record", "call:0:send", "DBOS.recv", "DBOS.sleep")
       edge.sent.map(q => (q.slot, q.permit)) ==> Vector(
         (TestCallSlots.at(turn, index = 0), Permit.Free),
         (TestCallSlots.at(turn, index = 1), Permit.Free)
@@ -341,7 +341,7 @@ object TurnHostedTests extends TestSuite {
         )
       edge.sent.headOption.map(q => edge.edges.claimAs(edge.registration, q)) ==> Some(false)
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
-        Vector("expire:0:0", "tool:0:0")
+        Vector("call:0:0:expire", "call:0:0")
     }
 
     test(
@@ -541,8 +541,8 @@ object TurnHostedTests extends TestSuite {
       )
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("read a.txt", false), ("posted at service:elsewhere", false))
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(3) ==>
-        Vector("record-call:0", "dispatch:0", "reach:0:service:elsewhere")
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:0:record").take(3) ==>
+        Vector("ask:0:record", "call:0:send", "call:0:send:service:elsewhere")
     }
 
     test(
@@ -604,7 +604,10 @@ object TurnHostedTests extends TestSuite {
       ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
-      durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty
+      durable
+        .recordedSteps(turn.workflowId)
+        .filter(n => Turn.Step.family(n).exists(Set(Turn.Step.Send, Turn.Step.Dispatch))) ==>
+        Vector.empty
       there.sent ==> Vector.empty
     }
 
@@ -628,7 +631,10 @@ object TurnHostedTests extends TestSuite {
       ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
-      durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty
+      durable
+        .recordedSteps(turn.workflowId)
+        .filter(n => Turn.Step.family(n).exists(Set(Turn.Step.Send, Turn.Step.Dispatch))) ==>
+        Vector.empty
       there.sent ==> Vector.empty
     }
 
@@ -679,15 +685,15 @@ object TurnHostedTests extends TestSuite {
       val provider = model(("t1", "fetch", "a.txt"))
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge)) ==> Done
       results(provider).map(_.content) ==> Vector("slow")
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "dispatch:0").take(7) ==>
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "call:0:send").take(7) ==>
         Vector(
-          "dispatch:0",
+          "call:0:send",
           "DBOS.recv",
           "DBOS.sleep",
-          "expire:0:0",
+          "call:0:0:expire",
           "DBOS.recv",
           "DBOS.sleep",
-          "tool:0:0"
+          "call:0:0"
         )
     }
 
@@ -781,7 +787,7 @@ object TurnHostedTests extends TestSuite {
         (TestCallSlots.at(turn, index = 0), Permit.Approved)
       )
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
-        Vector("ask:0:0", "wait:0:0", "dispatch:0:0", "tool:0:0")
+        Vector("call:0:0:approve", "call:0:0:wait", "call:0:0:dispatch", "call:0:0")
       results(provider).map(_.content) ==> Vector("poked")
     }
 

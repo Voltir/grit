@@ -14,7 +14,7 @@ import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Label}
 
-/** What an ask's `move:{n}` step came to. */
+/** What an ask's `ask:{n}` step came to. */
 private[moves] enum AskMade {
 
   /** The model answered `message`; its request, estimated at `estimate`, held nothing above
@@ -79,7 +79,7 @@ private[moves] object AskMade {
   )
 }
 
-/** What a call's `move:{n}` step came to. */
+/** What a call's `call:{n}` step came to. */
 private[moves] enum CallMade {
 
   /** Its request was written for the live edge serving its place. */
@@ -113,32 +113,32 @@ private[moves] object CallMade {
 /** How a planner's step outputs are recorded, and the digests of its moves' inputs. A run in
   * flight must read back what an earlier build wrote, so a form here is never changed, only
   * added to.
-  *   - an ask's `move:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
+  *   - an ask's `ask:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
   *     as an entry holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form, `e`
   *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`,
   *     or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
   *     classifier it could go to was cleared for;
-  *   - a JSON ask's `move:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"calls":[c…]}}`, `j`
+  *   - a JSON ask's `ask:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"calls":[c…]}}`, `j`
   *     its conforming JSON, or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
   *     it ([[grit.core.store.PayloadJson.writeUsage]]), then `"upstream":p` when who served it
   *     was reported;
-  *   - a judgment's `move:{n}`:
+  *   - a judgment's `ask:{n}`:
   *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}` (its
   *     call's `"upstream":p` before `at` when reported), each `a`
   *     an answer as [[grit.core.classify.AnswersJson]] writes it, or
   *     `{"unjudged":{"digest":d,"why":w,"model":m,"usage":u,"estimate":e}}`, or refused as
   *     above;
-  *   - `move:{n}:record`, whatever the ask's shape: `{"recorded":true}` or `{"store":w}`;
-  *   - a call's `move:{n}`: `{"sent":{"digest":d}}`, or
+  *   - `ask:{n}:record`, whatever the ask's shape: `{"recorded":true}` or `{"store":w}`;
+  *   - a call's `call:{n}`: `{"sent":{"digest":d}}`, or
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
-  *   - `move:{n}:expire` and `move:{n}:abandon`: `{"state":"expired"|"claimed"}`,
+  *   - `call:{n}:expire` and `call:{n}:abandon`: `{"state":"expired"|"claimed"}`,
   *     `{"answered":o}` (an [[grit.core.edge.OutcomeJson]]), or `{"store":w}`;
-  *   - `move:{n}:answer`: `{"done":{"text":t,"at":l,"integrity":i}}` (`i` an
+  *   - `call:{n}:answer`: `{"done":{"text":t,"at":l,"integrity":i}}` (`i` an
   *     [[grit.core.visibility.Integrity.written]]; read at the run's own when it has none, as
   *     a record made before it held one), `{"failed":w}`, `{"interrupted":true}` or
   *     `{"store":w}` ([[answered]]);
-  *   - a keep's `move:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
+  *   - a keep's `keep:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
   *     form as a string, or `{"store":w}` ([[kept]]).
   *
   * A digest is `v1:` and the lowercase hex SHA-256 of a canonical form of the move's input
@@ -353,7 +353,7 @@ object MovesJournal {
       }
   )
 
-  /** A call's `move:{n}:answer`, a done one without its integrity read at `start`, what the
+  /** A call's `call:{n}:answer`, a done one without its integrity read at `start`, what the
     * run starts believed at.
     */
   def answered(start: Integrity): Journaled[Either[String, Called]] = Journaled.json(

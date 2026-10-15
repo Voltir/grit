@@ -21,11 +21,12 @@ import TurnLoop.{Budget, Next, Pending, Round}
 import TurnTools.{Kind, Settled, Slot}
 import TurnJournal.given
 
-/** A turn's tool loop, as a flow: each round's `gate:n` when the turn is gated, its model call,
-  * and, for a reply that calls tools ([[TurnLoop.next]]), its `record-call:n`, its free hosted
-  * calls sent to each place together (`dispatch:n` to the workspace, `reach:n:{place}` to a
-  * service it reaches), and each call settled in order: in its `tool:n:j`, after `ask:n:j` and
-  * a person's answer for one that asks, and after a hosted call's own steps
+/** A turn's tool loop, as a flow: each round's `gate:n` when the turn is gated, its model call
+  * `ask:n`, and, for a reply that calls tools ([[TurnLoop.next]]), its `ask:n:record`, its free
+  * hosted calls sent to each place together (`call:n:send` to the workspace,
+  * `call:n:send:{place}` to a service it reaches), and each call settled in order: in its
+  * `call:n:j`, after `call:n:j:approve` and a person's answer for one that asks, and after a
+  * hosted call's own steps
   * ([[TurnHosted.settle]]). Until a reply answers, or a step fails. A turn that reached its loop
   * before the patch [[Turn.Patches.Integrity]] shipped runs ungated. Its bodies act through an
   * [[Env]]; what crosses its rounds is [[Rounds]], on the wire.
@@ -50,30 +51,30 @@ private[turn] object TurnRound {
       */
     def call(at: Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant]
 
-    /** `record-call:n`'s body: `reply`, the reply to `at.round` that called tools, kept, and
+    /** `ask:n:record`'s body: `reply`, the reply to `at.round` that called tools, kept, and
       * what each of its `calls` is. Fails, as every member here does, when the tools the round
-      * offers no longer make one toolbox: the turn's start checks that first in every run
-      * ([[TurnFlow]]).
+      * offers no longer make one toolbox, which `record-window` checked in the run that
+      * recorded it ([[TurnFlow]]).
       */
     def record(at: Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
     ): Either[TurnFailure, Kept]
 
     /** `pending`, the call at `slot` of round `at.round`, bound to its hosted tool. Fails, as
-      * each member below that binds a call does, when it binds to no such tool: its kind was
-      * read in an earlier run, and the call's tools changed since.
+      * each member below that binds a call does, with [[TurnFailure.ToolsChanged]] when it
+      * binds otherwise than its round recorded.
       */
     def hosted(at: Rounds, slot: Slot, pending: Pending): Either[TurnFailure, Bound.Hosted]
 
     /** What a person is shown of `call` when its tool asks them first. */
     def shown(call: Call): Either[TurnFailure, String]
 
-    /** The `tool:n:j` body of `call`, refused or free: answered with its outcome, unrun, at
+    /** The `call:n:j` body of `call`, refused or free: answered with its outcome, unrun, at
       * the turn's level, or run.
       */
     def settle(call: Call): Either[TurnFailure, Settled]
 
-    /** The `tool:n:j` body of `call`, gated, answered by `approval`
+    /** The `call:n:j` body of `call`, gated, answered by `approval`
       * ([[TurnTools.Settling.decide]]).
       */
     def decide(call: Call, approval: Approval): Either[TurnFailure, Settled]
@@ -173,26 +174,101 @@ private[turn] object TurnRound {
     def slot: Slot = call.slot
   }
 
-  /** The names of the loop's steps, and of a person's wait: the one home of each. */
+  /** The names of the loop's steps, and of a person's wait, and how a name is read back: the
+    * one home of each. Round n's model call is `ask:n`, its record `ask:n:record`, its gate
+    * `gate:n`; call j of its reply is `call:n:j`, with its phases `call:n:j:{phase}`; its free
+    * hosted calls are sent in `call:n:send` to the workspace and `call:n:send:{place}` to a
+    * service it reaches.
+    */
   object Names {
-    val gate: StepName[OfRound] = StepName.keyed[OfRound]("gate")(numbered)
-    val firstCall: StepName[Any] = StepName("call-model")
-    val call: StepName[OfRound] = StepName.keyed[OfRound]("call-model")(numbered)
-    val recordCall: StepName[OfRound] = StepName.keyed[OfRound]("record-call")(numbered)
-    val dispatch: StepName[OfRound] = StepName.keyed[OfRound]("dispatch")(numbered)
-    val reach: StepName[Sending] =
-      StepName.keyed[Sending]("reach")(s => s"${s.round.index}:${s.place.written}")
-    val tool: StepName[OfCall] = StepName.keyed[OfCall]("tool")(placed)
-    val ask: StepName[OfCall] = StepName.keyed[OfCall]("ask")(placed)
-    val dispatchOne: StepName[OfCall] = StepName.keyed[OfCall]("dispatch")(placed)
-    val expire: StepName[OfCall] = StepName.keyed[OfCall]("expire")(placed)
-    val abandon: StepName[OfCall] = StepName.keyed[OfCall]("abandon")(placed)
+    val gate: StepName[OfRound] = StepName.keyed[OfRound]("gate")(r => Step.Gate(n(r)).key)
+    val ask: StepName[OfRound] = StepName.keyed[OfRound]("ask")(r => Step.Ask(n(r)).key)
+    val record: StepName[OfRound] = StepName.keyed[OfRound]("ask")(r => Step.Record(n(r)).key)
+    val send: StepName[OfRound] = StepName.keyed[OfRound]("call")(r => Step.Send(n(r), None).key)
+    val sendTo: StepName[Sending] =
+      StepName.keyed[Sending]("call")(s => Step.Send(n(s), Some(s.place.written)).key)
+    val call: StepName[OfCall] = StepName.keyed[OfCall]("call")(c => Step.Call(n(c), j(c)).key)
+    val approve: StepName[OfCall] =
+      StepName.keyed[OfCall]("call")(c => Step.Approve(n(c), j(c)).key)
+    val dispatch: StepName[OfCall] =
+      StepName.keyed[OfCall]("call")(c => Step.Dispatch(n(c), j(c)).key)
+    val expire: StepName[OfCall] = StepName.keyed[OfCall]("call")(c => Step.Expire(n(c), j(c)).key)
+    val abandon: StepName[OfCall] =
+      StepName.keyed[OfCall]("call")(c => Step.Abandon(n(c), j(c)).key)
 
     /** A person's time to answer about a call: a wait's label, never recorded. */
-    val answer: StepName[OfCall] = StepName.keyed[OfCall]("wait")(placed)
+    val answer: StepName[OfCall] = StepName.keyed[OfCall]("call")(c => Step.Wait(n(c), j(c)).key)
 
-    private def numbered(r: OfRound): String = r.round.index.toString
-    private def placed(c: OfCall): String = s"${c.slot.round.index}:${c.slot.index}"
+    /** A step of the loop, by its round `round` and, for one of a call, the call's `index`. */
+    enum Step {
+      case Ask(round: Int)
+      case Record(round: Int)
+      case Gate(round: Int)
+      case Send(round: Int, place: Option[String])
+      case Call(round: Int, index: Int)
+      case Approve(round: Int, index: Int)
+      case Wait(round: Int, index: Int)
+      case Dispatch(round: Int, index: Int)
+      case Expire(round: Int, index: Int)
+      case Abandon(round: Int, index: Int)
+
+      /** The name this step is recorded under, or a wait labelled. */
+      def name: String = s"$family:$key"
+
+      private def family: String = this match {
+        case Ask(_) | Record(_) => ask.family
+        case Gate(_) => gate.family
+        case _ => call.family
+      }
+
+      private[Names] def key: String = this match {
+        case Ask(n) => s"$n"
+        case Record(n) => s"$n:record"
+        case Gate(n) => s"$n"
+        case Send(n, None) => s"$n:send"
+        case Send(n, Some(place)) => s"$n:send:$place"
+        case Step.Call(n, j) => s"$n:$j"
+        case Approve(n, j) => s"$n:$j:approve"
+        case Wait(n, j) => s"$n:$j:wait"
+        case Dispatch(n, j) => s"$n:$j:dispatch"
+        case Expire(n, j) => s"$n:$j:expire"
+        case Abandon(n, j) => s"$n:$j:abandon"
+      }
+    }
+
+    object Step {
+
+      /** The step `name` names; `None` for a name that is not the loop's. */
+      def of(name: String): Option[Step] =
+        name.split(":", 5).toVector match {
+          case Vector(f, Num(n)) if f == ask.family => Some(Ask(n))
+          case Vector(f, Num(n), "record") if f == ask.family => Some(Record(n))
+          case Vector(f, Num(n)) if f == gate.family => Some(Gate(n))
+          case Vector(f, Num(n), "send") if f == call.family => Some(Send(n, None))
+          case Vector(f, Num(n), "send", place, rest*) if f == call.family =>
+            Some(Send(n, Some((place +: rest).mkString(":"))))
+          case Vector(f, Num(n), Num(j)) if f == call.family => Some(Step.Call(n, j))
+          case Vector(f, Num(n), Num(j), phase) if f == call.family =>
+            phase match {
+              case "approve" => Some(Approve(n, j))
+              case "wait" => Some(Wait(n, j))
+              case "dispatch" => Some(Dispatch(n, j))
+              case "expire" => Some(Expire(n, j))
+              case "abandon" => Some(Abandon(n, j))
+              case _ => None
+            }
+          case _ => None
+        }
+
+      private object Num {
+        def unapply(s: String): Option[Int] =
+          Option.when(s.forall(_.isDigit))(s).flatMap(_.toIntOption)
+      }
+    }
+
+    private def n(r: OfRound): Int = r.round.index
+    private def n(c: OfCall): Int = c.slot.round.index
+    private def j(c: OfCall): Int = c.slot.index
   }
 
   /** The loop from its first round, run under its input: its hosted calls go to the places its
@@ -216,13 +292,13 @@ private[turn] object TurnRound {
   ): Either[TurnFailure, Integrity] =
     believed.fold(entries.believed(turn).left.map(TurnFailure.ofStore))(Right(_))
 
-  /** A person asked about `call` in `ask:n:j`, shown what its tool asks them, then their
-    * answer, waited for as long as its loop gives them ([[Calling.approval]]); why the ask was
-    * not kept, when it was not, and nothing waited for.
+  /** A person asked about `call` in `call:n:j:approve`, shown what its tool asks them, then
+    * their answer, waited for as long as its loop gives them ([[Calling.approval]]); why the
+    * ask was not kept, when it was not, and nothing waited for.
     */
   private[turn] val approved: Flow[Env, Call, Nothing, Either[TurnFailure, Approval]] = {
     val asked = Step.transact[Env, Call, Either[TurnFailure, EntryId]](
-      Names.ask,
+      Names.approve,
       c => Subject.Turn(c.slot.turn)
     )(r =>
       c =>
@@ -270,15 +346,11 @@ private[turn] object TurnRound {
     val gating: Flow[Env, Rounds, Stalled, Rounds] =
       if (gates) Flow.decide(gate)((at, g) => g.map(at.gatedBy).left.map(Stalled(_, at)))
       else Flow.pass[Rounds]
-    def called(name: StepName[OfRound]): Step[Env, Rounds, Either[TurnFailure, Message.Assistant]] =
-      Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](name)(r =>
+    val calling = Flow.step(
+      Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](Names.ask)(r =>
         at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
       )
-    val calling: Flow[Env, Rounds, Nothing, Either[TurnFailure, Message.Assistant]] =
-      Flow.branch((at: Rounds) => if (at.round.index == Round.First.index) Left(at) else Right(at))(
-        Flow.step(called(Names.firstCall)),
-        Flow.step(called(Names.call))
-      )
+    )
     gating
       .andThen(Flow.mayEnd(calling.keeping.map(replied)))
       .andThen(
@@ -301,7 +373,8 @@ private[turn] object TurnRound {
         TurnLoop.next(at.looping.budget, at.round, reply) match {
           case Next.Answer(answer) => Right(Right(Looped(answer, now)))
           case Next.Silent(_) =>
-            val said = s"the reply to ${Round.step(at.round)} said nothing and called no tool"
+            val said =
+              s"the reply to ${Names.Step.Ask(at.round.index).name} said nothing and called no tool"
             Left(Stalled(TurnFailure.Model(said), now))
           case Next.Settle(calls, next) => Right(Left(Settle(now, reply, calls, next)))
         }
@@ -312,7 +385,7 @@ private[turn] object TurnRound {
     */
   private def settles: Flow[Env, Settle, Stalled, Rounds] = {
     val record = Step.transact[Env, Settle, Either[TurnFailure, Kept]](
-      Names.recordCall,
+      Names.record,
       s => Subject.Turn(s.at.looping.turn)
     )(r => s => (tx: Tx^) ?=> r.record(s.at, s.reply, s.calls))
     Flow
@@ -373,7 +446,7 @@ private[turn] object TurnRound {
       }
     )
 
-  /** A send: `dispatch:n` to the offer's workspace, else `reach:n:{place}`. */
+  /** A send: `call:n:send` to the offer's workspace, else `call:n:send:{place}`. */
   private def sending: Flow[Env, Sending, Stalled, (Place, Boolean)] = {
     def sent(name: StepName[Sending]): Step[Env, Sending, Either[TurnFailure, Boolean]] =
       Step.transact[Env, Sending, Either[TurnFailure, Boolean]](
@@ -393,7 +466,7 @@ private[turn] object TurnRound {
       )
     val send = Flow.branch((s: Sending) =>
       if (s.at.looping.offer.workspace.contains(s.place)) Left(s) else Right(s)
-    )(Flow.step(sent(Names.dispatch)), Flow.step(sent(Names.reach)))
+    )(Flow.step(sent(Names.send)), Flow.step(sent(Names.sendTo)))
     Flow.mayEnd(send.keeping.map((s, went) => went.map(s.place -> _).left.map(Stalled(_, s.at))))
   }
 
@@ -401,8 +474,8 @@ private[turn] object TurnRound {
     * to an edge when hosted.
     */
   private def one: Flow[Env, Call, Stalled, Unit] = {
-    val here = Step[Env, Call, Either[TurnFailure, Settled]](Names.tool)(r => c => r.settle(c))
-    val decided = Step[Env, Decided, Either[TurnFailure, Settled]](Names.tool)(r =>
+    val here = Step[Env, Call, Either[TurnFailure, Settled]](Names.call)(r => c => r.settle(c))
+    val decided = Step[Env, Decided, Either[TurnFailure, Settled]](Names.call)(r =>
       d => r.decide(d.call, d.approval)
     )
     val gated = approved.keeping

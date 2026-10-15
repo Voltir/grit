@@ -109,7 +109,7 @@ object TurnViewTests extends TestSuite {
     }
 
     test("a finished turn: its steps timed, its query, its window split, its cost") {
-      val steps = Vector(step("assemble", 0, 400), step("call-model", 400, 3500))
+      val steps = Vector(step("assemble", 0, 400), step("ask:0", 400, 3500))
       val costs = Vector(
         UsageLedger.Row(
           EntryId("q"),
@@ -142,7 +142,7 @@ object TurnViewTests extends TestSuite {
       v.turn ==> TurnSeq(2)
       v.steps ==> Vector(
         TurnView.Step("assemble", Some(400)),
-        TurnView.Step("call-model", Some(3100))
+        TurnView.Step("ask:0", Some(3100))
       )
       v.query ==> Some("first question")
       v.spent ==> Some(Cost.Exact(BigDecimal("0.0003")))
@@ -535,7 +535,7 @@ object TurnViewTests extends TestSuite {
         prompt("s"),
         CharEstimate
       )
-      val summarised = Vector("assemble", "call-model", Turn.Step.AppendSummary)
+      val summarised = Vector("assemble", "ask:0", Turn.Step.AppendSummary)
       of(summarised, running = false).settled ==> true
       // Still running, though its last step is recorded.
       of(summarised, running = true).settled ==> false
@@ -545,7 +545,7 @@ object TurnViewTests extends TestSuite {
     }
 
     test("a person's wait is its own step, timed from the ask to the answer") {
-      val asked = Vector(step("record-call:0", 0, 10), step("ask:0:0", 10, 20))
+      val asked = Vector(step("ask:0:record", 0, 10), step("call:0:0:approve", 10, 20))
       def of(steps: Vector[RecordedStep]) =
         TurnView.of(
           turn2,
@@ -559,13 +559,13 @@ object TurnViewTests extends TestSuite {
         )
       // DBOS records the wait's end as it begins; the wait itself only when it ends.
       val waiting = of(asked :+ step("DBOS.sleep", 21, 21))
-      waiting.running ==> Some("wait:0:0")
+      waiting.running ==> Some("call:0:0:wait")
       val answered = of(asked ++ Vector(step("DBOS.recv", 21, 234020), step("DBOS.sleep", 21, 21)))
-      answered.running ==> Some("tool:0:0")
+      answered.running ==> Some("call:0:0")
       answered.steps.map(s => (s.name, s.ms)) ==> Vector(
-        ("record-call:0", Some(10L)),
-        ("ask:0:0", Some(10L)),
-        ("wait:0:0", Some(234000L)),
+        ("ask:0:record", Some(10L)),
+        ("call:0:0:approve", Some(10L)),
+        ("call:0:0:wait", Some(234000L)),
         ("DBOS.sleep", Some(0L))
       )
     }

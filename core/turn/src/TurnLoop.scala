@@ -51,11 +51,6 @@ object TurnLoop {
       def index: Int = round
 
       def next: Round = round + 1
-
-      /** The name of this round's model-call step: `call-model` for the first, as a turn
-        * with no tools has always named it, and `call-model:n` for the n-th after.
-        */
-      def step: String = if (round == 0) "call-model" else s"call-model:$round"
     }
   }
 

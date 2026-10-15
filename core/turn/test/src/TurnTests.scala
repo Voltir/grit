@@ -70,7 +70,7 @@ object TurnTests extends TestSuite {
       "record-topic",
       "assemble",
       "record-window",
-      "call-model",
+      "ask",
       "record-verdict",
       "append",
       "judge",
@@ -86,7 +86,7 @@ object TurnTests extends TestSuite {
     * patch's marker and its gate.
     */
   private val Recorded: Vector[String] = Always.flatMap {
-    case "call-model" => Vector("DBOS.patch-integrity", "gate:0", "call-model")
+    case "ask" => Vector("DBOS.patch-integrity", "gate:0", "ask:0")
     case step => Vector(step)
   }
 
@@ -160,13 +160,13 @@ object TurnTests extends TestSuite {
       Turn.running(Vector("classify")) ==> "record-topic"
       Turn.running(Vector("classify", "record-topic")) ==> "assemble"
       Turn.running(Vector("assemble")) ==> "record-window"
-      Turn.running(Vector("assemble", "record-window")) ==> "call-model"
+      Turn.running(Vector("assemble", "record-window")) ==> "ask:0"
       // A name that is none of the turn's steps, such as DBOS's own, is skipped.
-      Turn.running(Vector("assemble", "DBOS.patch", "call-model", "append")) ==> "summarise"
+      Turn.running(Vector("assemble", "DBOS.patch", "ask:0", "append")) ==> "summarise"
       Turn.running(AllSteps) ==> "append-summary"
       // A step only some turns take is never named before it is recorded.
-      Turn.running(Vector("assemble", "record-window", "call-model")) ==> "append"
-      Turn.running(Vector("call-model", "record-verdict")) ==> "append"
+      Turn.running(Vector("assemble", "record-window", "ask:0")) ==> "append"
+      Turn.running(Vector("ask:0", "record-verdict")) ==> "append"
     }
 
     test("the turn's flow records the steps Step.all names, each first reached in its order") {
@@ -174,38 +174,87 @@ object TurnTests extends TestSuite {
       outer ==> Turn.Step.all
     }
 
+    test("each loop step's name reads back as the step, a place's colons kept whole") {
+      import TurnRound.Names.Step
+      val steps = Vector(
+        Step.Ask(0),
+        Step.Record(2),
+        Step.Gate(1),
+        Step.Send(0, None),
+        Step.Send(1, Some("fs:/home/a:b")),
+        Step.Call(1, 2),
+        Step.Approve(0, 1),
+        Step.Wait(0, 1),
+        Step.Dispatch(3, 0),
+        Step.Expire(0, 0),
+        Step.Abandon(0, 0)
+      )
+      steps.map(_.name) ==> Vector(
+        "ask:0",
+        "ask:2:record",
+        "gate:1",
+        "call:0:send",
+        "call:1:send:fs:/home/a:b",
+        "call:1:2",
+        "call:0:1:approve",
+        "call:0:1:wait",
+        "call:3:0:dispatch",
+        "call:0:0:expire",
+        "call:0:0:abandon"
+      )
+      steps.map(s => Step.of(s.name)) ==> steps.map(Some(_))
+      Vector("ask:x", "call:0:0:retry", "tool:0:0", "call-model:1", "gate").map(Step.of) ==>
+        Vector(None, None, None, None, None)
+    }
+
     test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
       val round1 = TurnLoop.Round.First.next
       val at = new TurnRound.OfRound { def round: TurnLoop.Round = round1 }
-      (round1.step, TurnRound.Names.call(at), TurnRound.Names.recordCall(at)) ==>
-        ("call-model:1", "call-model:1", "record-call:1")
-      Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.sleep", "tool:x:1")
+      (TurnRound.Names.ask(at), TurnRound.Names.record(at), TurnRound.Names.send(at)) ==>
+        ("ask:1", "ask:1:record", "call:1:send")
+      Vector("ask:3", "ask:0:record", "call:1:2", "DBOS.sleep", "call:x:1", "call:1:send:fs:/a")
         .map(Turn.Step.family) ==>
-        Vector(Some("call-model"), Some("record-call"), Some("tool"), None, None)
-      val loop = Vector("record-window", "call-model")
-      Turn.running(loop :+ "record-call:0") ==> "tool:0:0"
-      Turn.running(loop ++ Vector("record-call:0", "tool:0:0")) ==> "call-model:1"
+        Vector(Some("ask"), Some("ask:record"), Some("call"), None, None, Some("call:send"))
+      val loop = Vector("record-window", "ask:0")
+      Turn.running(loop :+ "ask:0:record") ==> "call:0:0"
+      Turn.running(loop ++ Vector("ask:0:record", "call:0:0")) ==> "ask:1"
       // Waiting for a person: DBOS records the wait's end as it begins, which is no step, so
       // the turn is waiting on them; once the wait ends, answered or not, the tool runs.
-      val asked = loop ++ Vector("record-call:0", "ask:0:0", "DBOS.sleep")
-      Turn.running(asked) ==> "wait:0:0"
-      Turn.running(asked :+ "DBOS.recv") ==> "tool:0:0"
-      Turn.running(asked ++ Vector("DBOS.recv", "tool:0:0")) ==> "call-model:1"
-      Turn.Step.family("wait:0:1") ==> Some("wait")
-      Turn.Step.family("ask:0:1") ==> Some("ask")
-      Turn.running(loop ++ Vector("record-call:0", "tool:0:1", "call-model:1")) ==> "append"
-      Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "call-model:1", "append")) ==>
+      val asked = loop ++ Vector("ask:0:record", "call:0:0:approve", "DBOS.sleep")
+      Turn.running(asked) ==> "call:0:0:wait"
+      Turn.running(asked :+ "DBOS.recv") ==> "call:0:0"
+      Turn.running(asked ++ Vector("DBOS.recv", "call:0:0")) ==> "ask:1"
+      Turn.Step.family("call:0:1:wait") ==> Some("call:wait")
+      Turn.Step.family("call:0:1:approve") ==> Some("call:approve")
+      Turn.running(loop ++ Vector("ask:0:record", "call:0:1", "ask:1")) ==> "append"
+      Turn.running(loop ++ Vector("ask:0:record", "call:0:0", "ask:1", "append")) ==>
         "summarise"
-      Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "record-verdict")) ==> "append"
+      Turn.running(loop ++ Vector("ask:0:record", "call:0:0", "record-verdict")) ==> "append"
     }
 
     test("a wait for a person is named for the call it waits on, once it has ended") {
       Turn.Step.named(
-        Vector("ask:1:0", "DBOS.recv", "DBOS.sleep", "tool:1:0", "ask:1:1", "DBOS.sleep")
-      ) ==> Vector("ask:1:0", "wait:1:0", "DBOS.sleep", "tool:1:0", "ask:1:1", "DBOS.sleep")
+        Vector(
+          "call:1:0:approve",
+          "DBOS.recv",
+          "DBOS.sleep",
+          "call:1:0",
+          "call:1:1:approve",
+          "DBOS.sleep"
+        )
+      ) ==> Vector(
+        "call:1:0:approve",
+        "call:1:0:wait",
+        "DBOS.sleep",
+        "call:1:0",
+        "call:1:1:approve",
+        "DBOS.sleep"
+      )
       // A recv that ends no ask's wait keeps DBOS's name.
-      Turn.Step.named(Vector("tool:0:0", "DBOS.recv", "ask:0:1", "tool:0:1", "DBOS.recv")) ==>
-        Vector("tool:0:0", "DBOS.recv", "ask:0:1", "tool:0:1", "DBOS.recv")
+      Turn.Step.named(
+        Vector("call:0:0", "DBOS.recv", "call:0:1:approve", "call:0:1", "DBOS.recv")
+      ) ==>
+        Vector("call:0:0", "DBOS.recv", "call:0:1:approve", "call:0:1", "DBOS.recv")
     }
 
     test("a turn records the model's reply as its entry") {

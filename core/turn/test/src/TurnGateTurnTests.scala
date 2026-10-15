@@ -108,15 +108,15 @@ object TurnGateTurnTests extends TestSuite {
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-window").drop(1) ==> Vector(
         "DBOS.patch-integrity",
         "gate:0",
-        "call-model",
-        "record-call:0",
-        "tool:0:0",
+        "ask:0",
+        "ask:0:record",
+        "call:0:0",
         "gate:1",
-        "call-model:1",
-        "record-call:1",
-        "tool:1:0",
+        "ask:1",
+        "ask:1:record",
+        "call:1:0",
         "gate:2",
-        "call-model:2",
+        "ask:2",
         "append",
         "summarise",
         "append-summary"
@@ -496,8 +496,8 @@ object TurnGateTurnTests extends TestSuite {
     }
 
     test("a running turn after a gate is in the model call it gates") {
-      Turn.running(Vector("record-window", "DBOS.patch-integrity", "gate:0")) ==> "call-model"
-      Turn.running(Vector("call-model", "record-call:0", "tool:0:0", "gate:1")) ==> "call-model:1"
+      Turn.running(Vector("record-window", "DBOS.patch-integrity", "gate:0")) ==> "ask:0"
+      Turn.running(Vector("ask:0", "ask:0:record", "call:0:0", "gate:1")) ==> "ask:1"
       Turn.Step.family("gate:3") ==> Some(Turn.Step.Gate)
     }
   }

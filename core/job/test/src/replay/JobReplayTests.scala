@@ -25,12 +25,13 @@ object JobReplayTests extends TestSuite {
   }
 
   /** Whether `history` made a move: a step `grit.act.moves.ActName` names. */
-  private def moved(history: History): Boolean = history.steps.exists(_.name.startsWith("move:"))
+  private def moved(history: History): Boolean =
+    history.steps.exists(s => Seq("ask:", "call:", "keep:").exists(s.name.startsWith))
 
   /** Whether `history` kept: it holds [[Noting]]'s keep, by the name it was recorded under,
     * which a step renamed since must still replay.
     */
-  private def kept(history: History): Boolean = history.steps.exists(_.name == "move:note")
+  private def kept(history: History): Boolean = history.steps.exists(_.name == "keep:note")
 
   /** What [[probes]] at version 1 replies when `history` is replayed under today's body, or why
     * the replay failed: a move whose input's digest no longer matches the one recorded replies

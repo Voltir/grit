@@ -229,7 +229,7 @@ object TurnView {
           recorded
             .take(i)
             .zip(names)
-            .findLast((_, n) => Turn.Step.family(n).contains(Turn.Step.Ask))
+            .findLast((_, n) => Turn.Step.family(n).contains(Turn.Step.Approve))
             .flatMap(_._1.completed)
         else step.started
       Step(name, from.zip(step.completed).map(Duration.between(_, _).toMillis))

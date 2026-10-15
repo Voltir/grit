@@ -35,7 +35,7 @@ object ToolRoundsTests extends TestSuite {
     }
 
     test("a loop's steps show by their family") {
-      Vector("gate:2", "call-model:2", "record-call:0", "ask:1:3", "tool:1:3")
+      Vector("gate:2", "ask:2", "ask:0:record", "call:1:3:approve", "call:1:3")
         .map(Look.Runes.step) ==>
         Vector(
           "ᛉ weighing what it read",

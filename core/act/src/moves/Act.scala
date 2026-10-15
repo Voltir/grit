@@ -32,9 +32,10 @@ import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolb
 import grit.core.visibility.{Integrity, Label}
 
 /** The names a move's steps are recorded under, from the input each step runs over: the move
-  * itself as `move`, then its phases, each the move's name and the phase's: an ask's cost
-  * recorded (`record`), a call's wait given up on (`expire`, `abandon`) and its answer read
-  * (`answer`). A stored form: a run in flight replays by them.
+  * itself as `move`, named for what it is (`ask`, `call` or `keep`), then its phases, each the
+  * move's name and the phase's: an ask's cost recorded (`record`), a call's wait given up on
+  * (`expire`, `abandon`) and its answer read (`answer`). A stored form: a run in flight
+  * replays by them.
   */
 final class ActName[-I] private (
     val move: StepName[I],
@@ -86,8 +87,14 @@ private[moves] object Act {
     def acting: Acting
   }
 
-  /** `move:{name}`, and `move:{name}:{phase}` for its phases. */
-  val Names: ActName[Move] = ActName.keyed[Move]("move")(m => MoveName.value(m.name))
+  /** An ask's `ask:{name}`, and `ask:{name}:{phase}` for its phases. */
+  val Asks: ActName[Move] = ActName.keyed[Move]("ask")(m => MoveName.value(m.name))
+
+  /** A call's `call:{name}`, and `call:{name}:{phase}` for its phases. */
+  val Calls: ActName[Move] = ActName.keyed[Move]("call")(m => MoveName.value(m.name))
+
+  /** A keep's `keep:{name}`. */
+  val Keeps: ActName[Move] = ActName.keyed[Move]("keep")(m => MoveName.value(m.name))
 
   /** The text ask `name` of `request`, under `digest`. */
   final case class Text(name: MoveName, acting: Acting, request: ModelRequest, digest: String)
@@ -131,12 +138,12 @@ private[moves] object Act {
   final case class Keep[I](name: MoveName, acting: Acting, value: I, keeper: DocumentKeeper)
       extends Move
 
-  /** What an ask's `move:{n}` recorded, and its `move:{n}:record`'s result: `Right` when it
+  /** What an ask's `ask:{n}` recorded, and its `ask:{n}:record`'s result: `Right` when it
     * recorded nothing to keep.
     */
   final case class Settling(made: AskMade, kept: Either[String, Unit])
 
-  /** What a call came to: its `move:{n}` unsent, `why`, under `digest`; or sent, under
+  /** What a call came to: its `call:{n}` unsent, `why`, under `digest`; or sent, under
     * `digest`, and then what its wait and answer came to.
     */
   enum CallCame {
@@ -144,10 +151,10 @@ private[moves] object Act {
     case Sent(digest: String, waited: Either[MoveError, Called])
   }
 
-  /** The text ask's `move:{n}`: admitted, then the model's reply. */
+  /** The text ask's `ask:{n}`: admitted, then the model's reply. */
   val text: Step[MovesEnv, Text, AskMade] = {
     import MovesJournal.given
-    Step[MovesEnv, Text, AskMade](Names.move)(env =>
+    Step[MovesEnv, Text, AskMade](Asks.move)(env =>
       t =>
         admitted(env.records, env.models, env.db, env.clock, t.acting, t.digest) match {
           case Left(refusal) => refusal
@@ -161,10 +168,10 @@ private[moves] object Act {
     )
   }
 
-  /** The JSON ask's `move:{n}`: admitted, then the model's reply, shaped and repaired. */
+  /** The JSON ask's `ask:{n}`: admitted, then the model's reply, shaped and repaired. */
   def json[T]: Step[MovesEnv, Json[T], AskMade] = {
     import MovesJournal.given
-    Step[MovesEnv, Json[T], AskMade](Names.move)(env =>
+    Step[MovesEnv, Json[T], AskMade](Asks.move)(env =>
       j =>
         admitted(env.records, env.models, env.db, env.clock, j.acting, j.digest) match {
           case Left(refusal) => refusal
@@ -209,12 +216,12 @@ private[moves] object Act {
     )
   }
 
-  /** The judgment's `move:{n}`: admitted, then the classifier's answers, asked only when its
+  /** The judgment's `ask:{n}`: admitted, then the classifier's answers, asked only when its
     * service is cleared for what the admitting read knew.
     */
   def judgment[T]: Step[MovesEnv, Judgment[T], AskMade] = {
     import MovesJournal.given
-    Step[MovesEnv, Judgment[T], AskMade](Names.move)(env =>
+    Step[MovesEnv, Judgment[T], AskMade](Asks.move)(env =>
       j =>
         admits(env.records, env.db, env.clock, j.acting, j.digest) match {
           case Left(refusal) => refusal
@@ -243,12 +250,12 @@ private[moves] object Act {
     )
   }
 
-  /** The costs of the model calls an ask's `made` holds, recorded in its `move:{n}:record`. */
+  /** The costs of the model calls an ask's `made` holds, recorded in its `ask:{n}:record`. */
   private final case class Spent(name: MoveName, acting: Acting, made: AskMade) extends Move
 
   private val recorded: Step[MovesEnv, Spent, Either[String, Unit]] = {
     import MovesJournal.given
-    Step.transact[MovesEnv, Spent, Either[String, Unit]](Names.record, _.acting.subject)(env =>
+    Step.transact[MovesEnv, Spent, Either[String, Unit]](Asks.record, _.acting.subject)(env =>
       s => {
         val turn = s.acting.turn
         val base = s"move:${WorkflowId.value(turn.workflowId)}:${MoveName.value(s.name)}"
@@ -275,13 +282,13 @@ private[moves] object Act {
         )
       )
 
-  /** A sent call, and what its `move:{n}` recorded. */
+  /** A sent call, and what its `call:{n}` recorded. */
   private final case class Sending(call: Call, digest: String) extends Move {
     def name: MoveName = call.name
     def acting: Acting = call.acting
   }
 
-  /** A call: its request written for its edge (`move:{n}`); when sent, waited on (the call's
+  /** A call: its request written for its edge (`call:{n}`); when sent, waited on (the call's
     * `expire` and `abandon`, as [[Calling.await]] takes them, waited on even
     * when its input diverged, so the run's later steps keep their places), and its answer read
     * once its edge rang or answered done (`answer`), believed at the meet of its service's
@@ -290,12 +297,12 @@ private[moves] object Act {
     */
   def call(start: Integrity): Flow[MovesEnv, Call, Nothing, CallCame] = {
     import MovesJournal.given
-    val sent = Step.transact[MovesEnv, Call, CallMade](Names.move, _.acting.subject)(env =>
+    val sent = Step.transact[MovesEnv, Call, CallMade](Calls.move, _.acting.subject)(env =>
       c => dispatch(env.records, c)
     )
     val answered = {
       given Journaled[Either[String, Called]] = MovesJournal.answered(start)
-      Step.transact[MovesEnv, Sending, Either[String, Called]](Names.answer, _.acting.subject)(
+      Step.transact[MovesEnv, Sending, Either[String, Called]](Calls.answer, _.acting.subject)(
         env =>
           s =>
             (tx: Tx^) ?=> {
@@ -310,7 +317,7 @@ private[moves] object Act {
     val awaiting: Flow[MovesEnv, Sending, Nothing, Awaited[String]] =
       Calling
         .await[Sending, String](
-          WaitSteps(Names.expire, Names.abandon),
+          WaitSteps(Calls.expire, Calls.abandon),
           s => Waiting(s.call.cs, Some(s.call.service.place), s.acting.subject, None)
         )
         .over[MovesEnv](env => env.records.requests)
@@ -354,7 +361,7 @@ private[moves] object Act {
   ): Flow[MovesEnv, Keep[I], Nothing, Either[String, A]] = {
     given Journaled[Either[String, A]] = MovesJournal.kept[A]
     Flow.step(
-      Step.transact[MovesEnv, Keep[I], Either[String, A]](Names.move, _.acting.subject)(env =>
+      Step.transact[MovesEnv, Keep[I], Either[String, A]](Keeps.move, _.acting.subject)(env =>
         k => {
           val at = env.clock.now()
           env.records.savepoints
@@ -454,7 +461,7 @@ private[moves] object Act {
     case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
   }
 
-  /** A call's `move:{n}` body: whom the call is made for, the advert at its service's place,
+  /** A call's `call:{n}` body: whom the call is made for, the advert at its service's place,
     * its entry for its tool, its arguments bound to it, and its request written for the edge
     * serving there, answered with its refusal when this transaction may not send it.
     */

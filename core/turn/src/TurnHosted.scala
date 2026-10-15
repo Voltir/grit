@@ -19,7 +19,7 @@ import grit.core.visibility.Subject
   */
 object TurnHosted {
 
-  /** A `dispatch`, `reach` or `dispatch:n:j` step: `calls`, `turn`'s calls addressed to
+  /** A `call:n:send`, `call:n:send:{place}` or `call:n:j:dispatch` step: `calls`, `turn`'s calls addressed to
     * `place`, let through by `permit`, sent to the edge serving it as requests made for the
     * turn's asker, read in this transaction ([[Calling.asker]]), checked at what `pins` sends
     * at ([[Turn.Picked.at]]): true. False, and nothing sent, when the turn has no asker, or no
@@ -45,10 +45,10 @@ object TurnHosted {
       .left
       .map(e => TurnFailure.Store(e.toString))
 
-  /** A hosted call settled: asked about first when it asks (`ask:n:j`, then the wait of up to
-    * its loop's `answerWithin`), and sent then (`dispatch:n:j`); a free one was sent with its
-    * round, and [[TurnRound.Call.sent]] says whether it went to a serving edge then. Its
-    * outcome, the answer, or why there is none, is kept by `tool:n:j`; once the edge rang, that
+  /** A hosted call settled: asked about first when it asks (`call:n:j:approve`, then the wait
+    * of up to its loop's `answerWithin`), and sent then (`call:n:j:dispatch`); a free one was
+    * sent with its round, and [[TurnRound.Call.sent]] says whether it went to a serving edge
+    * then. Its outcome, the answer, or why there is none, is kept by `call:n:j`; once the edge rang, that
     * step reads the answer from the request ([[Calling.answer]]); a call not sent, it reads
     * whether the turn has an asker, to say why. It is sent as its loop's pins say
     * ([[dispatch]]), and every read of its answer, or of why there is none, its wait's
@@ -73,7 +73,7 @@ object TurnHosted {
     val awaited: Flow[TurnRound.Env, Either[TurnRound.Hosting, Waited], Nothing, Waited] =
       Flow.either(waited, Flow.pass[Waited])
     val sent = Step.transact[TurnRound.Env, Dispatching, Either[TurnFailure, Boolean]](
-      TurnRound.Names.dispatchOne,
+      TurnRound.Names.dispatch,
       d => Subject.Turn(d.slot.turn)
     )(r =>
       d =>
@@ -116,7 +116,7 @@ object TurnHosted {
         )
         .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
     val came = Step[TurnRound.Env, Came, Either[TurnFailure, TurnTools.Settled]](
-      TurnRound.Names.tool
+      TurnRound.Names.call
     )(r =>
       c => {
         val (h, slot) = (c.hosting, c.slot)
@@ -173,7 +173,7 @@ object TurnHosted {
       .andThen(Flow.step(came).right[TurnFailure].map(_.flatten))
   }
 
-  /** What a hosted call came to before its `tool:n:j` step: a phase's, or not sent. */
+  /** What a hosted call came to before its `call:n:j` step: a phase's, or not sent. */
   private enum Waited {
     case Phase(awaited: Awaited[TurnFailure])
     case Unsent

@@ -84,7 +84,7 @@ object TurnRecordTests extends TestSuite {
             })
           )
       Vector("model-failed", "summary-failed", "replied").map(failed) ==> Vector(
-        Some(Turn.Step.CallModel -> "model"),
+        Some(Turn.Step.Ask -> "model"),
         Some(Turn.Step.Summarise -> "model"),
         None
       )

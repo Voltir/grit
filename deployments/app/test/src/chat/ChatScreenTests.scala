@@ -74,7 +74,7 @@ object ChatScreenTests extends TestSuite {
           .message(
             Msg.Arrived(
               Vector(Said(ChatScreen.Voice.User, "hi"), Said(ChatScreen.Voice.Reply, "hello")),
-              step = Some("call-model")
+              step = Some("ask:0")
             )
           )
         val surface = h.painted._1.surface
@@ -123,7 +123,7 @@ object ChatScreenTests extends TestSuite {
 
     test("a turn in progress spins the Futhark last; its reply takes that line, spinner stopped") {
       val asked = ready.message(
-        Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("call-model"))
+        Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("ask:0"))
       )
       asked.effects.last ==> Effect.After(ChatScreen.Runes, ChatScreen.TickMs, Msg.Tick)
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
@@ -145,7 +145,7 @@ object ChatScreenTests extends TestSuite {
       assert(
         status(later.message(Msg.Arrived(Vector(), Some("assemble")))).contains("assembling · 1.2s")
       )
-      val answering = later.message(Msg.Arrived(Vector(), Some("call-model")))
+      val answering = later.message(Msg.Arrived(Vector(), Some("ask:0")))
       assert(status(answering).contains("ᚨ answering · 0.0s"))
       assert(status(answering.message(Msg.Tick)).contains("ᚨ answering · 0.1s"))
     }
@@ -540,7 +540,7 @@ object ChatScreenTests extends TestSuite {
       val view = TurnView(
         TurnSeq(0),
         "hi",
-        Some("call-model"),
+        Some("ask:0"),
         Vector(TurnView.Step("assemble", Some(400))),
         None,
         None,
@@ -549,7 +549,7 @@ object ChatScreenTests extends TestSuite {
       )
       val asked = ready
         .message(
-          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("ask:0"))
         )
         .message(Msg.Turn(view))
       val open = click(asked, "grit is thinking")
@@ -564,7 +564,7 @@ object ChatScreenTests extends TestSuite {
     test("a streaming reply takes the thinking line's place; the recorded one takes its") {
       val asked =
         ready.message(
-          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("ask:0"))
         )
       val streaming = asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "hmm", "Fehu is")))
       said(streaming).map(_.stripSuffix("▍").trim) ==> Vector("▌ᛗ hi", "▌ᚨ Fehu is")
@@ -588,7 +588,7 @@ object ChatScreenTests extends TestSuite {
             Said(ChatScreen.Voice.Tool, "read notes.txt", TurnSeq(0)),
             Said(ChatScreen.Voice.Tool, "← 12 lines", TurnSeq(0))
           ),
-          Some("call-model:1")
+          Some("ask:1")
         )
       )
       tools(asked) ==> Vector("ᛏ read notes.txt", "ᛏ ← 12 lines")
@@ -614,7 +614,7 @@ object ChatScreenTests extends TestSuite {
       )
       val asking = ready
         .message(
-          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it", TurnSeq(0))), Some("tool:0:0"))
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it", TurnSeq(0))), Some("call:0:0"))
         )
         .message(Msg.Asking(Some(q)))
       def shows(h: Headless[ChatScreen.State, Msg], text: String) =
@@ -639,7 +639,8 @@ object ChatScreenTests extends TestSuite {
     }
 
     test("a person's wait has its own row, and the tool is timed only once they answer") {
-      val before = Vector("call-model", "record-call:0", "ask:0:0").map(TurnView.Step(_, Some(300)))
+      val before =
+        Vector("ask:0", "ask:0:record", "call:0:0:approve").map(TurnView.Step(_, Some(300)))
       def view(running: String, steps: Vector[TurnView.Step]) =
         TurnView(TurnSeq(0), "edit it", Some(running), steps, None, None, None, None)
       def ticks(h: Headless[ChatScreen.State, Msg], n: Int) =
@@ -650,26 +651,30 @@ object ChatScreenTests extends TestSuite {
         Headless
           .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
           .message(Msg.Opened)
-          .message(Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it")), Some("wait:0:0")))
-          .message(Msg.Turn(view("wait:0:0", before))),
+          .message(
+            Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it")), Some("call:0:0:wait"))
+          )
+          .message(Msg.Turn(view("call:0:0:wait", before))),
         20
       )
       assert(
         waiting.screen.exists(_.contains("TURN 1  · ᛗ waiting for you")),
-        row(waiting, "wait:0:0").contains("ᛗ wait:0:0"),
-        row(waiting, "wait:0:0").contains("2.4s"),
-        row(waiting, "tool:0:0").isEmpty
+        row(waiting, "call:0:0:wait").contains("ᛗ call:0:0:wait"),
+        row(waiting, "call:0:0:wait").contains("2.4s"),
+        row(waiting, "call:0:0").isEmpty
       )
       val running = ticks(
         waiting
-          .message(Msg.Arrived(Vector(), Some("tool:0:0")))
-          .message(Msg.Turn(view("tool:0:0", before :+ TurnView.Step("wait:0:0", Some(2400))))),
+          .message(Msg.Arrived(Vector(), Some("call:0:0")))
+          .message(
+            Msg.Turn(view("call:0:0", before :+ TurnView.Step("call:0:0:wait", Some(2400))))
+          ),
         1
       )
       assert(
-        row(running, "wait:0:0").contains("2.4s"),
-        row(running, "tool:0:0").contains("ᛏ tool:0:0"),
-        row(running, "tool:0:0").contains("0.1s")
+        row(running, "call:0:0:wait").contains("2.4s"),
+        row(running, "call:0:0").contains("ᛏ call:0:0"),
+        row(running, "call:0:0").contains("0.1s")
       )
     }
 
@@ -683,11 +688,11 @@ object ChatScreenTests extends TestSuite {
 
     test("the opened turn shows what has been heard: the reasoning, then the text") {
       val view =
-        TurnView(TurnSeq(0), "hi", Some("call-model"), Vector.empty, None, None, None, None)
+        TurnView(TurnSeq(0), "hi", Some("ask:0"), Vector.empty, None, None, None, None)
       val open = click(
         ready
           .message(
-            Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+            Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("ask:0"))
           )
           .message(Msg.Turn(view)),
         "grit is thinking"
@@ -902,7 +907,7 @@ object ChatScreenTests extends TestSuite {
               Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
               Said(ChatScreen.Voice.User, "two", TurnSeq(1))
             ),
-            Some("call-model")
+            Some("ask:0")
           )
         )
       def rows(h: Headless[ChatScreen.State, Msg]) =
@@ -915,7 +920,7 @@ object ChatScreenTests extends TestSuite {
       val summarised = spent.message(
         Msg.Arrived(
           Vector(),
-          Some("call-model"),
+          Some("ask:0"),
           Vector(ChatScreen.Summarised(TurnSeq(0), "said one"))
         )
       )
@@ -943,14 +948,14 @@ object ChatScreenTests extends TestSuite {
             Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
             Said(ChatScreen.Voice.User, "two", TurnSeq(1))
           ),
-          Some("call-model")
+          Some("ask:0")
         )
       )
       // Turn 0's summary is written after turn 1 has begun: it belongs under turn 0's reply.
       val summarised = talked.message(
         Msg.Arrived(
           Vector(),
-          Some("call-model"),
+          Some("ask:0"),
           Vector(ChatScreen.Summarised(TurnSeq(0), "the user said\n one"))
         )
       )
@@ -1020,7 +1025,7 @@ object ChatScreenTests extends TestSuite {
 
     test("a failure is painted before the thinking line, which stays") {
       val failed =
-        ready.message(Msg.Arrived(Vector(), step = Some("call-model"))).message(Msg.Failed("down"))
+        ready.message(Msg.Arrived(Vector(), step = Some("ask:0"))).message(Msg.Failed("down"))
       said(failed) ==> Vector("ᚺ down", "ᚠ grit is thinking…")
     }
 

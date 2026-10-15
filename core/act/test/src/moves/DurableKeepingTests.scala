@@ -78,7 +78,7 @@ object DurableKeepingTests extends TestSuite {
         }
       (first, steps, kept(w), again, counting.writes) ==> (
         Got(Right(Kept(Label.written(floor)))),
-        Vector("move:note"),
+        Vector("keep:note"),
         Vector(("k", "k")),
         Right(Label.written(floor)),
         0

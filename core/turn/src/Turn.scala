@@ -42,7 +42,7 @@ object Turn {
     val RecordTopic: String = TurnSteps.Names.recordTopic.family
     val Assemble: String = TurnSteps.Names.assemble.family
     val RecordWindow: String = TurnSteps.Names.recordWindow.family
-    val CallModel: String = TurnRound.Names.firstCall.family
+    val Ask: String = TurnRound.Names.ask.family
     val RecordVerdict: String = TurnSteps.Names.recordVerdict.family
     val Append: String = TurnSteps.Names.append.family
     val Judge: String = TurnSteps.Names.judge.family
@@ -74,7 +74,7 @@ object Turn {
         RecordTopic,
         Assemble,
         RecordWindow,
-        CallModel,
+        Ask,
         RecordVerdict,
         Append,
         Judge,
@@ -83,83 +83,83 @@ object Turn {
         AppendSummary
       )
 
-    /** The family of `record-call:n`, the tool loop's record of round n's reply that called
+    /** The family of `ask:n:record`, the tool loop's record of round n's reply that called
       * tools.
       */
-    val RecordCall: String = TurnRound.Names.recordCall.family
+    val Record: String = "ask:record"
 
     /** The family of `gate:n`, what round n's request shows and offers ([[Gated]]),
-      * decided before its model call `call-model:n` (`call-model` for round 0).
+      * decided before its model call `ask:n`.
       */
-    val Gate: String = TurnRound.Names.gate.family
+    val Gate: String = "gate"
 
-    /** The family of `tool:n:j`, the tool loop's settling of call j of round n's reply. */
-    val Tool: String = TurnRound.Names.tool.family
+    /** The family of `call:n:j`, the tool loop's settling of call j of round n's reply. */
+    val Call: String = "call"
 
-    /** The family of `ask:n:j`, the tool loop's asking a person about call j of round n's
-      * reply, a gated one, before it waits for their answer.
+    /** The family of `call:n:j:approve`, the tool loop's asking a person about call j of round
+      * n's reply, a gated one, before it waits for their answer.
       */
-    val Ask: String = TurnRound.Names.ask.family
+    val Approve: String = "call:approve"
 
-    /** The family of `dispatch:n`, round n's free hosted calls sent to an edge together, and
-      * of `dispatch:n:j`, call j's, a gated one, sent once a person approved it.
+    /** The family of `call:n:send` and `call:n:send:{place}`, round n's free hosted calls sent
+      * together to the edge serving the workspace, or a place the turn reaches (written).
       */
-    val Dispatch: String = TurnRound.Names.dispatch.family
+    val Send: String = "call:send"
 
-    /** The family of `reach:n:{place}`, round n's free calls to the tools of a service the
-      * turn reaches sent to the edge at its place (written), together.
+    /** The family of `call:n:j:dispatch`, call j of round n, a gated hosted one, sent once a
+      * person approved it.
       */
-    val Reach: String = TurnRound.Names.reach.family
+    val Dispatch: String = "call:dispatch"
 
-    /** The family of `expire:n:j`, call j of round n given up on when no edge claimed it in
-      * time, or found claimed and waited on again.
+    /** The family of `call:n:j:expire`, call j of round n given up on when no edge claimed it
+      * in time, or found claimed and waited on again.
       */
-    val Expire: String = TurnRound.Names.expire.family
+    val Expire: String = "call:expire"
 
-    /** The family of `abandon:n:j`, call j of round n given up on when its edge claimed it
-      * and did not answer in time.
+    /** The family of `call:n:j:abandon`, call j of round n given up on when its edge claimed
+      * it and did not answer in time.
       */
-    val Abandon: String = TurnRound.Names.abandon.family
+    val Abandon: String = "call:abandon"
 
-    /** The family of `wait:n:j`, a person's time to answer about call j of round n's reply:
-      * not a step the turn records, but its wait between `ask:n:j` and the answer, which
-      * DBOS records as [[StepRecord.Received]] ([[named]] and [[running]] give it this name).
+    /** The family of `call:n:j:wait`, a person's time to answer about call j of round n's
+      * reply: not a step the turn records, but its wait between `call:n:j:approve` and the
+      * answer, which DBOS records as [[StepRecord.Received]] ([[named]] and [[running]] give it
+      * this name).
       */
-    val Wait: String = TurnRound.Names.answer.family
+    val Wait: String = "call:wait"
 
     /** The step `name` stands for among [[all]] and the tool loop's families ([[Gate]],
-      * [[RecordCall]], [[Ask]], [[Wait]], [[Tool]], [[Dispatch]], [[Reach]], [[Expire]],
-      * [[Abandon]]): its
-      * round, index or place dropped (`call-model:3` is [[CallModel]], `tool:1:0` is
-      * [[Tool]]). `None` for a name that is not the turn's, such as a patch's marker or
+      * [[Record]], [[Approve]], [[Wait]], [[Call]], [[Send]], [[Dispatch]], [[Expire]],
+      * [[Abandon]]): its round, index or place dropped (`ask:3` is [[Ask]], `call:1:0` is
+      * [[Call]]). `None` for a name that is not the turn's, such as a patch's marker or
       * DBOS's own records of a wait ([[StepRecord.Received]] before [[named]] renames it).
       */
     def family(name: String): Option[String] =
       Loop.of(name) match {
-        case Some(Loop.Call(_)) => Some(CallModel)
+        case Some(Loop.Ask(_)) => Some(Ask)
         case Some(Loop.Gate(_)) => Some(Gate)
-        case Some(Loop.Record(_)) => Some(RecordCall)
-        case Some(Loop.Ask(_, _)) => Some(Ask)
+        case Some(Loop.Record(_)) => Some(Record)
+        case Some(Loop.Approve(_, _)) => Some(Approve)
         case Some(Loop.Wait(_, _)) => Some(Wait)
-        case Some(Loop.Tool(_, _)) => Some(Tool)
-        case Some(Loop.Sent(_) | Loop.SentOne(_, _)) => Some(Dispatch)
-        case Some(Loop.Reached(_)) => Some(Reach)
-        case Some(Loop.Expired(_, _)) => Some(Expire)
-        case Some(Loop.Abandoned(_, _)) => Some(Abandon)
+        case Some(Loop.Call(_, _)) => Some(Call)
+        case Some(Loop.Send(_, _)) => Some(Send)
+        case Some(Loop.Dispatch(_, _)) => Some(Dispatch)
+        case Some(Loop.Expire(_, _)) => Some(Expire)
+        case Some(Loop.Abandon(_, _)) => Some(Abandon)
         case None => Option.when(all.contains(name))(name)
       }
 
     /** The names of `recorded`, the steps a turn recorded in order, as a watcher is shown
-      * them: a [[StepRecord.Received]] that ends the wait after `ask:n:j` is `wait:n:j`; every other
-      * name is as recorded.
+      * them: a [[StepRecord.Received]] that ends the wait after `call:n:j:approve` is
+      * `call:n:j:wait`; every other name is as recorded.
       */
     def named(recorded: Vector[String]): Vector[String] =
       recorded
-        .foldLeft((Vector.empty[String], Option.empty[Loop.Ask])) { case ((out, asked), name) =>
+        .foldLeft((Vector.empty[String], Option.empty[Loop.Approve])) { case ((out, asked), name) =>
           (Loop.of(name), asked) match {
-            case (Some(ask: Loop.Ask), _) => (out :+ name, Some(ask))
-            case (_, Some(Loop.Ask(n, j))) if name == StepRecord.Received =>
-              (out :+ s"$Wait:$n:$j", None)
+            case (Some(ask: Loop.Approve), _) => (out :+ name, Some(ask))
+            case (_, Some(Loop.Approve(n, j))) if name == StepRecord.Received =>
+              (out :+ Loop.Wait(n, j).name, None)
             case _ if family(name).nonEmpty => (out :+ name, None)
             case _ => (out :+ name, asked)
           }
@@ -168,48 +168,8 @@ object Turn {
   }
 
   /** A step of the tool loop, by what its name says. */
-  private enum Loop {
-    case Call(round: Int)
-    case Gate(round: Int)
-    case Record(round: Int)
-    case Ask(round: Int, index: Int)
-    case Wait(round: Int, index: Int)
-    case Tool(round: Int, index: Int)
-    case Sent(round: Int)
-    case SentOne(round: Int, index: Int)
-    case Reached(round: Int)
-    case Expired(round: Int, index: Int)
-    case Abandoned(round: Int, index: Int)
-  }
-
-  private object Loop {
-    private val CallName = """call-model:(\d+)""".r
-    private val GateName = """gate:(\d+)""".r
-    private val RecordName = """record-call:(\d+)""".r
-    private val AskName = """ask:(\d+):(\d+)""".r
-    private val WaitName = """wait:(\d+):(\d+)""".r
-    private val ToolName = """tool:(\d+):(\d+)""".r
-    private val SentName = """dispatch:(\d+)""".r
-    private val SentOneName = """dispatch:(\d+):(\d+)""".r
-    private val ReachedName = """reach:(\d+):.+""".r
-    private val ExpiredName = """expire:(\d+):(\d+)""".r
-    private val AbandonedName = """abandon:(\d+):(\d+)""".r
-
-    def of(name: String): Option[Loop] = name match {
-      case CallName(n) => n.toIntOption.map(Call(_))
-      case GateName(n) => n.toIntOption.map(Gate(_))
-      case RecordName(n) => n.toIntOption.map(Record(_))
-      case AskName(n, j) => n.toIntOption.zip(j.toIntOption).map(Ask(_, _))
-      case WaitName(n, j) => n.toIntOption.zip(j.toIntOption).map(Wait(_, _))
-      case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
-      case SentName(n) => n.toIntOption.map(Sent(_))
-      case SentOneName(n, j) => n.toIntOption.zip(j.toIntOption).map(SentOne(_, _))
-      case ReachedName(n) => n.toIntOption.map(Reached(_))
-      case ExpiredName(n, j) => n.toIntOption.zip(j.toIntOption).map(Expired(_, _))
-      case AbandonedName(n, j) => n.toIntOption.zip(j.toIntOption).map(Abandoned(_, _))
-      case _ => None
-    }
-  }
+  private val Loop = TurnRound.Names.Step
+  private type Loop = TurnRound.Names.Step
 
   /** The patches the turn's steps take within this epoch (ADR 0004). */
   object Patches {
@@ -230,37 +190,37 @@ object Turn {
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
-    * is recorded when it completes). After a loop's `record-call:n`, its first tool,
-    * `tool:n:0`; after `ask:n:j`, `wait:n:j`, a person's time to answer ([[Step.Wait]]);
-    * once the wait has ended, `tool:n:j`; after `tool:n:j`, the next model call,
-    * `call-model:n+1`, which takes far longer than any further tool, and its gate; after
-    * `gate:n`, the model call it gates. Otherwise the next step
-    * after the last recorded that every turn takes ([[Step.optional]] ones only once
-    * recorded), `call-model:n` counting as `call-model`. Names that are not the turn's steps
-    * are skipped; once the last step is recorded the turn is finishing, and that step is
-    * named.
+    * is recorded when it completes). After a loop's `ask:n:record`, its first call,
+    * `call:n:0`; after `call:n:j:approve`, `call:n:j:wait`, a person's time to answer
+    * ([[Step.Wait]]); once the wait has ended, `call:n:j`; after `call:n:j`, the next model
+    * call, `ask:n+1`, which takes far longer than any further tool, and its gate; after
+    * `gate:n`, the model call it gates. Otherwise the next step after the last recorded that
+    * every turn takes ([[Step.optional]] ones only once recorded), `ask:n` counting as
+    * [[Step.Ask]], whose next is `ask:0`. Names that are not the turn's steps are skipped; once
+    * the last step is recorded the turn is finishing, and that step is named.
     */
   def running(recorded: Vector[String]): String = {
     val own = Step.named(recorded).filter(Step.family(_).nonEmpty)
     own.lastOption.flatMap(Loop.of) match {
-      case Some(Loop.Record(n)) => s"${Step.Tool}:$n:0"
-      case Some(Loop.Gate(n)) => Round.at(n).step
-      case Some(Loop.Ask(n, j)) => s"${Step.Wait}:$n:$j"
-      case Some(Loop.Wait(n, j)) => s"${Step.Tool}:$n:$j"
-      case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
-      case Some(Loop.Sent(n)) => s"${Step.Tool}:$n:0"
-      case Some(Loop.Reached(n)) => s"${Step.Tool}:$n:0"
-      case Some(Loop.SentOne(n, j)) => s"${Step.Tool}:$n:$j"
-      case Some(Loop.Expired(n, j)) => s"${Step.Tool}:$n:$j"
-      case Some(Loop.Abandoned(n, j)) => s"${Step.Tool}:$n:$j"
+      case Some(Loop.Record(n)) => Loop.Call(n, 0).name
+      case Some(Loop.Gate(n)) => Loop.Ask(n).name
+      case Some(Loop.Approve(n, j)) => Loop.Wait(n, j).name
+      case Some(Loop.Wait(n, j)) => Loop.Call(n, j).name
+      case Some(Loop.Call(n, _)) => Loop.Ask(n + 1).name
+      case Some(Loop.Send(n, _)) => Loop.Call(n, 0).name
+      case Some(Loop.Dispatch(n, j)) => Loop.Call(n, j).name
+      case Some(Loop.Expire(n, j)) => Loop.Call(n, j).name
+      case Some(Loop.Abandon(n, j)) => Loop.Call(n, j).name
       case _ =>
         val done =
           own.flatMap(Step.family).map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
-        Step.all
+        val next = Step.all
           .drop(done + 1)
           .find(!Step.optional.contains(_))
           .orElse(Step.all.lastOption)
           .getOrElse(Step.Assemble)
+        // The loop is reached at its first round's model call.
+        if (next == Step.Ask) Loop.Ask(0).name else next
     }
   }
 
@@ -355,7 +315,7 @@ object Turn {
       recorded[A](name).flatMap(_.toRight(s"$workflow recorded no $name step"))
     def kept[A](what: String, read: Either[StoreError, A]): Either[String, A] =
       read.left.map(e => s"$what of $workflow unread: ${describe(e)}")
-    // The rounds whose replies called tools, by the record-call:n steps that kept them.
+    // The rounds whose replies called tools, by the ask:n:record steps that kept them.
     val looped: Vector[(Round, String)] =
       steps.flatMap(s => Loop.of(s.name).collect { case Loop.Record(n) => Round.at(n) -> s.name })
     // Each round's gate, by the gate:n steps that recorded it: none for a turn ungated.

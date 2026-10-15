@@ -353,7 +353,7 @@ object JobMovesLiveTests extends TestSuite {
       Vector(Vector(replied(engine, turn))) ++
       rows(
         config,
-        "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND function_name LIKE 'move:%' ORDER BY function_id",
+        "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND (function_name LIKE 'ask:%' OR function_name LIKE 'call:%' OR function_name LIKE 'keep:%') ORDER BY function_id",
         id
       )
   }
@@ -445,14 +445,14 @@ object JobMovesLiveTests extends TestSuite {
           Vector("move:{workflow}:think", "grit/stub"),
           Vector("move:{workflow}:weigh", "grit/stub-classifier"),
           Vector("Done(read a,public)\nstub reply to: Done(read a,public)\nyes\n0.25"),
-          Vector("move:look"),
-          Vector("move:look:answer"),
-          Vector("move:think"),
-          Vector("move:think:record"),
-          Vector("move:shape"),
-          Vector("move:shape:record"),
-          Vector("move:weigh"),
-          Vector("move:weigh:record")
+          Vector("call:look"),
+          Vector("call:look:answer"),
+          Vector("ask:think"),
+          Vector("ask:think:record"),
+          Vector("ask:shape"),
+          Vector("ask:shape:record"),
+          Vector("ask:weigh"),
+          Vector("ask:weigh:record")
         )
       )
     }
@@ -494,13 +494,13 @@ object JobMovesLiveTests extends TestSuite {
           ),
           rows(
             config,
-            "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND function_name LIKE 'move:%' ORDER BY function_id",
+            "SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND (function_name LIKE 'ask:%' OR function_name LIKE 'call:%' OR function_name LIKE 'keep:%') ORDER BY function_id",
             id
           )
         ) ==> (
           s"${grit.core.act.MoveError.Store("refused")}\npublic",
           Vector(Vector("k", "kept")),
-          Vector(Vector("move:undone"), Vector("move:kept"))
+          Vector(Vector("keep:undone"), Vector("keep:kept"))
         )
       } finally engine.close()
     }

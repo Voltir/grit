@@ -35,8 +35,9 @@ import grit.core.visibility.Integrity
 object DurableMoves {
 
   /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`,
-    * after which none of them may be made: each move recorded as `move:{name}`, and its phases
-    * as `move:{name}:record`, `:expire`, `:abandon` and `:answer` ([[ActName]]). A run's call
+    * after which none of them may be made: each recorded as `ask:{name}`, `call:{name}` or
+    * `keep:{name}`, and its phases as an ask's `ask:{name}:record` and a call's
+    * `call:{name}:expire`, `:abandon` and `:answer` ([[ActName]]). A run's call
     * `i` (from 0) is its turn's call slot `(0, i)`. An ask's cost is recorded under
     * `move:{workflow}:{name}`, and a JSON ask's repair's under `move:{workflow}:{name}:repair`.
     */

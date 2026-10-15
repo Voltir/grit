@@ -255,19 +255,19 @@ object Look {
       * is weighed against the tools it offers; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
       * summarised; Tiwaz while a tool runs, or asks you first; Mannaz, you, while it waits for
-      * your answer. A tool loop's step is known by its family (`call-model:2` answers). A name
-      * grit does not know shows as itself.
+      * your answer. A tool loop's step is known by its family (`ask:2` answers). A name grit
+      * does not know shows as itself.
       */
     def step(name: String): String = Step.family(name).getOrElse(name) match {
       case Step.Classify => "ᛈ placing"
       case Step.Assemble => "ᛟ assembling"
-      case Step.CallModel => "ᚨ answering"
+      case Step.Ask => "ᚨ answering"
       case Step.Gate => "ᛉ weighing what it read"
-      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.RecordCall |
-          Step.Append | Step.AppendSummary =>
+      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.Record | Step.Append |
+          Step.AppendSummary =>
         "ᛃ recording"
-      case Step.Tool => s"$Tool using a tool"
-      case Step.Ask => s"$Tool asking you"
+      case Step.Call => s"$Tool using a tool"
+      case Step.Approve => s"$Tool asking you"
       case Step.Wait => s"$User waiting for you"
       case Step.Summarise => "ᛚ summarising"
       case other => s"$Idle $other"

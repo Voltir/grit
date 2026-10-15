@@ -152,7 +152,7 @@ object TurnRoundTests extends TestSuite {
     val settled = summon[grit.core.durable.Journaled[Either[TurnFailure, TurnTools.Settled]]]
     val steps = durable.history(turn.workflowId).map {
       case InMemoryDurable.Step(name, InMemoryDurable.Outcome.Output(v))
-          if name.startsWith("tool:") =>
+          if Turn.Step.family(name).contains(Turn.Step.Call) =>
         settled.decode(v).fold(_ => s"$name unread", s => s"$name ${s.map(_.failed)}")
       case InMemoryDurable.Step(name, _) => name
     }
@@ -165,7 +165,7 @@ object TurnRoundTests extends TestSuite {
     test("a reply that calls no tool answers at once, its round gated before its call") {
       rounds(3, replying(Right(reply("hi")))) ==> (
         "answered hi at 0 of 1, believed Some(member)",
-        Vector(marker, "gate:0", "call-model")
+        Vector(marker, "gate:0", "ask:0")
       )
     }
 
@@ -177,16 +177,16 @@ object TurnRoundTests extends TestSuite {
         Vector(
           marker,
           "gate:0",
-          "call-model",
-          "record-call:0",
-          "tool:0:0 Right(false)",
-          "tool:0:1 Right(false)",
+          "ask:0",
+          "ask:0:record",
+          "call:0:0 Right(false)",
+          "call:0:1 Right(false)",
           "gate:1",
-          "call-model:1",
-          "record-call:1",
-          "tool:1:0 Right(false)",
+          "ask:1",
+          "ask:1:record",
+          "call:1:0 Right(false)",
           "gate:2",
-          "call-model:2"
+          "ask:2"
         )
       )
     }
@@ -199,11 +199,11 @@ object TurnRoundTests extends TestSuite {
         Vector(
           marker,
           "gate:0",
-          "call-model",
-          "record-call:0",
-          "tool:0:0 Right(false)",
+          "ask:0",
+          "ask:0:record",
+          "call:0:0 Right(false)",
           "gate:1",
-          "call-model:1"
+          "ask:1"
         )
       )
     }
@@ -211,9 +211,9 @@ object TurnRoundTests extends TestSuite {
     test("a silent reply fails the turn") {
       val (out, steps) = rounds(3, replying(Right(reply("", Vector("a"))), Right(reply(""))))
       (out, steps.lastOption) ==> (
-        "stalled Model(the reply to call-model:1 said nothing and called no tool) after 2, " +
+        "stalled Model(the reply to ask:1 said nothing and called no tool) after 2, " +
           "believed Some(member)",
-        Some("call-model:1")
+        Some("ask:1")
       )
     }
 
@@ -224,11 +224,11 @@ object TurnRoundTests extends TestSuite {
         Vector(
           marker,
           "gate:0",
-          "call-model",
-          "record-call:0",
-          "tool:0:0 Right(true)",
+          "ask:0",
+          "ask:0:record",
+          "call:0:0 Right(true)",
           "gate:1",
-          "call-model:1"
+          "ask:1"
         )
       )
     }
@@ -238,7 +238,7 @@ object TurnRoundTests extends TestSuite {
       val (out, steps) = rounds(3, replying(Right(reply("", Vector("a"))), Left(down)))
       (out, steps.lastOption) ==> (
         "stalled Model(HTTP 529) after 1, believed Some(member)",
-        Some("call-model:1")
+        Some("ask:1")
       )
     }
 
@@ -249,7 +249,7 @@ object TurnRoundTests extends TestSuite {
         kept = Left(TurnFailure.Store("disk"))
       ) ==> (
         "stalled Store(disk) after 1, believed Some(member)",
-        Vector(marker, "gate:0", "call-model", "record-call:0")
+        Vector(marker, "gate:0", "ask:0", "ask:0:record")
       )
     }
 
@@ -274,7 +274,7 @@ object TurnRoundTests extends TestSuite {
         durable = new InMemoryDurable(unpatched = Set(Turn.Patches.Integrity))
       ) ==> (
         "answered hi at 0 of 1, believed None",
-        Vector("call-model")
+        Vector("ask:0")
       )
     }
   }

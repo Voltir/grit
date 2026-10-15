@@ -31,12 +31,15 @@ object JobReadTests extends TestSuite {
     */
   private val Unended = "run-moved-then-redeployed.json"
 
+  /** The families of a move's steps ([[grit.act.moves.ActName]]). */
+  private val Moves = Seq("ask:", "call:", "keep:")
+
   /** The jobs `history` was recorded with: [[Noting]] for one that kept, [[probes]] for one
     * that made another move, else `remind`, which makes none.
     */
   private def jobsFor(history: History): Jobs =
-    if (history.steps.exists(_.name == "move:note")) keepingJobs(new Noting(1))
-    else if (history.steps.exists(_.name.startsWith("move:"))) jobsOf(probing(1))
+    if (history.steps.exists(_.name == "keep:note")) keepingJobs(new Noting(1))
+    else if (history.steps.exists(s => Moves.exists(s.name.startsWith))) jobsOf(probing(1))
     else jobs(1)
 
   /** The name a reader gives `records(k)`: its own, or for a wait's record, the step that ends
@@ -48,7 +51,7 @@ object JobReadTests extends TestSuite {
     if (name != StepRecord.Received && name != StepRecord.Slept) name
     else {
       val before = records.take(k).map(_.name)
-      val call = before.lastIndexWhere(n => n.startsWith("move:") && n.count(_ == ':') == 1)
+      val call = before.lastIndexWhere(n => n.startsWith("call:") && n.count(_ == ':') == 1)
       val waits = before.drop(call + 1).count(_ == StepRecord.Received)
       val phase = if (name == StepRecord.Received) waits else waits - 1
       s"${before(call)}:${if (phase == 0) "expire" else "abandon"}"
@@ -88,7 +91,8 @@ object JobReadTests extends TestSuite {
         case _ => Vector()
       }
       // Without moves cut inside, and a wait among them, the gate would not reach the planner.
-      val inside = runs.flatMap((_, h) => h.steps.map(_.name)).filter(_.startsWith("move:"))
+      val inside =
+        runs.flatMap((_, h) => h.steps.map(_.name)).filter(n => Moves.exists(n.startsWith))
       (runs.size, inside.exists(_.endsWith(":expire")), read) ==> (19, true, Vector())
     }
   }

@@ -123,8 +123,8 @@ object TurnRecord {
     val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, Gated]]]
     val rounds = steps
       .flatMap(s =>
-        (s.name, s.output) match {
-          case (GateStep(n), Some(output)) => Some((n.toInt, s.name, output))
+        (Loop.of(s.name), s.output) match {
+          case (Some(Loop.Gate(n)), Some(output)) => Some((n, s.name, output))
           case _ => None
         }
       )
@@ -162,19 +162,19 @@ object TurnRecord {
   }
 
   /** The tool loop's calls `steps` show given up on, by round and index, each from 0 (the
-    * `n` and `j` of `tool:n:j`). A call whose edge answered in the end is not among them.
+    * `n` and `j` of `call:n:j`). A call whose edge answered in the end is not among them.
     */
   def givenUp(steps: Vector[StepRecord]): Map[(Int, Int), GivenUp] = {
     val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, RequestState]]]
     def state(s: StepRecord): Option[RequestState] =
       s.output.flatMap(journal.decode(_).toOption).flatMap(_.toOption)
     steps.flatMap { s =>
-      s.name match {
-        case Expire(n, j) =>
-          state(s).collect { case RequestState.Expired => (n.toInt, j.toInt) -> GivenUp.Expired }
-        case Abandon(n, j) =>
+      Loop.of(s.name) match {
+        case Some(Loop.Expire(n, j)) =>
+          state(s).collect { case RequestState.Expired => (n, j) -> GivenUp.Expired }
+        case Some(Loop.Abandon(n, j)) =>
           state(s).collect { case RequestState.Expired | RequestState.Claimed =>
-            (n.toInt, j.toInt) -> GivenUp.Abandoned
+            (n, j) -> GivenUp.Abandoned
           }
         case _ => None
       }
@@ -247,9 +247,7 @@ object TurnRecord {
     case Extract
   }
 
-  private val Expire = """expire:(\d+):(\d+)""".r
-  private val Abandon = """abandon:(\d+):(\d+)""".r
-  private val GateStep = """gate:(\d+)""".r
+  private val Loop = TurnRound.Names.Step
 
   /** The output of the step named `name` among `steps`, read by `A`'s journal; `None` when no
     * such step recorded one.

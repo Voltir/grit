@@ -51,11 +51,6 @@ object TurnLoopTests extends TestSuite {
       Budget.Fewest.calls ==> 2
     }
 
-    test("a round's step is call-model, then call-model:n") {
-      Vector(0, 1, 7).map(n => round(n).step) ==>
-        Vector("call-model", "call-model:1", "call-model:7")
-    }
-
     test("next") {
       val b = budget(3)
       val calling = reply("", Vector("a", "b"))

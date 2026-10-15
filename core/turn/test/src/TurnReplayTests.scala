@@ -101,7 +101,7 @@ object TurnReplayTests extends TestSuite {
     test("every recorded offer is written back byte for byte") {
       // An offer is recorded data: one recorded before shapes reads as unshaped, and today's
       // codec writes the same text back, so recipes change no offer already recorded.
-      val j = TurnJournal.recordedOffer
+      val j = TurnJournal.decidedOffer
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
           case s if s.name == Turn.Step.Offer => (path.last, s.outcome)
@@ -159,7 +159,7 @@ object TurnReplayTests extends TestSuite {
     }
 
     test(
-      "every recorded dispatch, expire, abandon and call-model output is written back byte for byte"
+      "every recorded send, dispatch, expire, abandon and model call output is written back byte for byte"
     ) {
       // A hosted call's and a model call's steps are recorded data, written by the phases a
       // turn shares with jobs: today's codecs read each and write the same text back, a
@@ -168,27 +168,18 @@ object TurnReplayTests extends TestSuite {
       import Turn.Step
       def again[A](j: grit.core.durable.Journaled[A], text: String): Boolean =
         j.decode(text).map(j.encode) == Right(text)
-      def kind(name: String): Option[String] =
-        if (
-          name == Step.CallModel ||
-          name.startsWith(s"${Step.CallModel}:")
-        )
-          Some(Step.CallModel)
-        else if (name.startsWith(s"${Step.Dispatch}:") || name.startsWith(s"${Step.Reach}:"))
-          Some(Step.Dispatch)
-        else if (name.startsWith(s"${Step.Expire}:")) Some(Step.Expire)
-        else if (name.startsWith(s"${Step.Abandon}:")) Some(Step.Abandon)
-        else None
+      val kinds = Set(Step.Ask, Step.Send, Step.Dispatch, Step.Expire, Step.Abandon)
+      def kind(name: String): Option[String] = Step.family(name).filter(kinds.contains)
       def roundTrips(kind: String, text: String): Boolean =
-        if (kind == Step.CallModel) again(TurnJournal.reply, text)
-        else if (kind == Step.Dispatch) again(TurnJournal.yesNo, text)
+        if (kind == Step.Ask) again(TurnJournal.reply, text)
+        else if (kind == Step.Send || kind == Step.Dispatch) again(TurnJournal.yesNo, text)
         else again(TurnJournal.requestState, text)
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(
           _.steps.flatMap(s => kind(s.name).map((path.last, _, s.outcome)))
         )
       }
-      outputs.map(_._2).toSet ==> Set(Step.CallModel, Step.Dispatch, Step.Expire, Step.Abandon)
+      outputs.map(_._2).toSet ==> kinds
       assert(outputs.exists {
         case (_, _, InMemoryDurable.Outcome.Output(text)) => TurnJournal.failure(text).nonEmpty
         case _ => false

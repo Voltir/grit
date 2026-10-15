@@ -88,17 +88,17 @@ object TurnLoopTurnTests extends TestSuite {
       val turn = say(entries, "read them")
       looped(durable, entries, entries, turn, provider, ws, ledger, summarizer) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "call-model") ==> Vector(
-        "call-model",
-        "record-call:0",
-        "tool:0:0",
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:0") ==> Vector(
+        "ask:0",
+        "ask:0:record",
+        "call:0:0",
         "gate:1",
-        "call-model:1",
-        "record-call:1",
-        "tool:1:0",
-        "tool:1:1",
+        "ask:1",
+        "ask:1:record",
+        "call:1:0",
+        "call:1:1",
         "gate:2",
-        "call-model:2",
+        "ask:2",
         "append",
         "summarise",
         "append-summary"
@@ -250,7 +250,7 @@ object TurnLoopTurnTests extends TestSuite {
       )
       val turn = say(store, "read a")
       assertThrows[InMemoryDurable.Crash](looped(durable, store, entries, turn, provider, ws))
-      durable.recordedSteps(turn.workflowId).lastOption ==> Some("record-call:0")
+      durable.recordedSteps(turn.workflowId).lastOption ==> Some("ask:0:record")
       ws.reads ==> 1
       looped(durable, store, entries, turn, provider, ws) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
@@ -285,7 +285,7 @@ object TurnLoopTurnTests extends TestSuite {
       (rerun, durable.recordedSteps(turn.workflowId).drop(before.size).take(1)) ==> (
         "failed: ToolsChanged(the call at round 0, index 0, binds otherwise than its round " +
           "recorded: its tools changed between runs)",
-        Vector("tool:0:0")
+        Vector("call:0:0")
       )
       ws.reads ==> 1
     }
@@ -304,7 +304,7 @@ object TurnLoopTurnTests extends TestSuite {
         Outcome.Unanswered.result(ToolCallId("t1"))
       )
       durable.recordedSteps(turn.workflowId).filter(_.contains(":0:0")) ==>
-        Vector("ask:0:0", "tool:0:0")
+        Vector("call:0:0:approve", "call:0:0")
     }
 
     test("a gated call is asked about, and runs once approved") {
@@ -328,11 +328,11 @@ object TurnLoopTurnTests extends TestSuite {
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
       entries.get(slot.askId)(using TestTx.fake).toOption.flatten.map(_.payload) ==>
         Some(Payload.Ask(ToolCallId("t1"), "poke a.txt"))
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(5) ==>
-        Vector("record-call:0", "ask:0:0", "DBOS.recv", "DBOS.sleep", "tool:0:0")
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:0:record").take(5) ==>
+        Vector("ask:0:record", "call:0:0:approve", "DBOS.recv", "DBOS.sleep", "call:0:0")
       // A watcher is shown the answer's arrival as the wait for it.
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
-        Vector("ask:0:0", "wait:0:0", "tool:0:0")
+        Vector("call:0:0:approve", "call:0:0:wait", "call:0:0")
     }
 
     test("a gated call declined is denied with the reason, and the model reads it") {
@@ -427,7 +427,7 @@ object TurnLoopTurnTests extends TestSuite {
       )
       val turn = say(entries, "go")
       looped(new InMemoryDurable, entries, entries, turn, provider, ws) ==>
-        "failed: Model(the reply to call-model:1 said nothing and called no tool)"
+        "failed: Model(the reply to ask:1 said nothing and called no tool)"
     }
 
     test("a failed call after a tool round ends the turn with no reply") {
@@ -498,8 +498,8 @@ object TurnLoopTurnTests extends TestSuite {
       lastUser(provider.requests(1)) ==> "hm ~0.5"
       exchange(entries, turn).collect { case r: Message.ToolResult => r.content } ==>
         Vector(TurnVerdict.Noted, "alpha")
-      durable.recordedSteps(turn.workflowId).dropWhile(_ != "call-model:1") ==>
-        Vector("call-model:1", "record-verdict", "append", "summarise", "append-summary")
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:1") ==>
+        Vector("ask:1", "record-verdict", "append", "summarise", "append-summary")
       topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
         Some(Placement.Asked(Verdict.Current, None))
     }

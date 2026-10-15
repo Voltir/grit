@@ -44,7 +44,7 @@ object FollowTests extends TestSuite {
   )
 
   /** A turn running, having recorded `recorded`. The step names here and in what the screen
-    * is told ("assemble", "record-window", "ask:0:0") are grit.turn's (`Turn.Step`,
+    * is told ("assemble", "record-window", "call:0:0:approve") are grit.turn's (`Turn.Step`,
     * `Turn.running`), not Follow's: these tests pin that Follow passes them on.
     */
   private def running(recorded: String*): TurnStatus =
@@ -176,18 +176,18 @@ object FollowTests extends TestSuite {
         )
       val asking = Vector(user(0, 0, "edit it"), at(1, Payload.Ask(call, "Edit a.txt")))
       val turn = TurnRef(c, TurnSeq(0))
-      val (waiting, first) = Follow.step(Follow.start, asking, all(running("ask:0:0")))
+      val (waiting, first) = Follow.step(Follow.start, asking, all(running("call:0:0:approve")))
       first.lastOption ==>
         Some(ChatScreen.Msg.Asking(Some(ChatScreen.Asked(turn.workflowId, call, "Edit a.txt"))))
-      Follow.step(waiting, asking, all(running("ask:0:0")))._2 ==> Vector.empty
+      Follow.step(waiting, asking, all(running("call:0:0:approve")))._2 ==> Vector.empty
       val begun = asking :+ at(2, Payload.Attempt(call))
-      Follow.step(waiting, begun, all(running("ask:0:0")))._2.lastOption ==>
+      Follow.step(waiting, begun, all(running("call:0:0:approve")))._2.lastOption ==>
         Some(ChatScreen.Msg.Asking(None))
       val done = asking :+ at(
         2,
         Payload.Result(Message.ToolResult(call, "denied", true), "edit a.txt")
       )
-      Follow.step(waiting, done, all(running("tool:0:0")))._2.lastOption ==>
+      Follow.step(waiting, done, all(running("call:0:0")))._2.lastOption ==>
         Some(ChatScreen.Msg.Asking(None))
     }
 
