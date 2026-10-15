@@ -2,7 +2,8 @@
 
 Status: accepted (2026-09-30); amended (2026-10-06): a run's workflow is distinct per slot
 and version, and a version's change supersedes pending runs inside their own body; amended
-(2026-10-08): named moves are built (ADR 0034), without reuse across versions
+(2026-10-08): named moves are built (ADR 0034), without reuse across versions; amended
+(2026-10-15): the deployment surface, `private[grit]` internals, and a deployment's version
 
 Context: grit is to run more than one deployment, each with several personas, scheduled
 work and code of its own. Turned down: grit as the deployment, configured by environment
@@ -31,6 +32,15 @@ Decision:
   plugins contribute to it through core traits. The kit owns the DBOS application version:
   a deployment registers no workflow, and its jobs run under grit's epoch. Secrets and the
   database come from the environment, never the value.
+- (Amended 2026-10-15.) What a deployment names is the deployment surface: core, the kit
+  (which exports the few types its signatures take from past it) and each extension's entry
+  folders, the `deployment-surface` component in `enola-intent.yaml`. What lies past it is
+  `private[grit]`, one idea at a time, the engine's openers and `DurableWorkflow` first. A
+  deployment's engines open under grit's epoch joined with its own version
+  (`Deployment.runsUnder`, ADR 0004). That it registers no workflow and owns no table is held
+  for code outside `grit` by the compiler (the kit's `BoundaryTests`), though not for a DBOS a
+  deployment builds of its own, since DBOS and JDBC stay on its classpath; within grit, where
+  `private[grit]` cannot reach, by the law.
 - A job is a turn with a Scala planner, and it has a version. A trigger is an edge (ADR
   0002) starting one run per slot at a task place; a run is a conversation there, closed
   like any other, and its workflow is distinct per slot and version: the slot names its

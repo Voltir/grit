@@ -142,6 +142,13 @@ components:
             "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**"]
+  # Every edge extension's main sources: an edge a deployment serves (ADR 0019, ADR 0017). The
+  # kit names none of them (kit-names-no-edge-or-deployment's `only` leaves them out), and
+  # scripts/check --milestone --since reports each commit touching one and core together.
+  # A new edge extension joins this list.
+  - name: edge-extensions
+    kind: module
+    match: ["extensions/slack/src", "extensions/slack/src/**", "extensions/mcp/src", "extensions/mcp/src/**"]
   - name: mcp-generic
     kind: module
     match: ["extensions/mcp/src/wire", "extensions/mcp/src/wire/**", "extensions/mcp/src/scope", "extensions/mcp/src/scope/**",

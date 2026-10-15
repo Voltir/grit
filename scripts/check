@@ -8,6 +8,7 @@
 #   scripts/check --it                             # the same, and the integration tier
 #   scripts/check --probes                         # the same, and every capture probe
 #   scripts/check --milestone                      # the gate, every probe, the integration tier
+#   scripts/check --milestone --since <rev>        # and the commits touching core and an edge together
 #   scripts/check grit.core                        # one module's unit tests (testCached)
 #   scripts/check grit.core.speech.SpeechTests     # one suite (testOnly)
 #   scripts/check grit.dbos.it                     # an `it` module, through scripts/it
@@ -27,6 +28,9 @@
 #         against their module with its own flags) that a change reaches (`reach`, below: a
 #         change touching capture syntax), or with --probes every one, __.probes.testCached.
 #   --milestone is --it and --probes together: the run a milestone closes with.
+#   co-change  with --milestone --since REV, last: each commit in REV..HEAD touching both core's
+#         main sources (core/<module>/src) and an edge's (enola-intent.yaml's edge-extensions),
+#         a change that a new edge would have to make to core too. A report: it never fails.
 #   format  scripts/format-check: every source formatted, and none that scalafmt cannot parse
 #         (it skips such a file and exits 0), each named, by the pinned native scalafmt
 #         (bash scripts/fetch-scalafmt.sh). --no-lint skips it.
@@ -63,14 +67,16 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 
-timeout=20m it=false probes=false lint=true unused=true only=false targets=()
+timeout=20m it=false probes=false lint=true unused=true only=false milestone=false since="" targets=()
 while [ $# -gt 0 ]; do
   case $1 in
+    --since) [ $# -ge 2 ] || usage; since=$2; shift 2 ;;
+    --since=*) since=${1#*=}; shift ;;
     --timeout) [ $# -ge 2 ] || usage; timeout=$2; shift 2 ;;
     --timeout=*) timeout=${1#*=}; shift ;;
     --it) it=true; shift ;;
     --probes) probes=true; shift ;;
-    --milestone) it=true probes=true; shift ;;
+    --milestone) it=true probes=true milestone=true; shift ;;
     --no-lint) lint=false; shift ;;
     --no-unused) unused=false; shift ;;
     --only-unused) only=true; shift ;;
@@ -81,6 +87,10 @@ while [ $# -gt 0 ]; do
 done
 if [ ${#targets[@]} -gt 0 ] && { $it || $probes; }; then
   echo "check: --it, --probes and --milestone run whole tiers; name a module or suite instead" >&2
+  exit 2
+fi
+if [ -n "$since" ] && ! $milestone; then
+  echo "check: --since reports a milestone's co-changes; use it with --milestone" >&2
   exit 2
 fi
 if $only && { ! $lint || ! $unused || $it || $probes; }; then
@@ -464,6 +474,45 @@ else
     mapfile -t args < <(joined "${mods[@]/%/.__.compile}")
     lint_tier "${args[@]}"
   fi
+fi
+
+# The co-change report (--since): never changes the exit status.
+co_change() { # rev
+  python3 - "$1" <<'PY'
+import subprocess, sys
+import yaml
+
+rev = sys.argv[1]
+components = yaml.safe_load(open("enola-intent.yaml"))["components"]
+edges = sorted({p[: -len("/**")] if p.endswith("/**") else p
+                for c in components if c["name"] == "edge-extensions" for p in c["match"]})
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.splitlines()
+
+try:
+    log = git("log", "--format=%H %h %s", f"{rev}..HEAD")
+except subprocess.CalledProcessError:
+    print(f"co-change: {rev} is no revision")
+    sys.exit()
+found = []
+for line in log:
+    full, short, subject = line.split(" ", 2)
+    files = git("show", "--name-only", "--format=", full)
+    core = any(f.startswith("core/") and f.split("/")[2:3] == ["src"] for f in files)
+    edge = any(f.startswith(e + "/") for f in files for e in edges)
+    if core and edge:
+        found.append(f"  {short} {subject}")
+print(f"co-change: {len(found)} of {len(log)} commits in {rev}..HEAD touch core and an edge together")
+for f in found:
+    print(f)
+PY
+}
+if [ ${#targets[@]} -eq 0 ] && [ -n "$since" ]; then
+  echo "== co-change"
+  report=$(co_change "$since" 2>"$logs/co-change.err") || report="co-change: could not be read ($logs/co-change.err)"
+  printf '%s\n' "$report" | tee "$logs/co-change.log"
+  totals+=("$(head -1 <<<"$report") (reported, not gated)")
 fi
 
 echo "== totals"

@@ -2,9 +2,16 @@
 
 The kit a deployment is built against (ADR 0021): a deployment declares itself as a
 `Deployment` value in a module of its own, and runs it with `Kit.serve` or `Kit.catchUp`.
-The kit owns the DBOS application version: it opens every engine under `Turn.Epoch`, and a
-deployment registers no workflow of its own. It reaches DBOS only through
-`grit.dbos.engine.Engine`.
+The kit owns the DBOS application version: it opens every engine under the deployment's
+`runsUnder`, grit's epoch joined with the deployment's own `DeploymentVersion` (ADR 0004), and
+a deployment registers no workflow of its own. It reaches DBOS only through
+`grit.dbos.engine.Engine`, whose openers are `private[grit]`: code outside `grit` cannot open
+an engine but through the kit (`kit/probes`' `BoundaryTests`).
+
+A deployment names the deployment surface (the `deployment-surface` component in
+[`enola-intent.yaml`](../enola-intent.yaml)): core, this kit and each extension's entry
+folders. `deployment` exports the few types a declaration takes from past the kit (`Rounds`,
+`ShadowVariant`, `TriageQuestions`, `Seed`), and `Topics.JevService` names Jev's party.
 
 Where a module goes (core, extension, kit or deployment), what a deployment can supply, and
 how it is built outside grit: [`docs/extending.md`](../docs/extending.md). An edge reaches
