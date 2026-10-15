@@ -62,7 +62,7 @@ object DurableFlowLawTests extends TestSuite {
       val cleared = Step.transact[Env, String, String](
         named("cleared"),
         in => Subject.Conversation(ConversationId(in))
-      )(r => in => r.tag + Label.written(Tx.cleared(summon[Tx])))
+      )(r => _ => r.tag + Label.written(Tx.cleared(summon[Tx])))
       ran(Flow.step(cleared), env, "c1", durable) ==>
         (s"Right(t${Label.written(internal)})", Vector("cleared"))
     }

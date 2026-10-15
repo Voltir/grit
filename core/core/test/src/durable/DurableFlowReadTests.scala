@@ -127,7 +127,7 @@ object DurableFlowReadTests extends TestSuite {
     ) {
       val seen =
         Step[Env, String, String](named("seen"), in => Some(Saw(in)))(r => in => r.tag + in)
-      val again = Step[Env, String, String](named("again"), in => Some(Saw(in)))(r => in => in)
+      val again = Step[Env, String, String](named("again"), in => Some(Saw(in)))(_ => in => in)
       val flow = Flow.step(seen).andThen(Flow.step(again))
       val (_, history) = ran(flow, env, "x")
       (0 to history.size).toVector.map(k =>
@@ -139,7 +139,7 @@ object DurableFlowReadTests extends TestSuite {
     test(
       "a history that holds another step, an unreadable output or none is unreadable, saying where"
     ) {
-      val counted = Step[Env, String, Int](named("n"))(r => in => in.length)(using
+      val counted = Step[Env, String, Int](named("n"))(_ => in => in.length)(using
         Journaled.json[Int](ujson.Num(_), v => v.numOpt.map(_.toInt).toRight("not a number"))
       )
       val flow = Flow.step(a).andThen(Flow.step(b))
