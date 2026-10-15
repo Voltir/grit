@@ -576,7 +576,7 @@ object DurableMoves {
 
   /** A call of `entry` with `arguments`, `believed` at that, bound as an advertised tool is: its
     * destination read from the arguments' `to`; why not, when it asks first, its arguments do
-    * not bind, or they are believed less than it requires ([[Called.withheld]]).
+    * not bind, or they are believed less than it requires ([[CallError.Withheld]]).
     */
   private def bound(
       entry: ToolSet.Entry,
@@ -598,10 +598,7 @@ object DurableMoves {
           .of[{}](offered)
           .left
           .map(_ => "unreachable: one tool")
-          .flatMap(_.bind(sent, asSent).left.map {
-            case CallError.Withheld(_, plainly, _, _) => Called.withheld(plainly).why
-            case other => other.message
-          })
+          .flatMap(_.bind(sent, asSent).left.map(_.message))
           .flatMap {
             case h: Bound.Hosted => Right(h)
             case _ => Left(s"${ToolName.value(entry.name)} is not a hosted tool")

@@ -83,7 +83,7 @@ enum Called {
   /** It did not run, or failed: `why`. Nothing was sent when no edge serves the place's tool,
     * the tool is not advertised there or asks first, or the acting may not read from that place,
     * send it the arguments, or write where they name (ADR 0031), or its arguments are believed
-    * less than its tool requires ([[Called.withheld]]); no edge claimed it within
+    * less than its tool requires ([[grit.core.tool.CallError.Withheld]]); no edge claimed it within
     * `grit.act.phase.Calling.ServeWithin`; or the tool failed.
     */
   case Failed(why: String)
@@ -92,19 +92,6 @@ enum Called {
     * may have partly run.
     */
   case Interrupted
-}
-
-object Called {
-
-  /** A call not sent because its arguments are believed less than its tool requires, in words
-    * a person follows: `plainly`, what the tool does
-    * ([[grit.core.tool.ToolSet.Entry.plainly]]).
-    */
-  def withheld(plainly: String): Failed =
-    Failed(
-      s"This can't $plainly, because what it would send came from somewhere not trusted for " +
-        "that; nothing was sent."
-    )
 }
 
 /** A planner's moves (ADR 0034), each made under its run's [[Acting]] at most once, as durable
@@ -138,7 +125,7 @@ trait Moves {
     * destination in `arguments`' `to`, as a model's call does ([[grit.core.tool.Writes.Field]]).
     * Every refusal is a [[Called.Failed]], never a [[MoveError]]: one whose `arguments` are
     * believed less than the tool requires ([[grit.core.tool.ToolSet.Entry.requires]]) is
-    * [[Called.withheld]], and nothing is sent.
+    * failed with [[grit.core.tool.CallError.Withheld]]'s words, and nothing is sent.
     */
   def call(
       name: MoveName,

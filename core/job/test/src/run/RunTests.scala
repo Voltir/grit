@@ -335,8 +335,8 @@ object RunTests extends TestSuite {
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (w.reply(turn), w.sent.map(_.tool)) ==> (
         Some(
-          "Failed(This can't read guarded paths, because what it would send came from somewhere " +
-            "not trusted for that; nothing was sent.)\nDone(read,public)"
+          "Failed(You can't read guarded paths right now, because of something you read; " +
+            "nothing was done, so answer without it.)\nDone(read,public)"
         ),
         Vector(Guarded)
       )
