@@ -93,12 +93,7 @@ object TurnHosted {
         .map[Either[TurnFailure, Either[TurnRound.Hosting, Waited]]]((d, went) =>
           went.map(w => if (w) Left(d.hosting) else Right(Waited.Unsent))
         )
-        .andThen(
-          Flow.either(
-            Flow.pass[TurnFailure].map[Either[TurnFailure, Waited]](Left(_)),
-            awaited.map[Either[TurnFailure, Waited]](Right(_))
-          )
-        )
+        .andThen(Flow.onRight(awaited.map[Either[TurnFailure, Waited]](Right(_))))
     val approved: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, Waited]] =
       Flow
         .pass[TurnRound.Hosting]
@@ -107,8 +102,7 @@ object TurnHosted {
         .keeping
         .map[Either[TurnFailure, TurnRound.Hosting]]((h, kept) => kept.map(_ => h))
         .andThen(
-          Flow.either(
-            Flow.pass[TurnFailure].map[Either[TurnFailure, Waited]](Left(_)),
+          Flow.onRight(
             Flow
               .pass[TurnRound.Hosting]
               .map(_.call)
@@ -175,28 +169,19 @@ object TurnHosted {
       }
     )
     Flow
-      .pass[TurnRound.Hosting]
-      .map[Either[TurnRound.Hosting, TurnRound.Hosting]](h => if (h.asks) Right(h) else Left(h))
-      .andThen(
-        Flow.either(
-          Flow
-            .pass[TurnRound.Hosting]
-            .map[Either[TurnRound.Hosting, Waited]](h =>
-              if (h.call.sent) Left(h) else Right(Waited.Unsent)
-            )
-            .andThen(awaited)
-            .map[Either[TurnFailure, Waited]](Right(_)),
-          approved
-        )
+      .branch((h: TurnRound.Hosting) => if (h.asks) Right(h) else Left(h))(
+        Flow
+          .pass[TurnRound.Hosting]
+          .map[Either[TurnRound.Hosting, Waited]](h =>
+            if (h.call.sent) Left(h) else Right(Waited.Unsent)
+          )
+          .andThen(awaited)
+          .map[Either[TurnFailure, Waited]](Right(_)),
+        approved
       )
       .keeping
       .map((h, w) => w.map(Came(h, _)))
-      .andThen(
-        Flow.either(
-          Flow.pass[TurnFailure].map[Either[TurnFailure, TurnTools.Settled]](Left(_)),
-          Flow.step(came)
-        )
-      )
+      .andThen(Flow.onRight(Flow.step(came)))
   }
 
   /** What a hosted call came to before its `tool:n:j` step: a phase's, or not sent. */

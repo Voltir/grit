@@ -263,12 +263,10 @@ private[turn] object TurnRound {
         at => r.call(at, TurnLoop.use(at.looping.budget, at.round))
       )
     val calling: Flow[Env, Rounds, Nothing, Either[TurnFailure, Message.Assistant]] =
-      Flow
-        .pass[Rounds]
-        .map[Either[Rounds, Rounds]](at =>
-          if (at.round.index == Round.First.index) Left(at) else Right(at)
-        )
-        .andThen(Flow.either(Flow.step(called(Names.firstCall)), Flow.step(called(Names.call))))
+      Flow.branch((at: Rounds) => if (at.round.index == Round.First.index) Left(at) else Right(at))(
+        Flow.step(called(Names.firstCall)),
+        Flow.step(called(Names.call))
+      )
     gating
       .andThen(Flow.mayEnd(calling.keeping.map(replied)))
       .andThen(
@@ -395,12 +393,9 @@ private[turn] object TurnRound {
             hosted.flatMap(TurnHosted.dispatch(r.hosting, turn, s.place, _, Permit.Free, pins))
           }
       )
-    val send = Flow
-      .pass[Sending]
-      .map[Either[Sending, Sending]](s =>
-        if (s.at.looping.offer.workspace.contains(s.place)) Left(s) else Right(s)
-      )
-      .andThen(Flow.either(Flow.step(sent(Names.dispatch)), Flow.step(sent(Names.reach))))
+    val send = Flow.branch((s: Sending) =>
+      if (s.at.looping.offer.workspace.contains(s.place)) Left(s) else Right(s)
+    )(Flow.step(sent(Names.dispatch)), Flow.step(sent(Names.reach)))
     Flow.mayEnd(send.keeping.map((s, went) => went.map(s.place -> _).left.map(Stalled(_, s.at))))
   }
 
@@ -418,27 +413,14 @@ private[turn] object TurnRound {
         .step(asked)
         .keeping
         .map[Either[TurnFailure, Call]]((c, kept) => kept.map(_ => c))
-        .andThen(
-          Flow.either(
-            Flow.pass[TurnFailure].map[Either[TurnFailure, Settled]](Left(_)),
-            approval.keeping.map(Decided(_, _)).andThen(Flow.step(decided))
-          )
-        )
-    val routed = Flow
-      .pass[Call]
-      .map[Either[Call, Either[Call, Hosting]]](c =>
-        c.kind match {
-          case Kind.Refused | Kind.Free => Left(c)
-          case Kind.Gated => Right(Left(c))
-          case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(c, tool, asks, place)))
-        }
-      )
-      .andThen(
-        Flow.either(
-          Flow.step(here),
-          Flow.either(approved, TurnHosted.settle)
-        )
-      )
+        .andThen(Flow.onRight(approval.keeping.map(Decided(_, _)).andThen(Flow.step(decided))))
+    val routed = Flow.branch((c: Call) =>
+      c.kind match {
+        case Kind.Refused | Kind.Free => Left(c)
+        case Kind.Gated => Right(Left(c))
+        case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(c, tool, asks, place)))
+      }
+    )(Flow.step(here), Flow.either(approved, TurnHosted.settle))
     Flow.mayEnd(routed.keeping.map((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at))))
   }
 }

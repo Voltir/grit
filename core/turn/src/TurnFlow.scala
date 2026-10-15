@@ -58,8 +58,7 @@ private[turn] object TurnFlow {
         .keeping
         .map((turn, id) => id.map((turn, _)).left.map(Failed(turn, _)))
         .andThen(
-          Flow.either(
-            Flow.pass[Failed].map[Either[Failed, Weighed]](Left(_)),
+          Flow.onRight(
             Flow.unrecorded[Env, (TurnRef, grit.core.model.TurnProfileId), Either[Failed, Weighed]](
               r =>
                 (turn, id) =>
@@ -162,10 +161,9 @@ private[turn] object TurnFlow {
       .andThen(looped)
       .andThen(
         Flow.mayEnd(
-          Flow
-            .pass[(Assembled, Either[TurnRound.Stalled, TurnRound.Looped])]
-            .map((a, loop) => loop.left.map((a, _)).map(Answered(a, _)))
-            .andThen(Flow.either(stalled.map(Left(_)), answered.map(Right(_))))
+          Flow.branch((started: (Assembled, Either[TurnRound.Stalled, TurnRound.Looped])) =>
+            started._2.left.map((started._1, _)).map(Answered(started._1, _))
+          )(stalled.map(Left(_)), answered.map(Right(_)))
         )
       )
   }
@@ -214,44 +212,30 @@ private[turn] object TurnFlow {
 
   /** `record-verdict` when there is one to record: why it was not, when it failed. */
   private def verdict: Flow[Env, Option[Verdict], Nothing, Option[TurnFailure]] =
-    Flow
-      .pass[Option[Verdict]]
-      .map(_.toRight(()))
-      .andThen(
-        Flow.either(
-          Flow.pass[Unit].map[Option[TurnFailure]](_ => None),
-          Flow.step(recordVerdict).map(_.left.toOption)
-        )
-      )
+    Flow.branch((v: Option[Verdict]) => v.toRight(()))(
+      Flow.pass[Unit].map[Option[TurnFailure]](_ => None),
+      Flow.step(recordVerdict).map(_.left.toOption)
+    )
 
   /** What follows the reply, by what the turn's root is: a heard-rooted turn's draft settled,
     * and its summary made when it is posted; an addressed turn's summary.
     */
   private def ending: Flow[Env, Ended, Nothing, String] =
-    Flow
-      .pass[Ended]
-      .map[Either[String, Either[(Ended, EntryId), Either[(Ended, Failed), (Ended, EntryId)]]]](e =>
-        (e.result, e.at.offer.root) match {
-          case (Left(failure), TurnOffer.Root.Addressed) => Left(s"failed: $failure${e.notes}")
-          case (Right(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) =>
-            Right(Left((e, draft)))
-          case (
-                Left(failure),
-                TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName
-              ) =>
-            Right(Right(Left((e, Failed(e.turn, failure)))))
-          case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
-            Right(Right(Right((e, reply))))
-        }
-      )
-      .andThen(
-        // A draft's branch first: a reader names the steps in the order a run reaches them,
-        // and a drafting turn judges before it records its speech.
-        Flow.either(
-          Flow.pass[String],
-          Flow.either(drafted, Flow.either(speechFailing, summarised("replied")))
-        )
-      )
+    Flow.branch((e: Ended) =>
+      (e.result, e.at.offer.root) match {
+        case (Left(failure), TurnOffer.Root.Addressed) => Left(s"failed: $failure${e.notes}")
+        case (Right(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Right(Left((e, draft)))
+        case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
+          Right(Right(Left((e, Failed(e.turn, failure)))))
+        case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
+          Right(Right(Right((e, reply))))
+      }
+    )(
+      Flow.pass[String],
+      // A draft's branch first: a reader names the steps in the order a run reaches them,
+      // and a drafting turn judges before it records its speech.
+      Flow.either(drafted, Flow.either(speechFailing, summarised("replied")))
+    )
 
   /** A heard-rooted turn that failed: `Failed` kept as what became of its draft. */
   private def speechFailing: Flow[Env, (Ended, Failed), Nothing, String] =
@@ -269,21 +253,14 @@ private[turn] object TurnFlow {
     */
   private def drafted: Flow[Env, (Ended, EntryId), Nothing, String] =
     Flow
-      .pass[(Ended, EntryId)]
-      .map[Either[Ended, Ended]]((e, _) =>
-        e.at.offer.root match {
-          case TurnOffer.Root.Named => Left(e)
-          case _ => Right(e)
-        }
-      )
-      .andThen(
-        Flow.either(
-          Flow.pass[Ended].map(Settled(_, Settling.Named)),
-          Flow
-            .step[Env, Ended, TurnJudge.Judgement](judge)
-            .keeping
-            .map((e, j) => Settled(e, Settling.Judged(j)))
-        )
+      .branch((e: (Ended, EntryId)) =>
+        if (e._1.at.offer.root == TurnOffer.Root.Named) Left(e._1) else Right(e._1)
+      )(
+        Flow.pass[Ended].map(Settled(_, Settling.Named)),
+        Flow
+          .step[Env, Ended, TurnJudge.Judgement](judge)
+          .keeping
+          .map((e, j) => Settled(e, Settling.Judged(j)))
       )
       .andThen(Flow.step(speechSettled).keeping)
       .keeping
