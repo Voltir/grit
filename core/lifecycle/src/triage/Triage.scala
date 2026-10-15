@@ -1,11 +1,12 @@
 package grit.lifecycle.triage
 
+import grit.act.phase.Placing
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.speech.{Decision, Outcome, SpeechJson}
-import grit.core.stitch.{Opening, StitchReads}
+import grit.core.stitch.StitchReads
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
@@ -15,8 +16,8 @@ import grit.core.visibility.Subject
   * triage resumed after a crash never asks the classifier twice. It writes no entry, so it is
   * never a period's activity and never moves its deadline.
   *
-  *   1. `stitched` — when the heard message is an [[Opening]], its placement waited for
-  *      ([[grit.core.stitch.Placements.awaited]]), so the message is asked about with its
+  *   1. `stitched` — when the heard message is an [[grit.core.stitch.Opening]], its placement
+  *      waited for ([[grit.act.phase.Placing.placed]]), so the message is asked about with its
   *      strand, and only once every opening heard before it in its room is placed; nothing is
   *      waited for otherwise.
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
@@ -59,10 +60,18 @@ object Triage {
 
   private def subject(ref: TriageRef): Subject = Subject.Conversation(ref.period.conversationId)
 
-  private val stitched: Step[TriageEnv, TriageRef, Either[String, Option[String]]] =
-    Step[TriageEnv, TriageRef, Either[String, Option[String]]](StepName("stitched"))(env =>
-      ref => placed(env, ref)
-    )
+  private val stitched: Flow[TriageEnv, TriageRef, Nothing, Either[String, Option[String]]] =
+    Placing
+      .placed[TriageRef, String](
+        StepName("stitched"),
+        ref => TurnRef(ref.period.conversationId, ref.turn),
+        subject,
+        {
+          case Placing.Unplaced.Unread(e) => s"thread unread: ${describe(e)}"
+          case Placing.Unplaced.Failed(why) => why
+        }
+      )
+      .over[TriageEnv](env => env.placing)
 
   private val asked: Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]] =
     Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]](StepName("ask"))(env =>
@@ -123,7 +132,7 @@ object Triage {
       .mayEnd(Flow.pass[WorkflowId].map { id =>
         TriageRef.fromWorkflowId(id).toRight(s"not a triage: ${WorkflowId.value(id)}")
       })
-      .andThen(Flow.step(stitched).keeping.map { (ref, placement) =>
+      .andThen(stitched.keeping.map { (ref, placement) =>
         Waited(
           ref,
           placement match {
@@ -171,28 +180,6 @@ object Triage {
     */
   def body(env: TriageEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     Flows.run(flow, env, workflowId).merge
-
-  /** The `stitched` step: what the placement of the heard message that is `triage`'s turn
-    * did, once it has ended, when the message is an [[Opening]]; `None` when it is not, or is
-    * gone. Why not, when the store cannot be read or the placement failed.
-    */
-  private def placed(env: TriageEnv^, triage: TriageRef): Either[String, Option[String]] = {
-    val r = env.records
-    val conversation = triage.period.conversationId
-    env.db
-      .read(Subject.Conversation(conversation)) {
-        for {
-          all <- r.entries.list(conversation)
-          c <- r.conversations.get(conversation)
-        } yield c.flatMap(Opening.of(_, all, TurnRef(conversation, triage.turn)))
-      }
-      .left
-      .map(e => s"thread unread: ${describe(e)}")
-      .flatMap {
-        case None => Right(None)
-        case Some(opening) => env.placements.awaited(opening).map(Some(_))
-      }
-  }
 
   /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made
     * of it, asked with the corpora covering its conversation; why not, when it

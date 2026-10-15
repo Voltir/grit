@@ -1,5 +1,6 @@
 package grit.lifecycle.triage
 
+import grit.act.phase.Placing
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.edge.{Acknowledgements, Deliveries}
@@ -7,7 +8,7 @@ import grit.core.id.TurnRef
 import grit.core.recipe.RoomReads
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
-import grit.core.stitch.{Placements, StitchStore, Tuning}
+import grit.core.stitch.{StitchStore, Tuning}
 import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
 import grit.core.triage.{Corpora, TriageStore}
 
@@ -15,8 +16,8 @@ import grit.core.triage.{Corpora, TriageStore}
   * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
   * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
-  * were placed on their own, its opening stitched (`tuning`), where its opening is placed
-  * (`placements`), the deployment's knowledge `sources`, those covering a message's
+  * were placed on their own, its opening stitched (`tuning`), what its opening's placement is
+  * waited on through (`placing`), the deployment's knowledge `sources`, those covering a message's
   * conversation asked about one by one, and `questions`, the set it asks
   * ([[TriageQuestions.shipped]] of the deployment's persona).
   */
@@ -27,7 +28,7 @@ final case class TriageEnv(
     clock: Clock^,
     speech: TriageSpeech^,
     tuning: Tuning,
-    placements: Placements^,
+    placing: Placing.Env^,
     sources: Corpora,
     questions: TriageQuestions
 )

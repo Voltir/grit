@@ -88,7 +88,8 @@ object CaptureTests extends TestSuite {
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
               Tuning.Default,
-              engine.placements,
+              grit.act.phase.Placing
+                .Env(engine.entries, engine.conversations, engine.db, engine.placements),
               grit.core.triage.Corpora.Empty,
               grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
             )

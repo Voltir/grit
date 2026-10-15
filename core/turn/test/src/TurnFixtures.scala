@@ -205,7 +205,8 @@ object TurnFixtures {
   }
 
   /** Stitching over stores of its own: what a fixture turn at [[origin]], a TUI session, which
-    * is never stitched, is given.
+    * is never stitched, is given. Its placement wait reads stores of its own too, which hold no
+    * opening.
     */
   def unstitched(): TurnStitching^ =
     TurnStitching(
@@ -213,7 +214,8 @@ object TurnFixtures {
       NoSearch,
       new grit.core.store.InMemoryLifecycleStore,
       grit.core.stitch.Tuning.Default,
-      new Unplaced
+      grit.act.phase.Placing
+        .Env(new InMemoryEntryStore, new InMemoryConversationStore, FakeDb, new Unplaced)
     )
 
   /** No triage kept: every heard root is weighed as unanswered; a message said to grit, when
@@ -1903,7 +1905,13 @@ object TurnFixtures {
           new Before(entries),
           new InMemoryUsageLedger,
           classifier,
-          stitching = TurnStitching(stitches, NoSearch, lifecycle, Tuning.Default, placements),
+          stitching = TurnStitching(
+            stitches,
+            NoSearch,
+            lifecycle,
+            Tuning.Default,
+            grit.act.phase.Placing.Env(entries, conversations, FakeDb, placements)
+          ),
           hosted = hosted
         )
       )

@@ -2,18 +2,18 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Hearing}
+import grit.act.phase.{Asking, Hearing, Placing}
 import grit.core.allot.Router
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.document.Pointer
-import grit.core.durable.{Step, StepName, StreamWriter}
+import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{Grade, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechStore}
-import grit.core.stitch.{Along, Opening, Strand}
+import grit.core.stitch.{Along, Strand}
 import grit.core.store.{
   Entry,
   EntryStore,
@@ -74,6 +74,9 @@ private[turn] object TurnSteps {
     /** What the turn's rounds act through. */
     def rounds: TurnRound.Env^{this}
 
+    /** What the wait for the turn's message's placement acts through. */
+    def placing: Placing.Env^{this}
+
     /** What round `at.round`'s request, offered as `offer` under `pins`, was sent: the stub of
       * each item its gate hid, and how it is shaped from the plain request. Fails as
       * [[TurnRound.Env.record]] does.
@@ -93,6 +96,8 @@ private[turn] object TurnSteps {
     private val rounding = new Rounding(heard, turnEnv, tooling)
 
     def env: TurnEnv^{this} = turnEnv
+
+    def placing: Placing.Env^{this} = turnEnv.stitching.placing
 
     def weigh(turn: TurnRef): Option[TurnWeighing.Weighed] = weighOf(turnEnv, tooling, turn)
 
@@ -375,14 +380,22 @@ private[turn] object TurnSteps {
         }
     )
 
-  /** `stitched`: what the placement of the turn's message did, once it has ended, when the
-    * message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store` when the
-    * conversation cannot be read or the placement failed. Never fails the turn.
+  /** `stitched`: [[Placing.placed]] of the turn's message, read for the turn;
+    * `TurnFailure.Store` when the conversation cannot be read or the placement failed. Never
+    * fails the turn.
     */
-  val stitched: Step[Env, OfTurn, Either[TurnFailure, Option[String]]] =
-    Step[Env, OfTurn, Either[TurnFailure, Option[String]]](Names.stitched)(r =>
-      in => placed(r.env, in.turn)
-    )
+  val stitched: Flow[Env, OfTurn, Nothing, Either[TurnFailure, Option[String]]] =
+    Placing
+      .placed[OfTurn, TurnFailure](
+        Names.stitched,
+        _.turn,
+        in => Subject.Turn(in.turn),
+        {
+          case Placing.Unplaced.Unread(e) => TurnFailure.ofStore(e)
+          case Placing.Unplaced.Failed(why) => TurnFailure.Store(s"placement: $why")
+        }
+      )
+      .over[Env](r => r.placing)
 
   /** `classify`: the turn's message placed among its conversation's topics
     * ([[TurnTopics.classify]]).
@@ -808,33 +821,6 @@ private[turn] object TurnSteps {
       case Some(TurnWeighing.Weighed.Kept(_) | TurnWeighing.Weighed.Failed(_)) | None =>
         Right(())
     }
-
-  /** The `stitched` step: what the placement of `turn`'s message did, once it has ended, when
-    * the message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store`
-    * when the conversation cannot be read or the placement failed.
-    */
-  private def placed(env: TurnEnv^, turn: TurnRef): Either[TurnFailure, Option[String]] = {
-    val c = turn.conversationId
-    val (entries, conversations) = (env.records.entries, env.hosting.conversations)
-    env.db
-      .read(Subject.Turn(turn)) {
-        for {
-          all <- entries.list(c)
-          conversation <- conversations.get(c)
-        } yield conversation.flatMap(Opening.of(_, all, turn))
-      }
-      .left
-      .map(TurnFailure.ofStore)
-      .flatMap {
-        case None => Right(None)
-        case Some(opening) =>
-          env.stitching.placements
-            .awaited(opening)
-            .left
-            .map(why => TurnFailure.Store(s"placement: $why"))
-            .map(Some(_))
-      }
-  }
 
   /** The `judge` step: what the classifier makes of `turn`'s draft against its thread and
     * what its recorded window recalled ([[TurnJudge]]); `Passed`, asking nothing, when the

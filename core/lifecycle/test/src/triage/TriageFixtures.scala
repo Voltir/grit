@@ -351,7 +351,7 @@ object TriageFixtures {
             turn => start(turn).map(_ => started = started :+ turn)
           ),
           Tuning.Default,
-          placements(classifier, minutes),
+          grit.act.phase.Placing.Env(entries, conversations, db, placements(classifier, minutes)),
           sources,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )

@@ -93,23 +93,23 @@ private[turn] object TurnFlow {
     * before its loop, or in it, its verdict recorded when the loop had a reply.
     */
   private def ran: Flow[Env, Offered, Ended, Ended] = {
-    val placed = Flow
-      .step[Env, Offered, Either[TurnFailure, Option[String]]](stitched)
-      .keeping
-      .map((o, s) => o.copy(notes = o.notes + s.fold(f => s"; not placed: $f", _ => "")))
-      .andThen(
-        Flow.step[Env, Offered, TurnTopics.Classification](classify).keeping.map(Placed(_, _))
-      )
-      .andThen(
-        Flow
-          .step(recordTopic)
-          .keeping
-          .map((p, kept) =>
-            p.copy(at =
-              p.at.copy(notes = p.at.notes + kept.fold(f => s"; topics not recorded: $f", _ => ""))
+    val placed =
+      (stitched: Flow[Env, Offered, Nothing, Either[TurnFailure, Option[String]]]).keeping
+        .map((o, s) => o.copy(notes = o.notes + s.fold(f => s"; not placed: $f", _ => "")))
+        .andThen(
+          Flow.step[Env, Offered, TurnTopics.Classification](classify).keeping.map(Placed(_, _))
+        )
+        .andThen(
+          Flow
+            .step(recordTopic)
+            .keeping
+            .map((p, kept) =>
+              p.copy(at =
+                p.at
+                  .copy(notes = p.at.notes + kept.fold(f => s"; topics not recorded: $f", _ => ""))
+              )
             )
-          )
-      )
+        )
     def unran(at: Offered, failure: TurnFailure): Ended = Ended(at, Left(failure), None, None)
     val assembled = Flow
       .decide(assemble)((p, w) => w.map(Assembled(p.at, p.placing, _)).left.map(unran(p.at, _)))

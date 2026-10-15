@@ -3,6 +3,7 @@ package grit.kit.run
 import java.time.Instant
 
 import grit.act.moves.{MoveRecords, MovesEnv}
+import grit.act.phase.Placing
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -146,6 +147,9 @@ private[grit] object Launch {
       case Assembly.Linear(budget) =>
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     }
+    // The one wait for an opening's placement, the turn's and triage's.
+    val placing: Placing.Env^{engine} =
+      Placing.Env(engine.entries, engine.conversations, engine.db, engine.placements)
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
       // One Mentions both weighs a said root before its offer and asks its task questions in route.
       val mentions =
@@ -199,7 +203,7 @@ private[grit] object Launch {
             engine.search,
             engine.lifecycle,
             grit.core.stitch.Tuning.Default,
-            engine.placements
+            placing
           ),
           grit.turn.TurnWeighing(engine.triage, mentions),
           grit.turn.TurnRouting(mentions, d.budget, engine.spending)
@@ -271,7 +275,7 @@ private[grit] object Launch {
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             ),
             grit.core.stitch.Tuning.Default,
-            engine.placements,
+            placing,
             d.knowledge,
             d.triage
           )

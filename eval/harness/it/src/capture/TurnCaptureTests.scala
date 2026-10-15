@@ -249,7 +249,8 @@ object TurnCaptureTests extends TestSuite {
             engine.search,
             engine.lifecycle,
             Tuning.Default,
-            engine.placements
+            grit.act.phase.Placing
+              .Env(engine.entries, engine.conversations, engine.db, engine.placements)
           ),
           grit.turn.TurnWeighing(engine.triage, mentions),
           grit.turn.TurnRouting(mentions, engine.budget, engine.spending)
@@ -284,7 +285,8 @@ object TurnCaptureTests extends TestSuite {
             t => engine.inbox.startTurn(t).left.map(_.toString)
           ),
           Tuning.Default,
-          engine.placements,
+          grit.act.phase.Placing
+            .Env(engine.entries, engine.conversations, engine.db, engine.placements),
           Corpora.Empty,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )

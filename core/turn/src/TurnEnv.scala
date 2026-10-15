@@ -2,6 +2,7 @@ package grit.turn
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.act.phase.Placing
 import grit.core.allot.Tasking
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
@@ -15,7 +16,7 @@ import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
-import grit.core.stitch.{Placements, StitchStore, Tuning}
+import grit.core.stitch.{StitchStore, Tuning}
 import grit.core.store.{
   Askers,
   ConversationStore,
@@ -109,15 +110,15 @@ object TurnWeighing {
 
 /** How a conversation's first message is stitched to an exchange in its room, and its strand
   * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the scope in force
-  * (`lifecycle`), the `tuning`, and where its opening is placed (`placements`), which a turn
-  * begun before openings were placed on their own does itself.
+  * (`lifecycle`), the `tuning`, and what its opening's placement is waited on through
+  * (`placing`).
   */
 final case class TurnStitching(
     stitches: StitchStore,
     search: EntrySearch,
     lifecycle: LifecycleStore,
     tuning: Tuning,
-    placements: Placements^
+    placing: Placing.Env^
 )
 
 /** What a turn rooted on a heard message settles its draft against (ADR 0022): whether and
