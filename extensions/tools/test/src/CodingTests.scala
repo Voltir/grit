@@ -110,7 +110,7 @@ object CodingTests extends TestSuite {
     }
 
     test(
-      "write, edit and run bind only a call stamped at member or above; every tool's results are believed at member"
+      "write, edit and run require member; read, list and search nothing; every tool's results are believed at member"
     ) {
       all(new Scripted()).set.tools.map(e => (ToolName.value(e.name), e.requires)) ==> Vector(
         "read" -> Integrity.Untrusted,
