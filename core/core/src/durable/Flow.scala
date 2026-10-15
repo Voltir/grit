@@ -2,12 +2,22 @@ package grit.core.durable
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
+import scala.util.boundary
+
+import Flows.{At, Unreadable, Walk}
 
 /** A durable program from an `I`, as a pure value: ends early with an `E` or passes an `O`,
   * its steps' bodies acting only through the `R` a run hands them.
   */
 sealed trait Flow[-R, -I, +E, +O] {
   private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O]
+
+  /** Where `history`, from `at` on, leaves this flow run from `in`. */
+  private[durable] def walk(
+      in: I,
+      at: At,
+      history: Vector[StepRecord]
+  ): Either[Unreadable, Walk[E, O]]
 }
 
 /** What a [[Flow.program]] makes its steps through, each recorded in order after the last. */
@@ -76,8 +86,9 @@ object Flow {
 
   /** Code that makes its steps one at a time through `steps`, each decided from the last's
     * result: a planner. A read runs `body` again over the history, so it may depend only on its
-    * input and its steps' results, which its type enforces; a body that is not pure reads as
-    * `Diverged`. [[Flows.names]] sees only `family`.
+    * input and its steps' results, which its type enforces; a history its code would not have
+    * made, as an older planner's may be, reads as `Diverged`. [[Flows.names]] sees only
+    * `family`.
     */
   def program[R, I, O](family: String)(
       body: (steps: Steps[R]^) -> I ->{steps} O
@@ -102,9 +113,38 @@ object Flow {
     def over[R2](get: (r2: R2^) -> R^{r2}): Flow[R2, I, E, O] = Over[R, R2, I, E, O](f, get)
   }
 
+  /** `walked` with `g` over the result it ended with, if it did. */
+  private def ending[E, O, E2, O2](walked: Either[Unreadable, Walk[E, O]])(
+      g: Either[E, O] -> Either[E2, O2]
+  ): Either[Unreadable, Walk[E2, O2]] =
+    walked.map {
+      case Walk.Stopped(next, at) => Walk.Stopped(next, at)
+      case Walk.Done(result, at) => Walk.Done(g(result), at)
+    }
+
   private final case class One[R, I, O](step: Step[R, I, O]) extends Flow[R, I, Nothing, O] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, O] =
       Right(step.perform(env, in))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, O]] = {
+      val name = step.name(in)
+      history.lift(at.step) match {
+        case None => Right(Walk.Stopped(name, at))
+        case Some(r) if r.name != name => Left(Unreadable.Diverged(at.step, name, r.name))
+        case Some(r) =>
+          r.output match {
+            case None => Left(Unreadable.Unrecorded(at.step, name))
+            case Some(raw) =>
+              step.decode(raw) match {
+                case Left(why) => Left(Unreadable.Undecodable(at.step, name, why))
+                case Right(o) => Right(Walk.Done(Right(o), at.past(step.observe(in))))
+              }
+          }
+      }
+    }
   }
 
   private final case class AndThen[R, I, M, E, O](first: Flow[R, I, E, M], next: Flow[R, M, E, O])
@@ -114,27 +154,60 @@ object Flow {
         case Left(e) => Left(e)
         case Right(m) => next.run(env, m)
       }
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] =
+      first.walk(in, at, history).flatMap {
+        case Walk.Stopped(name, k) => Right(Walk.Stopped(name, k))
+        case Walk.Done(Left(e), k) => Right(Walk.Done(Left(e), k))
+        case Walk.Done(Right(m), k) => next.walk(m, k, history)
+      }
   }
 
   private final case class Mapped[R, I, E, M, O](f: Flow[R, I, E, M], g: M -> O)
       extends Flow[R, I, E, O] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
       f.run(env, in).map(g)
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] =
+      ending(f.walk(in, at, history))(_.map(g))
   }
 
   private final case class MayEnd[R, I, E, O](f: Flow[R, I, E, Either[E, O]])
       extends Flow[R, I, E, O] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
       f.run(env, in).flatMap(identity)
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] =
+      ending(f.walk(in, at, history))(_.flatMap(identity))
   }
 
   private final case class Keeping[R, I, E, O](f: Flow[R, I, E, O]) extends Flow[R, I, E, (I, O)] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, (I, O)] =
       f.run(env, in).map(o => (in, o))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, (I, O)]] =
+      ending(f.walk(in, at, history))(_.map(o => (in, o)))
   }
 
   private final case class Pass[I]() extends Flow[Any, I, Nothing, I] {
     private[durable] def run(env: Any^, in: I)(using d: Durable^): Either[Nothing, I] = Right(in)
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, I]] = Right(Walk.Done(Right(in), at))
   }
 
   private final case class Split[R, A, B, E, O](left: Flow[R, A, E, O], right: Flow[R, B, E, O])
@@ -144,12 +217,27 @@ object Flow {
         case Left(a) => left.run(env, a)
         case Right(b) => right.run(env, b)
       }
+    private[durable] def walk(
+        in: Either[A, B],
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] =
+      in match {
+        case Left(a) => left.walk(a, at, history)
+        case Right(b) => right.walk(b, at, history)
+      }
   }
 
   private final case class Attempt[R, I, E, O](f: Flow[R, I, E, O])
       extends Flow[R, I, Nothing, Either[E, O]] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, Either[E, O]] =
       Right(f.run(env, in))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, Either[E, O]]] =
+      ending(f.walk(in, at, history))(Right(_))
   }
 
   private final case class Loop[R, S, E, O](round: Flow[R, S, E, Either[S, O]])
@@ -162,6 +250,21 @@ object Flow {
         case Right(Right(o)) => Right(o)
       }
       from(in)
+    }
+    private[durable] def walk(
+        in: S,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] = {
+      @tailrec
+      def from(s: S, k: At): Either[Unreadable, Walk[E, O]] = round.walk(s, k, history) match {
+        case Left(why) => Left(why)
+        case Right(Walk.Stopped(name, j)) => Right(Walk.Stopped(name, j))
+        case Right(Walk.Done(Left(e), j)) => Right(Walk.Done(Left(e), j))
+        case Right(Walk.Done(Right(Left(next)), j)) => from(next, j)
+        case Right(Walk.Done(Right(Right(o)), j)) => Right(Walk.Done(Right(o), j))
+      }
+      from(in, at)
     }
   }
 
@@ -181,6 +284,26 @@ object Flow {
         }
       from(0, Vector.empty)
     }
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, Vector[O]]] = {
+      val all = items(in)
+      @tailrec
+      def from(j: Int, k: At, done: Vector[O]): Either[Unreadable, Walk[E, Vector[O]]] =
+        all.lift(j) match {
+          case None => Right(Walk.Done(Right(done), k))
+          case Some(a) =>
+            one.walk(a, k, history) match {
+              case Left(why) => Left(why)
+              case Right(Walk.Stopped(name, n)) => Right(Walk.Stopped(name, n))
+              case Right(Walk.Done(Left(e), n)) => Right(Walk.Done(Left(e), n))
+              case Right(Walk.Done(Right(o), n)) => from(j + 1, n, done :+ o)
+            }
+        }
+      from(0, at, Vector.empty)
+    }
   }
 
   private final case class Patch[R, I, E, O](
@@ -190,6 +313,18 @@ object Flow {
   ) extends Flow[R, I, E, O] {
     private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
       if (d.patch(name)) after.run(env, in) else before.run(env, in)
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] = {
+      val marker = StepRecord.marker(name)
+      history.lift(at.step) match {
+        case None => Right(Walk.Stopped(marker, at))
+        case Some(r) if r.name == marker => after.walk(in, at.past(None), history)
+        case Some(_) => before.walk(in, at, history)
+      }
+    }
   }
 
   private final case class Recv[I](
@@ -199,12 +334,33 @@ object Flow {
   ) extends Flow[Any, I, Nothing, Option[String]] {
     private[durable] def run(env: Any^, in: I)(using d: Durable^): Either[Nothing, Option[String]] =
       Right(d.recv(topic(in), within(in)))
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, Option[String]]] = {
+      val name = label(in)
+      (history.lift(at.step), history.lift(at.step + 1)) match {
+        case (None, _) => Right(Walk.Stopped(name, at))
+        case (Some(r), _) if r.name != StepRecord.Received =>
+          Left(Unreadable.Diverged(at.step, StepRecord.Received, r.name))
+        case (Some(_), None) => Right(Walk.Stopped(name, at.past(None)))
+        case (Some(_), Some(s)) if s.name != StepRecord.Slept =>
+          Left(Unreadable.Diverged(at.step + 1, StepRecord.Slept, s.name))
+        case (Some(r), Some(_)) => Right(Walk.Done(Right(r.output), at.past(None).past(None)))
+      }
+    }
   }
 
   private final case class Over[R, R2, I, E, O](f: Flow[R, I, E, O], get: (r2: R2^) -> R^{r2})
       extends Flow[R2, I, E, O] {
     private[durable] def run(env: R2^, in: I)(using d: Durable^): Either[E, O] =
       f.run(get(env), in)
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[E, O]] = f.walk(in, at, history)
   }
 
   private final case class Program[R, I, O](
@@ -217,6 +373,42 @@ object Flow {
           flow.run(env, next)
       }
       Right(body(steps)(in))
+    }
+
+    // The program's code runs again, its steps read from the history in turn. Where the
+    // history stops or cannot be read, the mark is set and the code is cut short; the mark,
+    // not what the code returns, is the reading, so code that catches the cut cannot hide it.
+    private[durable] def walk(
+        in: I,
+        at: At,
+        history: Vector[StepRecord]
+    ): Either[Unreadable, Walk[Nothing, O]] = {
+      var cursor = at
+      var mark: Option[Either[Unreadable, Walk[Nothing, O]]] = None
+      val ran = boundary[Either[Unreadable, Walk[Nothing, O]]] {
+        val steps = new Steps[R] {
+          def run[I2, E2, O2](flow: Flow[R, I2, E2, O2], next: I2): Either[E2, O2] =
+            mark match {
+              case Some(m) => boundary.break(m)
+              case None =>
+                flow.walk(next, cursor, history) match {
+                  case Right(Walk.Done(result, k)) =>
+                    cursor = k
+                    result
+                  case Right(Walk.Stopped(name, k)) =>
+                    val m = Right(Walk.Stopped(name, k))
+                    mark = Some(m)
+                    boundary.break(m)
+                  case Left(why) =>
+                    mark = Some(Left(why))
+                    boundary.break(Left(why))
+                }
+            }
+        }
+        val out = body(steps)(in)
+        Right(Walk.Done(Right(out), cursor))
+      }
+      mark.getOrElse(ran)
     }
   }
 }
