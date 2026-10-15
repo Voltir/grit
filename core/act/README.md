@@ -18,6 +18,9 @@ their own names and recorded forms. It names core alone (enola-intent.yaml's `ac
   Each move is made at most once per run, as the steps `MoveSteps` names; it is refused by name,
   by its kind's limit, and once a rerun's input differs from what the run recorded. An ask's
   typed reply is read from the step's record on every run. A keep is one transaction under a
-  savepoint.
+  savepoint. What a move answers carries the integrity it is believed at (ADR 0036): a run
+  starts at its acting's, a keep of what is believed below `Outside` is refused, and the moves
+  hold the two endorsements core's `Moves` raises with, an extraction's (`extract`) and the
+  integrity tree's (`vet`), which no other code here reaches.
 
 `moves` imports `phase`; `phase` imports nothing in `grit.act`.

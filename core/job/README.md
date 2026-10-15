@@ -8,7 +8,8 @@ own conversation, but its body is a job's, not the model's.
 - **`run`**: `Run`, the `run` workflow, one per turn of a slot's conversation, on the turns'
   queue under that conversation. It reads which slot it runs and the version it was started
   at, then under the job's current version runs the job, whose moves are made for its
-  schedule's principal, each ask admitted against the day's cap, no call asking a person first.
+  schedule's principal and start believed at its schedule's integrity (ADR 0036), each ask
+  admitted against the day's cap, no call asking a person first.
   `reply` first looks for the turn's reply by its fixed id, so a rerun after a later deploy
   returns the reply already kept; otherwise, under the current version, it writes the reply, its
   await where the schedule reports, and the slot marked replied in one transaction, and under

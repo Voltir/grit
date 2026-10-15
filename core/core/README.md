@@ -60,8 +60,9 @@ In dependency order, each with the core packages it imports:
   questions' features, the day's headroom, and the router that allots a grade, reasoning
   effort and calls from them. Not in `route`, which `classify` imports. ← `id`, `message`,
   `model`, `period`, `spend`, `classify`, `triage`
-- **`speech`**: whether grit speaks where it was not addressed (ADR 0022). ← `id`, `message`,
-  `period`, `place`, `spend`, `store`, `triage`
+- **`speech`**: whether grit speaks where it was not addressed (ADR 0022); never unprompted to
+  a message believed below `Outside`. ← `id`, `identity`, `visibility`, `message`, `period`,
+  `place`, `spend`, `store`, `triage`
 - **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a
   day; kept after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`, `speech`
 - **`durable`**: steps that survive a crash, and waits for a message. ← `id`, `store`
@@ -94,7 +95,7 @@ In dependency order, each with the core packages it imports:
   limits, and what they come to. ← `id`, `place`, `visibility`, `message`, `classify`, `store`,
   `document`, `spend`, `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`
 - **`job`**: jobs and their schedules (ADRs 0021, 0029). ← `id`, `clock`, `visibility`,
-  `message`, `store`
+  `message`, `store`, `document`, `flow`, `act`
 - **`inbox`**: the `Inbox` trait the engine takes messages through. ← `id`, `identity`,
   `message`, `store`, `spend`, `triage`, `speech`, `approval`, `job`
 - **`plugin`**: features a deployment turns on (ADR 0027), each a pure bundle of contributions

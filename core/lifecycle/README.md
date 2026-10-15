@@ -10,7 +10,8 @@ signatures do not say.
 
 - **`transcript`**: a period's entries as a classifier and the summary model read them. What
   its windows showed from other conversations a close treats as known, never as its own; a
-  citation's line label is its ground (ADR 0018). Imports nothing else in lifecycle.
+  citation's line label is its ground, but for a line believed below `Outside`, which grounds
+  nothing (ADR 0018). Imports nothing else in lifecycle.
 - **`close`**: one attempt to close a period on its deadline, on the turns' queue under its
   conversation. A period that did not earn a written closing closes with no classifier or model
   call; a job's run's period closes with its opening as its prose. With nothing new, or when the model fails, the per-turn summaries
