@@ -52,9 +52,8 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      reached its cap or no pin of its role is cleared for what its period reads now
   *      ([[grit.core.route.Routed]]; and then no model is called), the period's per-turn
   *      summaries joined as the prose, and the balance carried with the topics' edits alone.
-  *      A period grit
-  *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) that earned
-  *      its closing is written by the catalog's heard pin, as reported speech, asking only its
+  *      A period grit only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]])
+  *      that earned its closing is written by the catalog's heard pin, as reported speech, asking only its
   *      prose and outcome; one that did not is closed with no model call, its prose
   *      `Heard 4 messages; nothing kept.` and its balance carried. A run's period is closed
   *      with no model call: its prose the run's opening, its outcome the run's reply verbatim
