@@ -33,7 +33,7 @@ object Flows {
     * alone, as keyed and never every run's.
     */
   def names(flow: Flow[?, ?, ?, ?]): Vector[Family] = {
-    val reached = Flow.families(flow, true)
+    val reached = Flow.Pattern.families(Flow.pattern(flow), true)
     reached.map(_.name).distinct.map { name =>
       val all = reached.filter(_.name == name)
       Family(name, all.exists(_.keyed), all.exists(_.every))

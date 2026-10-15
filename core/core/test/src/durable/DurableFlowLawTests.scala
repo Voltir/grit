@@ -29,6 +29,22 @@ object DurableFlowLawTests extends TestSuite {
 
   private val env = new Env("t")
 
+  /** Flows of every combinator `names` reads, with inputs that take each of their paths. */
+  private val described: Vector[(Flow[Env, String, String, ?], Vector[String])] = {
+    val split = (s: String) => if (s.isEmpty) Left(s) else Right(s)
+    Vector(
+      (Flow.step(a).andThen(Flow.step(b)), Vector("x")),
+      (
+        Flow.each((s: String) => s.split(",").toVector.filter(_.nonEmpty))(stopping),
+        Vector("", "p,q", "p,stop,q")
+      ),
+      (Flow.branch(split)(Flow.step(a), Flow.step(b)), Vector("", "x")),
+      (Flow.fromEither(split).andThen(Flow.step(a)), Vector("", "x")),
+      (Flow.attempt(Flow.fromEither(split)).map(_.merge).andThen(growing), Vector("", "x")),
+      (Flow.step(a).andThen(Flow.patch("p")(Flow.step(b), Flow.step(b))), Vector("x"))
+    )
+  }
+
   val tests = Tests {
     test("a step's body is handed the run's environment, its output recorded under its name") {
       ran(Flow.step(a), env, "x") ==> ("Right(ta(x))", Vector("a"))
@@ -235,6 +251,26 @@ object DurableFlowLawTests extends TestSuite {
 
     test("a program makes its steps one at a time, each decided from the last's result") {
       ran(planner, env, "") ==> ("Right(ttt)", Vector("grow:0", "grow:1", "grow:2"))
+    }
+
+    test("law: a run records only families names lists, and each family names marks every run's") {
+      def broken(flow: Flow[Env, String, String, ?], in: String): Vector[String] = {
+        val families = Flows.names(flow)
+        def of(name: String): Option[Flows.Family] =
+          families.find(f => name == f.name || (f.keyed && name.startsWith(s"${f.name}:")))
+        val recorded = ran(flow, env, in)._2
+        recorded.filter(of(_).isEmpty).map(n => s"$in: $n unlisted") ++
+          families
+            .filter(f => f.every && !recorded.exists(n => of(n).contains(f)))
+            .map(f => s"$in: ${f.name} not recorded")
+      }
+      // A loop of its own: a closure over `ran`, which opens a durable, is not pure.
+      def from(cases: List[(Flow[Env, String, String, ?], Vector[String])]): Vector[String] =
+        cases match {
+          case Nil => Vector()
+          case (flow, ins) :: rest => ins.toList.map(broken(flow, _)).flatten.toVector ++ from(rest)
+        }
+      from(described.toList) ==> Vector()
     }
 
     test("over hands each body what get finds in the larger environment, recording the same") {

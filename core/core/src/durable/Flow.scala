@@ -144,41 +144,73 @@ object Flow {
       either(pass[F].map[Either[F, O]](Left(_)), f.map[Either[F, O]](Right(_)))
   }
 
-  /** The families `f` can record in the order a run reaches them, repeats kept, each marked
-    * every run's when `every` says a finishing run reaches `f` and `f` records it whenever so.
+  /** A flow's pattern functor, its functions forgotten: what a reader of its description folds
+    * over without running it. `map`, `keeping` and `over` change nothing a reader sees.
     */
-  private[durable] def families(f: Flow[?, ?, ?, ?], every: Boolean): Vector[Flows.Family] =
-    f match {
-      case One(s) => Vector(Flows.Family(s.named.family, s.named.keyed, every))
-      case AndThen(first, next) => families(first, every) ++ families(next, every && !ends(first))
-      case Mapped(g, _) => families(g, every)
+  private[durable] enum Pattern {
+    case Step(family: String, keyed: Boolean)
+    case Wait(family: String, keyed: Boolean)
+    case Program(family: String)
+    case Pass
+    case Then(first: Pattern, next: Pattern)
+    case Choice(left: Pattern, right: Pattern)
+    case MayEnd(f: Pattern)
+    case Attempt(f: Pattern)
+    case Loop(round: Pattern)
+    case Each(one: Pattern)
+    case Patch(marker: String, before: Pattern, after: Pattern)
+  }
+
+  private[durable] object Pattern {
+
+    /** The families a flow of pattern `p` can record in the order a run reaches them, repeats
+      * kept, each marked every run's when `every` says a finishing run reaches it and it records
+      * them whenever so.
+      */
+    def families(p: Pattern, every: Boolean): Vector[Flows.Family] = p match {
+      case Step(family, keyed) => Vector(Flows.Family(family, keyed, every))
+      case Wait(family, keyed) => Vector(Flows.Family(family, keyed, every))
+      case Program(family) => Vector(Flows.Family(family, true, false))
+      case Pass => Vector.empty
+      case Then(first, next) => families(first, every) ++ families(next, every && !ends(first))
+      case Choice(left, right) => families(left, false) ++ families(right, false)
       case MayEnd(g) => families(g, every)
-      case Keeping(g) => families(g, every)
-      case Pass() => Vector.empty
-      case Split(left, right) => families(left, false) ++ families(right, false)
       case Attempt(g) => families(g, every)
       case Loop(round) => families(round, every)
-      case Each(_, one) => families(one, false)
-      case Patch(name, before, after) =>
-        Flows.Family(StepRecord.marker(name), false, false) +:
-          (families(before, false) ++ families(after, false))
-      case Recv(label, _, _) => Vector(Flows.Family(label.family, label.keyed, every))
-      case Over(g, _) => families(g, every)
-      case Program(family, _) => Vector(Flows.Family(family, true, false))
+      case Each(one) => families(one, false)
+      case Patch(marker, before, after) =>
+        Flows.Family(marker, false, false) +: (families(before, false) ++ families(after, false))
     }
 
-  /** Whether `f` may end early. */
-  private def ends(f: Flow[?, ?, ?, ?]): Boolean = f match {
-    case One(_) | Pass() | Attempt(_) | Recv(_, _, _) | Program(_, _) => false
-    case MayEnd(_) => true
-    case AndThen(first, next) => ends(first) || ends(next)
-    case Mapped(g, _) => ends(g)
-    case Keeping(g) => ends(g)
-    case Split(left, right) => ends(left) || ends(right)
-    case Loop(round) => ends(round)
-    case Each(_, one) => ends(one)
-    case Patch(_, before, after) => ends(before) || ends(after)
-    case Over(g, _) => ends(g)
+    /** Whether a flow of pattern `p` may end early. */
+    def ends(p: Pattern): Boolean = p match {
+      case Step(_, _) | Wait(_, _) | Program(_) | Pass | Attempt(_) => false
+      case MayEnd(_) => true
+      case Then(first, next) => ends(first) || ends(next)
+      case Choice(left, right) => ends(left) || ends(right)
+      case Loop(round) => ends(round)
+      case Each(one) => ends(one)
+      case Patch(_, before, after) => ends(before) || ends(after)
+    }
+  }
+
+  /** `f`'s pattern: the one fold over a flow's cases besides running and reading it. */
+  private[durable] def pattern(f: Flow[?, ?, ?, ?]): Pattern = f match {
+    case One(s) => Pattern.Step(s.named.family, s.named.keyed)
+    case AndThen(first, next) => Pattern.Then(pattern(first), pattern(next))
+    case Mapped(g, _) => pattern(g)
+    case MayEnd(g) => Pattern.MayEnd(pattern(g))
+    case Keeping(g) => pattern(g)
+    case Pass() => Pattern.Pass
+    case Split(left, right) => Pattern.Choice(pattern(left), pattern(right))
+    case Attempt(g) => Pattern.Attempt(pattern(g))
+    case Loop(round) => Pattern.Loop(pattern(round))
+    case Each(_, one) => Pattern.Each(pattern(one))
+    case Patch(name, before, after) =>
+      Pattern.Patch(StepRecord.marker(name), pattern(before), pattern(after))
+    case Recv(label, _, _) => Pattern.Wait(label.family, label.keyed)
+    case Over(g, _) => pattern(g)
+    case Program(family, _) => Pattern.Program(family)
   }
 
   /** `walked` with `g` over the result it ended with, if it did. */
