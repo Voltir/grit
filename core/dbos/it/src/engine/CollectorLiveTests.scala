@@ -256,14 +256,21 @@ object CollectorLiveTests extends TestSuite {
     t
   }
 
-  /** `period` closed by a sweep at `at`, waited for until its close has ended. */
+  /** `period` closed by a sweep a minute from now, waited for until its close has ended.
+    *
+    * A minute is both [[minutes]]' idle and raw windows: by then a period idle since before
+    * this call is due, and a raw tombstone written before it has passed its window, but
+    * nothing the close itself writes, each stamped after this call, is due yet. The sweep
+    * collects after it enqueues, and the close may seal in between: any later instant lets
+    * that sweep collect the close's own tombstones or the closing it supersedes, or not,
+    * depending on which is first.
+    */
   private def closeOf(
       engine: Engine^,
       config: DbConfig,
-      period: PeriodRef,
-      at: Instant
+      period: PeriodRef
   ): CloseRef = {
-    val swept = engine.sweep(at).map(_.enqueued)
+    val swept = engine.sweep(Instant.now().plusSeconds(60)).map(_.enqueued)
     val attempt = swept.toOption
       .flatMap(_.find(_.period == period))
       .getOrElse(sys.error(s"no attempt on $period: $swept"))
@@ -550,7 +557,9 @@ object CollectorLiveTests extends TestSuite {
         engine.inbox.startTurn(t0) ==> Right(())
         engine.awaitTurn(t0)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        val swept = engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued)
+        // A minute from now, as in `closeOf`: no later, or this sweep may collect what the
+        // close it enqueues writes.
+        val swept = engine.sweep(Instant.now().plusSeconds(60)).map(_.enqueued)
         val attempt = swept.toOption.flatMap(_.headOption).getOrElse(sys.error(s"none: $swept"))
         attempt.period ==> p1
         assert(
@@ -627,7 +636,7 @@ object CollectorLiveTests extends TestSuite {
       try {
         val t0 = turnOn(engine, Origin.Task("retention", "tx-outputs"), "one")
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        val attempt = closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        val attempt = closeOf(engine, config, p1)
         // The close's seal is a transaction step: DBOS keeps its output in tx_step_outputs too.
         txOutputs(config, Vector(attempt.workflowId)) ==> 1
         // So is the turn's, so the sweep is seen reclaiming a turn's as well as a close's.
@@ -688,7 +697,8 @@ object CollectorLiveTests extends TestSuite {
             )
           )
         )
-        engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)
+        // A minute from now, as in `closeOf`.
+        engine.sweep(Instant.now().plusSeconds(60)).map(_.enqueued.size) ==> Right(1)
         assert(
           eventually(
             LiveDb
@@ -782,7 +792,8 @@ object CollectorLiveTests extends TestSuite {
           )
           .fold(e => sys.error(s"$e"), identity)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)
+        // A minute from now, as in `closeOf`.
+        engine.sweep(Instant.now().plusSeconds(60)).map(_.enqueued.size) ==> Right(1)
         assert(
           eventually(
             LiveDb
@@ -837,13 +848,13 @@ object CollectorLiveTests extends TestSuite {
         val origin = Origin.Task("collect", "superseded")
         val t0 = turnOn(engine, origin, "one")
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        val a1 = closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        val a1 = closeOf(engine, config, p1)
         spent(config, "u0", t0, t0.workflowId)
         spent(config, EntryId.value(p1.closingId), t0, a1.workflowId)
         val t1 = turnOn(engine, origin, "two")
         val p2 = PeriodRef(t0.conversationId, PeriodSeq.First.next)
         // This sweep collects period 1's raw entries, past the raw window by now.
-        val a2 = closeOf(engine, config, p2, Instant.now().plusSeconds(240))
+        val a2 = closeOf(engine, config, p2)
         spent(config, "u1", t1, t1.workflowId)
         spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
         Vector(t0, t1).foreach(decided(config, _))
@@ -907,10 +918,13 @@ object CollectorLiveTests extends TestSuite {
         val busy = turnOn(engine, tui("busy"), "two")
         val p = PeriodRef(quiet.conversationId, PeriodSeq.First)
         val q1 = PeriodRef(busy.conversationId, PeriodSeq.First)
-        closeOf(engine, config, p, Instant.now().plusSeconds(120))
+        closeOf(engine, config, p)
         assert(eventually(closed(config, q1)))
         spent(config, "u-quiet", quiet, quiet.workflowId)
-        // Busy again: its next period is open.
+        // Busy again: its next period is open, and idle for an hour from here, so the sweep
+        // below does not close it. A close that sweep enqueued could seal before the sweep
+        // collects, and have its superseded closing collected there, or not.
+        minutes(config, ledger = 2.minutes, idle = 1.hour)
         turnOn(engine, tui("busy"), "three")
         kept(config, quiet.conversationId) ==> (true, 1)
 
@@ -930,8 +944,8 @@ object CollectorLiveTests extends TestSuite {
         ledgered(config, Vector("u-quiet"), Vector(quiet.workflowId)) ==> (0, 0, 0)
 
         val q2 = PeriodRef(busy.conversationId, PeriodSeq.First.next)
-        // That sweep found it due, and enqueued its close.
-        assert(eventually(closed(config, q2)))
+        minutes(config, ledger = 2.minutes)
+        closeOf(engine, config, q2)
         engine.sweep(Instant.now().plusSeconds(1500)).map(_.collected) ==>
           Right(Vector(Target.Raw(q2), Target.Superseded(q1), Target.Quiet(q2)))
         kept(config, busy.conversationId) ==> (false, 0)
@@ -946,7 +960,7 @@ object CollectorLiveTests extends TestSuite {
         val t0 = turnOn(engine, origin, "one")
         val c = ConversationId.value(t0.conversationId)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        closeOf(engine, config, p1)
         // A workflow named as an attempt on period 1, running through the sweeps below.
         val hold = WorkflowId(s"close:$c:1:hold")
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
@@ -961,7 +975,7 @@ object CollectorLiveTests extends TestSuite {
           assert(eventually(kept(config, Vector(hold)).headOption.contains(1)))
           turnOn(engine, origin, "two")
           val p2 = PeriodRef(t0.conversationId, PeriodSeq.First.next)
-          closeOf(engine, config, p2, Instant.now().plusSeconds(120))
+          closeOf(engine, config, p2)
           engine.sweep(Instant.now().plusSeconds(600)).map(s => (s.collected, s.deferred)) ==>
             Right(
               (
