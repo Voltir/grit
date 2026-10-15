@@ -103,10 +103,12 @@ object IntegrityTreeTests extends TestSuite {
     test(
       "windows join back to the text, each within the bound, cut at a line end in its second half"
     ) {
-      val line = "y" * 99 + "\n"
+      // 99 characters a line: the last line end inside the bound ends character 2970, short of
+      // the hard cut at 3000.
+      val line = "y" * 98 + "\n"
       val text = line * 45 + "z" * 10
       val ws = IntegrityTree.windows(text)
-      (ws.mkString == text, ws.map(_.length)) ==> (true, Vector(3000, 1510))
+      (ws.mkString == text, ws.map(_.length)) ==> (true, Vector(2970, 1495))
     }
 
     test(
