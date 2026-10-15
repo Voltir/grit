@@ -114,6 +114,13 @@ object Read {
       def inspect(using q: Quotes)(tastys: List[Tasty[q.type]]): Unit = {
         import q.reflect.*
 
+        // Private, or lent to a package below the top one: `private[grit]` is public to every reader of grit, while
+        // `private[flow]` stays private.
+        def isPrivate(sym: Symbol): Boolean =
+          sym.flags.is(Flags.Private) || sym.privateWithin.exists(within =>
+            within.typeSymbol.fullName.contains('.')
+          )
+
         def keepTree(tree: Tree, sym: Symbol): Boolean = {
           val flags = sym.flags
           val isModuleVal = tree match {
@@ -348,7 +355,7 @@ object Read {
             members = members,
             refs = refs,
             parents = parents,
-            isPrivate = flags.is(Flags.Private) || sym.privateWithin.isDefined,
+            isPrivate = isPrivate(sym),
             isAbstract =
               flags.is(Flags.Deferred) || flags.is(Flags.Abstract) || flags.is(Flags.Trait)
           )
@@ -460,7 +467,7 @@ object Read {
             members = members,
             refs = refs,
             parents = parents,
-            isPrivate = flags.is(Flags.Private) || sym.privateWithin.isDefined,
+            isPrivate = isPrivate(sym),
             isAbstract =
               flags.is(Flags.Deferred) || flags.is(Flags.Abstract) || flags.is(Flags.Trait)
           )

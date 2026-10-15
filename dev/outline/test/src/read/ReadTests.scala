@@ -109,6 +109,18 @@ object ReadTests extends TestSuite {
       assert(!limits.members.exists(_.name == "<init>"))
     }
 
+    test(
+      "a definition lent to the top package reads as public, and one lent to a narrower package as private"
+    ) {
+      val lent = only(
+        named(read, "grit.outline.fixture.Lent").filter(_.kind == Kind.Object),
+        "the Lent object"
+      )
+      val wide = only(named(read, "grit.outline.fixture.Lent.wide"), "Lent.wide")
+      val narrow = only(named(read, "grit.outline.fixture.Lent.narrow"), "Lent.narrow")
+      assert(!lent.isPrivate, !wide.isPrivate, narrow.isPrivate)
+    }
+
     test("Ids.Id is an opaque type with its signature and lines") {
       val id = only(named(read, "grit.outline.fixture.Ids.Id"), "Ids.Id")
       assert(id.kind == Kind.Opaque)
