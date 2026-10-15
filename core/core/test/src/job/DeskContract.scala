@@ -90,6 +90,19 @@ abstract class DeskContract extends TestSuite {
     }
 
     test(
+      "a desk keeps a schedule believed as its asking turn is, as it answers: a turn believed at outside asks one at outside"
+    ) {
+      val f = setUp()
+      import f.*
+      u.asking(u.turn("low"), Ann, Some("C1/4.0"), Integrity.Outside)
+      val id = ScheduleId.asked(call("low"))
+      ask(desk, call("low"), When.In(30.minutes)) ==> Right(
+        Asked(id, at("09:30"), Count(1), Integrity.Outside)
+      )
+      u.read(id).map(_.integrity) ==> Some(Integrity.Outside)
+    }
+
+    test(
       "a desk reports through the edge the asking turn's conversation came by, at its reply's address"
     ) {
       val f = setUp()

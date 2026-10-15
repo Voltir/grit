@@ -9,7 +9,7 @@ import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.{GroupName, Label, Subject, TestLabels}
+import grit.core.visibility.{GroupName, Integrity, Label, Subject, TestLabels}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -64,8 +64,13 @@ private[engine] object SqlSchedulesUnder {
       def turn(origin: Origin, label: Label): TurnRef =
         TurnRef(LiveDb.conversation(config, origin, label).id, TurnSeq.First)
 
-      def asking(turn: TurnRef, by: Account, address: Option[String]): Unit =
-        LiveDb.asking(config, turn, by, address)
+      def asking(
+          turn: TurnRef,
+          by: Account,
+          address: Option[String],
+          believed: Integrity
+      ): Unit =
+        LiveDb.asking(config, turn, by, address, believed)
       def added(account: Account, group: GroupName): Unit =
         ok("adding")(LiveDb.transaction(config) { (tx: Tx^) ?=>
           SqlIdentities.enroll(Set(account)).flatMap { _ =>

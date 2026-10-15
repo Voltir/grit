@@ -37,8 +37,9 @@ final class InMemorySchedules(
   private var turns = Map.empty[TurnRef, (Account, Option[Destination], Place, Label, Integrity)]
 
   /** `turn`, of `from`'s conversation, created at `label`, recorded as rooted on a message `by`
-    * wrote, its reply posted at `address`, or nowhere: what the database holds of a turn as its
-    * conversation, entries and deliveries.
+    * wrote, its entries believed at `believed` at their meet, its reply posted at `address`, or
+    * nowhere: what the database holds of a turn as its conversation, entries and deliveries,
+    * and what a desk derives the turn's integrity from, as the SQL desk does from its entries.
     */
   def asking(
       turn: TurnRef,

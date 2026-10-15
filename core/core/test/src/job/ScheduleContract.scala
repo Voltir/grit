@@ -18,7 +18,7 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.{GroupName, Integrity, Label, Level, TestLabels}
+import grit.core.visibility.{Compartment, GroupName, Integrity, Label, Level, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -51,8 +51,8 @@ abstract class ScheduleContract extends TestSuite {
       val u = fresh()
       val once = SlotRule.Once(at("2026-10-07T09:00:00Z"), hour)
       u.declare(Vector(declared("standup", daily(9), 1), declared("launch", once, 2)), "10:00")
-      // grit's own: authority in every compartment its transaction runs under.
-      val gritOwn = u.transaction((tx: Tx^) ?=> Integrity.top(Tx.visibility(tx).compartments))
+      // grit's own: authority in every compartment its transactions run under, Trialled's.
+      val gritOwn = Integrity.at(Integrity.Level.Authority, TestLabels.trial, Compartment.Unmapped)
       u.read(id("standup")) ==>
         Some(
           Schedule(
@@ -223,7 +223,9 @@ object ScheduleContract {
     /** Where the store marks the schedules it ends. */
     def tombstones: Tombstones
 
-    /** Runs `body` in one transaction, committed when it returns. */
+    /** Runs `body` in one transaction under [[grit.core.visibility.TestLabels.Trialled]],
+      * committed when it returns.
+      */
     def transaction[A](body: (Tx^) ?=> A): A
 
     /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
@@ -242,10 +244,15 @@ object ScheduleContract {
     /** The first turn of the Slack thread this store knows by `name`, recorded or not. */
     final def turn(name: String): TurnRef = turn(Origin.Slack("T1", "C1", name))
 
-    /** `turn` recorded as rooted on a message `by` wrote, its reply posted at `address`, or
-      * nowhere.
+    /** `turn` recorded as rooted on a message `by` wrote, believed at `believed`, its reply
+      * posted at `address`, or nowhere.
       */
-    def asking(turn: TurnRef, by: Account, address: Option[String]): Unit
+    def asking(
+        turn: TurnRef,
+        by: Account,
+        address: Option[String],
+        believed: Integrity = Integrity.Member
+    ): Unit
 
     /** Has a person add `account` to `group` through grit, as a command would. */
     def added(account: Account, group: GroupName): Unit

@@ -84,9 +84,15 @@ object LiveDb {
     }
 
   /** `turn` recorded as one asked from, as the inbox and an edge record it: its first entry a
-    * message `by` wrote, and, when given, its delivery's `address`.
+    * message `by` wrote, believed at `believed`, and, when given, its delivery's `address`.
     */
-  def asking(config: DbConfig, turn: TurnRef, by: Account, address: Option[String]): Unit =
+  def asking(
+      config: DbConfig,
+      turn: TurnRef,
+      by: Account,
+      address: Option[String],
+      believed: Integrity = Integrity.Member
+  ): Unit =
     transaction(config) {
       val id = EntryId(s"${ConversationId.value(turn.conversationId)}:asked")
       val entries = new SqlEntryStore()
@@ -104,7 +110,7 @@ object LiveDb {
             next.seq,
             Payload.Message(Message.User("remind me")),
             Instant.parse("2026-10-07T08:00:00Z"),
-            Integrity.Member
+            believed
           )
         )
         _ <- authored(id, by)
