@@ -479,9 +479,10 @@ object TurnHostedTests extends TestSuite {
     test(
       "an answer no edge gave is grit's own, believed at the turn's level; an edge's, at its service's"
     ) {
+      // The turn runs at Outside, below the Member a turn is said at by default.
       def believed(serve: Serve): Option[Integrity] = {
         val entries = new InMemoryEntryStore
-        val turn = say(entries, "search")
+        val turn = say(entries, "search", Integrity.Outside)
         val durable = new InMemoryDurable
         val edge = atGithub(durable, _ => serve)
         val provider = model(("t1", "github_search", "grit"))
@@ -493,11 +494,11 @@ object TurnHostedTests extends TestSuite {
           .map(_.integrity)
       }
       // Unclaimed: "No edge is serving github right now".
-      believed(Serve.Never) ==> Some(Integrity.Member)
+      believed(Serve.Never) ==> Some(Integrity.Outside)
       believed(Serve.Now(Outcome.Done("found"))) ==> Some(Integrity.Untrusted)
       // Unsent: "This turn has no asker to make this call for".
       val entries = new InMemoryEntryStore
-      val turn = say(entries, "fetch")
+      val turn = say(entries, "fetch", Integrity.Outside)
       val durable = new InMemoryDurable
       val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
       durable.run(turn.workflowId)(
@@ -505,7 +506,7 @@ object TurnHostedTests extends TestSuite {
       ) ==> Done
       entries
         .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
-        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Member))
+        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Outside))
     }
 
     test("a request at a service no edge claims in time is answered that nothing serves it") {

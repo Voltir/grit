@@ -215,9 +215,9 @@ object TurnGateTurnTests extends TestSuite {
           else said("done")
         )
       )
-      val turn = say(entries, "grep")
+      val turn = say(entries, "grep", Integrity.Outside)
       gatedRun(new InMemoryDurable, entries, turn)(provider)
-      kept(entries, "result:c1:0:0:0").map(_.integrity) ==> Some(Integrity.Member)
+      kept(entries, "result:c1:0:0:0").map(_.integrity) ==> Some(Integrity.Outside)
       provider.requests.lift(1).flatMap(resultOf(_, "t1")) ==>
         Some("There is no tool named `grep`; the tools are `peek`, `post`.")
     }

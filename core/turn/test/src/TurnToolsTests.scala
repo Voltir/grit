@@ -84,13 +84,15 @@ object TurnToolsTests extends TestSuite {
     }
   }
 
-  /** `said`, free, answering `outcome`, its results believed at [[Integrity.Member]]. */
+  /** `said`, free, answering `outcome`, its results believed at [[Integrity.Outside]], below
+    * the turn's [[Integrity.Member]] that [[ranAt]] runs it at.
+    */
   private def said(outcome: Outcome): Tool[String] =
     new Hosted(
       ToolSpec(ToolName("said"), "Says.", Args.of((p = Field.text("What."))).map(_.p)),
       Gate.Free,
       (p: String) => p
-    ).believed(Integrity.Member).over(_ => outcome)
+    ).believed(Integrity.Outside).over(_ => outcome)
 
   /** What a kept entry is believed at. */
   private def believed(entries: InMemoryEntryStore, id: EntryId): Option[Integrity] =
@@ -107,7 +109,7 @@ object TurnToolsTests extends TestSuite {
           Visibility.Shipped.rooms,
           Vector.empty,
           Vector.empty,
-          outputs = Vector(Output(github, Integrity.Member))
+          outputs = Vector(Output(github, Integrity.Outside))
         )
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       val entries = new InMemoryEntryStore
@@ -123,7 +125,7 @@ object TurnToolsTests extends TestSuite {
           Right(github),
           Instant.EPOCH
         )
-      hosted.map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Member))
+      hosted.map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Outside))
       val other = new InMemoryEntryStore
       val otherTurn = say(other, "go")
       val otherSlot = TurnTools.Slot(TestCallSlots.at(otherTurn))
@@ -133,16 +135,16 @@ object TurnToolsTests extends TestSuite {
           ToolCallId("c"),
           "read",
           Outcome.Done("a file"),
-          Left(Integrity.Member),
+          Left(Integrity.Untrusted),
           Instant.EPOCH
         )
-        .map(_ => believed(other, otherSlot.resultId)) ==> Right(Some(Integrity.Member))
+        .map(_ => believed(other, otherSlot.resultId)) ==> Right(Some(Integrity.Untrusted))
     }
 
     test("an own tool's result is believed at what its outcome says, else at its tool's") {
-      ranAt(said(Outcome.Done("x"))) ==> Right(Some(Integrity.Member))
-      ranAt(said(Outcome.Done("x", Some(Integrity.Outside)))) ==> Right(Some(Integrity.Outside))
-      ranAt(said(Outcome.Failed("no"))) ==> Right(Some(Integrity.Member))
+      ranAt(said(Outcome.Done("x"))) ==> Right(Some(Integrity.Outside))
+      ranAt(said(Outcome.Done("x", Some(Integrity.Untrusted)))) ==> Right(Some(Integrity.Untrusted))
+      ranAt(said(Outcome.Failed("no"))) ==> Right(Some(Integrity.Outside))
     }
 
     test("a free call runs, and its result is kept under its fixed id") {
