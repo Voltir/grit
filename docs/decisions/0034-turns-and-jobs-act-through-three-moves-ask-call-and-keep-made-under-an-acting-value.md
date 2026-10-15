@@ -2,7 +2,8 @@
 
 Status: accepted (2026-10-08); amended (2026-10-09): what a move is, and one ask in shapes;
 amended (2026-10-13) by ADR 0037: an ask goes to a cleared pair or is not made;
-revised (2026-10-15): one step grammar, by 0038
+revised (2026-10-15): one step grammar, by 0038;
+revised (2026-10-15): lifecycle's asks are moves
 
 Context: The turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps, and its requests recorded
@@ -81,7 +82,7 @@ model call or tool request made outside a move is a review finding. The step seq
 generic in their caller's failure type and recorded forms, which costs some indirection. A
 call's answer is read in one place, in a transaction for its actor, where labels per item can
 filter it; a model is chosen where a turn's or ask's pin is made, where trust can route it.
-Lifecycle's model calls and classifier calls are not moves yet. Every store behind a keep must
+Lifecycle's classifier calls are moves (`Judging`); the close's summary model call is not yet. Every store behind a keep must
 give savepoints. Enforced by the types (a job is pure and is handed only moves; a keeping job
 exists only with its plugin's terms; a keep's body captures nothing and returns a pure value),
 capture probes, one contract run against the moves and their fake, the moves' recorded forms
@@ -89,7 +90,8 @@ pinned as written, the turn's and jobs' replay tests, and the law (the shared mo
 alone; jobs name no turn).
 
 Consequences of the 2026-10-09 amendment: a classifier's calls made by a move are in the ledger
-and count against the daily cap; Settle's, the close gate's and triage's still are not. A
+and count against the daily cap; since the second 2026-10-15 revision, so are the settle's,
+triage's, the shadow's and the close gate's, each charged to its turn under its own workflow. A
 planner's classifier is the deployment's, chosen at launch, not a catalog pin. JSON replies rely
 on `tool_choice: required`; `response_format` waits for a measured setting. The classifier, like the model's provider, is trusted with
 everything the deployment sends it; nothing checks what an ask sends either, until trust routes
