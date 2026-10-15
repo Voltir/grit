@@ -65,7 +65,9 @@ In dependency order, each with the core packages it imports:
   `place`, `spend`, `store`, `triage`
 - **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a
   day; kept after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`, `speech`
-- **`durable`**: steps that survive a crash, and waits for a message. ← `id`, `store`
+- **`durable`**: steps that survive a crash, and waits for a message; a workflow's steps as a
+  flow of pure step values, run over `Durable` and read over a recorded history (ADR 0038). Not
+  the `flow` package below, whose values carry integrity. ← `id`, `visibility`, `store`
 - **`flow`**: values that carry the integrity they are believed at (ADR 0036): unchecked
   (`Tainted`) or checked (`Trusted`), raised only by a holder of one of `Endorse`'s two roles:
   an extraction's endorses a bounded value, the sanitiser's raises a text; and a turn's
