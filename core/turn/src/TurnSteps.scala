@@ -9,7 +9,7 @@ import grit.core.document.Pointer
 import grit.core.durable.{Step, StepName, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
-import grit.core.model.{Grade, Pinned, StrictSchemas, TurnProfile, TurnProfileId}
+import grit.core.model.{Grade, Pinned, TurnProfile}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechStore}

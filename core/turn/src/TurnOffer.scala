@@ -6,7 +6,7 @@ import grit.core.id.TurnRef
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
-import grit.core.store.{EntryStore, Origin, Payload, Position, Reads, StoreError, Tx}
+import grit.core.store.{EntryStore, Origin, Payload, Position, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Classification

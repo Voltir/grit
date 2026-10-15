@@ -169,7 +169,6 @@ object Turn {
 
   /** A step of the tool loop, by what its name says. */
   private val Loop = TurnRound.Names.Step
-  private type Loop = TurnRound.Names.Step
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
     * is recorded when it completes). After a loop's `ask:n:record`, its first call,
