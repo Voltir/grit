@@ -24,6 +24,8 @@ their own names and recorded forms. It names core alone (enola-intent.yaml's `ac
   savepoint. What a move answers carries the integrity it is believed at (ADR 0036): a run
   starts at its acting's, a keep of what is believed below `Outside` is refused, and the moves
   hold the two endorsements core's `Moves` raises with, an extraction's (`extract`) and the
-  integrity tree's (`vet`), which no other code here reaches.
+  integrity tree's (`vet`), which no other code here reaches. `Judging` is an engine workflow's
+  judgment as a move: its pose reads what to ask and returns the request with a pure reader of
+  the reply, and the move's own step admits it, asks once and charges every reply.
 
 `moves` imports `phase`; `phase` imports nothing in `grit.act`.
