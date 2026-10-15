@@ -597,7 +597,7 @@ object Engine {
   val BodiesWithin: FiniteDuration = 30.seconds
 
   /** [[EngineLock.take]], then [[start]]. */
-  def open(
+  private[grit] def open(
       config: DbConfig,
       epoch: String,
       identity: ProcessIdentity,
@@ -624,7 +624,7 @@ object Engine {
     * nothing). Throws, having closed `lock`, when either schema cannot be applied, or what the
     * database records of rooms and groups beside the declaration cannot be read.
     */
-  def start(
+  private[grit] def start(
       config: DbConfig,
       lock: EngineLock^,
       epoch: String,

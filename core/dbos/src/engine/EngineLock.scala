@@ -107,7 +107,7 @@ object EngineLock {
     * that process once it has written its row; `Unreachable` when the database cannot be
     * reached. Takes nothing else: the schema is applied by [[Engine.start]].
     */
-  def take(config: DbConfig): Either[NotTaken, EngineLock^] = take(config, Beat)
+  private[grit] def take(config: DbConfig): Either[NotTaken, EngineLock^] = take(config, Beat)
 
   /** [[take]], beating every `beat`: tests use a shorter one. */
   private[engine] def take(config: DbConfig, beat: FiniteDuration): Either[NotTaken, EngineLock^] =

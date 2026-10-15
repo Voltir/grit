@@ -255,7 +255,8 @@ run_tier() { # tier outdir reports-file -- command...
 #           every module (__.compile) when build.mill, .mill-version, .mill-jvm-opts or
 #           .scalafmt.conf changed. Any other file (a doc, a script) lints nothing.
 #   probes  the probes of each module whose main sources' changed lines touch capture syntax
-#           (`^`, `caps.`, `SharedCapability`, `Pure`), and of every probed module depending on
+#           (`^`, `caps.`, `SharedCapability`, `Pure`) or the deployment boundary
+#           (`private[grit]`, which the kit's probes pin), and of every probed module depending on
 #           one; a probes module whose own sources changed; every probe (__.probes) when
 #           build.mill or .mill-version changed, since the probes pin what this compiler rejects.
 reach() {
@@ -310,7 +311,7 @@ else:
     linted = closure({m for m in map(owner, scala) if m})
     print("lint " + joined(f"{m}.compile" for m in linted))
 
-capture = re.compile(r"\^|caps\.|SharedCapability|\bPure\b")
+capture = re.compile(r"\^|caps\.|SharedCapability|\bPure\b|private\[grit\]")
 def touches_capture(path):
     if path in untracked:
         lines = open(path, errors="replace").read().splitlines()

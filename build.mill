@@ -630,6 +630,11 @@ object grit extends Module {
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
     }
+
+    /* What a deployment outside `grit` may name: the boundary private[grit] draws. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
   }
 
   /* The reference deployment: grit's own chat, `grit serve` and `grit backfill`, filled from

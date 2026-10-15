@@ -14,7 +14,7 @@ import dev.dbos.transact.txstep.JdbcStepFactory
   * is its name alone, and its body can be any function of its workflow id written against
   * [[Durable]].
   */
-final class DurableWorkflow private (
+private[grit] final class DurableWorkflow private (
     dbos: DBOS,
     steps: JdbcStepFactory,
     opener: Opener,
@@ -36,7 +36,7 @@ final class DurableWorkflow private (
   }
 }
 
-object DurableWorkflow {
+private[grit] object DurableWorkflow {
 
   /** The class name DBOS records for every grit workflow. It is persisted in every
     * workflow row, so it is a fixed string rather than this class's JVM name, which a

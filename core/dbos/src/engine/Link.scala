@@ -155,7 +155,7 @@ object Link {
     * Throws when the database cannot be reached, or when no engine has migrated DBOS's
     * schema there yet (none, or DBOS 1.0's): the next engine to start migrates it.
     */
-  def attach(
+  private[grit] def attach(
       config: DbConfig,
       epoch: String,
       identity: ProcessIdentity,

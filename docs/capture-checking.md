@@ -362,7 +362,8 @@ seen. In Scala 3.9.0, errors from capture checking's setup (`Int^`, an untrackab
 `String^{s}`) do not stop it; `BatchTests` guards a compiler where they would.
 
 The probes are out of the commit gate's unit tier: the gate runs a module's when a change
-touches capture syntax in it or a module it depends on, and `scripts/check --probes` or
+touches capture syntax or `private[grit]` (the kit's `BoundaryTests`) in it or a module it
+depends on, and `scripts/check --probes` or
 `--milestone` runs every one.
 
 ## Tooling that trips on capture syntax
