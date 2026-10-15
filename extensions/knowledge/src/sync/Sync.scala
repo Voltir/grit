@@ -14,7 +14,7 @@ import grit.core.message.Message
 import grit.core.place.{Place, Service}
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
 import grit.knowledge.github.{Fetched, GitHubCards, Listing}
 
@@ -129,7 +129,7 @@ object Sync {
                 case Right((text, at)) =>
                   Listing.of(Trusted.asIs(text).extract) match {
                     case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                    case Right(l) if text.integrity.dominates(Integrity.Outside) =>
+                    case Right(l) if !text.integrity.belowOutside =>
                       (Outcome.Listed(l), heard(read, text), labels.updated(path, at))
                     case Right(l) =>
                       // What of a listing reaches a card or steers the run past code's checks
@@ -149,7 +149,7 @@ object Sync {
                 case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
                 case Right((text, at)) =>
                   Fetched.of(Trusted.asIs(text).extract) match {
-                    case Fetched.Text(whole, sha) if !text.integrity.dominates(Integrity.Outside) =>
+                    case Fetched.Text(whole, sha) if text.integrity.belowOutside =>
                       // Of a file, only its head reaches its card, through its summary: the head
                       // is what is checked, and believed as checked.
                       val head = Walk.head(whole)
@@ -163,7 +163,7 @@ object Sync {
                             labels.updated(path, at)
                           )
                       }
-                    case fetched if text.integrity.dominates(Integrity.Outside) =>
+                    case fetched if !text.integrity.belowOutside =>
                       (Outcome.Fetched(fetched), heard(read, text), labels.updated(path, at))
                     // A read with no version is left unwritten: none of it reaches a card.
                     case fetched => (Outcome.Fetched(fetched), read, labels)

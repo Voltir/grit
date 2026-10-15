@@ -12,7 +12,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Integrity, Label}
+import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
 
 /** [[Keeping]] for a job's tests: [[ScriptedMoves]], scripted as it is, whose keeps write
@@ -47,7 +47,7 @@ final class ScriptedKeeping(
   ): Either[MoveError, A] =
     // Keeps are not limited (`MoveLimits`): no count reaches `Int.MaxValue` in one test.
     making(name, MoveKind.Keep, Int.MaxValue) {
-      if (!from.integrity.dominates(Integrity.Outside)) Left(MoveError.Below(from.integrity))
+      if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
       else {
         given Tx = TestTx.fake(Clearance.of(floor))
         val kept = DocumentKeeper.believedAtMost(keeper, from.integrity)

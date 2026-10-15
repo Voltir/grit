@@ -13,7 +13,7 @@ import grit.core.sanitise.{HardFlags, IntegrityTree, Suspicions, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.Label
 
 /** What an ask poses, and what its reply reads as: `R`. Each shape is answered by its own
   * model and recorded as that model replied; `R` is read from the record on every run.
@@ -179,7 +179,7 @@ trait Moves {
   ): Either[MoveError, Vetted] = {
     val raw = Trusted.asIs(text).extract
     val answers =
-      if (text.integrity.dominates(Integrity.Outside) || HardFlags.of(raw).fired.nonEmpty)
+      if (!text.integrity.belowOutside || HardFlags.of(raw).fired.nonEmpty)
         Right(None)
       else
         ask(

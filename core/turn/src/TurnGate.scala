@@ -184,7 +184,7 @@ object TurnGate {
     * anything else "something from" its source, then a clause saying which.
     */
   private def described(item: Item): String = {
-    val untrusted = !item.integrity.dominates(Integrity.Outside)
+    val untrusted = item.integrity.belowOutside
     val outside = !item.integrity.dominates(Integrity.Member)
     item.ref match {
       case ItemRef.Result(_) =>

@@ -237,7 +237,7 @@ object Speech {
       Vector(
         () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
         () =>
-          Option.when(!heard.integrity.dominates(Integrity.Outside))(
+          Option.when(heard.integrity.belowOutside)(
             Silence.Below(heard.integrity)
           ),
         () => {

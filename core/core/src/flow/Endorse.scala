@@ -18,7 +18,7 @@ object Endorse {
       * verdict alone.
       */
     def sanitised[T](t: Tainted[T]): Tainted[T] =
-      if (t.integrity.dominates(Integrity.Outside)) t
+      if (!t.integrity.belowOutside) t
       else new Tainted(t.open, t.integrity.join(Integrity.Outside))
   }
 }

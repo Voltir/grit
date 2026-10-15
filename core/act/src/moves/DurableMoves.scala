@@ -76,7 +76,7 @@ object DurableMoves {
         body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
     ): Either[MoveError, A] =
       refused(name, MoveKind.Keep).toLeft(()).flatMap { _ =>
-        if (!from.integrity.dominates(Integrity.Outside)) Left(MoveError.Below(from.integrity))
+        if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
         else {
           given Journaled[Either[String, A]] = MovesJournal.kept[A]
           val (savepoints, clock) = (env.records.savepoints, env.clock)

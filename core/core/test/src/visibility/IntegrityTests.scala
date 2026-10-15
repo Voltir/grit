@@ -87,6 +87,10 @@ object IntegrityTests extends TestSuite {
       ) ==> (true, false, false)
     }
 
+    test("an integrity is below outside exactly when it is untrusted, in any compartments") {
+      all1(a => a.belowOutside == (Integrity.level(a) == Level.Untrusted)) ==> None
+    }
+
     test("an integrity's written form reads back as it, and its shown form names its level") {
       all1(a => Integrity.read(Integrity.written(a)) == Right(a)) ==> None
       Integrity.written(Integrity.at(Level.Authority, trial, acme)) ==> "authority+acme+trial"

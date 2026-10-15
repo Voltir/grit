@@ -50,7 +50,7 @@ object IntegrityTree {
     * [[SuspectFrom]] add their reasons and never gate.
     */
   def decide(source: Integrity, flags: HardFlags, answers: Option[Suspicions]): Verdict = {
-    val below = !source.dominates(Integrity.Outside)
+    val below = source.belowOutside
     val unjudged = below && flags.fired.isEmpty
     val judged = answers.fold(if (unjudged) Vector(Reason.Unjudged) else Vector()) { s =>
       Vector(

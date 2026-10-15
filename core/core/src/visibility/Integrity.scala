@@ -72,6 +72,9 @@ object Integrity {
     def dominates(other: Integrity): Boolean =
       i.level.ordinal >= other.level.ordinal && other.compartments.subsetOf(i.compartments)
 
+    /** Whether it is believed below [[Outside]]: at [[Level.Untrusted]], in any compartments. */
+    def belowOutside: Boolean = !i.dominates(Outside)
+
     /** The greatest integrity both dominate: what is made from both. */
     def meet(other: Integrity): Integrity =
       new Repr(

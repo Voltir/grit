@@ -38,7 +38,7 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
     val named = cited.map(_.trim.toLowerCase).toSet
     val sources = lines.filter(l => named.contains(l.label))
     val supporting = sources
-      .filter(l => l.source != Labelled.Source.Heard && l.integrity.dominates(Integrity.Outside))
+      .filter(l => l.source != Labelled.Source.Heard && !l.integrity.belowOutside)
       .map(_.source)
     if (sources.nonEmpty && supporting.isEmpty) None
     else if (supporting.contains(Labelled.Source.Person)) Some(Ground.Person)
