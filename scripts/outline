@@ -25,6 +25,24 @@ build_mill() { (cd "$here" && MILL_OUTPUT_DIR=out/outline ./mill --no-daemon --t
 # `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
 path_of() { build_mill show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
 
+# An MCP server's life goes to out/outline/mcp.log: who started it, the server's stderr, what removed which
+# snapshot, and how it ended. The client shows a server's stderr only when it fails to connect, so a
+# server that dies later says why nowhere else. The log is cut to its last 2000 lines at each start.
+log="$here/out/outline/mcp.log"
+note() { :; }
+if [ "${1:-}" = mcp ]; then
+  mkdir -p "${log%/*}"
+  if [ -f "$log" ] && [ "$(wc -l < "$log")" -gt 2000 ]; then
+    tail -n 2000 "$log" > "$log.$$" && mv "$log.$$" "$log"
+  fi
+  note() { printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" "$*" >> "$log"; }
+  parent=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null || echo '?')
+  parent=${parent% }
+  note "invoked: root $root, parent $PPID ${parent:0:200}"
+  for s in INT TERM HUP; do trap "note \"got SIG$s before the server started\"; exit $((128 + $(kill -l $s)))" "$s"; done
+  trap 'st=$?; note "ended with status $st before the server started"' EXIT
+fi
+
 newer=""
 if [ -f "$launcher" ]; then
   newer=$(find "$here/dev/outline/src" -name '*.scala' -newer "$launcher" -print -quit)
@@ -33,7 +51,9 @@ if [ ! -f "$launcher" ] || [ ! -f "$java_home_file" ] || [ -n "$newer" ]; then
   # On stderr, so an MCP client's stdout stays JSON-RPC; the build is otherwise silent for its first minute or two.
   if [ -n "$newer" ]; then why="${newer#"$here"/} is newer than it"; else why="it is not built yet"; fi
   echo "outline: building the query tool first, since $why; a cold build takes a minute or two" >&2
+  note "building the launcher, since $why"
   build_mill grit.outline.launcher >&2
+  note "built the launcher"
   # Mill rewrites the launcher only when a source's content changed; a source merely touched (a checkout,
   # a branch switch) would otherwise stay newer than it and send every query back through Mill.
   touch "$launcher"
@@ -52,21 +72,40 @@ if [ "${1:-}" = mcp ]; then
   mkdir -p "$snaps"
   for old in "$snaps"/*; do
     [ -d "$old" ] || continue
-    kill -0 "${old##*/}" 2>/dev/null || rm -rf "$old"
+    if ! kill -0 "${old##*/}" 2>/dev/null; then
+      note "removing snapshot ${old##*/}: no process ${old##*/} is alive"
+      rm -rf "$old"
+    fi
   done
   snap="$snaps/$$"
   rm -rf "$snap"
   mkdir -p "$snap"
-  trap 'rm -rf "$snap"' EXIT
+  trap 'st=$?; rm -rf "$snap"; note "ended with status $st before the server started"' EXIT
   cp -r "$dir/compile.dest/classes" "$snap/classes"
   sed "s|$dir/compile.dest/classes|$snap/classes|" "$launcher" > "$snap/run"
   chmod +x "$snap/run"
+  # The server's stderr reaches the client as before and the log line by line; stdout stays the JSON-RPC.
+  exec 3> >(while IFS= read -r line; do
+    printf '%s\n' "$line" >&2
+    note "stderr: $line"
+  done)
+  stamper=$!
   # An asynchronous command reads /dev/null for stdin unless redirected, so the server gets stdin explicitly.
-  "$snap/run" --root "$root" "$@" <&0 &
+  "$snap/run" --root "$root" "$@" <&0 2>&3 &
   child=$!
-  trap 'kill "$child" 2>/dev/null' INT TERM HUP
+  note "started: server pid $child, snapshot $snap"
+  by=""
+  for s in INT TERM HUP; do trap "by=SIG$s; kill \"\$child\" 2>/dev/null" "$s"; done
   status=0
+  # A trapped signal interrupts `wait`; the server is waited for again, so its own status is the one logged.
   wait "$child" || status=$?
+  if [ -n "$by" ]; then status=0; wait "$child" 2>/dev/null || status=$?; fi
+  if [ -n "$by" ]; then how="the wrapper got $by and passed it on"
+  elif [ "$status" -gt 128 ]; then how="the server was killed by SIG$(kill -l $((status - 128)) 2>/dev/null || echo "$((status - 128))")"
+  else how="the server exited by itself (its last stderr line says why: stdin closed, or a request's failure)"; fi
+  exec 3>&-
+  wait "$stamper" 2>/dev/null || true
+  trap 'rm -rf "$snap"; note "ended: server pid $child, status $status; $how"' EXIT
   exit "$status"
 fi
 

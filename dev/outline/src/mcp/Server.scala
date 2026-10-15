@@ -153,7 +153,14 @@ object Server {
     )
     val lines = LazyList.continually(Option(in.readLine())).takeWhile(_.isDefined).flatten
     lines.foldLeft(State(Roots.empty(cachedFiles), defaultRoot)) { (state, line) =>
-      val (reply, next, tool) = process(line, state)
+      // A throwable here ends the server; its reason is said on stderr, which the wrapper keeps in its log.
+      val (reply, next, tool) =
+        try process(line, state)
+        catch {
+          case e: Throwable =>
+            System.err.println(s"outline mcp: ending on $e, in the request ${line.take(300)}")
+            throw e
+        }
       tool.foreach(name =>
         System.err.println(
           s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B"
@@ -165,7 +172,7 @@ object Server {
       }
       next
     }
-    ()
+    System.err.println("outline mcp: ending, since stdin closed")
   }
 
   /** As `handle`, and the name of the tool a `tools/call` line named. */
