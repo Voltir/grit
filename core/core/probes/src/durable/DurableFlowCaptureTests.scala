@@ -20,7 +20,7 @@ object DurableFlowCaptureTests extends TestSuite {
       |trait Db extends caps.SharedCapability { def read(): String }
       |final class Env(val provider: Provider^)
       |final class Wide(val env: Env^, val db: Db^)
-      |val n: StepName[Any] = StepName("n").fold(e => sys.error(e), identity)
+      |val n: StepName[Any] = StepName("n")
       |val plain: Step[Env, String, String] = Step[Env, String, String](n)(r => in => in)
       |""".stripMargin
 
@@ -75,7 +75,7 @@ object DurableFlowCaptureTests extends TestSuite {
       |  Flow.decide(plain)((i, o) => if (o == p.call()) Left(i) else Right(o))""".stripMargin,
     """def f(p: Provider^): Flow[Env, String, Nothing, Vector[String]] =
       |  Flow.each[Env, String, Nothing, String, String](in => Vector(p.call()))(Flow.step(plain))""".stripMargin,
-    "def f(p: Provider^): Either[String, StepName[String]] = StepName.keyed[String](\"k\")(in => p.call())"
+    "def f(p: Provider^): StepName[String] = StepName.keyed[String](\"k\")(in => p.call())"
   )
 
   // F5: a capability on the wire, used by a body.

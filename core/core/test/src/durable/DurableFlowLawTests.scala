@@ -36,19 +36,10 @@ object DurableFlowLawTests extends TestSuite {
 
     test("a keyed step is recorded as its family and the key its input gives") {
       val sized =
-        Step[Env, String, String](keyed[String]("tool")(_.length.toString))(r => in => r.tag + in)
-      ran(Flow.step(sized), env, "abc") ==> ("Right(tabc)", Vector("tool:3"))
-    }
-
-    test("a name the runtime keeps for itself is refused, fixed or as a family") {
-      (
-        StepName("DBOS.recv").map(_.family),
-        StepName.keyed[Int]("DBOS.patch-x")(_.toString).map(_.family)
-      ) ==>
-        (
-          Left("'DBOS.recv' is a name the runtime keeps for itself"),
-          Left("'DBOS.patch-x' is a name the runtime keeps for itself")
+        Step[Env, String, String](StepName.keyed[String]("tool")(_.length.toString))(r =>
+          in => r.tag + in
         )
+      ran(Flow.step(sized), env, "abc") ==> ("Right(tabc)", Vector("tool:3"))
     }
 
     test(
@@ -60,7 +51,7 @@ object DurableFlowLawTests extends TestSuite {
         case _ => Clearance.of(internal)
       })
       val cleared = Step.transact[Env, String, String](
-        named("cleared"),
+        StepName("cleared"),
         in => Subject.Conversation(ConversationId(in))
       )(r => _ => r.tag + Label.written(Tx.cleared(summon[Tx])))
       ran(Flow.step(cleared), env, "c1", durable) ==>
@@ -89,7 +80,7 @@ object DurableFlowLawTests extends TestSuite {
     }
 
     test("either runs only the arm its input names") {
-      val counted = Step[Env, Int, String](named("n"))(r => n => r.tag * n)
+      val counted = Step[Env, Int, String](StepName("n"))(r => n => r.tag * n)
       val split = Flow.either(Flow.step(a), Flow.step(counted))
       (ran(split, env, Left("x")), ran(split, env, Right(2))) ==>
         (("Right(ta(x))", Vector("a")), ("Right(tt)", Vector("n")))
@@ -128,9 +119,9 @@ object DurableFlowLawTests extends TestSuite {
     }
 
     test("recv waits for a message on its topic, recorded as the runtime's two steps") {
-      val heard = Step[Env, Option[String], String](named("heard"))(r => got => r.tag + got)
+      val heard = Step[Env, Option[String], String](StepName("heard"))(r => got => r.tag + got)
       val waited = Flow
-        .recv[String](named("wait"), topic => topic, _ => FiniteDuration(10, "ms"))
+        .recv[String](StepName("wait"), topic => topic, _ => FiniteDuration(10, "ms"))
         .andThen(Flow.step(heard))
       val durable = new InMemoryDurable()
       val id = WorkflowId("law")

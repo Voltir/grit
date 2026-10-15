@@ -424,19 +424,19 @@ abstract class DurableContract extends TestSuite {
     test(
       "a flow records what its read expects at every prefix: a taken patch, then a labelled wait"
     ) {
-      import FlowFixtures.{Env, named, tagged}
+      import FlowFixtures.{Env, tagged}
       val rt = runtime
       val id = rt.freshId()
       def ready(using d: Durable^): String = d.step("ready") { () => rt.crash() }
       // Started, and so known to the runtime, before anything is sent to it.
       rt.run(id)(_ => ready) ==> Settled.Crashed
       rt.send(id, "t", "hello", None)
-      val heard = Step[Env, Option[String], String](named("heard"))(r => got => r.tag + got)
+      val heard = Step[Env, Option[String], String](StepName("heard"))(r => got => r.tag + got)
       val flow = Flow
         .patch("p")(Flow.step(tagged("old")), Flow.step(tagged("new")))
         .andThen(
           Flow.recv[String](
-            named("wait"),
+            StepName("wait"),
             _ => "t",
             _ => scala.concurrent.duration.FiniteDuration(100, "ms")
           )

@@ -65,7 +65,7 @@ object DurableFlowReadTests extends TestSuite {
     }
 
     test("either is read down the arm its input names") {
-      val counted = Step[Env, Int, String](named("n"))(r => n => r.tag * n)
+      val counted = Step[Env, Int, String](StepName("n"))(r => n => r.tag * n)
       val split = Flow.either(Flow.step(a), Flow.step(counted))
       (readings(split, env, Left("x"))._2, readings(split, env, Right(2))._2) ==>
         (Vector("0:a", "ended 1: Right(ta(x))"), Vector("0:n", "ended 1: Right(tt)"))
@@ -84,9 +84,9 @@ object DurableFlowReadTests extends TestSuite {
     }
 
     test("a wait is named by its label at both of the runtime's records") {
-      val heard = Step[Env, Option[String], String](named("heard"))(r => got => r.tag + got)
+      val heard = Step[Env, Option[String], String](StepName("heard"))(r => got => r.tag + got)
       val waited = Flow
-        .recv[String](named("wait"), topic => topic, _ => FiniteDuration(10, "ms"))
+        .recv[String](StepName("wait"), topic => topic, _ => FiniteDuration(10, "ms"))
         .andThen(Flow.step(heard))
       val durable = new InMemoryDurable()
       val id = WorkflowId("flow")
@@ -126,8 +126,8 @@ object DurableFlowReadTests extends TestSuite {
       "what each recorded step's input showed is read in order, a step not yet made shows nothing"
     ) {
       val seen =
-        Step[Env, String, String](named("seen"), in => Some(Saw(in)))(r => in => r.tag + in)
-      val again = Step[Env, String, String](named("again"), in => Some(Saw(in)))(_ => in => in)
+        Step[Env, String, String](StepName("seen"), in => Some(Saw(in)))(r => in => r.tag + in)
+      val again = Step[Env, String, String](StepName("again"), in => Some(Saw(in)))(_ => in => in)
       val flow = Flow.step(seen).andThen(Flow.step(again))
       val (_, history) = ran(flow, env, "x")
       (0 to history.size).toVector.map(k =>
@@ -139,7 +139,7 @@ object DurableFlowReadTests extends TestSuite {
     test(
       "a history that holds another step, an unreadable output or none is unreadable, saying where"
     ) {
-      val counted = Step[Env, String, Int](named("n"))(_ => in => in.length)(using
+      val counted = Step[Env, String, Int](StepName("n"))(_ => in => in.length)(using
         Journaled.json[Int](ujson.Num(_), v => v.numOpt.map(_.toInt).toRight("not a number"))
       )
       val flow = Flow.step(a).andThen(Flow.step(b))

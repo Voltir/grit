@@ -1,10 +1,13 @@
 package grit.core.durable
 
+import scala.compiletime.ops.string.Matches
+import scala.compiletime.{constValue, constValueOpt, error}
+
 import grit.core.store.Tx
 import grit.core.visibility.Subject
 
-/** What a step is recorded as: `name`, or `family:key` for the key its input gives. Names the
-  * runtime keeps for itself (`DBOS.…`) are refused: `Left`.
+/** What a step is recorded as: `name`, or `family:key` for the key its input gives. Made from a
+  * literal alone; one the runtime keeps for itself (`DBOS.…`) does not compile.
   */
 sealed trait StepName[-I] {
 
@@ -20,20 +23,44 @@ sealed trait StepName[-I] {
 
 object StepName {
 
-  /** The prefix of every name the runtime records for itself: a patch's marker, a wait. */
-  private val Reserved = "DBOS."
-
   /** The fixed name `name`. */
-  def apply(name: String): Either[String, StepName[Any]] =
-    unreserved(name).map(Fixed(_))
+  inline def apply[N <: String & Singleton](inline name: N): StepName[Any] = {
+    unreserved[N]
+    Fixed(name)
+  }
 
-  /** `family:key`, the key from the input. */
-  def keyed[I](family: String)(key: I -> String): Either[String, StepName[I]] =
-    unreserved(family).map(Keyed(_, key))
+  /** `family:key` over an `I`: `keyed[I](family)(key)`, the key from the input. */
+  def keyed[I]: Keying[I] = new Keying[I]
 
-  private def unreserved(name: String): Either[String, String] =
-    if (name.startsWith(Reserved)) Left(s"'$name' is a name the runtime keeps for itself")
-    else Right(name)
+  /** A keyed name over an `I`, waiting for its family. */
+  final class Keying[I] private[StepName] () {
+
+    /** The family `family`, waiting for its key. */
+    inline def apply[N <: String & Singleton](inline family: N): Family[I] = {
+      unreserved[N]
+      familyOf[I](family)
+    }
+  }
+
+  private def familyOf[I](family: String): Family[I] = new Family[I](family)
+
+  /** A keyed name's family, waiting for its key. */
+  final class Family[I] private[StepName] (family: String) {
+
+    /** `family:key`, the key from the input. */
+    def apply(key: I -> String): StepName[I] = Keyed(family, key)
+  }
+
+  /** Refuses, at compile time, a name that is not a literal, and the prefix of every name the
+    * runtime records for itself: a patch's marker, a wait.
+    */
+  private inline def unreserved[N <: String]: Unit =
+    inline constValueOpt[N] match {
+      case None => error("a step name is a literal")
+      case Some(_) =>
+        inline if (constValue[Matches[N, "DBOS\\..*"]])
+          error("'" + constValue[N] + "' is a name the runtime keeps for itself")
+    }
 
   private final case class Fixed(family: String) extends StepName[Any] {
     def apply(in: Any): String = family

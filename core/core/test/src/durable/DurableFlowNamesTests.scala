@@ -9,7 +9,7 @@ import Flows.Family
 /** The families [[Flows.names]] lists of a flow's description, and which every run records. */
 object DurableFlowNamesTests extends TestSuite {
 
-  private val counted = Step[Env, Int, String](named("n"))(r => n => r.tag * n)
+  private val counted = Step[Env, Int, String](StepName("n"))(r => n => r.tag * n)
 
   val tests = Tests {
     test("a sequence's families are listed in order, each recorded by every run") {
@@ -55,7 +55,11 @@ object DurableFlowNamesTests extends TestSuite {
 
     test("a wait is listed by its label, and a program by its family alone") {
       val waited =
-        Flow.recv[String](keyed[String]("wait")(t => t), t => t, _ => FiniteDuration(10, "ms"))
+        Flow.recv[String](
+          StepName.keyed[String]("wait")(t => t),
+          t => t,
+          _ => FiniteDuration(10, "ms")
+        )
       Flows.names(waited.map(_.mkString).andThen(planner)) ==>
         Vector(Family("wait", true, true), Family("plan", true, false))
     }

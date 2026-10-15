@@ -11,32 +11,26 @@ object FlowFixtures {
   /** A larger environment, holding the one a flow's bodies act through beside another. */
   final class Wide(val inner: Env, val other: Env)
 
-  /** The fixed name `name`, which the suites never take from the runtime's. */
-  def named(name: String): StepName[Any] =
-    StepName(name).fold(e => throw new java.lang.AssertionError(e), identity)
-
-  /** The family `family`, keyed by `key`. */
-  def keyed[I](family: String)(key: I -> String): StepName[I] =
-    StepName.keyed(family)(key).fold(e => throw new java.lang.AssertionError(e), identity)
-
   /** A step over `name`, its output its env's tag, `name` and its input. */
-  def tagged(name: String): Step[Env, String, String] =
-    Step[Env, String, String](named(name))(r => in => s"${r.tag}$name($in)")
+  inline def tagged[N <: String & Singleton](inline name: N): Step[Env, String, String] =
+    Step[Env, String, String](StepName(name))(r => in => s"${r.tag}$name($in)")
 
   val a: Step[Env, String, String] = tagged("a")
   val b: Step[Env, String, String] = tagged("b")
 
   /** A step over a list's next item, keyed by the item. */
   val item: Step[Env, String, String] =
-    Step[Env, String, String](keyed[String]("item")(i => i))(r => in => s"${r.tag}($in)")
+    Step[Env, String, String](StepName.keyed[String]("item")(i => i))(r => in => s"${r.tag}($in)")
 
   /** Ends with the item "stop", else passes what `item` returned. */
   val stopping: Flow[Env, String, String, String] =
     Flow.decide(item)((in, out) => if (in == "stop") Left(s"stopped at $out") else Right(out))
 
   /** A step of `family` keyed by its input's length, appending its env's tag. */
-  def grown(family: String): Step[Env, String, String] =
-    Step[Env, String, String](keyed[String](family)(_.length.toString))(r => in => in + r.tag)
+  inline def grown[N <: String & Singleton](inline family: N): Step[Env, String, String] =
+    Step[Env, String, String](StepName.keyed[String](family)(_.length.toString))(r =>
+      in => in + r.tag
+    )
 
   /** Grows its input by `grown("round")` until it is three long. */
   val growing: Flow[Env, String, Nothing, String] =
