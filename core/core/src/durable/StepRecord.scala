@@ -21,4 +21,12 @@ object StepRecord {
     * step there does not.
     */
   def marker(name: String): String = s"DBOS.patch-$name"
+
+  /** The first of the two steps a [[Durable.recv]] records, its output the message received,
+    * or none.
+    */
+  val Received = "DBOS.recv"
+
+  /** The second of the two steps a [[Durable.recv]] records: its wait's end. */
+  val Slept = "DBOS.sleep"
 }

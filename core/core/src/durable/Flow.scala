@@ -1,0 +1,222 @@
+package grit.core.durable
+
+import scala.annotation.tailrec
+import scala.concurrent.duration.FiniteDuration
+
+/** A durable program from an `I`, as a pure value: ends early with an `E` or passes an `O`,
+  * its steps' bodies acting only through the `R` a run hands them.
+  */
+sealed trait Flow[-R, -I, +E, +O] {
+  private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O]
+}
+
+/** What a [[Flow.program]] makes its steps through, each recorded in order after the last. */
+sealed trait Steps[+R] extends caps.ExclusiveCapability {
+
+  /** `flow` from `in`, made next: how it ended, or what it passed. */
+  def run[I, E, O](flow: Flow[R, I, E, O], in: I): Either[E, O]
+}
+
+object Flow {
+
+  /** The flow of one step. */
+  def step[R, I, O](s: Step[R, I, O]): Flow[R, I, Nothing, O] = One(s)
+
+  /** Ends with the `Left` `f` passes, else passes its `Right`; records nothing of its own. */
+  def mayEnd[R, I, E, O](f: Flow[R, I, E, Either[E, O]]): Flow[R, I, E, O] = MayEnd(f)
+
+  /** `s`, then `f` over its input and output: ends with a `Left`, else passes the `Right`. */
+  def decide[R, I, E, O, P](s: Step[R, I, O])(f: (I, O) -> Either[E, P]): Flow[R, I, E, P] =
+    mayEnd(step(s).keeping.map((i, o) => f(i, o)))
+
+  /** Its input, unchanged: no step, nothing recorded. */
+  def pass[I]: Flow[Any, I, Nothing, I] = Pass[I]()
+
+  /** `left` over a `Left`, `right` over a `Right`: both are in the description. */
+  def either[R1, R2, A, B, E, O](
+      left: Flow[R1, A, E, O],
+      right: Flow[R2, B, E, O]
+  ): Flow[R1 & R2, Either[A, B], E, O] =
+    Split[R1 & R2, A, B, E, O](left, right)
+
+  /** `f`, its end passed as a `Left`. */
+  def attempt[R, I, E, O](f: Flow[R, I, E, O]): Flow[R, I, Nothing, Either[E, O]] = Attempt(f)
+
+  /** `round` from its input, then from each `Left` it passes, until a `Right`, which the loop
+    * passes; the state crosses rounds on the wire alone.
+    */
+  def loop[R, S, E, O](round: Flow[R, S, E, Either[S, O]]): Flow[R, S, E, O] = Loop(round)
+
+  /** `one` over each of `items`, in order, their outputs gathered; ends with the first that
+    * ends.
+    */
+  def each[R, I, E, A, O](items: I -> Vector[A])(one: Flow[R, A, E, O]): Flow[R, I, E, Vector[O]] =
+    Each(items, one)
+
+  /** `after` for a run that reaches here after the patch `name` shipped, `before` for one whose
+    * history already holds a step here (ADR 0004); a taken patch records its marker
+    * ([[StepRecord.marker]]).
+    */
+  def patch[R, I, E, O](name: String)(
+      before: Flow[R, I, E, O],
+      after: Flow[R, I, E, O]
+  ): Flow[R, I, E, O] =
+    Patch(name, before, after)
+
+  /** A wait for a message sent to this workflow on `topic`, up to `within`: the message, or
+    * `None`. The runtime records two steps, [[StepRecord.Received]] and then
+    * [[StepRecord.Slept]]; a reader names both `label`.
+    */
+  def recv[I](
+      label: StepName[I],
+      topic: I -> String,
+      within: I -> FiniteDuration
+  ): Flow[Any, I, Nothing, Option[String]] =
+    Recv(label, topic, within)
+
+  /** Code that makes its steps one at a time through `steps`, each decided from the last's
+    * result: a planner. A read runs `body` again over the history, so it may depend only on its
+    * input and its steps' results, which its type enforces; a body that is not pure reads as
+    * `Diverged`. [[Flows.names]] sees only `family`.
+    */
+  def program[R, I, O](family: String)(
+      body: (steps: Steps[R]^) -> I ->{steps} O
+  ): Flow[R, I, Nothing, O] =
+    Program(family, body)
+
+  extension [R, I, E, O](f: Flow[R, I, E, O]) {
+
+    /** `f`, then `next` over what `f` passed. */
+    def andThen[R2, E2 >: E, O2](next: Flow[R2, O, E2, O2]): Flow[R & R2, I, E2, O2] =
+      AndThen[R & R2, I, O, E2, O2](f, next)
+
+    /** `g` on the wire: records nothing, so pure. */
+    def map[O2](g: O -> O2): Flow[R, I, E, O2] = Mapped(f, g)
+
+    /** Its input beside its output. */
+    def keeping: Flow[R, I, E, (I, O)] = Keeping(f)
+
+    /** `f` run over a larger environment: each body is handed the `R` that `get` finds in the
+      * `R2` a run hands it. It records exactly what `f` records.
+      */
+    def over[R2](get: (r2: R2^) -> R^{r2}): Flow[R2, I, E, O] = Over[R, R2, I, E, O](f, get)
+  }
+
+  private final case class One[R, I, O](step: Step[R, I, O]) extends Flow[R, I, Nothing, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, O] =
+      Right(step.perform(env, in))
+  }
+
+  private final case class AndThen[R, I, M, E, O](first: Flow[R, I, E, M], next: Flow[R, M, E, O])
+      extends Flow[R, I, E, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
+      first.run(env, in) match {
+        case Left(e) => Left(e)
+        case Right(m) => next.run(env, m)
+      }
+  }
+
+  private final case class Mapped[R, I, E, M, O](f: Flow[R, I, E, M], g: M -> O)
+      extends Flow[R, I, E, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
+      f.run(env, in).map(g)
+  }
+
+  private final case class MayEnd[R, I, E, O](f: Flow[R, I, E, Either[E, O]])
+      extends Flow[R, I, E, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
+      f.run(env, in).flatMap(identity)
+  }
+
+  private final case class Keeping[R, I, E, O](f: Flow[R, I, E, O]) extends Flow[R, I, E, (I, O)] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, (I, O)] =
+      f.run(env, in).map(o => (in, o))
+  }
+
+  private final case class Pass[I]() extends Flow[Any, I, Nothing, I] {
+    private[durable] def run(env: Any^, in: I)(using d: Durable^): Either[Nothing, I] = Right(in)
+  }
+
+  private final case class Split[R, A, B, E, O](left: Flow[R, A, E, O], right: Flow[R, B, E, O])
+      extends Flow[R, Either[A, B], E, O] {
+    private[durable] def run(env: R^, in: Either[A, B])(using d: Durable^): Either[E, O] =
+      in match {
+        case Left(a) => left.run(env, a)
+        case Right(b) => right.run(env, b)
+      }
+  }
+
+  private final case class Attempt[R, I, E, O](f: Flow[R, I, E, O])
+      extends Flow[R, I, Nothing, Either[E, O]] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, Either[E, O]] =
+      Right(f.run(env, in))
+  }
+
+  private final case class Loop[R, S, E, O](round: Flow[R, S, E, Either[S, O]])
+      extends Flow[R, S, E, O] {
+    private[durable] def run(env: R^, in: S)(using d: Durable^): Either[E, O] = {
+      @tailrec
+      def from(s: S): Either[E, O] = round.run(env, s) match {
+        case Left(e) => Left(e)
+        case Right(Left(next)) => from(next)
+        case Right(Right(o)) => Right(o)
+      }
+      from(in)
+    }
+  }
+
+  private final case class Each[R, I, E, A, O](items: I -> Vector[A], one: Flow[R, A, E, O])
+      extends Flow[R, I, E, Vector[O]] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, Vector[O]] = {
+      val all = items(in)
+      @tailrec
+      def from(j: Int, done: Vector[O]): Either[E, Vector[O]] =
+        all.lift(j) match {
+          case None => Right(done)
+          case Some(a) =>
+            one.run(env, a) match {
+              case Left(e) => Left(e)
+              case Right(o) => from(j + 1, done :+ o)
+            }
+        }
+      from(0, Vector.empty)
+    }
+  }
+
+  private final case class Patch[R, I, E, O](
+      name: String,
+      before: Flow[R, I, E, O],
+      after: Flow[R, I, E, O]
+  ) extends Flow[R, I, E, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[E, O] =
+      if (d.patch(name)) after.run(env, in) else before.run(env, in)
+  }
+
+  private final case class Recv[I](
+      label: StepName[I],
+      topic: I -> String,
+      within: I -> FiniteDuration
+  ) extends Flow[Any, I, Nothing, Option[String]] {
+    private[durable] def run(env: Any^, in: I)(using d: Durable^): Either[Nothing, Option[String]] =
+      Right(d.recv(topic(in), within(in)))
+  }
+
+  private final case class Over[R, R2, I, E, O](f: Flow[R, I, E, O], get: (r2: R2^) -> R^{r2})
+      extends Flow[R2, I, E, O] {
+    private[durable] def run(env: R2^, in: I)(using d: Durable^): Either[E, O] =
+      f.run(get(env), in)
+  }
+
+  private final case class Program[R, I, O](
+      family: String,
+      body: (steps: Steps[R]^) -> I ->{steps} O
+  ) extends Flow[R, I, Nothing, O] {
+    private[durable] def run(env: R^, in: I)(using d: Durable^): Either[Nothing, O] = {
+      val steps = new Steps[R] {
+        def run[I2, E2, O2](flow: Flow[R, I2, E2, O2], next: I2): Either[E2, O2] =
+          flow.run(env, next)
+      }
+      Right(body(steps)(in))
+    }
+  }
+}

@@ -312,10 +312,10 @@ object InMemoryDurable {
   }
 
   /** The operation DBOS records for what a `recv` received (`NotificationsDAO.recv`). */
-  val Recv = "DBOS.recv"
+  val Recv = StepRecord.Received
 
   /** The operation DBOS records for the end of a `recv`'s wait, after [[Recv]]. */
-  val Sleep = "DBOS.sleep"
+  val Sleep = StepRecord.Slept
 
   /** DBOS's step name for the patch `name` (`DBOSExecutor.patch`). */
   def patchMarker(name: String): String = StepRecord.marker(name)
