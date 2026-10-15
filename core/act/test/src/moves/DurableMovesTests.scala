@@ -14,7 +14,7 @@ import grit.core.document.{
   DocumentTerms,
   InMemoryDocuments
 }
-import grit.core.durable.InMemoryDurable
+import grit.core.durable.{Flow, Flows, InMemoryDurable}
 import grit.core.edge.Advert
 import grit.core.edge.{
   EdgeDirectory,
@@ -195,9 +195,10 @@ final class MovesWorld(
       classifier: Classifier^ = new Judging()
   )(use: Moves^ -> A): A = {
     val models = new Answering(Answer, shapes = shapes)
+    val moving = MovesWorld.moves(acting, limits)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(DurableMoves.plain(acting, limits, env(models, classifier))(use))
+      out = Some(Flows.run(moving, env(models, classifier), ()).merge)
       "done"
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
@@ -213,9 +214,10 @@ final class MovesWorld(
       use: Keeping^ -> A
   ): A = {
     val models = new Answering(Answer)
+    val keeps = MovesWorld.keeps(acting, limits, keeper)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(DurableMoves.keeping(acting, limits, env(models), keeper)(use))
+      out = Some(Flows.run(keeps, env(models), ()).merge)
       "done"
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
@@ -223,6 +225,24 @@ final class MovesWorld(
 }
 
 object MovesWorld {
+
+  /** What `use` returns over the moves of `acting` within `limits`, as a job's program makes
+    * them.
+    */
+  def moves[A <: caps.Pure](acting: Acting, limits: MoveLimits)(
+      use: Moves^ -> A
+  ): Flow[MovesEnv, Unit, Nothing, A] =
+    Flow.program[MovesEnv, Unit, A]("moves")(steps =>
+      _ => DurableMoves.plain(acting, limits)(use)(using steps)
+    )
+
+  /** As [[moves]], its moves also keeping `keeper`'s documents. */
+  def keeps[A <: caps.Pure](acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(
+      use: Keeping^ -> A
+  ): Flow[MovesEnv, Unit, Nothing, A] =
+    Flow.program[MovesEnv, Unit, A]("moves")(steps =>
+      _ => DurableMoves.keeping(acting, limits, keeper)(use)(using steps)
+    )
 
   val Start: Instant = Instant.parse("2026-10-08T12:00:00Z")
 

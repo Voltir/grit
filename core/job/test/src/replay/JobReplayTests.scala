@@ -24,7 +24,7 @@ object JobReplayTests extends TestSuite {
         .map(p => p -> History.read(ujson.read(os.read(p))))
   }
 
-  /** Whether `history` made a move: a step of `grit.act.moves.MoveSteps`'. */
+  /** Whether `history` made a move: a step `grit.act.moves.ActName` names. */
   private def moved(history: History): Boolean = history.steps.exists(_.name.startsWith("move:"))
 
   /** Whether `history` kept: it holds [[Noting]]'s keep, by the name it was recorded under,

@@ -7,9 +7,9 @@ import utest.*
 
 /** What capture checking rejects about [[DurableMoves]] (ADR 0034): what a run's body returns,
   * through `plain` or `keeping`, cannot carry its moves out, and the body makes no step of its
-  * own beside them, so the run's next step may use the `Durable` they were made over. Pinned
-  * by compiling probe sources against act with act's own flags; `assertCompileError` cannot see
-  * capture errors (docs/capture-checking.md).
+  * own beside them, so the run's next step may use the program's `Steps` they were made
+  * through. Pinned by compiling probe sources against act with act's own flags;
+  * `assertCompileError` cannot see capture errors (docs/capture-checking.md).
   */
 object MovesCaptureTests extends TestSuite {
 
@@ -18,14 +18,16 @@ object MovesCaptureTests extends TestSuite {
       |import grit.act.moves.*
       |import grit.core.act.*
       |import grit.core.document.DocumentKeeper
-      |import grit.core.durable.Durable
+      |import grit.core.durable.{Flow, Step, StepName, Steps}
       |final case class Reply(text: String) extends caps.Pure
+      |val peek: Flow[MovesEnv, Unit, Nothing, String] =
+      |  Flow.step(Step[MovesEnv, Unit, String](StepName("peek"))(r => _ => "x"))
       |""".stripMargin
 
-  /** `body` as a run's: over an acting, its limits, an environment and a keeper, in a workflow. */
+  /** `body` as a run's: over an acting, its limits and a keeper, in a program's steps. */
   private def run(body: String): String =
-    "def run(acting: Acting, limits: MoveLimits, env: MovesEnv^, keeper: DocumentKeeper)" +
-      s"(using d: Durable^): Reply = {\n$body\n}"
+    "def run(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)" +
+      s"(using steps: Steps[MovesEnv]^): Reply = {\n$body\n}"
 
   /** The error messages from compiling `body` as a run's, with every probe below. */
   private def errors(body: String): List[String] = compiled.errors(run(body))
@@ -33,27 +35,27 @@ object MovesCaptureTests extends TestSuite {
   private val bound = "does not conform to upper bound scala.caps.Pure"
 
   private val runs =
-    """val plain = DurableMoves.plain(acting, limits, env)(moves => Reply(moves.toString))
-      |val kept = DurableMoves.keeping(acting, limits, env, keeper)(moves => Reply(moves.toString))
-      |Reply(d.step("reply") { () => plain.text + kept.text })""".stripMargin
+    """val plain = DurableMoves.plain(acting, limits)(moves => Reply(moves.toString))
+      |val kept = DurableMoves.keeping(acting, limits, keeper)(moves => Reply(moves.toString))
+      |Reply(steps.run(peek, ()).merge + plain.text + kept.text)""".stripMargin
 
   private val plainReturnsMoves =
-    """val _ = DurableMoves.plain[Moves^](acting, limits, env)(moves => moves)
+    """val _ = DurableMoves.plain[Moves^](acting, limits)(moves => moves)
       |Reply("")""".stripMargin
 
   private val keepingReturnsMoves =
-    """val _ = DurableMoves.keeping[Keeping^](acting, limits, env, keeper)(moves => moves)
+    """val _ = DurableMoves.keeping[Keeping^](acting, limits, keeper)(moves => moves)
       |Reply("")""".stripMargin
 
   private val plainSteps =
-    """DurableMoves.plain(acting, limits, env)(moves => {
-      |  val seen = d.step("peek") { () => "x" }
+    """DurableMoves.plain(acting, limits)(moves => {
+      |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin
 
   private val keepingSteps =
-    """DurableMoves.keeping(acting, limits, env, keeper)(moves => {
-      |  val seen = d.step("peek") { () => "x" }
+    """DurableMoves.keeping(acting, limits, keeper)(moves => {
+      |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin
 

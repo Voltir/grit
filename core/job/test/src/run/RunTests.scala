@@ -1,6 +1,5 @@
 package grit.job.run
 
-import grit.act.moves.MoveSteps
 import grit.core.act.MovesFixtures.{Judged, PerChar, replied, shown}
 import grit.core.act.{MoveError, Moves, Posed}
 import grit.core.classify.{
@@ -168,8 +167,8 @@ object RunTests extends TestSuite {
       w.durable.recordedSteps(turn.workflowId) ==>
         Vector(
           Run.Step.ReadSlot,
-          MoveSteps.ask(move("a")),
-          MoveSteps.record(move("a")),
+          "move:a",
+          "move:a:record",
           Run.Step.Reply
         )
     }
@@ -190,7 +189,7 @@ object RunTests extends TestSuite {
         (
           Some("uncleared at internal"),
           0,
-          Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), Run.Step.Reply)
+          Vector(Run.Step.ReadSlot, "move:a", Run.Step.Reply)
         )
     }
 
@@ -256,7 +255,7 @@ object RunTests extends TestSuite {
         )
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(job)))
       (w.reply(turn), w.models.calls, w.durable.recordedSteps(turn.workflowId)) ==>
-        (Some("Capped"), 0, Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), Run.Step.Reply))
+        (Some("Capped"), 0, Vector(Run.Step.ReadSlot, "move:a", Run.Step.Reply))
     }
 
     test(
@@ -283,8 +282,8 @@ object RunTests extends TestSuite {
         Vector((Probe.place, PrincipalId.Grit, Read, Retry.Interrupt, ujson.Obj("path" -> "a"))),
         Vector(
           Run.Step.ReadSlot,
-          MoveSteps.call(move("c")),
-          MoveSteps.answer(move("c")),
+          "move:c",
+          "move:c:answer",
           Run.Step.Reply
         )
       )
@@ -383,7 +382,7 @@ object RunTests extends TestSuite {
       (w.reply(turn), w.standing, w.durable.recordedSteps(turn.workflowId)) ==> (
         Some(s"Failed($refusal)"),
         Vector(RequestState.Answered(Outcome.Failed(refusal))),
-        Vector(Run.Step.ReadSlot, MoveSteps.call(move("c")), Run.Step.Reply)
+        Vector(Run.Step.ReadSlot, "move:c", Run.Step.Reply)
       )
     }
 
@@ -434,8 +433,8 @@ object RunTests extends TestSuite {
         Vector(RequestState.Expired),
         Vector(
           Run.Step.ReadSlot,
-          MoveSteps.call(move("c")),
-          MoveSteps.Expire(move("c")),
+          "move:c",
+          "move:c:expire",
           Run.Step.Reply
         )
       )
@@ -519,7 +518,7 @@ object RunTests extends TestSuite {
       (w.reply(turn), kept, w.durable.recordedSteps(turn.workflowId)) ==> (
         Some("internal"),
         Vector(("counted 3", "internal")),
-        Vector(Run.Step.ReadSlot, MoveSteps.keep(move("note")), Run.Step.Reply)
+        Vector(Run.Step.ReadSlot, "move:note", Run.Step.Reply)
       )
     }
 
@@ -622,8 +621,8 @@ object RunTests extends TestSuite {
       w.durable.recordedSteps(turn.workflowId) ==>
         Vector(
           Run.Step.ReadSlot,
-          MoveSteps.ask(move("a")),
-          MoveSteps.record(move("a")),
+          "move:a",
+          "move:a:record",
           Run.Step.Reply
         )
     }
@@ -695,7 +694,7 @@ object RunTests extends TestSuite {
       )
       (crashed, recorded, resumed, seen.reply, w.models.calls, w.ledger.rows.size) ==> (
         "crashed",
-        Vector(Run.Step.ReadSlot, MoveSteps.ask(move("a")), MoveSteps.record(move("a"))),
+        Vector(Run.Step.ReadSlot, "move:a", "move:a:record"),
         Right(s"replied: reply:${turn.conversationId}:0"),
         Some("Diverged(a)"),
         1,

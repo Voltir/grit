@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.act.MovesFixtures.Answering
 import grit.core.act.{Keeping, MoveError, MoveLimits}
 import grit.core.document.{DocText, DocumentKeeper, Pointer, Written}
-import grit.core.durable.InMemoryDurable
+import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.DocKey
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -71,11 +71,10 @@ object DurableKeepingTests extends TestSuite {
       val again =
         new InMemoryDurable().replay(Turn.workflowId, w.durable.history(Turn.workflowId)) { _ =>
           val models = new Answering(MovesContract.Answer)
-          DurableMoves
-            .keeping(w.acting, MoveLimits.Zero, w.env(models), counting)(m =>
-              Seen(keep(m).kept.fold(_.toString, _.label))
-            )
-            .said
+          val keeps = MovesWorld.keeps(w.acting, MoveLimits.Zero, counting)(m =>
+            Seen(keep(m).kept.fold(_.toString, _.label))
+          )
+          Flows.run(keeps, w.env(models), ()).merge.said
         }
       (first, steps, kept(w), again, counting.writes) ==> (
         Got(Right(Kept(Label.written(floor)))),

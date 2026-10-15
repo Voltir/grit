@@ -4,13 +4,14 @@ import java.time.Instant
 
 import grit.act.moves.{DurableMoves, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates}
-import grit.core.document.DocumentKeeper
-import grit.core.durable.Durable
+import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.durable.{Durable, Flow, Flows, Step as DurableStep, StepName, Steps}
 import grit.core.flow.Trusted
-import grit.core.id.{EntryId, JobName, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, JobName, PluginName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId
 import grit.core.job.{Job, JobRun, Jobs, KeepingJob, Owned, PlainJob, Report, Slot}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.spend.Budget
 import grit.core.store.{Db, Entry, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
 
@@ -19,69 +20,130 @@ import grit.core.visibility.Subject
   */
 object Run {
 
+  private val ReadSlotName: StepName[Any] = StepName("read-slot")
+  private val ReplyName: StepName[Any] = StepName("reply")
+
   /** The run's steps, as DBOS records their names, in the order they run. */
   object Step {
-    val ReadSlot = "read-slot"
-    val Reply = "reply"
+    val ReadSlot: String = ReadSlotName.family
+    val Reply: String = ReplyName.family
   }
 
-  /** The workflow of a job's run, the turn whose workflow id is `id`:
+  private val readSlot: DurableStep[RunEnv, TurnRef, SlotRead] = {
+    import RunJournal.given
+    DurableStep[RunEnv, TurnRef, SlotRead](ReadSlotName)(env =>
+      turn => slotOf(env.records, env.db, turn)
+    )
+  }
+
+  private val replied: DurableStep[RunEnv, Replying, RunEnd] = {
+    import RunJournal.given
+    DurableStep[RunEnv, Replying, RunEnd](ReplyName)(env =>
+      r => reply(env.records, env.jot, r.turn, r.read, r.planned, env.clock.now())
+    )
+  }
+
+  /** The workflow of a job's run, the turn whose workflow id it starts from:
     *   1. `read-slot` — which slot it runs, its schedule, and the version it was started at;
     *   1. under its job's current version in `jobs`, the job's run: the moves it makes, each as
-    *      the steps `grit.act.moves.MoveSteps` names, for its schedule's principal, each ask
-    *      admitted by `env.budget` against the day's spend, a call whose tool asks a person
-    *      first never sent ([[grit.core.act.Gates.Closed]]), within the job's limits, and a
-    *      plugin's keeping job's keeps over its plugin's documents, as `env.keepers` gives them;
+    *      `move:{name}` and its phases ([[grit.act.moves.ActName]]), for its schedule's
+    *      principal, each ask admitted by `budget` against the day's spend, a call whose tool
+    *      asks a person first never sent ([[grit.core.act.Gates.Closed]]), within the job's
+    *      limits, and a plugin's keeping job's keeps over its plugin's documents, as `keepers`
+    *      gives them;
     *   1. `reply` — the job's reply (or the line saying its parameters could not be read) as
     *      the turn's reply, awaited where its schedule reports, and the slot marked replied, in
     *      one transaction. A reply already kept is returned first, whatever the version. Under
     *      another version, or with its job gone, the job does not run and this writes nothing:
     *      superseded.
-    * What it returns says which. A store that fails fails the run (the clock edge then ends the
-    * slot `failed`). A run resumed under another version before any move records
+    * What it returns says which, at either end. A store that fails fails the run (the clock edge
+    * then ends the slot `failed`). A run resumed under another version before any move records
     * `superseded`; one resumed after making moves ends in error at `reply`, whose position its
     * history holds a move, and the clock edge supersedes it.
     */
+  def flow(
+      jobs: Jobs,
+      budget: Budget,
+      keepers: (PluginName, DocumentTerms) -> DocumentKeeper
+  ): Flow[RunEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        TurnRef.fromWorkflowId(id).toRight(s"not a run: ${WorkflowId.value(id)}")
+      })
+      .andThen(Flow.decide(readSlot) {
+        case (_, SlotRead.Unreadable(why)) => Left(s"unreadable: $why")
+        case (turn, read: SlotRead.Read) => Right(planned(jobs, budget, turn, read))
+      })
+      .andThen(
+        Flow.either(
+          moves(keepers).over[RunEnv](env => env.moves).keeping.map { (p, text) =>
+            Replying(p.acting.turn, p.read, Planned.Says(text))
+          },
+          Flow.pass[Replying]
+        )
+      )
+      .andThen(Flow.step(replied).keeping.map {
+        case (r, RunEnd.Replied(_)) => s"replied: ${EntryId.value(r.turn.replyId)}"
+        case (r, RunEnd.Superseded(current)) =>
+          s"superseded: started at v${r.read.version}, its job at v$current"
+        case (r, RunEnd.Jobless) => s"jobless: no job ${JobName.value(r.read.job)}"
+        case (_, RunEnd.Failed(why)) => s"failed: $why"
+      })
+
+  /** The run of a job whose turn's workflow id is `id`: [[flow]] run over `env`, with the jobs
+    * of `jobs` and `env`'s budget and keepers.
+    */
   def body(env: RunEnv^, jobs: Jobs)(id: WorkflowId)(using d: Durable^): String =
-    TurnRef.fromWorkflowId(id) match {
-      case None => s"not a run: ${WorkflowId.value(id)}"
-      case Some(turn) =>
-        import RunJournal.given
-        val (records, db, jot, clock) = (env.records, env.db, env.jot, env.clock)
-        d.step(Step.ReadSlot)(() => readSlot(records, db, turn)) match {
-          case SlotRead.Unreadable(why) => s"unreadable: $why"
-          case read: SlotRead.Read =>
-            val acting = Acting(
-              turn,
-              ActsFor.Scheduled(read.slot.schedule),
-              Allowance.Daily(env.budget),
-              Gates.Closed,
-              read.integrity
-            )
-            val planned: Planned = jobs.named(read.job) match {
-              case None => Planned.Jobless
-              case Some(owned) if owned.job.version != read.version =>
-                Planned.Superseded(owned.job.version)
-              case Some(Owned.Deployments(job)) => Planned.Says(plain(job, read, acting, env.moves))
-              case Some(Owned.Plugins(_, job)) => Planned.Says(plain(job, read, acting, env.moves))
-              case Some(Owned.Keeps(plugin, terms, job)) =>
-                Planned.Says(keeping(job, read, acting, env.moves, env.keepers(plugin, terms)))
-            }
-            d.step(Step.Reply)(() => reply(records, jot, turn, read, planned, clock.now())) match {
-              case RunEnd.Replied(_) => s"replied: ${EntryId.value(turn.replyId)}"
-              case RunEnd.Superseded(current) =>
-                s"superseded: started at v${read.version}, its job at v$current"
-              case RunEnd.Jobless => s"jobless: no job ${JobName.value(read.job)}"
-              case RunEnd.Failed(why) => s"failed: $why"
-            }
-        }
+    Flows.run(flow(jobs, env.budget, env.keepers), env, id).merge
+
+  /** What a read slot comes to under `jobs`: its job's moves to make under the acting of its
+    * schedule, admitted by `budget`, or a reply that makes none.
+    */
+  private def planned(
+      jobs: Jobs,
+      budget: Budget,
+      turn: TurnRef,
+      read: SlotRead.Read
+  ): Either[Planning, Replying] = {
+    val acting = Acting(
+      turn,
+      ActsFor.Scheduled(read.slot.schedule),
+      Allowance.Daily(budget),
+      Gates.Closed,
+      read.integrity
+    )
+    jobs.named(read.job) match {
+      case None => Right(Replying(turn, read, Planned.Jobless))
+      case Some(owned) if owned.job.version != read.version =>
+        Right(Replying(turn, read, Planned.Superseded(owned.job.version)))
+      case Some(owned) => Left(Planning(owned, read, acting))
+    }
+  }
+
+  /** The job `owned` to run for the slot `read`, its moves made under `acting`. */
+  private final case class Planning(owned: Owned, read: SlotRead.Read, acting: Acting)
+
+  /** The `reply` step's input: the run `read` of `turn`, and what it replies. */
+  private final case class Replying(turn: TurnRef, read: SlotRead.Read, planned: Planned)
+
+  /** A job's run: the moves it makes, through the steps of a program, and its reply. */
+  private def moves(
+      keepers: (PluginName, DocumentTerms) -> DocumentKeeper
+  ): Flow[MovesEnv, Planning, Nothing, String] =
+    Flow.program[MovesEnv, Planning, String]("moves") { steps => p =>
+      p.owned match {
+        case Owned.Deployments(job) => plain(job, p.read, p.acting)(using steps)
+        case Owned.Plugins(_, job) => plain(job, p.read, p.acting)(using steps)
+        case Owned.Keeps(plugin, terms, job) =>
+          keeping(job, p.read, p.acting, keepers(plugin, terms))(using steps)
+      }
     }
 
   /** The line a run replies when its job cannot read its schedule's parameters, `why`. */
   def unreadParams(job: JobName, why: String): String =
     s"This run of ${JobName.value(job)} could not read its parameters: $why"
 
-  private def readSlot(records: RunRecords, db: Db^, turn: TurnRef): SlotRead =
+  private def slotOf(records: RunRecords, db: Db^, turn: TurnRef): SlotRead =
     db.read(Subject.Turn(turn)) {
       for {
         conversation <- records.conversations.get(turn.conversationId)
@@ -155,7 +217,7 @@ object Run {
 
   /** What a run's `reply` step does unless its reply is kept already: write the job's reply, or
     * nothing under another version or with the job gone. Decided before the step, from what
-    * `read-slot` recorded and the deployment's jobs.
+    * `read-slot` recorded, the deployment's jobs and the job's moves.
     */
   private enum Planned {
     case Says(text: String)
@@ -179,15 +241,12 @@ object Run {
         params => run(DurableMoves.started(JobRun(params, read.slot.nominal, read.started), acting))
       )
 
-  /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `env`. */
-  private def plain[P <: caps.Pure](
-      job: PlainJob[P],
-      read: SlotRead.Read,
-      acting: Acting,
-      env: MovesEnv^
-  )(using d: Durable^): String =
+  /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `steps`. */
+  private def plain[P <: caps.Pure](job: PlainJob[P], read: SlotRead.Read, acting: Acting)(using
+      steps: Steps[MovesEnv]^
+  ): String =
     said(job, read, acting)(run =>
-      DurableMoves.plain(acting, job.limits, env)(moves => Said(job.run(run, moves))).text
+      DurableMoves.plain(acting, job.limits)(moves => Said(job.run(run, moves))).text
     )
 
   /** As [[plain]], its moves also keeping `keeper`'s documents. */
@@ -195,13 +254,10 @@ object Run {
       job: KeepingJob[P],
       read: SlotRead.Read,
       acting: Acting,
-      env: MovesEnv^,
       keeper: DocumentKeeper
-  )(using d: Durable^): String =
+  )(using steps: Steps[MovesEnv]^): String =
     said(job, read, acting)(run =>
-      DurableMoves
-        .keeping(acting, job.limits, env, keeper)(moves => Said(job.run(run, moves)))
-        .text
+      DurableMoves.keeping(acting, job.limits, keeper)(moves => Said(job.run(run, moves))).text
     )
 
   /** `text` as the run's reply, written by its job at the run's version, at no cost. */
