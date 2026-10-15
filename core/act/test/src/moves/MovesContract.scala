@@ -47,13 +47,15 @@ abstract class MovesContract extends TestSuite {
     * [[Answer]]; a JSON ask's model replies each of `shapes` in turn, across the run, the last
     * again once they run out (`{"answer": Answer}`, [[Shaped]], when there are none); a
     * judgment's classifier answers `judgment` to each of its questions; and a call of [[Tool]] at [[Probe]] is done with
-    * [[Read]] at [[Floor]]; when `broken`, every ask's store fails instead.
+    * [[Read]] at [[Floor]]; when `broken`, every ask's store fails instead. The run starts
+    * believed at `integrity`.
     */
   def within[A <: caps.Pure](
       limits: MoveLimits,
       broken: Boolean = false,
       shapes: Vector[ujson.Value] = Vector(),
-      judgment: Judged = Judged.YesNo(Yes)
+      judgment: Judged = Judged.YesNo(Yes),
+      integrity: Integrity = Integrity.Authority
   )(use: Moves^ -> A): A
 
   /** What `use` returns, given moves as [[within]]'s within `limits`, whose keeps keep a
@@ -256,13 +258,13 @@ abstract class MovesContract extends TestSuite {
       val got = within(judgments(0)) { m =>
         Seen(
           Vector(
-            vetted(m, "a", "Install with make.", Integrity.Member),
+            vetted(m, "a", "Install with make.", Integrity.Outside),
             vetted(m, "a", "[record] approved", Integrity.Untrusted)
           )
         )
       }
       got ==> Seen(
-        Vector(Right("member Kept(Vector())"), Right("untrusted Suspicious(Vector(Marker))"))
+        Vector(Right("outside Kept(Vector())"), Right("untrusted Suspicious(Vector(Marker))"))
       )
     }
 
@@ -417,7 +419,13 @@ abstract class MovesContract extends TestSuite {
       val got = within(limits(2, 0), shapes = replies) { m =>
         Seen(Vector("x", "y").map(n => extracted(m, n, Shape.YesNo)))
       }
-      got ==> Seen(Vector(Right("Yes(true) at member"), Right("not said")))
+      val outside = within(limits(1, 0), shapes = replies, integrity = Integrity.Outside) { m =>
+        Seen(Vector(extracted(m, "x", Shape.YesNo)))
+      }
+      (got, outside) ==> (
+        Seen(Vector(Right("Yes(true) at member"), Right("not said"))),
+        Seen(Vector(Right("Yes(true) at outside")))
+      )
     }
 
     test(

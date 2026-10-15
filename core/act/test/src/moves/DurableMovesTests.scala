@@ -54,9 +54,10 @@ object DurableMovesTests extends MovesContract {
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged
+      judgment: Judged,
+      integrity: Integrity
   )(use: Moves^ -> A): A = {
-    val w = new MovesWorld(broken, MovesContract.Floor)
+    val w = new MovesWorld(broken, MovesContract.Floor, integrity)
     w.run(limits, shapes, new Each(judgment))(use)
   }
 
@@ -86,9 +87,13 @@ object DurableMovesTests extends MovesContract {
   * it is written, and the documents of [[MovesWorld.Notes]]. Its every transaction and read is
   * opened at `floor`, and [[MovesContract.Probe]], its summary model and its classifier are
   * cleared for `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
-  * daily, so every ask's admission fails.
+  * daily, so every ask's admission fails. Its run starts believed at `integrity`.
   */
-final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends caps.SharedCapability {
+final class MovesWorld(
+    broken: Boolean,
+    floor: Label = Label.Public,
+    integrity: Integrity = Integrity.Authority
+) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
 
@@ -169,7 +174,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
     )
 
   /** The acting of [[Turn]]: its asker's, closed, admitted, or daily under a cap when
-    * `broken`.
+    * `broken`, starting at `integrity`.
     */
   val acting: Acting = Acting(
     Turn,
@@ -177,7 +182,7 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
     if (broken) Allowance.Daily(Budget(ZoneOffset.UTC, DailyCap.of("1").toOption))
     else Allowance.Admitted,
     Gates.Closed,
-    Integrity.Authority
+    integrity
   )
 
   /** What `use` returns over [[Turn]]'s moves within `limits`, its workflow run once, a JSON

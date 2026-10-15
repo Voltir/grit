@@ -1,10 +1,13 @@
 package grit.act.moves
 
 import grit.core.act.{Asked, Called, Keeping, MoveError, MoveLimits, Moves, ScriptedKeeping}
+import java.time.Instant
+
 import grit.core.classify.Answer as Judged
-import grit.core.document.Document
+import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.flow.TestTainted
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.visibility.Integrity
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
   * the contract's world.
@@ -16,22 +19,25 @@ object ScriptedMovesTests extends MovesContract {
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged
-  )(use: Moves^ -> A): A = use(scripted(limits, broken, shapes, judgment))
+      judgment: Judged,
+      integrity: Integrity
+  )(use: Moves^ -> A): A = use(scripted(limits, broken, shapes, judgment, integrity))
 
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document]) = {
-    val moves = scripted(limits, broken = false, Vector(), Judged.YesNo(Yes))
+    val moves = scripted(limits, broken = false, Vector(), Judged.YesNo(Yes), Integrity.Authority)
     (use(moves), moves.kept)
   }
 
   /** Keeping within `limits` whose keeps keep [[MovesWorld.Notes]]' documents at
-    * [[MovesContract.Floor]], scripted as [[within]] describes its world.
+    * [[MovesContract.Floor]], scripted as [[within]] describes its world, its run believed at
+    * `integrity`.
     */
   private def scripted(
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged
+      judgment: Judged,
+      integrity: Integrity
   ): ScriptedKeeping = {
     val replies = new Replies(shapes)
     val answer: Message.Assistant =
@@ -54,7 +60,11 @@ object ScriptedMovesTests extends MovesContract {
       request =>
         if (broken) Left(MoveError.Store("down"))
         else
-          Right(Asked(TestTainted.authority(request.questions.map(_ => judgment)), Floor))
+          Right(Asked(TestTainted.authority(request.questions.map(_ => judgment)), Floor)),
+      // Positional: a named argument here would bind the lambdas above to untyped temporaries.
+      new InMemoryDocuments,
+      Instant.EPOCH,
+      integrity
     )
   }
 

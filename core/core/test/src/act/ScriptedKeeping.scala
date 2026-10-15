@@ -12,7 +12,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Label}
+import grit.core.visibility.{Clearance, Integrity, Label}
 import grit.dbos.sql.TestTx
 
 /** [[Keeping]] for a job's tests: [[ScriptedMoves]], scripted as it is, whose keeps write
@@ -36,8 +36,9 @@ final class ScriptedKeeping(
     judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = _ =>
       Left(MoveError.Model("no judgment scripted")),
     documents: InMemoryDocuments = new InMemoryDocuments,
-    at: Instant = Instant.EPOCH
-) extends ScriptedMoves(limits, asks, calls, jsons, judgments),
+    at: Instant = Instant.EPOCH,
+    integrity: Integrity = Integrity.Authority
+) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
   private val keeper = documents.keeper(plugin, terms)
