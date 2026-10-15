@@ -124,11 +124,6 @@ object ToolSetTests extends TestSuite {
       assert(acting.id != set(peek, post).id)
     }
 
-    test("an entry is said plainly as its action, else as use and its name") {
-      peek.copy(action = Some("peek at things")).plainly ==> "peek at things"
-      peek.plainly ==> "use peek"
-    }
-
     test("a set says a tool plainly as its entry does, and one it lacks as use and its name") {
       val acting = set(peek.copy(action = Some("peek at things")), post)
       Vector(ToolName("peek"), ToolName("post"), ToolName("poke")).map(acting.plainly) ==>
