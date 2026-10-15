@@ -273,12 +273,6 @@ object TurnJournalTests extends TestSuite {
       j.decode(j.encode(kept)) ==> Right(kept)
     }
 
-    test("a turn's pinned profile is recorded whole, and reads back as pinned") {
-      val pinned: Either[TurnFailure, grit.core.model.TurnProfile] =
-        Right(TurnFixtures.TestCatalog.pin)
-      roundTrip(pinned) ==> Right(pinned)
-    }
-
     test("the recorded form is pinned") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       j.encode(Right(EntryId("reply:c1:0"))) ==> """{"ok":"reply:c1:0"}"""
@@ -308,41 +302,6 @@ object TurnJournalTests extends TestSuite {
       // Every offer recorded before this field was an addressed turn's.
       j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""") ==>
         Right(Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed)))
-    }
-
-    test("an offer is recorded with its tool set and prompt, and read back whole without a store") {
-      import grit.core.prompt.{Fragment, Layer, SystemPrompt}
-      import grit.core.tool.{Retry, ToolName, ToolSet}
-      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Decided]]]
-      val set = ToolSet
-        .of(Vector(ToolSet.Entry(ToolName("peek"), "Reads.", ujson.Obj(), false, Retry.Rerun)))
-        .fold(d => sys.error(d.toString), identity)
-      val prompt = SystemPrompt.of(
-        Vector(
-          Fragment(Layer.Place, "service:github", "Be brief."),
-          Fragment(Layer.Base, "grit", "Hi.")
-        )
-      )
-      val workspace = Place.read("service:github").toOption
-      val recorded = TurnOffer.Recorded(workspace, set.id, prompt.ids, TurnOffer.Root.Heard)
-      val decided: Either[TurnFailure, TurnOffer.Decided] =
-        TurnOffer.Decided.of(recorded, set, prompt).left.map(TurnFailure.Store(_))
-      decided.map(_.offer) ==> Right(
-        TurnOffer(
-          workspace,
-          set,
-          prompt,
-          TurnOffer.Root.Heard,
-          Vector.empty,
-          Map.empty,
-          grit.core.context.Width.Deployed
-        )
-      )
-      j.decode(j.encode(decided)) ==> Right(decided)
-      TurnOffer.Decided.of(recorded, ToolSet.Empty, prompt).isLeft ==> true
-      // A reader that wants the references alone reads them from the same output.
-      summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]].decode(j.encode(decided)) ==>
-        Right(Right(recorded))
     }
 
     test(

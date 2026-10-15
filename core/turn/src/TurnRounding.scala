@@ -40,29 +40,32 @@ private[turn] final class Rounding[C^](
     }
 
   def call(at: TurnRound.Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant] =
-    tools(at).flatMap { tools =>
-      val l = at.looping
-      val stubs = stubsAt(at.gates, at.round, tools.set)
-      Rounding.callShaped(heard, l.turn, l.seen, stubs, Rounding.shapeAs(at, tools, use))(using
-        env,
-        l.pins,
-        l.offer
-      )
+    offered(at).flatMap { offer =>
+      Rounding.tools(tooling, offer, at.looping.asked).flatMap { tools =>
+        val l = at.looping
+        val stubs = stubsAt(at.gates, at.round, tools.set)
+        Rounding.callShaped(heard, l.turn, l.seen, stubs, Rounding.shapeAs(at, tools, use))(using
+          env,
+          l.pins,
+          offer
+        )
+      }
     }
 
   def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
       Tx^
   ): Either[TurnFailure, TurnRound.Kept] =
     for {
-      tools <- tools(at)
+      offer <- env.hosting.offered(at.looping.offer)
+      tools <- Rounding.tools(tooling, offer, at.looping.asked)
       l = at.looping
       kinds = {
         val bind = binding(at, tools)
-        calls.map(p => TurnTools.Kind.of(bind.bound(p), tool => l.offer.placeOf(tool)))
+        calls.map(p => TurnTools.Kind.of(bind.bound(p), tool => offer.placeOf(tool)))
       }
-      (stubs, shape) <- Rounding.sent(tooling, at)
+      (stubs, shape) <- Rounding.sent(tooling, at, offer)
       kept <- Rounding.recordCall(
-        l.offer.system,
+        offer.system,
         env.records,
         l.turn,
         l.seen,
@@ -119,7 +122,19 @@ private[turn] final class Rounding[C^](
   def hosting: TurnHosting = env.hosting
 
   private def tools(at: TurnRound.Rounds): Either[TurnFailure, Toolbox[C]] =
-    Rounding.tools(tooling, at)
+    offered(at).flatMap(Rounding.tools(tooling, _, at.looping.asked))
+
+  // What round `at`'s offer names (TurnOffer.load says why a member may read it each time it
+  // runs, unrecorded). Read as public, not bounded as the turn was routed: the rows are the
+  // turn's own offer, kept by content id, and a clearance risen since must fail what the
+  // turn reads of the store, not the offer it was already made.
+  private def offered(at: TurnRound.Rounds): Either[TurnFailure, TurnOffer] =
+    env.db
+      .read(Subject.Public)(
+        TurnOffer.load(env.hosting.toolSets, env.hosting.prompts, at.looping.offer)
+      )
+      .left
+      .map(TurnFailure.ofStore)
 
   // What round `at.round`'s calls bind against again inside a step's body, once per body.
   private def rebinding(at: TurnRound.Rounds): Either[TurnFailure, Binding^{this}] =
@@ -177,29 +192,31 @@ private[turn] final class Rounding[C^](
 
 private[turn] object Rounding {
 
-  /** What round `at.round`'s request was sent: the stub of each item its gate hid, by the
-    * item's ref, and how it is shaped from the plain request, offering tools as its budget
-    * does. Fails as [[TurnRound.Env.kind]] does.
+  /** What round `at.round`'s request, offered as `offer`, was sent: the stub of each item its
+    * gate hid, by the item's ref, and how it is shaped from the plain request, offering tools
+    * as its budget does. Fails as [[TurnRound.Env.record]] does.
     */
   def sent[C^](
       tooling: TurnTooling[C]^,
-      at: TurnRound.Rounds
+      at: TurnRound.Rounds,
+      offer: TurnOffer
   ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
-    tools(tooling, at).map(tools =>
+    tools(tooling, offer, at.looping.asked).map(tools =>
       (
         stubsAt(at.gates, at.round, tools.set),
         shapeAs(at, tools, TurnLoop.use(at.looping.budget, at.round))
       )
     )
 
-  /** The tools round `at` offers: `tooling`'s, as its offer chose them, after `topic` when its
-    * model is asked about its topic ([[TurnShown.offered]]).
+  /** The tools a round offered as `offer` offers: `tooling`'s, as `offer` chose them, after
+    * `topic` when its model is asked about `asked` ([[TurnShown.offered]]).
     */
   private def tools[C^](
       tooling: TurnTooling[C]^,
-      at: TurnRound.Rounds
+      offer: TurnOffer,
+      asked: Option[TurnTopics.Classification]
   ): Either[TurnFailure, Toolbox[C]] =
-    TurnShown.offered(TurnOffer.toolbox(tooling, at.looping.offer), at.looping.asked)
+    TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked)
 
   /** Round `at.round`'s request from the plain one, offering `tools` as `use` says, their
     * schemas as the loop says, and told and guided as the turn's pair is.

@@ -6,8 +6,8 @@ import grit.core.id.TurnRef
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
-import grit.core.store.{EntryStore, Origin, Payload, Position, StoreError, Tx}
-import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
+import grit.core.store.{EntryStore, Origin, Payload, Position, PromptStore, StoreError, Tx}
+import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Classification
 
@@ -56,7 +56,11 @@ object TurnOffer {
       advertised: Vector[ToolName] = Vector.empty,
       reached: Map[ToolName, Place] = Map.empty,
       shaped: Option[TurnShape] = None
-  )
+  ) {
+
+    /** The width the turn's window is drawn at: its shape's, else the deployed width. */
+    def width: Width = shaped.fold(Width.Deployed)(_.width)
+  }
 
   /** What a turn answers: a message said to grit (`Addressed`); a heard one triage decided to
     * answer as said to grit, having read it as put to grit by name
@@ -123,7 +127,7 @@ object TurnOffer {
       at: Classification
   )(using
       tx: Tx^
-  ): Either[TurnFailure, Decided] =
+  ): Either[TurnFailure, Recorded] =
     (for {
       found <- hosting.conversations.get(turn.conversationId)
       conversation <- found.toRight(
@@ -216,18 +220,14 @@ object TurnOffer {
           Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
-    } yield Decided(
-      Recorded(
-        workspace,
-        set.id,
-        prompt.ids,
-        root,
-        if (kept) advertised.map(_.name) else Vector.empty,
-        offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
-        Some(TurnShape(shaping.width, whole.id, took))
-      ),
-      set,
-      prompt
+    } yield Recorded(
+      workspace,
+      set.id,
+      prompt.ids,
+      root,
+      if (kept) advertised.map(_.name) else Vector.empty,
+      offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
+      Some(TurnShape(shaping.width, whole.id, took))
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
@@ -280,40 +280,27 @@ object TurnOffer {
         StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
       }
 
-  /** What the `offer` step decided: `recorded`, the offer by reference, as its texts are kept,
-    * and `offer`, what those references name.
+  /** The offer `recorded` names, its tool set read from `toolSets` and its prompt from
+    * `prompts` by id. Both are kept by content hash, written once and never changed, so every
+    * run reads the same offer for the same ids: the read needs no recording of its own, and a
+    * step's body may make it each time it runs. `StoreError.Invalid` naming the set, or the
+    * first fragment, not kept.
     */
-  final case class Decided private (recorded: Recorded, offer: TurnOffer)
-
-  object Decided {
-
-    /** `recorded`, its tool set `tools` and its prompt `prompt`; `Left` when `tools` or `prompt`
-      * is not what `recorded` names by id.
-      */
-    def of(recorded: Recorded, tools: ToolSet, prompt: SystemPrompt): Either[String, Decided] =
-      if (tools.id != recorded.tools) Left("the offer's tool set is not the one its id names")
-      else if (prompt.ids != recorded.prompt) Left("the offer's prompt is not the one its ids name")
-      else Right(apply(recorded, tools, prompt))
-
-    // `recorded` made from `tools` and `prompt` themselves, so it names them by id.
-    private[TurnOffer] def apply(
-        recorded: Recorded,
-        tools: ToolSet,
-        prompt: SystemPrompt
-    ): Decided =
-      new Decided(recorded, whole(recorded, tools, prompt))
-
-    private def whole(recorded: Recorded, tools: ToolSet, prompt: SystemPrompt): TurnOffer =
-      TurnOffer(
-        recorded.workspace,
-        tools,
-        prompt,
-        recorded.root,
-        recorded.advertised,
-        recorded.reached,
-        recorded.shaped.fold(Width.Deployed)(_.width)
-      )
-  }
+  def load(toolSets: ToolSets, prompts: PromptStore, recorded: Recorded)(using
+      Tx^
+  ): Either[StoreError, TurnOffer] =
+    for {
+      set <- toolSets.get(recorded.tools)
+      prompt <- prompts.prompt(recorded.prompt)
+    } yield TurnOffer(
+      recorded.workspace,
+      set,
+      prompt,
+      recorded.root,
+      recorded.advertised,
+      recorded.reached,
+      recorded.width
+    )
 
   /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
     * tool, else its hosted one, else, for a name `offer` took from an advert, its

@@ -72,8 +72,18 @@ object TurnRequestsTests extends TestSuite {
       )
 
   /** The fixture turn's stores as a reader sees them, its entries `entries`. */
-  private def reads(entries: EntryStore): TurnRecord.Reads =
-    TurnRecord.Reads(entries, new InMemoryPrincipals, new InMemoryDocuments)
+  private def reads(
+      entries: EntryStore,
+      profiles: ModelProfileStore = profilesKept()
+  ): TurnRecord.Reads =
+    TurnRecord.Reads(
+      entries,
+      new InMemoryPrincipals,
+      new InMemoryDocuments,
+      Prompts,
+      ToolSets,
+      profiles
+    )
 
   /** `turn`, answered by `provider` with `peek` and `poke` offered, in at most `calls` calls,
     * its message's placement asked of `classifier`; its steps.
@@ -103,12 +113,12 @@ object TurnRequestsTests extends TestSuite {
   }
 
   /** A turn said "go", its models `catalog`'s, answered by `provider` with `peek` and `poke`
-    * in at most two calls: the turn, its entries, its steps.
+    * in at most two calls: the turn, its entries, the profiles it was pinned in, its steps.
     */
   private def pinnedRun(
       provider: grit.core.provider.Provider^,
       catalog: Catalog
-  ): (TurnRef, InMemoryEntryStore, Vector[StepRecord]) = {
+  ): (TurnRef, InMemoryEntryStore, InMemoryModelProfileStore, Vector[StepRecord]) = {
     val entries = new InMemoryEntryStore
     val profiles = new InMemoryModelProfileStore
     val ws = new Files(files)
@@ -124,7 +134,7 @@ object TurnRequestsTests extends TestSuite {
         calls = 2
       )
     )
-    (turn, entries, steps(durable, turn.workflowId))
+    (turn, entries, profiles, steps(durable, turn.workflowId))
   }
 
   /** Each request rebuilt, as sent if the answer's `use` was `off` or not. */
@@ -315,8 +325,9 @@ object TurnRequestsTests extends TestSuite {
         guidance = Known.Of(ToolGuidance.SystemLines, nick)
       )
       val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))
-      val (turn, entries, recorded) = pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
-      val calls = TurnRecord.requests(turn, recorded, reads(entries))
+      val (turn, entries, profiles, recorded) =
+        pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
+      val calls = TurnRecord.requests(turn, recorded, reads(entries, profiles))
       // These models send the summary to the same provider: its third request.
       calls.map(sent(_, off = true)) ==> Right(provider.requests.take(2))
     }
@@ -330,8 +341,9 @@ object TurnRequestsTests extends TestSuite {
         )
       )
       val provider = new Scripted((_, _) => Right(calling("done")))
-      val (turn, entries, recorded) = pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
-      TurnRecord.requests(turn, recorded, reads(entries)).map(_.schemas) ==>
+      val (turn, entries, profiles, recorded) =
+        pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
+      TurnRecord.requests(turn, recorded, reads(entries, profiles)).map(_.schemas) ==>
         Right(TurnRecord.Schemas.Recorded)
     }
   }

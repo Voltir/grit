@@ -14,14 +14,14 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{CatalogJson, Grade, TurnProfile}
+import grit.core.model.{CatalogJson, Grade, TurnProfileId}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
-import grit.core.prompt.{Fragment, FragmentId, SystemPrompt}
+import grit.core.prompt.FragmentId
 import grit.core.recipe.ServiceOffer
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
-import grit.core.tool.{ToolName, ToolSet, ToolSetId}
+import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.core.visibility.{Integrity, Label}
@@ -475,11 +475,12 @@ private[turn] object TurnJournal {
     } yield Allotment(grade, reasoning, calls)
   }
 
-  /** A `pin-models` step's output: the turn's pinned profile, as [[CatalogJson.writeTurn]]
-    * writes it.
-    */
-  given profile: Journaled[Either[TurnFailure, TurnProfile]] =
-    outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
+  /** A turn's pinned profile, by its id: the profile is kept in the profile store. */
+  given profile: Journaled[Either[TurnFailure, TurnProfileId]] =
+    outcome(
+      id => ujson.Str(TurnProfileId.value(id)),
+      v => v.strOpt.map(TurnProfileId(_)).toRight("profile id: expected a string")
+    )
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
     * "prompt": [fragment ids]}`, `"root": "heard"` for a turn rooted on a heard message, and
@@ -491,32 +492,6 @@ private[turn] object TurnJournal {
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(writeRecorded, readRecorded)
-
-  /** An `offer` step's output: the offer by reference ([[recordedOffer]]'s form), with
-    * `"set"`, its tool set ([[ToolSet.write]]), and `"fragments"`, its prompt's
-    * ([[Fragment.write]]), so a run reads it back without a store.
-    */
-  given decidedOffer: Journaled[Either[TurnFailure, TurnOffer.Decided]] =
-    outcome(
-      d => {
-        val o = writeRecorded(d.recorded)
-        o("set") = ToolSet.write(d.offer.tools)
-        o("fragments") = ujson.Arr.from(d.offer.prompt.fragments.map(Fragment.write))
-        o
-      },
-      v =>
-        for {
-          recorded <- readRecorded(v)
-          o <- v.objOpt.toRight("offer: expected an object")
-          set <- o.get("set").toRight("offer: no set").flatMap(ToolSet.read)
-          fragments <- o
-            .get("fragments")
-            .flatMap(_.arrOpt)
-            .toRight("offer: no fragments")
-            .flatMap(fs => sequence(fs.toVector.map(Fragment.read)))
-          decided <- TurnOffer.Decided.of(recorded, set, SystemPrompt.of(fragments))
-        } yield decided
-    )
 
   private def writeRecorded(r: TurnOffer.Recorded): ujson.Obj = {
     val o = ujson.Obj(

@@ -884,6 +884,53 @@ object TurnFixtures {
     )(id)
   }
 
+  /** The rows the `offer` step among `steps` names, from the fixture stores: its tool set
+    * and prompt fragments, as a history keeps them ([[grit.core.durable.History.kept]]).
+    */
+  def keptBy(steps: Vector[InMemoryDurable.Step]): ujson.Obj = {
+    val offered = steps.collectFirst {
+      case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) =>
+        ujson.read(out)
+    }
+    val ok = offered.flatMap(_.objOpt).flatMap(_.get("ok")).flatMap(_.objOpt)
+    val set = ok
+      .flatMap(_.get("tools"))
+      .flatMap(_.strOpt)
+      .flatMap(id => ToolSets.sets.find(s => grit.core.tool.ToolSetId.value(s.id) == id))
+    val ids = ok
+      .flatMap(_.get("prompt"))
+      .flatMap(_.arrOpt)
+      .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
+    val fragments =
+      ids.flatMap(id => Prompts.fragments.find(f => grit.core.prompt.FragmentId.value(f.id) == id))
+    if (offered.isEmpty) ujson.Obj()
+    else
+      ujson.Obj(
+        "toolSets" -> ujson.Arr.from(set.toVector.map(ToolSet.write)),
+        "fragments" -> ujson.Arr.from(fragments.map(Fragment.write))
+      )
+  }
+
+  /** Keeps in the fixture stores the rows a history holds ([[keptBy]]'s form). */
+  def keepAll(kept: ujson.Obj): Either[String, Unit] = {
+    def all[A](key: String, read: ujson.Value => Either[String, A]): Either[String, Vector[A]] =
+      kept.value
+        .get(key)
+        .flatMap(_.arrOpt)
+        .fold(Vector.empty[ujson.Value])(_.toVector)
+        .foldLeft[Either[String, Vector[A]]](Right(Vector.empty))((acc, v) =>
+          acc.flatMap(d => read(v).map(d :+ _))
+        )
+    for {
+      sets <- all("toolSets", ToolSet.read)
+      fragments <- all("fragments", Fragment.read)
+    } yield {
+      sets.foreach(ToolSets.keep(_)(using TestTx.fake))
+      Prompts.keep(fragments)(using TestTx.fake)
+      ()
+    }
+  }
+
   /** `calls` model calls as a turn's budget. */
   def budget(calls: Int): TurnLoop.Budget =
     TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)

@@ -857,7 +857,31 @@ object TurnHostedTests extends TestSuite {
       results(provider).map(_.content) ==> Vector("The tool fetch is gone; nothing ran.")
     }
 
-    test("a turn rerun offers the tool set its offer recorded, whether or not a store keeps it") {
+    test("the offer step records the tool set and prompt it offers by id alone") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never)
+      val kept = new InMemoryToolSets
+      val provider = new Scripted((_, _) => Right(calling("done")))
+      durable.run(turn.workflowId)(hostedBody(entries, provider, edge, toolSets = kept)) ==>
+        "replied: reply:c1:0; summarised: summary:c1:0"
+      val offered = durable.history(turn.workflowId).collectFirst {
+        case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) =>
+          ujson.read(out)("ok")
+      }
+      // The texts are kept by content hash in their own stores: the step names them by id.
+      val set = kept.sets.map(s => grit.core.tool.ToolSetId.value(s.id)).mkString
+      offered.map(o => (o.obj.keySet.toSet, o("workspace").str, o("tools").str)) ==>
+        Some((Set("workspace", "tools", "prompt", "shaped"), "fs:/checkout", set))
+      val ids = offered.toVector
+        .flatMap(_("prompt").arr.toVector)
+        .flatMap(v => grit.core.prompt.FragmentId.of(v.str).toOption)
+      Prompts.prompt(ids)(using grit.dbos.sql.TestTx.fake).map(_.render) ==>
+        Right(provider.requests.headOption.fold("")(_.system))
+    }
+
+    test("a turn rerun offers the tool set kept under the id its offer recorded") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
@@ -868,11 +892,27 @@ object TurnHostedTests extends TestSuite {
         durable.run(turn.workflowId)(hostedBody(entries, dies, edge, toolSets = kept))
       )
       val rerun = new Scripted((_, _) => Right(calling("done")))
-      durable.run(turn.workflowId)(
-        hostedBody(entries, rerun, edge, toolSets = new InMemoryToolSets)
-      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      durable.run(turn.workflowId)(hostedBody(entries, rerun, edge, toolSets = kept)) ==>
+        "replied: reply:c1:0; summarised: summary:c1:0"
       rerun.requests.headOption.map(_.tools.map(_.name)) ==>
         Some(kept.sets.flatMap(_.tools.map(e => ToolName.value(e.name))))
+    }
+
+    test("a turn whose recorded tool set is not kept fails, naming it") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never)
+      val dies = new Scripted((_, _) => throw new InMemoryDurable.Crash)
+      val kept = new InMemoryToolSets
+      assertThrows[InMemoryDurable.Crash](
+        durable.run(turn.workflowId)(hostedBody(entries, dies, edge, toolSets = kept))
+      )
+      val id = kept.sets.map(s => grit.core.tool.ToolSetId.value(s.id)).mkString
+      durable.run(turn.workflowId)(
+        hostedBody(entries, model(), edge, toolSets = new InMemoryToolSets)
+      ) ==>
+        s"failed: Store(no tool set $id is kept)"
     }
   }
 }

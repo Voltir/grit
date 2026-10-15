@@ -93,20 +93,23 @@ object TurnReplayTests extends TestSuite {
           else {
             val entries = new InMemoryEntryStore
             // The tools the recorder offered: a gated call asks before its step, so the
-            // steps a history holds depend on which tools its calls bind to.
-            new InMemoryDurable().replay(history.id, history.steps)(
-              tooledBody(
-                entries,
-                new RecordingProvider,
-                new InMemoryUsageLedger,
-                new grit.models.StubProvider(),
-                NoClassifier,
-                NoCheckout,
-                tools(NoCheckout),
-                5,
-                hosted = hostedTools
+            // steps a history holds depend on which tools its calls bind to. What its offer
+            // step names by id is read back from the rows the history keeps.
+            keepAll(history.kept).flatMap { _ =>
+              new InMemoryDurable().replay(history.id, history.steps)(
+                tooledBody(
+                  entries,
+                  new RecordingProvider,
+                  new InMemoryUsageLedger,
+                  new grit.models.StubProvider(),
+                  NoClassifier,
+                  NoCheckout,
+                  tools(NoCheckout),
+                  5,
+                  hosted = hostedTools
+                )
               )
-            )
+            }
           }
         }
         outcome.left.toOption.map(why => s"${path.last}: $why")
@@ -155,7 +158,7 @@ object TurnReplayTests extends TestSuite {
     test("every recorded offer is written back byte for byte") {
       // An offer is recorded data: one recorded before shapes reads as unshaped, and today's
       // codec writes the same text back, so recipes change no offer already recorded.
-      val j = TurnJournal.decidedOffer
+      val j = TurnJournal.recordedOffer
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
           case s if s.name == Turn.Step.Offer => (path.last, s.outcome)

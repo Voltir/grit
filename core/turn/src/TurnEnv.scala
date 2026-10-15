@@ -27,6 +27,7 @@ import grit.core.store.{
   ModelProfileStore,
   Principals,
   PromptStore,
+  Tx,
   UsageLedger,
   VoiceStore
 }
@@ -151,7 +152,15 @@ final case class TurnHosting(
     edges: EdgeDirectory,
     voices: VoiceStore,
     askers: Askers
-)
+) {
+
+  /** The offer `recorded` names, read from `toolSets` and `prompts` by id ([[TurnOffer.load]],
+    * which says why a step's body may read it on every run unrecorded); `TurnFailure.Store`
+    * naming the set or fragment not kept.
+    */
+  def offered(recorded: TurnOffer.Recorded)(using Tx^): Either[TurnFailure, TurnOffer] =
+    TurnOffer.load(toolSets, prompts, recorded).left.map(TurnFailure.ofStore)
+}
 
 /** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs.
   * `tools` run in the turn's own steps and act only through the capabilities `C`;

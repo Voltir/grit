@@ -9,13 +9,14 @@ import TurnSteps.*
 /** The durable turn, as one flow: what [[Turn.body]] runs. Its steps, as [[Turn.Step]] names
   * them, in order:
   *   1. `pin-models` — the catalog in force, pinned as the turn's profile, which a rerun runs
-  *      under.
+  *      under; recorded by its id.
   *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
   *      the turn.
   *   1. `route` — the pin each role's calls are made under, and the effort laid over the turn's
   *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn.
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
-  *      and of its task questions; recorded with its tool set and prompt.
+  *      and of its task questions; recorded by reference, its tool set and prompt by id, which
+  *      each step that needs them reads back ([[TurnOffer.load]]).
   *   1. `record-failure` — only when `pin-models`, `route` or `offer` failed, ending the turn
   *      ([[TurnSteps.recordFailure]]).
   *   1. `stitched` — an opening's placement waited for ([[grit.core.stitch.Placements.awaited]]).
@@ -66,9 +67,9 @@ private[turn] object TurnFlow {
         r.map(Offering(w.turn, w.weighed, _)).left.map(Failed(w.turn, _))
       )
     )
-    val offered = Flow.decide(offer)((r, decided) =>
-      decided
-        .map(d => Offered(r.turn, Turn.Picked.of(r.route), d.offer, ""))
+    val offered = Flow.decide(offer)((r, recorded) =>
+      recorded
+        .map(Offered(r.turn, Turn.Picked.of(r.route), _, ""))
         .left
         .map(Failed(r.turn, _))
     )

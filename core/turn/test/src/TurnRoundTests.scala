@@ -4,11 +4,10 @@ import java.time.Instant
 
 import grit.core.allot.Allotment
 import grit.core.approval.Approval
-import grit.core.context.{Width, Window}
+import grit.core.context.Window
 import grit.core.durable.{Flows, InMemoryDurable, StepRecord}
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.prompt.SystemPrompt
 import grit.core.provider.ToolUse
 import grit.core.store.{InMemoryEntryStore, Jot, Tx}
 import grit.core.tool.{Bound, ToolSet}
@@ -53,15 +52,8 @@ object TurnRoundTests extends TestSuite {
   ): (Round, ToolUse) -> Either[TurnFailure, Message.Assistant] =
     (round, _) => replies.lift(round.index).getOrElse(Left(TurnFailure.Model("no reply scripted")))
 
-  private val offer = TurnOffer(
-    None,
-    ToolSet.of(Vector.empty).fold(d => throw new java.lang.AssertionError(d.toString), identity),
-    SystemPrompt.of(Vector.empty),
-    TurnOffer.Root.Addressed,
-    Vector.empty,
-    Map.empty,
-    Width.Deployed
-  )
+  private val offer =
+    TurnOffer.Recorded(None, ToolSet.Empty.id, Vector.empty, TurnOffer.Root.Addressed)
 
   /** A turn's bodies, scripted: its model's reply to each call as `script` gives it, each
     * round's gate at the level `levels` gives it, each reply kept as `kept` says; each call

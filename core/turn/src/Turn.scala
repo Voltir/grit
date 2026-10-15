@@ -4,7 +4,7 @@ import grit.core.allot.Allotment
 import grit.core.context.Window
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
-import grit.core.model.{Pinned, StrictSchemas, TurnProfile}
+import grit.core.model.{Pinned, StrictSchemas, TurnProfileId}
 import grit.core.provider.ToolUse
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
@@ -303,10 +303,13 @@ object Turn {
     val gated: Vector[(Int, String)] =
       steps.flatMap(s => Loop.of(s.name).collect { case Loop.Gate(n) => n -> s.name })
     for {
-      offer <- needed[TurnOffer.Decided](Step.Offer).map(_.offer)
-      profile <- needed[TurnProfile](Step.PinModels)
+      byRef <- needed[TurnOffer.Recorded](Step.Offer)
+      profileId <- needed[TurnProfileId](Step.PinModels)
       window <- needed[Window](Step.Assemble)
       classified <- output[TurnTopics.Classification](Step.Classify)
+      profile <- kept("profile", reads.profiles.get(profileId))
+        .flatMap(_.toRight(s"no profile kept under ${TurnProfileId.value(profileId)}"))
+      offer <- kept("offer", TurnOffer.load(reads.toolSets, reads.prompts, byRef))
       (set, prompt) = (offer.tools, offer.prompt)
       showing <- kept(
         "window",

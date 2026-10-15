@@ -52,7 +52,8 @@ private[turn] object TurnRound {
     /** `ask:n:record`'s body: `reply`, the reply to `at.round` that called tools, kept, and
       * what each of its `calls` is. Fails, as every member here does, when the tools the round
       * offers no longer make one toolbox, which `record-window` checked in the run that
-      * recorded it ([[TurnFlow]]).
+      * recorded it ([[TurnFlow]]), and as `TurnFailure.Store` when its offer's tool set or
+      * prompt is not kept ([[TurnHosting.offered]]).
       */
     def record(at: Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
@@ -97,14 +98,15 @@ private[turn] object TurnRound {
     def slot: Slot
   }
 
-  /** What a turn's loop runs under: `turn`, as `offer` offers it, its calls made as `pins`
-    * says over `seen`, its window, as `budget` allows, their tools' schemas `strict` when the
-    * turn's pair is known to enforce them, `asked` the classification its model is asked about
-    * when the classifier was unsure; a call that asks a person first waits `answerWithin`.
+  /** What a turn's loop runs under: `turn`, offering what `offer` names, its calls made as
+    * `pins` says over `seen`, its window, as `budget` allows, their tools' schemas `strict` when
+    * the turn's pair is known to enforce them, `asked` the classification its model is asked
+    * about when the classifier was unsure; a call that asks a person first waits
+    * `answerWithin`.
     */
   final case class Looping(
       turn: TurnRef,
-      offer: TurnOffer,
+      offer: TurnOffer.Recorded,
       pins: Turn.Picked,
       seen: Window,
       asked: Option[TurnTopics.Classification],
