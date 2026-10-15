@@ -2,7 +2,7 @@ package grit.lifecycle.post
 
 import grit.core.clock.Clock
 import grit.core.document.{DocumentKeeper, DocumentTerms}
-import grit.core.durable.{Durable, Journaled}
+import grit.core.durable.{Durable, Flow, Flows, Journaled, Step, StepName}
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PostRef}
@@ -39,38 +39,53 @@ object Posting {
   /** The most closed periods one run posts. */
   val MaxPerRun = 100
 
-  /** The name DBOS records the step posting a run's `n`-th period under. */
-  def step(n: Int): String = s"post:$n"
+  /** The run of `ref`, posting for `plugin`, at its `n`-th period. */
+  private final case class Run(ref: PostRef, plugin: Plugin, n: Int)
 
-  /** The posting workflow's body, for the run whose workflow id is `workflowId`, among the
-    * enabled `plugins`; a plugin with nothing to post ([[Plugin.posts]]) takes no step.
-    * Returns what it did, for logs.
+  private val posted: Step[PostEnv, Run, Either[String, Option[CloseOrdinal]]] =
+    Step[PostEnv, Run, Either[String, Option[CloseOrdinal]]](
+      StepName.keyed[Run]("post")(_.n.toString)
+    )(env => run => next(run.ref, run.plugin, env).left.map(describe))
+
+  /** One period posted, or the run's end: at [[MaxPerRun]], with nothing left, or stopped. */
+  private val round: Flow[PostEnv, Run, String, Either[Run, String]] =
+    Flow
+      .mayEnd(Flow.pass[Run].map { run =>
+        if (run.n == MaxPerRun) Left(s"posted ${run.n}; more to come") else Right(run)
+      })
+      .andThen(Flow.step(posted).keeping)
+      .map {
+        case (run, Right(Some(_))) => Left(run.copy(n = run.n + 1))
+        case (run, Right(None)) => Right(s"posted ${run.n}")
+        case (run, Left(why)) => Right(s"posted ${run.n}; stopped: $why")
+      }
+
+  /** The posting workflow among the enabled `plugins`, from the run's workflow id: what it
+    * did, for logs, at whichever end. A plugin with nothing to post ([[Plugin.posts]]) takes no
+    * step.
     */
+  def flow(plugins: Vector[Plugin]): Flow[PostEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        PostRef.fromWorkflowId(id) match {
+          case None => Left(s"not a post: ${WorkflowId.value(id)}")
+          case Some(ref) =>
+            plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
+              case None =>
+                Left(s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}")
+              case Some(plugin) if !plugin.posts =>
+                Left(s"plugin ${PluginName.value(ref.plugin)} posts nothing")
+              case Some(plugin) => Right(Run(ref, plugin, 0))
+            }
+        }
+      })
+      .andThen(Flow.loop(round))
+
+  /** The posting workflow for the run whose workflow id is `workflowId`: [[flow]] run. */
   def body(plugins: Vector[Plugin], env: PostEnv^)(
       workflowId: WorkflowId
   )(using d: Durable^): String =
-    PostRef.fromWorkflowId(workflowId) match {
-      case None => s"not a post: ${WorkflowId.value(workflowId)}"
-      case Some(ref) =>
-        plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
-          case None => s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}"
-          case Some(plugin) if !plugin.posts =>
-            s"plugin ${PluginName.value(ref.plugin)} posts nothing"
-          case Some(plugin) => posting(ref, plugin, env, 0)
-        }
-    }
-
-  /** The run's steps from the `n`-th on. */
-  private def posting(ref: PostRef, plugin: Plugin, env: PostEnv^, n: Int)(using
-      d: Durable^
-  ): String =
-    if (n == MaxPerRun) s"posted $n; more to come"
-    else
-      d.step(step(n)) { () => next(ref, plugin, env).left.map(describe) } match {
-        case Right(Some(_)) => posting(ref, plugin, env, n + 1)
-        case Right(None) => s"posted $n"
-        case Left(why) => s"posted $n; stopped: $why"
-      }
+    Flows.run(flow(plugins), env, workflowId).merge
 
   /** The next closed period after `plugin`'s cursor posted (its cache, then its documents)
     * and the cursor moved past it, and the runs from `ref`'s cursor marked for deletion; its
