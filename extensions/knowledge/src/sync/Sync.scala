@@ -12,12 +12,13 @@ import grit.core.id.{CorpusName, DocumentVersion, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
+import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
 import grit.knowledge.github.{Fetched, GitHubCards, Listing}
 
-/** The job `knowledge-sync`, version 2, over `cards`. A run, for the source its parameters
+/** The job `knowledge-sync`, version 3, over `cards`. A run, for the source its parameters
   * name, walks it as [[Walk]] says: lists the directories whose tree changed since the cards it
   * holds; writes a card at its own floor for each new or changed unit (a directory's from its
   * listing, at no model cost; a file's from one summary, with search terms, of its first 8 KB,
@@ -28,20 +29,24 @@ import grit.knowledge.github.{Fetched, GitHubCards, Listing}
   * card it did not replace current. A card is kept at no less than what its unit's answers were
   * read at, and believed at no more than the run and what it read before writing it: its
   * source's results ([[grit.core.visibility.Visibility.outputOf]]) and the summaries asked of
-  * them. Replies [[Synced.line]]: written, relabelled, withdrawn, unchanged, and left for the
-  * next run (past `perRun`), or why it stopped: an ask refused or unread, a call failed (naming
-  * the service and why), a keep the store refused, such as a key written by another run
-  * meanwhile (naming the card's path), a card made from what is believed less than `Outside`
-  * (a source whose results are not declared), or parameters naming no source of its. Its `limits`:
-  * asks, the largest `perRun` among its sources' syncs; calls, that plus the largest
-  * `maxUnits`; judgments, none. Parameters asking for more stop at the limit, and the reply
-  * says so.
+  * them. A listing or file answered below `Outside` is first checked by the integrity tree
+  * ([[grit.core.act.Moves.vet]]), its paths or its head a window at a time: raised, it is
+  * believed as raised; otherwise its unit is left unwritten, saying why (it looks written to
+  * steer its reader, part of it looks out of place, it could not be checked, or it is over
+  * [[Sync.MostWindows]] windows), and nothing beneath a withheld directory is reached. Replies
+  * [[Synced.line]]: written, relabelled, withdrawn, unchanged, and left for the next run (past
+  * `perRun`, or unwritten), or why it stopped: an ask or a check refused or unread, a call
+  * failed (naming the service and why), a keep the store refused, such as a key written by
+  * another run meanwhile (naming the card's path), a run believed less than `Outside`, or
+  * parameters naming no source of its. Its `limits`: asks, the largest `perRun` among its
+  * sources' syncs; calls, that plus the largest `maxUnits`; judgments, [[Sync.MostWindows]] a
+  * call. Parameters asking for more stop at the limit, and the reply says so.
   */
 final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
 
   val name: JobName = Sync.Name
 
-  val version: Int = 2
+  val version: Int = 3
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)
@@ -68,8 +73,9 @@ final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
     val units = cards.map(_.maxUnits).maxOption.getOrElse(0)
     // Each at least zero (a source's perRun and maxUnits are at least 1), the sum clipped to
     // an Int: MoveLimits.of never refuses them.
+    val calls = (asks.toLong + units).min(Int.MaxValue.toLong)
     MoveLimits
-      .of(asks, (asks.toLong + units).min(Int.MaxValue.toLong).toInt, 0)
+      .of(asks, calls.toInt, (calls * Sync.MostWindows).min(Int.MaxValue.toLong).toInt)
       .fold(why => throw new IllegalStateException(why), identity)
   }
 
@@ -122,19 +128,45 @@ object Sync {
                 case Right((text, at)) =>
                   Listing.of(Trusted.asIs(text).extract) match {
                     case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                    case Right(l) =>
+                    case Right(l) if text.integrity.dominates(Integrity.Outside) =>
                       (Outcome.Listed(l), heard(read, text), labels.updated(path, at))
+                    case Right(l) =>
+                      // What of a listing reaches a card or steers the run past code's checks
+                      // is its paths (each entry's kind and SHA are read by code): those are
+                      // what is checked, and believed as checked.
+                      val paths = text.map(_ => Sync.paths(l))
+                      checked(path, paths, "directory listing") match {
+                        case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
+                        case Right(Left(why)) => (Outcome.Withheld(why), read, labels)
+                        case Right(Right(vetted)) =>
+                          (Outcome.Listed(l), heard(read, vetted), labels.updated(path, at))
+                      }
                   }
               }
             case Step.Read(path) =>
               call(Phase.Read, path, read) match {
                 case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
                 case Right((text, at)) =>
-                  (
-                    Outcome.Fetched(Fetched.of(Trusted.asIs(text).extract)),
-                    heard(read, text),
-                    labels.updated(path, at)
-                  )
+                  Fetched.of(Trusted.asIs(text).extract) match {
+                    case Fetched.Text(whole, sha) if !text.integrity.dominates(Integrity.Outside) =>
+                      // Of a file, only its head reaches its card, through its summary: the head
+                      // is what is checked, and believed as checked.
+                      val head = Walk.head(whole)
+                      checked(path, text.map(_ => head), "file") match {
+                        case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
+                        case Right(Left(why)) => (Outcome.Withheld(why), read, labels)
+                        case Right(Right(vetted)) =>
+                          (
+                            Outcome.Fetched(Fetched.Text(head, sha)),
+                            heard(read, vetted),
+                            labels.updated(path, at)
+                          )
+                      }
+                    case fetched if text.integrity.dominates(Integrity.Outside) =>
+                      (Outcome.Fetched(fetched), heard(read, text), labels.updated(path, at))
+                    // A read with no version is left unwritten: none of it reaches a card.
+                    case fetched => (Outcome.Fetched(fetched), read, labels)
+                  }
               }
             case Step.Summarise(path, head, _) =>
               val asked = Posed.Json(
@@ -194,6 +226,40 @@ object Sync {
                 labels
               )
           }
+
+        /** `text`, read of `path`, a `source`, through the integrity tree a window at a time
+          * ([[IntegrityTree.windows]]), each window its own vet: all of it, believed as its windows
+          * were raised to; or, the first window not raised, or more than [[MostWindows]] of them,
+          * why it is withheld (inner `Left`); or why the run stops (outer `Left`).
+          */
+        def checked(
+            path: String,
+            text: Tainted[String],
+            source: String
+        ): Either[String, Either[String, Tainted[String]]] = {
+          val key = CardKey.of(corpus, path)
+          val windows = IntegrityTree.windows(Trusted.asIs(text).extract)
+          @tailrec def go(
+              i: Int,
+              rest: List[String],
+              done: Tainted[String]
+          ): Either[String, Either[String, Tainted[String]]] = rest match {
+            case Nil => Right(Right(done))
+            case w :: more =>
+              moves.vet(CardMoves.vet(key, i), text.map(_ => w), source) match {
+                case Left(e) => Left(reason(e))
+                case Right(v) =>
+                  v.verdict match {
+                    case Verdict.Raised(_) => go(i + 1, more, done.zip(v.text).map(_ + _))
+                    case Verdict.Suspicious(_) => Right(Left(Suspected))
+                    case Verdict.Kept(reasons) =>
+                      Right(Left(if (reasons.contains(Reason.Unjudged)) Unchecked else Misplaced))
+                  }
+              }
+          }
+          if (windows.size > MostWindows) Right(Left(TooLong))
+          else go(0, windows.toList, Trusted.literal("").tainted)
+        }
 
         /** The answer of the call reading `path` in `phase`, its arguments made from `read`,
           * and its label; or why not.
@@ -314,6 +380,33 @@ object Sync {
 
   /** Each unit's path, to the label its answers were read at. */
   private type Labels = Map[String, Label]
+
+  /** 10: the most windows of one listing's paths or one file's head a run checks
+    * ([[IntegrityTree.windows]]); a longer one is left unwritten. A file's head, 8 KB, always
+    * fits.
+    */
+  val MostWindows: Int = 10
+
+  /** Why a unit is left unwritten when what it read looks written to steer its reader. */
+  private val Suspected = "it looks written to steer whoever reads it"
+
+  /** Why a unit is left unwritten when what it read could not be checked. */
+  private val Unchecked = "it could not be checked, so it is not trusted enough to keep"
+
+  /** Why a unit is left unwritten when part of what it read looks out of place. */
+  private val Misplaced = "part of it looks out of place, so it is not trusted enough to keep"
+
+  /** Why a unit is left unwritten when what it read is over [[MostWindows]] windows. */
+  private val TooLong = "it is too long to check"
+
+  /** A listing's paths, one a line. */
+  private def paths(listing: Listing): String = {
+    val entries = listing match {
+      case Listing.Complete(entries) => entries
+      case Listing.Partial(shown) => shown
+    }
+    entries.map(_.path).mkString("\n")
+  }
 
   /** `read`, and `answer` read after it. */
   private def heard(read: Read, answer: Tainted[?]): Read = read.zip(answer).map(_ => ())

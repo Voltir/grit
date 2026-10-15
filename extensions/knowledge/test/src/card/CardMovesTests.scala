@@ -22,6 +22,13 @@ object CardMovesTests extends TestSuite {
       )
     }
 
+    test("a unit's check is named vet, its key and its window, within 79 characters") {
+      val key = CardKey.of(corpus, "docs/a.md")
+      val name = MoveName.value(CardMoves.vet(key, Int.MaxValue))
+      // Recorded move names, as above.
+      (name, name.length <= 79) ==> (s"vet/${CardKey.value(key)}/${Int.MaxValue}", true)
+    }
+
     test("the whole-run keeps are held and drop") {
       assert(MoveName.value(CardMoves.Held) == "held")
       assert(MoveName.value(CardMoves.Drop) == "drop")

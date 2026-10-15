@@ -26,8 +26,10 @@ import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing}
   * It asks for at most `perRun` summaries: at the next it stops, counting what it left. The
   * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
   * the units held and those written new reach it, and the walk goes on bringing the held up to
-  * date. A file read with no version, a directory listed only in part (`listed only in part`)
-  * and a unit whose path makes no pointer are [[Unwritten]]; they, and a unit not taken, leave
+  * date. A file read with no version, a directory listed only in part (`listed only in part`),
+  * a unit whose list or read came to [[Outcome.Withheld]] (nothing beneath a withheld directory
+  * is listed, read or dropped) and a unit whose path makes no pointer are [[Unwritten]]; they,
+  * and a unit not taken, leave
   * the cards of the directories above them unwritten, so the next run lists those again.
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop: of the cards of units gone
@@ -208,6 +210,10 @@ object Walk {
       case (_, Outcome.Stopped(why)) => halt(env, s, why)
       case (Waiting.Listing(path, version), Outcome.Listed(listing)) =>
         advance(env, listed(env, s, path, version, listing))
+      case (Waiting.Listing(path, _), Outcome.Withheld(why)) =>
+        advance(env, unwritten(s, path, why))
+      case (Waiting.Reading(path, _), Outcome.Withheld(why)) =>
+        advance(env, unwritten(s, path, why))
       case (Waiting.Reading(path, pointer), Outcome.Fetched(fetched)) =>
         fetched match {
           case Fetched.Text(text, sha) if text.isBlank =>
@@ -251,6 +257,7 @@ object Walk {
     case Outcome.Fetched(_) => "a read's outcome"
     case Outcome.Summarised(_) => "a summary"
     case Outcome.Kept => "a keep's outcome"
+    case Outcome.Withheld(_) => "a withholding"
     case Outcome.Stopped(_) => "a stop"
   }
 
@@ -482,8 +489,10 @@ object Walk {
   private def count(n: Int, one: String, many: String): String =
     s"$n ${if (n == 1) one else many}"
 
-  /** `text`'s first [[HeadBytes]] bytes in UTF-8, never splitting a character. */
-  private def head(text: String): String = {
+  /** `text`'s first [[HeadBytes]] bytes in UTF-8, never splitting a character: what of a file
+    * its summary is asked of.
+    */
+  private[sync] def head(text: String): String = {
     @tailrec def go(i: Int, bytes: Int): Int =
       if (i >= text.length) i
       else {

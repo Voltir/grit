@@ -536,6 +536,38 @@ object WalkTests extends TestSuite {
       )
     }
 
+    test("a file whose read was withheld is left unwritten, saying why, and so is its directory") {
+      val (listings, files) = changedA(read("docs/a.md", 4))
+      val (steps, result) = drive(
+        Walk.start(source(), 5, floor, heldAll()),
+        {
+          case Step.Read("docs/a.md") => Outcome.Withheld("it could not be checked")
+          case other => moves(listings, files)(other)
+        }
+      )
+      (steps.map(shown), result) ==> (
+        Vector("list /", "list docs", "read docs/a.md"),
+        synced(unchanged = 3, unwritten = Vector(Unwritten("docs/a.md", "it could not be checked")))
+      )
+    }
+
+    test(
+      "a directory whose listing was withheld is left unwritten, saying why, and nothing beneath it is read or dropped"
+    ) {
+      val (listings, files) = changedA(read("docs/a.md", 4))
+      val (steps, result) = drive(
+        Walk.start(source(), 5, floor, heldAll()),
+        {
+          case Step.List("docs") => Outcome.Withheld("it could not be checked")
+          case other => moves(listings, files)(other)
+        }
+      )
+      (steps.map(shown), result) ==> (
+        Vector("list /", "list docs"),
+        synced(unwritten = Vector(Unwritten("docs", "it could not be checked")))
+      )
+    }
+
     test("a stopped step ends the walk at once, saying why, and drops nothing") {
       val (steps, result) = run(heldAll() :+ held("docs/old.md", 5), Map("/" -> root(docs = 11)))
       assert(

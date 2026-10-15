@@ -16,8 +16,10 @@ Packages, in one-way order (each names only those before it):
   one is not carded. Imports `card`.
 - **`sync`**: a sync run. Its plan is pure: from the cards a run holds and each step's outcome,
   the next step (list, read, summarise, write, relabel, and a last drop). `Sync`, the keeping
-  job `knowledge-sync`, makes each step as a move: a call, a summary ask, or a keep; a card held
-  at another label is withdrawn in the keep that replaces it. Imports `card` and `github`.
+  job `knowledge-sync`, makes each step as a move: a call, a summary ask, a check, or a keep; a
+  card held at another label is withdrawn in the keep that replaces it. A listing or a file
+  answered below `Outside` is checked by the integrity tree before anything is made from it
+  (ADR 0036), since a card is kept only from `Outside` or above. Imports `card` and `github`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
   `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
   `sync`.
@@ -49,7 +51,9 @@ source's label holds none of its cards.
 A sync run sends the head of each file it summarises (up to 8 KB) to the catalog's summary
 model, a third party, whatever the source's label. Declaring a source is the deployment's
 consent for that source's included files. A turn that reads the same file already sends all of
-it to the reply model.
+it to the reply model. For a source whose results are believed below `Outside`, a run also
+sends each listing's paths and each file's head to the deployment's classifier, when it is
+cleared for the source's label, to check them.
 
 The test tree mirrors it. `test/resources/github/` holds `tools/call` results GitHub's hosted
 read-only server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-10-11 (in an

@@ -27,6 +27,11 @@ object CardMoves {
   /** `{phase}/{key}`: at most 72 characters. */
   def of(phase: Phase, key: CardKey): MoveName = known(s"${phase.word}/${CardKey.value(key)}")
 
+  /** `vet/{key}/{window}`: the check of window `window`, from 0, of what a run read of `key`'s
+    * unit: at most 79 characters.
+    */
+  def vet(key: CardKey, window: Int): MoveName = known(s"vet/${CardKey.value(key)}/$window")
+
   /** `held`: the keep reading the cards a run holds. */
   val Held: MoveName = known("held")
 
@@ -34,8 +39,9 @@ object CardMoves {
   val Drop: MoveName = known("drop")
 
   // Every name here is a phase's word or a literal, lowercase letters, then at most `/` and 64
-  // hex digits: within MoveName's 200 characters, with no `:` or control character, so `of`
-  // never refuses it; `CardMovesTests` holds each.
+  // hex digits, and for a vet `/` and a window's decimal digits: within MoveName's 200
+  // characters, with no `:` or control character, so `of` never refuses it; `CardMovesTests`
+  // holds each.
   private def known(text: String): MoveName =
     MoveName.of(text).fold(why => throw new IllegalStateException(why), identity)
 }

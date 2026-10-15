@@ -31,13 +31,16 @@ enum Step extends caps.Pure {
 /** What the run's last step came to, as a walk reads it: [[Outcome.Listed]] for a
   * [[Step.List]], [[Outcome.Fetched]] for a [[Step.Read]], [[Outcome.Summarised]] for a
   * [[Step.Summarise]], [[Outcome.Kept]] for a [[Step.Write]], [[Step.Relabel]] or [[Step.Drop]],
-  * and [[Outcome.Stopped]] for any.
+  * [[Outcome.Withheld]] for a [[Step.List]] or a [[Step.Read]], and [[Outcome.Stopped]] for any.
   */
 enum Outcome extends caps.Pure {
   case Listed(listing: Listing)
   case Fetched(fetched: grit.knowledge.github.Fetched)
   case Summarised(summary: CardSummary)
   case Kept
+
+  /** What the step read is not taken: `why`, as the run's reply will say it of its unit. */
+  case Withheld(why: String)
 
   /** The move was refused, or failed: `why`, as the run's reply will say it. */
   case Stopped(why: String)
