@@ -2,6 +2,7 @@ package grit.lifecycle.transcript
 
 import grit.core.period.Ground
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Integrity
 
 import TestTranscripts.{heard, labelledBy, replied, result, said}
 import utest.*
@@ -93,6 +94,17 @@ object LabelledTests extends TestSuite {
       t.ground(Vector("h1", "u99")) ==> None
       t.ground(Vector("h1", "u2")) ==> Some(Ground.Person)
       t.ground(Vector("h1", "a3")) ==> Some(Ground.Claimed)
+    }
+
+    test("an untrusted line grounds nothing, as a heard one does: cited alone it gives no ground") {
+      val t = labelledBy(Map(1L -> "Ana"))(
+        result(0, "search", "42 hits").copy(integrity = Integrity.Untrusted),
+        said(1, "The freeze is on Friday, then."),
+        replied(2, "Noted.")
+      )
+      t.ground(Vector("t1")) ==> None
+      t.ground(Vector("t1", "u2")) ==> Some(Ground.Person)
+      t.ground(Vector("t1", "a3")) ==> Some(Ground.Claimed)
     }
 
     test("a tool line whose result is an error grounds nothing") {

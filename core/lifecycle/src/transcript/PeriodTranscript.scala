@@ -4,6 +4,7 @@ import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.Section
 import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
+import grit.core.visibility.Integrity
 
 /** A period as a classifier or the summary model reads it. */
 object PeriodTranscript {
@@ -103,19 +104,20 @@ object PeriodTranscript {
     */
   def labelled(entries: Vector[Entry], speakers: Speakers): Labelled = {
     // Who wrote each line, and its text after the label.
-    val written: Vector[(Labelled.Source, String)] = entries.flatMap(e =>
+    val written: Vector[(Labelled.Source, Integrity, String)] = entries.flatMap(e =>
       e.payload match {
         case Payload.Result(result, shown) =>
           val content = result.content.trim.split("\\s+").mkString(" ")
           val failed = if (result.isError) "failed: " else ""
-          Some(Labelled.Source.Tool(!result.isError) -> s"$shown → $failed$content")
+          Some((Labelled.Source.Tool(!result.isError), e.integrity, s"$shown → $failed$content"))
         case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(Labelled.Source.Person -> _)
-        case Payload.Heard(_) => line(e, speakers).map(Labelled.Source.Heard -> _)
-        case _ => line(e, speakers).map(Labelled.Source.Assistant -> _)
+          line(e, speakers).map(text => (Labelled.Source.Person, e.integrity, text))
+        case Payload.Heard(_) =>
+          line(e, speakers).map(text => (Labelled.Source.Heard, e.integrity, text))
+        case _ => line(e, speakers).map(text => (Labelled.Source.Assistant, e.integrity, text))
       }
     )
-    Labelled.of(written.zipWithIndex.map { case ((source, text), i) =>
+    Labelled.of(written.zipWithIndex.map { case ((source, integrity, text), i) =>
       val letter = source match {
         case Labelled.Source.Person => "u"
         case Labelled.Source.Heard => "h"
@@ -129,7 +131,7 @@ object PeriodTranscript {
           rendered.take(ToolChars - 1) + "…"
         case _ => rendered
       }
-      Labelled.Line(label, source, clipped)
+      Labelled.Line(label, source, clipped, integrity)
     })
   }
 

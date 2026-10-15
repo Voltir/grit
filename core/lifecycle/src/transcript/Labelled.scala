@@ -1,6 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.period.Ground
+import grit.core.visibility.Integrity
 
 /** A period's transcript as the closing writer reads it: each line under a label, `u` for
   * a person's words to grit, `h` for a person's heard where grit listens, `a` for the
@@ -29,16 +30,19 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
   /** The ground `cited` labels give: `Person` when any names a person's line, else `Tool`
     * when any names a tool line whose result succeeded, else `Claimed`. A tool line whose
     * result is an error (failed, declined, interrupted, gone) grounds nothing, and a label
-    * this transcript does not have counts for nothing. A heard line supports nothing: `None`
-    * when every label that names a line names a heard one, so what rests on them alone is
-    * not kept.
+    * this transcript does not have counts for nothing. A heard line, or one below
+    * [[Integrity.Outside]], supports nothing: `None` when every label that names a line
+    * names one of those, so what rests on them alone is not kept.
     */
   def ground(cited: Vector[String]): Option[Ground] = {
     val named = cited.map(_.trim.toLowerCase).toSet
-    val sources = lines.filter(l => named.contains(l.label)).map(_.source)
-    if (sources.nonEmpty && sources.forall(_ == Labelled.Source.Heard)) None
-    else if (sources.contains(Labelled.Source.Person)) Some(Ground.Person)
-    else if (sources.contains(Labelled.Source.Tool(succeeded = true))) Some(Ground.Tool)
+    val sources = lines.filter(l => named.contains(l.label))
+    val supporting = sources
+      .filter(l => l.source != Labelled.Source.Heard && l.integrity.dominates(Integrity.Outside))
+      .map(_.source)
+    if (sources.nonEmpty && supporting.isEmpty) None
+    else if (supporting.contains(Labelled.Source.Person)) Some(Ground.Person)
+    else if (supporting.contains(Labelled.Source.Tool(succeeded = true))) Some(Ground.Tool)
     else Some(Ground.Claimed)
   }
 }
@@ -55,8 +59,15 @@ object Labelled {
     case Tool(succeeded: Boolean)
   }
 
-  /** A line: its `label` and what it `rendered` as, `[{label}] …`, and who wrote it. */
-  final case class Line private[transcript] (label: String, source: Source, rendered: String)
+  /** A line: its `label`, what it `rendered` as, `[{label}] …`, who wrote it, and the
+    * `integrity` its row is believed at.
+    */
+  final case class Line private[transcript] (
+      label: String,
+      source: Source,
+      rendered: String,
+      integrity: Integrity
+  )
 
   /** The transcript of `lines`, in order. */
   private[transcript] def of(lines: Vector[Line]): Labelled = Labelled(lines)
