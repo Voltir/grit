@@ -27,15 +27,33 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 
 ## Reading and editing code
 
-- Prefer the outline tool for reading Scala: `scripts/outline show|family|uses|tests|area …
-  --root .` from the worktree. It answers with less text than a file read, resolved by the
-  compiler, in a form an Edit can match. Bash reads and searches are allowed when the tool
-  can't answer, or for a quick text search; avoid whole-file reads. Its help
-  (`scripts/outline <query> --help`) gives each query's flags and says which printed lines are
-  the file's own text. Several symbols go in one `show`, comma-separated.
+- Read Scala through the outline tool first. It answers with less text than a file read,
+  resolved by the compiler, in a form an Edit can match. Use its MCP tools
+  (`mcp__outline__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
+  ToolSearch `select:mcp__outline__show,…` if they are listed as deferred), passing
+  `root: <your worktree>`: the server is warm, while each `scripts/outline …` CLI call starts a
+  JVM (about 14 s). The CLI (`scripts/outline <query> … --root .`) is the fallback when the MCP
+  tools are missing. Bash reads and searches are for what outline cannot name, or a quick text
+  search; avoid whole-file reads. `scripts/outline <query> --help` gives each query's flags and
+  says which printed lines are the file's own text.
+- Which query, for what:
+  - an unfamiliar part of grit: `area <name>`;
+  - a name you don't know: `find '*Shelf*'`, `find '*.placed'`;
+  - a signature and its doc, before calling it: `show Moves.ask` — every symbol you need in
+    one call (`show Flow,Step,Flows`);
+  - a body you are about to edit, private or not: `show Turn --body looping,settle --private`;
+  - where a file's imports end and its definitions lie, or where to add one: `file TurnEnv`;
+  - every caller before changing a signature: `uses Moves.ask,Moves.keep` (one call);
+  - a trait and its implementations: `family Durable`;
+  - a test or a helper: `tests TurnToolsTests --test "<name prefix>"`, `--body helper`.
 - Edit straight from that file text: an Edit's old_string may be copied from `show`,
   `show --body`, `family`, `tests --test` or `tests --body` output without a Read first. Read a
-  line range only when an Edit fails to match.
+  line range only when an Edit fails to match. Several changes a few lines apart are one Edit.
+- An edit must fail loudly when it does not apply, so source is changed with Edit (and Write
+  for a new file), never `sed -i`, python or a heredoc, which change nothing silently on a
+  mismatch. The one exception is a mechanical change across many sites (a rename): a script
+  may make it, and its commit message shows it applied, the count of matches before and after
+  and a clean compile.
 - A line range outline printed is not a cue for `sed -n`: to read a member's body, private
   ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
   fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
@@ -73,7 +91,9 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 ## Plan phase (when the brief asks for one)
 
 Report the plan and stop until told "go". The plan says what changes, the alternatives
-turned down, verification, and what is parked. It has an **Elision section**: every new or
+turned down, verification, and what is parked. A plan in commits or checkpoints names, for
+each commit, the test it is seen red on first and the suite that runs then; and where an
+integration suite runs, if before the task's end. It has an **Elision section**: every new or
 changed public signature with its Scaladoc exactly as you will write it; for each, whether
 a caller could use it correctly from the signature and doc alone, and if not, how the
 design changes; then which design choices this check changed, and which doc lines are
@@ -92,13 +112,23 @@ reading the doc each item names rather than assuming its rule.
   smart constructor, ADT shaped by case); don't restate what a type or visibility says;
   do state failure modes and behaviour-changing constants.
 - **Build, test and commit by the `grit-test-cycle` skill**, which is loaded, red first,
-  `--it` when it says, and each probe suite the plan names run by name; databases by the
+  integration suites as the next bullet says (where the skill asks for `--it` before a commit,
+  the reviewer runs it after your report), and each probe suite the plan names run by name;
+  databases by the
   `grit-local-db` skill.
 - **Checks cost real time.** Keep one warm Mill for the whole task: `./mill`, never
   `--no-daemon`, and no `./mill shutdown` between steps except once to clear a "Connection
-  refused". One Mill job at a time. While iterating, run only the suite you are changing: red,
-  then green. Run the module's check and the law once per commit, when its edits are done;
-  rerun only if code changed after they passed, and not for a format pass or a doc edit. Run
+  refused". One Mill job at a time. While editing, compile, don't test: after each burst of
+  edits, `./mill <module>.compile` (seconds, warm), which also keeps outline's answers current —
+  it reads compiled output, so a file edited since its compile is tagged stale and its lines
+  may not match. Run a test only to see it red or green: the suite of the test the commit is
+  about (`scripts/check <Suite>`), red before the change and green after. Run the module's
+  check and the law once per commit, when its edits are done. Before reporting, run the unit
+  suites your change reaches, by name, and the probes the plan names: hand back only work you
+  have seen green. Integration suites (`scripts/it`, the `it` modules) run after your report,
+  by whoever reviews it, unless the brief says you run one; a red one comes back to you, with
+  your context intact, to fix. Rerun a
+  check only if code changed after it passed, and not for a format pass or a doc edit. Run
   the commit gate once, at the end of the task, unless the brief says the manager runs the
   unused-warnings pass (then `scripts/check --no-unused`). Never poll a log in a loop: run the
   command in the foreground, with its timeout.
