@@ -213,7 +213,9 @@ object ExtractTests extends TestSuite {
       read(Shape.YesNo, ujson.Bool(true)) ==> Right(Some(Extracted.Yes(true)))
       read(Shape.YesNo, ujson.Null) ==> Right(None)
       read(Shape.Number(1, 9), ujson.Num(4)) ==> Right(Some(Extracted.Number(4)))
-      read(Shape.Number(1, 9), ujson.Num(12)) ==> Left("Mismatch(answer,expected at most 9, got 12)")
+      read(Shape.Number(1, 9), ujson.Num(12)) ==> Left(
+        "Mismatch(answer,expected at most 9, got 12)"
+      )
       read(Shape.Day, ujson.Str("2026-03-09")) ==>
         Right(Some(Extracted.Day(LocalDate.of(2026, 3, 9))))
       read(Shape.Day, ujson.Str("soon")) ==> Left("the answer is not an ISO date: \"soon\"")
@@ -226,7 +228,9 @@ object ExtractTests extends TestSuite {
         Left("the answer is not at most 4 characters of A-Z, a-z, 0-9, _ and -: \"ab cd\"")
     }
 
-    test("an extraction's model calls are costed under ids of its call's slot, the first unnumbered") {
+    test(
+      "an extraction's model calls are costed under ids of its call's slot, the first unnumbered"
+    ) {
       val slot = TestCallSlots.at(round = 2, index = 1)
       val wf = WorkflowId.value(slot.turn.workflowId)
       Vector(Extract.costId(slot, 0), Extract.costId(slot, 1)) ==>
