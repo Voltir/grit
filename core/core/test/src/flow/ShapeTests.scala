@@ -37,7 +37,12 @@ object ShapeTests extends TestSuite {
         oneOf(Seq.tabulate(64)(_.toString)),
         oneOf(Seq("a" * 80)),
         token(1)
-      ).map(Shape.of(_).isRight) ==> List(true, true, true, true)
+      ).map(Shape.of) ==> List(
+        Right(Shape.Number(5, 5)),
+        Right(Shape.OneOf(Vector.tabulate(64)(_.toString))),
+        Right(Shape.OneOf(Vector("a" * 80))),
+        Right(Shape.Token(1))
+      )
     }
 
     test("of refuses each bound just past its limit, and an empty one") {
