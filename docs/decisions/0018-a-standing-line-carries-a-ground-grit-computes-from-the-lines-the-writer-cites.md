@@ -1,6 +1,6 @@
 # 0018. A Standing line carries a ground grit computes from the lines the writer cites
 
-Status: accepted (2026-09-27), revised (2026-09-27)
+Status: accepted (2026-09-27), revised (2026-10-14): an untrusted line, one below Outside, grounds nothing, as a heard one does
 
 Context: a closing's Standing lines are what later periods treat as settled (ADR 0011).
 The closing writer read only the period's messages, so it could not tell a fact a tool
