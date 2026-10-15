@@ -1,17 +1,15 @@
 package grit.turn
 
-import scala.annotation.tailrec
-
 import grit.core.allot.Allotment
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.Outcome
 
-/** A turn's tool loop: the model is called, the tools its reply calls are settled, and it is
-  * called again, until a reply calls no tool or the budget's last call, made with tools off.
-  * Each call sees the turn's own messages so far, after its window. Pure, but for [[run]],
-  * whose effects the turn makes through [[Moves]].
+/** What a turn's tool loop decides: the model is called, the tools its reply calls are
+  * settled, and it is called again, until a reply calls no tool or the budget's last call, made
+  * with tools off. Each call sees the turn's own messages so far, after its window. The turn's
+  * rounds make its steps ([[TurnRound]]).
   */
 object TurnLoop {
 
@@ -176,81 +174,4 @@ object TurnLoop {
       request.copy(system = (s"${request.system}\n\nTools you may call:" +: lines).mkString("\n"))
   }
 
-  /** The effects the loop needs. The turn makes each a durable step. */
-  trait Moves {
-
-    /** The model's reply on `round`, offered the tools as `use` says, shown its window and
-      * then the turn's own messages so far: every earlier reply that called tools, each
-      * followed by its calls' results, as [[record]] and [[settle]] kept them; then, as
-      * [[told]] says, [[LastCall]].
-      */
-    def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant]
-
-    /** Keeps `reply`, the reply to `round` that called tools, before any call is settled;
-      * `calls` are its calls, as they will be settled.
-      */
-    def record(
-        round: Round,
-        reply: Message.Assistant,
-        calls: Vector[Pending]
-    ): Either[TurnFailure, Unit]
-
-    /** Settles `pending`, the call at `index` (from 0) of `round`'s reply, and keeps its
-      * result, paired with its call's id, after those of the calls before it. Only a store
-      * that cannot be written fails: every failure of the tool is an outcome the model reads.
-      */
-    def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit]
-  }
-
-  /** What a loop came to: its `answer`, the reply to `round`, the loop's last call; and
-    * `replies`, the reply to every round as the model sent it, the first first.
-    */
-  final case class Looped(
-      answer: Message.Assistant,
-      round: Round,
-      replies: Vector[Message.Assistant]
-  )
-
-  /** Calls the model through `moves` from the first round, then goes on as [[from]] does. */
-  def run(budget: Budget, moves: Moves^): Either[TurnFailure, Looped] =
-    moves.call(Round.First, use(budget, Round.First)).flatMap(from(budget, _, moves))
-
-  /** Goes on after `first`, the reply to the first round's call: settles each reply's tool
-    * calls through `moves`, in order, and calls the model again, until [[next]] answers.
-    * Fails when a move does, making no move after it, and with [[TurnFailure.Model]] when a
-    * reply is silent.
-    */
-  def from(budget: Budget, first: Message.Assistant, moves: Moves^): Either[TurnFailure, Looped] = {
-    @tailrec
-    def loop(
-        round: Round,
-        reply: Message.Assistant,
-        before: Vector[Message.Assistant]
-    ): Either[TurnFailure, Looped] =
-      next(budget, round, reply) match {
-        case Next.Answer(answer) => Right(Looped(answer, round, before :+ reply))
-        case Next.Silent(_) =>
-          Left(
-            TurnFailure.Model(s"the reply to ${Round.step(round)} said nothing and called no tool")
-          )
-        case Next.Settle(calls, after) =>
-          settled(round, reply, calls).flatMap(_ => moves.call(after, use(budget, after))) match {
-            case Left(failure) => Left(failure)
-            case Right(again) => loop(after, again, before :+ reply)
-          }
-      }
-
-    def settled(
-        round: Round,
-        reply: Message.Assistant,
-        calls: Vector[Pending]
-    ): Either[TurnFailure, Unit] =
-      moves.record(round, reply, calls).flatMap { _ =>
-        calls.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
-          case (acc, (pending, i)) => acc.flatMap(_ => moves.settle(round, i, pending))
-        }
-      }
-
-    loop(Round.First, first, Vector.empty)
-  }
 }

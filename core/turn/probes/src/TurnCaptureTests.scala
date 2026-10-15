@@ -8,7 +8,8 @@ import utest.*
 /** What capture checking rejects about the tools a turn is offered, pinned by compiling
   * probe sources against turn with turn's own flags: a [[TurnTooling]]'s own tools act only
   * through the capabilities it names, so a turn cannot be handed a tool that edits unless
-  * its type says so, and its hosted tools, which an edge runs, act through nothing here.
+  * its type says so, and its hosted tools, which an edge runs, act through nothing here; and
+  * what crosses a turn's rounds holds no capability its rounds act through ([[TurnRound]]).
   * The pattern is `grit.core.tool.ToolCaptureTests` (docs/capture-checking.md).
   */
 object TurnCaptureTests extends TestSuite {
@@ -112,6 +113,25 @@ object TurnCaptureTests extends TestSuite {
     )
   )
 
+  /** What a turn's rounds see, inside turn's package, where they are visible. */
+  private val roundsPrelude =
+    """package grit.turn.probe
+      |import grit.core.durable.*
+      |import grit.core.tool.*
+      |import grit.turn.*
+      |""".stripMargin
+
+  /** A round's binding of `p`, passing on `kept`, of the type `tpe`, as round state. */
+  private def bindingKept(tpe: String, kept: String) =
+    s"""def binding(p: TurnLoop.Pending): Flow[TurnRound.Env, TurnRound.Rounds, Nothing, (TurnRound.Rounds, $tpe)] =
+      |  Flow.unrecorded[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)](r => at => (at, $kept))
+      |""".stripMargin
+
+  private val keptSettling = bindingKept("TurnTools.Settling^", "r.settling")
+  private val keptKind = bindingKept("TurnTools.Kind", "r.kind(at, p)")
+
+  private lazy val rounds = Probes.batch(roundsPrelude, List(keptSettling, keptKind))
+
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
     erased(prelude),
@@ -157,6 +177,11 @@ object TurnCaptureTests extends TestSuite {
       errors(extracting("Tool.Offered^{m}")) ==> List()
       assert(rejected(errors(extracting("Tool.Offered"))))
       unchecked.errors(erased(extracting("Tool.Offered"))) ==> List()
+    }
+
+    test("a round's state holds what its env's bodies found, never a capability they act through") {
+      rounds.errors(keptKind) ==> List()
+      assert(rejected(rounds.errors(keptSettling)))
     }
 
     test("capture checking is what rejects a store that acts through a capability") {

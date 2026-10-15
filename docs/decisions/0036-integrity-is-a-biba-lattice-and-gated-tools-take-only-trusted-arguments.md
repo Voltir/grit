@@ -1,6 +1,6 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13), revised (2026-10-14)
+Status: accepted (2026-10-13), revised (2026-10-14), revised (2026-10-15): the turn's level is loop state, by 0038
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labels what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a call that writes
 out of grit. Layout defences were measured and failed: a forged record placed in grit's own
@@ -45,8 +45,9 @@ Decision:
   level.
 - **A turn's low-water mark.** A turn starts at its trigger's level and falls, each round, to
   the meet of everything its model read. The model's output is stamped at that level. The level
-  is a cell whose only mutator lowers it, carried on the acting value, so no write signature
-  takes an integrity.
+  is the turn's loop state (ADR 0038): its first round's recorded gate met with each later
+  one's, a pure fold over what the history holds, so it only falls, a resumed turn finds it
+  where it was, and no write signature takes an integrity.
 - **Gates (FIDES' trusted-action policy).** Each hosted tool declares a required integrity
   beside its destinations (ADR 0031's send check is the permitted-flow policy). A tool the
   turn's current level does not meet is not offered. By default, a tool that writes out of grit
@@ -96,7 +97,7 @@ the turn's request), are data: what they read is gated by the level each row was
 pinned by the store contract and the gate's recorded output. A law rule guards who may mint
 `Tainted`, `Trusted` and the capabilities, not who reads rows. grit is not compiled in Scala's
 safe mode, so a pure closure can still leak through mutation, I/O or `throw`; safe mode returns
-for code agents write. K bounds each endorsement, not a turn. Separation checking gives the turn's cell exclusivity, not monotonicity; the cell's
-single mutator gives monotonicity. Each labelled table needs an `ALTER`. Enforced by capture
+for code agents write. K bounds each endorsement, not a turn. The turn's level is
+monotone because it is a meet over its gates, not by a mutator's discipline. Each labelled table needs an `ALTER`. Enforced by capture
 probes (pure combinators, unforgeable capabilities, no `Bounded` for free text, no gated call
 with unchecked arguments), the store contract for the insert's cap, and the law rule.

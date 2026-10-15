@@ -8,9 +8,9 @@ import grit.core.approval.Approval
 import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
@@ -39,17 +39,11 @@ object TurnTools {
 
     def index: Int = call.index
 
-    /** The `tool:n:j` step that settles the call. */
-    def step: String = Turn.Step.tool(round, index)
-
     /** The id of the entry keeping the call's result. */
     def resultId: EntryId = EntryId(s"result:$key")
 
     /** The id of the entry recording that the call, a gated one, began. */
     def attemptId: EntryId = EntryId(s"attempt:$key")
-
-    /** The `ask:n:j` step that asks a person about the call, a gated one. */
-    def askStep: String = Turn.Step.ask(round, index)
 
     /** The id of the entry asking a person about the call, a gated one. */
     def askId: EntryId = EntryId(s"ask:$key")
@@ -67,6 +61,40 @@ object TurnTools {
         .of(turn, round.index, index)
         .map(Slot(_))
         .toRight(TurnFailure.Store(s"no call at round ${round.index}, index $index"))
+  }
+
+  /** What a call read by [[read]] is, as data that crosses a step: which steps settle it. Its
+    * runner is found again, inside each step, by reading the call again.
+    */
+  enum Kind {
+
+    /** Answered unrun, with the outcome [[read]] gave. */
+    case Refused
+
+    /** Run in its own step. */
+    case Free
+
+    /** Run in its own step once a person approves it. */
+    case Gated
+
+    /** Sent to the edge serving `place`, the place of its tool `tool`, a person asked first when
+      * it `asks`.
+      */
+    case Hosted(tool: ToolName, asks: Boolean, place: Option[Place])
+  }
+
+  object Kind {
+
+    /** The kind of `read`, what [[read]] gave, a hosted tool's place as `placeOf` says. */
+    def of(
+        read: Either[Outcome, (Bound.Runs | Bound.Hosted)^],
+        placeOf: ToolName -> Option[Place]
+    ): Kind = read match {
+      case Left(_) => Refused
+      case Right(_: Bound.Free) => Free
+      case Right(_: Bound.Gated) => Gated
+      case Right(h: Bound.Hosted) => Hosted(h.tool, h.ask.nonEmpty, placeOf(h.tool))
+    }
   }
 
   /** The id of the entry keeping `turn`'s reply to `round`, which called tools. */

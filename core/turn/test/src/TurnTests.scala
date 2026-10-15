@@ -171,8 +171,9 @@ object TurnTests extends TestSuite {
 
     test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
       val round1 = TurnLoop.Round.First.next
-      (round1.step, Turn.Step.recordCall(round1), Turn.Step.tool(round1, 2)) ==>
-        ("call-model:1", "record-call:1", "tool:1:2")
+      val at = TurnRound.Rounds(round1, None, Vector.empty)
+      (round1.step, TurnRound.Names.call(at), TurnRound.Names.recordCall(at)) ==>
+        ("call-model:1", "call-model:1", "record-call:1")
       Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.sleep", "tool:x:1")
         .map(Turn.Step.family) ==>
         Vector(Some("call-model"), Some("record-call"), Some("tool"), None, None)

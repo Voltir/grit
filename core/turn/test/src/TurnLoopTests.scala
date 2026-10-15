@@ -6,10 +6,10 @@ import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.ToolUse
 
 import utest.*
-import TurnLoop.{Budget, Looped, Next, Pending, Round}
+import TurnLoop.{Budget, Next, Pending, Round}
 
-/** [[TurnLoop.next]] as a table, and [[TurnLoop.run]] over a scripted [[TurnLoop.Moves]]:
-  * which moves a loop makes, in which order, with what each call sees. No `Durable`.
+/** What [[TurnLoop]] decides, as tables: a turn's budget, what it does after each reply, and
+  * what each call is told. The steps its rounds make are [[TurnRoundTests]]'.
   */
 object TurnLoopTests extends TestSuite {
 
@@ -34,52 +34,6 @@ object TurnLoopTests extends TestSuite {
       Usage(Tokens(10), Tokens(2), Tokens.Zero, None),
       "m"
     )
-
-  /** Replies to each call as scripted, in order, noting every move: each call with the
-    * tools' use, each settled call with whether it runs or is refused. A fake of the turn's
-    * durable steps, so it may hold its log.
-    */
-  final class Scripted(
-      replies: Vector[Either[TurnFailure, Message.Assistant]],
-      recorded: Either[TurnFailure, Unit] = Right(())
-  ) extends TurnLoop.Moves {
-    // Replaced whole by `call`, which the loop under test makes on the test's one thread;
-    // read by the test's assertions after.
-    @caps.unsafe.untrackedCaptures
-    var made = Vector.empty[String]
-
-    def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant] = {
-      made = made :+ s"${round.step} $use"
-      replies.lift(round.index).getOrElse(Left(TurnFailure.Model("no reply scripted")))
-    }
-
-    def record(
-        round: Round,
-        reply: Message.Assistant,
-        calls: Vector[Pending]
-    ): Either[TurnFailure, Unit] = {
-      made = made :+ s"record ${round.index}"
-      recorded
-    }
-
-    def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit] = {
-      val how = pending match {
-        case Pending.Run(c) => s"run ${ToolCallId.value(c.id)}"
-        case Pending.Refused(c, _) => s"refuse ${ToolCallId.value(c.id)}"
-      }
-      made = made :+ s"settle ${round.index}:$index $how"
-      Right(())
-    }
-  }
-
-  private def run(
-      n: Int,
-      replies: Either[TurnFailure, Message.Assistant]*
-  ): (Either[TurnFailure, Looped], Vector[String]) = {
-    val moves = new Scripted(replies.toVector)
-    val looped = TurnLoop.run(budget(n), moves)
-    (looped, moves.made)
-  }
 
   val tests = Tests {
     test("a budget is at least 2 calls") {
@@ -141,75 +95,6 @@ object TurnLoopTests extends TestSuite {
     test("a call's tools are on before the budget's last call, and off from it") {
       Vector(0, 1, 2, 3).map(n => TurnLoop.use(budget(3), round(n))) ==>
         Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off, ToolUse.Off)
-    }
-
-    test("a reply that calls no tool answers at once") {
-      run(3, Right(reply("hi"))) ==> (
-        Right(Looped(reply("hi"), round(0), Vector(reply("hi")))),
-        Vector("call-model Auto")
-      )
-    }
-
-    test("each reply that calls tools is recorded, then each call settled in order") {
-      val first = reply("", Vector("a", "b"))
-      val second = reply("more", Vector("c"))
-      val (looped, made) = run(4, Right(first), Right(second), Right(reply("answer")))
-      made ==> Vector(
-        "call-model Auto",
-        "record 0",
-        "settle 0:0 run a",
-        "settle 0:1 run b",
-        "call-model:1 Auto",
-        "record 1",
-        "settle 1:0 run c",
-        "call-model:2 Auto"
-      )
-      looped ==> Right(Looped(reply("answer"), round(2), Vector(first, second, reply("answer"))))
-    }
-
-    test("the budget's last call is made with tools off, and its calls are dropped") {
-      val calling = reply("", Vector("a"))
-      val (looped, made) = run(2, Right(calling), Right(reply("so", Vector("b"))))
-      made ==> Vector("call-model Auto", "record 0", "settle 0:0 run a", "call-model:1 Off")
-      looped ==> Right(Looped(reply("so"), round(1), Vector(calling, reply("so", Vector("b")))))
-    }
-
-    test("a silent reply fails the turn") {
-      val (looped, made) = run(3, Right(reply("", Vector("a"))), Right(reply("")))
-      looped ==> Left(
-        TurnFailure.Model("the reply to call-model:1 said nothing and called no tool")
-      )
-      made.lastOption ==> Some("call-model:1 Auto")
-    }
-
-    test("a reply cut off at max tokens has its calls refused, not run") {
-      val cut = reply("", Vector("a"), StopReason.MaxTokens)
-      val (looped, made) = run(3, Right(cut), Right(reply("ok")))
-      made ==> Vector("call-model Auto", "record 0", "settle 0:0 refuse a", "call-model:1 Auto")
-      looped.map(_.answer) ==> Right(reply("ok"))
-    }
-
-    test("a failed call ends the loop with no move after it") {
-      val down = TurnFailure.Model("HTTP 529")
-      val (looped, made) = run(3, Right(reply("", Vector("a"))), Left(down))
-      looped ==> Left(down)
-      made.lastOption ==> Some("call-model:1 Auto")
-    }
-
-    test("a reply that cannot be recorded settles nothing") {
-      val moves = new Scripted(
-        Vector(Right(reply("", Vector("a")))),
-        recorded = Left(TurnFailure.Store("disk"))
-      )
-      TurnLoop.run(budget(3), moves) ==> Left(TurnFailure.Store("disk"))
-      moves.made ==> Vector("call-model Auto", "record 0")
-    }
-
-    test("from goes on after a first reply made elsewhere") {
-      val moves = new Scripted(Vector(Left(TurnFailure.Model("not called")), Right(reply("done"))))
-      TurnLoop.from(budget(3), reply("", Vector("a")), moves) ==>
-        Right(Looped(reply("done"), round(1), Vector(reply("", Vector("a")), reply("done"))))
-      moves.made ==> Vector("record 0", "settle 0:0 run a", "call-model:1 Auto")
     }
 
     test("the last call's note allows not having found it, and asks for no guess") {

@@ -2,17 +2,15 @@ package grit.turn
 
 import scala.concurrent.duration.*
 
-import grit.act.phase.{Awaited, Calling, Gated, WaitSteps, Waiting}
-import grit.core.act.Gates
+import grit.act.phase.{Awaited, Calling, WaitSteps, Waiting}
 import grit.core.approval.Approval
-import grit.core.clock.Clock
-import grit.core.durable.{Durable, Flow, Flows, StepName}
+import grit.core.durable.{Flow, Step}
 import grit.core.edge.Permit
-import grit.core.id.{ToolCallId, TurnRef}
+import grit.core.id.TurnRef
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-import grit.core.visibility.{Integrity, Label, Subject}
+import grit.core.visibility.Subject
 
 /** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
   * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
@@ -22,25 +20,6 @@ import grit.core.visibility.{Integrity, Label, Subject}
   * [[TurnFailure.Store]].
   */
 object TurnHosted {
-
-  /** `calls`, a round's free hosted calls by their slot and call id, each addressed to its
-    * tool's place in `offer` ([[TurnOffer.placeOf]]), grouped by place in the order each place
-    * is first called; a call whose tool has no place is left out.
-    */
-  def requests(
-      calls: Vector[(TurnTools.Slot, ToolCallId, Bound.Hosted)],
-      offer: TurnOffer
-  ): Vector[(Place, Vector[(TurnTools.Slot, Bound.Hosted)])] =
-    calls.foldLeft(Vector.empty[(Place, Vector[(TurnTools.Slot, Bound.Hosted)])]) {
-      case (done, (slot, _, hosted)) =>
-        offer.placeOf(hosted.tool).fold(done) { place =>
-          val q = (slot, hosted)
-          done.span(_._1 != place) match {
-            case (before, (at, sent) +: after) => (before :+ (at -> (sent :+ q))) ++ after
-            case _ => done :+ (place -> Vector(q))
-          }
-        }
-    }
 
   /** A `dispatch`, `reach` or `dispatch:n:j` step: `calls`, `turn`'s calls addressed to
     * `place`, let through by `permit`, sent to the edge serving it as requests made for the
@@ -68,104 +47,178 @@ object TurnHosted {
       .left
       .map(e => TurnFailure.Store(e.toString))
 
-  /** The call at `slot`, `hosted`, bound to a hosted tool addressed to `place`
-    * ([[TurnOffer.placeOf]]), settled: asked about first when it asks (`ask:n:j`, then the
-    * wait), and sent then (`dispatch:n:j`); a free one was sent with its round, and `sent`
-    * says whether it went to a serving edge then. Its outcome, the answer, or why there is
-    * none, is kept by `tool:n:j` through `settling`; once the edge rang, that step reads the
-    * answer from the request ([[Calling.answer]]); a call not sent, it reads whether the turn
-    * has an asker, to say why. It is sent as `pins` says ([[dispatch]]), and every read of its
-    * answer, or of why there is none, its wait's included, runs only while the turn knows no
-    * more than it was routed for (`pins.known`): after a rise the turn fails, saying to ask
-    * again, keeps no answer, and calls no model again.
+  /** A hosted call settled: asked about first when it asks (`ask:n:j`, then the wait of up to
+    * `answerWithin`), and sent then (`dispatch:n:j`); a free one was sent with its round, and
+    * [[TurnRound.Call.sent]] says whether it went to a serving edge then. Its outcome, the
+    * answer, or why there is none, is kept by `tool:n:j`; once the edge rang, that step reads
+    * the answer from the request ([[Calling.answer]]); a call not sent, it reads whether the
+    * turn has an asker, to say why. It is sent as `pins` says ([[dispatch]]), and every read of
+    * its answer, or of why there is none, its wait's included, runs only while the turn knows
+    * no more than it was routed for (`pins.known`): after a rise the turn fails, saying to ask
+    * again, keeps no answer, and calls no model again. A call approved whose tool has no place
+    * fails the turn, recording nothing.
     */
   private[turn] def settle(
-      hosting: TurnHosting,
-      slot: TurnTools.Slot,
-      call: ToolCallId,
-      hosted: Bound.Hosted,
-      place: Option[Place],
-      sent: Boolean,
-      answerWithin: FiniteDuration,
-      settling: TurnTools.Settling^,
-      clock: Clock^,
       pins: Turn.Picked,
-      level: Integrity
-  )(using d: Durable^): Either[TurnFailure, TurnTools.Settled] = {
+      answerWithin: FiniteDuration
+  ): Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, TurnTools.Settled]] = {
     import TurnJournal.given
-    val named = ToolName.value(hosted.tool)
-    val shown = hosted.shown
-    val outcome: Either[TurnFailure, Waited] =
-      Calling.gate(Gates.Asker(answerWithin), hosted) match {
-        case Gated.Free =>
-          Right(
-            if (sent) Waited.Phase(awaited(hosting, slot, place, pins.bound)) else Waited.Unsent
-          )
-        case Gated.Refused(o) => Right(Waited.Phase(Awaited.Known(o)))
-        case Gated.Ask(asked, within) =>
-          val entries = settling.entries
-          d.transact(slot.askStep, Subject.Turn(slot.turn))(
-            TurnTools.ask(entries, slot, call, asked, clock.now())
-          ).flatMap { _ =>
-            Flows.run(TurnHosted.approval(within), (), (slot, call)).merge match {
-              case Approval.Declined(reason) =>
-                Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason))))
-              case Approval.TimedOut => Right(Waited.Phase(Awaited.Known(Outcome.Unanswered)))
-              case Approval.Approved =>
-                val turn = slot.turn
-                for {
-                  to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
-                  went <- d.transact(TurnHostedSteps.dispatchOne(slot), Subject.Turn(turn))(
-                    dispatch(hosting, turn, to, Vector((slot, hosted)), Permit.Approved, pins)
-                  )
-                } yield
-                  if (went) Waited.Phase(awaited(hosting, slot, place, pins.bound))
-                  else Waited.Unsent
-            }
+    val waited: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Waited] =
+      Calling
+        .await[TurnRound.Hosting, TurnFailure](
+          WaitSteps(TurnRound.Names.expire, TurnRound.Names.abandon),
+          h => Waiting(h.slot.call, h.place, Subject.Turn(h.slot.turn), pins.bound)
+        )
+        .over[TurnRound.Env](r => r.hosting.requests)
+        .map(Waited.Phase(_))
+    // A call sent to no serving edge waits for nothing.
+    val awaited: Flow[TurnRound.Env, Either[TurnRound.Hosting, Waited], Nothing, Waited] =
+      Flow.either(waited, Flow.pass[Waited])
+    val sent = Step.transact[TurnRound.Env, Dispatching, Either[TurnFailure, Boolean]](
+      TurnRound.Names.dispatchOne,
+      d => Subject.Turn(d.slot.turn)
+    )(r =>
+      d =>
+        (tx: Tx^) ?=> {
+          val (h, turn) = (d.hosting, d.slot.turn)
+          r.hosted(h.call.at, h.call.pending) match {
+            case Some(hosted) =>
+              dispatch(r.hosting, turn, d.to, Vector((d.slot, hosted)), Permit.Approved, pins)
+            case None => Left(TurnRound.unbound(d.slot))
           }
+        }
+    )
+    val dispatched: Flow[TurnRound.Env, Dispatching, Nothing, Either[TurnFailure, Waited]] =
+      Flow
+        .step(sent)
+        .keeping
+        .map[Either[TurnFailure, Either[TurnRound.Hosting, Waited]]]((d, went) =>
+          went.map(w => if (w) Left(d.hosting) else Right(Waited.Unsent))
+        )
+        .andThen(
+          Flow.either(
+            Flow.pass[TurnFailure].map[Either[TurnFailure, Waited]](Left(_)),
+            awaited.map[Either[TurnFailure, Waited]](Right(_))
+          )
+        )
+    val approved: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, Waited]] =
+      Flow
+        .pass[TurnRound.Hosting]
+        .map(_.call)
+        .andThen(Flow.step(TurnRound.asked))
+        .keeping
+        .map[Either[TurnFailure, TurnRound.Hosting]]((h, kept) => kept.map(_ => h))
+        .andThen(
+          Flow.either(
+            Flow.pass[TurnFailure].map[Either[TurnFailure, Waited]](Left(_)),
+            Flow
+              .pass[TurnRound.Hosting]
+              .map(_.call)
+              .andThen(TurnRound.approval(answerWithin))
+              .keeping
+              .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, approval) =>
+                approval match {
+                  case Approval.Declined(reason) =>
+                    Left(Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason)))))
+                  case Approval.TimedOut =>
+                    Left(Right(Waited.Phase(Awaited.Known(Outcome.Unanswered))))
+                  case Approval.Approved =>
+                    h.place match {
+                      case Some(to) => Right(Dispatching(h, to))
+                      case None =>
+                        val named = ToolName.value(h.tool)
+                        Left(Left(TurnFailure.Store(s"$named has no workspace to go to")))
+                    }
+                }
+              )
+              .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
+          )
+        )
+    val came = Step[TurnRound.Env, Came, Either[TurnFailure, TurnTools.Settled]](
+      TurnRound.Names.tool
+    )(r =>
+      c => {
+        val (h, slot) = (c.hosting, c.slot)
+        r.hosted(h.call.at, h.call.pending) match {
+          case Some(hosted) =>
+            val (call, shown, level) = (h.call.id, hosted.shown, h.call.at.level)
+            val (settling, at) = (r.settling, r.now())
+            val (requests, askers) = (r.hosting.requests, r.hosting.askers)
+            // An edge's answer is believed at the declared output of the service the call went
+            // to; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
+            // edge's own claim never. One no edge gave is grit's own words, believed at the
+            // turn's level as a refusal is; but a person's reason for declining is theirs, and
+            // believed as the edge's would be.
+            val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
+            val own = Left(level)
+            c.waited match {
+              case Waited.Unsent =>
+                settling.answerFrom(slot, call, shown, own, at)(
+                  pins.known.map(_ => unsent(askers, slot.turn, h.place))
+                )
+              case Waited.Phase(Awaited.Answered(o)) =>
+                settling.answer(slot, call, shown, o, from, at)
+              case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
+                settling.answer(slot, call, shown, o, from, at)
+              case Waited.Phase(Awaited.Known(o)) => settling.answer(slot, call, shown, o, own, at)
+              case Waited.Phase(Awaited.Unread(failure)) =>
+                // A wait refused after a rise is unread too: the turn fails here, before its
+                // next call.
+                settling.answerFrom(slot, call, shown, own, at)(
+                  pins.known.map(_ => unreadable(failure))
+                )
+              case Waited.Phase(Awaited.Rung(cs)) =>
+                settling.answerFrom(slot, call, shown, from, at)(
+                  pins.known.map(_ =>
+                    Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
+                  )
+                )
+            }
+          case None => Left(TurnRound.unbound(slot))
+        }
       }
-    val (requests, askers) = (hosting.requests, hosting.askers)
-    // An edge's answer is believed at the declared output of the service the call went to; at
-    // no service (a directory, this machine), its tool's ([[Believed.at]]); the edge's own claim
-    // never. One no edge gave is grit's own words, believed at the turn's level as a refusal
-    // is; but a person's reason for declining is theirs, and believed as the edge's would be.
-    val from = place.flatMap(_.service).toRight(hosted.output.at(level))
-    val own = Left(level)
-    outcome.flatMap {
-      case Waited.Unsent =>
-        d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, own, clock.now())(
-            pins.known.map(_ => unsent(askers, slot.turn, place))
-          )
-        )
-      case Waited.Phase(Awaited.Answered(o)) =>
-        d.step(slot.step)(() => settling.answer(slot, call, shown, o, from, clock.now()))
-      case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
-        d.step(slot.step)(() => settling.answer(slot, call, shown, o, from, clock.now()))
-      case Waited.Phase(Awaited.Known(o)) =>
-        d.step(slot.step)(() => settling.answer(slot, call, shown, o, own, clock.now()))
-      case Waited.Phase(Awaited.Unread(failure)) =>
-        // A wait refused after a rise is unread too: the turn fails here, before its next call.
-        d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, own, clock.now())(
-            pins.known.map(_ => unreadable(failure))
-          )
-        )
-      case Waited.Phase(Awaited.Rung(cs)) =>
-        d.step(slot.step)(() =>
-          settling.answerFrom(slot, call, shown, from, clock.now())(
-            pins.known.map(_ =>
-              Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
+    )
+    Flow
+      .pass[TurnRound.Hosting]
+      .map[Either[TurnRound.Hosting, TurnRound.Hosting]](h => if (h.asks) Right(h) else Left(h))
+      .andThen(
+        Flow.either(
+          Flow
+            .pass[TurnRound.Hosting]
+            .map[Either[TurnRound.Hosting, Waited]](h =>
+              if (h.call.sent) Left(h) else Right(Waited.Unsent)
             )
-          )
+            .andThen(awaited)
+            .map[Either[TurnFailure, Waited]](Right(_)),
+          approved
         )
-    }
+      )
+      .keeping
+      .map((h, w) => w.map(Came(h, _)))
+      .andThen(
+        Flow.either(
+          Flow.pass[TurnFailure].map[Either[TurnFailure, TurnTools.Settled]](Left(_)),
+          Flow.step(came)
+        )
+      )
   }
 
   /** What a hosted call came to before its `tool:n:j` step: a phase's, or not sent. */
   private enum Waited {
     case Phase(awaited: Awaited[TurnFailure])
     case Unsent
+  }
+
+  /** `hosting`, approved, sent to `to`. */
+  private final case class Dispatching(hosting: TurnRound.Hosting, to: Place)
+      extends TurnRound.OfCall {
+    def slot: TurnTools.Slot = hosting.slot
+  }
+
+  /** `hosting`, as its wait, or its not being sent, left it. */
+  private final case class Came(hosting: TurnRound.Hosting, waited: Waited)
+      extends TurnRound.OfCall {
+    def slot: TurnTools.Slot = hosting.slot
   }
 
   /** Why a call of `turn` addressed to `workspace` was not sent: no asker, as `askers` reads it
@@ -185,31 +238,6 @@ object TurnHosted {
 
   private val NoAsker = "This turn has no asker to make this call for, so it did not run."
 
-  /** A person's answer about the gated call at a slot, waited for up to `within`
-    * ([[Calling.approval]]), the wait named `wait:n:j`.
-    */
-  private[turn] def approval(
-      within: FiniteDuration
-  ): Flow[Any, (TurnTools.Slot, ToolCallId), Nothing, Approval] =
-    Calling.approval(TurnHostedSteps.Wait, _._2, _ => within)
-
-  /** The request of the call at `slot` waited on ([[Calling.await]]), its silent edge's steps
-    * `expire:n:j` and `abandon:n:j`.
-    */
-  private def awaited(
-      hosting: TurnHosting,
-      slot: TurnTools.Slot,
-      workspace: Option[Place],
-      bound: Option[Label]
-  )(using d: Durable^): Awaited[TurnFailure] = {
-    import TurnJournal.given
-    val awaiting = Calling.await[TurnTools.Slot, TurnFailure](
-      WaitSteps(TurnHostedSteps.Expire, TurnHostedSteps.Abandon),
-      s => Waiting(s.call, workspace, Subject.Turn(s.turn), bound)
-    )
-    Flows.run(awaiting, hosting.requests, slot).merge
-  }
-
   private def unreadable(failure: TurnFailure): Outcome =
     Outcome.Failed(s"The request could not be read: $failure")
 
@@ -225,25 +253,4 @@ object TurnHosted {
           "No edge is serving this conversation's directory right now, so this call did not run."
       }
     )
-}
-
-/** The names of the steps a hosted call takes besides the loop's own, and of its waits: each
-  * the name [[Turn.Step]] gives it, which the turn's histories pin.
-  */
-private object TurnHostedSteps {
-  def dispatchOne(slot: TurnTools.Slot): String = Turn.Step.dispatchOne(slot.round, slot.index)
-
-  /** `expire:n:j` ([[Turn.Step.expire]]). */
-  val Expire: StepName[TurnTools.Slot] = StepName.keyed[TurnTools.Slot]("expire")(key)
-
-  /** `abandon:n:j` ([[Turn.Step.abandon]]). */
-  val Abandon: StepName[TurnTools.Slot] = StepName.keyed[TurnTools.Slot]("abandon")(key)
-
-  /** `wait:n:j`, a person's time to answer about the call ([[Turn.Step.Wait]]): a wait's label,
-    * never recorded.
-    */
-  val Wait: StepName[(TurnTools.Slot, ToolCallId)] =
-    StepName.keyed[(TurnTools.Slot, ToolCallId)]("wait")((slot, _) => key(slot))
-
-  private def key(slot: TurnTools.Slot): String = s"${slot.round.index}:${slot.index}"
 }

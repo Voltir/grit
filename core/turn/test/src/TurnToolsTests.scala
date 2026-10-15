@@ -6,7 +6,7 @@ import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
 import grit.core.tool.{
   Args,
@@ -145,6 +145,27 @@ object TurnToolsTests extends TestSuite {
       ranAt(said(Outcome.Done("x"))) ==> Right(Some(Integrity.Outside))
       ranAt(said(Outcome.Done("x", Some(Integrity.Untrusted)))) ==> Right(Some(Integrity.Untrusted))
       ranAt(said(Outcome.Failed("no"))) ==> Right(Some(Integrity.Outside))
+    }
+
+    test(
+      "a call's kind says which steps settle it, a hosted one's its tool and that tool's place"
+    ) {
+      val ws = new Files(files)
+      val box = Toolbox
+        .of[caps.CapSet^{ws}](peek(ws), poke(ws), hostedFetch, hostedProd)
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      def kind(name: String): TurnTools.Kind =
+        TurnTools.Kind.of(
+          TurnTools.read(box, call(name), Repairs.All, PublicReads, Integrity.Authority),
+          tool => Option.when(ToolName.value(tool) == "fetch")(Place.Everywhere)
+        )
+      Vector("nothing", "peek", "poke", "fetch", "prod").map(kind) ==> Vector(
+        TurnTools.Kind.Refused,
+        TurnTools.Kind.Free,
+        TurnTools.Kind.Gated,
+        TurnTools.Kind.Hosted(ToolName("fetch"), asks = false, Some(Place.Everywhere)),
+        TurnTools.Kind.Hosted(ToolName("prod"), asks = true, None)
+      )
     }
 
     test("a free call runs, and its result is kept under its fixed id") {
