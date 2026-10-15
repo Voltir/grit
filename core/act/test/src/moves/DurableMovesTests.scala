@@ -38,6 +38,7 @@ import grit.core.visibility.{
   Compartments,
   Integrity,
   Label,
+  Output,
   Party,
   RoomLabels,
   Visibility
@@ -96,7 +97,8 @@ final class MovesWorld(broken: Boolean, floor: Label = Label.Public) extends cap
           Cleared(Party.of(Summary).getOrElse(sys.error("no upstream")), floor),
           // The world's classifier is cleared for what it knows.
           Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
-        )
+        ),
+        outputs = Vector(Output(Probe, MovesContract.ProbeOutput))
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =

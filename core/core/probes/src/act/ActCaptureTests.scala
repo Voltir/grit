@@ -26,7 +26,7 @@ object ActCaptureTests extends TestSuite {
       |import grit.core.document.*
       |import grit.core.durable.*
       |import grit.core.id.*
-      |import grit.core.flow.Trusted
+      |import grit.core.flow.{Tainted, Trusted}
       |import grit.core.job.{JobRun, KeepingJob, PlainJob}
       |import grit.core.message.*
       |import grit.core.provider.*
@@ -52,6 +52,7 @@ object ActCaptureTests extends TestSuite {
       |object Names {
       |  def of(text: String): MoveName = MoveName.of(text).fold(sys.error, identity)
       |  val request: ModelRequest = ModelRequest("", Vector.empty)
+      |  def open[A](t: Tainted[A]): A = Trusted.asIs(t).extract
       |}
       |""".stripMargin
 
@@ -78,8 +79,8 @@ object ActCaptureTests extends TestSuite {
   private val keepAsks =
     """final class Asks extends Tallied {
       |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
-      |    moves.keep(Names.of("count")) { (keeper, at) =>
-      |      val _ = moves.ask(Names.of("inner"), Posed.Text(Names.request))
+      |    moves.keep(Names.of("count"), run.tainted) { (_, keeper, at) =>
+      |      val _ = moves.ask(Names.of("inner"), run.tainted.map(_ => Posed.Text(Names.request)))
       |      Right(Count(1))
       |    }.fold(_.toString, _.toString)
       |}
@@ -100,7 +101,7 @@ object ActCaptureTests extends TestSuite {
       |}
       |final class Later(key: DocKey, label: Label) extends Tallied {
       |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
-      |    moves.keep(Names.of("later")) { (keeper, at) => Right(() => keeper.current(key, label)) }
+      |    moves.keep(Names.of("later"), run.tainted) { (_, keeper, at) => Right(() => keeper.current(key, label)) }
       |      .fold(_.toString, _ => "later")
       |}
       |""".stripMargin
@@ -110,9 +111,9 @@ object ActCaptureTests extends TestSuite {
     """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
       |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val typed = grit.core.schema.Typed[String](schema, c =>
-      |      moves.ask(Names.of("inner"), Posed.Text(Names.request)).left.map(_.toString).map(_ => "read")
+      |      moves.ask(Names.of("inner"), run.tainted.map(_ => Posed.Text(Names.request))).left.map(_.toString).map(_ => "read")
       |    )
-      |    moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+      |    moves.ask(Names.of("count"), run.tainted.map(_ => Posed.Json("", Vector.empty, typed))).fold(_.toString, a => Names.open(a.reply))
       |  }
       |}
       |""".stripMargin
@@ -155,11 +156,11 @@ object ActCaptureTests extends TestSuite {
   private val usesMoves =
     """object Counter extends Counted {
       |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String =
-      |    moves.ask(Names.of("count"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+      |    moves.ask(Names.of("count"), run.tainted.map(_ => Posed.Text(Names.request))).fold(_.toString, a => Names.open(a.reply).toString)
       |}
       |final class Tally(key: DocKey, label: Label) extends Tallied {
       |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
-      |    moves.keep(Names.of("count")) { (keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
+      |    moves.keep(Names.of("count"), run.tainted) { (_, keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
       |      .fold(_.toString, _.toString)
       |}
       |""".stripMargin
@@ -168,9 +169,9 @@ object ActCaptureTests extends TestSuite {
     """final class Reads(schema: grit.core.schema.JsonSchema) extends Counted {
       |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
-      |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
-      |    val json = moves.ask(Names.of("json"), Posed.json("", Vector.empty, schema)).fold(_.toString, _.reply.text)
-      |    val asked = moves.ask(Names.of("text"), Posed.Text(Names.request)).fold(_.toString, _.reply.toString)
+      |    val shaped = moves.ask(Names.of("count"), run.tainted.map(_ => Posed.Json("", Vector.empty, typed))).fold(_.toString, a => Names.open(a.reply))
+      |    val json = moves.ask(Names.of("json"), run.tainted.map(_ => Posed.json("", Vector.empty, schema))).fold(_.toString, a => Names.open(a.reply).text)
+      |    val asked = moves.ask(Names.of("text"), run.tainted.map(_ => Posed.Text(Names.request))).fold(_.toString, a => Names.open(a.reply).toString)
       |    s"$shaped $json $asked"
       |  }
       |}
@@ -182,10 +183,10 @@ object ActCaptureTests extends TestSuite {
       |  def run(run: Trusted[JobRun[Count]], moves: Moves^): String = {
       |    val judged = Ask.score[String, Int]("How urgent is `text`?", Level(0, "not"), Level(1, "very"))
       |      .fold(_.toString, ask =>
-      |        moves.ask(Names.of("urgency"), Posed.judge("the build is red", ask)).fold(_.toString, _.reply.likeliest.toString)
+      |        moves.ask(Names.of("urgency"), run.tainted.map(_ => Posed.judge("the build is red", ask))).fold(_.toString, a => Names.open(a.reply).likeliest.toString)
       |      )
       |    val typed = grit.core.schema.Typed[String](schema, c => Right("read"))
-      |    val shaped = moves.ask(Names.of("count"), Posed.Json("", Vector.empty, typed)).fold(_.toString, _.reply)
+      |    val shaped = moves.ask(Names.of("count"), run.tainted.map(_ => Posed.Json("", Vector.empty, typed))).fold(_.toString, a => Names.open(a.reply))
       |    s"$judged $shaped"
       |  }
       |}

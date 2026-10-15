@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
+import grit.core.flow.Tainted
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -63,9 +64,9 @@ object Posed {
 }
 
 /** An ask's reply, and the most what it holds can be: what the ask was made from was read at
-  * no more than `at`.
+  * no more than `at`. The reply is believed as what it was posed from is.
   */
-final case class Asked[R](reply: R, at: Label)
+final case class Asked[R](reply: Tainted[R], at: Label)
 
 /** What a call came to. Never a person's decline or silence: a call whose tool asks first is
   * not sent under [[Gates.Closed]], and a planner's acting is closed.
@@ -73,13 +74,15 @@ final case class Asked[R](reply: R, at: Label)
 enum Called {
 
   /** The edge ran it: `text` is its answer, as the model would read it, holding nothing above
-    * `at`.
+    * `at`, and believed at most as what its service returns is
+    * ([[grit.core.visibility.Visibility.outputOf]]) and as its arguments are.
     */
-  case Done(text: String, at: Label)
+  case Done(text: Tainted[String], at: Label)
 
   /** It did not run, or failed: `why`. Nothing was sent when no edge serves the place's tool,
     * the tool is not advertised there or asks first, or the acting may not read from that place,
-    * send it the arguments, or write where they name (ADR 0031); no edge claimed it within
+    * send it the arguments, or write where they name (ADR 0031), or its arguments are believed
+    * less than its tool requires ([[Called.withheld]]); no edge claimed it within
     * `grit.act.phase.Calling.ServeWithin`; or the tool failed.
     */
   case Failed(why: String)
@@ -88,6 +91,19 @@ enum Called {
     * may have partly run.
     */
   case Interrupted
+}
+
+object Called {
+
+  /** A call not sent because its arguments are believed less than its tool requires, in words
+    * a person follows: `plainly`, what the tool does
+    * ([[grit.core.tool.ToolSet.Entry.plainly]]).
+    */
+  def withheld(plainly: String): Failed =
+    Failed(
+      s"This can't $plainly, because what it would send came from somewhere not trusted for " +
+        "that; nothing was sent."
+    )
 }
 
 /** A planner's moves (ADR 0034), each made under its run's [[Acting]] at most once, as durable
@@ -111,34 +127,38 @@ trait Moves {
     * the classifier's service) is cleared for what the conversation knows (ADR 0037): in
     * both, nothing is called. [[MoveError.Model]] when no catalog reads (for a text or JSON
     * ask), the provider or classifier fails after its retries, or the reply does not read
-    * ([[Posed.Json]]: after its repairs).
+    * ([[Posed.Json]]: after its repairs). Its reply is believed as `posed` is.
     */
-  def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]]
+  def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]]
 
   /** `tool`, named as a model is offered it (an MCP server's tool under its server's prefix),
     * called with `arguments` at `service`'s place (ADR 0017), for the acting's principal, with
     * the retry the serving edge advertises for it. A tool that writes outside grit names its
     * destination in `arguments`' `to`, as a model's call does ([[grit.core.tool.Writes.Field]]).
-    * Every refusal is a [[Called.Failed]], never a [[MoveError]].
+    * Every refusal is a [[Called.Failed]], never a [[MoveError]]: one whose `arguments` are
+    * believed less than the tool requires ([[grit.core.tool.ToolSet.Entry.requires]]) is
+    * [[Called.withheld]], and nothing is sent.
     */
   def call(
       name: MoveName,
       service: Service,
       tool: ToolName,
-      arguments: ujson.Obj
+      arguments: Tainted[ujson.Obj]
   ): Either[MoveError, Called]
 }
 
 /** [[Moves]], and the acting plugin's own documents. */
 trait Keeping extends Moves {
 
-  /** `body` over its plugin's documents, `at` the instant the move is made, in one transaction
-    * opened for the acting's subject and committed with the move's record: so written at no
-    * less than its floor. [[MoveError.Store]] when the store fails, another run wrote one of the
-    * same keys meanwhile, or `body` returns `Left`: nothing it wrote is kept, and the move counts
-    * as made.
+  /** `body` over `from`'s value and its plugin's documents, `at` the instant the move is made,
+    * in one transaction opened for the acting's subject and committed with the move's record:
+    * so written at no less than its floor, and believed at no more than `from` is
+    * ([[DocumentKeeper.believedAtMost]]). [[MoveError.Below]] when `from` is believed less than
+    * [[grit.core.visibility.Integrity.Outside]]: `body` does not run. [[MoveError.Store]] when
+    * the store fails, another run wrote one of the same keys meanwhile, or `body` returns
+    * `Left`: nothing it wrote is kept. Either way the move counts as made.
     */
-  def keep[A <: caps.Pure: Journaled](name: MoveName)(
-      body: (DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
+  def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
+      body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
 }

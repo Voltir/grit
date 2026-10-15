@@ -1,5 +1,6 @@
 package grit.turn
 
+import grit.core.act.Called
 import grit.core.id.{DocumentVersion, EntrySeq, ToolCallId}
 import grit.core.tool.{CallError, Retry, ToolName, ToolSet}
 import grit.core.visibility.Integrity
@@ -115,6 +116,10 @@ object PlainWordsTests extends TestSuite {
         Integrity.Untrusted
       )
       unplain(refused.message) ==> Vector.empty
+    }
+
+    test("a job's call withheld for what it came from is refused in words a person would follow") {
+      unplain(Called.withheld(offered.plainly(ToolName("slack_post"))).why) ==> Vector.empty
     }
 
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {

@@ -24,9 +24,11 @@ import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cleared,
   Compartments,
+  Integrity,
   Label,
   Labelled,
   Level,
+  Output,
   Party,
   RoomLabels,
   Subject,
@@ -84,7 +86,9 @@ object KnowledgeSyncLiveTests extends TestSuite {
       None
     )
 
-  /** Every room internal but `task:public`, GitHub's service trusted with `trusted`. */
+  /** Every room internal but `task:public`, GitHub's service trusted with `trusted` and its
+    * results believed at `Member`, so its cards are kept as they are read.
+    */
   private def visibility(trusted: Label): Visibility =
     Visibility
       .of(
@@ -101,7 +105,8 @@ object KnowledgeSyncLiveTests extends TestSuite {
           Cleared(Party.Service(github), trusted),
           // The turn's calls go to the stub, cleared as a deployment clears its pairs.
           Cleared(Party.of(StubModels.Ref).getOrElse(sys.error("the stub's party")), trusted)
-        )
+        ),
+        outputs = Vector(Output(github, Integrity.Member))
       )
       .fold(r => sys.error(r.toString), identity)
 

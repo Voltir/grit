@@ -5,13 +5,14 @@ import grit.core.act.Called
 import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
+import grit.core.flow.{Mint, Trusted}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.ToolName
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** What an ask's `move:{n}` step came to. */
 private[moves] enum AskMade {
@@ -133,8 +134,10 @@ private[moves] object CallMade {
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
   *   - `move:{n}:expire` and `move:{n}:abandon`: `{"state":"expired"|"claimed"}`,
   *     `{"answered":o}` (an [[grit.core.edge.OutcomeJson]]), or `{"store":w}`;
-  *   - `move:{n}:answer`: `{"done":{"text":t,"at":l}}`, `{"failed":w}`, `{"interrupted":true}`
-  *     or `{"store":w}`;
+  *   - `move:{n}:answer`: `{"done":{"text":t,"at":l,"integrity":i}}` (`i` an
+  *     [[grit.core.visibility.Integrity.written]]; read at the run's own when it has none, as
+  *     a record made before it held one), `{"failed":w}`, `{"interrupted":true}` or
+  *     `{"store":w}` ([[answered]]);
   *   - a keep's `move:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
   *     form as a string, or `{"store":w}` ([[kept]]).
   *
@@ -350,10 +353,19 @@ object MovesJournal {
       }
   )
 
-  given answered: Journaled[Either[String, Called]] = Journaled.json(
+  /** A call's `move:{n}:answer`, a done one without its integrity read at `start`, what the
+    * run starts believed at.
+    */
+  def answered(start: Integrity): Journaled[Either[String, Called]] = Journaled.json(
     {
       case Right(Called.Done(t, at)) =>
-        ujson.Obj("done" -> ujson.Obj("text" -> t, "at" -> Label.written(at)))
+        ujson.Obj(
+          "done" -> ujson.Obj(
+            "text" -> Trusted.asIs(t).extract,
+            "at" -> Label.written(at),
+            "integrity" -> Integrity.written(t.integrity)
+          )
+        )
       case Right(Called.Failed(why)) => ujson.Obj("failed" -> why)
       case Right(Called.Interrupted) => ujson.Obj("interrupted" -> true)
       case Left(why) => ujson.Obj("store" -> why)
@@ -371,7 +383,14 @@ object MovesJournal {
               d <- fields(done, "answer.done")
               t <- str(d, "text")
               l <- str(d, "at").flatMap(Label.read)
-            } yield Right(Called.Done(t, l))
+              i <- d
+                .get("integrity")
+                .fold(Right(start))(v =>
+                  v.strOpt
+                    .toRight("answer.done's integrity is not a string")
+                    .flatMap(Integrity.read)
+                )
+            } yield Right(Called.Done(Mint.tainted(t, i), l))
           case (_, Some(why), _, _) => Right(Right(Called.Failed(why)))
           case (_, _, Some(ujson.True), _) => Right(Right(Called.Interrupted))
           case (_, _, _, Some(ujson.Str(why))) => Right(Left(why))

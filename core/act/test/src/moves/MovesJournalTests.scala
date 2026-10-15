@@ -1,9 +1,11 @@
 package grit.act.moves
 
 import grit.core.act.Called
+import grit.core.act.MovesFixtures.shown
 import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
+import grit.core.flow.TestTainted
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Service
@@ -11,7 +13,7 @@ import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.{Label, Level}
+import grit.core.visibility.{Integrity, Label, Level}
 
 import utest.*
 
@@ -27,6 +29,21 @@ object MovesJournalTests extends TestSuite {
     j.encode(value) ==> written
     j.decode(written) ==> Right(value)
   }
+
+  /** The answer step `written` read back, its run starting at `start`: what it came to, and,
+    * when done, what it is believed at.
+    */
+  private def answer(
+      written: String,
+      start: Integrity = Integrity.Authority
+  ): Either[String, Either[String, (String, Option[Integrity])]] =
+    MovesJournal
+      .answered(start)
+      .decode(written)
+      .map(_.map {
+        case c @ Called.Done(text, _) => (shown(c), Some(text.integrity))
+        case other => (shown(other), None)
+      })
 
   private val message: Message.Assistant = Message.Assistant(
     Vector(AssistantBlock.Text("hello")),
@@ -242,14 +259,22 @@ object MovesJournalTests extends TestSuite {
       pinned[Either[String, RequestState]](Left("gone"), """{"store":"gone"}""")
     }
 
-    test("a call's answer step is written done with its label, failed, interrupted, or store") {
-      pinned[Either[String, Called]](
-        Right(Called.Done("read", Label.Public)),
-        """{"done":{"text":"read","at":"public"}}"""
-      )
+    test(
+      "a call's answer step is written done with its label and integrity, failed, interrupted, or store"
+    ) {
+      given Journaled[Either[String, Called]] = MovesJournal.answered(Integrity.Authority)
+      val done = Called.Done(TestTainted.at("read", Integrity.Member), Label.Public)
+      val written = """{"done":{"text":"read","at":"public","integrity":"member"}}"""
+      summon[Journaled[Either[String, Called]]].encode(Right(done)) ==> written
+      answer(written) ==> Right(Right(("Done(read,public)", Some(Integrity.Member))))
       pinned[Either[String, Called]](Right(Called.Failed("no")), """{"failed":"no"}""")
       pinned[Either[String, Called]](Right(Called.Interrupted), """{"interrupted":true}""")
       pinned[Either[String, Called]](Left("gone"), """{"store":"gone"}""")
+    }
+
+    test("a done answer recorded before it held its integrity is read at the run's own") {
+      answer("""{"done":{"text":"read","at":"public"}}""", Integrity.Outside) ==>
+        Right(Right(("Done(read,public)", Some(Integrity.Outside))))
     }
 
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside

@@ -2,6 +2,7 @@ package grit.core.act
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.durable.InMemoryDurable
+import grit.core.flow.Trusted
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
@@ -14,6 +15,17 @@ import grit.dbos.sql.TestTx
   * catalog, the estimator and the database a move reads through.
   */
 object MovesFixtures {
+
+  /** What a call came to, as the moves' tests and recorded runs' replies write it:
+    * `Done(text,label)`, `Failed(why)` or `Interrupted`, nothing said of what it is believed at.
+    */
+  def shown(called: Called): String = called match {
+    case Called.Done(text, at) => s"Done(${Trusted.asIs(text).extract},$at)"
+    case other => other.toString
+  }
+
+  /** `reply`, as believed. */
+  def replied[R](asked: Asked[R]): R = Trusted.asIs(asked.reply).extract
 
   /** Models whose every provider answers `answer`, at a priced cost, counting its calls and
     * keeping each request in [[requests]]; required to call a tool, it calls the request's first

@@ -1,6 +1,6 @@
 package grit.core.act
 
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** Why a move was not made. */
 enum MoveError {
@@ -23,6 +23,11 @@ enum MoveError {
     * what it is made from: a deployment's declaration, so asking again changes nothing.
     */
   case Uncleared(classification: Label)
+
+  /** What a keep was to write from is believed at `integrity`, less than
+    * [[Integrity.Outside]]: nothing was written, and the move counts as made.
+    */
+  case Below(integrity: Integrity)
 
   /** The store failed, or a keep's body returned `Left`: `why`. Nothing the move wrote is kept,
     * and the move counts as made: making it again under its name is [[Repeated]].

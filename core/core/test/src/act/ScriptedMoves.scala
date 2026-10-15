@@ -1,6 +1,7 @@
 package grit.core.act
 
 import grit.core.classify.{Answer, ClassifierError, Request}
+import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -12,7 +13,9 @@ import grit.core.tool.ToolName
   * [[Posed.Json.Repairs]] times, as the durable moves ask a model again (`jsons` is given the
   * same system text and messages each time, not the refusal the model is told); each judgment
   * by `judgments` (of what the classifier would be sent), the answers then read by its
-  * questions; each call by `calls`. A reply or answers that do not read are
+  * questions; each call by `calls`. A reply is believed as what it was posed from is, and a
+  * call's answer at the meet of what `calls` gives it and its arguments. A reply or answers
+  * that do not read are
   * [[MoveError.Model]] in the durable moves' words. Under the rules every [[Moves]] keeps,
   * which `grit.act.moves.MovesContract` holds it to beside the durable moves: a name made once,
   * by either kind, is [[MoveError.Repeated]] after, whatever the move came to; past `limits`, a
@@ -33,35 +36,55 @@ class ScriptedMoves(
   @caps.unsafe.untrackedCaptures
   var made: Vector[MoveName] = Vector.empty
 
-  def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
-    case Posed.Text(request) => making(name, MoveKind.Ask, limits.asks)(asks(request))
-    case Posed.Json(system, messages, reply) =>
-      def shaped(left: Int): Either[MoveError, Asked[R]] =
-        jsons(system, messages).flatMap { a =>
-          reply.schema
-            .check(a.reply, Set.empty)
-            .left
-            .map(m => s"its arguments do not match its schema: ${m.message}")
-            .flatMap(reply.read(_).left.map(why => s"its arguments do not read: $why"))
-            .map(Asked(_, a.at)) match {
-            case Left(_) if left > 0 => shaped(left - 1)
-            case read => read.left.map(MoveError.Model(_))
+  def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]] =
+    unbelieved(name, Trusted.asIs(posed).extract).map(a =>
+      Asked(TestTainted.at(Trusted.asIs(a.reply).extract, posed.integrity), a.at)
+    )
+
+  /** The ask `name` of `posed`, its reply as the scripts believe it. */
+  private def unbelieved[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] =
+    posed match {
+      case Posed.Text(request) => making(name, MoveKind.Ask, limits.asks)(asks(request))
+      case Posed.Json(system, messages, reply) =>
+        def shaped(left: Int): Either[MoveError, Asked[R]] =
+          jsons(system, messages).flatMap { a =>
+            reply.schema
+              .check(Trusted.asIs(a.reply).extract, Set.empty)
+              .left
+              .map(m => s"its arguments do not match its schema: ${m.message}")
+              .flatMap(reply.read(_).left.map(why => s"its arguments do not read: $why"))
+              .map(r => Asked(TestTainted.at(r, a.reply.integrity), a.at)) match {
+              case Left(_) if left > 0 => shaped(left - 1)
+              case read => read.left.map(MoveError.Model(_))
+            }
           }
-        }
-      making(name, MoveKind.Ask, limits.asks)(shaped(Posed.Json.Repairs))
-    case Posed.Judgment(request, questions) =>
-      making(name, MoveKind.Judge, limits.judgments)(judgments(request).flatMap { a =>
-        questions.read(a.reply).left.map(e => MoveError.Model(unanswered(e))).map(Asked(_, a.at))
-      })
-  }
+        making(name, MoveKind.Ask, limits.asks)(shaped(Posed.Json.Repairs))
+      case Posed.Judgment(request, questions) =>
+        making(name, MoveKind.Judge, limits.judgments)(judgments(request).flatMap { a =>
+          questions
+            .read(Trusted.asIs(a.reply).extract)
+            .left
+            .map(e => MoveError.Model(unanswered(e)))
+            .map(r => Asked(TestTainted.at(r, a.reply.integrity), a.at))
+        })
+    }
 
   def call(
       name: MoveName,
       service: Service,
       tool: ToolName,
-      arguments: ujson.Obj
+      arguments: Tainted[ujson.Obj]
   ): Either[MoveError, Called] =
-    making(name, MoveKind.Call, limits.calls)(calls(service, tool, arguments))
+    making(name, MoveKind.Call, limits.calls)(
+      calls(service, tool, Trusted.asIs(arguments).extract).map {
+        case Called.Done(text, at) =>
+          Called.Done(
+            TestTainted.at(Trusted.asIs(text).extract, text.integrity.meet(arguments.integrity)),
+            at
+          )
+        case other => other
+      }
+    )
 
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {

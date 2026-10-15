@@ -6,12 +6,12 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.act.{Keeping, MoveLimits, MoveName, Moves, Posed}
+import grit.core.act.{Called, Keeping, MoveLimits, MoveName, Moves, Posed}
 import grit.core.classify.{Ask, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
-import grit.core.flow.Trusted
+import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
   Declarer,
   DocKey,
@@ -117,34 +117,51 @@ object JobMovesLiveTests extends TestSuite {
     def write(params: NoParams.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, NoParams.type] = Right(NoParams)
     def run(run: Trusted[JobRun[NoParams.type]], moves: Moves^): String = {
+      val start = run.tainted
       val called = moves
         .call(
           JobMovesLiveTests.name("look"),
           probe,
           JobMovesLiveTests.read,
-          ujson.Obj("path" -> "a")
+          start.map(_ => ujson.Obj("path" -> "a"))
         )
-        .fold(_.toString, _.toString)
+        .fold(
+          e => start.map(_ => e.toString),
+          {
+            case Called.Done(text, at) => text.map(t => s"Done($t,$at)")
+            case other => start.map(_ => other.toString)
+          }
+        )
       val asked = moves
         .ask(
           JobMovesLiveTests.name("think"),
-          Posed.Text(ModelRequest("Say.", Vector(Message.User(called))))
+          called.map(c => Posed.Text(ModelRequest("Say.", Vector(Message.User(c)))))
         )
-        .fold(_.toString, _.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
+        .fold(
+          _.toString,
+          a => opened(a.reply).blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+        )
       val shaped = moves
         .ask(
           JobMovesLiveTests.name("shape"),
-          Posed.Json("Say.", Vector(Message.User("""#call:{"answer":"yes"}""")), answered)
+          start.map(_ =>
+            Posed.Json("Say.", Vector(Message.User("""#call:{"answer":"yes"}""")), answered)
+          )
         )
-        .fold(_.toString, _.reply)
+        .fold(_.toString, a => opened(a.reply))
       val weighed = moves
         .ask(
           JobMovesLiveTests.name("weigh"),
-          Posed.judge("~0.25", Ask.yesNo[String]("Is `new_message` urgent?", None, None))
+          start.map(_ =>
+            Posed.judge("~0.25", Ask.yesNo[String]("Is `new_message` urgent?", None, None))
+          )
         )
-        .fold(_.toString, _.reply.toString)
-      s"$called\n$asked\n$shaped\n$weighed"
+        .fold(_.toString, a => opened(a.reply).toString)
+      s"${opened(called)}\n$asked\n$shaped\n$weighed"
     }
+
+    /** `t`, as a reply line writes it. */
+    private def opened[A](t: Tainted[A]): A = Trusted.asIs(t).extract
   }
 
   private val assigned =
@@ -188,7 +205,7 @@ object JobMovesLiveTests extends TestSuite {
     def run(run: Trusted[JobRun[NoParams.type]], moves: Keeping^): String = {
       def keep(n: String, text: String, refuse: Boolean) =
         moves
-          .keep[Tallied](JobMovesLiveTests.name(n)) { (keeper, at) =>
+          .keep(JobMovesLiveTests.name(n), run.tainted) { (_, keeper, at) =>
             keeper
               .write(
                 DocKey.of("k").fold(sys.error, identity),

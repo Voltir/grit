@@ -60,7 +60,11 @@ object DurableKeepingTests extends TestSuite {
       val floor = Label.at(Level.Internal)
       val w = new MovesWorld(broken = false, floor)
       val keep = (m: Keeping^) =>
-        Got(m.keep[Kept](name("note"))((keeper, at) => write(keeper, "k", Label.Public, at)))
+        Got(
+          m.keep(name("note"), MovesContract.From)((_, keeper, at) =>
+            write(keeper, "k", Label.Public, at)
+          )
+        )
       val first = w.keeping(MoveLimits.Zero)(keep)
       val steps = w.durable.recordedSteps(Turn.workflowId)
       val counting = new Counting(w.keeper)

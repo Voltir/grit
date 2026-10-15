@@ -2,6 +2,7 @@ package grit.act.moves
 
 import java.time.Instant
 
+import grit.core.act.MovesFixtures.{replied, shown}
 import grit.core.act.{
   Asked,
   Called,
@@ -17,6 +18,7 @@ import grit.core.act.{
 import grit.core.classify.{Answer as Judged, Ask, StateJson}
 import grit.core.document.{DocText, Document, DocumentKeeper}
 import grit.core.durable.Journaled
+import grit.core.flow.{Tainted, TestTainted}
 import grit.core.id.DocKey
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Namespace, Place, Service}
@@ -67,12 +69,12 @@ abstract class MovesContract extends TestSuite {
       val got = within(limits(1, 1)) { m =>
         Seen(
           Vector(
-            m.ask(name("a"), Posed.Text(Request)).map(a => s"${text(a)} at ${a.at}"),
+            m.ask(name("a"), posed(Posed.Text(Request))).map(a => s"${text(a)} at ${a.at}"),
             called(m, "c")
           )
         )
       }
-      got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(Called.Done(Read, Floor).toString)))
+      got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(s"Done($Read,$Floor)")))
     }
 
     test("a name made once, by either kind, is Repeated after, and the move is not made") {
@@ -84,7 +86,7 @@ abstract class MovesContract extends TestSuite {
           Right(Answer),
           Left(MoveError.Repeated(name("a"))),
           Left(MoveError.Repeated(name("a"))),
-          Right(Called.Done(Read, Floor).toString),
+          Right(s"Done($Read,$Floor)"),
           Left(MoveError.Repeated(name("b")))
         )
       )
@@ -116,7 +118,7 @@ abstract class MovesContract extends TestSuite {
           Left(MoveError.Repeated(name("a"))),
           Right(Answer),
           Left(MoveError.OverLimit(MoveKind.Ask, 2)),
-          Right(Called.Done(Read, Floor).toString),
+          Right(s"Done($Read,$Floor)"),
           Left(MoveError.OverLimit(MoveKind.Call, 1))
         )
       )
@@ -237,11 +239,11 @@ abstract class MovesContract extends TestSuite {
       "a keep whose body is Left keeps none of its writes, is Store in its words, and its name is spent"
     ) {
       val (got, docs) = keeping(MoveLimits.Zero) { m =>
-        val refused = m.keep[Kept](name("a")) { (keeper, at) =>
+        val refused = m.keep[Unit, Kept](name("a"), From) { (_, keeper, at) =>
           write(keeper, "k", Label.Public, at).flatMap(_ => Left(StoreError.Invalid("not today")))
         }
-        val again = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "k", Label.Public, at))
-        val other = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", Label.Public, at))
+        val again = m.keep(name("a"), From)((_, keeper, at) => write(keeper, "k", Label.Public, at))
+        val other = m.keep(name("b"), From)((_, keeper, at) => write(keeper, "b", Label.Public, at))
         Seen(Vector(refused, again, other).map(_.map(_.label)))
       }
       (got, docs.map(d => DocKey.value(d.key))) ==> (
@@ -256,13 +258,93 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test(
+      "a keep from what is believed less than Outside is Below: its body does not run, nothing is written, and its name is spent"
+    ) {
+      val (got, docs) = keeping(MoveLimits.Zero) { m =>
+        val low = m.keep(name("a"), TestTainted.at((), Integrity.Untrusted))((_, keeper, at) =>
+          write(keeper, "a", Label.Public, at)
+        )
+        val again = m.keep(name("a"), From)((_, keeper, at) => write(keeper, "a", Label.Public, at))
+        Seen(Vector(low, again).map(_.map(_.label)))
+      }
+      (got, docs) ==> (
+        Seen(
+          Vector(Left(MoveError.Below(Integrity.Untrusted)), Left(MoveError.Repeated(name("a"))))
+        ),
+        Vector()
+      )
+    }
+
+    test(
+      "a keep's body is given what it keeps from, and its documents are believed at no more than that"
+    ) {
+      val (_, docs) = keeping(MoveLimits.Zero) { m =>
+        Seen(
+          Vector(
+            m.keep(name("o"), TestTainted.at("outside", Integrity.Outside))((k, keeper, at) =>
+              write(keeper, k, Label.Public, at)
+            ),
+            m.keep(name("a"), TestTainted.at("authority", Integrity.Authority))((k, keeper, at) =>
+              write(keeper, k, Label.Public, at)
+            )
+          ).map(_.map(_.label))
+        )
+      }
+      docs.map(d => (DocKey.value(d.key), Integrity.written(d.integrity))).sorted ==>
+        Vector(("authority", "member"), ("outside", "outside"))
+    }
+
+    test("an ask's reply is believed as what it was posed from, whatever its shape") {
+      given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+      val got = within(limits(2, 0)) { m =>
+        Seen(
+          Vector(
+            m.ask(name("t"), TestTainted.at(Posed.Text(Request), Integrity.Outside))
+              .map(a => Integrity.written(a.reply.integrity)),
+            m.ask(
+              name("j"),
+              TestTainted.at(
+                Posed.json(Request.system, Request.messages, AnswerSchema),
+                Integrity.Untrusted
+              )
+            ).map(a => Integrity.written(a.reply.integrity)),
+            m.ask(
+              name("k"),
+              TestTainted.at(
+                Posed.judge(State, Ask.yesNo[String]("Is `text` urgent?", None, None)),
+                Integrity.Authority
+              )
+            ).map(a => Integrity.written(a.reply.integrity))
+          )
+        )
+      }
+      got ==> Seen(Vector(Right("outside"), Right("untrusted"), Right("authority")))
+    }
+
+    test(
+      "a call's answer is believed at the meet of what its service's results are and what its arguments are"
+    ) {
+      val got = within(limits(0, 2)) { m =>
+        Seen(
+          Vector(Integrity.Authority, Integrity.Outside).zipWithIndex.map((i, n) =>
+            m.call(name(s"c$n"), Probe, Tool, TestTainted.at(Args, i)).map {
+              case Called.Done(text, _) => Integrity.written(text.integrity)
+              case other => shown(other)
+            }
+          )
+        )
+      }
+      got ==> Seen(Vector(Right(Integrity.written(ProbeOutput)), Right("outside")))
+    }
+
     test("a keep writes at no less than its floor: below it at the floor, above it as asked") {
       val above = Label.at(Level.Restricted)
       val (got, docs) = keeping(MoveLimits.Zero) { m =>
         Seen(
           Vector(
-            m.keep[Kept](name("low"))((keeper, at) => write(keeper, "low", Label.Public, at)),
-            m.keep[Kept](name("high"))((keeper, at) => write(keeper, "high", above, at))
+            m.keep(name("low"), From)((_, keeper, at) => write(keeper, "low", Label.Public, at)),
+            m.keep(name("high"), From)((_, keeper, at) => write(keeper, "high", above, at))
           ).map(_.map(_.label))
         )
       }
@@ -275,7 +357,7 @@ abstract class MovesContract extends TestSuite {
     test("keeps are not limited, and count against no other kind's limit") {
       val (got, docs) = keeping(limits(1, 0)) { m =>
         val kept = Vector("a", "b", "c").map(n =>
-          m.keep[Kept](name(n))((keeper, at) => write(keeper, n, Label.Public, at)).map(_.label)
+          m.keep(name(n), From)((_, keeper, at) => write(keeper, n, Label.Public, at)).map(_.label)
         )
         Seen(kept ++ Vector(asked(m, "d"), called(m, "e")))
       }
@@ -293,8 +375,8 @@ abstract class MovesContract extends TestSuite {
     test("a keep named as an earlier ask is Repeated, and so is an ask or call named as a keep") {
       val (got, docs) = keeping(limits(2, 1)) { m =>
         val first = asked(m, "a")
-        val keptA = m.keep[Kept](name("a"))((keeper, at) => write(keeper, "a", Label.Public, at))
-        val keptB = m.keep[Kept](name("b"))((keeper, at) => write(keeper, "b", Label.Public, at))
+        val keptA = m.keep(name("a"), From)((_, keeper, at) => write(keeper, "a", Label.Public, at))
+        val keptB = m.keep(name("b"), From)((_, keeper, at) => write(keeper, "b", Label.Public, at))
         Seen(Vector(first, keptA.map(_.label), keptB.map(_.label), asked(m, "b"), called(m, "b")))
       }
       (got, docs.map(d => DocKey.value(d.key))) ==> (
@@ -349,22 +431,22 @@ object MovesContract {
 
   /** The ask `n` of [[Request]] through `m`: its text. */
   def asked(m: Moves^, n: String): Either[MoveError, String] =
-    m.ask(name(n), Posed.Text(Request)).map(text)
+    m.ask(name(n), posed(Posed.Text(Request))).map(text)
 
   /** The JSON ask `n` of [[Request]]'s system text and messages, held to [[AnswerSchema]],
     * through `m`: its conforming JSON's text and the label it was read at.
     */
   def shaped(m: Moves^, n: String): Either[MoveError, String] =
-    m.ask(name(n), Posed.json(Request.system, Request.messages, AnswerSchema))
-      .map(a => s"${a.reply.text} at ${a.at}")
+    m.ask(name(n), posed(Posed.json(Request.system, Request.messages, AnswerSchema)))
+      .map(a => s"${replied(a).text} at ${a.at}")
 
   /** The judgment `n`, whether [[State]] is urgent, through `m`: its probability of yes and the
     * label it was read at.
     */
   def judged(m: Moves^, n: String): Either[MoveError, String] = {
     given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
-    m.ask(name(n), Posed.judge(State, Ask.yesNo[String]("Is `text` urgent?", None, None)))
-      .map(a => s"${a.reply} at ${a.at}")
+    m.ask(name(n), posed(Posed.judge(State, Ask.yesNo[String]("Is `text` urgent?", None, None))))
+      .map(a => s"${replied(a)} at ${a.at}")
   }
 
   /** The state every judgment is about. */
@@ -375,7 +457,7 @@ object MovesContract {
 
   /** The call `n` of [[Tool]] at [[Probe]] through `m`: its result. */
   def called(m: Moves^, n: String): Either[MoveError, String] =
-    m.call(name(n), Probe, Tool, Args).map(_.toString)
+    m.call(name(n), Probe, Tool, TestTainted.at(Args, Believed)).map(shown)
 
   /** What an ask is answered. */
   val Answer = "hello"
@@ -416,6 +498,18 @@ object MovesContract {
 
   val Args: ujson.Obj = ujson.Obj("path" -> "a")
 
+  /** What every move is made from is believed at, unless a test says: [[Integrity.Member]]. */
+  val Believed: Integrity = Integrity.Member
+
+  /** `p`, posed from what is believed at [[Believed]]. */
+  def posed[R](p: Posed[R]): Tainted[Posed[R]] = TestTainted.at(p, Believed)
+
+  /** What a keep keeps from unless a test says: nothing, at [[Believed]]. */
+  val From: Tainted[Unit] = TestTainted.at((), Believed)
+
+  /** What [[Probe]]'s results are believed at: [[Integrity.Member]]. */
+  val ProbeOutput: Integrity = Integrity.Member
+
   val Request: ModelRequest = ModelRequest("Say hello.", Vector(Message.User("hi")))
 
   def name(n: String): MoveName =
@@ -425,7 +519,7 @@ object MovesContract {
     MoveLimits.of(asks, calls).fold(e => throw new java.lang.AssertionError(e), identity)
 
   def text(a: Asked[Message.Assistant]): String =
-    a.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+    replied(a).blocks.collect { case AssistantBlock.Text(t) => t }.mkString
 
   /** A move error's case name, and its name when it is `Repeated`. */
   def kind(e: MoveError): String = e match {

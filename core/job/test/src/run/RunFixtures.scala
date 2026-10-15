@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar}
+import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar, replied, shown}
 import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
 import grit.core.classify.{Answers, Ask, ClassifierError, Criterion, Decision, StateJson}
 import grit.core.clock.SetClock
@@ -21,7 +21,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.flow.Trusted
+import grit.core.flow.{TestTainted, Trusted}
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -117,7 +117,7 @@ object RunFixtures {
     def read(params: ujson.Value): Either[String, Count] = remind.read(params)
     def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       moves
-        .keep[Noted](move("note")) { (keeper, at) =>
+        .keep(move("note"), run.tainted) { (_, keeper, at) =>
           (for {
             key <- DocKey.of("count")
             text <- DocText.of(s"counted ${run.extract.params.n}")
@@ -229,17 +229,28 @@ object RunFixtures {
     private val recording = new RecordingLedger(ledger, switches, failRecord)
 
     /** An edge serving [[Probe]], advertising [[Read]] (free, interrupted if cut short) and
-      * [[Asks]] (asking first); when `answers`, it claims and answers each request
+      * [[Asks]] (asking first), and, when `guarded`, [[Guarded]] (requiring `Member`, done as
+      * "read guarded paths"); when `answers`, it claims and answers each request
       * `Done("read")` and rings its run as it is written.
       */
-    def serve(answers: Boolean = true): Unit = {
+    def serve(answers: Boolean = true, guarded: Boolean = false): Unit = {
       val edge = edges.register(Set(Probe.place), PrincipalId.Grit)
+      val guard = ToolSet.Entry(
+        Guarded,
+        "Reads a guarded path.",
+        Schema,
+        false,
+        Retry.Rerun,
+        None,
+        Integrity.Member,
+        Some("read guarded paths")
+      )
       val set = ToolSet
         .of(
           Vector(
             ToolSet.Entry(Read, "Reads a path.", Schema, asks = false, Retry.Interrupt),
             ToolSet.Entry(Asks, "Asks first.", Schema, asks = true, Retry.Rerun)
-          )
+          ) ++ Option.when(guarded)(guard)
         )
         .fold(d => sys.error(d.toString), identity)
       val _ = toolSets.keep(set)(using TestTx.fake)
@@ -422,6 +433,8 @@ object RunFixtures {
   val Read: ToolName = ToolName("probe_read")
 
   /** A tool the edge at [[Probe]] runs only once a person approves. */
+  val Guarded: ToolName = ToolName("probe_guarded")
+
   val Asks: ToolName = ToolName("probe_ask")
 
   val Schema: ujson.Value =
@@ -443,7 +456,7 @@ object RunFixtures {
     * error.
     */
   def said(asked: Either[MoveError, Asked[Message.Assistant]]): String =
-    asked.fold(_.toString, _.reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
+    asked.fold(_.toString, replied(_).blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
 
   /** `remind` at `version`, its parameters a count, replying what `plan` makes of its count and
     * moves, within `limits`.
@@ -522,20 +535,27 @@ object RunFixtures {
     */
   val probes: (Count, Moves^) -> String =
     (n, m) => {
-      def call() = m.call(move("c"), Probe, Read, ujson.Obj("path" -> "a"))
+      def call() = m.call(move("c"), Probe, Read, TestTainted.authority(ujson.Obj("path" -> "a")))
       def ask(about: String) =
-        said(m.ask(move("a"), Posed.Text(ModelRequest("Count.", Vector(Message.User(about))))))
+        said(
+          m.ask(
+            move("a"),
+            TestTainted.authority(Posed.Text(ModelRequest("Count.", Vector(Message.User(about)))))
+          )
+        )
       n.n match {
         case 1 => ask("to 1")
-        case 2 => call().fold(_.toString, _.toString)
+        case 2 => call().fold(_.toString, shown)
         case 4 =>
-          m.ask(move("a"), Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
-            .fold(_.toString, _.reply)
+          m.ask(
+            move("a"),
+            TestTainted.authority(Posed.Json("Count.", Vector(Message.User("to 4")), Answered))
+          ).fold(_.toString, replied)
         case 5 =>
-          m.ask(move("j"), Posed.judge("the build is red", Weighed))
-            .fold(_.toString, a => s"${a.reply._1} ${a.reply._2.choice}")
+          m.ask(move("j"), TestTainted.authority(Posed.judge("the build is red", Weighed)))
+            .fold(_.toString, a => s"${replied(a)._1} ${replied(a)._2.choice}")
         case _ =>
-          val called = call().fold(_.toString, _.toString)
+          val called = call().fold(_.toString, shown)
           s"$called\n${ask(called)}"
       }
     }

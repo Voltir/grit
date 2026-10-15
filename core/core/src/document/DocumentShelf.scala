@@ -66,3 +66,35 @@ trait DocumentKeeper extends DocumentShelf {
       Tx^
   ): Either[StoreError, Option[DocumentVersion]]
 }
+
+object DocumentKeeper {
+
+  /** `keeper`, each document it writes believed at the meet of the integrity given and `most`.
+    */
+  def believedAtMost(keeper: DocumentKeeper, most: Integrity): DocumentKeeper =
+    new AtMost(keeper, most)
+
+  private final class AtMost(keeper: DocumentKeeper, most: Integrity) extends DocumentKeeper {
+
+    def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
+      keeper.current(key, label)
+
+    def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
+
+    def write(
+        key: DocKey,
+        label: Label,
+        integrity: Integrity,
+        place: Place,
+        text: DocText,
+        data: ujson.Value,
+        pointer: Option[Pointer],
+        at: Instant
+    )(using Tx^): Either[StoreError, Written] =
+      keeper.write(key, label, integrity.meet(most), place, text, data, pointer, at)
+
+    def withdraw(key: DocKey, label: Label, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[DocumentVersion]] = keeper.withdraw(key, label, at)
+  }
+}

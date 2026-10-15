@@ -3,6 +3,7 @@ package grit.act.moves
 import grit.core.act.{Asked, Called, Keeping, MoveError, MoveLimits, Moves, ScriptedKeeping}
 import grit.core.classify.Answer as Judged
 import grit.core.document.Document
+import grit.core.flow.TestTainted
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
@@ -40,16 +41,19 @@ object ScriptedMovesTests extends MovesContract {
       Floor,
       MovesWorld.Notes,
       MovesWorld.NotesTerms,
-      _ => if (broken) Left(MoveError.Store("down")) else Right(Asked(answer, Floor)),
+      _ =>
+        if (broken) Left(MoveError.Store("down"))
+        else Right(Asked(TestTainted.authority(answer), Floor)),
       (service, tool, _) =>
-        if (service == Probe && tool == Tool) Right(Called.Done(Read, Floor))
+        if (service == Probe && tool == Tool)
+          Right(Called.Done(TestTainted.at(Read, ProbeOutput), Floor))
         else Right(Called.Failed("unadvertised")),
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(replies.next(), Floor)),
+        else Right(Asked(TestTainted.authority(replies.next()), Floor)),
       _ =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(Vector(judgment), Floor))
+        else Right(Asked(TestTainted.authority(Vector(judgment)), Floor))
     )
   }
 

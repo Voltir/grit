@@ -15,7 +15,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.flow.TestTainted
+import grit.core.flow.{Tainted, TestTainted}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
@@ -23,7 +23,7 @@ import grit.core.place.Service
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
-import grit.core.visibility.{Compartment, Label, Level}
+import grit.core.visibility.{Compartment, Integrity, Label, Level}
 import grit.knowledge.card.{CardKey, CardMoves, Phase, UnitVersion}
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
 
@@ -105,12 +105,14 @@ object SyncTests extends TestSuite {
     ) ++ b.map(n => "docs/b.md" -> file(n, "Testing the app."))
 
   /** Each call's answer: `answers`' text for its `path`, at `raised`' label for that path or
-    * else `at`; `Failed` for a path it lacks, or, when `refused`, for every call, saying so.
+    * else `at`, believed at `believed`' integrity for that path or else `Member`; `Failed` for a
+    * path it lacks, or, when `refused`, for every call, saying so.
     */
   private def answer(
       answers: Map[String, String],
       at: Label,
       raised: Map[String, Label],
+      believed: Map[String, Integrity],
       refused: Option[String],
       args: ujson.Obj
   ): Either[MoveError, Called] =
@@ -118,8 +120,11 @@ object SyncTests extends TestSuite {
       val path = args.value.get("path").flatMap(_.strOpt)
       path
         .flatMap(answers.get)
-        .fold(Called.Failed("Not Found"))(
-          Called.Done(_, path.flatMap(raised.get).getOrElse(at))
+        .fold(Called.Failed("Not Found"))(text =>
+          Called.Done(
+            TestTainted.at(text, path.flatMap(believed.get).getOrElse(Integrity.Member)),
+            path.flatMap(raised.get).getOrElse(at)
+          )
         )
     }(Called.Failed(_)))
 
@@ -159,7 +164,12 @@ object SyncTests extends TestSuite {
     val text = sent(system, messages)
     val label = raised.collectFirst { case (path, l) if text.contains(path) => l }.getOrElse(at)
     def said(summary: String, terms: String*): Either[MoveError, Asked[ujson.Value]] =
-      Right(Asked(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms)), label))
+      Right(
+        Asked(
+          TestTainted.authority(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms))),
+          label
+        )
+      )
     summaries match {
       case Summaries.Capped(path) if text.contains(path) => Left(MoveError.Capped)
       case Summaries.Uncleared(path, l) if text.contains(path) => Left(MoveError.Uncleared(l))
@@ -173,7 +183,8 @@ object SyncTests extends TestSuite {
 
   /** A run's moves at `at`: calls answered from `answers` (each refused, saying `refused`,
     * when given), asks as `summaries`, keeps into `documents`. A call reading a path in
-    * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there.
+    * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there; a
+    * call reading a path in `believedAt` is believed at its integrity there.
     */
   private def keeping(
       at: Label,
@@ -182,7 +193,8 @@ object SyncTests extends TestSuite {
       summaries: Summaries = Summaries.Fixed,
       refused: Option[String] = None,
       readAt: Map[String, Label] = Map.empty,
-      summaryAt: Map[String, Label] = Map.empty
+      summaryAt: Map[String, Label] = Map.empty,
+      believedAt: Map[String, Integrity] = Map.empty
   ): ScriptedKeeping =
     new ScriptedKeeping(
       sync.limits,
@@ -190,7 +202,7 @@ object SyncTests extends TestSuite {
       plugin,
       terms,
       _ => Left(MoveError.Model("no text ask")),
-      (_, _, args) => answer(answers, at, readAt, refused, args),
+      (_, _, args) => answer(answers, at, readAt, believedAt, refused, args),
       // Positional, not named: a named argument is lifted into a local whose inferred type
       // keeps `Vector`'s internal array (docs/capture-checking.md).
       (system, messages) => reply(summaries, at, summaryAt, system, messages),
@@ -240,22 +252,22 @@ object SyncTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var seen: Vector[Vector[(String, Label)]] = Vector.empty
 
-    def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] =
+    def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]] =
       inner.ask(name, posed)
 
     def call(
         name: MoveName,
         service: Service,
         tool: ToolName,
-        arguments: ujson.Obj
+        arguments: Tainted[ujson.Obj]
     ): Either[MoveError, Called] = inner.call(name, service, tool, arguments)
 
-    def keep[A <: caps.Pure: Journaled](name: MoveName)(
-        body: (DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
+    def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
+        body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
     ): Either[MoveError, A] =
       if (failing.contains(name)) Left(MoveError.Store(clash))
       else {
-        val kept = inner.keep(name)(body)
+        val kept = inner.keep(name, from)(body)
         seen = seen :+ held(inner)
         kept
       }
@@ -361,6 +373,27 @@ object SyncTests extends TestSuite {
       val reply = runOf(k)
       (reply, held(inner)) ==> (
         line(written = 1, left = 1, stopped = Some(s"keeping the card of docs/b.md: $clash")),
+        Vector(("docs/a.md", floor))
+      )
+    }
+
+    test(
+      "a card made from what is believed less than Outside is not kept, and the run stops saying why in words a person follows"
+    ) {
+      val k = keeping(
+        floor,
+        new InMemoryDocuments,
+        believedAt = Map("docs/b.md" -> Integrity.Untrusted)
+      )
+      val reply = runOf(k)
+      (reply, held(k)) ==> (
+        line(
+          written = 1,
+          left = 1,
+          stopped = Some(
+            "keeping the card of docs/b.md: it came from somewhere not trusted enough to keep"
+          )
+        ),
         Vector(("docs/a.md", floor))
       )
     }

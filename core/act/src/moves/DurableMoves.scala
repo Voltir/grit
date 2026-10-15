@@ -21,7 +21,7 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Durable, Journaled}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.flow.{Mint, Trusted}
+import grit.core.flow.{Mint, Tainted, Trusted}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.job.JobRun
 import grit.core.message.{AssistantBlock, Message}
@@ -31,7 +31,7 @@ import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
-import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
+import grit.core.tool.{Bound, CallError, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Label, Subject}
 
 /** A planner's moves as durable steps ([[MoveSteps]]), over [[Asking]] and [[Calling]]. */
@@ -71,17 +71,22 @@ object DurableMoves {
   ) extends Run(acting, limits, env),
         Keeping {
 
-    def keep[A <: caps.Pure: Journaled](name: MoveName)(
-        body: (DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
+    def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
+        body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
     ): Either[MoveError, A] =
       refused(name, MoveKind.Keep).toLeft(()).flatMap { _ =>
-        given Journaled[Either[String, A]] = MovesJournal.kept[A]
-        val (savepoints, clock, kept) = (env.records.savepoints, env.clock, keeper)
-        d.transact(MoveSteps.keep(name), subject) {
-          val at = clock.now()
-          savepoints.atomic((tx: Tx^) ?=> body(kept, at)(using tx)).left.map(describe)
-        }.left
-          .map(MoveError.Store(_))
+        if (!from.integrity.dominates(Integrity.Outside)) Left(MoveError.Below(from.integrity))
+        else {
+          given Journaled[Either[String, A]] = MovesJournal.kept[A]
+          val (savepoints, clock) = (env.records.savepoints, env.clock)
+          val kept = DocumentKeeper.believedAtMost(keeper, from.integrity)
+          val value = Trusted.asIs(from).extract
+          d.transact(MoveSteps.keep(name), subject) {
+            val at = clock.now()
+            savepoints.atomic((tx: Tx^) ?=> body(value, kept, at)(using tx)).left.map(describe)
+          }.left
+            .map(MoveError.Store(_))
+        }
       }
   }
 
@@ -140,18 +145,22 @@ object DurableMoves {
       MoveError.Diverged(name)
     }
 
-    def ask[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] = posed match {
-      case Posed.Text(request) => text(name, request)
-      case Posed.Json(system, messages, reply) => json(name, system, messages, reply)
-      case Posed.Judgment(request, questions) => judgment(name, request, questions)
+    def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]] = {
+      val believed = posed.integrity
+      Trusted.asIs(posed).extract match {
+        case Posed.Text(request) => text(name, request, believed)
+        case Posed.Json(system, messages, reply) => json(name, system, messages, reply, believed)
+        case Posed.Judgment(request, questions) => judgment(name, request, questions, believed)
+      }
     }
 
-    /** The text ask `name` of `request`: its step, recorded form and digest are the ones every
-      * job's history holds.
+    /** The text ask `name` of `request`, its reply `believed` at that: its step, recorded form
+      * and digest are the ones every job's history holds.
       */
     private def text(
         name: MoveName,
-        request: ModelRequest
+        request: ModelRequest,
+        believed: Integrity
     ): Either[MoveError, Asked[Message.Assistant]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
         import MovesJournal.given
@@ -171,17 +180,21 @@ object DurableMoves {
           }
         }
         settled(name, made, MovesJournal.sameAsk(made.digest, request)) {
-          case AskMade.Made(_, message, at, _) => Some(Right(Asked(message, at)))
+          case AskMade.Made(_, message, at, _) =>
+            Some(Right(Asked(Mint.tainted(message, believed), at)))
           case _ => None
         }
       }
 
-    /** The JSON ask `name` of `system` then `messages`, its reply read by `reply`. */
+    /** The JSON ask `name` of `system` then `messages`, its reply read by `reply` and `believed`
+      * at that.
+      */
     private def json[T](
         name: MoveName,
         system: String,
         messages: Vector[Message],
-        reply: Typed[T]
+        reply: Typed[T],
+        believed: Integrity
     ): Either[MoveError, Asked[T]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
         import MovesJournal.given
@@ -225,16 +238,19 @@ object DurableMoves {
           }
         }
         settled(name, made, MovesJournal.sameJson(made.digest, system, messages, reply.schema)) {
-          case AskMade.Shaped(_, written, at, _) => Some(readBack(reply, written).map(Asked(_, at)))
+          case AskMade.Shaped(_, written, at, _) =>
+            Some(readBack(reply, written).map(r => Asked(Mint.tainted(r, believed), at)))
           case _ => None
         }
       }
 
-    /** The judgment `name` of `request`, its answers read by `questions`. */
+    /** The judgment `name` of `request`, its answers read by `questions` and `believed` at that.
+      */
     private def judgment[T](
         name: MoveName,
         request: Request,
-        questions: Ask[?, T]
+        questions: Ask[?, T],
+        believed: Integrity
     ): Either[MoveError, Asked[T]] =
       refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
         import MovesJournal.given
@@ -270,7 +286,7 @@ object DurableMoves {
         }
         settled(name, made, MovesJournal.sameJudgment(made.digest, request)) {
           case AskMade.Judged(_, written, at, _) =>
-            Some(judgedBack(questions, written).map(Asked(_, at)))
+            Some(judgedBack(questions, written).map(r => Asked(Mint.tainted(r, believed), at)))
           case _ => None
         }
       }
@@ -314,7 +330,7 @@ object DurableMoves {
         name: MoveName,
         service: Service,
         tool: ToolName,
-        arguments: ujson.Obj
+        arguments: Tainted[ujson.Obj]
     ): Either[MoveError, Called] =
       refused(name, MoveKind.Call).toLeft(()).flatMap { _ =>
         CallSlot.of(turn, 0, calls - 1) match {
@@ -328,14 +344,16 @@ object DurableMoves {
         cs: CallSlot,
         service: Service,
         tool: ToolName,
-        arguments: ujson.Obj
+        tainted: Tainted[ujson.Obj]
     ): Either[MoveError, Called] = {
       import MovesJournal.given
+      given Journaled[Either[String, Called]] = MovesJournal.answered(acting.integrity)
+      val (arguments, believed) = (Trusted.asIs(tainted).extract, tainted.integrity)
       val digest = MovesJournal.call(service, tool, arguments)
       val records = env.records
       val actsFor = acting.actsFor
       val made = d.transact(MoveSteps.call(name), subject)(
-        dispatch(records, actsFor, cs, service, tool, arguments, digest)
+        dispatch(records, actsFor, cs, service, tool, arguments, believed, digest)
       )
       val same = MovesJournal.sameCall(made.digest, service, tool, arguments)
       made match {
@@ -355,7 +373,9 @@ object DurableMoves {
           ) match {
             case Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _)) =>
               d.transact(MoveSteps.answer(name), subject)((tx: Tx^) ?=>
-                Calling.answer[String](requests, cs).map(called(_, Tx.floor(tx)))
+                Calling
+                  .answer[String](requests, cs)
+                  .map(called(_, Tx.floor(tx), Tx.visibility(tx).outputOf(service).meet(believed)))
               ).left
                 .map(MoveError.Store(_))
             case Awaited.Answered(Outcome.Interrupted) | Awaited.Known(Outcome.Interrupted) =>
@@ -497,6 +517,7 @@ object DurableMoves {
       service: Service,
       tool: ToolName,
       arguments: ujson.Obj,
+      believed: Integrity,
       digest: String
   )(using Tx^): CallMade = {
     def unsent(kind: CallMade.Kind, why: String): Either[CallMade, Nothing] =
@@ -515,7 +536,7 @@ object DurableMoves {
       entry <- set
         .named(tool)
         .fold(unsent(CallMade.Kind.Unadvertised, unadvertised(service, tool)))(Right(_))
-      hosted <- bound(entry, cs, arguments).left.map(why =>
+      hosted <- bound(entry, cs, arguments, believed).left.map(why =>
         CallMade.Unsent(CallMade.Kind.Refused, why, digest)
       )
       request = Calling.request(cs, hosted, place, Permit.Free, principal)
@@ -534,38 +555,45 @@ object DurableMoves {
     made.merge
   }
 
-  /** A call of `entry` with `arguments`, bound as an advertised tool is: its destination read
-    * from the arguments' `to`; why not, when it asks first or its arguments do not bind.
+  /** A call of `entry` with `arguments`, `believed` at that, bound as an advertised tool is: its
+    * destination read from the arguments' `to`; why not, when it asks first, its arguments do
+    * not bind, or they are believed less than it requires ([[Called.withheld]]).
     */
   private def bound(
       entry: ToolSet.Entry,
       cs: CallSlot,
-      arguments: ujson.Obj
+      arguments: ujson.Obj,
+      believed: Integrity
   ): Either[String, Bound.Hosted] =
     Hosted.advertised(entry) match {
       case None => Left(failed(Calling.unapproved(entry.name)))
       case Some(offered) =>
         // A planner's arguments are its code's, not a model's: nothing is repaired, and they
-        // are stamped as grit's own, above every requirement that names no compartment.
+        // are stamped as believed.
         val asSent = Repairs(NameRepair.AsSent, Set.empty)
         val sent = Mint.tainted[AssistantBlock.ToolCall](
           AssistantBlock.ToolCall(ToolCallId(cs.key), ToolName.value(entry.name), arguments),
-          Integrity.Authority
+          believed
         )
         Toolbox
           .of[{}](offered)
           .left
           .map(_ => "unreachable: one tool")
-          .flatMap(_.bind(sent, asSent).left.map(_.message))
+          .flatMap(_.bind(sent, asSent).left.map {
+            case CallError.Withheld(_, plainly, _, _) => Called.withheld(plainly).why
+            case other => other.message
+          })
           .flatMap {
             case h: Bound.Hosted => Right(h)
             case _ => Left(s"${ToolName.value(entry.name)} is not a hosted tool")
           }
     }
 
-  /** What an outcome is to a planner, its answer holding nothing above `at`. */
-  private def called(o: Outcome, at: Label): Called = o match {
-    case Outcome.Done(text, _) => Called.Done(text, at)
+  /** What an outcome is to a planner, its answer holding nothing above `at` and believed at
+    * `believed`.
+    */
+  private def called(o: Outcome, at: Label, believed: Integrity): Called = o match {
+    case Outcome.Done(text, _) => Called.Done(Mint.tainted(text, believed), at)
     case Outcome.Interrupted => Called.Interrupted
     case other => Called.Failed(failed(other))
   }
