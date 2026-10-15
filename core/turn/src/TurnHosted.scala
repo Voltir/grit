@@ -93,7 +93,7 @@ object TurnHosted {
         .map[Either[TurnFailure, Either[TurnRound.Hosting, Waited]]]((d, went) =>
           went.map(w => if (w) Left(d.hosting) else Right(Waited.Unsent))
         )
-        .andThen(Flow.onRight(awaited.map[Either[TurnFailure, Waited]](Right(_))))
+        .andThen(awaited.right[TurnFailure])
     val approved: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, Waited]] =
       Flow
         .pass[TurnRound.Hosting]
@@ -102,29 +102,29 @@ object TurnHosted {
         .keeping
         .map[Either[TurnFailure, TurnRound.Hosting]]((h, kept) => kept.map(_ => h))
         .andThen(
-          Flow.onRight(
-            Flow
-              .pass[TurnRound.Hosting]
-              .map(_.call)
-              .andThen(TurnRound.approval)
-              .keeping
-              .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, approval) =>
-                approval match {
-                  case Approval.Declined(reason) =>
-                    Left(Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason)))))
-                  case Approval.TimedOut =>
-                    Left(Right(Waited.Phase(Awaited.Known(Outcome.Unanswered))))
-                  case Approval.Approved =>
-                    h.place match {
-                      case Some(to) => Right(Dispatching(h, to))
-                      case None =>
-                        val named = ToolName.value(h.tool)
-                        Left(Left(TurnFailure.Store(s"$named has no workspace to go to")))
-                    }
-                }
-              )
-              .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
-          )
+          Flow
+            .pass[TurnRound.Hosting]
+            .map(_.call)
+            .andThen(TurnRound.approval)
+            .keeping
+            .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, approval) =>
+              approval match {
+                case Approval.Declined(reason) =>
+                  Left(Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason)))))
+                case Approval.TimedOut =>
+                  Left(Right(Waited.Phase(Awaited.Known(Outcome.Unanswered))))
+                case Approval.Approved =>
+                  h.place match {
+                    case Some(to) => Right(Dispatching(h, to))
+                    case None =>
+                      val named = ToolName.value(h.tool)
+                      Left(Left(TurnFailure.Store(s"$named has no workspace to go to")))
+                  }
+              }
+            )
+            .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
+            .right[TurnFailure]
+            .map(_.flatten)
         )
     val came = Step[TurnRound.Env, Came, Either[TurnFailure, TurnTools.Settled]](
       TurnRound.Names.tool
@@ -181,7 +181,7 @@ object TurnHosted {
       )
       .keeping
       .map((h, w) => w.map(Came(h, _)))
-      .andThen(Flow.onRight(Flow.step(came)))
+      .andThen(Flow.step(came).right[TurnFailure].map(_.flatten))
   }
 
   /** What a hosted call came to before its `tool:n:j` step: a phase's, or not sent. */

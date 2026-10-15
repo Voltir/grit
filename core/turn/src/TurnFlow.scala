@@ -52,25 +52,26 @@ private[turn] object TurnFlow {
 
   /** From `pin-models` to `offer`: what the turn offers, or why it ended before it did. */
   private def early: Flow[Env, TurnRef, Failed, Offered] = {
-    val profiled = Flow.mayEnd(
-      Flow
-        .step(pinModels)
-        .keeping
-        .map((turn, id) => id.map((turn, _)).left.map(Failed(turn, _)))
-        .andThen(
-          Flow.onRight(
-            Flow.unrecorded[Env, (TurnRef, grit.core.model.TurnProfileId), Either[Failed, Weighed]](
-              r =>
-                (turn, id) =>
-                  TurnSteps
-                    .profileOf(r.env, id)
-                    .map(Weighed(turn, _, None))
-                    .left
-                    .map(Failed(turn, _))
-            )
+    val profiled = Flow
+      .mayEnd(
+        Flow
+          .step(pinModels)
+          .keeping
+          .map((turn, id) => id.map((turn, _)).left.map(Failed(turn, _)))
+      )
+      .andThen(
+        Flow.mayEnd(
+          Flow.unrecorded[Env, (TurnRef, grit.core.model.TurnProfileId), Either[Failed, Weighed]](
+            r =>
+              (turn, id) =>
+                TurnSteps
+                  .profileOf(r.env, id)
+                  .map(Weighed(turn, _, None))
+                  .left
+                  .map(Failed(turn, _))
           )
         )
-    )
+      )
     val weighed = profiled
       .andThen(
         Flow

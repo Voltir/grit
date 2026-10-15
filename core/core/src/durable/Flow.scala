@@ -67,12 +67,6 @@ object Flow {
   ): Flow[R1 & R2, I, E, O] =
     pass[I].map(split).andThen(either(left, right))
 
-  /** A `Left` passed on as it came, `f` over a `Right`. */
-  def onRight[R, F, A, E, B](
-      f: Flow[R, A, E, Either[F, B]]
-  ): Flow[R, Either[F, A], E, Either[F, B]] =
-    either(pass[F].map[Either[F, B]](Left(_)), f)
-
   /** `f`, its end passed as a `Left`. */
   def attempt[R, I, E, O](f: Flow[R, I, E, O]): Flow[R, I, Nothing, Either[E, O]] = Attempt(f)
 
@@ -137,6 +131,10 @@ object Flow {
 
     /** Its input beside its output. */
     def keeping: Flow[R, I, E, (I, O)] = Keeping(f)
+
+    /** `f` over a `Right`, a `Left` passed on as it came. */
+    def right[F]: Flow[R, Either[F, I], E, Either[F, O]] =
+      either(pass[F].map[Either[F, O]](Left(_)), f.map[Either[F, O]](Right(_)))
   }
 
   /** The families `f` can record in the order a run reaches them, repeats kept, each marked

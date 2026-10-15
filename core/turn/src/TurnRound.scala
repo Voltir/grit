@@ -413,7 +413,13 @@ private[turn] object TurnRound {
         .step(asked)
         .keeping
         .map[Either[TurnFailure, Call]]((c, kept) => kept.map(_ => c))
-        .andThen(Flow.onRight(approval.keeping.map(Decided(_, _)).andThen(Flow.step(decided))))
+        .andThen(
+          approval.keeping
+            .map(Decided(_, _))
+            .andThen(Flow.step(decided))
+            .right[TurnFailure]
+            .map(_.flatten)
+        )
     val routed = Flow.branch((c: Call) =>
       c.kind match {
         case Kind.Refused | Kind.Free => Left(c)

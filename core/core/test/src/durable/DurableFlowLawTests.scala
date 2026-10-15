@@ -94,8 +94,8 @@ object DurableFlowLawTests extends TestSuite {
         (("Right(ta(x))", Vector("a")), ("Right(tt)", Vector("n")))
     }
 
-    test("onRight passes a Left as it came, recording nothing, and runs its flow over a Right") {
-      val checked = Flow.onRight(Flow.step(a).map[Either[Int, String]](Right(_)))
+    test("right passes a Left as it came, recording nothing, and runs its flow over a Right") {
+      val checked = Flow.step(a).right[Int]
       (ran(checked, env, Left(3)), ran(checked, env, Right("x"))) ==>
         (("Right(Left(3))", Vector()), ("Right(Right(ta(x)))", Vector("a")))
     }
