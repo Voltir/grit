@@ -205,15 +205,12 @@ private[turn] object TurnRound {
   ): Either[TurnFailure, Integrity] =
     believed.fold(entries.believed(turn).left.map(TurnFailure.ofStore))(Right(_))
 
-  /** A person's answer about `call`, waited for as long as its loop gives them
-    * ([[Calling.approval]]).
+  /** A person asked about `call` in `ask:n:j`, shown what its tool asks them, then their
+    * answer, waited for as long as its loop gives them ([[Calling.approval]]); why the ask was
+    * not kept, when it was not, and nothing waited for.
     */
-  private[turn] val approval: Flow[Any, Call, Nothing, Approval] =
-    Calling.approval[Call](Names.answer, _.id, _.at.looping.answerWithin)
-
-  /** `ask:n:j`: a person asked about the call, shown what its tool asks them. */
-  private[turn] val asked: Step[Env, Call, Either[TurnFailure, EntryId]] = {
-    Step.transact[Env, Call, Either[TurnFailure, EntryId]](
+  private[turn] val approved: Flow[Env, Call, Nothing, Either[TurnFailure, Approval]] = {
+    val asked = Step.transact[Env, Call, Either[TurnFailure, EntryId]](
       Names.ask,
       c => Subject.Turn(c.slot.turn)
     )(r =>
@@ -222,6 +219,11 @@ private[turn] object TurnRound {
           r.shown(c)
             .flatMap(TurnTools.ask(r.settling.entries, c.slot, c.id, _, r.now()))
     )
+    Flow
+      .step(asked)
+      .keeping
+      .map((c, kept) => kept.map(_ => c))
+      .andThen(Calling.approval[Call](Names.answer, _.id, _.at.looping.answerWithin).right)
   }
 
   /** A reply to `at.round` that called tools, its `calls` to settle before the call `next`. */
@@ -404,25 +406,16 @@ private[turn] object TurnRound {
     val decided = Step[Env, Decided, Either[TurnFailure, Settled]](Names.tool)(r =>
       d => r.decide(d.call, d.approval)
     )
-    val approved: Flow[Env, Call, Nothing, Either[TurnFailure, Settled]] =
-      Flow
-        .step(asked)
-        .keeping
-        .map[Either[TurnFailure, Call]]((c, kept) => kept.map(_ => c))
-        .andThen(
-          approval.keeping
-            .map(Decided(_, _))
-            .andThen(Flow.step(decided))
-            .right[TurnFailure]
-            .map(_.flatten)
-        )
+    val gated = approved.keeping
+      .map((c, answer) => answer.map(Decided(c, _)))
+      .andThen(Flow.step(decided).right[TurnFailure].map(_.flatten))
     val routed = Flow.branch((c: Call) =>
       c.kind match {
         case Kind.Refused | Kind.Free => Left(c)
         case Kind.Gated => Right(Left(c))
         case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(c, tool, asks, place)))
       }
-    )(Flow.step(here), Flow.either(approved, TurnHosted.settle))
+    )(Flow.step(here), Flow.either(gated, TurnHosted.settle))
     Flow.mayEnd(routed.keeping.map((c, settled) => settled.map(_ => ()).left.map(Stalled(_, c.at))))
   }
 }

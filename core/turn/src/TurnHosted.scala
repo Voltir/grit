@@ -98,34 +98,23 @@ object TurnHosted {
       Flow
         .pass[TurnRound.Hosting]
         .map(_.call)
-        .andThen(Flow.step(TurnRound.asked))
+        .andThen(TurnRound.approved)
         .keeping
-        .map[Either[TurnFailure, TurnRound.Hosting]]((h, kept) => kept.map(_ => h))
-        .andThen(
-          Flow
-            .pass[TurnRound.Hosting]
-            .map(_.call)
-            .andThen(TurnRound.approval)
-            .keeping
-            .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, approval) =>
-              approval match {
-                case Approval.Declined(reason) =>
-                  Left(Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason)))))
-                case Approval.TimedOut =>
-                  Left(Right(Waited.Phase(Awaited.Known(Outcome.Unanswered))))
-                case Approval.Approved =>
-                  h.place match {
-                    case Some(to) => Right(Dispatching(h, to))
-                    case None =>
-                      val named = ToolName.value(h.tool)
-                      Left(Left(TurnFailure.Store(s"$named has no workspace to go to")))
-                  }
+        .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, answer) =>
+          answer.left.map(Left(_)).flatMap {
+            case Approval.Declined(reason) =>
+              Left(Right(Waited.Phase(Awaited.Known(Outcome.Declined(reason)))))
+            case Approval.TimedOut => Left(Right(Waited.Phase(Awaited.Known(Outcome.Unanswered))))
+            case Approval.Approved =>
+              h.place match {
+                case Some(to) => Right(Dispatching(h, to))
+                case None =>
+                  val named = ToolName.value(h.tool)
+                  Left(Left(TurnFailure.Store(s"$named has no workspace to go to")))
               }
-            )
-            .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
-            .right[TurnFailure]
-            .map(_.flatten)
+          }
         )
+        .andThen(Flow.either(Flow.pass[Either[TurnFailure, Waited]], dispatched))
     val came = Step[TurnRound.Env, Came, Either[TurnFailure, TurnTools.Settled]](
       TurnRound.Names.tool
     )(r =>

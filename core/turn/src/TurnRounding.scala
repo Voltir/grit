@@ -43,7 +43,7 @@ private[turn] final class Rounding[C^](
     tools(at).flatMap { tools =>
       val l = at.looping
       val stubs = stubsAt(at.gates, at.round, tools.set)
-      Rounding.callShaped(heard, l.turn, l.seen, stubs, shapeAs(at, tools, use))(using
+      Rounding.callShaped(heard, l.turn, l.seen, stubs, Rounding.shapeAs(at, tools, use))(using
         env,
         l.pins,
         l.offer
@@ -53,7 +53,7 @@ private[turn] final class Rounding[C^](
   def record(at: TurnRound.Rounds, reply: Message.Assistant)(using
       Tx^
   ): Either[TurnFailure, EntryId] =
-    sent(at).flatMap { (stubs, shape) =>
+    Rounding.sent(tooling, at).flatMap { (stubs, shape) =>
       val l = at.looping
       Rounding.recordCall(
         l.offer.system,
@@ -69,11 +69,6 @@ private[turn] final class Rounding[C^](
         env.clock.now()
       )
     }
-
-  private def sent(
-      at: TurnRound.Rounds
-  ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
-    Rounding.sent(tooling, at)
 
   def kind(at: TurnRound.Rounds, pending: Pending): Either[TurnFailure, TurnTools.Kind] =
     tools(at).map { tools =>
@@ -125,12 +120,6 @@ private[turn] final class Rounding[C^](
 
   private def tools(at: TurnRound.Rounds): Either[TurnFailure, Toolbox[C]] =
     Rounding.tools(tooling, at)
-
-  private def shapeAs(
-      at: TurnRound.Rounds,
-      tools: Toolbox[C],
-      use: ToolUse
-  ): ModelRequest -> ModelRequest = Rounding.shapeAs(at, tools, use)
 
   // What round `at.round`'s calls bind against again inside a step's body, once per body.
   private def rebinding(at: TurnRound.Rounds): Either[TurnFailure, Binding^{this}] =
