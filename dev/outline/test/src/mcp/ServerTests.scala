@@ -235,6 +235,41 @@ object ServerTests extends TestSuite {
       assert(textOf(c).exists(_.contains("def f(a: Int): Int")))
     }
 
+    test("a request whose handling throws gets a -32603 error and the next request is answered") {
+      val written = Vector.newBuilder[String]
+      val ended = Server.serveLines(
+        Iterator(request(1, "tools/call", ujson.Obj()), request(2, "ping", ujson.Obj())),
+        0,
+        written += _,
+        _ => ()
+      ) { (line, n) =>
+        if (field(ujson.read(line), "method").flatMap(_.strOpt) == Some("tools/call"))
+          throw new NoClassDefFoundError("p/Gone")
+        else (Some(s"answered $line"), n + 1, None)
+      }
+      val replies = written.result()
+      assert(ended == Server.Ended.Closed)
+      assert(replies.size == 2)
+      val failed = ujson.read(replies(0))
+      assert(field(failed, "id").flatMap(_.numOpt) == Some(1.0))
+      assert(field(failed, "error").flatMap(field(_, "code")).flatMap(_.numOpt) == Some(-32603.0))
+      assert(replies(1) == s"answered ${request(2, "ping", ujson.Obj())}")
+    }
+
+    test("three linkage errors in a row end serving, naming the last, and no later line is read") {
+      val logged = Vector.newBuilder[String]
+      val lines = Iterator.tabulate(5)(i => request(i, "ping", ujson.Obj()))
+      val ended = Server.serveLines(lines, 0, _ => (), logged += _) { (_, n) =>
+        throw new NoClassDefFoundError(s"p/Gone$n")
+      }
+      assert(ended match {
+        case Server.Ended.Unlinked(e) => e.getMessage == "p/Gone0"
+        case Server.Ended.Closed => false
+      })
+      assert(lines.size == 2)
+      assert(logged.result().count(_.contains("NoClassDefFoundError")) == 3)
+    }
+
     test("an unknown method gets -32601 and unparsable JSON gets -32700 with a null id") {
       val (unknown, _) = reply(request(9, "resources/frobnicate", ujson.Obj()), empty)
       assert(

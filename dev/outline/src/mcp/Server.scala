@@ -1,6 +1,7 @@
 package grit.outline.mcp
 
 import scala.util.Try
+import scala.util.control.NonFatal
 
 import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.query.{Config, Entry, Help, Query, Roots}
@@ -141,7 +142,9 @@ object Server {
     (reply, next)
   }
 
-  /** Serves stdin to stdout, one request at a time, until stdin closes; logs to stderr only. */
+  /** Serves stdin to stdout, one request at a time, until `serveLines` ends; logs to stderr only, and says
+    * there why it ends.
+    */
   def serve(defaultRoot: Root): Unit = {
     val out = new java.io.PrintStream(
       new java.io.FileOutputStream(java.io.FileDescriptor.out),
@@ -151,28 +154,87 @@ object Server {
     val in = new java.io.BufferedReader(
       new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8)
     )
-    val lines = LazyList.continually(Option(in.readLine())).takeWhile(_.isDefined).flatten
-    lines.foldLeft(State(Roots.empty(cachedFiles), defaultRoot)) { (state, line) =>
-      // A throwable here ends the server; its reason is said on stderr, which the wrapper keeps in its log.
-      val (reply, next, tool) =
-        try process(line, state)
-        catch {
-          case e: Throwable =>
-            System.err.println(s"outline mcp: ending on $e, in the request ${line.take(300)}")
-            throw e
-        }
-      tool.foreach(name =>
-        System.err.println(
-          s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B"
-        )
-      )
-      reply.foreach { r =>
+    val lines = Iterator.continually(Option(in.readLine())).takeWhile(_.isDefined).flatten
+    val ended = serveLines(
+      lines,
+      State(Roots.empty(cachedFiles), defaultRoot),
+      r => {
         out.print(r + "\n")
         out.flush()
-      }
-      next
+      },
+      System.err.println
+    )(process)
+    ended match {
+      case Ended.Closed => System.err.println("outline mcp: ending, since stdin closed")
+      case Ended.Unlinked(last) =>
+        System.err.println(
+          s"outline mcp: ending, since three requests in a row failed to link (the last on $last): " +
+            "its classes are gone or were changed under it, and a restart starts it from a fresh copy"
+        )
+        sys.exit(3)
     }
-    System.err.println("outline mcp: ending, since stdin closed")
+  }
+
+  /** Why `serveLines` ended. */
+  enum Ended {
+
+    /** Its lines ran out: the client closed stdin. */
+    case Closed
+
+    /** Three requests in a row failed to link, `last` the third: the server's classes are gone, or were
+      * changed, under it.
+      */
+    case Unlinked(last: LinkageError)
+  }
+
+  /** Answers each of `lines` in turn from `start`, through `step`: each reply it gives goes to `write`, and a
+    * line naming a tool call and its reply's size to `log`. A request whose `step` throws an exception, a
+    * `LinkageError` or a `StackOverflowError` gets a -32603 error reply, the state is kept, and a line
+    * naming the throwable and the start of the request goes to `log`; the third such `LinkageError` in a
+    * row ends serving. Any other throwable is logged so and rethrown.
+    */
+  def serveLines[S](
+      lines: Iterator[String],
+      start: S,
+      write: String => Unit,
+      log: String => Unit
+  )(step: (String, S) => (Option[String], S, Option[String])): Ended = {
+    var state = start
+    var unlinked = 0
+    var ended: Option[Ended] = None
+    while (ended.isEmpty && lines.hasNext) {
+      val line = lines.next()
+      def failed(e: Throwable): Unit = {
+        log(s"outline mcp: a request failed on $e: ${line.take(300)}")
+        Try(ujson.read(line)).toOption.flatMap(field(_, "id")).foreach { id =>
+          write(ujson.write(errorReply(id, -32603, s"outline failed on this request: $e")))
+        }
+      }
+      try {
+        val (reply, next, tool) = step(line, state)
+        tool.foreach(name =>
+          log(s"$name ${reply.fold(0)(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)} B")
+        )
+        reply.foreach(write)
+        state = next
+        unlinked = 0
+      } catch {
+        case e: LinkageError =>
+          failed(e)
+          unlinked += 1
+          if (unlinked >= 3) ended = Some(Ended.Unlinked(e))
+        case e: StackOverflowError =>
+          failed(e)
+          unlinked = 0
+        case NonFatal(e) =>
+          failed(e)
+          unlinked = 0
+        case e: Throwable =>
+          log(s"outline mcp: ending on $e, in the request ${line.take(300)}")
+          throw e
+      }
+    }
+    ended.getOrElse(Ended.Closed)
   }
 
   /** As `handle`, and the name of the tool a `tools/call` line named. */

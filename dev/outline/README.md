@@ -107,6 +107,10 @@ File text: in show and family, each definition's lines after its NN-MM header ar
 
 The launcher is built on first use, without a daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never disturbed), and rebuilt when a source under `dev/outline/src` is newer; either build first says so on stderr, in one `outline: building` line.
 
+A request the server fails on gets a JSON-RPC error (-32603) naming the failure, and the server goes on
+serving. Three requests in a row that fail to link, its classes gone or changed under it, end it; it
+says on stderr why it ends, then or when stdin closes.
+
 ## Roots and freshness
 
 - Every answer starts with a `## root` line naming its root, its branch and its HEAD's first
