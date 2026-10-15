@@ -2,6 +2,8 @@ package grit.lifecycle.close
 
 import java.time.Instant
 
+import grit.act.moves.Judging
+import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows as DurableFlows, Step, StepName}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.job.Slot
@@ -125,8 +127,35 @@ object Close {
       ref => check(env.records, ref)
     )
 
-  private val gated: Step[CloseEnv, Attempt, (Asked, Option[String])] =
-    Step[CloseEnv, Attempt, (Asked, Option[String])](StepName("gate"))(env => at => gate(env, at))
+  private val gated: Flow[CloseEnv, Attempt, Nothing, Judging.Judged[(Asked, Option[String])]] =
+    Judging.flow[CloseEnv, Attempt, (Asked, Option[String])](
+      MoveName("gate"),
+      at =>
+        Judging.Charged(
+          TurnRef(at.ref.period.conversationId, at.ref.last),
+          at.ref.workflowId,
+          subject(at.ref)
+        )
+    )(_.moves, _.budget)(env => at => gate(env, at))
+
+  /** An attempt's gate: none, asking nothing, when it is unearned or ran; else [[gated]]. */
+  private val gating: Flow[CloseEnv, Attempt, String, Gated] =
+    Flow.mayEnd(
+      Flow.branch[CloseEnv, CloseEnv, Attempt, Attempt, Gated, Nothing, Either[String, Gated]] {
+        at =>
+          at.reason match {
+            case CloseReason.Unearned => Right(Gated(at, Asked.NoPart, Some("unearned")))
+            case CloseReason.Ran => Right(Gated(at, Asked.NoPart, Some("ran")))
+            case _ => Left(at)
+          }
+      }(
+        gated.keeping.map {
+          case (_, Judging.Judged(_, Left(why))) => Left(s"failed: its cost unrecorded: $why")
+          case (at, Judging.Judged((asked, note), Right(()))) => Right(Gated(at, asked, note))
+        },
+        Flow.pass[Gated].map(Right(_))
+      )
+    )
 
   private val summarised: Step[CloseEnv, Gated, Summarised] =
     Step[CloseEnv, Gated, Summarised](StepName("summarise")) { env => g =>
@@ -156,7 +185,7 @@ object Close {
         case (ref, Right(Checked.Due(first, reason, known, cap))) =>
           Right(Attempt(ref, first, reason, known, cap))
       })
-      .andThen(Flow.step(gated).keeping.map { case (at, (asked, note)) => Gated(at, asked, note) })
+      .andThen(gating)
       .andThen(Flow.step(summarised).keeping.map((g, s) => Written(g, s)))
       .andThen(Flow.step(sealedUp).keeping)
       .map {
@@ -170,26 +199,24 @@ object Close {
   def body(env: CloseEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     DurableFlows.run(flow, env, workflowId).merge
 
-  /** The `gate` step: what of `at`'s closing is new, asked of the classifier only when its
-    * service is cleared for what was read; none, asking nothing, when unearned or ran.
+  /** The `ask:gate` step: what of `at`'s closing is new, asked of the classifier only when its
+    * service is cleared for what was read.
     */
-  private def gate(env: CloseEnv^, at: Attempt): (Asked, Option[String]) =
-    if (at.reason == CloseReason.Unearned) (Asked.NoPart, Some("unearned"))
-    else if (at.reason == CloseReason.Ran) (Asked.NoPart, Some("ran"))
-    else
-      Routed
-        .reading(reads(env, at.ref)) { (routed, bounded) =>
-          val entries = own(bounded, env, at.ref, at.first)
-          CloseGate.asked(
-            env.classifier.asking(routed),
-            CloseGate.Transcript(
-              at.known,
-              elsewhere(bounded, env, entries),
-              transcript(bounded, env, entries)
-            )
+  private def gate(env: CloseEnv^, at: Attempt): Judging.Pose[(Asked, Option[String])]^{env} =
+    Routed
+      .reading(reads(env, at.ref)) { (routed, bounded) =>
+        val entries = own(bounded, env, at.ref, at.first)
+        CloseGate.asked(
+          env.moves.classifier,
+          routed,
+          CloseGate.Transcript(
+            at.known,
+            elsewhere(bounded, env, entries),
+            transcript(bounded, env, entries)
           )
-        }
-        .fold(e => (Asked.Every, Some(s"gate unread: ${describe(e)}")), identity)
+        )
+      }
+      .fold(e => Judging.Pose.Made((Asked.Every, Some(s"gate unread: ${describe(e)}"))), identity)
 
   /** The `check` step. */
   private def check(records: CloseRecords, attempt: CloseRef)(using

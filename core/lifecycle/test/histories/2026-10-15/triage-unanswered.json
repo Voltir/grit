@@ -9,8 +9,8 @@
       "output": "{\"ok\":\"nothing asked\"}"
     },
     {
-      "name": "ask",
-      "output": "{\"ok\":{\"entry\":\"e0\",\"tags\":{\"unanswered\":\"unavailable: no classifier\"}}}"
+      "name": "ask:triage",
+      "output": "{\"made\":\"{\\\"ok\\\":{\\\"entry\\\":\\\"e0\\\",\\\"tags\\\":{\\\"unanswered\\\":\\\"unavailable: no classifier\\\"}}}\",\"calls\":[]}"
     },
     {
       "name": "record",

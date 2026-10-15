@@ -82,8 +82,14 @@ object CaptureTests extends TestSuite {
                 engine.lifecycle,
                 engine.rooms
               ),
-              grit.core.classify.ClearedClassifier
-                .of(grit.models.StubClassifier.Service, new StubClassifier),
+              grit.kit.run.Launch.moves(
+                engine,
+                new grit.models.StubModels,
+                grit.core.classify.ClearedClassifier
+                  .of(grit.models.StubClassifier.Service, new StubClassifier),
+                Clock.system()
+              ),
+              engine.budget,
               engine.db,
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),

@@ -4,10 +4,13 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{QuestionName, ShadowRef, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowRef, TurnRef, TurnSeq, WorkflowId}
+import grit.core.message.{Tokens, Usage}
+import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning
 import grit.core.triage.{Corpora, Corpus, ShadowAnswers, Shadowed}
 import grit.core.visibility.Subject
+import grit.dbos.sql.TestTx
 import grit.lifecycle.triage.{
   TriageFixtures,
   TriageInput,
@@ -84,7 +87,8 @@ object ShadowTests extends TestSuite {
       val durable = new InMemoryDurable
       durable.run(shadow.workflowId)(w.body(classifier, 5)) ==>
         "kept: answered by jev-1.13.0 in 250 ms"
-      (classifier.calls, durable.recordedSteps(shadow.workflowId)) ==> (1, Vector("ask", "record"))
+      (classifier.calls, durable.recordedSteps(shadow.workflowId)) ==>
+        (1, Vector("ask:shadow", "ask:shadow:record", "record"))
       val gap = Answer.choice(
         Vector("asks" -> 0.75, "owes" -> 0.125, "closes" -> 0.0, "nothing" -> 0.125)
           .map(Answer.Weight(_, _))
@@ -137,7 +141,8 @@ object ShadowTests extends TestSuite {
       val durable = new InMemoryDurable
       durable.run(shadow.workflowId)(w.body(classifier, 5)) ==>
         "kept: answered by jev-1.13.0 in 250 ms"
-      (classifier.calls, durable.recordedSteps(shadow.workflowId)) ==> (1, Vector("ask", "record"))
+      (classifier.calls, durable.recordedSteps(shadow.workflowId)) ==>
+        (1, Vector("ask:shadow", "ask:shadow:record", "record"))
       classifier.asked.collectFirst { case q: grit.core.classify.Question.Choice =>
         q.instructions
       } ==>
@@ -184,6 +189,51 @@ object ShadowTests extends TestSuite {
       ) ==>
         Right("kept: answered by jev-1.13.0 in 250 ms")
       (other.calls, again.kept(t2, Words)) ==> (0, w.kept(t, Words))
+    }
+
+    test(
+      "a shadow over the day's cap asks no classifier: kept as failed, unavailable, in no time"
+    ) {
+      val w = new World
+      val t = w.hear("lunch?", "Ana", 0)
+      val shadow = ShadowRef(t, Words)
+      w.triaged.ledger.now = TriageFixtures.at(5)
+      w.triaged.ledger.record(
+        EntryId("elsewhere"),
+        TurnRef(ConversationId("c2"), TurnSeq(0)),
+        WorkflowId("c2:0"),
+        "m",
+        None,
+        None,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(1))),
+        Tokens(1)
+      )(using TestTx.fake)
+      val classifier = decided
+      new InMemoryDurable().run(shadow.workflowId)(
+        w.body(classifier, 5, cap = DailyCap.of("1").toOption)
+      ) ==> "kept: failed: unavailable"
+      classifier.calls ==> 0
+      w.kept(t, Words) ==> Some(
+        Shadowed.Failed(
+          digest(w, t, Reworded).getOrElse("no request"),
+          ClassifierError.Kind.Unavailable,
+          Duration.Zero
+        )
+      )
+    }
+
+    test("a shadow's classifier call is kept in the ledger once, under its own workflow") {
+      val w = new World
+      val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
+      val shadow = ShadowRef(t, Words)
+      new InMemoryDurable().run(shadow.workflowId)(w.body(decided, 5))
+      def rows(of: WorkflowId) =
+        w.triaged.ledger.of(of)(using TestTx.fake).map(_.map(r => (r.entry, r.model, r.usage)))
+      rows(shadow.workflowId) ==> Right(
+        Vector(
+          (EntryId(s"move:${WorkflowId.value(shadow.workflowId)}:shadow"), "jev-1.13.0", Spent)
+        )
+      )
     }
 
     test("an unavailable classifier is kept as failed, unavailable, with the request's digest") {

@@ -1,9 +1,11 @@
 package grit.lifecycle.shadow
 
+import grit.act.moves.MovesEnv
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.id.ShadowName
 import grit.core.recipe.RoomReads
+import grit.core.spend.Budget
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.Db
 import grit.core.triage.{Corpora, TriageShadows}
@@ -14,7 +16,9 @@ import grit.lifecycle.triage.TriageQuestions
   * `tuning`, as triage reads them) and keeps what the variant made of it (`shadows`), each
   * declared variant by name (`variants`; a shadow of a variant not among them asks nothing),
   * the deployment's catalog of corpora a question set's per-source questions are
-  * asked of (`sources`), and `clock`, for when a row was kept and how long its call took.
+  * asked of (`sources`), `clock`, for when a row was kept, and `moves`, whose admission,
+  * ledger and clock each variant's ask goes through (how long its call took), admitted by
+  * `budget`.
   */
 final case class ShadowEnv(
     reads: StitchReads,
@@ -24,7 +28,9 @@ final case class ShadowEnv(
     sources: Corpora,
     db: Db^,
     clock: Clock^,
-    tuning: Tuning
+    tuning: Tuning,
+    moves: MovesEnv^,
+    budget: Budget
 )
 
 /** A declared variant as its shadows ask: `questions`, of the model `requested` (as the

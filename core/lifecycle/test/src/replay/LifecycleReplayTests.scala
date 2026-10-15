@@ -29,10 +29,11 @@ object LifecycleReplayTests extends TestSuite {
     */
   private val Budgets: Map[String, Int] = Map(
     "check" -> 512, // what is due, and close's known record of the conversation
-    "gate" -> 256, // which of close's sections its gate let through, and why
     "summarise" -> 1600, // the closing close drew up, whole
     "seal" -> 64, // the closing's id
-    "ask" -> 1100, // triage's, settle's and shadow's answers, with their weights and calls' costs
+    // triage's, settle's and shadow's answers, with their weights, and which of close's
+    // sections its gate let through, and why; each with its call's cost
+    "ask" -> 1100,
     "ask:record" -> 64, // whether an ask's classifier cost was recorded
     "record" -> 64, // whether the answers were kept
     "consider" -> 448, // what triage decided of a heard message, and the gate's readings
@@ -43,6 +44,10 @@ object LifecycleReplayTests extends TestSuite {
     "record-stitch" -> 64, // whether the placement was kept
     "post" -> 64 // what the post came to
   )
+
+  /** What a judgment's `ask:{name}` step, recorded as `text`, made, as its workflow writes it. */
+  private def made(text: String): ujson.Value =
+    ujson.read(text).obj.get("made").flatMap(_.strOpt).fold(ujson.Null: ujson.Value)(ujson.read(_))
 
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 2000
@@ -63,13 +68,20 @@ object LifecycleReplayTests extends TestSuite {
     ) {
       def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
         historiesOf(epoch).collect { case (p, Right(h)) => p.last -> named(h) }.toMap
-      // A settle's `ask` is the move `ask:settle`, its cost then recorded in
-      // `ask:settle:record` when the classifier answered, its weighed verdict naming the model.
+      // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, and a close's
+      // `gate` is `ask:gate`, each one's cost then recorded in its `:record` step when the
+      // classifier replied: a reply names its model, and a gate's leaves no note. A close
+      // unearned or ran asks no gate, and records no step for it.
       def renamed(h: History): Vector[String] = h.steps.flatMap { s =>
+        val out = s.outcome.toString
         (h.workflow, s.name) match {
-          case ("settle", "ask") if s.outcome.toString.contains("\"model\"") =>
-            Vector("ask:settle", "ask:settle:record")
-          case ("settle", "ask") => Vector("ask:settle")
+          case ("close", "gate") if out.contains("\"unearned\"") || out.contains("\"ran\"") =>
+            Vector()
+          case ("close", "gate") if out.contains("\"note\"") => Vector("ask:gate")
+          case ("close", "gate") => Vector("ask:gate", "ask:gate:record")
+          case (w @ ("settle" | "triage" | "shadow"), "ask") if out.contains("\"model\"") =>
+            Vector(s"ask:$w", s"ask:$w:record")
+          case (w @ ("settle" | "triage" | "shadow"), "ask") => Vector(s"ask:$w")
           case (_, name) => Vector(name)
         }
       }
@@ -172,12 +184,15 @@ object LifecycleReplayTests extends TestSuite {
         parsed.toOption.toVector
           .filter(_.workflow == "shadow")
           .flatMap(_.steps.collect {
-            case s if s.name == "ask" => (path.last, s.outcome)
+            case s if s.name == "ask:shadow" => (path.last, s.outcome)
           })
       }
       val read = rows.map {
         case (file, InMemoryDurable.Outcome.Output(text)) =>
-          file -> ujson.read(text).obj.get("ok").flatMap(_.obj.get("row")).map(ShadowedJson.read)
+          file -> made(text).objOpt
+            .flatMap(_.get("ok"))
+            .flatMap(_.obj.get("row"))
+            .map(ShadowedJson.read)
         case (file, other) => file -> Some(Left(s"not an output: $other"))
       }
       read.collect { case (file, Some(Left(why))) => s"$file: $why" } ==> Vector.empty
@@ -199,20 +214,20 @@ object LifecycleReplayTests extends TestSuite {
       val triages = histories.flatMap { case (_, parsed) =>
         parsed.toOption.toVector.filter(_.workflow == "triage").flatMap(_.steps)
       }
-      def output(name: String) = triages.collect {
+      def output(name: String, read: String => ujson.Value) = triages.collect {
         case s if s.name == name =>
           s.outcome match {
-            case InMemoryDurable.Outcome.Output(text) => ujson.read(text).obj.get("ok")
+            case InMemoryDurable.Outcome.Output(text) => read(text).objOpt.flatMap(_.get("ok"))
             case _ => None
           }
       }.flatten
-      val named = output("ask")
+      val named = output("ask:triage", made)
         .flatMap(_.objOpt)
         .flatMap(_.get("tags"))
         .flatMap(_.objOpt)
         .flatMap(_.get("answers"))
         .map(_.arr.flatMap(_.obj.get("name")).flatMap(_.strOpt).toVector)
-      val considered = output("consider").flatMap(_.objOpt)
+      val considered = output("consider", ujson.read(_)).flatMap(_.objOpt)
       (
         named.exists(_.contains("gap")),
         named.exists(_.exists(_.startsWith("source:"))),

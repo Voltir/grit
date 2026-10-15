@@ -22,7 +22,7 @@ import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.recipe.InMemoryRoomReads
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
-import grit.core.spend.Budget
+import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{InMemoryStitchStore, Opening, Placements, StitchReads, Tuning}
 import grit.core.store.{
   Db,
@@ -44,6 +44,7 @@ import grit.core.triage.{Corpora, InMemoryTriageStore}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
+import grit.lifecycle.moves.TestMoves
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
 /** The triage's test world: one conversation in core's in-memory stores, and a classifier the
@@ -312,9 +313,9 @@ object TriageFixtures {
     }
 
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
-      * `speaking` says, with no daily cap, the deployment's knowledge `sources` those given,
-      * reading through `db`, starting a turn as `start` answers; a turn it starts is kept in
-      * [[started]].
+      * `speaking` says, its ask admitted under `cap` against what [[ledger]] recorded that
+      * day, the deployment's knowledge `sources` those given, reading through `db`, starting
+      * a turn as `start` answers; a turn it starts is kept in [[started]].
       */
     def body(
         classifier: Classifier^,
@@ -322,10 +323,12 @@ object TriageFixtures {
         speaking: Speaking = Speaking.Off,
         sources: Corpora = Corpora.Empty,
         db: Db^ = FakeDb,
-        start: TurnRef => Either[String, Unit] = _ => Right(())
+        start: TurnRef => Either[String, Unit] = _ => Right(()),
+        cap: Option[DailyCap] = None
     )(
         id: WorkflowId
-    )(using Durable^): String =
+    )(using Durable^): String = {
+      val clock = new Stopped(at(minutes))
       Triage.body(
         TriageEnv(
           TriageRecords(
@@ -342,9 +345,10 @@ object TriageFixtures {
             lifecycle,
             rooms
           ),
-          grit.core.classify.TestClassifiers.cleared(classifier),
+          TestMoves.of(ledger, classifier, db, clock),
+          Budget(ZoneOffset.UTC, cap),
           db,
-          new Stopped(at(minutes)),
+          clock,
           TriageSpeech(
             speaking,
             Budget(ZoneOffset.UTC, None),
@@ -356,5 +360,6 @@ object TriageFixtures {
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       )(id)
+    }
   }
 }

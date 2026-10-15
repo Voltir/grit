@@ -9,8 +9,8 @@
       "output": "{\"ok\":\"nothing asked\"}"
     },
     {
-      "name": "ask",
-      "output": "{\"failed\":\"no heard message at turn 0\"}"
+      "name": "ask:triage",
+      "output": "{\"made\":\"{\\\"failed\\\":\\\"no heard message at turn 0\\\"}\",\"calls\":[]}"
     }
   ]
 }

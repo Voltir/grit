@@ -2,6 +2,7 @@ package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
+  ConversationId,
   Declarer,
   EntryId,
   EntrySeq,
@@ -10,10 +11,12 @@ import grit.core.id.{
   PeriodSeq,
   ScheduleId,
   ScheduleKey,
+  TurnRef,
+  TurnSeq,
   WorkflowId
 }
 import grit.core.job.Slot
-import grit.core.message.StopReason
+import grit.core.message.{StopReason, Tokens, Usage}
 import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
   Balance,
@@ -32,6 +35,7 @@ import grit.core.period.{
 }
 import grit.core.provider.ProviderError
 import grit.core.retention.{Target, Tombstone}
+import grit.core.spend.DailyCap
 import grit.core.store.{Origin, Payload, Speakers, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.core.triage.{Kind, Tags}
@@ -228,13 +232,45 @@ object CloseTests extends TestSuite {
         Some(
           (last.turnSeq, Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing), at(Lapsed))
         )
-      w.ledger
-        .of(id)(using TestTx.fake)
+      w.sealedRows(id)
         .map(_.map(r => (EntryId.value(r.entry), r.model, r.usage, r.estimatedInput))) ==>
         Right(
           Vector(("closing:c1:1", "summariser", summaryUsage, Chars.request(summary.requests(0))))
         )
-      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
+      durable
+        .recordedSteps(id) ==> Vector("check", "ask:gate", "ask:gate:record", "summarise", "seal")
+    }
+
+    test("a close over the day's cap asks no gate: every part is asked for, saying why") {
+      val w = new World
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      w.ledger.now = at(Lapsed)
+      w.ledger.record(
+        EntryId("elsewhere"),
+        TurnRef(ConversationId("c2"), TurnSeq(0)),
+        WorkflowId("c2:0"),
+        "m",
+        None,
+        None,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(1))),
+        Tokens(1)
+      )(using TestTx.fake)
+      val g = gate
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(g, answering(written), new SetClock(at(Lapsed)), cap = DailyCap.of("1").toOption)
+      ) ==> "closed: closing:c1:1; gate unavailable: The day's spend reached its cap, so no model was asked."
+      g.calls ==> 0
+    }
+
+    test(
+      "a close's gate call is kept in the ledger once, under its own workflow, before the summary's"
+    ) {
+      val w = new World
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      val id = w.attempt.workflowId
+      new InMemoryDurable().run(id)(w.body(gate, answering(written), new SetClock(at(Lapsed))))
+      w.ledger.of(id)(using TestTx.fake).map(_.map(r => (EntryId.value(r.entry), r.model))) ==>
+        Right(Vector((s"move:${WorkflowId.value(id)}:gate", "jev"), ("closing:c1:1", "summariser")))
     }
 
     test(
@@ -334,7 +370,7 @@ object CloseTests extends TestSuite {
       durable.run(id)(w.bodyOver(g, models, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; unearned"
       (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
-      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector("check", "summarise", "seal")
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
         (reason, c.flows.prose, c.flows.outcome)
       } ==> Some((CloseReason.Unearned, "Heard 2 messages; nothing kept.", None))
@@ -509,7 +545,7 @@ object CloseTests extends TestSuite {
       w.periods.get(p1)(using TestTx.fake).map(_.map(_.state)) ==> Right(
         Some(PeriodState.Open)
       )
-      w.ledger.of(id)(using TestTx.fake) ==> Right(Vector.empty[UsageLedger.Row])
+      w.sealedRows(id) ==> Right(Vector.empty[UsageLedger.Row])
     }
 
     test("a model that fails leaves the per-turn summaries as the prose, and no section") {
@@ -527,7 +563,7 @@ object CloseTests extends TestSuite {
           TestClosings.prose("Chose staging. Prod is later.")
         )
       )
-      w.ledger.of(id)(using TestTx.fake) ==> Right(Vector.empty[UsageLedger.Row])
+      w.sealedRows(id) ==> Right(Vector.empty[UsageLedger.Row])
     }
 
     test("a close cut short while sealing runs again without calling the summary model again") {
@@ -907,7 +943,7 @@ object CloseTests extends TestSuite {
       w.closingEntry.map(_.payload) ==> Some(
         Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Added PNG."))
       )
-      w.ledger.of(id)(using TestTx.fake).map(_.map(r => (EntryId.value(r.entry), r.usage))) ==>
+      w.sealedRows(id).map(_.map(r => (EntryId.value(r.entry), r.usage))) ==>
         Right(Vector(("closing:c1:1", summaryUsage)))
     }
 

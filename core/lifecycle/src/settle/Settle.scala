@@ -103,7 +103,7 @@ object Settle {
   def body(env: SettleEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     Flows.run(flow, env, workflowId).merge
 
-  /** The `ask` step: one classifier call over the transcript of `question`'s period from
+  /** The `ask:settle` step: one classifier call over the transcript of `question`'s period from
     * `first`, asked only when its service is cleared for what was read.
     */
   private def judge(env: SettleEnv^, at: Asking): Judging.Pose[Judgement]^{env} = {

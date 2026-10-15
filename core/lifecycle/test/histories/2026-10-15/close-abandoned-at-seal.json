@@ -9,8 +9,8 @@
       "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
     },
     {
-      "name": "gate",
-      "output": "{\"outcome\":true,\"open\":true,\"standing\":true,\"settled\":true,\"note\":\"gate unavailable: no classifier\"}"
+      "name": "ask:gate",
+      "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":true,\\\"standing\\\":true,\\\"settled\\\":true,\\\"note\\\":\\\"gate unavailable: no classifier\\\"}\",\"calls\":[]}"
     },
     {
       "name": "summarise",

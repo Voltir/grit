@@ -1,7 +1,9 @@
 package grit.lifecycle.close
 
-import grit.core.classify.{Ask, Classifier, ClassifierError, StateJson}
+import grit.act.moves.Judging
+import grit.core.classify.{Answered, Ask, Classifier, ClassifierError, ClearedClassifier, StateJson}
 import grit.core.period.{Balance, Section}
+import grit.core.route.Routed
 
 /** What a period's closing needs, asked of a classifier in one call, beside what is already
   * known: was the request answered (the outcome); did it settle a decision or establish a
@@ -74,7 +76,20 @@ object CloseGate {
     * does not answer.
     */
   def asked(classifier: Classifier^, transcript: Transcript): (Asked, Option[String]) =
-    classifier.ask(transcript, questions) match {
+    read(classifier.ask(transcript, questions))
+
+  /** [[asked]] as a judgment's pose: `classifier` asked about `transcript` as read under
+    * `routed`.
+    */
+  def asked(
+      classifier: ClearedClassifier^,
+      routed: Routed,
+      transcript: Transcript
+  ): Judging.Pose[(Asked, Option[String])]^{classifier} =
+    Judging.Pose.asking(classifier, routed, transcript, questions)((answered, _) => read(answered))
+
+  private def read(answered: Either[ClassifierError, Answered[Asked]]): (Asked, Option[String]) =
+    answered match {
       case Right(answered) => (answered.value, None)
       case Left(ClassifierError.Unavailable(why)) => (Asked.Every, Some(s"gate unavailable: $why"))
       case Left(ClassifierError.Unreadable(why)) => (Asked.Every, Some(s"gate unreadable: $why"))

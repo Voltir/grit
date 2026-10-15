@@ -1,6 +1,6 @@
 package grit.lifecycle.close
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -23,6 +23,7 @@ import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, 
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.place.Directory
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
+import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
   ClosedElsewhere,
   ClosedPeriod,
@@ -44,7 +45,8 @@ import grit.core.store.{
   PeriodStore,
   Sealed,
   StoreError,
-  Tx
+  Tx,
+  UsageLedger
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
 import grit.core.visibility.Integrity
@@ -59,6 +61,7 @@ import grit.core.visibility.{
   Visibility
 }
 import grit.dbos.sql.TestTx
+import grit.lifecycle.moves.TestMoves
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
   * sets, and a summary model and classifier the test scripts.
@@ -373,19 +376,27 @@ object CloseFixtures {
     def closingOf(period: PeriodRef): Option[Entry] =
       entries.get(period.closingId)(using TestTx.fake).getOrElse(None)
 
+    /** The ledger's rows the seal of the close `id` wrote: its rows but its gate's move's. */
+    def sealedRows(id: WorkflowId): Either[StoreError, Vector[UsageLedger.Row]] =
+      ledger
+        .of(id)(using TestTx.fake)
+        .map(_.filterNot(r => EntryId.value(r.entry).startsWith("move:")))
+
     /** The close's body over this world, with `gate`, `summary` and `clock`, its periods
-      * `sealing`, reading through `db`.
+      * `sealing`, reading through `db`, its gate's ask admitted under `cap` against what
+      * [[ledger]] recorded that day.
       */
     def body(
         gate: Classifier^,
         summary: Provider^,
         clock: Clock^,
         sealing: PeriodStore = periods,
-        db: Db^ = FakeDb
+        db: Db^ = FakeDb,
+        cap: Option[DailyCap] = None
     )(
         id: WorkflowId
     )(using Durable^): String =
-      bodyOver(gate, new OneModel(summary), clock, sealing, db)(id)
+      bodyOver(gate, new OneModel(summary), clock, sealing, db, cap)(id)
 
     /** The close's body over this world, its models `models`. */
     def bodyOver(
@@ -393,7 +404,8 @@ object CloseFixtures {
         models: Models^,
         clock: Clock^,
         sealing: PeriodStore = periods,
-        db: Db^ = FakeDb
+        db: Db^ = FakeDb,
+        cap: Option[DailyCap] = None
     )(
         id: WorkflowId
     )(using Durable^): String =
@@ -410,7 +422,8 @@ object CloseFixtures {
             triage,
             conversations
           ),
-          grit.core.classify.TestClassifiers.cleared(gate),
+          TestMoves.of(ledger, gate, db, clock),
+          Budget(ZoneOffset.UTC, cap),
           models,
           db,
           clock

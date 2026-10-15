@@ -86,6 +86,14 @@ object PullTests extends TestSuite {
       val config = TestPostgres.freshDatabase("harness_pull")
       val engine = LiveEngine.open(config, "test")
       try {
+        // The triage's asks; each shadow's asks its variant's classifier through these.
+        val moves = grit.kit.run.Launch.moves(
+          engine,
+          new grit.models.StubModels,
+          grit.core.classify.ClearedClassifier
+            .of(grit.models.StubClassifier.Service, new StubClassifier),
+          Clock.system()
+        )
         engine.launch(
           nothing,
           nothing,
@@ -113,8 +121,8 @@ object PullTests extends TestSuite {
                 engine.lifecycle,
                 engine.rooms
               ),
-              grit.core.classify.ClearedClassifier
-                .of(grit.models.StubClassifier.Service, new StubClassifier),
+              moves,
+              engine.budget,
               engine.db,
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
@@ -173,7 +181,9 @@ object PullTests extends TestSuite {
               Corpora.Empty,
               engine.db,
               Clock.system(),
-              Tuning.Default
+              Tuning.Default,
+              moves,
+              engine.budget
             )
           ),
           Vector(words, ghost, set).map(

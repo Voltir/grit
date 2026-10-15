@@ -148,24 +148,8 @@ private[grit] object Launch {
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     }
     // What every move is made with: a job's, and the lifecycle's asks.
-    val moves: MovesEnv^{engine, models, classifier} =
-      MovesEnv(
-        MoveRecords(
-          engine.ledger,
-          engine.spending,
-          engine.requests,
-          engine.edgeDirectory,
-          engine.toolSets,
-          engine.schedules,
-          engine.askers,
-          CharEstimate,
-          engine.savepoints
-        ),
-        models,
-        classifier,
-        engine.db,
-        clock
-      )
+    val moves: MovesEnv^{engine, models, classifier, clock} =
+      Launch.moves(engine, models, classifier, clock)
     // The one wait for an opening's placement, the turn's and triage's.
     val placing: Placing.Env^{engine} =
       Placing.Env(engine.entries, engine.conversations, engine.db, engine.placements)
@@ -243,7 +227,8 @@ private[grit] object Launch {
               engine.triage,
               engine.conversations
             ),
-            classifier,
+            moves,
+            d.budget,
             models,
             engine.db,
             clock
@@ -286,7 +271,8 @@ private[grit] object Launch {
               engine.lifecycle,
               engine.rooms
             ),
-            classifier,
+            moves,
+            d.budget,
             engine.db,
             clock,
             TriageSpeech(
@@ -333,7 +319,9 @@ private[grit] object Launch {
             d.knowledge,
             engine.db,
             clock,
-            grit.core.stitch.Tuning.Default
+            grit.core.stitch.Tuning.Default,
+            moves,
+            d.budget
           )
         ),
         d.shadows.map(_.shadowing),
@@ -442,6 +430,34 @@ private[grit] object Launch {
     }
     engine
   }
+
+  /** What `engine`'s moves are made with: a job's, and the lifecycle's asks, their costs kept
+    * in its ledger and admitted against its spending, `models` answering their asks and
+    * `classifier` their judgments, at `clock`.
+    */
+  def moves(
+      engine: Engine^,
+      models: Models^,
+      classifier: ClearedClassifier^,
+      clock: Clock^
+  ): MovesEnv^{engine, models, classifier, clock} =
+    MovesEnv(
+      MoveRecords(
+        engine.ledger,
+        engine.spending,
+        engine.requests,
+        engine.edgeDirectory,
+        engine.toolSets,
+        engine.schedules,
+        engine.askers,
+        CharEstimate,
+        engine.savepoints
+      ),
+      models,
+      classifier,
+      engine.db,
+      clock
+    )
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
     * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`

@@ -1,8 +1,7 @@
 package grit.lifecycle.shadow
 
-import scala.concurrent.duration.*
-
-import grit.core.clock.Clock
+import grit.act.moves.Judging
+import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
@@ -15,10 +14,13 @@ import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
   * on. Which messages are shadowed, and how many a day, is the sweep's
   * ([[grit.core.triage.Shadowing]]): what is enqueued is already within the cap.
   *
-  *   1. `ask` — the heard message's state rebuilt as triage builds it, from the store as it
-  *      stands now ([[TriageInput.heard]]), and the variant's question set asked of it once
-  *      ([[ShadowVariant]]); nothing is asked when the message or its thread cannot be read,
-  *      or when the variant is not declared.
+  *   1. `ask:shadow` — the heard message's state rebuilt as triage builds it, from the store
+  *      as it stands now ([[TriageInput.heard]]), and the variant's question set asked of its
+  *      own classifier once ([[ShadowVariant]]), a move ([[grit.act.moves.Judging]]):
+  *      admitted against the day's cap, so one over it is `Failed` unavailable; nothing is
+  *      asked when the message or its thread cannot be read, or when the variant is not
+  *      declared. `ask:shadow:record` — when the classifier replied, its cost in the ledger,
+  *      charged to the heard message's turn; a store that fails it keeps nothing.
   *   1. `record` — what it made of the message kept
   *      ([[grit.core.triage.TriageShadows.record]]); ignored when the message is gone or
   *      that variant shadowed it already.
@@ -29,10 +31,17 @@ object Shadow {
   /** What the variant of `ref` made of its heard message, `entry`. */
   private final case class Made(ref: ShadowRef, entry: EntryId, row: Shadowed)
 
-  private val asked: Step[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]] =
-    Step[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]](StepName("ask")) { env => ref =>
-      ask(env, ref)
-    }
+  private val asked
+      : Flow[ShadowEnv, ShadowRef, Nothing, Judging.Judged[Either[String, (EntryId, Shadowed)]]] =
+    Judging.flow[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]](
+      MoveName("shadow"),
+      ref =>
+        Judging.Charged(
+          TurnRef(ref.triage.period.conversationId, ref.triage.turn),
+          ref.workflowId,
+          Subject.Conversation(ref.triage.period.conversationId)
+        )
+    )(_.moves, _.budget)(env => ref => ask(env, ref))
 
   private val record: Step[ShadowEnv, Made, Either[String, Boolean]] =
     Step.transact[ShadowEnv, Made, Either[String, Boolean]](
@@ -54,10 +63,11 @@ object Shadow {
       .mayEnd(Flow.pass[WorkflowId].map { id =>
         ShadowRef.fromWorkflowId(id).toRight(s"not a shadow: ${WorkflowId.value(id)}")
       })
-      .andThen(Flow.decide(asked) {
-        case (ref, Right((entry, row))) => Right(Made(ref, entry, row))
-        case (_, Left(why)) => Left(s"not asked: $why")
-      })
+      .andThen(Flow.mayEnd(asked.keeping.map {
+        case (_, Judging.Judged(_, Left(why))) => Left(s"not kept: its cost unrecorded: $why")
+        case (ref, Judging.Judged(Right((entry, row)), Right(()))) => Right(Made(ref, entry, row))
+        case (_, Judging.Judged(Left(why), Right(()))) => Left(s"not asked: $why")
+      }))
       .andThen(Flow.step(record).keeping)
       .map {
         case (_, Left(why)) => s"not kept: $why"
@@ -69,12 +79,16 @@ object Shadow {
   def body(env: ShadowEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     Flows.run(flow, env, workflowId).merge
 
-  /** The `ask` step: the heard message that is `shadow`'s triage's turn, and what the variant
+  /** The `ask:shadow` step: the heard message that is `shadow`'s triage's turn, and what the variant
     * made of it; why nothing was asked, otherwise.
     */
-  private def ask(env: ShadowEnv^, shadow: ShadowRef): Either[String, (EntryId, Shadowed)] =
+  private def ask(
+      env: ShadowEnv^,
+      shadow: ShadowRef
+  ): Judging.Pose[Either[String, (EntryId, Shadowed)]]^{env} =
     env.variants.get(shadow.name) match {
-      case None => Left(s"no variant ${ShadowName.value(shadow.name)} is declared")
+      case None =>
+        Judging.Pose.Made(Left(s"no variant ${ShadowName.value(shadow.name)} is declared"))
       case Some(variant) =>
         Routed
           .reading(env.db.as(Subject.Conversation(shadow.triage.period.conversationId))) {
@@ -88,40 +102,49 @@ object Shadow {
                   env.tuning,
                   TriageRecipe.Shipped
                 )
-                .map { read =>
-                  // A conversation not found is at no place, so no source covers it.
-                  val sources = read.place.fold(Corpora.Empty)(env.sources.at)
-                  read.entry -> named(env.clock, variant, routed, read.state, sources)
-                }
+                .fold(
+                  why => Judging.Pose.Made(Left(why)),
+                  read => {
+                    // A conversation not found is at no place, so no source covers it.
+                    val sources = read.place.fold(Corpora.Empty)(env.sources.at)
+                    named(read.entry, variant, routed, read.state, sources)
+                  }
+                )
           }
-          .left
-          .map(e => s"thread unread: ${ShadowJournal.describe(e)}")
-          .flatten
+          .fold(
+            e => Judging.Pose.Made(Left(s"thread unread: ${ShadowJournal.describe(e)}")),
+            identity
+          )
     }
 
-  /** What `variant` made of `state`, read under `routed`, asked its questions with `sources`. */
+  /** What `variant` made of the heard message `entry`'s `state`, read under `routed`, asked its
+    * questions with `sources` of its own classifier.
+    */
   private def named(
-      clock: Clock^,
+      entry: EntryId,
       variant: ShadowAsking^,
       routed: Routed,
       state: TriageQuestion.State,
       sources: Corpora
-  ): Shadowed = {
+  ): Judging.Pose[Either[String, (EntryId, Shadowed)]]^{variant} = {
     val questions = variant.questions
-    val request = questions.request(state, sources)
-    val start = clock.millis()
-    val answered = questions.ask(variant.classifier.asking(routed), state, sources)
-    val latency = (clock.millis() - start).millis
-    answered match {
-      case Left(error) => Shadowed.Failed(request.digest, error.kind, latency)
-      case Right(a) =>
-        Shadowed.Answered(
-          request.digest,
-          ShadowAnswers.Named(a.value),
-          a.usage,
-          variant.requested,
-          a.model,
-          latency
+    val digest = questions.request(state, sources).digest
+    val requested = variant.requested
+    Judging.Pose.asking(variant.classifier, routed, state, questions.asked(sources)) {
+      case (Left(error), latency) => Right((entry, Shadowed.Failed(digest, error.kind, latency)))
+      case (Right(a), latency) =>
+        Right(
+          (
+            entry,
+            Shadowed.Answered(
+              digest,
+              ShadowAnswers.Named(a.value),
+              a.usage,
+              requested,
+              a.model,
+              latency
+            )
+          )
         )
     }
   }

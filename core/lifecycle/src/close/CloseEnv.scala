@@ -1,8 +1,9 @@
 package grit.lifecycle.close
 
-import grit.core.classify.ClearedClassifier
+import grit.act.moves.MovesEnv
 import grit.core.clock.Clock
 import grit.core.provider.{Models, TokenEstimator}
+import grit.core.spend.Budget
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -16,14 +17,15 @@ import grit.core.store.{
 import grit.core.triage.TriageStore
 
 /** What a close works with besides its `Durable`: where it reads and writes ([[CloseRecords]]),
-  * then the capabilities it calls. `classifier` decides which sections the closing needs
-  * ([[CloseGate]]), `models` writes it under the catalog's summary pin, `db` reads the
-  * period's transcript outside a transaction, and `clock` says when the check and the seal
-  * happen.
+  * then the capabilities it calls. `moves`' classifier decides which sections the closing
+  * needs ([[CloseGate]]), admitted by `budget`; `models` writes it under the catalog's summary
+  * pin, `db` reads the period's transcript outside a transaction, and `clock` says when the
+  * check and the seal happen.
   */
 final case class CloseEnv(
     records: CloseRecords,
-    classifier: ClearedClassifier^,
+    moves: MovesEnv^,
+    budget: Budget,
     models: Models^,
     db: Db^,
     clock: Clock^

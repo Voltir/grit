@@ -9,8 +9,12 @@
       "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
     },
     {
-      "name": "gate",
-      "output": "{\"outcome\":true,\"open\":false,\"standing\":true,\"settled\":false}"
+      "name": "ask:gate",
+      "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":false,\\\"standing\\\":true,\\\"settled\\\":false}\",\"calls\":[{\"model\":\"jev\",\"usage\":{\"input\":1,\"output\":1,\"cachedInput\":0},\"estimate\":1091,\"upstream\":\"service:test\"}]}"
+    },
+    {
+      "name": "ask:gate:record",
+      "output": "{\"recorded\":true}"
     },
     {
       "name": "summarise",

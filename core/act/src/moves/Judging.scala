@@ -1,5 +1,7 @@
 package grit.act.moves
 
+import scala.concurrent.duration.{Duration, DurationLong, FiniteDuration}
+
 import grit.core.act.{Allowance, MoveName}
 import grit.core.classify.{
   Answered,
@@ -39,30 +41,31 @@ object Judging {
     final case class Made[+B](made: B) extends Pose[B]
 
     /** `questions` about `state`, asked once of `classifier` about what was read under
-      * `routed`; `read` makes the judgment from its answers, or from why there are none:
+      * `routed`; `read` makes the judgment from its answers, or from why there are none, and
+      * from how long the call took on the moves' clock (zero when the ask was refused):
       * `Unavailable`, sending nothing, when the day's spend reached its cap ("The day's spend
       * reached its cap, so no model was asked."), the spend cannot be read, or `classifier`'s
-      * service is not cleared for `routed` (as [[ClearedClassifier.asking]] answers). An
-      * answered call's cost is kept by the judgment's record step.
+      * service is not cleared for `routed` (as [[ClearedClassifier.asking]] answers). Every
+      * call that replied is charged, however its answers read, by the judgment's record step.
       */
     def asking[S: StateJson, T, B](
         classifier: ClearedClassifier^,
         routed: Routed,
         state: S,
         questions: Ask[S, T]
-    )(read: Either[ClassifierError, Answered[T]] -> B): Pose[B]^{classifier} =
+    )(read: (Either[ClassifierError, Answered[T]], FiniteDuration) -> B): Pose[B]^{classifier} =
       Asking(
         classifier,
         routed,
         Request.of(state, questions),
-        a => read(a.flatMap(questions.answered))
+        (a, took) => read(a.flatMap(questions.answered), took)
       )
 
     private[Judging] final case class Asking[+B](
         classifier: ClearedClassifier^,
         routed: Routed,
         request: Request,
-        read: Either[ClassifierError, Answers] -> B
+        read: (Either[ClassifierError, Answers], FiniteDuration) -> B
     ) extends Pose[B]
   }
 
@@ -92,19 +95,23 @@ object Judging {
             case Pose.Asking(cleared, routed, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val allowance: Allowance = Allowance.Daily(budget(r))
-              val reply: Either[ClassifierError, Reply] =
+              val asked: (Either[ClassifierError, Reply], FiniteDuration) =
                 Act.admission(env.records, env.db, env.clock, allowance, p.charged.subject) match {
                   case Left(e) =>
-                    Left(
-                      ClassifierError.Unavailable(s"the day's spend is unread: ${Act.describe(e)}")
-                    )
-                  case Right((false, _, _)) => Left(ClassifierError.Unavailable(Act.Capped))
-                  case Right((true, _, _)) => cleared.asking(routed).replied(request)
+                    val why = s"the day's spend is unread: ${Act.describe(e)}"
+                    (Left(ClassifierError.Unavailable(why)), Duration.Zero)
+                  case Right((false, _, _)) =>
+                    (Left(ClassifierError.Unavailable(Act.Capped)), Duration.Zero)
+                  case Right((true, _, _)) =>
+                    val start = env.clock.millis()
+                    val got = cleared.asking(routed).replied(request)
+                    (got, (env.clock.millis() - start).millis)
                 }
+              val (reply, took) = asked
               val calls = reply.toOption.toVector.map(a =>
                 Act.classified(env.records, request, a, cleared.upstream)
               )
-              Posed(read(reply.flatMap(_.answers)), calls)
+              Posed(read(reply.flatMap(_.answers), took), calls)
           }
       )
     Flow

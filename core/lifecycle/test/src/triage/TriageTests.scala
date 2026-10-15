@@ -5,7 +5,8 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Classifier, Question}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Acknowledgement
-import grit.core.id.{QuestionName, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, QuestionName, TurnRef, TurnSeq, WorkflowId}
+import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking}
 import grit.core.spend.DailyCap
@@ -163,7 +164,7 @@ object TriageTests extends TestSuite {
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
         Unoffered + Decided + """; held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
-        (1, Vector("stitched", "ask", "record", "consider"))
+        (1, Vector("stitched", "ask:triage", "ask:triage:record", "record", "consider"))
       w.tags(t) ==> Some(decision)
     }
 
@@ -240,7 +241,7 @@ object TriageTests extends TestSuite {
       val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 2))
-      durable.recordedSteps(t.workflowId).take(2) ==> Vector("stitched", "ask")
+      durable.recordedSteps(t.workflowId).take(2) ==> Vector("stitched", "ask:triage")
       w.awaited.map(_.ref.turn) ==> Vector(TurnRef(b, t.turn))
       classifier.states.lastOption.map(_("thread").str) ==>
         Some("Nick: where did we land on the Engine contract term?")
@@ -256,7 +257,7 @@ object TriageTests extends TestSuite {
       durable.run(reply.workflowId)(
         w.body(new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2)), 2)
       )
-      durable.recordedSteps(reply.workflowId).take(2) ==> Vector("stitched", "ask")
+      durable.recordedSteps(reply.workflowId).take(2) ==> Vector("stitched", "ask:triage")
       w.awaited ==> Vector.empty
     }
 
@@ -306,6 +307,40 @@ object TriageTests extends TestSuite {
       ) ==>
         Unoffered + """tagged: unanswered: unavailable: no classifier; held: {"kind":"off"}"""
       w.tags(t) ==> Some(Tags.Unanswered("unavailable: no classifier"))
+    }
+
+    test("a triage over the day's cap asks no classifier: its tags unanswered, for the cap") {
+      val w = new World
+      val t = w.hear("lunch?", "Ana", 0)
+      w.ledger.now = at(5)
+      w.ledger.record(
+        EntryId("elsewhere"),
+        TurnRef(ConversationId("c2"), TurnSeq(0)),
+        WorkflowId("c2:0"),
+        "m",
+        None,
+        None,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(1))),
+        Tokens(1)
+      )(using TestTx.fake)
+      val classifier = decided
+      val capped = "unavailable: The day's spend reached its cap, so no model was asked."
+      new InMemoryDurable().run(t.workflowId)(
+        w.body(classifier, 5, cap = DailyCap.of("1").toOption)
+      ) ==> Unoffered + s"""tagged: unanswered: $capped; held: {"kind":"off"}"""
+      classifier.calls ==> 0
+      w.tags(t) ==> Some(Tags.Unanswered(capped))
+    }
+
+    test("a triage's classifier call is kept in the ledger once, under its own workflow") {
+      val w = new World
+      val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
+      new InMemoryDurable().run(t.workflowId)(w.body(decided, 5))
+      def rows(of: WorkflowId) =
+        w.ledger.of(of)(using TestTx.fake).map(_.map(r => (r.entry, r.model, r.usage)))
+      rows(t.workflowId) ==> Right(
+        Vector((EntryId(s"move:${WorkflowId.value(t.workflowId)}:triage"), "jev-1.13.0", Spent))
+      )
     }
 
     test(
@@ -358,7 +393,8 @@ object TriageTests extends TestSuite {
       val history = durable.history(t.workflowId)
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
-      history.map(_.name) ==> Vector("stitched", "ask", "record", "consider", "start")
+      history.map(_.name) ==>
+        Vector("stitched", "ask:triage", "ask:triage:record", "record", "consider", "start")
     }
 
     test(
@@ -381,7 +417,15 @@ object TriageTests extends TestSuite {
         w.started
       ) ==> (
         Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor 0.125, anchor-record 0.125 (jev-1.13.0); drafting, not started: the queue is down",
-        Vector("stitched", "ask", "record", "consider", "start", "unstarted"),
+        Vector(
+          "stitched",
+          "ask:triage",
+          "ask:triage:record",
+          "record",
+          "consider",
+          "start",
+          "unstarted"
+        ),
         Some(Outcome.Failed("not started: the queue is down")),
         Vector(Decision.Drafting(one), Decision.Drafting(two)),
         Vector(two)
@@ -409,7 +453,7 @@ object TriageTests extends TestSuite {
             )
           )
         ),
-        Vector("stitched", "ask", "record", "consider")
+        Vector("stitched", "ask:triage", "ask:triage:record", "record", "consider")
       )
     }
 

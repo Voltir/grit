@@ -1,6 +1,6 @@
 package grit.lifecycle.shadow
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -9,9 +9,11 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{CorpusName, EntryId, ShadowName, TriageRef, WorkflowId}
 import grit.core.place.{Namespace, Place}
+import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.Tuning
 import grit.core.triage.{Corpora, Corpus, InMemoryTriageShadows, Shadowed}
 import grit.dbos.sql.TestTx
+import grit.lifecycle.moves.TestMoves
 import grit.lifecycle.triage.{TriageFixtures, TriageQuestion, TriageQuestions}
 
 /** The shadow's test world: triage's ([[TriageFixtures.World]]), with what each variant
@@ -85,15 +87,18 @@ object ShadowFixtures {
 
     /** The shadow's body over this world, with [[Catalog]]: `classifier` asks variant
       * [[Words]] v1 in [[Reworded]], and variant [[Asks]] V2, of model `jev-variant`, at
-      * `minutes`, each call taking 250 ms, reading through `db`.
+      * `minutes`, each call taking 250 ms, reading through `db`, its ask admitted under `cap`
+      * against what the triage world's ledger recorded that day.
       */
     def body(
         classifier: Classifier^,
         minutes: Long,
-        db: grit.core.store.Db^ = TriageFixtures.FakeDb
+        db: grit.core.store.Db^ = TriageFixtures.FakeDb,
+        cap: Option[DailyCap] = None
     )(
         id: WorkflowId
-    )(using Durable^): String =
+    )(using Durable^): String = {
+      val clock = new Ticking(TriageFixtures.at(minutes), 250)
       Shadow.body(
         ShadowEnv(
           triaged.reads,
@@ -113,9 +118,12 @@ object ShadowFixtures {
           ),
           Catalog,
           db,
-          new Ticking(TriageFixtures.at(minutes), 250),
-          Tuning.Default
+          clock,
+          Tuning.Default,
+          TestMoves.of(triaged.ledger, classifier, db, clock),
+          Budget(ZoneOffset.UTC, cap)
         )
       )(id)
+    }
   }
 }

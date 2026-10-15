@@ -71,7 +71,7 @@ final case class TriageQuestions private (
   /** Every question of [[questions]], each read back as given under its name; never empty,
     * since `first` is asked whatever the catalog.
     */
-  private def asked(
+  def asked(
       sources: Corpora
   ): Ask[TriageQuestion.State, VectorMap[QuestionName, Answer]] = {
     val start =

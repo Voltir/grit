@@ -56,7 +56,7 @@ object SettleQuestion {
         Judging.Pose.Made(Judgement.Unanswered(s"the question repeats $key"))
       case Right(ask) =>
         Judging.Pose.asking(classifier, routed, transcript, ask) {
-          case Right(answered) =>
+          case (Right(answered), _) =>
             def p(o: Standing) = Probability.clamped(answered.value.probability(o))
             Judgement.Weighed(
               p(Standing.Nobody),
@@ -64,8 +64,10 @@ object SettleQuestion {
               p(Standing.OnOther),
               answered.model
             )
-          case Left(ClassifierError.Unavailable(why)) => Judgement.Unanswered(s"unavailable: $why")
-          case Left(ClassifierError.Unreadable(why)) => Judgement.Unanswered(s"unreadable: $why")
+          case (Left(ClassifierError.Unavailable(why)), _) =>
+            Judgement.Unanswered(s"unavailable: $why")
+          case (Left(ClassifierError.Unreadable(why)), _) =>
+            Judgement.Unanswered(s"unreadable: $why")
         }
     }
 }

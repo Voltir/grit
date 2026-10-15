@@ -5,8 +5,8 @@
   "source": "recorded",
   "steps": [
     {
-      "name": "ask",
-      "output": "{\"failed\":\"no heard message at turn 0\"}"
+      "name": "ask:shadow",
+      "output": "{\"made\":\"{\\\"failed\\\":\\\"no heard message at turn 0\\\"}\",\"calls\":[]}"
     }
   ]
 }

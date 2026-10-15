@@ -1,7 +1,7 @@
 package grit.lifecycle.triage
 
+import grit.act.moves.MovesEnv
 import grit.act.phase.Placing
-import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.edge.{Acknowledgements, Deliveries}
 import grit.core.id.TurnRef
@@ -13,7 +13,8 @@ import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, Lifecycl
 import grit.core.triage.{Corpora, TriageStore}
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
-  * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
+  * keeps its tags ([[TriageRecords]]), `moves`, whose classifier its ask goes to, admitted by
+  * `budget`, `db` to read the thread
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
   * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
   * were placed on their own, its opening stitched (`tuning`), what its opening's placement is
@@ -23,7 +24,8 @@ import grit.core.triage.{Corpora, TriageStore}
   */
 final case class TriageEnv(
     records: TriageRecords,
-    classifier: ClearedClassifier^,
+    moves: MovesEnv^,
+    budget: Budget,
     db: Db^,
     clock: Clock^,
     speech: TriageSpeech^,

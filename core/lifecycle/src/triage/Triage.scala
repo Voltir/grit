@@ -1,6 +1,8 @@
 package grit.lifecycle.triage
 
+import grit.act.moves.Judging
 import grit.act.phase.Placing
+import grit.core.act.MoveName
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
@@ -20,12 +22,15 @@ import grit.core.visibility.Subject
   *      waited for ([[grit.act.phase.Placing.placed]]), so the message is asked about with its
   *      strand, and only once every opening heard before it in its room is placed; nothing is
   *      waited for otherwise.
-  *   1. `ask` — one classifier call over the heard message, who said it, and the thread
+  *   1. `ask:triage` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
   *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per corpus covering its
-  *      conversation where the set asks so; an absent or failing classifier, or an answer
-  *      that does not read, is `Unanswered` tags.
-  *      Nothing is asked when the message cannot be read or is gone.
+  *      conversation where the set asks so; a move ([[grit.act.moves.Judging]]): admitted
+  *      against the day's cap, so one over it is unanswered; an absent or failing classifier,
+  *      or an answer that does not read, is `Unanswered` tags.
+  *      Nothing is asked when the message cannot be read or is gone. `ask:triage:record` —
+  *      when the classifier replied, its cost in the ledger, charged to the heard message's
+  *      turn; a store that fails it fails the triage.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
   *      message is gone or already tagged.
   *   1. `consider` — when it was tagged now, whether grit drafts a reply to it, or answers it
@@ -73,10 +78,17 @@ object Triage {
       )
       .over[TriageEnv](env => env.placing)
 
-  private val asked: Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]] =
-    Step[TriageEnv, Waited, Either[String, (EntryId, Tags)]](StepName("ask"))(env =>
-      p => ask(env, p.ref)
-    )
+  private val asked
+      : Flow[TriageEnv, Waited, Nothing, Judging.Judged[Either[String, (EntryId, Tags)]]] =
+    Judging.flow[TriageEnv, Waited, Either[String, (EntryId, Tags)]](
+      MoveName("triage"),
+      w =>
+        Judging.Charged(
+          TurnRef(w.ref.period.conversationId, w.ref.turn),
+          w.ref.workflowId,
+          subject(w.ref)
+        )
+    )(_.moves, _.budget)(env => w => ask(env, w.ref))
 
   private val recorded: Step[TriageEnv, Tagged, Either[String, Boolean]] =
     Step.transact[TriageEnv, Tagged, Either[String, Boolean]](
@@ -142,10 +154,12 @@ object Triage {
           }
         )
       })
-      .andThen(Flow.decide(asked) {
-        case (p, Left(why)) => Left(s"${p.kept}failed: $why")
-        case (p, Right((entry, tags))) => Right(Tagged(p, entry, tags))
-      })
+      .andThen(Flow.mayEnd(asked.keeping.map {
+        case (p, Judging.Judged(_, Left(why))) =>
+          Left(s"${p.kept}failed: its cost unrecorded: $why")
+        case (p, Judging.Judged(Left(why), Right(()))) => Left(s"${p.kept}failed: $why")
+        case (p, Judging.Judged(Right((entry, tags)), Right(()))) => Right(Tagged(p, entry, tags))
+      }))
       .andThen(Flow.decide(recorded) {
         case (t, Left(why)) => Left(s"${t.at.kept}failed: $why")
         case (t, Right(false)) =>
@@ -181,11 +195,14 @@ object Triage {
   def body(env: TriageEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     Flows.run(flow, env, workflowId).merge
 
-  /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made
+  /** The `ask:triage` step: the heard message that is `triage`'s turn, and what the classifier made
     * of it, asked with the corpora covering its conversation; why not, when it
     * cannot be read or is not there.
     */
-  private def ask(env: TriageEnv^, triage: TriageRef): Either[String, (EntryId, Tags)] = {
+  private def ask(
+      env: TriageEnv^,
+      triage: TriageRef
+  ): Judging.Pose[Either[String, (EntryId, Tags)]]^{env} = {
     val r = env.records
     // The classifier is asked only when its service is cleared for what the read knew.
     Routed
@@ -206,23 +223,28 @@ object Triage {
             env.tuning,
             TriageRecipe.Shipped
           )
-          .map { read =>
-            // A conversation not found is at no place, so no source covers it.
-            val sources = read.place.fold(Corpora.Empty)(env.sources.at)
-            (
-              read.entry,
-              env.questions.ask(env.classifier.asking(routed), read.state, sources) match {
-                case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
-                case Left(ClassifierError.Unavailable(why)) =>
-                  Tags.Unanswered(s"unavailable: $why")
-                case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")
+          .fold(
+            why => Judging.Pose.Made(Left(why)),
+            read => {
+              // A conversation not found is at no place, so no source covers it.
+              val sources = read.place.fold(Corpora.Empty)(env.sources.at)
+              val entry = read.entry
+              Judging.Pose.asking(
+                env.moves.classifier,
+                routed,
+                read.state,
+                env.questions.asked(sources)
+              ) {
+                case (Right(a), _) => Right((entry, Tags.Weighed(a.value, a.model, a.usage)))
+                case (Left(ClassifierError.Unavailable(why)), _) =>
+                  Right((entry, Tags.Unanswered(s"unavailable: $why")))
+                case (Left(ClassifierError.Unreadable(why)), _) =>
+                  Right((entry, Tags.Unanswered(s"unreadable: $why")))
               }
-            )
-          }
+            }
+          )
       }
-      .left
-      .map(e => s"thread unread: ${describe(e)}")
-      .flatten
+      .fold(e => Judging.Pose.Made(Left(s"thread unread: ${describe(e)}")), identity)
   }
 
   /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's
