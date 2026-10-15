@@ -132,7 +132,7 @@ private[turn] object TurnShown {
       turn: TurnRef,
       window: Window,
       stubs: Map[ItemRef, String]
-  )(using pins: Turn.Picked): Either[TurnFailure, Unshaped] =
+  )(using pins: Turn.Bounded): Either[TurnFailure, Unshaped] =
     pins
       .reads(env.db)
       .read(Subject.Turn(turn))(shown(env.records, turn, window))

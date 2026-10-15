@@ -14,7 +14,7 @@
     },
     {
       "name": "route",
-      "output": "{\"ok\":{\"classification\":\"public\",\"turn\":{\"catalog\":\"6234e05c0b864ab4\",\"assignment\":{\"model\":\"test/turn\",\"maxTokens\":4096},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"summary\":{\"catalog\":\"6234e05c0b864ab4\",\"assignment\":{\"model\":\"test/summary\",\"maxTokens\":1024},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"query\":{\"catalog\":\"6234e05c0b864ab4\",\"assignment\":{\"model\":\"test/query\",\"maxTokens\":1024},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}}}}"
+      "output": "{\"ok\":{\"classification\":\"public\",\"turn\":0,\"summary\":0,\"query\":0}}"
     },
     {
       "name": "offer",

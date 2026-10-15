@@ -4,9 +4,9 @@ import grit.core.allot.Allotment
 import grit.core.context.Window
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
-import grit.core.model.{Pinned, StrictSchemas, TurnProfileId}
+import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ToolUse
-import grit.core.store.{Db, StoreError, Tx}
+import grit.core.store.{Db, ModelProfileStore, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
 import grit.core.visibility.{Classification, Label}
 
@@ -229,18 +229,34 @@ object Turn {
   /** The id of the record of `turn`'s window. */
   def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")
 
-  /** The pin each role's calls are made under, the classification each read whose content a
-    * model is sent is bounded by, and the turn loop's calls: a routed turn's [[Route]], its
-    * allotment laid over its turn pin's effort and its calls, a summary uncleared failing
-    * `Uncleared`.
+  /** The pin each role's calls are made under, and the classification each read whose content
+    * a model is sent is bounded by: a routed turn's [[Route]], its allotment laid over its turn
+    * pin's effort, a summary uncleared failing `Uncleared`.
     */
   private[turn] final case class Picked(
       turn: Pinned,
       summary: Either[TurnFailure, Pinned],
       query: Option[Pinned],
-      bound: Option[Label],
-      calls: Allotment.Calls
-  ) {
+      bound: Option[Label]
+  ) extends Bounded
+
+  private[turn] object Picked {
+    def of(r: Route): Picked =
+      Picked(
+        r.turn.copy(assignment =
+          r.turn.assignment.copy(effort = r.allotment.reasoning.over(r.turn.assignment.effort))
+        ),
+        r.summary.toRight(TurnFailure.Uncleared(r.classification)),
+        r.query,
+        Some(r.classification)
+      )
+  }
+
+  /** The classification each read of a turn whose content a model is sent is bounded by;
+    * `None`: unbounded.
+    */
+  private[turn] trait Bounded {
+    def bound: Option[Label]
 
     /** `db`, its reads bounded as this says ([[Db.within]]). */
     def reads(db: Db^): Db^ = bound match {
@@ -257,17 +273,29 @@ object Turn {
     def at(using Tx^): Classification = bound.fold(Tx.classification)(Tx.locked(_))
   }
 
-  private[turn] object Picked {
-    def of(r: Route): Picked =
-      Picked(
-        r.turn.copy(assignment =
-          r.turn.assignment.copy(effort = r.allotment.reasoning.over(r.turn.assignment.effort))
-        ),
-        r.summary.toRight(TurnFailure.Uncleared(r.classification)),
-        r.query,
-        Some(r.classification),
-        r.allotment.calls
-      )
+  /** A turn's route as its steps carry it: `route`, its pins named by their place in the
+    * profile kept under `profile`, which the steps that make calls read back ([[picked]]).
+    */
+  private[turn] final case class Routed(profile: TurnProfileId, route: Route.Recorded)
+      extends Bounded {
+    def bound: Option[Label] = Some(route.classification)
+
+    /** The calls the turn's loop is allotted. */
+    def calls: Allotment.Calls = route.allotment.calls
+
+    /** The pins this names, the profile read through `env`'s `db` by id
+      * ([[TurnSteps.profileOf]], which says why every run reads the same one unrecorded):
+      * `TurnFailure.Store` when the profile is not kept or has no pin where `route` names one.
+      */
+    def picked(env: TurnEnv^): Either[TurnFailure, Picked] =
+      TurnSteps.profileOf(env, profile).flatMap(in)
+
+    /** [[picked]], the profile read from `profiles` in this transaction. */
+    def pickedIn(profiles: ModelProfileStore)(using Tx^): Either[TurnFailure, Picked] =
+      TurnSteps.profileIn(profiles, profile).flatMap(in)
+
+    private def in(p: TurnProfile): Either[TurnFailure, Picked] =
+      route.in(p).left.map(TurnFailure.Store(_)).map(Picked.of)
   }
 
   /** [[TurnRecord.requests]]. */
@@ -326,7 +354,8 @@ object Turn {
         case (acc, (round, name)) =>
           acc.flatMap(done => recorded[Gated](name).map(g => done ++ g.map(round -> _)))
       }
-      routed <- recorded[Route](Step.Route)
+      recordedRoute <- recorded[Route.Recorded](Step.Route)
+      routed <- recordedRoute.fold(Right(None))(_.in(profile).map(Some(_)))
       settings = routed.fold(profile.turn.first)(_.turn).settings
       strict = settings.strict == StrictSchemas.Enforced
       asking = classified.flatMap(asked)

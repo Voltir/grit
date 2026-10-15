@@ -35,7 +35,7 @@ object TurnReplayTests extends TestSuite {
   private val Budgets: Map[String, Int] = Map(
     Turn.Step.PinModels -> 64, // the pinned profile's id
     Turn.Step.Weigh -> 512, // the answers triage kept or asked, a few tags
-    Turn.Step.Route -> 2800, // each role's pin whole, and the task call's cost
+    Turn.Step.Route -> 800, // each role's pin by its place, and the task call's answers and cost
     Turn.Step.Offer -> 1100, // the offer by reference: ids, tool names, places, its shape
     Turn.Step.RecordFailure -> 64, // whether the failure was kept
     Turn.Step.Stitched -> 64, // what a placement did, in a line
@@ -63,7 +63,7 @@ object TurnReplayTests extends TestSuite {
   )
 
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
-  private val Whole = 8400
+  private val Whole = 6800
 
   /** The name the previous epoch's step `name` has in this one; `None` for a retired patch's
     * marker, which this epoch's turns no longer record.

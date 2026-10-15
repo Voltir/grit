@@ -32,7 +32,7 @@ object TurnHosted {
       place: Place,
       calls: Vector[(TurnTools.Slot, Bound.Hosted)],
       permit: Permit,
-      pins: Turn.Picked
+      pins: Turn.Bounded
   )(using Tx^): Either[TurnFailure, Boolean] =
     Calling
       .asker(turn, hosting.askers)
@@ -66,7 +66,7 @@ object TurnHosted {
         .await[TurnRound.Hosting, TurnFailure](
           WaitSteps(TurnRound.Names.expire, TurnRound.Names.abandon),
           h =>
-            Waiting(h.slot.call, h.place, Subject.Turn(h.slot.turn), h.call.at.looping.pins.bound)
+            Waiting(h.slot.call, h.place, Subject.Turn(h.slot.turn), h.call.at.looping.routed.bound)
         )
         .over[TurnRound.Env](r => r.hosting.requests)
         .map(Waited.Phase(_))
@@ -80,7 +80,7 @@ object TurnHosted {
       d =>
         (tx: Tx^) ?=> {
           val (h, turn) = (d.hosting, d.slot.turn)
-          val pins = h.call.at.looping.pins
+          val pins = h.call.at.looping.routed
           r.hosted(h.call.at, d.slot, h.call.pending)
             .flatMap(hosted =>
               dispatch(r.hosting, turn, d.to, Vector((d.slot, hosted)), Permit.Approved, pins)
@@ -123,7 +123,7 @@ object TurnHosted {
         val (h, slot) = (c.hosting, c.slot)
         r.hosted(h.call.at, slot, h.call.pending).flatMap { hosted =>
           val (call, shown, level) = (h.call.id, hosted.shown, h.call.at.level)
-          val pins = h.call.at.looping.pins
+          val pins = h.call.at.looping.routed
           val (settling, at) = (r.settling, r.now())
           val (requests, askers) = (r.hosting.requests, r.hosting.askers)
           // An edge's answer is believed at the declared output of the service the call went

@@ -96,13 +96,18 @@ object TurnRouteTests extends TestSuite {
   private def pinOf(r: ModelRef, role: Catalog => grit.core.model.Pins): Pinned =
     role(catalog).all.find(_.assignment.ref == r).getOrElse(throw new java.lang.AssertionError())
 
-  private def routeOf(durable: InMemoryDurable, turn: grit.core.id.TurnRef) =
+  // The route `turn` recorded, its pins read back among those of `catalog`'s profile.
+  private def routeOf(durable: InMemoryDurable, turn: grit.core.id.TurnRef, catalog: Catalog) =
     durable
       .history(turn.workflowId)
       .collectFirst {
         case InMemoryDurable.Step(Turn.Step.Route, InMemoryDurable.Outcome.Output(v)) => v
       }
-      .map(TurnJournal.routing.decode)
+      .map(
+        TurnJournal.routing
+          .decode(_)
+          .map(_.flatMap(_.in(catalog.pin).left.map(TurnFailure.Store(_))))
+      )
 
   /** A turn ladder of two grades, each pair at an upstream of its own and asking an effort. */
   private val steady = ref("test/steady", Some("deepinfra"))
@@ -235,7 +240,7 @@ object TurnRouteTests extends TestSuite {
       )
     )
     (
-      routeOf(durable, turn).flatMap(_.toOption).flatMap(_.toOption),
+      routeOf(durable, turn, catalog).flatMap(_.toOption).flatMap(_.toOption),
       seen.pins.map(p => p.assignment.ref -> p.assignment.effort).distinct,
       provider.requests.size,
       asks.n,
@@ -438,7 +443,7 @@ object TurnRouteTests extends TestSuite {
       )
       val flashPin = pinOf(flash, _.pin.turn)
       (
-        routeOf(durable, turn),
+        routeOf(durable, turn, catalog),
         assembler.asked.map(_.query),
         provider.requests.size,
         summarizer.requests.size

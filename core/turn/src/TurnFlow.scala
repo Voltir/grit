@@ -13,7 +13,9 @@ import TurnSteps.*
   *   1. `weigh` — the answers the turn's root is weighed with ([[TurnWeighing]]). Never fails
   *      the turn.
   *   1. `route` — the pin each role's calls are made under, and the effort laid over the turn's
-  *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn.
+  *      ([[Route]]); `Uncleared` when no turn pin is cleared for the turn. Recorded with each
+  *      pin by its place in the profile, which each step that makes a call reads back
+  *      ([[Turn.Routed.picked]]).
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]), and the cost of its weighing
   *      and of its task questions; recorded by reference, its tool set and prompt by id, which
   *      each step that needs them reads back ([[TurnOffer.load]]).
@@ -64,12 +66,14 @@ private[turn] object TurnFlow {
       )
     val routed = weighed.andThen(
       Flow.decide(route)((w, r) =>
-        r.map(Offering(w.turn, w.weighed, _)).left.map(Failed(w.turn, _))
+        r.map(route => Offering(w.turn, w.weighed, Turn.Routed(w.profile, route)))
+          .left
+          .map(Failed(w.turn, _))
       )
     )
     val offered = Flow.decide(offer)((r, recorded) =>
       recorded
-        .map(Offered(r.turn, Turn.Picked.of(r.route), _, ""))
+        .map(Offered(r.turn, r.route, _, ""))
         .left
         .map(Failed(r.turn, _))
     )
@@ -137,11 +141,10 @@ private[turn] object TurnFlow {
     TurnRound.Looping(
       a.turn,
       a.at.offer,
-      a.at.pins,
+      a.at.routed,
       a.seen,
       TurnShown.asked(a.placing),
       limits.budget,
-      a.at.pins.turn.settings.strict == grit.core.model.StrictSchemas.Enforced,
       limits.answerWithin
     )
 
@@ -258,7 +261,7 @@ private[turn] object TurnFlow {
   private def summarised(did: String): Flow[Env, (Ended, EntryId), Nothing, String] =
     Flow
       .pass[(Ended, EntryId)]
-      .map((e, answered) => Summing(e.turn, e.at.pins, answered, e.level))
+      .map((e, answered) => Summing(e.turn, e.at.routed, answered, e.level))
       .andThen(Flow.attempt(summary))
       .keeping
       .map { case ((e, answered), made) =>
@@ -269,9 +272,6 @@ private[turn] object TurnFlow {
   /** `summarise` then `append-summary`. */
   private def summary: Flow[Env, Summing, TurnFailure, EntryId] =
     Flow
-      .decide(summarise)((s, m) =>
-        // Right whenever `m` is: the summarise step made its call under this pin.
-        m.flatMap(message => s.pins.summary.map(pin => Summary(s, message, pin.grade)))
-      )
+      .decide(summarise)((s, m) => m.map(Summary(s, _)))
       .andThen(Flow.mayEnd(Flow.step(appendSummary)))
 }

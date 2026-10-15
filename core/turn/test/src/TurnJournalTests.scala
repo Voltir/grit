@@ -46,14 +46,13 @@ object TurnJournalTests extends TestSuite {
       "a route reads back as written, a role with no pin cleared absent, and a turn uncleared as its label"
     ) {
       import grit.core.visibility.{Label, Level}
-      val pin = TurnFixtures.TestCatalog.pin
-      val routed: Either[TurnFailure, Route] =
+      val routed: Either[TurnFailure, Route.Recorded] =
         Right(
-          Route(
+          Route.Recorded(
             Label.at(Level.Internal),
-            pin.turn.first,
+            1,
             None,
-            Some(pin.query.first),
+            Some(0),
             Headroom.Ample,
             Route.Task.Skipped,
             Allotment.Untouched,
@@ -61,13 +60,33 @@ object TurnJournalTests extends TestSuite {
           )
         )
       roundTrip(routed) ==> Right(routed)
-      routing.encode(routed).contains("summary") ==> false
-      val uncleared: Either[TurnFailure, Route] =
+      routing.encode(routed) ==> """{"ok":{"classification":"internal","turn":1,"query":0}}"""
+      val uncleared: Either[TurnFailure, Route.Recorded] =
         Left(TurnFailure.Uncleared(Label.at(Level.Restricted)))
       (roundTrip(uncleared), routing.encode(uncleared)) ==> (
         Right(uncleared),
         """{"failed":"uncleared","reason":"restricted"}"""
       )
+    }
+
+    test(
+      "a route recorded among its profile's pins reads back in that profile as routed, and a place it lacks is named"
+    ) {
+      import grit.core.visibility.{Label, Level}
+      val pin = TurnFixtures.TestCatalog.pin
+      val route = Route(
+        Label.at(Level.Internal),
+        pin.turn.first,
+        None,
+        Some(pin.query.first),
+        Headroom.Ample,
+        Route.Task.Skipped,
+        Allotment.Untouched,
+        None
+      )
+      Route.recorded(route, pin).flatMap(_.in(pin)) ==> Right(route)
+      Route.recorded(route, pin).map(_.copy(turn = 3)).flatMap(_.in(pin)) ==>
+        Left("the profile has no turn pin at 3")
     }
 
     test(
@@ -78,7 +97,6 @@ object TurnJournalTests extends TestSuite {
       import grit.core.period.Probability
       import grit.core.triage.Weighing
       import grit.core.visibility.{Label, Level}
-      val pin = TurnFixtures.TestCatalog.pin
       val features = Features
         .of(
           Map(
@@ -91,18 +109,18 @@ object TurnJournalTests extends TestSuite {
       val usage = Usage(Tokens(556), Tokens(0), Tokens.Zero, Some(BigDecimal("0.00002335")))
       val asked = Tasking.Asked(features, strand = true, "jev-1.13.0", usage, Tokens(560))
       val base =
-        Route(
+        Route.Recorded(
           Label.at(Level.Internal),
-          pin.turn.first,
-          Some(pin.summary.first),
-          Some(pin.query.first),
+          0,
+          Some(0),
+          Some(0),
           Headroom.Ample,
           Route.Task.Skipped,
           Allotment.Untouched,
           None
         )
       val thrice = Allotment.Calls.Scaled.of(3).getOrElse(throw new java.lang.AssertionError())
-      val routes: Vector[Either[TurnFailure, Route]] = Vector(
+      val routes: Vector[Either[TurnFailure, Route.Recorded]] = Vector(
         base.copy(
           task = Route.Task.Read(asked),
           allotment = Allotment(Some(Grade.Strong), Allotment.Reasoning.At(Effort.High), thrice)
@@ -121,7 +139,7 @@ object TurnJournalTests extends TestSuite {
       val before = ujson.Obj(
         "ok" -> ujson.Obj(
           "classification" -> Label.written(base.classification),
-          "turn" -> grit.core.model.CatalogJson.writePinned(base.turn)
+          "turn" -> base.turn
         )
       )
       routing

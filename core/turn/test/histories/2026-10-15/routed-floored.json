@@ -14,7 +14,7 @@
     },
     {
       "name": "route",
-      "output": "{\"ok\":{\"classification\":\"internal\",\"turn\":{\"catalog\":\"ae075bf4261803d2\",\"grade\":\"strong\",\"assignment\":{\"model\":\"test/routed-query\",\"upstream\":\"together\",\"maxTokens\":100,\"effort\":\"medium\"},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"summary\":{\"catalog\":\"ae075bf4261803d2\",\"assignment\":{\"model\":\"test/routed-summary\",\"upstream\":\"deepinfra\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"query\":{\"catalog\":\"ae075bf4261803d2\",\"assignment\":{\"model\":\"test/routed-query\",\"upstream\":\"together\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"task\":{\"asked\":\"unanswered\",\"why\":\"timeout\"},\"baseline\":\"strong\"}}"
+      "output": "{\"ok\":{\"classification\":\"internal\",\"turn\":1,\"summary\":0,\"query\":0,\"task\":{\"asked\":\"unanswered\",\"why\":\"timeout\"},\"baseline\":\"strong\"}}"
     },
     {
       "name": "offer",

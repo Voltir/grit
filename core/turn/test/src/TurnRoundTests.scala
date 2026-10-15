@@ -99,12 +99,19 @@ object TurnRoundTests extends TestSuite {
     def hosting: TurnHosting = TurnFixtures.hosting()
   }
 
-  private val pins = Turn.Picked(
-    TestCatalog.pin.turn.first,
-    Right(TestCatalog.pin.summary.first),
-    None,
-    None,
-    Allotment.Calls.Default
+  // The scripted bodies read no pins: the route names the fixture profile's first of each.
+  private val routed = Turn.Routed(
+    TestCatalog.pin.id,
+    Route.Recorded(
+      grit.core.visibility.Label.Public,
+      0,
+      Some(0),
+      None,
+      grit.core.allot.Headroom.Ample,
+      Route.Task.Skipped,
+      Allotment.Untouched,
+      None
+    )
   )
 
   /** The turn's rounds under a budget of `n` calls, on `durable`: the model's reply to each
@@ -125,11 +132,10 @@ object TurnRoundTests extends TestSuite {
     val looping = TurnRound.Looping(
       turn,
       offer,
-      pins,
+      routed,
       Window(Vector.empty),
       None,
       budget(n),
-      false,
       TurnTools.AnswerWithin
     )
     val out = durable.run(turn.workflowId)(_ =>

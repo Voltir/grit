@@ -130,6 +130,24 @@ object TurnModelsTests extends TestSuite {
       later.asked ==> Vector(Changed.pin.turn.first, Changed.pin.summary.first)
     }
 
+    test("route records each role's pin by its place among the pinned profile's, not whole") {
+      val entries = new InMemoryEntryStore
+      val profiles = new InMemoryModelProfileStore
+      val models = new Switching(new RecordingProvider, Right(TestCatalog))
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(modelsBody(entries, models, profiles, NoCheckout, noTools))
+      // pin-models recorded the profile's id, and the profile store keeps its pins: route
+      // names each by its place among its role's, 0 the first.
+      durable.history(turn.workflowId).collectFirst {
+        case InMemoryDurable.Step("route", InMemoryDurable.Outcome.Output(out)) => ujson.read(out)
+      } ==> Some(
+        ujson.Obj(
+          "ok" -> ujson.Obj("classification" -> "public", "turn" -> 0, "summary" -> 0, "query" -> 0)
+        )
+      )
+    }
+
     test("no catalog: the turn fails at its first step, keeps that, and calls nothing") {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider

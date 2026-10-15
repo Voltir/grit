@@ -10,7 +10,7 @@ import grit.core.durable.StreamWriter
 import grit.core.flow.{Extracted, Shape}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef}
 import grit.core.message.Message
-import grit.core.model.Grade
+import grit.core.model.{Grade, StrictSchemas}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.store.{Entry, Jot, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
@@ -36,34 +36,38 @@ private[turn] final class Rounding[C^](
       // The name each item hidden so far was given, kept for as long as it stays hidden.
       val named = at.gates.values.flatMap(_.hidden.map((item, h) => item.ref -> h.name)).toMap
       val prior = Option.when(at.round.index != Round.First.index)(at.level)
-      Rounding.gateOf(env, l.turn, l.seen, l.offer.root, tools.set, prior, named)(using l.pins)
+      Rounding.gateOf(env, l.turn, l.seen, l.offer.root, tools.set, prior, named)(using l.routed)
     }
 
   def call(at: TurnRound.Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant] =
-    offered(at).flatMap { offer =>
-      Rounding.tools(tooling, offer, at.looping.asked).flatMap { tools =>
-        val l = at.looping
-        val stubs = stubsAt(at.gates, at.round, tools.set)
-        Rounding.callShaped(heard, l.turn, l.seen, stubs, Rounding.shapeAs(at, tools, use))(using
-          env,
-          l.pins,
-          offer
-        )
-      }
-    }
+    for {
+      offer <- offered(at)
+      pins <- at.looping.routed.picked(env)
+      tools <- Rounding.tools(tooling, offer, at.looping.asked)
+      l = at.looping
+      stubs = stubsAt(at.gates, at.round, tools.set)
+      reply <- Rounding.callShaped(
+        heard,
+        l.turn,
+        l.seen,
+        stubs,
+        Rounding.shapeAs(at, tools, use, pins)
+      )(using env, pins, offer)
+    } yield reply
 
   def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
       Tx^
   ): Either[TurnFailure, TurnRound.Kept] =
     for {
       offer <- env.hosting.offered(at.looping.offer)
+      pins <- at.looping.routed.pickedIn(env.records.profiles)
       tools <- Rounding.tools(tooling, offer, at.looping.asked)
       l = at.looping
       kinds = {
-        val bind = binding(at, tools)
+        val bind = binding(at, tools, pins)
         calls.map(p => TurnTools.Kind.of(bind.bound(p), tool => offer.placeOf(tool)))
       }
-      (stubs, shape) <- Rounding.sent(tooling, at, offer)
+      (stubs, shape) <- Rounding.sent(tooling, at, offer, pins)
       kept <- Rounding.recordCall(
         offer.system,
         env.records,
@@ -72,7 +76,7 @@ private[turn] final class Rounding[C^](
         stubs,
         at.round,
         reply,
-        l.pins.turn.grade,
+        pins.turn.grade,
         shape,
         Some(at.level),
         env.clock.now()
@@ -128,6 +132,7 @@ private[turn] final class Rounding[C^](
   // runs, unrecorded). Read as public, not bounded as the turn was routed: the rows are the
   // turn's own offer, kept by content id, and a clearance risen since must fail what the
   // turn reads of the store, not the offer it was already made.
+  // Tool sets and prompt fragments are configuration, carrying no label, as profiles are.
   private def offered(at: TurnRound.Rounds): Either[TurnFailure, TurnOffer] =
     env.db
       .read(Subject.Public)(
@@ -138,20 +143,28 @@ private[turn] final class Rounding[C^](
 
   // What round `at.round`'s calls bind against again inside a step's body, once per body.
   private def rebinding(at: TurnRound.Rounds): Either[TurnFailure, Binding^{this}] =
-    tools(at).map(binding(at, _))
+    for {
+      tools <- tools(at)
+      pins <- at.looping.routed.picked(env)
+    } yield binding(at, tools, pins)
 
-  // What round `at.round`'s calls bind against, offered `tools`, a tool that reads the store
-  // reading as the turn's pins bound it.
-  private def binding(at: TurnRound.Rounds, tools: Toolbox[C]): Binding^{this} =
-    new Binding(at, tools, at.looping.pins.reads(env.db).as(Subject.Turn(at.looping.turn)))
+  // What round `at.round`'s calls bind against, offered `tools` under `pins`, a tool that
+  // reads the store reading as the turn's route bound it.
+  private def binding(at: TurnRound.Rounds, tools: Toolbox[C], pins: Turn.Picked): Binding^{this} =
+    new Binding(at, tools, pins, at.looping.routed.reads(env.db).as(Subject.Turn(at.looping.turn)))
 
   // A round's calls read against what round `at.round` offers: `tools`, after read_hidden and
   // extract over the items the round's gate hid when the round offers them (their names are
-  // free: offered checked them), stamped at the turn's level, a tool that reads the store
-  // reading through `reads`. An ungated turn's stays at Authority, so its calls bind to any
-  // tool whose requirement names no compartment, as every turn's did before calls were
-  // stamped.
-  private final class Binding(at: TurnRound.Rounds, tools: Toolbox[C], reads: Reads^) {
+  // free: offered checked them), stamped at the turn's level, repaired as `pins`' turn pin
+  // says, a tool that reads the store reading through `reads`. An ungated turn's stays at
+  // Authority, so its calls bind to any tool whose requirement names no compartment, as every
+  // turn's did before calls were stamped.
+  private final class Binding(
+      at: TurnRound.Rounds,
+      tools: Toolbox[C],
+      pins: Turn.Picked,
+      reads: Reads^
+  ) {
 
     // `pending`, the call at `slot`, bound again, taken as `as` takes it. Its kind was
     // recorded with its round, in this run or one before it; a binding `as` does not take
@@ -174,7 +187,7 @@ private[turn] final class Rounding[C^](
         pending: Pending
     ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads}] = {
       val l = at.looping
-      val extracting = Rounding.extraction(env, tooling.jot, l.turn, l.seen)(using l.pins)
+      val extracting = Rounding.extraction(env, tooling.jot, l.turn, l.seen)(using pins)
       val box: Toolbox[caps.CapSet^{C, extracting}] =
         if (!hidSince(at.gates, at.round)) tools
         else {
@@ -184,7 +197,7 @@ private[turn] final class Rounding[C^](
             .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, extracting}](hidden, tools))
             .getOrElse(tools)
         }
-      val settings = l.pins.turn.settings
+      val settings = pins.turn.settings
       TurnTools.read(box, pending, Repairs(settings.names, settings.repairs), reads, at.level)
     }
   }
@@ -192,19 +205,20 @@ private[turn] final class Rounding[C^](
 
 private[turn] object Rounding {
 
-  /** What round `at.round`'s request, offered as `offer`, was sent: the stub of each item its
-    * gate hid, by the item's ref, and how it is shaped from the plain request, offering tools
-    * as its budget does. Fails as [[TurnRound.Env.record]] does.
+  /** What round `at.round`'s request, offered as `offer` under `pins`, was sent: the stub of
+    * each item its gate hid, by the item's ref, and how it is shaped from the plain request,
+    * offering tools as its budget does. Fails as [[TurnRound.Env.record]] does.
     */
   def sent[C^](
       tooling: TurnTooling[C]^,
       at: TurnRound.Rounds,
-      offer: TurnOffer
+      offer: TurnOffer,
+      pins: Turn.Picked
   ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
     tools(tooling, offer, at.looping.asked).map(tools =>
       (
         stubsAt(at.gates, at.round, tools.set),
-        shapeAs(at, tools, TurnLoop.use(at.looping.budget, at.round))
+        shapeAs(at, tools, TurnLoop.use(at.looping.budget, at.round), pins)
       )
     )
 
@@ -219,17 +233,27 @@ private[turn] object Rounding {
     TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked)
 
   /** Round `at.round`'s request from the plain one, offering `tools` as `use` says, their
-    * schemas as the loop says, and told and guided as the turn's pair is.
+    * schemas strict when `pins`' turn pair is known to enforce them, and told and guided as
+    * that pair is.
     */
   private def shapeAs[C^](
       at: TurnRound.Rounds,
       tools: Toolbox[C],
-      use: ToolUse
+      use: ToolUse,
+      pins: Turn.Picked
   ): ModelRequest -> ModelRequest = {
-    val (l, settings) = (at.looping, at.looping.pins.turn.settings)
-    val (shown, lines) =
-      gatedOffer(at.gates, at.round, tools.set, tools.schemas(l.strict), l.strict)
-    loopShape(l.asked, at.round, use, shown, settings.afterResult, settings.guidance, lines)
+    val settings = pins.turn.settings
+    val strict = settings.strict == StrictSchemas.Enforced
+    val (shown, lines) = gatedOffer(at.gates, at.round, tools.set, tools.schemas(strict), strict)
+    loopShape(
+      at.looping.asked,
+      at.round,
+      use,
+      shown,
+      settings.afterResult,
+      settings.guidance,
+      lines
+    )
   }
 
   /** The `gate:n` step: what a request for `turn` over `window` shows, read through `env`'s
@@ -248,7 +272,7 @@ private[turn] object Rounding {
       offered: ToolSet,
       prior: Option[Integrity],
       named: Map[ItemRef, HiddenName]
-  )(using pins: Turn.Picked): Either[TurnFailure, Gated] =
+  )(using pins: Turn.Bounded): Either[TurnFailure, Gated] =
     pins
       .reads(env.db)
       .read(Subject.Turn(turn))(shown(env.records, turn, window))

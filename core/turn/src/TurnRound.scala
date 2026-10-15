@@ -53,7 +53,8 @@ private[turn] object TurnRound {
       * what each of its `calls` is. Fails, as every member here does, when the tools the round
       * offers no longer make one toolbox, which `record-window` checked in the run that
       * recorded it ([[TurnFlow]]), and as `TurnFailure.Store` when its offer's tool set or
-      * prompt is not kept ([[TurnHosting.offered]]).
+      * prompt, or its route's profile, is not kept ([[TurnHosting.offered]],
+      * [[Turn.Routed.picked]]).
       */
     def record(at: Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
@@ -99,19 +100,17 @@ private[turn] object TurnRound {
   }
 
   /** What a turn's loop runs under: `turn`, offering what `offer` names, its calls made as
-    * `pins` says over `seen`, its window, as `budget` allows, their tools' schemas `strict` when
-    * the turn's pair is known to enforce them, `asked` the classification its model is asked
-    * about when the classifier was unsure; a call that asks a person first waits
-    * `answerWithin`.
+    * `routed` says over `seen`, its window, as `budget` allows, `asked` the classification its
+    * model is asked about when the classifier was unsure; a call that asks a person first
+    * waits `answerWithin`.
     */
   final case class Looping(
       turn: TurnRef,
       offer: TurnOffer.Recorded,
-      pins: Turn.Picked,
+      routed: Turn.Routed,
       seen: Window,
       asked: Option[TurnTopics.Classification],
       budget: Budget,
-      strict: Boolean,
       answerWithin: FiniteDuration
   )
 
@@ -444,7 +443,7 @@ private[turn] object TurnRound {
       )(r =>
         s =>
           (tx: Tx^) ?=> {
-            val Looping(turn, _, pins, _, _, _, _, _) = s.at.looping
+            val Looping(turn, _, pins, _, _, _, _) = s.at.looping
             val hosted = s.calls.foldLeft[Either[TurnFailure, Vector[(Slot, Bound.Hosted)]]](
               Right(Vector.empty)
             ) { case (acc, (slot, pending)) =>

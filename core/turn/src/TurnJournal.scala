@@ -302,19 +302,20 @@ private[turn] object TurnJournal {
         }
     )
 
-  /** A `route` step's output: `{"classification": label written, "turn": pin, "summary": pin,
-    * "query": pin}`, each pin as [[CatalogJson.writePinned]] writes it; `summary` or `query`
-    * absent when none of that role's pins is cleared.
+  /** A `route` step's output: `{"classification": label written, "turn": place, "summary":
+    * place, "query": place}`, each pin by its place among its role's in the turn's profile
+    * ([[Route.Recorded]]); `summary` or `query` absent when none of that role's pins is
+    * cleared.
     */
-  given routing: Journaled[Either[TurnFailure, Route]] =
+  given routing: Journaled[Either[TurnFailure, Route.Recorded]] =
     outcome(
       r => {
         val o = ujson.Obj(
           "classification" -> Label.written(r.classification),
-          "turn" -> CatalogJson.writePinned(r.turn)
+          "turn" -> r.turn
         )
-        r.summary.foreach(p => o("summary") = CatalogJson.writePinned(p))
-        r.query.foreach(p => o("query") = CatalogJson.writePinned(p))
+        r.summary.foreach(p => o("summary") = p)
+        r.query.foreach(p => o("query") = p)
         // Each written only when it is not what a route recorded before it decided.
         if (r.headroom == Headroom.Low) o("headroom") = "low"
         writeTask(r.task).foreach(t => o("task") = t)
@@ -323,10 +324,15 @@ private[turn] object TurnJournal {
         o
       },
       v => {
+        def place(p: ujson.Value, key: String): Either[String, Int] =
+          p.numOpt
+            .filter(n => n >= 0 && n == n.toInt)
+            .map(_.toInt)
+            .toRight(s"route: $key is no place")
         def optional(o: collection.Map[String, ujson.Value], key: String) =
           o.get(key) match {
             case None => Right(None)
-            case Some(p) => CatalogJson.readPinned(p, s"route.$key").map(Some(_))
+            case Some(p) => place(p, key).map(Some(_))
           }
         for {
           o <- v.objOpt.toRight("route: expected an object")
@@ -335,10 +341,7 @@ private[turn] object TurnJournal {
             .flatMap(_.strOpt)
             .toRight("route: missing classification")
             .flatMap(Label.read)
-          turn <- o
-            .get("turn")
-            .toRight("route: missing turn")
-            .flatMap(CatalogJson.readPinned(_, "route.turn"))
+          turn <- o.get("turn").toRight("route: missing turn").flatMap(place(_, "turn"))
           summary <- optional(o, "summary")
           query <- optional(o, "query")
           headroom <- o.get("headroom") match {
@@ -354,7 +357,16 @@ private[turn] object TurnJournal {
               .map(Some(_))
               .toRight("route: baseline names no grade")
           }
-        } yield Route(classification, turn, summary, query, headroom, task, allotment, baseline)
+        } yield Route.Recorded(
+          classification,
+          turn,
+          summary,
+          query,
+          headroom,
+          task,
+          allotment,
+          baseline
+        )
       }
     )
 

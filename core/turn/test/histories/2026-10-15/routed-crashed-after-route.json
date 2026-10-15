@@ -14,7 +14,7 @@
     },
     {
       "name": "route",
-      "output": "{\"ok\":{\"classification\":\"public\",\"turn\":{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-open\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"summary\":{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-summary\",\"upstream\":\"deepinfra\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"query\":{\"catalog\":\"c0864caeeb25c8e4\",\"assignment\":{\"model\":\"test/routed-query\",\"upstream\":\"together\",\"maxTokens\":100},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}}}}"
+      "output": "{\"ok\":{\"classification\":\"public\",\"turn\":0,\"summary\":0,\"query\":0}}"
     }
   ]
 }
