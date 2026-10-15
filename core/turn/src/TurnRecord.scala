@@ -121,6 +121,34 @@ object TurnRecord {
     case Recorded(weighed: Option[TurnWeighing.Weighed])
   }
 
+  /** Each round's gate `steps` recorded (`gate:n`), in round order; a round whose gate recorded
+    * a failure, or no output, is left out. `Left` naming the step when its output does not read.
+    */
+  def gates(steps: Vector[StepRecord]): Either[String, Vector[Gated]] = {
+    import TurnJournal.given
+    val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, Gated]]]
+    val rounds = steps
+      .flatMap(s =>
+        (s.name, s.output) match {
+          case (GateStep(n), Some(output)) => Some((n.toInt, s.name, output))
+          case _ => None
+        }
+      )
+      .sortBy(_._1)
+    rounds.foldLeft[Either[String, Vector[Gated]]](Right(Vector.empty)) {
+      case (acc, (_, name, output)) =>
+        acc.flatMap(done =>
+          journal.decode(output).left.map(why => s"$name: $why").map(_.fold(_ => done, done :+ _))
+        )
+    }
+  }
+
+  /** Whether `item` is an entry's closing record, as a gate records it. */
+  def closing(item: Item): Boolean = item.ref match {
+    case ItemRef.Own(_) | ItemRef.Nearby(_, _) => item.source == TurnGate.ClosingRecord
+    case ItemRef.Document(_) | ItemRef.Result(_) => false
+  }
+
   /** The first of `steps` whose output is a [[TurnFailure]]: its step's family
     * ([[Turn.Step.family]]; the name as recorded when it has none) and the failure. A failure
     * ends the turn only when no reply follows it: a failed summary leaves the reply standing.
@@ -229,6 +257,7 @@ object TurnRecord {
 
   private val Expire = """expire:(\d+):(\d+)""".r
   private val Abandon = """abandon:(\d+):(\d+)""".r
+  private val GateStep = """gate:(\d+)""".r
 
   /** The output of the step named `name` among `steps`, read by `A`'s journal; `None` when no
     * such step recorded one.

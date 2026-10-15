@@ -70,6 +70,11 @@ final case class Gated(level: Integrity, decided: Vector[Decided], withheld: Vec
 
 object TurnGate {
 
+  /** The source a closing record is recorded under as an [[Item]]: changing it changes what
+    * [[TurnRecord.closing]] reads in every recorded gate.
+    */
+  private[turn] val ClosingRecord = "a closing record"
+
   /** What a round's request adds to its system prompt from the first round whose gate hid an
     * item on, before any withdrawal ([[withdrawn]]), in words the model may repeat to a
     * person: why things are hidden; never to say or post what one says unread or unanswered;

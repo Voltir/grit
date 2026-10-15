@@ -1807,7 +1807,7 @@ object Turn {
         case Payload.Message(Message.User(_)) | Payload.Heard(_) => Some(person(e))
         case Payload.Message(_) | Payload.Exchange(_) | Payload.Posted(_) =>
           Some("an earlier reply")
-        case Payload.Closed(_, _, _) => Some("a closing record")
+        case Payload.Closed(_, _, _) => Some(TurnGate.ClosingRecord)
         case _ => None
       }
       val at = e.payload match {

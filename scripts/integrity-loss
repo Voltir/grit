@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# The lost-tool measure (eval/harness/README.md, `loss`), run through the eval harness with mill
+# out of the loop: mill builds the launcher and exits, then java runs the harness directly.
+#
+#   scripts/integrity-loss <database> --since <instant>
+#       Over every turn <database> created from <instant> (e.g. 2026-10-14T00:00:00Z) to now,
+#       read from each turn's recorded gate steps: per conversation, whether any tool was
+#       withheld, whether a tool that writes out was, and whether a turn was lost (a write-out
+#       tool withheld in a turn whose root message asks for something to be posted, sent or
+#       changed outside its conversation, as Jev judges it at 0.5 or over, asked only of those
+#       turns). Prints the share of conversations lost with its interval, those counts, and each
+#       turn's items left hidden, closing records counted apart: ids and counts, never a
+#       message's text. Reads one window of step outputs, and writes nothing to the database or
+#       to disk. Jev's key is JEV_API_KEY, from the environment over GRIT_ENV_FILE (the main
+#       checkout's .env when unset), read only when a root is to be asked; each costs a
+#       fraction of a cent, and the total is printed. Refuses `grit`, the local sessions'
+#       database.
+set -euo pipefail
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+[ $# -eq 3 ] && [ "$2" = --since ] || usage
+db=$1 since=$3
+[[ $db =~ ^[a-z_][a-z0-9_]*$ ]] || { echo "integrity-loss: not a database name: $db" >&2; exit 2; }
+# As scripts/sql: `grit` is the local sessions' database, and its roots are not sent to Jev.
+[ "$db" != grit ] || { echo "integrity-loss: refuses grit, the local sessions' database" >&2; exit 2; }
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+main=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
+cd "$here"
+
+# `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
+path_of() { ./mill --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+launcher=$(path_of grit.eval.harness.launcher)
+export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+JAVA_HOME=$(path_of grit.eval.harness.javaHome) "$launcher" integrity-loss \
+  --url "jdbc:postgresql://localhost:5432/$db" --since "$since"

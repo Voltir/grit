@@ -2,7 +2,7 @@
 
 The eval harness: cases captured from a database, labelled by a person, run
 through a variant of a shipped call, and scored. It measures; it gates nothing. It runs only
-through `scripts/eval`, never from a test or `scripts/check`, and its tests test the
+through `scripts/eval` and `scripts/integrity-loss`, never from a test or `scripts/check`, and its tests test the
 instrument, not a model.
 
 It names grit's code alone (core, `grit.dbos`'s `Reader`, and its `Engine` to write the
@@ -49,6 +49,12 @@ Packages, each importing only those above it:
 - **`pull`**: what a deployment's database kept of a capture's heard messages, read as run logs:
   live triage's tags, each declared shadow's answers, and the verdicts standing. ← `capture`,
   `label`, `log`
+- **`loss`**: the lost-tool measure (`scripts/integrity-loss`): over a window of a database's
+  turns, read from their recorded gate steps by the turn's own codec, which conversations had a
+  tool withheld, a tool that writes out withheld, and a turn lost, one whose root asks for a
+  write out, as Jev judges the root alone, asked only when a write-out tool was withheld; and the
+  items each turn left hidden, closing records apart. It reads, never writes, and keeps nothing.
+  ← `stats`, `capture`
 - **`jev`**: Jev's suite: the variants a run can name, how a question is put through the shipped
   call, a case's questions rebuilt and their drift from the capture, and a run's spend under its
   cap. ← `capture`, `log`
