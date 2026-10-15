@@ -235,6 +235,36 @@ object ServerTests extends TestSuite {
       assert(textOf(c).exists(_.contains("def f(a: Int): Int")))
     }
 
+    test("a call without root, after one that named another, says it answers for the default checkout") {
+      val r1 = checkout("default", one)
+      val r2 = checkout("other", two)
+      val (_, s1) = reply(
+        call(6, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"), "root" -> r2.dir.toString)),
+        State(Roots.empty(6000), r1)
+      )
+      val (r, _) = reply(call(7, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"))), s1)
+      val lines = textOf(r).getOrElse("").linesIterator.toVector
+      assert(lines.headOption.exists(_.startsWith(s"## root ${r1.dir} ")))
+      assert(
+        lines.lift(1) == Some(
+          s"-- answered for the default checkout, ${r1.dir}; pass root to ask about another"
+        )
+      )
+      assert(lines.exists(_.contains("def f(a: Int): Int")))
+    }
+
+    test("a session whose calls named no root but the default gets no default-checkout line") {
+      val r1 = checkout("only", one)
+      val (_, s1) = reply(
+        call(6, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"), "root" -> r1.dir.toString)),
+        State(Roots.empty(6000), r1)
+      )
+      val (r, _) = reply(call(7, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"))), s1)
+      val text = textOf(r).getOrElse("")
+      assert(text.contains("def f(a: Int): Int"))
+      assert(!text.contains("default checkout"))
+    }
+
     test("a request whose handling throws gets a -32603 error and the next request is answered") {
       val written = Vector.newBuilder[String]
       val ended = Server.serveLines(

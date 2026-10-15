@@ -7,8 +7,10 @@ import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.query.{Config, Entry, Help, Query, Roots}
 import grit.outline.render.TestsShown
 
-/** The server between calls: each root's cache, and the root a call without one uses. */
-final case class State(roots: Roots, defaultRoot: Root)
+/** The server between calls: each root's cache, the root a call without one uses, and whether a call so far
+  * named a root other than that one.
+  */
+final case class State(roots: Roots, defaultRoot: Root, namedOther: Boolean = false)
 
 object Server {
 
@@ -331,9 +333,34 @@ object Server {
               state,
               Some(name)
             )
-          case Right(cap) => run(name, args, state, cap)
+          case Right(cap) =>
+            val named = rootArg(args).toOption.flatten
+            val (body, next, tool) = run(name, args, state, cap)
+            val noted =
+              if (named.isEmpty && state.namedOther) body.map(forDefault(_, state.defaultRoot))
+              else body
+            (noted, next.copy(namedOther = state.namedOther || named.exists(_ != state.defaultRoot)), tool)
         }
     }
+
+  /** `result` with a line after its `## root` line saying it answers for `root`, the default checkout; any
+    * other result, an error's or one with no such line, as it is.
+    */
+  private def forDefault(result: ujson.Value, root: Root): ujson.Value = {
+    val text = field(result, "content")
+      .flatMap(_.arrOpt)
+      .flatMap(_.headOption)
+      .flatMap(field(_, "text"))
+      .flatMap(_.strOpt)
+    val failed = field(result, "isError").flatMap(_.boolOpt).getOrElse(true)
+    text match {
+      case Some(t) if !failed && t.startsWith("## root") =>
+        val (first, rest) = t.span(_ != '\n')
+        val note = s"-- answered for the default checkout, ${root.dir}; pass root to ask about another"
+        toolResult(s"$first\n$note$rest", isError = false)
+      case _ => result
+    }
+  }
 
   /** The call of the tool `name` with `args`, its answer cut at `cap` bytes. */
   private def run(

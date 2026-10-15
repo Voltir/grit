@@ -129,7 +129,9 @@ says on stderr why it ends, then or when stdin closes.
 - Every answer starts with a `## root` line naming its root, its branch and its HEAD's first
   8 characters. Read it first: it says which checkout the answer describes.
 - `--root DIR` picks the root; without it, the repository above the working directory. An MCP
-  server's calls use its start-up root unless a call names one.
+  server's calls use its start-up root unless a call names one. Once a call has named another root,
+  an answer for the start-up root says so on its second line:
+  `-- answered for the default checkout, <dir>; pass root to ask about another`.
 - A query reads only that root's build output, and refuses any TASTy whose sources lie outside
   the root.
 - A source that changed since its `.tasty` was compiled is flagged as stale: the definition reflects
