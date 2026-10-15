@@ -230,9 +230,8 @@ object TurnGateTurnTests extends TestSuite {
         Payload.Result(
           Message.ToolResult(
             ToolCallId("t3"),
-            "The call to `post` was not run: it needs what this turn has read believed at " +
-              "[integrity: member] or above, and this turn has read something believed only " +
-              "at [integrity: untrusted].",
+            "You can't use post right now, because of something you read; nothing was done, " +
+              "so answer without it.",
             isError = true
           ),
           "post"
