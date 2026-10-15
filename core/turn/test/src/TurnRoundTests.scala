@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.allot.Allotment
 import grit.core.approval.Approval
 import grit.core.context.Window
-import grit.core.durable.{Flows, InMemoryDurable, StepRecord}
+import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.ToolUse
