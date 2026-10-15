@@ -3,7 +3,7 @@ package grit.lifecycle.shadow
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
 import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed}
@@ -24,35 +24,50 @@ import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
   *      that variant shadowed it already.
   */
 object Shadow {
+  import ShadowJournal.given
 
-  /** The shadow's steps, as DBOS records their names, in the order they run. */
-  object Step {
-    val Ask = "ask"
-    val Record = "record"
-  }
+  /** What the variant of `ref` made of its heard message, `entry`. */
+  private final case class Made(ref: ShadowRef, entry: EntryId, row: Shadowed)
 
-  /** The shadow workflow's body, for the shadow whose workflow id is `workflowId`. Returns
-    * what it did, for logs: what the variant made of the message is in the store.
-    */
-  def body(env: ShadowEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
-    ShadowRef.fromWorkflowId(workflowId) match {
-      case None => s"not a shadow: ${WorkflowId.value(workflowId)}"
-      case Some(shadow) =>
-        import ShadowJournal.given
-        d.step(Step.Ask)(() => ask(env, shadow)) match {
-          case Left(why) => s"not asked: $why"
-          case Right((entry, row)) =>
-            val at = env.clock.now()
-            val (shadows, name) = (env.shadows, shadow.name)
-            d.transact(Step.Record, Subject.Conversation(shadow.triage.period.conversationId))(
-              shadows.record(entry, name, row, at).left.map(ShadowJournal.describe)
-            ) match {
-              case Left(why) => s"not kept: $why"
-              case Right(false) => "ignored: the message is gone or shadowed already"
-              case Right(true) => s"kept: ${shown(row)}"
-            }
-        }
+  private val asked: Step[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]] =
+    Step[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]](StepName("ask")) { env => ref =>
+      ask(env, ref)
     }
+
+  private val record: Step[ShadowEnv, Made, Either[String, Boolean]] =
+    Step.transact[ShadowEnv, Made, Either[String, Boolean]](
+      StepName("record"),
+      m => Subject.Conversation(m.ref.triage.period.conversationId)
+    )(env =>
+      m =>
+        env.shadows
+          .record(m.entry, m.ref.name, m.row, env.clock.now())
+          .left
+          .map(ShadowJournal.describe)
+    )
+
+  /** The shadow workflow, from the shadow's workflow id: what it did, for logs, at whichever
+    * end; what the variant made of the message is in the store.
+    */
+  val flow: Flow[ShadowEnv, WorkflowId, String, String] =
+    Flow
+      .mayEnd(Flow.pass[WorkflowId].map { id =>
+        ShadowRef.fromWorkflowId(id).toRight(s"not a shadow: ${WorkflowId.value(id)}")
+      })
+      .andThen(Flow.decide(asked) {
+        case (ref, Right((entry, row))) => Right(Made(ref, entry, row))
+        case (_, Left(why)) => Left(s"not asked: $why")
+      })
+      .andThen(Flow.step(record).keeping)
+      .map {
+        case (_, Left(why)) => s"not kept: $why"
+        case (_, Right(false)) => "ignored: the message is gone or shadowed already"
+        case (m, Right(true)) => s"kept: ${shown(m.row)}"
+      }
+
+  /** The shadow workflow for the shadow whose workflow id is `workflowId`: [[flow]] run. */
+  def body(env: ShadowEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
+    Flows.run(flow, env, workflowId).merge
 
   /** The `ask` step: the heard message that is `shadow`'s triage's turn, and what the variant
     * made of it; why nothing was asked, otherwise.
