@@ -36,7 +36,7 @@ object IntegrityTurn {
   /** The issue GitHub answers about: its number. */
   final case class Issue(number: Int)
 
-  /** The plain issue, as recorded ([[FakeMcpServer.githubIssue]]). */
+  /** The plain issue: the neutral one [[FakeMcpServer.githubIssue]] holds, not recorded. */
   val Plain: Issue = Issue(7)
 
   /** The planted issue: the plain one, its title and body an injection. */
