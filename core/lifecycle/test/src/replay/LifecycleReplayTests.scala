@@ -1,6 +1,6 @@
 package grit.lifecycle.replay
 
-import grit.core.durable.{History, InMemoryDurable}
+import grit.core.durable.{History, InMemoryDurable, RecordedSizes}
 import grit.core.period.ClosingJson
 import grit.core.triage.{ShadowAnswers, Shadowed, ShadowedJson}
 import grit.lifecycle.close.CloseFixtures
@@ -22,6 +22,29 @@ object LifecycleReplayTests extends TestSuite {
   import RecordLifecycleHistories.{Posted, postWorld}
 
   private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+
+  /** The most bytes a step of each family may record in these histories, about twice the
+    * most any records today, each with what it records. A step new to these workflows has
+    * none until it is given one here.
+    */
+  private val Budgets: Map[String, Int] = Map(
+    "check" -> 512, // what is due, and close's known record of the conversation
+    "gate" -> 256, // which of close's sections its gate let through, and why
+    "summarise" -> 1600, // the closing close drew up, whole
+    "seal" -> 64, // the closing's id
+    "ask" -> 1100, // triage's, settle's and shadow's answers, with their weights
+    "record" -> 64, // whether the answers were kept
+    "consider" -> 448, // what triage decided of a heard message, and the gate's readings
+    "start" -> 64, // the turn triage started, or why not
+    "unstarted" -> 64, // whether triage's unstarted row was kept
+    "stitched" -> 64, // what a placement did, in a line
+    "stitch" -> 1200, // a placement and its call's cost
+    "record-stitch" -> 64, // whether the placement was kept
+    "post" -> 64 // what the post came to
+  )
+
+  /** The most bytes one history's steps may record in all, about twice the most today's do. */
+  private val Whole = 2000
 
   private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
     val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
@@ -56,6 +79,14 @@ object LifecycleReplayTests extends TestSuite {
         workflows.contains("stitch"),
         workflows.contains("shadow")
       )
+    }
+
+    test(
+      "every step of the epoch records within its family's budget, every history within the whole's"
+    ) {
+      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      assert(read.size == histories.size)
+      RecordedSizes.breaches(read, RecordedSizes.familyOf, Budgets, Whole) ==> Vector.empty
     }
 
     test(

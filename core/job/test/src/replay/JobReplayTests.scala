@@ -1,6 +1,6 @@
 package grit.job.replay
 
-import grit.core.durable.{History, InMemoryDurable}
+import grit.core.durable.{History, InMemoryDurable, RecordedSizes}
 import grit.job.run.Run
 import grit.job.run.RunFixtures.*
 import grit.turn.Turn
@@ -15,6 +15,27 @@ import utest.*
 object JobReplayTests extends TestSuite {
 
   private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+
+  /** The most bytes a step of each family may record in these histories, about twice the
+    * most any records today, each with what it records. A step new to the run has none until
+    * it is given one here.
+    */
+  private val Budgets: Map[String, Int] = Map(
+    "read-slot" -> 448, // the slot read: its job, version, params and report
+    "ask" -> 768, // an ask's reply as the move shaped it, and its calls' costs
+    "ask:record" -> 64, // whether the ask's cost was recorded
+    "call" -> 384, // what the call sent, or why nothing was
+    "call:answer" -> 128, // the answer read, at its level
+    "call:expire" -> 64, // the wait's state when given up
+    "call:abandon" -> 64, // the wait's state when given up
+    "keep" -> 64, // what was kept
+    "DBOS.recv" -> 64, // an edge's ring
+    "DBOS.sleep" -> 64, // when the wait ends
+    "reply" -> 256 // the run's reply
+  )
+
+  /** The most bytes one history's steps may record in all, about twice the most today's do. */
+  private val Whole = 1600
 
   private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
     val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
@@ -114,6 +135,14 @@ object JobReplayTests extends TestSuite {
         "run-kept"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
+    }
+
+    test(
+      "every step of the epoch records within its family's budget, every history within the whole's"
+    ) {
+      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      assert(read.size == histories.size)
+      RecordedSizes.breaches(read, RecordedSizes.familyOf, Budgets, Whole) ==> Vector.empty
     }
 
     test("every run history that made no move replays under today's body, at a later version") {

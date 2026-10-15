@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.durable.{History, InMemoryDurable}
+import grit.core.durable.{History, InMemoryDurable, RecordedSizes}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 
 import utest.*
@@ -27,6 +27,43 @@ object TurnReplayTests extends TestSuite {
 
   /** The epoch before this one, whose histories the rename map is checked against. */
   private val Previous = "2026-10-14"
+
+  /** The most bytes a step of each family may record in these histories, about twice the
+    * most any records today, each with what it records. A step new to the turn has none until
+    * it is given one here.
+    */
+  private val Budgets: Map[String, Int] = Map(
+    Turn.Step.PinModels -> 64, // the pinned profile's id
+    Turn.Step.Weigh -> 512, // the answers triage kept or asked, a few tags
+    Turn.Step.Route -> 2800, // each role's pin whole, and the task call's cost
+    Turn.Step.Offer -> 1100, // the offer by reference: ids, tool names, places, its shape
+    Turn.Step.RecordFailure -> 64, // whether the failure was kept
+    Turn.Step.Stitched -> 64, // what a placement did, in a line
+    Turn.Step.Classify -> 1024, // the topic events and the classifier call's cost
+    Turn.Step.RecordTopic -> 64, // an entry id
+    Turn.Step.Assemble -> 640, // the window's entry seqs and notes
+    Turn.Step.RecordWindow -> 128, // the loop's limits
+    Turn.Step.Gate -> 800, // a round's level and the items it hid or lowered
+    Turn.Step.Ask -> 1024, // a model reply: these fixtures' are a few lines
+    Turn.Step.Record -> 512, // the reply's entry id and its calls' kinds
+    Turn.Step.Call -> 128, // a result's entry id and whether it failed
+    Turn.Step.Approve -> 64, // a request's id
+    Turn.Step.Send -> 64, // whether the requests were sent
+    Turn.Step.Dispatch -> 64, // whether the request was sent
+    Turn.Step.Expire -> 64, // whether the wait was given up
+    Turn.Step.Abandon -> 64, // whether the wait was given up
+    "DBOS.recv" -> 64, // a person's answer, or an edge's ring
+    "DBOS.sleep" -> 64, // when the wait ends
+    Turn.Step.RecordVerdict -> 64, // an entry id
+    Turn.Step.Append -> 64, // the reply's entry id
+    Turn.Step.Judge -> 320, // the judgement and its call's cost
+    Turn.Step.RecordSpeech -> 320, // what became of the draft
+    Turn.Step.Summarise -> 1500, // the summary's message
+    Turn.Step.AppendSummary -> 64 // the summary's entry id
+  )
+
+  /** The most bytes one history's steps may record in all, about twice the most today's do. */
+  private val Whole = 8400
 
   /** The name the previous epoch's step `name` has in this one; `None` for a retired patch's
     * marker, which this epoch's turns no longer record.
@@ -153,6 +190,15 @@ object TurnReplayTests extends TestSuite {
         case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
       }
       assert(failures.isEmpty)
+    }
+
+    test(
+      "every step of the epoch records within its family's budget, every history within the whole's"
+    ) {
+      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      assert(read.size == histories.size)
+      val family = (name: String) => Turn.Step.family(name).getOrElse(name)
+      RecordedSizes.breaches(read, family, Budgets, Whole) ==> Vector.empty
     }
 
     test("every recorded offer is written back byte for byte") {
