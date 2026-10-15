@@ -19,7 +19,9 @@ enum Verdict extends caps.Pure {
   case Suspicious(reasons: Vector[Reason])
 }
 
-/** What the tree made of a text: `text` at its new integrity, and the verdict. */
+/** What the tree made of a text: the verdict, and `text`, at `Outside` when the verdict is
+  * `Raised` and otherwise as it came.
+  */
 final case class Vetted(text: Tainted[String], verdict: Verdict)
 
 /** Code's decision over what a text holds, what the classifier answered of it and where it came
@@ -27,6 +29,8 @@ final case class Vetted(text: Tainted[String], verdict: Verdict)
   */
 object IntegrityTree {
 
+  // Changing it changes how a text is cut into windows, so which vet moves a run makes: a job
+  // that vets must bump its version with it, or a run in flight replays to different moves.
   /** 3,000: the most characters of one text the tree judges, as many as the classifier's
     * thresholds were measured on.
     */
@@ -83,7 +87,7 @@ object IntegrityTree {
 
   /** `text` cut into pieces of at most [[Bound]] characters, in order, joined back the same:
     * each ends at its last line end when that falls in its second half, and otherwise at
-    * [[Bound]], never inside a character. None for an empty text.
+    * [[Bound]], never inside a character. Empty for an empty text.
     */
   def windows(text: String): Vector[String] = {
     @scala.annotation.tailrec

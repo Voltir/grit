@@ -11,6 +11,9 @@ final case class HardFlags private (fired: Vector[Reason]) extends caps.Pure
 
 object HardFlags {
 
+  // Changing what fires (the patterns below, or the marker's anchoring) changes which texts the
+  // classifier is asked about, so which moves a vetting run makes: a job that vets must bump
+  // its version with it, or a run in flight replays to different moves.
   /** What fires in `text`. */
   def of(text: String): HardFlags =
     new HardFlags(
