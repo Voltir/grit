@@ -119,11 +119,11 @@ object FlowCaptureTests extends TestSuite {
       |  t.coflatMap(_ => raw)
       |""".stripMargin
   private val endorseSplit =
-    """type In = (value: Tainted[Option[Extracted]], level: Integrity)
-      |def f(a: Tainted[Option[Extracted]], b: Tainted[Option[Extracted]])(
+    """type In = (answer: Option[Extracted], level: Integrity)
+      |def f(a: Option[Extracted], b: Option[Extracted])(
       |    r: Raise[In, Trusted[Option[Extracted]]]^
       |): Trusted[(Option[Extracted], Option[Extracted])] =
-      |  r((value = a, level = Integrity.Member)).zip(r((value = b, level = Integrity.Member)))
+      |  r((answer = a, level = Integrity.Member)).zip(r((answer = b, level = Integrity.Member)))
       |""".stripMargin
   private val capabilityInside =
     """def f(t: Tainted[Provider^]): Tainted[Int] =

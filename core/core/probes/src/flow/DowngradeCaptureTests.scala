@@ -21,8 +21,8 @@ object DowngradeCaptureTests extends TestSuite {
       |import grit.core.visibility.Integrity
       |val s: Step[Any, String, String] = Step[Any, String, String](StepName("s"))(_ => in => in)
       |val node = Downgrade.extraction[Boolean, 1]
-      |def of(o: String): Option[(value: Tainted[Option[Boolean]], level: Integrity)] = None
-      |type Ra = Raise[(value: Tainted[Option[Boolean]], level: Integrity), Trusted[Option[Boolean]]]
+      |def of(o: String): Option[(answer: Option[Boolean], level: Integrity)] = None
+      |type Ra = Raise[(answer: Option[Boolean], level: Integrity), Trusted[Option[Boolean]]]
       |""".stripMargin
 
   private val onControl = "val f = node.on(s)(of)"
@@ -30,18 +30,18 @@ object DowngradeCaptureTests extends TestSuite {
   private val boundedControl = "val n = Downgrade.extraction[Extracted, 256]"
   private val freeText = "val n = Downgrade.extraction[String, 256]"
   private val tooWide =
-    """val n: Downgrade[(value: Tainted[Option[Token[43]]], level: Integrity), Trusted[Option[Token[43]]]] =
+    """val n: Downgrade[(answer: Option[Token[43]], level: Integrity), Trusted[Option[Token[43]]]] =
       |  Downgrade.extraction""".stripMargin
   private val wideEnough =
-    """val n: Downgrade[(value: Tainted[Option[Token[42]]], level: Integrity), Trusted[Option[Token[42]]]] =
+    """val n: Downgrade[(answer: Option[Token[42]], level: Integrity), Trusted[Option[Token[42]]]] =
       |  Downgrade.extraction""".stripMargin
   private val raiseInPure =
-    """def f(r: Ra): Tainted[Option[Boolean]] -> Trusted[Option[Boolean]] =
-      |  t => r((value = t, level = Integrity.Member))
+    """def f(r: Ra): Option[Boolean] -> Trusted[Option[Boolean]] =
+      |  t => r((answer = t, level = Integrity.Member))
       |""".stripMargin
   private val raiseInMap =
     """def f(t: Tainted[Option[Boolean]], r: Ra): Tainted[Boolean] =
-      |  t.map(_ => r((value = t, level = Integrity.Member)).extract.isDefined)
+      |  t.map(a => r((answer = a, level = Integrity.Member)).extract.isDefined)
       |""".stripMargin
   private val textRule =
     """val d = Downgrade.Described("x", Downgrade.Axis.Integrity,
@@ -49,16 +49,16 @@ object DowngradeCaptureTests extends TestSuite {
   private val sanitiserOutside =
     """val n = Downgrade.sanitiser[Unit, Unit]("x")((_, _, _) => ((), true))"""
   private val ruleOutside =
-    "def f(t: Tainted[Option[Boolean]]) = node.rule((value = t, level = Integrity.Member))"
+    "def f(t: Option[Boolean]) = node.rule((answer = t, level = Integrity.Member))"
   private val raiseMinted = "val r = new Raise.Of[Int, Int](i => i)"
   private val raiseForged =
     "final class Mine extends Raise[Int, Int] { def apply(a: Int): Int = a }"
   private val raiseControl =
     """val st = node.step[Any, String, String](StepName("t"))(_ => raise => in =>
-      |  raise((value = Trusted.literal("x").tainted.map(s => Some(s == in)), level = Integrity.Member)).extract.toString)
+      |  raise((answer = Some(in == "x"), level = Integrity.Member)).extract.toString)
       |""".stripMargin
   private val raiseKept =
-    """type Held = Option[Raise[(value: Tainted[Option[Boolean]], level: Integrity), Trusted[Option[Boolean]]]^]
+    """type Held = Option[Raise[(answer: Option[Boolean], level: Integrity), Trusted[Option[Boolean]]]^]
       |val st = node.step[Any, String, Held](StepName("t"))(_ => raise => in => Some(raise))(
       |  using Journaled.json[Held](_ => ujson.Null, _ => Right(None)))
       |""".stripMargin
@@ -66,12 +66,12 @@ object DowngradeCaptureTests extends TestSuite {
     """val p = Flow.program[Any, String, String]("p", Vector(node))(steps => in =>
       |  node.raise(using steps) match {
       |    case Some(r) =>
-      |      r((value = Trusted.literal("x").tainted.map(s => Some(s == in)), level = Integrity.Member)).extract.toString
+      |      r((answer = Some(in == "x"), level = Integrity.Member)).extract.toString
       |    case None => in
       |  })
       |""".stripMargin
   private val programKept =
-    """type Held = Option[Raise[(value: Tainted[Option[Boolean]], level: Integrity), Trusted[Option[Boolean]]]^]
+    """type Held = Option[Raise[(answer: Option[Boolean], level: Integrity), Trusted[Option[Boolean]]]^]
       |val p = Flow.program[Any, String, Held]("p", Vector(node))(steps => in => node.raise(using steps))
       |""".stripMargin
 
