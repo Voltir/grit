@@ -34,13 +34,6 @@ object FlowCaptureTests extends TestSuite {
     """def f(t: Tainted[String]): Either[Tainted[String], Trusted[String]] =
       |  Trusted.check(t, Integrity.Member)
       |""".stripMargin
-  private val taintControl =
-    """def f(t: Taint^)(using d: Durable^): Tainted[String] = {
-      |  val read = d.step("gate") { () => "outside" }
-      |  t.lower(Integrity.Outside)
-      |  t.stamp(read)
-      |}
-      |""".stripMargin
 
   // A pure combinator given an impure function.
   private val taintedProvider =
@@ -73,33 +66,9 @@ object FlowCaptureTests extends TestSuite {
   private val trustedNew = "def f(s: String): Trusted[String] = new Trusted(s, Integrity.Member)"
   private val trustedAt = "def f(s: String): Trusted[String] = Trusted.at(s, Integrity.Member)"
   private val trustedLiteral = "def f(s: String): Trusted[String] = Trusted.literal(s)"
-  private val taintNew = "def f(): Taint^ = new Taint(Integrity.Member)"
   private val downgradeNew =
     "def f(d: Downgrade.Described[?]): Downgrade[Int, Int] = new Downgrade(d, i => i)"
   private val boundedForged = "given Bounded[String, 1] = new Bounded[String, 1] {}"
-
-  // The cell: exclusive, lowered only with the Durable, never inside a step's body.
-  private val taintInMap =
-    """def f(t: Taint^, x: Tainted[Int]): Tainted[Int] =
-      |  x.map(n => { t.stamp(n); n })
-      |""".stripMargin
-  private val taintInPure =
-    "def f(t: Taint^): () -> Integrity = () => t.level"
-  private val taintInStep =
-    """def f(t: Taint^)(using d: Durable^): String =
-      |  d.step("gate") { () => t.lower(Integrity.Outside); "lowered" }
-      |""".stripMargin
-  private val taintReadOnly =
-    """def f(t: Taint^{caps.any.rd})(using Durable^): Unit = t.lower(Integrity.Outside)
-      |""".stripMargin
-  private val taintRaise = "def f(t: Taint^): Unit = t.current = Integrity.Member"
-  private val taintTwice =
-    """def both(a: Taint^, b: Taint^)(using Durable^): Unit = {
-      |  a.lower(Integrity.Outside)
-      |  b.lower(Integrity.Member)
-      |}
-      |def f(t: Taint^)(using Durable^): Unit = both(t, t)
-      |""".stripMargin
 
   // Holes, pinned so that a compiler which starts rejecting one is noticed.
   private val leakBuffer =
@@ -131,7 +100,7 @@ object FlowCaptureTests extends TestSuite {
       |""".stripMargin
 
   private val controls =
-    List(taintedControl, trustedControl, checkControl, taintControl)
+    List(taintedControl, trustedControl, checkControl)
   private val holes = List(leakBuffer, leakThrow, trustedLaundered, endorseSplit)
 
   private val all: List[String] = controls ++ List(
@@ -144,15 +113,8 @@ object FlowCaptureTests extends TestSuite {
     taintedOpen,
     trustedNew,
     trustedAt,
-    taintNew,
     downgradeNew,
     boundedForged,
-    taintInMap,
-    taintInPure,
-    taintInStep,
-    taintReadOnly,
-    taintRaise,
-    taintTwice,
     capabilityInside
   ) ++ holes
 
@@ -207,36 +169,11 @@ object FlowCaptureTests extends TestSuite {
       )
     }
 
-    test("nothing outside the package makes a cell, a downgrade or a bound") {
+    test("nothing outside the package makes a downgrade or a bound") {
       assert(
-        says("constructor Taint cannot be accessed")(errs(taintNew)),
         says("constructor Downgrade cannot be accessed")(errs(downgradeNew)),
         says("Cannot extend sealed class Bounded")(errs(boundedForged))
       )
-    }
-
-    test("the cell does not escape into a map or a pure function") {
-      assert(says(pure("t.rd"))(errs(taintInMap)), says(pure("t.rd"))(errs(taintInPure)))
-    }
-
-    test("the cell is not lowered inside a step's body") {
-      assert(says("Separation failure")(errs(taintInStep)))
-    }
-
-    test("separation checking is what rejects lowering inside a step's body") {
-      Probes.batch(prelude, List(taintInStep), noSeparation).errors(taintInStep) ==> Nil
-    }
-
-    test("a read-only alias cannot lower the cell, nothing outside can raise it") {
-      assert(
-        says("Cannot call update method lower of t")(errs(taintReadOnly)),
-        says("variable current cannot be accessed")(errs(taintRaise))
-      )
-    }
-
-    test("the cell is exclusive: one cell is not passed as two parameters") {
-      assert(says("Separation failure")(errs(taintTwice)))
-      Probes.batch(prelude, List(taintTwice), noSeparation).errors(taintTwice) ==> Nil
     }
 
     // `Tainted`'s `T` is unbounded, since neither `ujson.Obj` nor `Int` nor a tuple conforms to

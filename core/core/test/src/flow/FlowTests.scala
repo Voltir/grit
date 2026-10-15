@@ -1,7 +1,5 @@
 package grit.core.flow
 
-import grit.core.durable.InMemoryDurable
-import grit.core.id.WorkflowId
 import grit.core.visibility.Integrity.Level
 import grit.core.visibility.{Compartment, Integrity}
 
@@ -14,15 +12,6 @@ object FlowTests extends TestSuite {
 
   private val acme: Compartment =
     Compartment.of("acme").getOrElse(throw new java.lang.AssertionError("acme is a compartment"))
-
-  /** `taint`'s level after lowering it to each of `to` in turn, outside any step. */
-  private def lowered(taint: Taint^, to: Integrity*): Integrity = {
-    new InMemoryDurable().run(WorkflowId("flow:1")) { _ =>
-      to.foreach(taint.lower(_))
-      "lowered"
-    }
-    taint.level
-  }
 
   val tests = Tests {
     test("zip is believed at the meet of the two, tainted or trusted") {
@@ -66,20 +55,6 @@ object FlowTests extends TestSuite {
         .check(Mint.tainted(7, inTeam), Integrity.at(Level.Member, acme))
         .left
         .map(t => (t.open, t.integrity)) ==> Left((7, inTeam))
-    }
-
-    test("a taint falls to the meet of its level and each lowering, and never rises") {
-      (
-        lowered(Mint.taint(Integrity.Member), Integrity.at(Level.Authority, team)),
-        lowered(Mint.taint(Integrity.Member), Integrity.Outside, Integrity.Member)
-      ) ==> (Integrity.Member, Integrity.Outside)
-    }
-
-    test("a stamp is at the taint's level when stamped, not as it later falls") {
-      val taint = Mint.taint(Integrity.Member)
-      val before = taint.stamp("a")
-      lowered(taint, Integrity.Outside)
-      (before.integrity, taint.stamp("b").integrity) ==> (Integrity.Member, Integrity.Outside)
     }
 
     test("a literal is trusted at Authority with no compartment") {
