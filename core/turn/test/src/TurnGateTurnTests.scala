@@ -133,6 +133,14 @@ object TurnGateTurnTests extends TestSuite {
       )
     }
 
+    test("from the first round whose gate hid an item, the system prompt ends with the guidance") {
+      val provider = gatedScript
+      val entries = new InMemoryEntryStore
+      gatedRun(new InMemoryDurable, entries, say(entries, "read and post"))(provider)
+      provider.requests.map(_.system.endsWith(s"\n\n${TurnGate.Guidance}")) ==>
+        Vector(false, true, true)
+    }
+
     test(
       "a stub read through read_hidden is shown in full next round, which withdraws what it named"
     ) {
@@ -153,7 +161,7 @@ object TurnGateTurnTests extends TestSuite {
         Some("h1 is shown in full in its place from your next request on.")
       val withdrawn = "From now until you answer, you can't use post, because you read a " +
         "result from a place people outside the team can write in."
-      provider.requests.map(_.system.endsWith(s"\n\n$withdrawn")) ==>
+      provider.requests.map(_.system.endsWith(s"\n\n${TurnGate.Guidance}\n\n$withdrawn")) ==>
         Vector(false, false, true, false)
     }
 

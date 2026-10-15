@@ -84,6 +84,16 @@ object PlainWordsTests extends TestSuite {
       (stubs ++ line).map(unplain) ==> Vector.fill(4)(Vector.empty[String])
     }
 
+    test("the guidance says nothing a person would not follow, and words to avoid only quoted") {
+      unplain(TurnGate.Guidance) ==> Vector.empty
+      assert(
+        TurnGate.Guidance.endsWith(
+          "Use everyday words: don't say \"integrity\", \"stub\", \"hidden item\", \"turn\" " +
+            "or the names of your tools."
+        )
+      )
+    }
+
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {
       val schemas = Vector(
         ReadHidden.tool(None).schema(strict = false),

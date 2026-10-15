@@ -1188,8 +1188,8 @@ object Turn {
               .getOrElse(tools)
           }
         def shapeAs(round: Round, use: ToolUse): ModelRequest -> ModelRequest = {
-          val (shown, line) = gatedOffer(gates.toMap, round, offering, schemas, strict)
-          loopShape(asked, round, use, shown, after, guidance, line)
+          val (shown, lines) = gatedOffer(gates.toMap, round, offering, schemas, strict)
+          loopShape(asked, round, use, shown, after, guidance, lines)
         }
         def shape(round: Round): ModelRequest -> ModelRequest =
           shapeAs(round, TurnLoop.use(budget, round))
@@ -1393,11 +1393,11 @@ object Turn {
       }
   }
 
-  /** What `round`'s request offers of `schemas`, and the line it adds, as `gates`, each
+  /** What `round`'s request offers of `schemas`, and the lines it adds, as `gates`, each
     * round's gate by its index, say: those its gate withholds left out, after read_hidden and
     * extract from the first round whose gate hid an item on ([[ReadHidden]], [[Extract]],
-    * `strict` as `schemas` are), and
-    * the withdrawal its gate makes against the round before's, its tools as `offered` says them
+    * `strict` as `schemas` are); then [[TurnGate.Guidance]] from that round on, and the
+    * withdrawal its gate makes against the round before's, its tools as `offered` says them
     * ([[TurnGate.withdrawn]]); all of `schemas` and no line for a round with no gate.
     */
   private def gatedOffer(
@@ -1406,15 +1406,16 @@ object Turn {
       offered: ToolSet,
       schemas: Vector[ToolSchema],
       strict: Boolean
-  ): (Vector[ToolSchema], Option[String]) =
+  ): (Vector[ToolSchema], Vector[String]) =
     gates.get(round.index) match {
-      case None => (schemas, None)
+      case None => (schemas, Vector.empty)
       case Some(now) =>
         (
           Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict))
             .filter(_ => hidSince(gates, round)) ++
             schemas.filterNot(s => now.withheld.exists(w => ToolName.value(w.tool) == s.name)),
-          gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
+          Vector(TurnGate.Guidance).filter(_ => hidSince(gates, round)) ++
+            gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
         )
     }
 
@@ -1528,8 +1529,8 @@ object Turn {
 
   /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
     * first call, offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
-    * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending,
-    * after a blank line, with `withdrawn` when there is one ([[TurnGate.withdrawn]]).
+    * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
+    * with each of `lines`, in order, each after a blank line ([[gatedOffer]]).
     */
   private def loopShape(
       asked: Option[TurnTopics.Classification],
@@ -1538,13 +1539,13 @@ object Turn {
       tools: Vector[ToolSchema],
       after: AfterToolResult,
       guidance: ToolGuidance,
-      withdrawn: Option[String]
+      lines: Vector[String]
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
       val shaped =
         TurnLoop.told(use, TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance), after)
-      withdrawn.fold(shaped)(line => shaped.copy(system = s"${shaped.system}\n\n$line"))
+      shaped.copy(system = (shaped.system +: lines).mkString("\n\n"))
     }
 
   /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as
@@ -2291,7 +2292,7 @@ object Turn {
           case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
-            val (shown, line) = gatedOffer(gates, round, tools.set, schemas, strict)
+            val (shown, lines) = gatedOffer(gates, round, tools.set, schemas, strict)
             requestOf(
               prompt.render,
               showing.copy(mine = before),
@@ -2308,7 +2309,7 @@ object Turn {
                     shown,
                     settings.afterResult,
                     settings.guidance,
-                    line
+                    lines
                   )
                 )
               )
