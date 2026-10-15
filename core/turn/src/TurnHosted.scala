@@ -1,7 +1,5 @@
 package grit.turn
 
-import scala.concurrent.duration.*
-
 import grit.act.phase.{Awaited, Calling, WaitSteps, Waiting}
 import grit.core.approval.Approval
 import grit.core.durable.{Flow, Step}
@@ -48,26 +46,26 @@ object TurnHosted {
       .map(e => TurnFailure.Store(e.toString))
 
   /** A hosted call settled: asked about first when it asks (`ask:n:j`, then the wait of up to
-    * `answerWithin`), and sent then (`dispatch:n:j`); a free one was sent with its round, and
-    * [[TurnRound.Call.sent]] says whether it went to a serving edge then. Its outcome, the
-    * answer, or why there is none, is kept by `tool:n:j`; once the edge rang, that step reads
-    * the answer from the request ([[Calling.answer]]); a call not sent, it reads whether the
-    * turn has an asker, to say why. It is sent as `pins` says ([[dispatch]]), and every read of
-    * its answer, or of why there is none, its wait's included, runs only while the turn knows
-    * no more than it was routed for (`pins.known`): after a rise the turn fails, saying to ask
-    * again, keeps no answer, and calls no model again. A call approved whose tool has no place
-    * fails the turn, recording nothing.
+    * its loop's `answerWithin`), and sent then (`dispatch:n:j`); a free one was sent with its
+    * round, and [[TurnRound.Call.sent]] says whether it went to a serving edge then. Its
+    * outcome, the answer, or why there is none, is kept by `tool:n:j`; once the edge rang, that
+    * step reads the answer from the request ([[Calling.answer]]); a call not sent, it reads
+    * whether the turn has an asker, to say why. It is sent as its loop's pins say
+    * ([[dispatch]]), and every read of its answer, or of why there is none, its wait's
+    * included, runs only while the turn knows no more than it was routed for
+    * ([[Turn.Picked.known]]): after a rise the turn fails, saying to ask again, keeps no
+    * answer, and calls no model again. A call approved whose tool has no place fails the turn,
+    * recording nothing.
     */
-  private[turn] def settle(
-      pins: Turn.Picked,
-      answerWithin: FiniteDuration
-  ): Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, TurnTools.Settled]] = {
+  private[turn] def settle
+      : Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Either[TurnFailure, TurnTools.Settled]] = {
     import TurnJournal.given
     val waited: Flow[TurnRound.Env, TurnRound.Hosting, Nothing, Waited] =
       Calling
         .await[TurnRound.Hosting, TurnFailure](
           WaitSteps(TurnRound.Names.expire, TurnRound.Names.abandon),
-          h => Waiting(h.slot.call, h.place, Subject.Turn(h.slot.turn), pins.bound)
+          h =>
+            Waiting(h.slot.call, h.place, Subject.Turn(h.slot.turn), h.call.at.looping.pins.bound)
         )
         .over[TurnRound.Env](r => r.hosting.requests)
         .map(Waited.Phase(_))
@@ -81,6 +79,7 @@ object TurnHosted {
       d =>
         (tx: Tx^) ?=> {
           val (h, turn) = (d.hosting, d.slot.turn)
+          val pins = h.call.at.looping.pins
           r.hosted(h.call.at, d.slot, h.call.pending)
             .flatMap(hosted =>
               dispatch(r.hosting, turn, d.to, Vector((d.slot, hosted)), Permit.Approved, pins)
@@ -113,7 +112,7 @@ object TurnHosted {
             Flow
               .pass[TurnRound.Hosting]
               .map(_.call)
-              .andThen(TurnRound.approval(answerWithin))
+              .andThen(TurnRound.approval)
               .keeping
               .map[Either[Either[TurnFailure, Waited], Dispatching]]((h, approval) =>
                 approval match {
@@ -139,39 +138,39 @@ object TurnHosted {
       c => {
         val (h, slot) = (c.hosting, c.slot)
         r.hosted(h.call.at, slot, h.call.pending).flatMap { hosted =>
-            val (call, shown, level) = (h.call.id, hosted.shown, h.call.at.level)
-            val (settling, at) = (r.settling, r.now())
-            val (requests, askers) = (r.hosting.requests, r.hosting.askers)
-            // An edge's answer is believed at the declared output of the service the call went
-            // to; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
-            // edge's own claim never. One no edge gave is grit's own words, believed at the
-            // turn's level as a refusal is; but a person's reason for declining is theirs, and
-            // believed as the edge's would be.
-            val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
-            val own = Left(level)
-            c.waited match {
-              case Waited.Unsent =>
-                settling.answerFrom(slot, call, shown, own, at)(
-                  pins.known.map(_ => unsent(askers, slot.turn, h.place))
-                )
-              case Waited.Phase(Awaited.Answered(o)) =>
-                settling.answer(slot, call, shown, o, from, at)
-              case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
-                settling.answer(slot, call, shown, o, from, at)
-              case Waited.Phase(Awaited.Known(o)) => settling.answer(slot, call, shown, o, own, at)
-              case Waited.Phase(Awaited.Unread(failure)) =>
-                // A wait refused after a rise is unread too: the turn fails here, before its
-                // next call.
-                settling.answerFrom(slot, call, shown, own, at)(
-                  pins.known.map(_ => unreadable(failure))
-                )
-              case Waited.Phase(Awaited.Rung(cs)) =>
-                settling.answerFrom(slot, call, shown, from, at)(
-                  pins.known.map(_ =>
-                    Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity)
-                  )
-                )
-            }
+          val (call, shown, level) = (h.call.id, hosted.shown, h.call.at.level)
+          val pins = h.call.at.looping.pins
+          val (settling, at) = (r.settling, r.now())
+          val (requests, askers) = (r.hosting.requests, r.hosting.askers)
+          // An edge's answer is believed at the declared output of the service the call went
+          // to; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
+          // edge's own claim never. One no edge gave is grit's own words, believed at the
+          // turn's level as a refusal is; but a person's reason for declining is theirs, and
+          // believed as the edge's would be.
+          val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
+          val own = Left(level)
+          c.waited match {
+            case Waited.Unsent =>
+              settling.answerFrom(slot, call, shown, own, at)(
+                pins.known.map(_ => unsent(askers, slot.turn, h.place))
+              )
+            case Waited.Phase(Awaited.Answered(o)) =>
+              settling.answer(slot, call, shown, o, from, at)
+            case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
+              settling.answer(slot, call, shown, o, from, at)
+            case Waited.Phase(Awaited.Known(o)) => settling.answer(slot, call, shown, o, own, at)
+            case Waited.Phase(Awaited.Unread(failure)) =>
+              // A wait refused after a rise is unread too: the turn fails here, before its
+              // next call.
+              settling.answerFrom(slot, call, shown, own, at)(
+                pins.known.map(_ => unreadable(failure))
+              )
+            case Waited.Phase(Awaited.Rung(cs)) =>
+              settling.answerFrom(slot, call, shown, from, at)(
+                pins.known
+                  .map(_ => Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity))
+              )
+          }
         }
       }
     )

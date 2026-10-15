@@ -1,0 +1,397 @@
+package grit.turn
+
+import grit.core.context.{Shown, Window}
+import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
+import grit.core.id.{EntrySeq, ToolCallId, TurnRef}
+import grit.core.message.{AssistantBlock, Message}
+import grit.core.model.{AfterToolResult, ToolGuidance}
+import grit.core.period.{Balance, Closing, Flows}
+import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Speakers, StoreError, Tx}
+import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, Toolbox}
+import grit.core.visibility.Subject
+
+import TurnLoop.Round
+
+/** What a turn's model is shown: the tools each call offers and the lines its gate adds, the
+  * request built from its window and its own entries, each item its gate hid shown as its
+  * stub, and the items a request shows, which its gate decides over. Pure but for the reads
+  * that take a transaction or a `TurnEnv`, so a turn read back rebuilds what it sent
+  * ([[Turn.rebuilt]]).
+  */
+private[turn] object TurnShown {
+
+  /** `c`, when the classifier was unsure: the classification the model is asked about. */
+  def asked(c: TurnTopics.Classification): Option[TurnTopics.Classification] =
+    Option.when(c.uncertain)(c)
+
+  /** The tools each call of the loop offers: `own`, after `topic` for the classification
+    * `asked` holds. `topic` stays on after the first call, which alone asks for it
+    * ([[loopShape]]): a request whose messages hold a call names the tool it called.
+    * read_hidden and extract are not among them: a round binds and offers them apart
+    * ([[gatedOffer]]). `TurnFailure.Model` when `own` already names one `topic`, read_hidden or
+    * extract.
+    */
+  def offered[C^](
+      own: Toolbox[C],
+      asked: Option[TurnTopics.Classification]
+  ): Either[TurnFailure, Toolbox[C]] = {
+    val tools = asked match {
+      case None => Right(own)
+      case Some(c) => own.including(TurnVerdict.tool(c))
+    }
+    tools
+      .flatMap(t => t.preceded(Vector(ReadHidden.tool(None), unasked)).map(_ => t))
+      .left
+      .map { case DuplicateName(name) =>
+        TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
+      }
+  }
+
+  /** What `round`'s request offers of `schemas`, and the lines it adds, as `gates`, each
+    * round's gate by its index, say: those its gate withholds left out, after read_hidden and
+    * extract from the first round whose gate hid an item on ([[ReadHidden]], [[Extract]],
+    * `strict` as `schemas` are); then [[TurnGate.Guidance]] from that round on, and the
+    * withdrawal its gate makes against the round before's, its tools as `offered` says them
+    * ([[TurnGate.withdrawn]]); all of `schemas` and no line for a round with no gate.
+    */
+  def gatedOffer(
+      gates: Map[Int, Gated],
+      round: Round,
+      offered: ToolSet,
+      schemas: Vector[ToolSchema],
+      strict: Boolean
+  ): (Vector[ToolSchema], Vector[String]) =
+    gates.get(round.index) match {
+      case None => (schemas, Vector.empty)
+      case Some(now) =>
+        (
+          Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict))
+            .filter(_ => hidSince(gates, round)) ++
+            schemas.filterNot(s => now.withheld.exists(w => ToolName.value(w.tool) == s.name)),
+          Vector(TurnGate.Guidance).filter(_ => hidSince(gates, round)) ++
+            gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
+        )
+    }
+
+  /** extract as a request offers it, asking nothing: for its name and schema alone. */
+  private val unasked: Tool.Offered = Extract.tool(None, (_, _, _, _) => Left("not asked"))
+
+  /** Whether a gate of `gates`, each round's by its index, hid an item by `round`'s: from then
+    * on, each round offers read_hidden and extract.
+    */
+  def hidSince(gates: Map[Int, Gated], round: Round): Boolean =
+    gates.exists((index, g) => index <= round.index && g.hidden.nonEmpty)
+
+  /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
+    * first call, offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
+    * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
+    * with each of `lines`, in order, each after a blank line ([[gatedOffer]]).
+    */
+  def loopShape(
+      asked: Option[TurnTopics.Classification],
+      round: Round,
+      use: ToolUse,
+      tools: Vector[ToolSchema],
+      after: AfterToolResult,
+      guidance: ToolGuidance,
+      lines: Vector[String]
+  ): ModelRequest -> ModelRequest =
+    base => {
+      val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
+      val shaped =
+        TurnLoop.told(use, TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance), after)
+      shaped.copy(system = (shaped.system +: lines).mkString("\n\n"))
+    }
+
+  /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
+    * in `gates` hid them, their tools as `offered` says them ([[TurnGate.stub]]); none for a
+    * round with no gate.
+    */
+  def stubsAt(
+      gates: Map[Int, Gated],
+      round: Round,
+      offered: ToolSet
+  ): Map[ItemRef, String] =
+    gates
+      .get(round.index)
+      .fold(Map.empty)(
+        _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered)).toMap
+      )
+
+  /** `turn`'s own entries, from `all` of its conversation's. */
+  def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
+    all.filter(_.turnSeq == turn.turnSeq)
+
+  /** The window's entries, then the turn's own, as one model request under `system`, each
+    * item `stubs` names shown as its stub, to be shaped, read through `env`'s `db`.
+    */
+  def request(
+      env: TurnEnv^,
+      system: String,
+      turn: TurnRef,
+      window: Window,
+      stubs: Map[ItemRef, String]
+  )(using pins: Turn.Picked): Either[TurnFailure, Unshaped] =
+    pins
+      .reads(env.db)
+      .read(Subject.Turn(turn))(shown(env.records, turn, window))
+      .left
+      .map(TurnFailure.ofStore)
+      .flatMap(requestOf(system, _, turn, window, stubs))
+
+  /** What a request for `turn` over `window` can show, read from `records`: the entries of
+    * its conversation at the window's seqs, the turn's own entries, the nearby sections'
+    * entries that still exist, who said each, and the window's documents as it shows them
+    * ([[grit.core.document.DocumentSearch.labelled]]); nothing else of the conversation.
+    */
+  def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
+      Tx^
+  ): Either[StoreError, Showing] =
+    shown(records.entries, records.principals, records.documents, turn, window)
+
+  /** [[shown]], read from the three stores it reads. */
+  def shown(
+      entries: EntryStore,
+      principals: Principals,
+      documents: DocumentSearch,
+      turn: TurnRef,
+      window: Window
+  )(using Tx^): Either[StoreError, Showing] =
+    for {
+      at <- entries.at(turn.conversationId, window.entries)
+      mine <- entries.ofTurn(turn)
+      near <- Nearby.read(window.nearby, entries)
+      named <- principals.speakers((at ++ mine ++ near).map(_.id).distinct)
+      labelled <- documents.labelled(window.documents)
+    } yield Showing(at, mine, near, named, labelled)
+
+  /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
+    * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;
+    * `documents`, the window's documents still kept whose plugin is enabled, in its order,
+    * each with its plugin's label.
+    */
+  final case class Showing(
+      window: Vector[Entry],
+      mine: Vector[Entry],
+      near: Vector[Entry],
+      named: Speakers,
+      documents: Vector[(Document, DocLabel)]
+  )
+
+  /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
+    * there ([[hiding]]), to be shaped
+    * ([[Unshaped]]): each nearby section as one user message ([[Shown.section]], a section with
+    * none of its entries left dropped), then each document as one ([[Shown.document]]), then
+    * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
+    * entry as one user message, and a gap line wherever turns are left out), then the turn's
+    * own, its tool loop's exchange among them in order. A summary is not shown to the model
+    * yet. A window seq with no entry is an `Assembly` failure naming every such seq.
+    */
+  def requestOf(
+      system: String,
+      showing: Showing,
+      turn: TurnRef,
+      window: Window,
+      stubs: Map[ItemRef, String]
+  ): Either[TurnFailure, Unshaped] = {
+    val Showing(at, mine, near, named, documents) = hiding(showing, stubs)
+    val bySeq = at.map(e => e.seq -> e).toMap
+    val sections = window.nearby.flatMap(Shown.section(_, near, named))
+    window.entries.filterNot(bySeq.contains) match {
+      case missing if missing.nonEmpty =>
+        Left(
+          TurnFailure.Assembly(
+            s"window names unknown entries at seqs: ${missing.map(EntrySeq.value).mkString(", ")}"
+          )
+        )
+      case _ =>
+        val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
+        Right(Unshaped(system, sections, documents, shown ++ Shown.turn(mine, named)))
+    }
+  }
+
+  /** A request of `system`: `before`, then each of `documents` as one user message, then
+    * `after`.
+    */
+  final case class Unshaped(
+      system: String,
+      before: Vector[Message],
+      documents: Vector[(Document, DocLabel)],
+      after: Vector[Message]
+  ) {
+
+    /** This request shaped by `shape`, each document's pointer line shown only when the shaped
+      * request offers the tool it names: a model offered no tool of that name could not follow
+      * it. The tools offered are those `shape` gives the request with no pointer line shown.
+      */
+    def shaped(shape: ModelRequest -> ModelRequest): ModelRequest = {
+      def built(offered: Set[String]): ModelRequest =
+        ModelRequest(
+          system,
+          before ++ documents.map((document, label) =>
+            Shown.document(
+              document.copy(pointer =
+                document.pointer.filter(p => offered.contains(ToolName.value(p.tool)))
+              ),
+              label
+            )
+          ) ++ after
+        )
+      shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
+    }
+  }
+
+  /** Each item a request over `window` shows the model of `showing`, in the order it shows
+    * them: the entries `window`'s nearby sections show, section by section ([[Shown.section]]),
+    * the documents, the window's entries [[Shown.own]] shows, then the turn's own entries
+    * [[Shown.turn]] shows; an entry kept as a tool's result by the call it answers, named by
+    * its tool, and any other by its position, a person's named as [[Showing.named]] names them
+    * ("someone" when it does not), grit's as "an earlier reply" and a closing as "a closing
+    * record". An entry the request does not show (an earlier turn's tool exchange or result, a
+    * window, a query, a summary, a topic, an ask, a message with no text nearby) is none.
+    */
+  def itemsOf(showing: Showing, window: Window): Vector[Item] = {
+    val Showing(shownWindow, mine, near, named, documents) = showing
+    val tools: Map[ToolCallId, String] = (shownWindow ++ mine)
+      .flatMap(_.payload match {
+        case Payload.Exchange(reply) =>
+          reply.blocks.collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
+        case _ => Vector.empty
+      })
+      .toMap
+    def person(e: Entry): String = named.of(e.id).getOrElse("someone")
+    def entry(e: Entry, ref: ItemRef): Option[Item] = {
+      val source = e.payload match {
+        case Payload.Result(r, _) => Some(tools.getOrElse(r.callId, "a tool"))
+        case Payload.Message(Message.User(_)) | Payload.Heard(_) => Some(person(e))
+        case Payload.Message(_) | Payload.Exchange(_) | Payload.Posted(_) =>
+          Some("an earlier reply")
+        case Payload.Closed(_, _, _) => Some(TurnGate.ClosingRecord)
+        case _ => None
+      }
+      val at = e.payload match {
+        case Payload.Result(r, _) => ItemRef.Result(r.callId)
+        case _ => ref
+      }
+      source.map(Item(at, e.integrity, _))
+    }
+    // Each entry as its section shows it alone: shown there exactly when it is shown alone.
+    val nearby = window.nearby.flatMap { section =>
+      section.names.flatMap { seq =>
+        near
+          .find(e => e.conversationId == section.conversation && e.seq == seq)
+          .filter(e => Shown.section(only(section, seq), Vector(e), named).isDefined)
+          .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
+      }
+    }
+    nearby ++
+      documents.map((d, label) =>
+        Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
+      ) ++
+      shownWindow
+        .filter(e => Shown.of(e, named).isDefined)
+        .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
+      mine
+        .filter(e => Shown.turn(Vector(e), named).nonEmpty)
+        .flatMap(e => entry(e, ItemRef.Own(e.seq)))
+  }
+
+  /** What a request over `window` would show of the item at `ref` among `showing` in full, as
+    * its one message's text: a tool's result as [[Shown.result]] shows it, an entry as
+    * [[Shown.of]] does, a nearby one as its section alone shows it ([[Shown.section]]), a
+    * document as [[Shown.document]] does; `None` when `showing` no longer holds it.
+    */
+  def textOf(showing: Showing, window: Window, ref: ItemRef): Option[String] = {
+    def text(m: Message): String = m match {
+      case Message.User(t) => t
+      case Message.Assistant(blocks, _, _, _, _) =>
+        blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      case Message.ToolResult(_, content, _) => content
+    }
+    val own = showing.window ++ showing.mine
+    ref match {
+      case ItemRef.Result(call) =>
+        own.map(_.payload).collectFirst {
+          case Payload.Result(r, _) if r.callId == call => Shown.result(r).content
+        }
+      case ItemRef.Own(seq) =>
+        own.find(_.seq == seq).flatMap(Shown.of(_, showing.named)).map(text)
+      case ItemRef.Nearby(conversation, seq) =>
+        for {
+          section <- window.nearby.find(s =>
+            s.conversation == conversation && s.names.contains(seq)
+          )
+          e <- showing.near.find(e => e.conversationId == conversation && e.seq == seq)
+          m <- Shown.section(only(section, seq), Vector(e), showing.named)
+        } yield text(m)
+      case ItemRef.Document(version) =>
+        showing.documents.collectFirst {
+          case (d, label) if d.version == version => text(Shown.document(d, label))
+        }
+    }
+  }
+
+  /** `section` naming `seq` alone. */
+  private def only(section: Nearby, seq: EntrySeq): Nearby = section match {
+    case Nearby.Open(c, place, _) => Nearby.Open(c, place, Vector(seq))
+    case Nearby.Along(c, place, _) => Nearby.Along(c, place, Vector(seq))
+    case Nearby.Asked(c, place, _) => Nearby.Asked(c, place, Vector(seq))
+    case Nearby.Closed(c, place, _) => Nearby.Closed(c, place, seq)
+  }
+
+  /** `showing` with each item `stubs` names, by the ref [[itemsOf]] gives it, in its kind's
+    * place but holding its stub in place of what it says: a tool's result as a result that is
+    * no error, grit's reply as its text, a heard message or grit's post as one, a closing as
+    * its record's prose, a document as its text (dropped if the stub cannot be one), and any
+    * other entry as a person's message.
+    */
+  private def hiding(showing: Showing, stubs: Map[ItemRef, String]): Showing =
+    if (stubs.isEmpty) showing
+    else {
+      def entry(ref: Entry => ItemRef)(e: Entry): Entry = {
+        val at = e.payload match {
+          case Payload.Result(r, _) => ItemRef.Result(r.callId)
+          case _ => ref(e)
+        }
+        stubs.get(at).fold(e)(stub => e.copy(payload = stubbed(e.payload, stub)))
+      }
+      val own = entry(e => ItemRef.Own(e.seq))
+      showing.copy(
+        window = showing.window.map(own),
+        mine = showing.mine.map(own),
+        near = showing.near.map(entry(e => ItemRef.Nearby(e.conversationId, e.seq))),
+        documents = showing.documents.flatMap((document, label) =>
+          stubs.get(ItemRef.Document(document.version)) match {
+            case None => Some((document, label))
+            case Some(stub) => DocText.of(stub).toOption.map(t => (document.copy(text = t), label))
+          }
+        )
+      )
+    }
+
+  /** `payload` holding `stub` in place of what it says, as [[hiding]] says. */
+  private def stubbed(payload: Payload, stub: String): Payload = payload match {
+    case Payload.Result(r, shown) => Payload.Result(r.copy(content = stub, isError = false), shown)
+    case Payload.Message(reply: Message.Assistant) =>
+      Payload.Message(reply.copy(blocks = Vector(AssistantBlock.Text(stub))))
+    // Its calls are kept so their results still pair, and their arguments, which may copy what
+    // that turn read, never carry a hidden item here: no exchange is ever hidden. An earlier
+    // turn's is not shown, so is no item (itemsOf); this turn's own is believed at the level
+    // the turn had when it was kept (record-call), which only falls after, so it dominates
+    // every later gate's level and is never listed.
+    case Payload.Exchange(reply) =>
+      Payload.Exchange(reply.copy(blocks = AssistantBlock.Text(stub) +: reply.blocks.collect {
+        case call: AssistantBlock.ToolCall => call
+      }))
+    case Payload.Heard(_) => Payload.Heard(stub)
+    case Payload.Posted(_) => Payload.Posted(stub)
+    case Payload.Closed(period, reason, _) =>
+      Flows
+        .of(stub, None, Vector.empty)
+        .fold(Payload.Message(Message.User(stub)))(f =>
+          Payload.Closed(period, reason, Closing(f, Balance.empty))
+        )
+    case _ => Payload.Message(Message.User(stub))
+  }
+}

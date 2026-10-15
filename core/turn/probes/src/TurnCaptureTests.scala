@@ -128,9 +128,20 @@ object TurnCaptureTests extends TestSuite {
       |""".stripMargin
 
   private val keptSettling = bindingKept("TurnTools.Settling^", "r.settling")
-  private val keptKind = bindingKept("TurnTools.Kind", "r.kind(at, p)")
+  private val keptKind = bindingKept("Either[TurnFailure, TurnTools.Kind]", "r.kind(at, p)")
 
-  private lazy val rounds = Probes.batch(roundsPrelude, List(keptSettling, keptKind))
+  /** A turn's step of its own, passing on `kept`, of the type `tpe`, on the wire. */
+  private def stepKept(tpe: String, kept: String) =
+    s"""def held: Flow[TurnSteps.Env, grit.core.id.TurnRef, Nothing, (grit.core.id.TurnRef, $tpe)] =
+      |  Flow.unrecorded[TurnSteps.Env, grit.core.id.TurnRef, (grit.core.id.TurnRef, $tpe)](r => t => (t, $kept))
+      |""".stripMargin
+
+  private val keptRounds = stepKept("TurnRound.Env^", "r.rounds")
+  private val keptEnv = stepKept("TurnEnv^", "r.env")
+  private val keptWeighed = stepKept("Option[TurnWeighing.Weighed]", "r.weigh(t)")
+
+  private lazy val rounds =
+    Probes.batch(roundsPrelude, List(keptSettling, keptKind, keptRounds, keptEnv, keptWeighed))
 
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
@@ -182,6 +193,11 @@ object TurnCaptureTests extends TestSuite {
     test("a round's state holds what its env's bodies found, never a capability they act through") {
       rounds.errors(keptKind) ==> List()
       assert(rejected(rounds.errors(keptSettling)))
+    }
+
+    test("what crosses a turn's steps holds what their bodies found, never what they act through") {
+      rounds.errors(keptWeighed) ==> List()
+      assert(rejected(rounds.errors(keptRounds)), rejected(rounds.errors(keptEnv)))
     }
 
     test("capture checking is what rejects a store that acts through a capability") {

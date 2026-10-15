@@ -14,7 +14,7 @@ import grit.core.context.{
   Shown,
   Window
 }
-import grit.core.durable.InMemoryDurable
+import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -169,9 +169,14 @@ object TurnTests extends TestSuite {
       Turn.running(Vector("call-model", "record-verdict")) ==> "append"
     }
 
+    test("the turn's flow records the steps Step.all names, each first reached in its order") {
+      val outer = Flows.names(TurnFlow.flow).map(_.name).filter(Turn.Step.all.contains)
+      outer ==> Turn.Step.all
+    }
+
     test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
       val round1 = TurnLoop.Round.First.next
-      val at = TurnRound.Rounds(round1, None, Vector.empty)
+      val at = new TurnRound.OfRound { def round: TurnLoop.Round = round1 }
       (round1.step, TurnRound.Names.call(at), TurnRound.Names.recordCall(at)) ==>
         ("call-model:1", "call-model:1", "record-call:1")
       Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.sleep", "tool:x:1")

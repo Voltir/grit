@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.allot.Allotment
 import grit.core.approval.Approval
-import grit.core.context.Width
+import grit.core.context.{Width, Window}
 import grit.core.durable.{Flows, InMemoryDurable, StepRecord}
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -82,10 +82,11 @@ object TurnRoundTests extends TestSuite {
     def record(at: TurnRound.Rounds, reply: Message.Assistant)(using
         Tx^
     ): Either[TurnFailure, EntryId] = kept
-    def kind(at: TurnRound.Rounds, pending: Pending): TurnTools.Kind = pending match {
-      case Pending.Refused(_, _) => TurnTools.Kind.Refused
-      case Pending.Run(_) => TurnTools.Kind.Free
-    }
+    def kind(at: TurnRound.Rounds, pending: Pending): Either[TurnFailure, TurnTools.Kind] =
+      pending match {
+        case Pending.Refused(_, _) => Right(TurnTools.Kind.Refused)
+        case Pending.Run(_) => Right(TurnTools.Kind.Free)
+      }
     def hosted(
         at: TurnRound.Rounds,
         slot: TurnTools.Slot,
@@ -125,9 +126,18 @@ object TurnRoundTests extends TestSuite {
     val entries = new InMemoryEntryStore
     val turn = say(entries, "go")
     val env = new Scripted(new FakeJot, entries, script, levels, kept)
-    val flow = TurnRound.flow(budget(n), turn, offer, pins, TurnTools.AnswerWithin)
+    val looping = TurnRound.Looping(
+      turn,
+      offer,
+      pins,
+      Window(Vector.empty),
+      None,
+      budget(n),
+      false,
+      TurnTools.AnswerWithin
+    )
     val out = durable.run(turn.workflowId)(_ =>
-      Flows.run(flow, env, ()) match {
+      Flows.run(TurnRound.flow, env, looping) match {
         case Right(TurnRound.Looped(answer, at)) =>
           s"answered ${text(answer)} at ${at.round.index} of ${at.replies.size}, " +
             s"believed ${at.believed}"
