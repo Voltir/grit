@@ -217,6 +217,60 @@ private[turn] object TurnJournal {
       v => v.strOpt.map(EntryId(_)).toRight("entry id: expected a string")
     )
 
+  /** A `record-call:n` step's output: `{"reply": entry id, "kinds": [kind, …]}`, each call's
+    * kind in order: `"refused"`, `"free"`, `"gated"`, or `{"hosted": tool, "asks": boolean,
+    * "place": place written | null}`.
+    */
+  given kept: Journaled[Either[TurnFailure, TurnRound.Kept]] =
+    outcome(
+      k =>
+        ujson.Obj(
+          "reply" -> EntryId.value(k.reply),
+          "kinds" -> ujson.Arr.from(k.kinds.map(writeKind))
+        ),
+      v =>
+        for {
+          o <- v.objOpt.toRight("kept: expected an object")
+          reply <- o.get("reply").flatMap(_.strOpt).toRight("kept: no reply").map(EntryId(_))
+          kinds <- o
+            .get("kinds")
+            .flatMap(_.arrOpt)
+            .toRight("kept: no kinds")
+            .flatMap(ks => sequence(ks.toVector.map(readKind)))
+        } yield TurnRound.Kept(reply, kinds)
+    )
+
+  private def writeKind(kind: TurnTools.Kind): ujson.Value = kind match {
+    case TurnTools.Kind.Refused => "refused"
+    case TurnTools.Kind.Free => "free"
+    case TurnTools.Kind.Gated => "gated"
+    case TurnTools.Kind.Hosted(tool, asks, place) =>
+      ujson.Obj(
+        "hosted" -> ToolName.value(tool),
+        "asks" -> asks,
+        "place" -> place.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written))
+      )
+  }
+
+  private def readKind(v: ujson.Value): Either[String, TurnTools.Kind] = v match {
+    case ujson.Str("refused") => Right(TurnTools.Kind.Refused)
+    case ujson.Str("free") => Right(TurnTools.Kind.Free)
+    case ujson.Str("gated") => Right(TurnTools.Kind.Gated)
+    case ujson.Obj(o) =>
+      for {
+        name <- o.get("hosted").flatMap(_.strOpt).toRight("kind: no hosted tool")
+        tool <- ToolName.of(name).left.map(e => s"kind: $e")
+        asks <- o.get("asks").flatMap(_.boolOpt).toRight("kind: no asks")
+        place <- o.get("place") match {
+          case Some(ujson.Null) => Right(None)
+          case Some(p) =>
+            p.strOpt.toRight("kind: place is not text").flatMap(Place.read).map(Some(_))
+          case None => Left("kind: no place")
+        }
+      } yield TurnTools.Kind.Hosted(tool, asks, place)
+    case other => Left(s"kind: unknown ${other.render()}")
+  }
+
   /** A `tool:n:j` step's output: `{"result": entry id, "failed": boolean}`. */
   given settled: Journaled[Either[TurnFailure, TurnTools.Settled]] =
     outcome(
@@ -954,6 +1008,7 @@ private[turn] object TurnJournal {
             case TurnFailure.Assembly(r) => ("assembly", r)
             case TurnFailure.Model(r) => ("model", r)
             case TurnFailure.Store(r) => ("store", r)
+            case TurnFailure.ToolsChanged(r) => ("tools-changed", r)
             case TurnFailure.Uncleared(c) => ("uncleared", Label.written(c))
           }
           ujson.Obj("failed" -> kind, "reason" -> reason)
@@ -985,6 +1040,7 @@ private[turn] object TurnJournal {
       case (Some("assembly"), Some(r)) => Some(TurnFailure.Assembly(r))
       case (Some("model"), Some(r)) => Some(TurnFailure.Model(r))
       case (Some("store"), Some(r)) => Some(TurnFailure.Store(r))
+      case (Some("tools-changed"), Some(r)) => Some(TurnFailure.ToolsChanged(r))
       case (Some("uncleared"), Some(r)) => Label.read(r).toOption.map(TurnFailure.Uncleared(_))
       case _ => None
     }

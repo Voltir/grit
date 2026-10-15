@@ -565,6 +565,20 @@ object TurnFixtures {
       .of[caps.CapSet^{ws}](peek(ws), poke(ws))
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
+  /** [[tools]] as a redeploy that made `peek` ask a person first would offer them. */
+  def peekAsking(ws: Workspace^): Toolbox[caps.CapSet^{ws}] =
+    Toolbox
+      .of[caps.CapSet^{ws}](
+        Tool(
+          ToolSpec(ToolName("peek"), "Reads a file.", path),
+          Gate.Ask(p => s"peek $p"),
+          p => p,
+          reading(ws, _)
+        ),
+        poke(ws)
+      )
+      .fold(d => throw new java.lang.AssertionError(d), identity)
+
   /** `post`, which requires [[Integrity.Member]]. */
   val hostedPost: Hosted[String] = new Hosted(
     ToolSpec(ToolName("post"), "Posts a note.", path),

@@ -22,6 +22,11 @@ enum TurnFailure {
 
   /** No pair the role may use is cleared for the turn's classification: its call is not made. */
   case Uncleared(classification: Label)
+
+  /** A call binds otherwise than its round recorded: its tools changed between runs, as a
+    * redeploy can change them. The call is not run.
+    */
+  case ToolsChanged(reason: String)
 }
 
 object TurnFailure {
@@ -44,6 +49,7 @@ object TurnFailure {
     case TurnFailure.Assembly(why) => why
     case TurnFailure.Model(why) => why
     case TurnFailure.Store(why) => why
+    case TurnFailure.ToolsChanged(why) => why
     case TurnFailure.Uncleared(c) => route.Uncleared.reply(route.Uncleared(c))
   }
 }

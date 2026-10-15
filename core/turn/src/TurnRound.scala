@@ -50,14 +50,14 @@ private[turn] object TurnRound {
       */
     def call(at: Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant]
 
-    /** `record-call:n`'s body: `reply`, the reply to `at.round` that called tools, kept. */
-    def record(at: Rounds, reply: Message.Assistant)(using Tx^): Either[TurnFailure, EntryId]
-
-    /** What `pending`, a call of round `at.round`, is. Fails, as every member here does, when
-      * the tools the round offers no longer make one toolbox: the turn's start checks that
-      * first in every run ([[TurnFlow]]).
+    /** `record-call:n`'s body: `reply`, the reply to `at.round` that called tools, kept, and
+      * what each of its `calls` is. Fails, as every member here does, when the tools the round
+      * offers no longer make one toolbox: the turn's start checks that first in every run
+      * ([[TurnFlow]]).
       */
-    def kind(at: Rounds, pending: Pending): Either[TurnFailure, Kind]
+    def record(at: Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
+        Tx^
+    ): Either[TurnFailure, Kept]
 
     /** `pending`, the call at `slot` of round `at.round`, bound to its hosted tool. Fails, as
       * each member below that binds a call does, when it binds to no such tool: its kind was
@@ -141,6 +141,11 @@ private[turn] object TurnRound {
     private[TurnRound] def gatedBy(gate: Gated): Rounds =
       copy(gating = gating.map(_.updated(round.index, gate)))
   }
+
+  /** What a round whose reply called tools kept: the reply, as `reply`, and what each of its
+    * calls is, in order, as the run that kept it read them.
+    */
+  final case class Kept(reply: EntryId, kinds: Vector[Kind])
 
   /** A loop that answered with `answer`, the reply to `at.round` with its calls dropped. */
   final case class Looped(answer: Message.Assistant, at: Rounds)
@@ -296,29 +301,17 @@ private[turn] object TurnRound {
         }
     }
 
-  /** A reply's calls settled: the reply kept, its calls bound, its free hosted calls sent, and
-    * each call settled in order; then the round after.
+  /** A reply's calls settled: the reply kept with what each of its calls is, its free hosted
+    * calls sent, and each call settled in order; then the round after.
     */
   private def settles: Flow[Env, Settle, Stalled, Rounds] = {
-    val record = Step.transact[Env, Settle, Either[TurnFailure, EntryId]](
+    val record = Step.transact[Env, Settle, Either[TurnFailure, Kept]](
       Names.recordCall,
       s => Subject.Turn(s.at.looping.turn)
-    )(r => s => (tx: Tx^) ?=> r.record(s.at, s.reply))
-    // The kinds are not recorded: every run binds the round's calls again, as it always has.
-    val bound = Flow.unrecorded[Env, Settle, Either[TurnFailure, Vector[Kind]]](r =>
-      s =>
-        s.calls.foldLeft[Either[TurnFailure, Vector[Kind]]](Right(Vector.empty))((acc, pending) =>
-          acc.flatMap(done => r.kind(s.at, pending).map(done :+ _))
-        )
-    )
+    )(r => s => (tx: Tx^) ?=> r.record(s.at, s.reply, s.calls))
     Flow
-      .decide(record)((s, kept) => kept.map(_ => s).left.map(Stalled(_, s.at)))
-      .andThen(
-        Flow.mayEnd(
-          bound.keeping.map((s: Settle, kinds: Either[TurnFailure, Vector[Kind]]) =>
-            kinds.left.map(Stalled(_, s.at)).flatMap(slotted(s, _))
-          )
-        )
+      .decide(record)((s, kept) =>
+        kept.left.map(Stalled(_, s.at)).flatMap(k => slotted(s, k.kinds))
       )
       .andThen(
         Flow

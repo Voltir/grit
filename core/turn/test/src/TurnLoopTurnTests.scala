@@ -259,6 +259,37 @@ object TurnLoopTurnTests extends TestSuite {
       provider.requests.size ==> 2
     }
 
+    test("a call whose tools changed between runs fails the turn in its own step, unrun") {
+      val store = new InMemoryEntryStore
+      val entries = new CrashOnInsert(store, e => EntryId.value(e.id).startsWith("result:"))
+      val durable = new InMemoryDurable
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("", ("t1", "peek", "a.txt")) else calling("alpha"))
+      )
+      val turn = say(store, "read a")
+      assertThrows[InMemoryDurable.Crash](looped(durable, store, entries, turn, provider, ws))
+      val before = durable.recordedSteps(turn.workflowId)
+      val rerun = durable.run(turn.workflowId)(
+        tooledBody(
+          store,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          peekAsking(ws),
+          5
+        )
+      )
+      (rerun, durable.recordedSteps(turn.workflowId).drop(before.size).take(1)) ==> (
+        "failed: ToolsChanged(the call at round 0, index 0, binds otherwise than its round " +
+          "recorded: its tools changed between runs)",
+        Vector("tool:0:0")
+      )
+      ws.reads ==> 1
+    }
+
     test("a gated call nobody answers in time is denied, and not run") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

@@ -79,14 +79,18 @@ object TurnRoundTests extends TestSuite {
       Right(Gated(levels(at.round.index), Vector.empty, Vector.empty))
     def call(at: TurnRound.Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant] =
       script(at.round, use)
-    def record(at: TurnRound.Rounds, reply: Message.Assistant)(using
+    def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
-    ): Either[TurnFailure, EntryId] = kept
-    def kind(at: TurnRound.Rounds, pending: Pending): Either[TurnFailure, TurnTools.Kind] =
-      pending match {
-        case Pending.Refused(_, _) => Right(TurnTools.Kind.Refused)
-        case Pending.Run(_) => Right(TurnTools.Kind.Free)
-      }
+    ): Either[TurnFailure, TurnRound.Kept] =
+      kept.map(
+        TurnRound.Kept(
+          _,
+          calls.map {
+            case Pending.Refused(_, _) => TurnTools.Kind.Refused
+            case Pending.Run(_) => TurnTools.Kind.Free
+          }
+        )
+      )
     def hosted(
         at: TurnRound.Rounds,
         slot: TurnTools.Slot,

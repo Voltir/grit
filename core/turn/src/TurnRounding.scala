@@ -50,12 +50,18 @@ private[turn] final class Rounding[C^](
       )
     }
 
-  def record(at: TurnRound.Rounds, reply: Message.Assistant)(using
+  def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
       Tx^
-  ): Either[TurnFailure, EntryId] =
-    Rounding.sent(tooling, at).flatMap { (stubs, shape) =>
-      val l = at.looping
-      Rounding.recordCall(
+  ): Either[TurnFailure, TurnRound.Kept] =
+    for {
+      tools <- tools(at)
+      l = at.looping
+      kinds = {
+        val bind = binding(at, tools)
+        calls.map(p => TurnTools.Kind.of(bind.bound(p), tool => l.offer.placeOf(tool)))
+      }
+      (stubs, shape) <- Rounding.sent(tooling, at)
+      kept <- Rounding.recordCall(
         l.offer.system,
         env.records,
         l.turn,
@@ -68,13 +74,7 @@ private[turn] final class Rounding[C^](
         at.believed,
         env.clock.now()
       )
-    }
-
-  def kind(at: TurnRound.Rounds, pending: Pending): Either[TurnFailure, TurnTools.Kind] =
-    tools(at).map { tools =>
-      val placing = at.looping.offer
-      TurnTools.Kind.of(binding(at, tools).bound(pending), tool => placing.placeOf(tool))
-    }
+    } yield TurnRound.Kept(kept, kinds)
 
   def hosted(
       at: TurnRound.Rounds,
@@ -138,8 +138,8 @@ private[turn] final class Rounding[C^](
   // stamped.
   private final class Binding(at: TurnRound.Rounds, tools: Toolbox[C], reads: Reads^) {
 
-    // `pending`, the call at `slot`, bound again, taken as `as` takes it. Its kind was read
-    // from an earlier binding, in this run or one before it; a binding `as` does not take
+    // `pending`, the call at `slot`, bound again, taken as `as` takes it. Its kind was
+    // recorded with its round, in this run or one before it; a binding `as` does not take
     // means the call's tools changed between those runs, which a redeploy can do, since what
     // a call binds to is the deployment's, not the history's.
     def rebind[A](slot: TurnTools.Slot, pending: Pending)(
@@ -149,9 +149,9 @@ private[turn] final class Rounding[C^](
         ] ->{Rounding.this} Option[A]
     ): Either[TurnFailure, A] =
       as(bound(pending)).toRight(
-        TurnFailure.Store(
+        TurnFailure.ToolsChanged(
           s"the call at round ${slot.round.index}, index ${slot.index}, binds otherwise than " +
-            "it did: its tools changed between runs"
+            "its round recorded: its tools changed between runs"
         )
       )
 

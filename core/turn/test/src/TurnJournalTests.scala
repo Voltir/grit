@@ -30,7 +30,12 @@ object TurnJournalTests extends TestSuite {
           .map(_ => TurnFailure.Model("unreachable"))
       roundTrip(reply) ==> Right(reply)
       for (
-        failure <- Seq(TurnFailure.Assembly("a"), TurnFailure.Model("m"), TurnFailure.Store("s"))
+        failure <- Seq(
+          TurnFailure.Assembly("a"),
+          TurnFailure.Model("m"),
+          TurnFailure.Store("s"),
+          TurnFailure.ToolsChanged("t")
+        )
       ) {
         val id: Either[TurnFailure, EntryId] = Left(failure)
         roundTrip(id) ==> Right(id)
@@ -244,6 +249,28 @@ object TurnJournalTests extends TestSuite {
       roundTrip(full) ==> Right(full)
       roundTrip(empty) ==> Right(empty)
       assert(summon[Journaled[TurnTopics.Classification]].decode("""{"events":[]}""").isLeft)
+    }
+
+    test("a round's record keeps its reply and each of its calls' kinds, in its pinned form") {
+      import TurnTools.Kind
+      val j = summon[Journaled[Either[TurnFailure, TurnRound.Kept]]]
+      val post = Place.read("service:github").fold(e => sys.error(e), identity)
+      val kept: Either[TurnFailure, TurnRound.Kept] = Right(
+        TurnRound.Kept(
+          EntryId("call:c1:0:0"),
+          Vector(
+            Kind.Refused,
+            Kind.Free,
+            Kind.Gated,
+            Kind.Hosted(grit.core.tool.ToolName("post"), true, Some(post)),
+            Kind.Hosted(grit.core.tool.ToolName("fetch"), false, None)
+          )
+        )
+      )
+      j.encode(kept) ==> """{"ok":{"reply":"call:c1:0:0","kinds":["refused","free","gated",""" +
+        """{"hosted":"post","asks":true,"place":"service:github"},""" +
+        """{"hosted":"fetch","asks":false,"place":null}]}}"""
+      j.decode(j.encode(kept)) ==> Right(kept)
     }
 
     test("the recorded form is pinned") {

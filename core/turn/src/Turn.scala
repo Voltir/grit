@@ -376,7 +376,9 @@ object Turn {
       )
       calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {
         case (acc, (round, name)) =>
-          acc.flatMap(done => recorded[EntryId](name).map(id => done ++ id.map(round -> _)))
+          acc.flatMap(done =>
+            recorded[TurnRound.Kept](name).map(kept => done ++ kept.map(round -> _.reply))
+          )
       }
       answer <- recorded[EntryId](Step.Append)
       gates <- gated.foldLeft[Either[String, Map[Int, Gated]]](Right(Map.empty)) {

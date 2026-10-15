@@ -431,6 +431,7 @@ object TurnCapture {
                 case TurnFailure.Model(_) => Ended.Why.Model
                 case TurnFailure.Store(_) => Ended.Why.Store
                 case TurnFailure.Uncleared(_) => Ended.Why.Uncleared
+                case TurnFailure.ToolsChanged(_) => Ended.Why.ToolsChanged
               }
             )
           case None => Ended.Unfinished(status)
