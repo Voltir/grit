@@ -70,14 +70,32 @@ object AboutTests extends TestSuite {
     }
 
     test(
-      "the security topic names Bell–LaPadula, reads it in plain words, and says where grit departs from it"
+      "the security topic is the plain answer: none of grit's terms, and an offer to go deeper"
     ) {
       val security = asked(ujson.Obj("topic" -> "security"))
+      val said = shipped("security").replaceAll("\\s+", " ")
+      (
+        security == Outcome.Done(shipped("security")),
+        Vector("Bell", "Biba", "integrity", "stub", "hidden item", "compartment", "slack_post")
+          .filter(said.contains) ++
+          Vector("turn", "clearance").filter(w => s"\\b$w\\b".r.findFirstIn(said).isDefined),
+        said.startsWith("I keep two kinds of track."),
+        said.endsWith("Happy to go into how it works under the hood if that's useful.")
+      ) ==> (true, Vector(), true, true)
+    }
+
+    test(
+      "the security_detail topic names Bell–LaPadula and Biba, reads them in plain words, and says where grit departs"
+    ) {
+      val security = asked(ujson.Obj("topic" -> "security_detail"))
       // grit's model-facing wording, kept verbatim on purpose: these are the claims the model
       // must be able to quote when asked how grit decides who may see what.
       (
-        security == Outcome.Done(shipped("security")),
+        security == Outcome.Done(shipped("security_detail")),
         Vector(
+          "Two separate checks, both enforced in code rather than left to me.",
+          "Integrity is the mirror image (Biba)",
+          "low-trust items start hidden",
           "grit follows Bell–LaPadula: no read up, no write down.",
           "No read up: a person sees only what they are cleared for.",
           "No write down: what is read in a room is never written somewhere less protected",
@@ -88,7 +106,7 @@ object AboutTests extends TestSuite {
           "is allowed only when the deployment has cleared that service for this room's label.",
           "Models and the classifier are parties too: each is sent only what it is cleared for, " +
             "and where none is, grit does not make the call."
-        ).filterNot(shipped("security").replaceAll("\\s+", " ").contains)
+        ).filterNot(shipped("security_detail").replaceAll("\\s+", " ").contains)
       ) ==> (true, Vector())
     }
 
@@ -106,9 +124,24 @@ object AboutTests extends TestSuite {
         .map(
           _.obj.get("topic").flatMap(_.obj.get("enum"))
         ) ==> Vector(
-        Some(ujson.Arr("grit", "memory", "markers", "periods", "places", "security"))
+        Some(
+          ujson
+            .Arr("grit", "memory", "markers", "periods", "places", "security", "security_detail")
+        )
       )
       about.entry.asks ==> false
+    }
+
+    test("its topic says the plain security answer is the default, the technical one when wanted") {
+      val topic = about.schema(strict = false).parameters("properties")("topic")("description").str
+      assert(
+        topic.endsWith(
+          "For how you keep things safe, security is the plain explanation, to give by " +
+            "default; security_detail is the technical one, for when the person asks for detail " +
+            "or what you know of them (their role, how they asked) says they'd want it, never " +
+            "from a name alone."
+        )
+      )
     }
   }
 }
