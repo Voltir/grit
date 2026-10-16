@@ -26,13 +26,13 @@ import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
 import grit.core.triage.Corpus
 import grit.core.visibility.{
+  Cap,
   Cleared,
   Compartments,
   Group,
   GroupName,
   Integrity,
   Label,
-  Output,
   Party,
   RoomLabels,
   Visibility
@@ -779,8 +779,8 @@ object Main {
     * workspace `slackIn` and `admins` named, the shipped one but for [[Administrators]],
     * declared as those users' accounts there (`slack:{team}/{id}`), who alone may lower a
     * room's label or label a public channel; otherwise [[Visibility.Shipped]], under which no
-    * one may, with `parties` cleared. Either way its services' results are believed as
-    * [[Outputs]] declares. A party named twice is refused.
+    * one may, with `parties` cleared. Either way what is said at its places is capped as
+    * [[Caps]] declares. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
@@ -796,7 +796,7 @@ object Main {
             Vector.empty,
             Vector.empty,
             parties,
-            outputs = Outputs
+            caps = Caps
           )
           .left
           .map(r => s"the deployment's clearances: $r")
@@ -816,23 +816,23 @@ object Main {
                 Vector.empty,
                 parties,
                 administrators = Some(Administrators),
-                outputs = Outputs
+                caps = Caps
               )
               .left
               .map(r => s"$AdminsVar: $r")
           )
     }
 
-  /** What the reference deployment believes its services' results at (ADR 0036): those of
-    * Slack's posting service ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's
-    * account of a post it made; GitHub's at `Untrusted`, since its token may reach repositories
-    * anyone may write in. Any other service's are `Untrusted`, undeclared.
+  /** The reference deployment's caps (ADR 0036): Slack's posting service's results
+    * ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's account of a post it
+    * made; GitHub's at `Untrusted`, since its token may reach repositories anyone may write in.
+    * Any other service's are `Untrusted`, undeclared, and no room is capped.
     */
-  private[main] val Outputs: Vector[Output] = Vector(
-    Output(SlackEdge.PostsAt, Integrity.Member),
+  private[main] val Caps: Vector[Cap] = Vector(
+    Cap(SlackEdge.PostsAt.place, Integrity.Member),
     // "github" is a service's name by Service.of's rule, so the Left is never taken.
-    Output(
-      Service.of("github").fold(why => throw new IllegalStateException(why), identity),
+    Cap(
+      Service.of("github").fold(why => throw new IllegalStateException(why), identity).place,
       Integrity.Untrusted
     )
   )

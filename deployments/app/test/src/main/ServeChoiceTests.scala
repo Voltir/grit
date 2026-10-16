@@ -4,7 +4,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
-import grit.core.place.Scope as PlaceScope
+import grit.core.place.{Scope as PlaceScope, Service}
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Group, Integrity}
 import grit.kit.deployment.Offered
@@ -101,6 +101,7 @@ object ServeChoiceTests extends TestSuite {
     test(
       "Slack's posting service's results are believed at member and GitHub's at untrusted, with admins named or not"
     ) {
+      val github = Service.of("github").fold(sys.error, identity)
       def outputs(env: Map[String, String], slackIn: Option[TeamId]) =
         Main
           .deployment(
@@ -111,7 +112,10 @@ object ServeChoiceTests extends TestSuite {
             java.time.ZoneOffset.UTC,
             slackIn
           )
-          .map(d => d.visibility.outputs.map(o => (o.service.name, Integrity.written(o.integrity))))
+          .map(d =>
+            Vector(SlackEdge.PostsAt, github)
+              .map(s => (s.name, Integrity.written(d.visibility.outputOf(s))))
+          )
       val declared = Right(Vector(("slack", "member"), ("github", "untrusted")))
       (
         outputs(Map("GRIT_ADMINS" -> "U012AB34"), Some(TeamId("T0FAKE"))),

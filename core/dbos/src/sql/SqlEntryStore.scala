@@ -8,7 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
-import grit.core.visibility.{Integrity, Room}
+import grit.core.visibility.Integrity
 
 import org.postgresql.util.PSQLException
 
@@ -203,9 +203,9 @@ private[dbos] object SqlEntryStore {
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =
     StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString))
 
-  /** The cap of `conversation`'s room, as the deployment declares it for the room with its
-    * reported access ([[Tx.access]]); `None` when it has none, or there is no such conversation
-    * (whose insert then fails). Throws as the driver does.
+  /** The cap on what is said in `conversation`'s room ([[grit.core.visibility.Visibility.capOf]]);
+    * `None` when none covers it, its author's level then standing, or there is no such
+    * conversation (whose insert then fails). Throws as the driver does.
     */
   private def capOf(conversation: ConversationId)(using tx: Tx^): Option[Integrity] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -221,7 +221,7 @@ private[dbos] object SqlEntryStore {
     }
     path.flatMap { p =>
       SqlPlaces.read(p) match {
-        case Right(room) => Tx.visibility(tx).capOf(Room(room, Tx.access(room)))
+        case Right(room) => Tx.visibility(tx).capOf(room)
         case Left(why) => throw new IllegalStateException(s"unreadable room: $why")
       }
     }

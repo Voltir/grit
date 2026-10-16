@@ -1,11 +1,11 @@
 package grit.core.visibility
 
-import grit.core.place.{Place, Service}
+import grit.core.place.{Namespace, Place, Service}
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
   * compartments, the labeller of its rooms, its groups and what each group's members are
   * cleared for, and what each party it sends to is cleared for; and what may be believed
-  * (ADR 0036): what each service's results are believed at, and each room's cap. What a room is labelled and a
+  * (ADR 0036): the caps on what is said at its places ([[Cap]]). What a room is labelled and a
   * person is cleared for in force is read on a transaction ([[grit.core.store.Tx.roomLabel]],
   * [[grit.core.store.Tx.clearanceOf]]), which adds what is recorded through grit.
   */
@@ -17,18 +17,18 @@ final case class Visibility private (
     clearances: Clearances,
     administrators: Option[GroupName],
     stewards: Vector[Steward],
-    outputs: Vector[Output],
-    capped: Room -> Option[Integrity]
+    private val caps: PlaceMap[Integrity]
 ) {
 
-  /** What `service`'s results are believed at: its declared [[Output]], else
-    * [[Output.Undeclared]].
+  /** The cap on what is said at `place` ([[Cap]]): the declared one at the deepest place `place`
+    * is or lies within; `None` when no declared cap covers it.
     */
-  def outputOf(service: Service): Integrity =
-    outputs.find(_.service == service).fold(Output.Undeclared)(_.integrity)
+  def capOf(place: Place): Option[Integrity] = caps.covering(place)
 
-  /** The most `room`'s speech is believed at, whoever said it; `None`: no cap. */
-  def capOf(room: Room): Option[Integrity] = capped(room)
+  /** What `service`'s results are believed at: the cap at its place ([[capOf]]), else
+    * [[Cap.Undeclared]].
+    */
+  def outputOf(service: Service): Integrity = capOf(service.place).getOrElse(Cap.Undeclared)
 }
 
 object Visibility {
@@ -49,8 +49,7 @@ object Visibility {
       Clearances.Empty,
       None,
       Vector.empty,
-      Vector.empty,
-      _ => None
+      PlaceMap.Empty
     )
 
   /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
@@ -65,9 +64,10 @@ object Visibility {
     * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
     * [[Compartment.Unmapped]] (`StewardsUnmapped`), through a group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),
-    * or one compartment stewarded twice (`StewardedTwice`), is refused too. So is a service
-    * given two outputs (`OutputTwice`), or one naming a compartment `compartments` does not
-    * declare (`Undeclared`, by [[Namer.OutputOf]]).
+    * or one compartment stewarded twice (`StewardedTwice`), is refused too. So is a cap at a
+    * directory under `fs`, a direct message's room or everywhere (`CapOutside`), a place capped
+    * twice (`CappedTwice`), or a cap naming a compartment `compartments` does not declare
+    * (`Undeclared`, by [[Namer.CapOf]]).
     */
   def of(
       compartments: Compartments,
@@ -77,8 +77,7 @@ object Visibility {
       clearances: Vector[Cleared] = Vector.empty,
       administrators: Option[GroupName] = None,
       stewards: Vector[Steward] = Vector.empty,
-      outputs: Vector[Output] = Vector.empty,
-      capped: Room -> Option[Integrity] = _ => None
+      caps: Vector[Cap] = Vector.empty
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -90,6 +89,8 @@ object Visibility {
     }
     val names = groups.map(_.name)
     val cleared = Clearances.of(clearances).left.map(VisibilityRefusal.ClearedTwice(_))
+    val capped =
+      PlaceMap.of(caps.map(c => (c.place, c.integrity))).left.map(VisibilityRefusal.CappedTwice(_))
     val direct = rooms match {
       case r: RoomLabels =>
         r.declared.collectFirst {
@@ -135,19 +136,23 @@ object Visibility {
           val stewarded = stewards.map(_.compartment)
           stewarded.diff(stewarded.distinct).headOption.map(VisibilityRefusal.StewardedTwice(_))
         }
-        .orElse {
-          val served = outputs.map(_.service)
-          served.diff(served.distinct).headOption.map(VisibilityRefusal.OutputTwice(_))
-        }
-        .orElse(outputs.flatMap { o =>
+        .orElse(caps.collectFirst {
+          case c
+              if c.place == Place.Everywhere || c.place.direct ||
+                c.place.within(Place.under(Namespace.Fs, Vector.empty)) =>
+            VisibilityRefusal.CapOutside(c.place)
+        })
+        .orElse(capped.left.toOption)
+        .orElse(caps.flatMap { cap =>
           Integrity
-            .compartments(o.integrity)
+            .compartments(cap.integrity)
             .find(c => !compartments.declared.contains(c))
-            .map(VisibilityRefusal.Undeclared(Namer.OutputOf(o.service), _))
+            .map(VisibilityRefusal.Undeclared(Namer.CapOf(cap.place), _))
         }.headOption)
     for {
       _ <- refusal.toLeft(())
       c <- cleared
+      m <- capped
     } yield new Visibility(
       compartments,
       rooms,
@@ -156,8 +161,7 @@ object Visibility {
       c,
       administrators,
       stewards,
-      outputs,
-      capped
+      m
     )
   }
 }
@@ -186,8 +190,8 @@ enum Namer {
   /** A [[Steward]] of `compartment`. */
   case Stewarded(compartment: Compartment)
 
-  /** The [[Output]] declared for `service`. */
-  case OutputOf(service: Service)
+  /** The [[Cap]] declared at `place`. */
+  case CapOf(place: Place)
 }
 
 /** Why a deployment's [[Visibility]] is refused. */
@@ -221,8 +225,13 @@ enum VisibilityRefusal {
   /** Two clearances name `party`. */
   case ClearedTwice(party: Party)
 
-  /** Two outputs are declared for `service`. */
-  case OutputTwice(service: Service)
+  /** Two caps are declared at `place`. */
+  case CappedTwice(place: Place)
+
+  /** A [[Cap]] is declared at `place`: a directory under `fs`, a direct message's room or
+    * everywhere, each holding a person's own conversations with grit, which no cap lowers.
+    */
+  case CapOutside(place: Place)
 
   /** `place`, a room the deployment's [[RoomLabels]] declares, is within `direct`: a direct
     * message's room is labelled at its person's clearance, never by the labeller.

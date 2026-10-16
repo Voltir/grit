@@ -21,7 +21,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.visibility.{Compartments, Integrity, Output, Visibility}
+import grit.core.visibility.{Cap, Compartments, Integrity, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -109,7 +109,7 @@ object TurnToolsTests extends TestSuite {
           Visibility.Shipped.rooms,
           Vector.empty,
           Vector.empty,
-          outputs = Vector(Output(github, Integrity.Outside))
+          caps = Vector(Cap(github.place, Integrity.Outside))
         )
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       val entries = new InMemoryEntryStore

@@ -22,13 +22,13 @@ import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload, Tx}
 import grit.core.triage.Corpus
 import grit.core.visibility.{
+  Cap,
   Cleared,
   Compartments,
   Integrity,
   Label,
   Labelled,
   Level,
-  Output,
   Party,
   RoomLabels,
   Subject,
@@ -106,7 +106,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
           // The turn's calls go to the stub, cleared as a deployment clears its pairs.
           Cleared(Party.of(StubModels.Ref).getOrElse(sys.error("the stub's party")), trusted)
         ),
-        outputs = Vector(Output(github, Integrity.Member))
+        caps = Vector(Cap(github.place, Integrity.Member))
       )
       .fold(r => sys.error(r.toString), identity)
 

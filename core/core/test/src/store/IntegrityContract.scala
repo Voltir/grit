@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PeriodRef, PeriodSeq, TurnRef}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Probability, TestClosings}
-import grit.core.visibility.{Compartments, Integrity, TestLabels, Visibility}
+import grit.core.visibility.{Cap, Compartments, Integrity, TestLabels, Visibility}
 
 import utest.*
 
@@ -134,8 +134,7 @@ object IntegrityContract {
       Visibility.Shipped.rooms,
       Vector.empty,
       Vector.empty,
-      capped =
-        room => Option.when(room.place == Origin.Task(CappedRoom, "any").room)(Integrity.Outside)
+      caps = Vector(Cap(Origin.Task(CappedRoom, "any").room, Integrity.Outside))
     )
     .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 }

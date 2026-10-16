@@ -1,6 +1,6 @@
 package grit.core.visibility
 
-import grit.core.place.Service
+import grit.core.place.Place
 
 /** How far a thing may be believed to steer an effect (Biba, ADR 0036): a level and the
   * compartments it is endorsed in. One dominates another when its level is at least the
@@ -107,17 +107,20 @@ object Integrity {
   private[visibility] def level(i: Integrity): Level = i.level
 }
 
-/** The deployment declares what `service`'s results are believed at: a service that relays
-  * others' text (mail, the web) declares [[Integrity.Untrusted]]. An undeclared service's are
-  * believed at [[Output.Undeclared]].
+/** The deployment declares how far what is said at `place`, or at any place within it that no
+  * deeper cap covers, is believed (ADR 0036): a room's speech at its author's level met with
+  * `integrity`, whoever said it; a service's results at `integrity` itself, the cap standing in
+  * for the author the service cannot name (a service that relays others' text, mail or the web,
+  * declares [[Integrity.Untrusted]]). A cap may stand above or below the one it lies within. A
+  * cap at a directory under `fs`, a direct message's room or everywhere is refused
+  * ([[VisibilityRefusal.CapOutside]]).
   */
-final case class Output(service: Service, integrity: Integrity) derives CanEqual
+final case class Cap(place: Place, integrity: Integrity) derives CanEqual
 
-object Output {
+object Cap {
 
-  /** What a result no declaration covers is believed at: the least, [[Integrity.Untrusted]].
-    * A service the deployment does not declare is believed here, and so is a tool that
-    * declares nothing.
+  /** What a service's result is believed at when no cap covers its place, and a tool that
+    * declares nothing: the least, [[Integrity.Untrusted]].
     */
   val Undeclared: Integrity = Integrity.Untrusted
 }

@@ -2,7 +2,7 @@ package grit.core.visibility
 
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
 import grit.core.model.{ModelId, Upstream}
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.store.Tx
 import grit.dbos.sql.TestTx
 
@@ -349,7 +349,7 @@ object VisibilityTests extends TestSuite {
           RoomLabels.Public,
           groups,
           grants,
-          outputs = Vector(Output(github, Integrity.Member))
+          caps = Vector(Cap(github.place, Integrity.Member))
         )
         .map(v => (v.outputOf(github), v.outputOf(jira)))
       declared ==> Right((Integrity.Member, Integrity.Untrusted))
@@ -357,31 +357,76 @@ object VisibilityTests extends TestSuite {
     }
 
     test("a room's speech is capped where the deployment caps it, and nowhere by default") {
-      val guests = Room(place("slack:acme/C-guests"), None)
-      val team = Room(place("slack:acme/C-team"), None)
+      val guests = place("slack:acme/C-guests")
+      val team = place("slack:acme/C-team")
       val capped = Visibility
         .of(
           compartments,
           RoomLabels.Public,
           groups,
           grants,
-          capped = r => Option.when(r == guests)(Integrity.Outside)
+          caps = Vector(Cap(guests, Integrity.Outside))
         )
         .map(v => (v.capOf(guests), v.capOf(team)))
       capped ==> Right((Some(Integrity.Outside), None))
       Visibility.Shipped.capOf(guests) ==> None
     }
 
-    test("a service given two outputs, or one endorsed in an undeclared compartment, is refused") {
+    test(
+      "a place is capped by the deepest declared cap it lies within, and by none when none does"
+    ) {
+      val guests = place("slack:acme/C-guests")
+      val vetted = place("slack:acme/C-guests/1712.3")
+      val capped = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          caps = Vector(Cap(guests, Integrity.Outside), Cap(vetted, Integrity.Member))
+        )
+        .map(v =>
+          Vector(
+            place("slack:acme/C-guests/1712.9"),
+            vetted,
+            place("slack:acme/C-guests/1712.3/reply"),
+            place("slack:acme/C-team"),
+            place("slack:acme")
+          ).map(v.capOf)
+        )
+      capped ==> Right(
+        Vector(Some(Integrity.Outside), Some(Integrity.Member), Some(Integrity.Member), None, None)
+      )
+    }
+
+    test("a cap on a directory, a direct message's room or everywhere is refused") {
+      def declaring(at: Place) =
+        Visibility.of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          caps = Vector(Cap(at, Integrity.Outside))
+        )
+      val directory = place("fs:/home/nick/vendor")
+      val direct = place("direct:slack/T0123/U0456")
+      (declaring(directory), declaring(direct), declaring(Place.Everywhere)) ==> (
+        Left(VisibilityRefusal.CapOutside(directory)),
+        Left(VisibilityRefusal.CapOutside(direct)),
+        Left(VisibilityRefusal.CapOutside(Place.Everywhere))
+      )
+    }
+
+    test("a place capped twice, or a cap endorsed in an undeclared compartment, is refused") {
       val finance = compartment("finance")
-      def declaring(outputs: Output*) =
-        Visibility.of(compartments, RoomLabels.Public, groups, grants, outputs = outputs.toVector)
+      def declaring(caps: Cap*) =
+        Visibility.of(compartments, RoomLabels.Public, groups, grants, caps = caps.toVector)
       (
-        declaring(Output(github, Integrity.Member), Output(github, Integrity.Untrusted)),
-        declaring(Output(jira, Integrity.at(Integrity.Level.Member, trial, finance)))
+        declaring(Cap(github.place, Integrity.Member), Cap(github.place, Integrity.Untrusted)),
+        declaring(Cap(jira.place, Integrity.at(Integrity.Level.Member, trial, finance)))
       ) ==> (
-        Left(VisibilityRefusal.OutputTwice(github)),
-        Left(VisibilityRefusal.Undeclared(Namer.OutputOf(jira), finance))
+        Left(VisibilityRefusal.CappedTwice(github.place)),
+        Left(VisibilityRefusal.Undeclared(Namer.CapOf(jira.place), finance))
       )
     }
 

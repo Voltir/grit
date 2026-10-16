@@ -23,6 +23,7 @@ import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
 import grit.core.visibility.{
+  Cap,
   Compartments,
   Grant,
   Group,
@@ -363,7 +364,7 @@ abstract class InboxContract extends TestSuite {
           Visibility.Shipped.rooms,
           Vector.empty,
           Vector.empty,
-          capped = room => Option.when(room.place == capped.room)(Integrity.Outside)
+          caps = Vector(Cap(capped.room, Integrity.Outside))
         )
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       withInbox(Uncapped, capping) { (inbox, store) =>
@@ -387,7 +388,7 @@ abstract class InboxContract extends TestSuite {
           Visibility.Shipped.rooms,
           Vector.empty,
           Vector.empty,
-          capped = room => Option.when(room.place == capped.room)(Integrity.Outside)
+          caps = Vector(Cap(capped.room, Integrity.Outside))
         )
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       withInbox(Uncapped, capping) { (inbox, store) =>

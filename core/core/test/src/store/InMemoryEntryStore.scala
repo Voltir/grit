@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.place.Place
-import grit.core.visibility.{Item, Label, Room}
+import grit.core.visibility.{Item, Label}
 
 /** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]] and [[ClearanceContract]]:
   * `conversation` is each conversation as its row holds it, whose label an entry copies when
@@ -43,7 +43,7 @@ final class InMemoryEntryStore(
       val at = room.fold(conversation(entry.conversationId).map(_.origin.room))(
         _(entry.conversationId)
       )
-      val cap = at.flatMap(r => Tx.visibility(tx).capOf(Room(r, Tx.access(r))))
+      val cap = at.flatMap(Tx.visibility(tx).capOf)
       entries = entries :+ cap.fold(entry)(c => entry.copy(integrity = entry.integrity.meet(c)))
       labels =
         labels.updated(entry.id, conversation(entry.conversationId).fold(Label.Public)(_.label))

@@ -1,6 +1,6 @@
 package grit.core.tool
 
-import grit.core.visibility.{Integrity, Output}
+import grit.core.visibility.{Cap, Integrity}
 
 /** What a tool's results are believed at when a call's outcome does not say
   * ([[Outcome.Done.integrity]]). It covers a call at no service: one at a service is believed at
@@ -25,6 +25,6 @@ enum Believed derives CanEqual {
 
 object Believed {
 
-  /** What a tool that declares nothing is believed at: [[Output.Undeclared]]. */
-  val Default: Believed = At(Output.Undeclared)
+  /** What a tool that declares nothing is believed at: [[Cap.Undeclared]]. */
+  val Default: Believed = At(Cap.Undeclared)
 }

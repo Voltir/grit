@@ -33,12 +33,12 @@ import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 import grit.core.visibility.{
+  Cap,
   Clearance,
   Cleared,
   Compartments,
   Integrity,
   Label,
-  Output,
   Party,
   RoomLabels,
   Visibility
@@ -111,7 +111,7 @@ final class MovesWorld(
           // The world's classifier is cleared for what it knows.
           Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
         ),
-        outputs = Vector(Output(Probe, MovesContract.ProbeOutput))
+        caps = Vector(Cap(Probe.place, MovesContract.ProbeOutput))
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =
