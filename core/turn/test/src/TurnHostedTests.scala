@@ -8,12 +8,22 @@ import grit.core.edge.{InMemoryEdges, Permit}
 import grit.core.id.{TestCallSlots, TestPrincipalIds, ToolCallId}
 import grit.core.identity.Principal
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.place.{Place, Reaches, Service, WorksIn}
+import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
 import grit.core.tool.{CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
-import grit.core.visibility.{Clearance, Integrity, Label, Level}
+import grit.core.visibility.{
+  Accounts,
+  Clearance,
+  Integrity,
+  Itemised,
+  Label,
+  Level,
+  Part,
+  Provenance,
+  Readers
+}
 
 import utest.*
 
@@ -913,6 +923,93 @@ object TurnHostedTests extends TestSuite {
         hostedBody(entries, model(), edge, toolSets = new InMemoryToolSets)
       ) ==>
         s"failed: Store(no tool set $id is kept)"
+    }
+
+    test(
+      "a cut answer's part in a confidential place never reaches an uncleared asker's model " +
+        "request, kept entry or recorded step; a cleared asker's turn shows it"
+    ) {
+      // A service's extension cutting the fake server's answer, one part a line, each at the
+      // place under `github` its line names.
+      val cutting = new Accounts[String] {
+        def items(answer: String): Itemised =
+          Itemised.Parts(
+            "found:",
+            answer.linesIterator.toVector.map { line =>
+              val at = Place.under(Namespace.Service, Vector(github.name, line.takeWhile(_ != ' ')))
+              Part(Provenance(at, Integrity.Member), Readers.AtPlace, line)
+            }
+          )
+      }
+      val answered = cutting.items("open notes\nsecret plans") match {
+        case Itemised.Parts(head, parts) => Outcome.Done(head, parts = Some(parts))
+        case other => throw new java.lang.AssertionError(other.toString)
+      }
+      val visibility = labelling(
+        Vector(
+          github.place -> Label.Public,
+          Place.under(Namespace.Service, Vector(github.name, "open")) -> Label.Public,
+          Place.under(Namespace.Service, Vector(github.name, "secret")) -> internal
+        ),
+        grit.core.visibility.Cleared(grit.core.visibility.Party.Service(github), internal) +:
+          Vector(RoutedOpen, RoutedFlash, RoutedSummary, RoutedQuery).flatMap(r =>
+            grit.core.visibility.Party.of(r).map(grit.core.visibility.Cleared(_, restricted))
+          )
+      )
+
+      /** The model's tool result, the kept result's payload, and whether the secret part's text
+        * is in any model request or recorded step, of a turn whose asker is cleared at `at`.
+        */
+      def asked(at: Label): (Vector[String], Either[String, Option[String]], Boolean, Boolean) = {
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "search")
+        val durable = new InMemoryDurable(resolve = _ => Clearance.of(at), visibility = visibility)
+        val edge = atGithub(durable, _ => Serve.Now(answered))
+        val provider = model(("t1", "github_search", "grit"))
+        durable.run(turn.workflowId)(
+          hostedBody(
+            entries,
+            provider,
+            edge,
+            hosted = Vector.empty,
+            from = Origin.Slack("T1", "C1", "1.0"),
+            worksIn = Vector(WorksIn(Place.Everywhere, github)),
+            db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(at), visibility),
+            catalog = RoutedCatalog,
+            jot = new FakeJot(() => Clearance.of(at), visibility)
+          )
+        )
+        val kept = entries
+          .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
+          .map(_.map(_.payload.toString))
+          .left
+          .map(_.toString)
+        (
+          results(provider).map(_.content),
+          kept,
+          provider.requests.exists(_.toString.contains("secret plans")),
+          durable.history(turn.workflowId).exists(_.toString.contains("secret plans"))
+        )
+      }
+      val (uncleared, unclearedKept, unclearedSent, unclearedRecorded) = asked(Label.Public)
+      val (cleared, clearedKept, _, _) = asked(internal)
+      (
+        uncleared,
+        unclearedKept.map(_.exists(_.contains("open notes"))),
+        unclearedKept.map(_.exists(_.contains("secret plans"))),
+        unclearedSent,
+        unclearedRecorded,
+        cleared,
+        clearedKept.map(_.exists(_.contains("secret plans")))
+      ) ==> (
+        Vector("found:\nopen notes"),
+        Right(true),
+        Right(false),
+        false,
+        false,
+        Vector("found:\nopen notes\nsecret plans"),
+        Right(true)
+      )
     }
   }
 }
