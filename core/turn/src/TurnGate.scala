@@ -180,8 +180,8 @@ object TurnGate {
   /** `item` as a person would follow it, by whom its integrity says it comes from: below
     * [[Integrity.Outside]] people outside the team can write there, below
     * [[Integrity.WritesOut]] it was written from outside the team, and otherwise (lacking a
-    * compartment) it is not trusted to steer this. A tool's result is "a result from" a place, someone or a source;
-    * anything else "something from" its source, then a clause saying which.
+    * compartment) it is not trusted to steer this. A tool's result is "a result from" a place,
+    * someone or a source; anything else "something from" its source, then a clause saying which.
     */
   private def described(item: Item): String = {
     val untrusted = item.integrity.belowOutside
