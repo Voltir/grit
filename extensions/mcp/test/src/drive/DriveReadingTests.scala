@@ -21,13 +21,16 @@ object DriveReadingTests extends TestSuite {
   private val Self: Email = right(Email.of("self@project.iam.example"))
 
   private def of(identities: Identities, writers: String*): Either[String, DriveReading] =
-    DriveReading.of(
-      Drive,
-      Example,
-      identities,
-      Self,
-      writers.map(w => right(Email.of(w)) -> Integrity.Member).toMap
-    )
+    DriveReading
+      .of(
+        Drive,
+        Example,
+        identities,
+        Self,
+        writers.map(w => right(Email.of(w)) -> Integrity.Member).toMap
+      )
+      .left
+      .map(_.message)
 
   val tests = Tests {
     test(

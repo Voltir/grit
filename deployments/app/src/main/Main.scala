@@ -8,10 +8,11 @@ import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
-import grit.core.edge.ServedEdge
+import grit.core.edge.{ServedEdge, Variable}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
-import grit.core.identity.{Account, Identities, Vouching}
+import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Ladder, ModelId, Policy}
@@ -33,6 +34,8 @@ import grit.core.visibility.{
   GroupName,
   Integrity,
   Label,
+  Labelled,
+  Level,
   Party,
   RoomLabels,
   Visibility
@@ -47,6 +50,7 @@ import grit.kit.run.{Kit, Launch}
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
 import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.mcp.client.{Credential, McpServer}
+import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
@@ -140,7 +144,10 @@ import grit.turn.TurnLoop
   *     `service:github`, and every Slack conversation works there ([[github]]): from the MCP
   *     server at `GRIT_GITHUB_MCP_URL` (default [[GithubUrl]]), the tools `GRIT_GITHUB_TOOLS`
   *     names (comma-separated; default [[GithubTools]]). It refuses to start when that server
-  *     cannot be reached, refuses the token, or offers none of those tools.
+  *     cannot be reached, refuses the token, or offers none of those tools. With
+  *     `GRIT_DRIVE_SA_KEY` set it also serves Drive's files at `service:drive` ([[drive]]),
+  *     every Slack conversation working there, its folders named in the slash command by
+  *     their links; it refuses to start when Drive refuses the key.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
   *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel its bot is in said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
@@ -184,17 +191,21 @@ object Main {
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
+    // And Drive's, when GRIT_DRIVE_SA_KEY is set, its folders named in Slack's commands.
+    val driveEdge = if (serving) exitOnLeft(drive(env)) else None
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
       (if (slack)
          Vector(
            SlackEdge.serving(
-             exitOnLeft(slackCommand(env)),
+             exitOnLeft(slackCommand(env)).naming(
+               PlaceNames.of(driveEdge.map(_.names).toVector)
+             ),
              exitOnLeft(backfill(env)),
              exitOnLeft(replyNote(env))
            )
          )
-       else Vector.empty) ++ githubEdge.map(_._1)
+       else Vector.empty) ++ githubEdge.map(_._1) ++ driveEdge.map(_.edge)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
     // people are.
@@ -206,7 +217,7 @@ object Main {
           env,
           offered,
           edges,
-          githubEdge.map(_._2).toVector,
+          githubEdge.map(_._2).toVector ++ driveEdge.map(_.worksIn),
           java.time.ZoneId.systemDefault(),
           slackIn
         )
@@ -659,7 +670,10 @@ object Main {
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
     * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
     * ([[SlackAccounts.realm]]), and refuses unless one of `edges` is that attester; its
-    * administrators are those `GRIT_ADMINS` names there ([[visibility]]). The first
+    * administrators are those `GRIT_ADMINS` names there ([[visibility]]). With
+    * [[DriveKeyVar]] set, `service:drive` is shared ([[visibility]]), its results are believed
+    * up to member, and Drive is cleared for the top label, since its files are already
+    * Google's. The first
     * variable malformed, or the deployment refused, is the failure.
     */
   private[main] def deployment(
@@ -694,7 +708,17 @@ object Main {
       identities <- Identities.of(trusted, domains).left.map(_.message)
       named <- admins(env)
       capped <- caps(env)
-      visible <- visibility(named, slackIn, cleared(models), capped)
+      drive <- DriveAt
+      // Serving Drive, its place is shared, believed at member, and Drive cleared for the top.
+      driving = env.contains(DriveKeyVar)
+      visible <- visibility(
+        named,
+        slackIn,
+        cleared(models) ++
+          Option.when(driving)(Cleared(Party.Service(drive), Compartments.Shipped.top)),
+        capped ++ Option.when(driving)(Cap(drive.place, Integrity.Member)),
+        Option.when(driving)(drive.place).toVector
+      )
       plugins <- pluginChoice(env, visible, zone)
       deployment <- Deployment
         .of(
@@ -782,49 +806,61 @@ object Main {
     * declared as those users' accounts there (`slack:{team}/{id}`), who alone may lower a
     * room's label or label a public channel; otherwise [[Visibility.Shipped]], under which no
     * one may, with `parties` cleared. Either way what is said at its places is capped as `caps`
-    * declare ([[caps]]). A party named twice is refused.
+    * declare ([[caps]]), and each of `shared`, a service's place it shares only with the people
+    * it names, is invited and labelled internal, so each room within it is unmapped until a
+    * person labels it. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
       slackIn: Option[TeamId],
       parties: Vector[Cleared],
-      caps: Vector[Cap]
-  ): Either[String, Visibility] =
-    slackIn.filter(_ => admins.nonEmpty) match {
-      case None =>
-        Visibility
-          .of(
-            Compartments.Shipped,
-            RoomLabels.Public,
-            Vector.empty,
-            Vector.empty,
-            parties,
-            caps = caps
-          )
-          .left
-          .map(r => s"the deployment's clearances: $r")
-      case Some(team) =>
-        admins
-          .foldLeft[Either[String, Set[Account]]](Right(Set.empty))((acc, user) =>
-            acc.flatMap(as => SlackAccounts.account(team, user).map(as + _))
-          )
-          .left
-          .map(why => s"$AdminsVar: $why")
-          .flatMap(accounts =>
-            Visibility
-              .of(
-                Compartments.Shipped,
-                RoomLabels.Public,
-                Vector(Group(Administrators, accounts)),
-                Vector.empty,
-                parties,
-                administrators = Some(Administrators),
-                caps = caps
-              )
-              .left
-              .map(r => s"$AdminsVar: $r")
-          )
-    }
+      caps: Vector[Cap],
+      shared: Vector[Place]
+  ): Either[String, Visibility] = {
+    val rooms = RoomLabels
+      .of(shared.map(_ -> Label.at(Level.Internal)), Labelled.Mapped(Label.Public))
+      .left
+      .map(place => s"a shared place declared twice: ${place.written}")
+    rooms.flatMap(rooms =>
+      slackIn.filter(_ => admins.nonEmpty) match {
+        case None =>
+          Visibility
+            .of(
+              Compartments.Shipped,
+              rooms,
+              Vector.empty,
+              Vector.empty,
+              parties,
+              caps = caps,
+              invited = shared
+            )
+            .left
+            .map(r => s"the deployment's clearances: $r")
+        case Some(team) =>
+          admins
+            .foldLeft[Either[String, Set[Account]]](Right(Set.empty))((acc, user) =>
+              acc.flatMap(as => SlackAccounts.account(team, user).map(as + _))
+            )
+            .left
+            .map(why => s"$AdminsVar: $why")
+            .flatMap(accounts =>
+              Visibility
+                .of(
+                  Compartments.Shipped,
+                  rooms,
+                  Vector(Group(Administrators, accounts)),
+                  Vector.empty,
+                  parties,
+                  administrators = Some(Administrators),
+                  caps = caps,
+                  invited = shared
+                )
+                .left
+                .map(r => s"$AdminsVar: $r")
+            )
+      }
+    )
+  }
 
   /** The reference deployment's caps (ADR 0036) as `env` declares them: Slack's posting
     * service's results ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's account
@@ -972,6 +1008,76 @@ object Main {
         server <- githubServer(env)
         edge <- McpEdge.serving(service, Vector(server))
       } yield Some((edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service)))
+
+  /** The variable holding the JSON key, on one line, of the service account Drive's files are
+    * read as; unset, `grit serve` serves no Drive edge.
+    */
+  private val DriveKeyVar = "GRIT_DRIVE_SA_KEY"
+
+  /** The variable naming the domain whose addresses are Drive's people: one
+    * `GRIT_CLAIMED_DOMAINS` lists.
+    */
+  private val DriveDomainVar = "GRIT_DRIVE_DOMAIN"
+
+  /** The variable listing, comma-separated, the exact addresses of accounts that are no person
+    * (another service's) whose changes to a file are believed at member; none when unset.
+    */
+  private val DriveWritersVar = "GRIT_DRIVE_WRITERS"
+
+  /** The service Drive's files are kept at: `service:drive`. */
+  private[main] val DriveAt: Either[String, Service] = Service.of("drive")
+
+  /** What `grit serve` serves of Drive: its edge, the link that makes every Slack conversation
+    * work in its service, and how a command names its folders.
+    */
+  private[main] final case class Drive(edge: ServedEdge, worksIn: WorksIn, names: PlaceNames)
+
+  /** The Drive edge `grit serve` serves when `env` sets [[DriveKeyVar]] ([[DriveEdge]], over
+    * Drive's read-only scope): the files of every shared drive shared with the key's service
+    * account, read as [[DriveReading]] says, its people those of [[DriveDomainVar]], its own
+    * address the key's, and [[DriveWritersVar]]'s addresses believed at member; `None` when the
+    * key is unset. Why not, naming the variable: the key not a service account's, the domain
+    * unset or not one claimed, or a writer not an address, in the domain, or the key's own.
+    */
+  private[main] def drive(env: Map[String, String]): Either[String, Option[Drive]] =
+    if (!env.contains(DriveKeyVar)) Right(None)
+    else {
+      val credential = Credential.serviceAccount(Variable(DriveKeyVar), DriveRest.ReadOnly)
+      for {
+        service <- DriveAt
+        self <- Credential
+          .account(credential, env)
+          .left
+          .map(_.message)
+          .flatMap(_.toRight(s"$DriveKeyVar names no service account"))
+        domain <- env
+          .get(DriveDomainVar)
+          .toRight(s"$DriveDomainVar is unset")
+          .flatMap(Domain.of)
+          .left
+          .map(why => s"$DriveDomainVar: $why")
+        writers <- env
+          .get(DriveWritersVar)
+          .fold(Vector.empty[String])(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+          .foldLeft[Either[String, Vector[Email]]](Right(Vector.empty))((kept, w) =>
+            kept.flatMap(ws => Email.of(w).map(ws :+ _))
+          )
+          .left
+          .map(why => s"$DriveWritersVar: $why")
+        claimed <- Claimed.fromEnv(env)
+        identities <- Identities.of(Vector.empty, claimed).left.map(_.message)
+        reading <- DriveReading
+          .of(service, domain, identities, self, writers.map(_ -> Integrity.Member).toMap)
+          .left
+          .map {
+            case r: DriveReading.Refused.Unclaimed => s"$DriveDomainVar: ${r.message}"
+            case r => s"$DriveWritersVar: ${r.message}"
+          }
+        edge <- DriveEdge.serving(credential, reading)
+      } yield Some(
+        Drive(edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service), reading.names)
+      )
+    }
 
   /** The variable saying how many days back `grit backfill` reads, and `grit serve` hears
     * before each join of its bot ([[backfill]]).

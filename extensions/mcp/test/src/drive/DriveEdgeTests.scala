@@ -55,15 +55,18 @@ object DriveEdgeTests extends TestSuite {
   private val Example: Domain = right(Domain.of("example.com"))
 
   private val reading: DriveReading = right(
-    DriveReading.of(
-      Drive,
-      Example,
-      Identities
-        .of(Vector.empty, Set(Example))
-        .fold(e => throw new java.lang.AssertionError(e), identity),
-      right(Email.of("self@project.iam.example")),
-      Map(right(Email.of("writer-bot-1@project.iam.example")) -> Integrity.Member)
-    )
+    DriveReading
+      .of(
+        Drive,
+        Example,
+        Identities
+          .of(Vector.empty, Set(Example))
+          .fold(e => throw new java.lang.AssertionError(e), identity),
+        right(Email.of("self@project.iam.example")),
+        Map(right(Email.of("writer-bot-1@project.iam.example")) -> Integrity.Member)
+      )
+      .left
+      .map(_.message)
   )
 
   private def withFake[A](body: FakeDriveServer => A): A = {

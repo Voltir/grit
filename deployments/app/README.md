@@ -38,7 +38,15 @@ In dependency order:
     before each join within `GRIT_BACKFILL_DAYS`, `GRIT_BACKFILL_MESSAGES` and
     `GRIT_BACKFILL_JOINS_PER_DAY` (a value that is not a whole number above zero is refused,
     naming the variable); the slash command `GRIT_SLACK_COMMAND` names (`/grit` when unset);
-    and with `GITHUB_MCP_TOKEN` set, GitHub's read-only MCP tools at `service:github`.
+    with `GITHUB_MCP_TOKEN` set, GitHub's read-only MCP tools at `service:github`; and with
+    `GRIT_DRIVE_SA_KEY` set, Drive's files at `service:drive` (`Main.drive`). That variable
+    holds the service account's JSON key itself, on one line (`jq -c . key.json`), never a
+    path: grit reads a secret from its variable alone. `GRIT_DRIVE_DOMAIN` names the domain
+    whose addresses are Drive's people, one `GRIT_CLAIMED_DOMAINS` lists; `GRIT_DRIVE_WRITERS`
+    lists, comma-separated, the exact addresses of accounts that are no person (another
+    service's) whose edits are believed at member. `service:drive` is shared: each folder in
+    it is unmapped, so nothing of it is shown, until a person labels it from Slack with
+    `label <level> at <the folder's link or id>`.
   - `grit backfill`: the Slack edge's catch-up over the last `GRIT_BACKFILL_DAYS`.
   - Both trust Slack to say who the people of the workspace its bot token is installed in are,
     and no one otherwise, and end what the deployment's identities no longer trust as they

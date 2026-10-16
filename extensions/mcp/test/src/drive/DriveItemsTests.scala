@@ -23,15 +23,18 @@ object DriveItemsTests extends TestSuite {
   private val Bot = email("writer-bot-1@project.iam.example")
 
   private val reading: DriveReading = right(
-    DriveReading.of(
-      Drive,
-      Example,
-      Identities
-        .of(Vector.empty, Set(Example))
-        .fold(e => throw new java.lang.AssertionError(e), identity),
-      Self,
-      Map(Bot -> Integrity.Member)
-    )
+    DriveReading
+      .of(
+        Drive,
+        Example,
+        Identities
+          .of(Vector.empty, Set(Example))
+          .fold(e => throw new java.lang.AssertionError(e), identity),
+        Self,
+        Map(Bot -> Integrity.Member)
+      )
+      .left
+      .map(_.message)
   )
 
   private def place(id: String): Place = reading.place(Recorded.id(id))

@@ -6,7 +6,17 @@ import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
 import grit.core.place.{Place, Scope as PlaceScope, Service}
 import grit.core.spend.DailyCap
-import grit.core.visibility.{Accounted, Group, Integrity, Itemised, Provenance}
+import grit.core.visibility.{
+  Accounted,
+  Compartments,
+  Group,
+  Integrity,
+  Itemised,
+  Label,
+  Party,
+  Provenance,
+  Room
+}
 import grit.kit.deployment.Offered
 import grit.mcp.client.Credential
 import grit.mcp.wire.McpCalled
@@ -381,5 +391,98 @@ object ServeChoiceTests extends TestSuite {
         Left("GRIT_GITHUB_TOOLS names no tool")
       )
     }
+
+    test(
+      "with GRIT_DRIVE_SA_KEY set, serve serves Drive at service:drive, Slack's conversations working there and its folders named by their links; an unclaimed domain, or a writer that is no address, is refused naming its variable; unset, no Drive edge"
+    ) {
+      val env = DriveEnv
+      (
+        Main
+          .drive(env)
+          .map(
+            _.map(d =>
+              (
+                EdgeName.value(d.edge.name),
+                d.edge.needs,
+                d.worksIn.within.written,
+                d.worksIn.service.place.written,
+                d.names
+                  .place("https://drive.google.com/drive/folders/0AbCdEfGhIjKlUk9PVA")
+                  .map(_.written)
+              )
+            )
+          ),
+        Main.drive(env + ("GRIT_DRIVE_DOMAIN" -> "elsewhere.com")).map(_ => ()),
+        Main
+          .drive(env + ("GRIT_DRIVE_WRITERS" -> "bot@vendor.example, not-an-address"))
+          .map(_ => ()),
+        Main.drive(env - "GRIT_DRIVE_SA_KEY")
+      ) ==> (
+        Right(
+          Some(
+            (
+              "drive",
+              Vector(Variable("GRIT_DRIVE_SA_KEY")),
+              "slack:",
+              "service:drive",
+              Some("service:drive/0AbCdEfGhIjKlUk9PVA")
+            )
+          )
+        ),
+        Left("GRIT_DRIVE_DOMAIN: Drive's domain elsewhere.com is not one the deployment claims"),
+        Left(
+          "GRIT_DRIVE_WRITERS: an email address is one @ with something on either side: not-an-address"
+        ),
+        Right(None)
+      )
+    }
+
+    test(
+      "with GRIT_DRIVE_SA_KEY set, the deployment invites service:drive, labels it internal, believes it at member and clears Drive for its top label; unset, none of these"
+    ) {
+      val drive = Service.of("drive").fold(sys.error, identity)
+      val folder = Place.read("service:drive/folder").fold(sys.error, identity)
+      def declared(env: Map[String, String]) =
+        Main
+          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
+          .map { d =>
+            val v = d.visibility
+            (
+              v.invites(folder),
+              Label.written(v.rooms.label(Room(drive.place, None)).label),
+              Integrity.written(v.outputOf(drive)),
+              Label.written(v.clearances.of(Party.Service(drive)))
+            )
+          }
+      (declared(DriveEnv), declared(Map.empty)) ==> (
+        Right((true, "internal", "member", Label.written(Compartments.Shipped.top))),
+        Right((false, "public", "untrusted", "public"))
+      )
+    }
   }
+
+  /** A service account's key, as Google issues one, for a fresh RSA key pair. */
+  private lazy val DriveKey: String = {
+    val generator = java.security.KeyPairGenerator.getInstance("RSA")
+    generator.initialize(2048)
+    val pem = java.util.Base64
+      .getMimeEncoder(64, "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      .encodeToString(generator.generateKeyPair().getPrivate.getEncoded)
+    ujson.write(
+      ujson.Obj(
+        "type" -> "service_account",
+        "client_email" -> "grit-drive@project.iam.example",
+        "private_key" -> s"-----BEGIN PRIVATE KEY-----\n$pem\n-----END PRIVATE KEY-----\n",
+        "token_uri" -> "https://oauth2.example/token"
+      )
+    )
+  }
+
+  /** Drive declared: its key, a claimed domain, and one writer that is no person. */
+  private lazy val DriveEnv: Map[String, String] = Map(
+    "GRIT_DRIVE_SA_KEY" -> DriveKey,
+    "GRIT_CLAIMED_DOMAINS" -> "example.com",
+    "GRIT_DRIVE_DOMAIN" -> "example.com",
+    "GRIT_DRIVE_WRITERS" -> "bot@vendor.example"
+  )
 }

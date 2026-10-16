@@ -57,8 +57,30 @@ object DriveReading {
   /** Drive's older link to a file or folder by id, its id the group. */
   private val OpenLink = "(?:https?://)?drive\\.google\\.com/open\\?id=([A-Za-z0-9_-]+)(?:&.*)?".r
 
-  /** These, or why not: `domain` not one `identities` claims; a writer in `domain`, whose
-    * people are believed as people; or `self` among the writers.
+  /** Why a Drive's declaration was refused; [[message]] says so in words. */
+  enum Refused {
+
+    /** The deployment claims no `domain`. */
+    case Unclaimed(domain: Domain)
+
+    /** `people`, declared writers, are addresses in the domain, so believed as people. */
+    case PeopleWriters(people: Vector[Email])
+
+    /** The deployment's own address, `self`, is declared a writer. */
+    case OwnWriter(self: Email)
+
+    def message: String = this match {
+      case Unclaimed(d) => s"Drive's domain ${Domain.value(d)} is not one the deployment claims"
+      case PeopleWriters(ps) =>
+        val domains = ps.map(Email.domain).distinct.map(Domain.value).mkString(", ")
+        s"a Drive writer in $domains is one of its people: ${ps.map(Email.value).mkString(", ")}"
+      case OwnWriter(self) =>
+        s"the deployment's own address ${Email.value(self)} is never a Drive writer"
+    }
+  }
+
+  /** These, or why not: `domain` not one `identities` claims; writers in `domain`, whose
+    * people are believed as people, in address order; or `self` among the writers.
     */
   def of(
       service: Service,
@@ -66,16 +88,12 @@ object DriveReading {
       identities: Identities,
       self: Email,
       writers: Map[Email, Integrity]
-  ): Either[String, DriveReading] = {
-    val inDomain = writers.keys.filter(Email.domain(_) == domain).map(Email.value).toVector.sorted
-    if (!identities.domains.contains(domain))
-      Left(s"Drive's domain ${Domain.value(domain)} is not one the deployment claims")
-    else if (inDomain.nonEmpty)
-      Left(
-        s"a Drive writer in ${Domain.value(domain)} is one of its people: ${inDomain.mkString(", ")}"
-      )
+  ): Either[Refused, DriveReading] = {
+    val inDomain = writers.keys.filter(Email.domain(_) == domain).toVector.sortBy(Email.value)
+    if (!identities.domains.contains(domain)) Left(Refused.Unclaimed(domain))
+    else if (inDomain.nonEmpty) Left(Refused.PeopleWriters(inDomain))
     else if (writers.keys.exists(Email.value(_) == Email.value(self)))
-      Left(s"the deployment's own address ${Email.value(self)} is never a Drive writer")
+      Left(Refused.OwnWriter(self))
     else Right(DriveReading(service, domain, self, writers))
   }
 }
