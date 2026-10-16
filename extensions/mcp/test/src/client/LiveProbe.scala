@@ -116,7 +116,7 @@ object LiveProbe {
   }
 
   /** Request `id` making `call`, sent to `server` as its headers say, with `bearer`. */
-  private def sent(
+  private[mcp] def sent(
       http: HttpClient,
       server: McpServer,
       bearer: Bearer,
