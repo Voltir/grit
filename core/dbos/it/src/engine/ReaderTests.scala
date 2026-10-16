@@ -126,7 +126,7 @@ object ReaderTests extends TestSuite {
       val reader = Reader.open(config)
       try { val _ = reader.all.read(reader.entries.list(c)) }
       finally reader.close()
-      versions(config) ==> Vector("1|trial", "1|unmapped")
+      versions(config) ==> Vector("1|trial")
     }
 
     test(
