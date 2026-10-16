@@ -60,11 +60,21 @@ made-up repository (`elsewhere-org/elsewhere`) and the others to `octocat/Hello-
 `repository_url` and every URL; titles, bodies, ids and node ids were replaced by neutral
 values and the author by `octocat`; `total_count` was set to 12; keys and their order are as
 sent. The code search read a public repository, `github/github-mcp-server`, and is as sent but
-for its second result's `repository`, set to `octocat/Hello-World`. `issue-read.json`, an
-`issue_read` result for issue 7 of `octocat/Hello-World`, was not recorded: it is the searches'
-envelope around a neutral issue in GitHub's issue JSON, standing in until a recording replaces
-it. Its readers use only the envelope: `content`'s one text block, its `type` and `text`, and
-`isError` when present. `test/resources/toolsnaps/`
+for its second result's `repository`, set to `octocat/Hello-World`. The answers of the read
+tools whose items `GitHubItems` reads were answered on 2026-10-16 (in an event stream) by the
+same server, for a public repository: `issue-read.json` (`issue_read` get),
+`issue-read-comments.json`, `issue-read-labels.json`, `pull-request-read.json`
+(`pull_request_read` get), `pull-request-read-comments.json`, `-reviews.json`,
+`-review-comments.json`, `-diff.json`, `-files.json` and `-status.json`, `list-issues.json` and
+`list-pull-requests.json`. Each is redacted the same way: the repository moved to
+`octocat/Hello-World` in every URL and name; titles, bodies, descriptions, diffs, paths, ids,
+issue numbers, SHAs and cursors replaced by neutral values; every person's login `octocat`,
+id 1; a bot's login (`dependabot[bot]`, `copilot-pull-request-reviewer[bot]`) kept; the
+longest lists cut to their first entries; `author_association` and every key and its order as
+sent, and `structuredContent` the text block's object, as the server sends it. They show which
+answers name an author's association (an issue, its comments, a pull request's comments and
+reviews, the searches' results) and which do not (a pull request, the lists, review comments),
+and that only the searches name a user's `type`. `test/resources/toolsnaps/`
 holds GitHub's write tool `issue_write`, which that server does not list, as its source lists
 it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
 (MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for

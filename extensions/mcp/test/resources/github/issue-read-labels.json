@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"labels\":[{\"color\":\"d73a4a\",\"description\":\"A neutral repository.\",\"id\":\"neutral-1001\",\"name\":\"bug\"},{\"color\":\"de86b2\",\"description\":\"A neutral repository.\",\"id\":\"neutral-1002\",\"name\":\"request ai review\"}],\"method\":\"get_labels\",\"totalCount\":2}"
+    }
+  ],
+  "structuredContent": {
+    "labels": [
+      {
+        "color": "d73a4a",
+        "description": "A neutral repository.",
+        "id": "neutral-1001",
+        "name": "bug"
+      },
+      {
+        "color": "de86b2",
+        "description": "A neutral repository.",
+        "id": "neutral-1002",
+        "name": "request ai review"
+      }
+    ],
+    "method": "get_labels",
+    "totalCount": 2
+  },
+  "resultType": "complete"
+}

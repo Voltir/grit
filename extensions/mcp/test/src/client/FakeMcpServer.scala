@@ -417,11 +417,17 @@ object FakeMcpServer {
     */
   def githubSearch(tool: String): ujson.Obj = resource(s"/github/${tool.replace('_', '-')}.json")
 
-  /** A `tools/call` result to `issue_read` getting issue 7 of `octocat/Hello-World`, in the
-    * envelope the searches were answered in, its issue neutral and not recorded (see
-    * extensions/mcp/README.md): one text block holding the issue's JSON.
+  /** The `tools/call` result GitHub's hosted read-only server answered to `issue_read` getting
+    * an issue, as it answered but redacted (see extensions/mcp/README.md): one text block
+    * holding `{"issue": …, "method": "get"}`, issue 7 of `octocat/Hello-World`, and the same
+    * object as `structuredContent`.
     */
-  def githubIssue: ujson.Obj = resource("/github/issue-read.json")
+  def githubIssue: ujson.Obj = githubAnswer("issue-read")
+
+  /** The `tools/call` result kept as `test/resources/github/{name}.json`, as GitHub's hosted
+    * read-only server answered it but redacted (see extensions/mcp/README.md).
+    */
+  def githubAnswer(name: String): ujson.Obj = resource(s"/github/$name.json")
 
   private def resource(path: String): ujson.Obj =
     ujson.Obj.from(

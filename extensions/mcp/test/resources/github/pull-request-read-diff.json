@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"diff\":\"diff --git a/README.md b/README.md\\n--- a/README.md\\n+++ b/README.md\\n@@ -1 +1 @@\\n-Hello\\n+Hello, world\\n\"}"
+    }
+  ],
+  "structuredContent": {
+    "diff": "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-Hello\n+Hello, world\n"
+  },
+  "resultType": "complete"
+}

@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"state\":\"pending\",\"statuses\":[],\"total_count\":0}"
+    }
+  ],
+  "structuredContent": {
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "state": "pending",
+    "statuses": [],
+    "total_count": 0
+  },
+  "resultType": "complete"
+}

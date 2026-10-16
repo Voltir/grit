@@ -1,0 +1,87 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "[{\"number\":7,\"title\":\"A neutral title, number 1.\",\"body\":\"A neutral body, number 2.\",\"state\":\"closed\",\"draft\":false,\"merged\":false,\"html_url\":\"https://github.com/octocat/Hello-World/pull/7\",\"user\":{\"login\":\"octocat\",\"id\":1,\"profile_url\":\"https://github.com/octocat\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/1?v=4\"},\"head\":{\"ref\":\"a-branch\",\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"repo\":{\"full_name\":\"octocat/Hello-World\",\"description\":\"A neutral repository.\"}},\"base\":{\"ref\":\"main\",\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"repo\":{\"full_name\":\"octocat/Hello-World\",\"description\":\"A neutral repository.\"}},\"created_at\":\"2026-10-15T13:07:33Z\",\"updated_at\":\"2026-10-15T21:16:41Z\",\"closed_at\":\"2026-10-15T21:16:38Z\",\"merged_at\":\"2026-10-15T21:16:38Z\"},{\"number\":8,\"title\":\"A neutral title, number 3.\",\"body\":\"A neutral body, number 4.\",\"state\":\"closed\",\"draft\":false,\"merged\":false,\"html_url\":\"https://github.com/octocat/Hello-World/pull/8\",\"user\":{\"login\":\"octocat\",\"id\":1,\"profile_url\":\"https://github.com/octocat\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/1?v=4\"},\"head\":{\"ref\":\"a-branch\",\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"repo\":{\"full_name\":\"octocat/Hello-World\",\"description\":\"A neutral repository.\"}},\"base\":{\"ref\":\"main\",\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"repo\":{\"full_name\":\"octocat/Hello-World\",\"description\":\"A neutral repository.\"}},\"created_at\":\"2026-10-14T16:18:13Z\",\"updated_at\":\"2026-10-15T19:22:23Z\",\"closed_at\":\"2026-10-15T19:22:23Z\"}]"
+    }
+  ],
+  "structuredContent": [
+    {
+      "number": 7,
+      "title": "A neutral title, number 1.",
+      "body": "A neutral body, number 2.",
+      "state": "closed",
+      "draft": false,
+      "merged": false,
+      "html_url": "https://github.com/octocat/Hello-World/pull/7",
+      "user": {
+        "login": "octocat",
+        "id": 1,
+        "profile_url": "https://github.com/octocat",
+        "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4"
+      },
+      "head": {
+        "ref": "a-branch",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "repo": {
+          "full_name": "octocat/Hello-World",
+          "description": "A neutral repository."
+        }
+      },
+      "base": {
+        "ref": "main",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "repo": {
+          "full_name": "octocat/Hello-World",
+          "description": "A neutral repository."
+        }
+      },
+      "created_at": "2026-10-15T13:07:33Z",
+      "updated_at": "2026-10-15T21:16:41Z",
+      "closed_at": "2026-10-15T21:16:38Z",
+      "merged_at": "2026-10-15T21:16:38Z"
+    },
+    {
+      "number": 8,
+      "title": "A neutral title, number 3.",
+      "body": "A neutral body, number 4.",
+      "state": "closed",
+      "draft": false,
+      "merged": false,
+      "html_url": "https://github.com/octocat/Hello-World/pull/8",
+      "user": {
+        "login": "octocat",
+        "id": 1,
+        "profile_url": "https://github.com/octocat",
+        "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4"
+      },
+      "head": {
+        "ref": "a-branch",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "repo": {
+          "full_name": "octocat/Hello-World",
+          "description": "A neutral repository."
+        }
+      },
+      "base": {
+        "ref": "main",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "repo": {
+          "full_name": "octocat/Hello-World",
+          "description": "A neutral repository."
+        }
+      },
+      "created_at": "2026-10-14T16:18:13Z",
+      "updated_at": "2026-10-15T19:22:23Z",
+      "closed_at": "2026-10-15T19:22:23Z"
+    }
+  ],
+  "resultType": "complete"
+}

@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"pageInfo\":{\"endCursor\":\"Y3Vyc29yOm5ldXRyYWw=\",\"hasNextPage\":true,\"hasPreviousPage\":false,\"startCursor\":\"Y3Vyc29yOm5ldXRyYWw=\"},\"review_threads\":[{\"comments\":[{\"author\":\"copilot-pull-request-reviewer\",\"body\":\"A neutral body, number 1.\",\"created_at\":\"2026-10-06T18:28:28Z\",\"html_url\":\"https://github.com/octocat/Hello-World/pull/7#discussion_r1001\",\"line\":18,\"original_line\":18,\"original_start_line\":16,\"path\":\"README.md\",\"start_line\":16,\"updated_at\":\"2026-10-06T18:28:29Z\"},{\"author\":\"octocat\",\"body\":\"A neutral body, number 2.\",\"created_at\":\"2026-10-06T20:00:12Z\",\"html_url\":\"https://github.com/octocat/Hello-World/pull/7#discussion_r1002\",\"line\":18,\"original_line\":18,\"original_start_line\":16,\"path\":\"README.md\",\"start_line\":16,\"updated_at\":\"2026-10-06T20:00:12Z\"}],\"id\":\"neutral-1003\",\"is_collapsed\":true,\"is_outdated\":true,\"is_resolved\":true,\"total_count\":2}],\"totalCount\":3}"
+    }
+  ],
+  "structuredContent": {
+    "pageInfo": {
+      "endCursor": "Y3Vyc29yOm5ldXRyYWw=",
+      "hasNextPage": true,
+      "hasPreviousPage": false,
+      "startCursor": "Y3Vyc29yOm5ldXRyYWw="
+    },
+    "review_threads": [
+      {
+        "comments": [
+          {
+            "author": "copilot-pull-request-reviewer",
+            "body": "A neutral body, number 1.",
+            "created_at": "2026-10-06T18:28:28Z",
+            "html_url": "https://github.com/octocat/Hello-World/pull/7#discussion_r1001",
+            "line": 18,
+            "original_line": 18,
+            "original_start_line": 16,
+            "path": "README.md",
+            "start_line": 16,
+            "updated_at": "2026-10-06T18:28:29Z"
+          },
+          {
+            "author": "octocat",
+            "body": "A neutral body, number 2.",
+            "created_at": "2026-10-06T20:00:12Z",
+            "html_url": "https://github.com/octocat/Hello-World/pull/7#discussion_r1002",
+            "line": 18,
+            "original_line": 18,
+            "original_start_line": 16,
+            "path": "README.md",
+            "start_line": 16,
+            "updated_at": "2026-10-06T20:00:12Z"
+          }
+        ],
+        "id": "neutral-1003",
+        "is_collapsed": true,
+        "is_outdated": true,
+        "is_resolved": true,
+        "total_count": 2
+      }
+    ],
+    "totalCount": 3
+  },
+  "resultType": "complete"
+}

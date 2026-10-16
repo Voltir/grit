@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "[{\"filename\":\"README.md\",\"status\":\"modified\",\"additions\":16,\"changes\":16,\"patch\":\"@@ -1 +1 @@\\n-Hello\\n+Hello, world\"}]"
+    }
+  ],
+  "structuredContent": [
+    {
+      "filename": "README.md",
+      "status": "modified",
+      "additions": 16,
+      "changes": 16,
+      "patch": "@@ -1 +1 @@\n-Hello\n+Hello, world"
+    }
+  ],
+  "resultType": "complete"
+}

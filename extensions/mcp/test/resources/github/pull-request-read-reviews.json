@@ -1,0 +1,48 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "[{\"id\":1001,\"state\":\"COMMENTED\",\"body\":\"A neutral body, number 1.\",\"html_url\":\"https://github.com/octocat/Hello-World/pull/7#pullrequestreview-1001\",\"user\":{\"login\":\"copilot-pull-request-reviewer[bot]\",\"id\":175728472,\"profile_url\":\"https://github.com/apps/copilot-pull-request-reviewer\",\"avatar_url\":\"https://avatars.githubusercontent.com/in/946600?v=4\"},\"commit_id\":\"0123456789abcdef0123456789abcdef01234567\",\"submitted_at\":\"2026-10-05T11:43:33Z\",\"author_association\":\"CONTRIBUTOR\"},{\"id\":1002,\"state\":\"APPROVED\",\"body\":\"A neutral body, number 2.\",\"html_url\":\"https://github.com/octocat/Hello-World/pull/7#pullrequestreview-1002\",\"user\":{\"login\":\"octocat\",\"id\":1,\"profile_url\":\"https://github.com/octocat\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/1?v=4\"},\"commit_id\":\"0123456789abcdef0123456789abcdef01234567\",\"submitted_at\":\"2026-10-13T14:18:09Z\",\"author_association\":\"CONTRIBUTOR\"}]"
+    }
+  ],
+  "structuredContent": [
+    {
+      "id": 1001,
+      "state": "COMMENTED",
+      "body": "A neutral body, number 1.",
+      "html_url": "https://github.com/octocat/Hello-World/pull/7#pullrequestreview-1001",
+      "user": {
+        "login": "copilot-pull-request-reviewer[bot]",
+        "id": 175728472,
+        "profile_url": "https://github.com/apps/copilot-pull-request-reviewer",
+        "avatar_url": "https://avatars.githubusercontent.com/in/946600?v=4"
+      },
+      "commit_id": "0123456789abcdef0123456789abcdef01234567",
+      "submitted_at": "2026-10-05T11:43:33Z",
+      "author_association": "CONTRIBUTOR"
+    },
+    {
+      "id": 1002,
+      "state": "APPROVED",
+      "body": "A neutral body, number 2.",
+      "html_url": "https://github.com/octocat/Hello-World/pull/7#pullrequestreview-1002",
+      "user": {
+        "login": "octocat",
+        "id": 1,
+        "profile_url": "https://github.com/octocat",
+        "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4"
+      },
+      "commit_id": "0123456789abcdef0123456789abcdef01234567",
+      "submitted_at": "2026-10-13T14:18:09Z",
+      "author_association": "CONTRIBUTOR"
+    }
+  ],
+  "resultType": "complete"
+}

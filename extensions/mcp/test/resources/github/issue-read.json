@@ -3,13 +3,54 @@
     "io.modelcontextprotocol/serverInfo": {
       "name": "github-mcp-server",
       "title": "GitHub MCP Server",
-      "version": "github-mcp-server/remote-102990907a285e34449beb3ffb31718d8702b436"
+      "version": "github-mcp-server/remote-c91af86fab613fa50f4f34159186e6a61e89c381"
     }
   },
   "content": [
     {
       "type": "text",
-      "text": "{\"author_association\":\"MEMBER\",\"body\":\"The widget list renders twice after a refresh. Steps: open the list, refresh, scroll.\",\"closed_at\":null,\"comments\":2,\"comments_url\":\"https://api.github.com/repos/octocat/Hello-World/issues/7/comments\",\"created_at\":\"2026-09-28T09:12:40Z\",\"events_url\":\"https://api.github.com/repos/octocat/Hello-World/issues/7/events\",\"html_url\":\"https://github.com/octocat/Hello-World/issues/7\",\"id\":2001,\"labels\":[{\"id\":3001,\"name\":\"bug\",\"color\":\"d73a4a\",\"description\":\"Something isn't working\",\"default\":true,\"node_id\":\"LA_neutral1\",\"url\":\"https://api.github.com/repos/octocat/Hello-World/labels/bug\"}],\"labels_url\":\"https://api.github.com/repos/octocat/Hello-World/issues/7/labels{/name}\",\"locked\":false,\"node_id\":\"I_neutral7\",\"number\":7,\"repository_url\":\"https://api.github.com/repos/octocat/Hello-World\",\"state\":\"open\",\"title\":\"The widget list renders twice\",\"updated_at\":\"2026-09-29T14:03:11Z\",\"url\":\"https://api.github.com/repos/octocat/Hello-World/issues/7\",\"user\":{\"login\":\"octocat\",\"id\":1,\"node_id\":\"U_neutral1\",\"html_url\":\"https://github.com/octocat\",\"type\":\"User\",\"site_admin\":false}}"
+      "text": "{\"issue\":{\"assignees\":[],\"author_association\":\"CONTRIBUTOR\",\"body\":\"A neutral body, number 1.\",\"closed_at\":\"2025-03-31T14:09:02Z\",\"closed_by\":\"octocat\",\"closed_by_pull_requests\":{\"references\":[],\"total_count\":0},\"comments\":7,\"created_at\":\"2025-03-04T17:11:24Z\",\"has_children\":false,\"has_parent\":false,\"html_url\":\"https://github.com/octocat/Hello-World/issues/7\",\"locked\":true,\"number\":7,\"reactions\":{\"+1\":0,\"-1\":0,\"confused\":0,\"eyes\":0,\"heart\":0,\"hooray\":0,\"laugh\":0,\"rocket\":0,\"total_count\":0},\"state\":\"closed\",\"state_reason\":\"completed\",\"title\":\"A neutral title, number 3.\",\"updated_at\":\"2026-05-01T13:45:05Z\",\"user\":{\"id\":1,\"login\":\"octocat\"}},\"method\":\"get\"}"
     }
-  ]
+  ],
+  "structuredContent": {
+    "issue": {
+      "assignees": [],
+      "author_association": "CONTRIBUTOR",
+      "body": "A neutral body, number 1.",
+      "closed_at": "2025-03-31T14:09:02Z",
+      "closed_by": "octocat",
+      "closed_by_pull_requests": {
+        "references": [],
+        "total_count": 0
+      },
+      "comments": 7,
+      "created_at": "2025-03-04T17:11:24Z",
+      "has_children": false,
+      "has_parent": false,
+      "html_url": "https://github.com/octocat/Hello-World/issues/7",
+      "locked": true,
+      "number": 7,
+      "reactions": {
+        "+1": 0,
+        "-1": 0,
+        "confused": 0,
+        "eyes": 0,
+        "heart": 0,
+        "hooray": 0,
+        "laugh": 0,
+        "rocket": 0,
+        "total_count": 0
+      },
+      "state": "closed",
+      "state_reason": "completed",
+      "title": "A neutral title, number 3.",
+      "updated_at": "2026-05-01T13:45:05Z",
+      "user": {
+        "id": 1,
+        "login": "octocat"
+      }
+    },
+    "method": "get"
+  },
+  "resultType": "complete"
 }
