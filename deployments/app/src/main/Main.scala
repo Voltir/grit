@@ -46,7 +46,7 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
 import grit.knowledge.plugin.{CardSource, Knowledge}
-import grit.mcp.client.McpServer
+import grit.mcp.client.{Credential, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
@@ -948,7 +948,7 @@ object Main {
         .of(
           "github",
           env.getOrElse(GithubUrlVar, GithubUrl),
-          grit.core.edge.Variable(GithubTokenVar),
+          Credential.static(grit.core.edge.Variable(GithubTokenVar)),
           McpScope.Open,
           allow,
           GitHubItems.accounts(github)

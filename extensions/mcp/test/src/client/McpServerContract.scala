@@ -19,8 +19,8 @@ abstract class McpServerContract extends TestSuite {
   /** The server under test, declared with no allowlist. */
   protected def server: McpServer
 
-  /** Its token. */
-  protected def bearer: Bearer
+  /** Its credential, opened. */
+  protected def authorizer: Authorizer
 
   /** A token shaped as the server's tokens are that it does not know, so that it is refused
     * as unknown (401) rather than as malformed, which a server may answer otherwise (GitHub's
@@ -33,7 +33,8 @@ abstract class McpServerContract extends TestSuite {
     */
   protected def read: (String, ujson.Obj)
 
-  private def client(b: Bearer = bearer): McpClient^ = new McpClient(server, b, Clock.system())
+  private def client(a: Authorizer = authorizer): McpClient^ =
+    new McpClient(server, a, Clock.system())
 
   /** A read-only tool of `server`'s that it does not list. */
   private val unlisted: Option[McpTool] =
@@ -67,6 +68,9 @@ abstract class McpServerContract extends TestSuite {
     * refusal ([[Rpc.failure]]).
     */
   private def answered(sent: Vector[(String, String)], body: ujson.Value): (Int, McpError) = {
+    val bearer = authorizer
+      .bearer(Clock.system())
+      .fold(e => throw new java.lang.AssertionError(e.message), identity)
     val response = HttpClient
       .newHttpClient()
       .send(
@@ -197,7 +201,10 @@ abstract class McpServerContract extends TestSuite {
     }
 
     test("a token it does not know is refused: 401, with its challenge") {
-      Bearer.of(Map("UNKNOWN_TOKEN" -> unknownToken), Variable("UNKNOWN_TOKEN")) match {
+      Credential.open(
+        Credential.static(Variable("UNKNOWN_TOKEN")),
+        Map("UNKNOWN_TOKEN" -> unknownToken)
+      ) match {
         case Right(wrong) =>
           // The challenge's scheme: the rest is the server's to word.
           client(wrong).tools().map(_.tools.size).left.map {
@@ -217,14 +224,19 @@ object McpServerFakeTests extends McpServerContract {
   fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_file_contents")))
 
   protected val server: McpServer =
-    McpServer.of("fake", fake.endpoint, Variable("FAKE_MCP_TOKEN"), McpScope.Open) match {
+    McpServer.of(
+      "fake",
+      fake.endpoint,
+      Credential.static(Variable("FAKE_MCP_TOKEN")),
+      McpScope.Open
+    ) match {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }
 
-  protected val bearer: Bearer =
-    Bearer.of(Map("FAKE_MCP_TOKEN" -> fake.token), Variable("FAKE_MCP_TOKEN")) match {
-      case Right(b) => b
+  protected val authorizer: Authorizer =
+    Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token)) match {
+      case Right(a) => a
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
 

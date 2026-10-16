@@ -39,15 +39,15 @@ object McpClientTests extends TestSuite {
       token: String = "fake-token",
       scope: McpScope = McpScope.Open
   ): McpClient^{clock} = {
-    val server = McpServer.of("fake", fake.endpoint, Token, scope, allow) match {
+    val server = McpServer.of("fake", fake.endpoint, Credential.static(Token), scope, allow) match {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }
-    val bearer = Bearer.of(Map("FAKE_MCP_TOKEN" -> token), Token) match {
-      case Right(b) => b
+    val authorizer = Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> token)) match {
+      case Right(a) => a
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
-    new McpClient(server, bearer, clock)
+    new McpClient(server, authorizer, clock)
   }
 
   /** A read-only tool `name` with an empty object schema. */
@@ -436,6 +436,40 @@ object McpClientTests extends TestSuite {
       c.tools() match {
         case Left(McpError.Unreachable(why)) => why.takeWhile(_ != ':') ==> "ConnectException"
         case other => throw new java.lang.AssertionError(s"not Unreachable: $other")
+      }
+    }
+
+    test("a request carries its service account's token; with none got, it is not sent") {
+      val tokens = FakeTokenServer.start()
+      val fake = FakeMcpServer.start(token = "token-1")
+      try {
+        fake.lists(Vector(tool("a")))
+        val key = Variable("DRIVE_SA_KEY")
+        val credential = Credential.serviceAccount(key, Set("scope"))
+        val server = McpServer
+          .of("fake", fake.endpoint, credential, McpScope.Open)
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+        // A client with no token kept yet.
+        def fresh() = new McpClient(
+          server,
+          Credential
+            .open(credential, Map("DRIVE_SA_KEY" -> tokens.key()))
+            .fold(why => throw new java.lang.AssertionError(why.message), identity),
+          new Hands()
+        )
+        offered(fresh().tools()) ==> Right(Vector("fake_a"))
+        fake.received.map(_.headers.get("authorization")) ==> Vector(Some("Bearer token-1"))
+        tokens.refuses()
+        fresh().tools().map(_ => ()) ==>
+          Left(
+            McpError.NoToken(
+              s"${tokens.uri} answered HTTP 400: invalid_grant (Invalid JWT Signature.)"
+            )
+          )
+        fake.received.size ==> 1
+      } finally {
+        fake.stop()
+        tokens.stop()
       }
     }
 

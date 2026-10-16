@@ -42,7 +42,7 @@ import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
 import grit.knowledge.plugin.{CardSource, Knowledge}
-import grit.mcp.client.{FakeMcpServer, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{StubModels, StubProvider}
@@ -358,7 +358,9 @@ object KnowledgeSyncLiveTests extends TestSuite {
       fake.answering("get_file_contents")(repository(1))
       Launch(engine, d, secrets(config, d), Launch.Run.Served, sweeping = false, _ => ())
       val server =
-        McpServer.of("github", fake.endpoint, Token, McpScope.Open).fold(sys.error(_), identity)
+        McpServer
+          .of("github", fake.endpoint, Credential.static(Token), McpScope.Open)
+          .fold(sys.error(_), identity)
       val edge = McpEdge.serving(github, Vector(server)).fold(sys.error(_), identity)
       val stores =
         EdgeStores(

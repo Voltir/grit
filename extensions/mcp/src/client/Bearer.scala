@@ -16,14 +16,15 @@ object Bearer {
   def of(env: Map[String, String], token: Variable): Either[EdgeRefusal, Bearer] =
     env.get(Variable.value(token)) match {
       case None => Left(EdgeRefusal.Missing(token))
-      case Some(v) if v.trim.isEmpty => Left(EdgeRefusal.Malformed(token, "it is blank"))
-      case Some(v) if !v.forall(c => c >= 0x21 && c <= 0x7e) =>
-        Left(
-          EdgeRefusal.Malformed(
-            token,
-            "it holds a character that is not visible ASCII (a space or a line break?)"
-          )
-        )
-      case Some(v) => Right(new Bearer(v))
+      case Some(v) => read(v).left.map(EdgeRefusal.Malformed(token, _))
     }
+
+  /** `value` as a bearer, or why not: it is blank, or holds a character that is not visible
+    * ASCII; never quoting it.
+    */
+  private[client] def read(value: String): Either[String, Bearer] =
+    if (value.trim.isEmpty) Left("it is blank")
+    else if (!value.forall(c => c >= 0x21 && c <= 0x7e))
+      Left("it holds a character that is not visible ASCII (a space or a line break?)")
+    else Right(new Bearer(value))
 }

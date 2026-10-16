@@ -28,10 +28,11 @@ final case class Listed private[client] (
     unlisted: Set[String]
 )
 
-/** `server`'s tools and calls, each request a POST of its own (no session), timing out after
-  * [[McpClient.Timeout]].
+/** `server`'s tools and calls, each request a POST of its own (no session) carrying the bearer
+  * `authorizer` gives, timing out after [[McpClient.Timeout]]. A request for which it gives
+  * none is not sent, and is its [[McpError.NoToken]].
   */
-final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
+final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Clock) {
   import McpClient.*
 
   private val http = HttpClient.newBuilder().connectTimeout(Timeout.toJava).build()
@@ -141,7 +142,11 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
   }
 
   /** The result of one request making `call`. */
-  private def exchange(call: Rpc.Call): Either[McpError, ujson.Obj] = {
+  private def exchange(call: Rpc.Call): Either[McpError, ujson.Obj] =
+    authorizer.bearer(clock).flatMap(exchange(call, _))
+
+  /** The result of one request making `call`, carrying `bearer`. */
+  private def exchange(call: Rpc.Call, bearer: Bearer): Either[McpError, ujson.Obj] = {
     val id = ids.incrementAndGet()
     val request = Headers
       .of(call)

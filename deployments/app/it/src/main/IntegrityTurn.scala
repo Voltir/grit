@@ -16,7 +16,7 @@ import grit.core.tool.{Outcome, Retry, ToolName, ToolSet, Writes}
 import grit.core.triage.Corpora
 import grit.dbos.engine.Engine
 import grit.edge.{Server, Tools}
-import grit.mcp.client.{FakeMcpServer, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{StubModels, StubProvider}
@@ -265,7 +265,7 @@ object IntegrityTurn {
     */
   def serving[A](engine: Engine^, fake: FakeMcpServer, posts: Posts)(body: () => A): A = {
     val server = McpServer
-      .of("github", fake.endpoint, Variable("FAKE_MCP_TOKEN"), McpScope.Open)
+      .of("github", fake.endpoint, Credential.static(Variable("FAKE_MCP_TOKEN")), McpScope.Open)
       .fold(sys.error(_), identity)
     val stores = EdgeStores(
       engine.inbox,

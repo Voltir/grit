@@ -8,6 +8,7 @@ import grit.core.place.{Place, Scope as PlaceScope, Service}
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Accounted, Group, Integrity, Provenance}
 import grit.kit.deployment.Offered
+import grit.mcp.client.Credential
 import grit.mcp.wire.McpCalled
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
@@ -320,7 +321,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
       (
-        Main.githubServer(env).map(s => (s.name, s.endpoint.toString, s.token, s.allow)),
+        Main.githubServer(env).map(s => (s.name, s.endpoint.toString, s.credential, s.allow)),
         Main
           .github(env)
           .map(
@@ -338,7 +339,7 @@ object ServeChoiceTests extends TestSuite {
           (
             "github",
             "https://api.githubcopilot.com/mcp/readonly",
-            Variable("GITHUB_MCP_TOKEN"),
+            Credential.static(Variable("GITHUB_MCP_TOKEN")),
             Set(
               "get_file_contents",
               "list_commits",

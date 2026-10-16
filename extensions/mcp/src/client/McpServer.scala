@@ -4,7 +4,6 @@ import java.net.URI
 
 import scala.util.Try
 
-import grit.core.edge.Variable
 import grit.core.visibility.Accounts
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
@@ -13,12 +12,12 @@ import grit.mcp.wire.McpCalled
   * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any
   * and `scope` offers; its calls are sent, and their answers shown, as `scope` sends and shows
   * them, and their items read by `accounts`; each request carries `Authorization: Bearer` with
-  * the value of `token`.
+  * the token `credential` gives.
   */
 final case class McpServer private (
     name: String,
     endpoint: URI,
-    token: Variable,
+    credential: Credential,
     scope: McpScope,
     allow: Set[String],
     accounts: Accounts[McpCalled]
@@ -33,7 +32,7 @@ object McpServer {
   def of(
       name: String,
       endpoint: String,
-      token: Variable,
+      credential: Credential,
       scope: McpScope,
       allow: Set[String] = Set.empty,
       accounts: Accounts[McpCalled] = Accounts.none
@@ -48,15 +47,23 @@ object McpServer {
       uri <- Try(new URI(endpoint)).toOption
         .filter(u => u.isAbsolute && Option(u.getHost).exists(_.nonEmpty))
         .toRight(s"$name's endpoint is not an absolute URL with a host: '$endpoint'")
-      _ <- Option(uri.getScheme).map(_.toLowerCase) match {
-        case Some("https") => Right(())
-        case Some("http") if loopback(uri.getHost) => Right(())
-        case _ =>
-          Left(s"$name's endpoint must be https (http only on a loopback host): '$endpoint'")
-      }
-    } yield new McpServer(name, uri, token, scope, allow, accounts)
+      _ <- Either.cond(
+        secure(uri),
+        (),
+        s"$name's endpoint must be https (http only on a loopback host): '$endpoint'"
+      )
+    } yield new McpServer(name, uri, credential, scope, allow, accounts)
 
   private val Name = "[a-z][a-z0-9_]{0,15}".r
+
+  /** Whether `uri` is absolute with a host, and `https`, or `http` on a loopback host. */
+  private[client] def secure(uri: URI): Boolean =
+    uri.isAbsolute && Option(uri.getHost).exists(_.nonEmpty) &&
+      (Option(uri.getScheme).map(_.toLowerCase) match {
+        case Some("https") => true
+        case Some("http") => loopback(uri.getHost)
+        case _ => false
+      })
 
   private def loopback(host: String): Boolean =
     host == "localhost" || host == "[::1]" ||

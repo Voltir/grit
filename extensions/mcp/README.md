@@ -31,8 +31,10 @@ In dependency order:
   deployment's to say. Imports `scope`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`client`**: a server a deployment declares, reached over HTTP, each request a POST of its
-  own held to its scope; its token is read from the environment and never shown. The JDK HTTP
-  client lives here alone. Imports `wire` and `scope`.
+  own held to its scope, carrying the token its `Credential` gives: a static token, or a
+  service account's, got by a JWT its key signs and kept until near expiry; the secret is
+  read from the environment and never shown. The JDK HTTP client lives here alone. Imports
+  `wire` and `scope`.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`
@@ -40,7 +42,9 @@ In dependency order:
   `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
-test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.
+test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say;
+a service account's exchange runs against `FakeTokenServer`, a token endpoint held to what
+Google documents of it, and not yet to Google's own.
 `McpServerContract` is the exchanges a server must answer as the client reads them; the fake
 keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in test sources that
 needs a token and so is no tier, runs it against GitHub's (its doc says how). It passed whole

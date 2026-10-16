@@ -29,7 +29,7 @@ import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.edge.PlaceFragments
-import grit.mcp.client.{FakeMcpServer, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.scope.{Bound, McpScope}
 
 import utest.*
@@ -55,7 +55,7 @@ object McpEdgeTests extends TestSuite {
       scope: McpScope = McpScope.Open
   ): McpServer =
     McpServer
-      .of(name, fake.endpoint, Token, scope, allow)
+      .of(name, fake.endpoint, Credential.static(Token), scope, allow)
       .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Desks that cannot be registered: the database cannot be reached. */

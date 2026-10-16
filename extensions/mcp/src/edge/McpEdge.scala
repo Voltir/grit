@@ -8,7 +8,7 @@ import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.edge.{PlaceFragments, Server}
-import grit.mcp.client.{Bearer, McpClient, McpServer}
+import grit.mcp.client.{Authorizer, Credential, McpClient, McpServer}
 import grit.mcp.wire.{McpError, Skipped}
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
@@ -22,10 +22,11 @@ object McpEdge {
     * there each server's tools ([[McpTools.offered]]) with `instructions`, when given, as the
     * place's Place layer ([[PlaceFragments.declared]]): an aid to the model, never a bound on
     * what it reaches, which is each server's scope; and serves the requests addressed there
-    * with [[McpTools]]. It needs each server's token variable, answers no ask, and delivers no
-    * replies. Opening it is refused when a token is unset or malformed ([[Bearer.of]]); when
-    * a server's list cannot be read, it naming the server and why, and for a refused token
-    * the variable; when a server lists no tool grit may offer; or when the desk cannot be
+    * with [[McpTools]]. It needs each server's credential's variables, answers no ask, and
+    * delivers no replies. Opening it is refused when a credential cannot be opened
+    * ([[Credential.open]]); when a server's list cannot be read, it naming the server and why,
+    * and for a refused token or one not got its credential's variables; when a server lists
+    * no tool grit may offer; or when the desk cannot be
     * registered or advertise.
     */
   def serving(
@@ -55,7 +56,7 @@ object McpEdge {
 
     def name: EdgeName = EdgeName(service.name)
 
-    def needs: Vector[Variable] = servers.map(_.token).distinct
+    def needs: Vector[Variable] = servers.flatMap(_.credential.needs).distinct
 
     def answersAsks: Boolean = false
 
@@ -66,14 +67,15 @@ object McpEdge {
         log: String => Unit
     ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] = {
       val place = service.place
-      val bearers = servers.foldLeft[Either[EdgeRefusal, Vector[Bearer]]](Right(Vector.empty)) {
-        (read, server) => read.flatMap(bs => Bearer.of(env, server.token).map(bs :+ _))
-      }
-      bearers match {
+      val opened =
+        servers.foldLeft[Either[EdgeRefusal, Vector[Authorizer]]](Right(Vector.empty)) {
+          (read, server) => read.flatMap(as => Credential.open(server.credential, env).map(as :+ _))
+        }
+      opened match {
         case Left(refusal) => Left(refusal)
-        case Right(read) =>
+        case Right(authorizers) =>
           val clients: Vector[McpClient^{clock}] =
-            servers.zip(read).map((server, bearer) => new McpClient(server, bearer, clock))
+            servers.zip(authorizers).map((server, a) => new McpClient(server, a, clock))
           clients.map(listing(_, log)).collectFirst { case Left(refusal) => refusal } match {
             case Some(refusal) => Left(refusal)
             case None =>
@@ -123,7 +125,8 @@ object McpEdge {
       client.tools() match {
         case Left(e) =>
           val token = e match {
-            case McpError.Unauthorized(_) => s"; check ${Variable.value(server.token)}"
+            case McpError.Unauthorized(_) | McpError.NoToken(_) =>
+              s"; check ${server.credential.needs.map(Variable.value).mkString(", ")}"
             case _ => ""
           }
           Left(EdgeRefusal.Refused(s"MCP server ${server.name} ${e.message}$token"))

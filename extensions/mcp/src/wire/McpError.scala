@@ -46,6 +46,11 @@ enum McpError {
     */
   case Unattributed(why: String)
 
+  /** No token could be got for the request, so it was not sent: `why`, naming the token URL
+    * and what it answered, if anything.
+    */
+  case NoToken(why: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused grit's token"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -66,6 +71,7 @@ enum McpError {
         "reach; do not answer with something else in its place."
     case Unattributed(why) =>
       s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
+    case NoToken(why) => s"was not asked: grit could not get a token for it: $why"
   }
 
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")

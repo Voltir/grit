@@ -38,20 +38,21 @@ object LiveProbe {
         sys.exit(2)
     }
     val probe = for {
-      server <- McpServer.of("github", Endpoint, Token, McpScope.Open)
+      server <- McpServer.of("github", Endpoint, Credential.static(Token), McpScope.Open)
       bearer <- Bearer.of(sys.env, Token).left.map(_.message)
-    } yield (server, bearer)
+      authorizer <- Credential.open(server.credential, sys.env).left.map(_.message)
+    } yield (server, bearer, authorizer)
     probe match {
       case Left(why) =>
         System.err.println(why)
         sys.exit(1)
-      case Right((server, bearer)) =>
+      case Right((server, bearer, authorizer)) =>
         val arguments = ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> "README.md")
         dir.foreach(capture(server, bearer, arguments, _))
         val items = new GitHubItems(server, bearer, s"$owner/$repo", issue, pull)
         val leaves = Vector(
           utest.TestRunner
-            .runAndPrint(new GitHubContract(server, bearer, arguments).tests, "LiveProbe"),
+            .runAndPrint(new GitHubContract(server, authorizer, arguments).tests, "LiveProbe"),
           utest.TestRunner.runAndPrint(items.tests, "LiveProbe items")
         ).flatMap(_.leaves.toVector)
         val failed = leaves.count(_.value.isFailure)
@@ -61,10 +62,10 @@ object LiveProbe {
   }
 
   /** The contract against GitHub's server, its read call `get_file_contents` with `arguments`. */
-  private final class GitHubContract(s: McpServer, b: Bearer, arguments: ujson.Obj)
+  private final class GitHubContract(s: McpServer, a: Authorizer, arguments: ujson.Obj)
       extends McpServerContract {
     protected def server: McpServer = s
-    protected def bearer: Bearer = b
+    protected def authorizer: Authorizer = a
     protected def read: (String, ujson.Obj) = ("get_file_contents", arguments)
     // A fine-grained PAT's shape, so GitHub refuses it as unknown (401), not as malformed (400).
     protected def unknownToken: String = "github_pat_" + "0" * 22 + "_" + "0" * 59

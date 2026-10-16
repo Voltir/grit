@@ -19,7 +19,7 @@ import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
-import grit.mcp.client.{FakeMcpServer, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.StubProvider
@@ -94,7 +94,9 @@ object McpEdgeLiveTests extends TestSuite {
           _ => ()
         )
         val server =
-          McpServer.of("github", fake.endpoint, Token, McpScope.Open).fold(sys.error(_), identity)
+          McpServer
+            .of("github", fake.endpoint, Credential.static(Token), McpScope.Open)
+            .fold(sys.error(_), identity)
         val edge = McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity)
         val stores =
           EdgeStores(

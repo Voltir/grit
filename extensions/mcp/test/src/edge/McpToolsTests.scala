@@ -15,7 +15,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
-import grit.mcp.client.{Bearer, FakeMcpServer, McpClient, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpClient, McpServer}
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
 
@@ -37,18 +37,18 @@ object McpToolsTests extends TestSuite {
       accounts: Accounts[McpCalled]
   ): McpClient^{clock} = {
     val server = McpServer
-      .of("github", fake.endpoint, Token, McpScope.Open, accounts = accounts)
+      .of("github", fake.endpoint, Credential.static(Token), McpScope.Open, accounts = accounts)
       .fold(
         why => throw new java.lang.AssertionError(why),
         identity
       )
-    val bearer = Bearer
-      .of(Map("FAKE_MCP_TOKEN" -> fake.token), Token)
+    val authorizer = Credential
+      .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token))
       .fold(
         why => throw new java.lang.AssertionError(why.message),
         identity
       )
-    new McpClient(server, bearer, clock)
+    new McpClient(server, authorizer, clock)
   }
 
   /** The tools over `fake` as the server `github`, its answers' items read by `accounts`,
