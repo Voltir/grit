@@ -72,7 +72,7 @@ trait DriveRestContract extends TestSuite {
       ) ==> (
         Right(true),
         Right(true),
-        Left("grit can read Docs, Sheets and text files in Drive, not a folder.")
+        Left("Only Docs, Sheets and text files in Drive can be read here, not a folder.")
       )
     }
 

@@ -82,7 +82,7 @@ object DriveRestTests extends TestSuite {
         rest.file(file1).left.map(e => (e, e.message)) ==> Left(
           (
             DriveError.NoToken("Drive refused grit's token"),
-            "grit could not get access to Drive just now; an administrator should check grit's Drive key."
+            "Drive access isn't working just now; tell an administrator."
           )
         )
       }
@@ -99,8 +99,8 @@ object DriveRestTests extends TestSuite {
           pdf.flatMap(rest.text).left.map(_.message),
           fake.requests.size - asked
         ) ==> (
-          Left("grit can read Docs, Sheets and text files in Drive, not this file."),
-          Left("grit can read Docs, Sheets and text files in Drive, not a PDF."),
+          Left("Only Docs, Sheets and text files in Drive can be read here, not this file."),
+          Left("Only Docs, Sheets and text files in Drive can be read here, not a PDF."),
           1
         )
       }
