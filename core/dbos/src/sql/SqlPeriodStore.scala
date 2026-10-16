@@ -36,7 +36,7 @@ import grit.core.visibility.Integrity
 
 /** [[PeriodStore]] over the `grit.periods` table and `entries`' own. */
 final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
-  import SqlEntryStore.attempt
+  import SqlEntryStore.{attempt, many}
   import SqlPeriodStore.*
 
   def openFor(conversation: ConversationId, turn: TurnSeq, at: Instant)(using
@@ -456,22 +456,6 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       SqlClearance.bind(ps, 1, clearance)
       bind(ps)
     }(read)
-  }
-
-  private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[A]
-          while (rs.next()) rows += read(rs)
-          rows.result()
-        }
-      }
-    }
   }
 
   private def update(sql: String)(bind: PreparedStatement => Unit)(using

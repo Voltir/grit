@@ -46,7 +46,7 @@ private[dbos] object Opener {
   * resolved against the rows it names and the deployment's `visibility`, or [[maintenance]].
   */
 private[dbos] final class Opener(visibility: Visibility) {
-  import SqlEntryStore.attempt
+  import SqlEntryStore.{attempt, many}
 
   /** What this module's own transactions read and write at (an edge's inbox and desk, the
     * sweeps, the collector, a reader's `all`): every label the database can hold. An engine
@@ -139,19 +139,11 @@ private[dbos] final class Opener(visibility: Visibility) {
 
   /** The emails `person` claims: at most one, by `grit.emails`' unique `principal_id`. */
   private def claimed(person: PrincipalId)(using tx: Tx^): Either[StoreError, Set[Email]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(
-        conn.prepareStatement("SELECT email FROM grit.emails WHERE principal_id = ?")
-      ) { ps =>
-        ps.setString(1, PrincipalId.value(person))
-        Using.resource(ps.executeQuery()) { rs =>
-          val out = Vector.newBuilder[String]
-          while (rs.next()) out += rs.getString(1)
-          out.result()
-        }
-      }
-    }.flatMap(
+    many("SELECT email FROM grit.emails WHERE principal_id = ?")(
+      _.setString(1, PrincipalId.value(person))
+    )(
+      _.getString(1)
+    ).flatMap(
       _.foldLeft[Either[StoreError, Set[Email]]](Right(Set.empty))((acc, raw) =>
         acc.flatMap(got =>
           Email.of(raw).map(got + _).left.map(why => StoreError.Invalid(s"a claimed email: $why"))

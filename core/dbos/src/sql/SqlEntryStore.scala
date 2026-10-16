@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.ResultSet
+import java.sql.{PreparedStatement, ResultSet}
 import java.time.{OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
@@ -198,6 +198,23 @@ private[dbos] object SqlEntryStore {
   private[dbos] def attempt[A](body: => A): Either[StoreError, A] =
     try Right(body)
     catch { case NonFatal(e) => Left(databaseError(e)) }
+
+  /** Every row `sql`, bound by `bind`, answers, each read by `read`; or the database's error. */
+  private[dbos] def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(
+      using tx: Tx^
+  ): Either[StoreError, Vector[A]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        bind(ps)
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[A]
+          while (rs.next()) rows += read(rs)
+          rows.result()
+        }
+      }
+    }
+  }
 
   /** `getMessage` is `null` for some driver exceptions; rule 6 stops here. */
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =

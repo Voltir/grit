@@ -14,7 +14,7 @@ import grit.core.store.{StoreError, Tx}
   * entries of each room's conversations.
   */
 final class SqlStitchStore extends StitchStore {
-  import SqlEntryStore.attempt
+  import SqlEntryStore.{attempt, many}
   import SqlStitchStore.*
 
   def record(root: EntryId, placed: Placed, at: Instant)(using
@@ -158,21 +158,6 @@ final class SqlStitchStore extends StitchStore {
     }(read)
   }
 
-  private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[A]
-          while (rs.next()) rows += read(rs)
-          rows.result()
-        }
-      }
-    }
-  }
 }
 
 private object SqlStitchStore {

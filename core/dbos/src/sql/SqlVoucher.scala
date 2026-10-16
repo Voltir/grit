@@ -30,7 +30,7 @@ private[dbos] final class SqlVoucher(
     val realms: Set[Realm],
     domains: Set[Domain]
 ) extends Voucher {
-  import SqlEntryStore.attempt
+  import SqlEntryStore.{attempt, many}
   import SqlVoucher.*
 
   def vouch(vouched: Vouched)(using tx: Tx^): Either[StoreError, Vector[Linking]] = {
@@ -253,22 +253,6 @@ private[dbos] final class SqlVoucher(
           .toRight(StoreError.Invalid(s"${SqlIdentities.written(account)} is no one"))
           .flatMap((id, held) => SqlIdentities.principal(id, "person", held))
       )
-
-  private def many[A](sql: String)(set: PreparedStatement => Unit)(read: java.sql.ResultSet => A)(
-      using tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        set(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val out = Vector.newBuilder[A]
-          while (rs.next()) out += read(rs)
-          out.result()
-        }
-      }
-    }
-  }
 
   private def update(sql: String)(set: PreparedStatement => Unit)(using
       tx: Tx^

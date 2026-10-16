@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, ZoneOffset}
 
-import scala.util.Using
-
 import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds}
 import grit.core.place.Place
 import grit.core.recipe.RoomReads
@@ -13,7 +11,7 @@ import grit.core.store.{StoreError, Tx}
 
 /** [[RoomReads]] over `grit.entries`, each conversation's place, and `grit.authors`. */
 final class SqlRoomReads extends RoomReads {
-  import SqlEntryStore.attempt
+  import SqlEntryStore.many
   import SqlStitchStore.{SaidColumns, Spoken, ids, readSaid}
 
   def said(room: Place, from: Instant, until: Instant, outside: Set[ConversationId], most: Int)(
@@ -96,19 +94,4 @@ final class SqlRoomReads extends RoomReads {
     }(read)
   }
 
-  private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[A]
-          while (rs.next()) rows += read(rs)
-          rows.result()
-        }
-      }
-    }
-  }
 }
