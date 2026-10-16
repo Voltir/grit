@@ -19,6 +19,12 @@ object VisibilityTests extends TestSuite {
   private val github =
     Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
   private val jira = Service.of("jira").fold(e => throw new java.lang.AssertionError(e), identity)
+  private val repo = place("service:github/octo/grit")
+
+  private def capping(caps: Cap*): Visibility =
+    Visibility
+      .of(compartments, RoomLabels.Public, groups, grants, caps = caps.toVector)
+      .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 
   private val flash = ModelId.of("vendor/flash").getOrElse(throw new java.lang.AssertionError())
   private def upstream(slug: String): Upstream =
@@ -415,6 +421,71 @@ object VisibilityTests extends TestSuite {
         Left(VisibilityRefusal.CapOutside(direct)),
         Left(VisibilityRefusal.CapOutside(Place.Everywhere))
       )
+    }
+
+    test(
+      "an item is believed at its author's level met with the deepest cap holding it, else at its service's output"
+    ) {
+      val v = capping(
+        Cap(github.place, Integrity.Member),
+        Cap(place("service:github/octo"), Integrity.Outside),
+        Cap(repo, Integrity.Member)
+      )
+      def one(at: Place, vouched: Integrity) =
+        v.believed(github, Accounted.of(Vector(Provenance(at, vouched))))
+      (
+        one(repo, Integrity.Member),
+        one(repo, Integrity.Outside),
+        one(place("service:github/octo/other"), Integrity.Member),
+        one(place("service:github/elsewhere/x"), Integrity.Member),
+        v.believed(jira, Accounted.of(Vector(Provenance(jira.place, Integrity.Member))))
+      ) ==> (
+        Integrity.Member,
+        Integrity.Outside,
+        Integrity.Outside,
+        Integrity.Member,
+        Integrity.Untrusted
+      )
+    }
+
+    test(
+      "a result is believed at the meet of its items, at untrusted when unaccountable or placed outside its service, and at its output when unread"
+    ) {
+      // jira capped member, so an item of github's placed there is untrusted by its place alone.
+      val v = capping(
+        Cap(github.place, Integrity.Member),
+        Cap(repo, Integrity.Member),
+        Cap(jira.place, Integrity.Member)
+      )
+      (
+        v.believed(
+          github,
+          Accounted.of(
+            Vector(Provenance(repo, Integrity.Member), Provenance(repo, Integrity.Outside))
+          )
+        ),
+        v.believed(github, Accounted.Unaccountable),
+        v.believed(github, Accounted.of(Vector(Provenance(jira.place, Integrity.Member)))),
+        v.believed(github, Accounted.Unread),
+        v.believed(github, Accounted.of(Vector.empty))
+      ) ==> (
+        Integrity.Outside,
+        Integrity.Untrusted,
+        Integrity.Untrusted,
+        Integrity.Member,
+        Integrity.Member
+      )
+    }
+
+    test(
+      "an item vouched at authority in a member repository is believed at member, and in an undeclared repository at its service's output"
+    ) {
+      // The reference deployment's shape: the service untrusted, one repository declared member.
+      val v = capping(Cap(github.place, Integrity.Untrusted), Cap(repo, Integrity.Member))
+      def vouched(at: Place) =
+        v.believed(github, Accounted.of(Vector(Provenance(at, Integrity.Authority))))
+      (vouched(repo), vouched(place("service:github/elsewhere/x"))) ==>
+        (Integrity.Member, Integrity.Untrusted)
     }
 
     test("a place capped twice, or a cap endorsed in an undeclared compartment, is refused") {

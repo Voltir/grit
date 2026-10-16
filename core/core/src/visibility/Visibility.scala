@@ -29,6 +29,24 @@ final case class Visibility private (
     * [[Cap.Undeclared]].
     */
   def outputOf(service: Service): Integrity = capOf(service.place).getOrElse(Cap.Undeclared)
+
+  /** What a result of `service` is believed at, given what its extension read of its items
+    * (`items`): [[outputOf]] when unread or holding no item; untrusted when unaccountable; else
+    * the meet, over its items, of each one's `vouched` met with the cap at its place ([[capOf]],
+    * [[Cap.Undeclared]] when none), and untrusted for an item placed outside `service`'s place.
+    */
+  def believed(service: Service, items: Accounted): Integrity = items match {
+    case Accounted.Unread => outputOf(service)
+    case Accounted.Unaccountable => Integrity.Untrusted
+    case Accounted.Items(provenances) =>
+      provenances
+        .map { p =>
+          if (!p.place.within(service.place)) Integrity.Untrusted
+          else p.vouched.meet(capOf(p.place).getOrElse(Cap.Undeclared))
+        }
+        .reduceOption(_.meet(_))
+        .getOrElse(outputOf(service))
+  }
 }
 
 object Visibility {

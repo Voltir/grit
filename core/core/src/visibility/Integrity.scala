@@ -109,9 +109,11 @@ object Integrity {
 
 /** The deployment declares how far what is said at `place`, or at any place within it that no
   * deeper cap covers, is believed (ADR 0036): a room's speech at its author's level met with
-  * `integrity`, whoever said it; a service's results at `integrity` itself, the cap standing in
-  * for the author the service cannot name (a service that relays others' text, mail or the web,
-  * declares [[Integrity.Untrusted]]). A cap may stand above or below the one it lies within. A
+  * `integrity`, whoever said it; a service's results whose items its extension does not read at
+  * `integrity` itself, the cap standing in for the author the service cannot name (a service
+  * that relays others' text, mail or the web, declares [[Integrity.Untrusted]]); an item it does
+  * read (a repository's, a folder's or a mailbox's) at its author's level met with the cap at the
+  * item's place ([[Visibility.believed]]). A cap may stand above or below the one it lies within. A
   * cap at a directory under `fs`, a direct message's room or everywhere is refused
   * ([[VisibilityRefusal.CapOutside]]).
   */
