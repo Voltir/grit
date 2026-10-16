@@ -195,7 +195,7 @@ object SlackCommandingTests extends TestSuite {
           Change.To.Set(Label.at(Level.Confidential, trial))
         )
       (w.answers, w.admin.kept) ==> (
-        Vector(Answer.relabelled(change).text),
+        Vector(Answer.relabelled(change, here = true).text),
         Vector(AdministrationContract.Kept(of(Ada), Now, change))
       )
     }

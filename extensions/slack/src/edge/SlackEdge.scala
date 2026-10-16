@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-import grit.core.admin.Command
+import grit.core.admin.{Command, PlaceNames}
 import grit.core.clock.Clock
 import grit.core.edge.{
   Acknowledgement,
@@ -263,7 +263,7 @@ final class SlackEdge(
                   case Mentioned(user) => SlackAccounts.account(c.team, UserId(user)).toOption
                   case _ => None
                 }
-                Command.read(words, person) match {
+                Command.read(words, person, PlaceNames.None) match {
                   case Left(why) => why
                   case Right(command) =>
                     stores.administration.run(asker, room, command, clock.now()) match {

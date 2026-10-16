@@ -35,6 +35,11 @@ enum Refusal {
   /** Another person's clearance, asked by someone not an administrator. */
   case NotForYou
 
+  /** A label asked for a place other than the room asked in, which lies within no place a
+    * service shares with grit.
+    */
+  case NotShared
+
   def text: String = this match {
     case NotVouched =>
       "Only a person grit knows as a full member of a source it trusts can change this."
@@ -52,5 +57,8 @@ enum Refusal {
       "A direct message's label is its person's clearance, and it is never quiet: neither can " +
         "be changed."
     case NotForYou => "Only an administrator can see another person's clearance."
+    case NotShared =>
+      "That isn't a folder another app has shared with grit. To label a channel, run the " +
+        "command in that channel."
   }
 }

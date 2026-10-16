@@ -34,13 +34,16 @@ object Compartment {
   private val Shape = "[a-z0-9-]{1,32}".r
 
   /** `name` as a compartment: lowercase letters, digits and `-`, 1 to 32 of them, no level's
-    * name and not `unmapped`, grit's own mark; or why not.
+    * name, not `at`, the word a label command names a place by, and not `unmapped`, grit's own
+    * mark; or why not.
     */
   def of(name: String): Either[String, Compartment] =
     if (!Shape.matches(name)) {
       Left(s"$name is not a compartment's name: lowercase letters, digits and -, 1 to 32 of them")
     } else if (Level.named(name).isDefined) {
       Left(s"$name is a level's name, never a compartment's")
+    } else if (name == "at") {
+      Left(s"$name names a place in a label command, never a compartment")
     } else if (name == Mark.Unmapped) {
       Left(s"$name is grit's mark for what no label placed, never a compartment's name")
     } else Right(name)

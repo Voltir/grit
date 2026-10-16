@@ -46,13 +46,13 @@ object Administration {
     val roles = by.fold(Roles.None)(Roles.of)
     def cleared(p: Option[Principal]): Label = p.fold(Label.Public)(Tx.clearanceOf)
     val own = Left(Answer.clearance(Tx.explain(by, cleared(by))))
-    def change(c: Change): Either[Answer, Authority.Allowed] =
+    def change(c: Change, at: Place = room): Either[Answer, Authority.Allowed] =
       by.toRight(Refusal.NotVouched)
         .flatMap(p =>
           Authority.decide(
             c,
             p,
-            Tx.access(room),
+            Tx.access(at),
             roles.administers,
             roles.stewards,
             v.compartments,
@@ -61,8 +61,21 @@ object Administration {
         )
         .left
         .map(Answer.Refused(_))
+    def relabel(at: Place, to: Option[Label]): Either[Answer, Authority.Allowed] =
+      change(
+        Change.Relabel(
+          at,
+          Tx.roomLabel(at),
+          to.fold(Change.To.Default(Tx.defaultLabel(at)))(Change.To.Set(_))
+        ),
+        at
+      )
     command match {
-      case Command.ShowLabel => Left(shown(room, by))
+      case Command.At(place, _) if !v.invites(place) => Left(Answer.Refused(Refusal.NotShared))
+      case Command.At(place, Command.Labelling.Show) => Left(shown(place, by, here = false))
+      case Command.At(place, Command.Labelling.Set(label)) => relabel(place, Some(label))
+      case Command.At(place, Command.Labelling.Unset) => relabel(place, None)
+      case Command.ShowLabel => Left(shown(room, by, here = true))
       case Command.Help => Left(Answer.Help)
       case Command.Compartments =>
         Left(Answer.compartments(v.compartments, roles.administers, roles.stewards, cleared(by)))
@@ -74,10 +87,8 @@ object Administration {
           case _ if roles.administers => Left(Answer.theirs(cleared(named)))
           case _ => Left(Answer.Refused(Refusal.NotForYou))
         }
-      case Command.SetLabel(label) =>
-        change(Change.Relabel(room, Tx.roomLabel(room), Change.To.Set(label)))
-      case Command.Unlabel =>
-        change(Change.Relabel(room, Tx.roomLabel(room), Change.To.Default(Tx.defaultLabel(room))))
+      case Command.SetLabel(label) => relabel(room, Some(label))
+      case Command.Unlabel => relabel(room, None)
       case Command.Quiet(on) => change(Change.Quiet(room, on))
       case Command.ShowBaseline => Left(Answer.baseline(Tx.baseline(room)))
       case Command.SetBaseline(to) => change(Change.Baseline(room, Tx.baseline(room), to))
@@ -86,16 +97,16 @@ object Administration {
     }
   }
 
-  /** The answer to `kept`, a change made, read under the labels in force after it; `person` is
-    * whom a `Clear`'s or `Remove`'s account is linked to now (`None` for any other change, and
-    * for an account never seen).
+  /** The answer to `kept`, a change made in `room`, read under the labels in force after it;
+    * `person` is whom a `Clear`'s or `Remove`'s account is linked to now (`None` for any other
+    * change, and for an account never seen).
     */
-  private[grit] def answer(kept: Authority.Allowed, person: Option[Principal])(using
+  private[grit] def answer(kept: Authority.Allowed, person: Option[Principal], room: Place)(using
       tx: Tx^
   ): Answer = {
     val after = person.fold(Label.Public)(Tx.clearanceOf)
     kept.change match {
-      case c: Change.Relabel => Answer.relabelled(c)
+      case c: Change.Relabel => Answer.relabelled(c, here = c.room == room)
       case c: Change.Quiet => Answer.quieted(c)
       case c: Change.Baseline => Answer.rebased(c)
       case c: Change.Clear => Answer.cleared(c, after)
@@ -136,9 +147,9 @@ object Administration {
     }
 
   /** `room`'s label as `ShowLabel` shows it to `by`: a direct message's as its person's
-    * clearance; any other's with where it comes from.
+    * clearance; any other's with where it comes from, `here` when it is the room asked in.
     */
-  private def shown(room: Place, by: Option[Principal])(using tx: Tx^): Answer =
+  private def shown(room: Place, by: Option[Principal], here: Boolean)(using tx: Tx^): Answer =
     if (room.direct) Answer.direct(by.fold(Label.Public)(Tx.clearanceOf))
     else {
       val access = Tx.access(room)
@@ -151,6 +162,6 @@ object Administration {
             // A labeller of the deployment's own making declares every label it gives.
             case _ => Answer.Source.Declared
           }
-      Answer.label(Tx.roomLabel(room), source, access)
+      Answer.label(Tx.roomLabel(room), source, access, here)
     }
 }

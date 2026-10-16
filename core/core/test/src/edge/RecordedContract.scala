@@ -41,7 +41,7 @@ abstract class RecordedContract extends TestSuite {
         val here = room("C-invited").room
         ok(joins.joined(here, RoomAccess.Invited, None, t(1)))
         ok(admin.run(mia, here, Command.ShowLabel, t(2))) ==>
-          Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited))
+          Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = true)
       }
     }
 
@@ -54,7 +54,8 @@ abstract class RecordedContract extends TestSuite {
         ok(inbox.ingest(here, SourceId("m1"), Message.User("hello"), mia))
         (set, label(here)) ==> (
           Answer.relabelled(
-            new Change.Relabel(here.room, Label.Public, Change.To.Set(confidentialTrial))
+            new Change.Relabel(here.room, Label.Public, Change.To.Set(confidentialTrial)),
+            here = true
           ),
           Some(confidentialTrial)
         )

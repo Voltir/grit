@@ -2,7 +2,8 @@ package grit.core.admin
 
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.model.Grade
-import grit.core.visibility.TestLabels.compartment
+import grit.core.place.{Namespace, Place}
+import grit.core.visibility.TestLabels.{compartment, place}
 import grit.core.visibility.{Label, Level}
 
 import utest.*
@@ -14,7 +15,13 @@ object CommandTests extends TestSuite {
   /** `<@U-bo>` names bo, as an edge's mention syntax would; any other word names no one. */
   private def person(word: String): Option[Account] = Option.when(word == "<@U-bo>")(bo)
 
-  private def read(words: String): Either[String, Command] = Command.read(words, person)
+  /** `shared` is the one link a person names a shared place by here. */
+  private val shared = Place.under(Namespace.Service, Vector("files", "shared"))
+  private val places: PlaceNames = new PlaceNames {
+    def place(word: String): Option[Place] = Option.when(word == "https://files/shared")(shared)
+  }
+
+  private def read(words: String): Either[String, Command] = Command.read(words, person, places)
 
   /** The line a refusal opens with, before the usage every refusal ends with. */
   private def refusal(words: String): Either[String, String] =
@@ -103,6 +110,52 @@ object CommandTests extends TestSuite {
       )
     }
 
+    test(
+      "label at, label … at and unlabel at name a place, by a word the places name or as grit writes one; at after any other command is refused"
+    ) {
+      (
+        Vector(
+          read("label at https://files/shared"),
+          read("LABEL internal trial AT https://files/shared"),
+          read("label confidential at service:files/other"),
+          read("unlabel At https://files/shared")
+        ),
+        Vector(
+          refusal("label at"),
+          refusal("label internal at elsewhere"),
+          refusal("label internal at https://files/shared now"),
+          refusal("unlabel at"),
+          refusal("quiet at https://files/shared"),
+          refusal("baseline at https://files/shared")
+        )
+      ) ==> (
+        Vector(
+          Right(Command.At(shared, Command.Labelling.Show)),
+          Right(
+            Command.At(
+              shared,
+              Command.Labelling.Set(Label.at(Level.Internal, compartment("trial")))
+            )
+          ),
+          Right(
+            Command.At(
+              place("service:files/other"),
+              Command.Labelling.Set(Label.at(Level.Confidential))
+            )
+          ),
+          Right(Command.At(shared, Command.Labelling.Unset))
+        ),
+        Vector(
+          Right("at: a place goes next"),
+          Right("elsewhere: names no place"),
+          Right("now: nothing goes after label internal at https://files/shared"),
+          Right("at: a place goes next"),
+          Right("at: nothing goes after quiet"),
+          Right("at: not a baseline; the baselines are light|standard|strong|none")
+        )
+      )
+    }
+
     test("a refusal is one line naming the word it stopped at, then the usage") {
       Vector(
         refusal("relabel"),
@@ -143,6 +196,9 @@ object CommandTests extends TestSuite {
           "label: this room's label",
           "label <level> [compartment…]: set this room's label",
           "unlabel: set this room's label back to its default",
+          "label at <link>: the label of a folder another app shares with grit, named by its link",
+          "label <level> [compartment…] at <link>: set that folder's label",
+          "unlabel at <link>: set that folder's label back to its default",
           "clearance [person]: your clearance, or another person's",
           "clear <person> for <compartment>: clear a person for a compartment",
           "remove <person> from <compartment>: remove a person from a compartment",

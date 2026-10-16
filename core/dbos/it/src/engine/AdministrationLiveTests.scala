@@ -50,7 +50,8 @@ object AdministrationLiveTests extends TestSuite {
         (set, label(c, first)) ==> (
           Right(
             Answer.relabelled(
-              new Change.Relabel(origin.room, Label.Public, Change.To.Set(confidentialTrial))
+              new Change.Relabel(origin.room, Label.Public, Change.To.Set(confidentialTrial)),
+              here = true
             )
           ),
           Some(confidentialTrial)

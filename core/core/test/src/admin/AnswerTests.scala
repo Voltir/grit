@@ -24,18 +24,20 @@ object AnswerTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a label shown says whether it is set, declared or a default, and when access is unknown"
+      "a label shown says whether it is set, declared or a default, and when access is unknown; of another place, that place and that its default holds until a person labels it"
     ) {
       Vector(
-        Answer.label(confidential, Answer.Source.Set, Some(RoomAccess.Invited)),
-        Answer.label(internal, Answer.Source.Declared, Some(RoomAccess.Open)),
-        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open)),
+        Answer.label(confidential, Answer.Source.Set, Some(RoomAccess.Invited), here = true),
+        Answer.label(internal, Answer.Source.Declared, Some(RoomAccess.Open), here = true),
+        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open), here = true),
         Answer.label(
           Label.Unmapped,
           Answer.Source.Default,
-          Some(RoomAccess.Invited)
+          Some(RoomAccess.Invited),
+          here = true
         ),
-        Answer.label(internal, Answer.Source.Default, None)
+        Answer.label(internal, Answer.Source.Default, None, here = true),
+        Answer.label(Label.Unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = false)
       ).map(_.text) ==> Vector(
         "This room is labelled [level: confidential, in: {trial}], set through grit.",
         "This room is labelled [level: internal], as the deployment declares it.",
@@ -43,7 +45,9 @@ object AnswerTests extends TestSuite {
         "This room is labelled [level: public, in: {unmapped}], the default for a private " +
           "room.",
         "This room is labelled [level: internal], the deployment's default. Its access is not " +
-          "yet known."
+          "yet known.",
+        "That place is labelled [level: public, in: {unmapped}], the default until a person " +
+          "labels it."
       )
     }
 
@@ -67,10 +71,16 @@ object AnswerTests extends TestSuite {
       )
     }
 
-    test("a label changed says what it was, and that conversations begun before keep theirs") {
+    test(
+      "a label changed says what it was, and of the room asked in that conversations begun before keep theirs; of another place, that place"
+    ) {
       val set = new Change.Relabel(ops, internal, Change.To.Set(confidential))
       val unset = new Change.Relabel(ops, confidential, Change.To.Default(internal))
-      (Answer.relabelled(set), Answer.relabelled(unset)) ==> (
+      (
+        Answer.relabelled(set, here = true),
+        Answer.relabelled(unset, here = true),
+        Answer.relabelled(set, here = false)
+      ) ==> (
         Answer.Changed(
           set,
           "This room is now labelled [level: confidential, in: {trial}]; it was " +
@@ -80,6 +90,11 @@ object AnswerTests extends TestSuite {
           unset,
           "This room is back to its default label, [level: internal]; it was " +
             "[level: confidential, in: {trial}]. Conversations begun before keep theirs."
+        ),
+        Answer.Changed(
+          set,
+          "That place is now labelled [level: confidential, in: {trial}]; it was " +
+            "[level: internal]."
         )
       )
     }

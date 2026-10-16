@@ -165,6 +165,13 @@ object LabelTests extends TestSuite {
         Right("public+client-7")
     }
 
+    test("at, the word a label command names a place by, is never a compartment's name") {
+      (Compartment.of("at"), Compartment.of("atlas").map(Compartment.name)) ==> (
+        Left("at names a place in a label command, never a compartment"),
+        Right("atlas")
+      )
+    }
+
     test("unmapped is grit's own mark for what no label placed, never a compartment's name") {
       Compartment.of("unmapped") ==> Left(
         "unmapped is grit's mark for what no label placed, never a compartment's name"

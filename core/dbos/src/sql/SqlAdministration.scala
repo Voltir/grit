@@ -42,21 +42,23 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
                   case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) =>
                     Right(None)
                 }
-                answer <- answered(allowed, person)
+                answer <- answered(allowed, person, room)
               } yield answer
           }
         }
       }
     }
 
-  /** `kept`'s answer, under the labels in force read again on `tx`'s own connection, which
-    * sees what this transaction has written.
+  /** `kept`'s answer, made in `room`, under the labels in force read again on `tx`'s own
+    * connection, which sees what this transaction has written.
     */
-  private def answered(kept: grit.core.admin.Authority.Allowed, person: Option[Principal])(using
-      tx: Tx^
-  ): Either[StoreError, Answer] =
+  private def answered(
+      kept: grit.core.admin.Authority.Allowed,
+      person: Option[Principal],
+      room: Place
+  )(using tx: Tx^): Either[StoreError, Answer] =
     opener.at(Tx.clearance(tx), Tx.connection(tx)).map { after =>
-      Administration.answer(kept, person)(using after)
+      Administration.answer(kept, person, room)(using after)
     }
 
   /** Keeps `change`; whether anything recorded changed (a repeat changes nothing). */

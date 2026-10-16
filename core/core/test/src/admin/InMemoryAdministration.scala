@@ -53,7 +53,7 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
           case Change.Remove(p, _) => whom(p)
           case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) => None
         }
-        Right(Administration.answer(allowed, person)(using inForce))
+        Right(Administration.answer(allowed, person, room)(using inForce))
     }
   }
 

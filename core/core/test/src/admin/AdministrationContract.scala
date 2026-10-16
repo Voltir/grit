@@ -82,10 +82,10 @@ abstract class AdministrationContract extends TestSuite {
         run(a, tess, direct, Command.ShowLabel),
         run(a, mia, newRoom, Command.Help)
       ) ==> (
-        Answer.label(internal, Answer.Source.Declared, None),
-        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited)),
-        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open)),
-        Answer.label(Label.Public, Answer.Source.Default, None),
+        Answer.label(internal, Answer.Source.Declared, None, here = true),
+        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = true),
+        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open), here = true),
+        Answer.label(Label.Public, Answer.Source.Default, None, here = true),
         Answer.direct(internalTrial),
         Answer.Help
       )
@@ -104,14 +104,51 @@ abstract class AdministrationContract extends TestSuite {
         run(a, mia, privateRoom, Command.SetLabel(confidentialTrial), 3),
         run(a, mia, privateRoom, Command.ShowLabel)
       ) ==> (
-        Answer.relabelled(first),
-        Answer.relabelled(raise),
+        Answer.relabelled(first, here = true),
+        Answer.relabelled(raise, here = true),
         Answer.relabelled(
-          new Change.Relabel(privateRoom, confidentialTrial, Change.To.Set(confidentialTrial))
+          new Change.Relabel(privateRoom, confidentialTrial, Change.To.Set(confidentialTrial)),
+          here = true
         ),
-        Answer.label(confidentialTrial, Answer.Source.Set, Some(RoomAccess.Invited))
+        Answer.label(confidentialTrial, Answer.Source.Set, Some(RoomAccess.Invited), here = true)
       )
       kept(a) ==> Vector(Kept(tess, t(1), first), Kept(mia, t(2), raise))
+    }
+
+    test(
+      "a place within one a service shares is labelled from elsewhere only as Authority allows: a member's first label with no compartment is refused, an administrator's is kept with its audit row, a steward's with their compartment too, and each is shown as that place's"
+    ) {
+      val a = arranged()
+      val byAda = new Change.Relabel(folder, unmapped, Change.To.Set(internal))
+      val byTess = new Change.Relabel(otherFolder, unmapped, Change.To.Set(internalTrial))
+      (
+        run(a, mia, privateRoom, Command.At(folder, Command.Labelling.Show)),
+        run(a, mia, privateRoom, Command.At(folder, Command.Labelling.Set(internal))),
+        run(a, ada, publicRoom, Command.At(folder, Command.Labelling.Set(internal)), 1),
+        run(a, tess, direct, Command.At(otherFolder, Command.Labelling.Set(internalTrial)), 2),
+        run(a, mia, privateRoom, Command.At(folder, Command.Labelling.Show)),
+        run(a, mia, privateRoom, Command.ShowLabel)
+      ) ==> (
+        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = false),
+        Answer.Refused(Refusal.NotAdministrator),
+        Answer.relabelled(byAda, here = false),
+        Answer.relabelled(byTess, here = false),
+        Answer.label(internal, Answer.Source.Set, Some(RoomAccess.Invited), here = false),
+        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = true)
+      )
+      kept(a) ==> Vector(Kept(ada, t(1), byAda), Kept(tess, t(2), byTess))
+    }
+
+    test(
+      "a label asked for a place within none a service shares is refused as not shared, an administrator's too, and keeps nothing: a channel elsewhere, a direct message's, the shared place itself"
+    ) {
+      val a = arranged()
+      Vector(
+        Command.At(publicRoom, Command.Labelling.Set(confidential)),
+        Command.At(direct, Command.Labelling.Unset),
+        Command.At(shared, Command.Labelling.Show)
+      ).map(run(a, ada, privateRoom, _)) ==> Vector.fill(3)(Answer.Refused(Refusal.NotShared))
+      kept(a) ==> Vector.empty
     }
 
     test(
@@ -134,7 +171,7 @@ abstract class AdministrationContract extends TestSuite {
         Answer.Refused(Refusal.NotSteward(trial)),
         Answer.Refused(Refusal.Undeclared(acme)),
         Answer.Refused(Refusal.InDirectMessage),
-        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited))
+        Answer.label(unmapped, Answer.Source.Default, Some(RoomAccess.Invited), here = true)
       )
       kept(a) ==> Vector()
     }
@@ -156,13 +193,13 @@ abstract class AdministrationContract extends TestSuite {
         run(a, ada, publicRoom, Command.Unlabel, 6),
         run(a, ada, publicRoom, Command.ShowLabel)
       ) ==> (
-        Answer.relabelled(first),
+        Answer.relabelled(first, here = true),
         Answer.Refused(Refusal.NotAdministrator),
-        Answer.relabelled(lowered),
-        Answer.relabelled(raised),
+        Answer.relabelled(lowered, here = true),
+        Answer.relabelled(raised, here = true),
         Answer.Refused(Refusal.PublicRoom),
-        Answer.relabelled(unset),
-        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open))
+        Answer.relabelled(unset, here = true),
+        Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open), here = true)
       )
       kept(a) ==> Vector(
         Kept(tess, t(1), first),
@@ -182,8 +219,8 @@ abstract class AdministrationContract extends TestSuite {
         run(a, mia, newRoom, Command.ShowLabel),
         kept(a)
       ) ==> (
-        Answer.relabelled(set),
-        Answer.label(confidential, Answer.Source.Set, None),
+        Answer.relabelled(set, here = true),
+        Answer.label(confidential, Answer.Source.Set, None, here = true),
         Vector(Kept(ada, t(1), set))
       )
     }
@@ -192,7 +229,8 @@ abstract class AdministrationContract extends TestSuite {
       val a = arranged()
       (run(a, ada, newRoom, Command.Unlabel, 1), kept(a)) ==> (
         Answer.relabelled(
-          new Change.Relabel(newRoom, Label.Public, Change.To.Default(Label.Public))
+          new Change.Relabel(newRoom, Label.Public, Change.To.Default(Label.Public)),
+          here = true
         ),
         Vector()
       )
@@ -431,8 +469,15 @@ object AdministrationContract {
   val newRoom: Place = place("slack:T1/C-new")
   val direct: Place = Origin.Direct(TestAccounts.sourced("slack:T1/U-tess"), "1.0").room
 
+  /** A service's place it shares only with the people it names, declared invited, and two
+    * folders within it that no edge reports.
+    */
+  val shared: Place = place("service:files")
+  val folder: Place = place("service:files/folder")
+  val otherFolder: Place = place("service:files/other")
+
   /** trial and finance declared; [[declaredRoom]] internal, public rooms internal, any other
-    * public; administrators `admins` ([[ada]]); trial's own group ([[tess]]) granted
+    * public; [[shared]] invited; administrators `admins` ([[ada]]); trial's own group ([[tess]]) granted
     * internal·trial and its steward; finance's own group (no one) granted confidential·finance,
     * stewarded by `finance-leads` ([[fin]]).
     */
@@ -463,7 +508,8 @@ object AdministrationContract {
           ),
           administrators = Some(group("admins")),
           stewards =
-            Vector(Steward(trial, group("trial")), Steward(finance, group("finance-leads")))
+            Vector(Steward(trial, group("trial")), Steward(finance, group("finance-leads"))),
+          invited = Vector(shared)
         )
         .left
         .map(_.toString)

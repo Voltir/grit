@@ -50,29 +50,38 @@ object Answer {
   }
 
   /** A room's label in force, `label`, from `source`, given its `access` as reported: a default
-    * says for which kind of room, and an unreported access is said to be not yet known.
+    * says for which kind of room, and an unreported access is said to be not yet known. It
+    * speaks of "this room" when it is the one asked in (`here`), else of "that place", and
+    * then of an invited place's default as one no one has labelled yet.
     */
-  def label(label: Label, source: Source, access: Option[RoomAccess]): Answer = {
+  def label(label: Label, source: Source, access: Option[RoomAccess], here: Boolean): Answer = {
     val from = (source, access) match {
       case (Source.Set, _) => "set through grit"
       case (Source.Declared, _) => "as the deployment declares it"
       case (Source.Default, Some(RoomAccess.Open)) => "the default for a public room"
-      case (Source.Default, Some(RoomAccess.Invited)) => "the default for a private room"
+      case (Source.Default, Some(RoomAccess.Invited)) =>
+        if (here) "the default for a private room" else "the default until a person labels it"
       case (Source.Default, None) => "the deployment's default"
     }
     val unknown = if (access.isEmpty) " Its access is not yet known." else ""
-    Shown(s"This room is labelled ${Label.shown(label)}, $from.$unknown")
+    Shown(s"${subject(here)} is labelled ${Label.shown(label)}, $from.$unknown")
   }
 
-  /** `change` made: the room's label now and before. */
-  def relabelled(change: Change.Relabel): Answer = {
+  /** What an answer calls the room or place it speaks of. */
+  private def subject(here: Boolean): String = if (here) "This room" else "That place"
+
+  /** `change` made: the room's label now and before, of "this room" when it is the one asked in
+    * (`here`), saying conversations begun before keep theirs; else of "that place".
+    */
+  def relabelled(change: Change.Relabel, here: Boolean): Answer = {
     val now = change.to match {
       case Change.To.Set(to) => s"now labelled ${Label.shown(to)}"
       case Change.To.Default(to) => s"back to its default label, ${Label.shown(to)}"
     }
     Changed(
       change,
-      s"This room is $now; it was ${Label.shown(change.from)}. $KeepTheirs"
+      s"${subject(here)} is $now; it was ${Label.shown(change.from)}." +
+        (if (here) s" $KeepTheirs" else "")
     )
   }
 
