@@ -102,7 +102,7 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
       else if (file.mimeType == DriveFile.Spreadsheet)
         get(s"files/$id/export", Vector("mimeType" -> "text/csv"))
       else if (file.mimeType.startsWith("text/")) get(s"files/$id", Vector("alt" -> "media"))
-      else Left(DriveError.Unreadable(DriveRest.kind(file.mimeType)))
+      else Left(DriveError.Unreadable(file.kind))
     read.map(_.stripPrefix("\uFEFF"))
   }
 
@@ -205,14 +205,5 @@ object DriveRest {
       case s if s >= 500 => Left(DriveError.Busy(status))
       case s => Left(DriveError.Malformed(s"Drive answered $s"))
     }
-  }
-
-  /** A type, in words a person reads. */
-  private def kind(mimeType: String): String = mimeType match {
-    case "application/pdf" => "a PDF"
-    case "application/vnd.google-apps.presentation" => "Slides"
-    case DriveFile.Folder => "a folder"
-    case other if other.startsWith("image/") => "an image"
-    case other => s"a file of type $other"
   }
 }

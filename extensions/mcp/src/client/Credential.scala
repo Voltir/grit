@@ -17,6 +17,7 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, Variable}
+import grit.core.identity.Email
 import grit.mcp.wire.McpError
 
 /** How a server's requests are authorised: where the secret is read, never the secret. */
@@ -57,6 +58,27 @@ object Credential {
     * key; each naming the variable, never its value. A static token is refused as
     * [[Bearer.of]] says.
     */
+  /** The address `credential` acts as: a service account's `client_email`, or why not, as
+    * [[open]] refuses its key or the address is not an email's; `None` for a static token.
+    */
+  def account(
+      credential: Credential,
+      env: Map[String, String]
+  ): Either[EdgeRefusal, Option[Email]] =
+    credential match {
+      case Static(_) => Right(None)
+      case ServiceAccount(key, _) =>
+        open(credential, env).flatMap(_.source match {
+          case Left(account) =>
+            Email
+              .of(account.email)
+              .map(Some(_))
+              .left
+              .map(why => EdgeRefusal.Malformed(key, s"its client_email: $why"))
+          case Right(_) => Right(None)
+        })
+    }
+
   def open(credential: Credential, env: Map[String, String]): Either[EdgeRefusal, Authorizer] =
     credential match {
       case Static(token) => Bearer.of(env, token).map(b => new Authorizer(Right(b)))
@@ -122,7 +144,7 @@ private[client] object Account {
 /** The bearer each request of one server carries, from the [[Credential]] it was opened by;
   * never shown.
   */
-final class Authorizer private[client] (source: Either[Account, Bearer]) {
+final class Authorizer private[client] (private[client] val source: Either[Account, Bearer]) {
 
   private val http = HttpClient.newBuilder().connectTimeout(McpClient.Timeout.toJava).build()
 

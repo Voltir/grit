@@ -1,6 +1,7 @@
 package grit.mcp.client
 
 import grit.core.edge.{EdgeRefusal, Variable}
+import grit.core.identity.Email
 import grit.mcp.client.McpClientTests.Hands
 import grit.mcp.wire.McpError
 
@@ -116,6 +117,26 @@ object CredentialTests extends TestSuite {
         .map(_.bearer(new Hands()).map(_.value)) ==> Right(Right("github_pat_x1"))
       Credential.open(Credential.static(token), Map.empty).map(_ => ()) ==>
         Left(EdgeRefusal.Missing(token))
+    }
+
+    test(
+      "a service account's address is its key's client_email, lowercased; a static token has none"
+    ) {
+      withTokens { fake =>
+        val token = Variable("GITHUB_MCP_TOKEN")
+        (
+          Credential.account(
+            Credential.serviceAccount(Key, Scopes),
+            Map("DRIVE_SA_KEY" -> fake.key("Reader@Proj.iam.example"))
+          ),
+          Credential.account(Credential.static(token), Map("GITHUB_MCP_TOKEN" -> "github_pat_x1")),
+          Credential.account(Credential.serviceAccount(Key, Scopes), Map.empty)
+        ) ==> (
+          Email.of("reader@proj.iam.example").map(Some(_)),
+          Right(None),
+          Left(EdgeRefusal.Missing(Key))
+        )
+      }
     }
   }
 }
