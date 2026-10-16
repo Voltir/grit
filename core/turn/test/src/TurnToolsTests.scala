@@ -21,7 +21,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.visibility.{Cap, Compartments, Integrity, Visibility}
+import grit.core.visibility.{Accounted, Cap, Compartments, Integrity, Provenance, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -139,6 +139,46 @@ object TurnToolsTests extends TestSuite {
           Instant.EPOCH
         )
         .map(_ => believed(other, otherSlot.resultId)) ==> Right(Some(Integrity.Untrusted))
+    }
+
+    test(
+      "a hosted call's result is believed at the meet of its items as its places' caps cap them"
+    ) {
+      val github = Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+      val grit = Place.read("service:github/octo/grit").fold(sys.error, identity)
+      val docs = Place.read("service:github/octo/docs").fold(sys.error, identity)
+      val declaring = Visibility
+        .of(
+          Compartments.Shipped,
+          Visibility.Shipped.rooms,
+          Vector.empty,
+          Vector.empty,
+          caps = Vector(
+            Cap(github.place, Integrity.Untrusted),
+            Cap(grit, Integrity.Member),
+            Cap(docs, Integrity.Outside)
+          )
+        )
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "go")
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
+      new TurnTools.Settling(new FakeJot(visibility = declaring), entries)
+        .answer(
+          slot,
+          ToolCallId("c"),
+          "search_issues",
+          Outcome.Done(
+            "two issues",
+            None,
+            Accounted.of(
+              Vector(Provenance(grit, Integrity.Authority), Provenance(docs, Integrity.Member))
+            )
+          ),
+          Right(github),
+          Instant.EPOCH
+        )
+        .map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Outside))
     }
 
     test("an own tool's result is believed at what its outcome says, else at its tool's") {

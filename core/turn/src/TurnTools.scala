@@ -11,7 +11,7 @@ import grit.core.message.Message
 import grit.core.place.{Place, Service}
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
-import grit.core.visibility.{Integrity, Subject}
+import grit.core.visibility.{Accounted, Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
 
@@ -161,9 +161,8 @@ object TurnTools {
     * after everything in the conversation, with the call as it is shown ([[Bound.shown]]).
     * One run here is believed at what its outcome says ([[Outcome.Done.integrity]]), else at
     * its tool's ([[Bound.Runs.output]], read at the turn's `level`: [[grit.core.tool.Believed.at]]); one
-    * answered, at `from`: the declared output of the
-    * service it went to ([[grit.core.visibility.Visibility.outputOf]]), else the integrity
-    * given. A
+    * answered, at `from`: what the service it went to declares of its outcome's items
+    * ([[grit.core.visibility.Visibility.believed]]), else the integrity given. A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     */
@@ -287,13 +286,13 @@ object TurnTools {
         turn: TurnRef,
         id: EntryId,
         payload: Payload,
-        believed: Either[Integrity, Service],
+        believed: Either[Integrity, (Service, Accounted)],
         at: Instant
     ): Either[TurnFailure, Entry] = {
       def write(using tx: Tx^): Either[StoreError, Entry] =
         for {
           next <- entries.lockNext(turn.conversationId)
-          output = believed.fold(i => i, Tx.visibility(tx).outputOf)
+          output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
           entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
           _ <- entries.insert(entry)
         } yield entry
@@ -309,16 +308,19 @@ object TurnTools {
     }
   }
 
-  /** How a call's result is believed: as answered (`From`, a service's declared output or the
-    * integrity given), or as one run here says (`Ran`, `output` when its outcome does not).
+  /** How a call's result is believed: as answered (`From`, what the service it went to declares
+    * of its items, or the integrity given), or as one run here says (`Ran`, `output` when its
+    * outcome does not).
     */
   private enum Belief {
     case From(from: Either[Integrity, Service])
     case Ran(output: Integrity)
 
-    /** The integrity `o` is believed at, or the service whose declared output it is. */
-    def of(o: Outcome): Either[Integrity, Service] = this match {
-      case From(from) => from
+    /** The integrity `o` is believed at, or the service it came from with what its extension
+      * read of its items.
+      */
+    def of(o: Outcome): Either[Integrity, (Service, Accounted)] = this match {
+      case From(from) => from.map((_, o.accounted))
       case Ran(output) =>
         o match {
           case Outcome.Done(_, Some(integrity), _) => Left(integrity)

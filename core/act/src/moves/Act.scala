@@ -322,9 +322,10 @@ private[moves] object Act {
   /** A call: its request written for its edge (`call:{n}`); when sent, waited on (the call's
     * `expire` and `abandon`, as [[Calling.await]] takes them, waited on even
     * when its input diverged, so the run's later steps keep their places), and its answer read
-    * once its edge rang or answered done (`answer`), believed at the meet of its service's
-    * results and its arguments; one recorded with no integrity is read at `start`, what its
-    * run starts believed at.
+    * once its edge rang or answered done (`answer`), believed at what its service declares of
+    * its answer's items ([[grit.core.visibility.Visibility.believed]]) met with its arguments'
+    * integrity; one recorded with no integrity is read at `start`, what its run starts believed
+    * at.
     */
   def call(start: Integrity): Flow[MovesEnv, Call, Nothing, CallCame] = {
     import MovesJournal.given
@@ -338,10 +339,15 @@ private[moves] object Act {
           s =>
             (tx: Tx^) ?=> {
               val c = s.call
-              val believed = Tx.visibility(tx).outputOf(c.service).meet(c.believed)
               Calling
                 .answer[String](env.records.requests, c.cs)
-                .map(called(_, Tx.floor(tx), believed))
+                .map(o =>
+                  called(
+                    o,
+                    Tx.floor(tx),
+                    Tx.visibility(tx).believed(c.service, o.accounted).meet(c.believed)
+                  )
+                )
             }
       )
     }

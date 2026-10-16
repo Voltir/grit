@@ -83,16 +83,20 @@ object DurableMovesTests extends MovesContract {
 /** A world for [[DurableMoves]]: a turn whose asker is grit, a model answering
   * [[MovesContract.Answer]], a classifier answering each question of its kind
   * (`grit.core.act.MovesFixtures.Judging`), an edge at [[MovesContract.Probe]] advertising
-  * [[MovesContract.Tool]] that claims, answers [[MovesContract.Read]] and rings each request as
-  * it is written, and the documents of [[MovesWorld.Notes]]. Its every transaction and read is
-  * opened at `floor`, and [[MovesContract.Probe]], its summary model and its classifier are
-  * cleared for `floor`. When `broken`, the day's spend cannot be read, and the acting's allowance is
-  * daily, so every ask's admission fails. Its run starts believed at `integrity`.
+  * [[MovesContract.Tool]] that claims, answers `answer` (done, [[MovesContract.Read]]) and rings
+  * each request as it is written, and the documents of [[MovesWorld.Notes]]. Its every
+  * transaction and read is opened at `floor`, and [[MovesContract.Probe]], its summary model and
+  * its classifier are cleared for `floor`; what is said at its places is capped by `capped`
+  * ([[MovesContract.Probe]]'s at [[MovesContract.ProbeOutput]]). When `broken`, the day's spend
+  * cannot be read, and the acting's allowance is daily, so every ask's admission fails. Its run
+  * starts believed at `integrity`.
   */
 final class MovesWorld(
     broken: Boolean,
     floor: Label = Label.Public,
-    integrity: Integrity = Integrity.Authority
+    integrity: Integrity = Integrity.Authority,
+    capped: Vector[Cap] = Vector(Cap(MovesContract.Probe.place, MovesContract.ProbeOutput)),
+    answer: Outcome = Outcome.Done(MovesContract.Read)
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -111,7 +115,7 @@ final class MovesWorld(
           // The world's classifier is cleared for what it knows.
           Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
         ),
-        caps = Vector(Cap(Probe.place, MovesContract.ProbeOutput))
+        caps = capped
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =
@@ -140,7 +144,7 @@ final class MovesWorld(
     ): Either[StoreError, Unit] = {
       val sent = edges.dispatch(requests, at)
       requests.foreach { q =>
-        if (edges.claimAs(edge, q) && edges.answerAs(edge, q.slot, Outcome.Done(Read)))
+        if (edges.claimAs(edge, q) && edges.answerAs(edge, q.slot, answer))
           durable.send(q.slot.turn.workflowId, q.slot.key, "rang")
       }
       sent

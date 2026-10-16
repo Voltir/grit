@@ -36,6 +36,14 @@ enum Outcome {
   /** A crash cut a gated call short. It may have partly run, and is not run again. */
   case Interrupted
 
+  /** What its service's extension read of its items: `Done`'s `items`; any other case's,
+    * [[Accounted.Unread]].
+    */
+  def accounted: Accounted = this match {
+    case Done(_, _, items) => items
+    case _ => Accounted.Unread
+  }
+
   /** The result the model reads for the call `call`: `Done` is not an error, every other
     * case is. `Declined` and `Unanswered` each begin with their name ("Declined: …",
     * "Unanswered: …"), a declined one ending with the person's reason when they gave one;

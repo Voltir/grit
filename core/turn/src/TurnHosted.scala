@@ -126,9 +126,9 @@ object TurnHosted {
           val pins = h.call.at.looping.routed
           val (settling, at) = (r.settling, r.now())
           val (requests, askers) = (r.hosting.requests, r.hosting.askers)
-          // An edge's answer is believed at the declared output of the service the call went
-          // to; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
-          // edge's own claim never. One no edge gave is grit's own words, believed at the
+          // An edge's answer is believed at what the service the call went to declares of its
+          // items; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
+          // edge's integrity never. One no edge gave is grit's own words, believed at the
           // turn's level as a refusal is; but a person's reason for declining is theirs, and
           // believed as the edge's would be.
           val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
