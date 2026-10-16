@@ -24,7 +24,8 @@ import grit.mcp.wire.McpTool
 /** The requests an edge is sent, run by calling `clients`' servers, wherever they were routed:
   * a request's tool is found by name in the servers' lists as they stand ([[McpClient.tools]],
   * listed again when stale), and run as [[Run.request]] runs a tool, its arguments the JSON
-  * object sent. Its answer is [[Outcome.Done]], or [[Outcome.Failed]] with the tool's text
+  * object sent. Its answer is [[Outcome.Done]], its items as its server's `accounts` read them
+  * ([[McpClient.call]]), or [[Outcome.Failed]] with the tool's text
   * when it marks it `isError`, or naming the server and the [[grit.mcp.wire.McpError]] when
   * the exchange fails. Before each run, the tools are told to `advertise` when they differ
   * from those it last took (the first time included); one it refused is told again next run.
@@ -117,7 +118,8 @@ object McpTools {
         client.call(tool, ujson.Obj.from(obj)) match {
           case Left(error) => Outcome.Failed(s"${client.server.name} ${error.message}")
           case Right(answer) =>
-            if (answer.isError) Outcome.Failed(answer.text) else Outcome.Done(answer.text)
+            if (answer.isError) Outcome.Failed(answer.text)
+            else Outcome.Done(answer.text, items = answer.items)
         }
     }
 }

@@ -3,10 +3,21 @@ package grit.mcp.edge
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Edges, Permit, Registration, Route, ToolRequest, Variable}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Place, Service}
+import grit.core.place.{Directory, Namespace, Place, Service}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.visibility.{
+  Accounted,
+  Accounts,
+  Cap,
+  Compartments,
+  Integrity,
+  Provenance,
+  RoomLabels,
+  Visibility
+}
 import grit.mcp.client.{Bearer, FakeMcpServer, McpClient, McpServer}
 import grit.mcp.scope.McpScope
+import grit.mcp.wire.McpCalled
 
 import utest.*
 
@@ -17,10 +28,16 @@ object McpToolsTests extends TestSuite {
 
   private val Github: Service = Service.of("github").getOrElse(throw new java.lang.AssertionError())
 
-  /** A client of `fake` as the server `github`, reading `clock`. */
-  private def client(fake: FakeMcpServer, clock: Clock): McpClient^{clock} = {
+  /** A client of `fake` as the server `github`, its answers' items read by `accounts`, reading
+    * `clock`.
+    */
+  private def client(
+      fake: FakeMcpServer,
+      clock: Clock,
+      accounts: Accounts[McpCalled] = Accounts.none
+  ): McpClient^{clock} = {
     val server = McpServer
-      .of("github", fake.endpoint, Token, McpScope.Open)
+      .of("github", fake.endpoint, Token, McpScope.Open, accounts = accounts)
       .fold(
         why => throw new java.lang.AssertionError(why),
         identity
@@ -34,13 +51,35 @@ object McpToolsTests extends TestSuite {
     new McpClient(server, bearer, clock)
   }
 
-  /** The tools over `fake` as the server `github`, advertising with `advertise`. */
+  /** The tools over `fake` as the server `github`, its answers' items read by `accounts`,
+    * advertising with `advertise`.
+    */
   private def toolsOver(
       fake: FakeMcpServer,
-      advertise: ToolSet -> Either[DeskError, Unit] = _ => Right(())
+      advertise: ToolSet -> Either[DeskError, Unit] = _ => Right(()),
+      accounts: Accounts[McpCalled] = Accounts.none
   ): McpTools^ = {
     val clock = Clock.system()
-    new McpTools(clock, Vector(client(fake, clock)), advertise)
+    new McpTools(clock, Vector(client(fake, clock, accounts)), advertise)
+  }
+
+  /** `segments` as a place under [[Github]]'s. */
+  private def at(segments: String*): Place =
+    Place.under(Namespace.Service, Github.name +: segments.toVector)
+
+  /** A reader that places each answer by what it was given: under the tool's name, the call's
+    * `repo`, and the answer's first text block, vouched at `vouched`.
+    */
+  private def placing(vouched: Integrity): Accounts[McpCalled] = new Accounts[McpCalled] {
+    def items(c: McpCalled): Accounted =
+      Accounted.of(
+        Vector(
+          Provenance(
+            at(c.tool, c.arguments("repo").str, c.result("content")(0)("text").str),
+            vouched
+          )
+        )
+      )
   }
 
   /** A request of `tool` with `arguments`, addressed to `at`. */
@@ -107,6 +146,42 @@ object McpToolsTests extends TestSuite {
         fake.received
           .filter(_.method.contains("tools/call"))
           .map(r => ujson.read(r.body)("params")("arguments")) ==> Vector(Read)
+      }
+    }
+
+    test("a server's accounts read each answer, and its items reach the outcome") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
+        fake.answers("get_file_contents", text("widgets"))
+        val mcp = toolsOver(fake, accounts = placing(Integrity.Outside))
+        val q = request("github_get_file_contents", Read)
+        mcp.run(route(q), q) ==> Outcome.Done(
+          "widgets",
+          items = Accounted.of(
+            Vector(Provenance(at("get_file_contents", "r", "widgets"), Integrity.Outside))
+          )
+        )
+      }
+    }
+
+    test("an answer whose items claim above their repository's cap is believed at the cap") {
+      // The reference deployment's shape: the service untrusted, one repository declared member.
+      val repository = at("get_file_contents", "r")
+      val visibility = Visibility
+        .of(
+          Compartments.Shipped,
+          RoomLabels.Public,
+          Vector.empty,
+          Vector.empty,
+          caps = Vector(Cap(Github.place, Integrity.Untrusted), Cap(repository, Integrity.Member))
+        )
+        .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
+        fake.answers("get_file_contents", text("widgets"))
+        val mcp = toolsOver(fake, accounts = placing(Integrity.Authority))
+        val q = request("github_get_file_contents", Read)
+        visibility.believed(Github, mcp.run(route(q), q).accounted) ==> Integrity.Member
       }
     }
 

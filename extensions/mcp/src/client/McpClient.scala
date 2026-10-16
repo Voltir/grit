@@ -16,7 +16,7 @@ import scala.jdk.DurationConverters.*
 import scala.jdk.OptionConverters.*
 
 import grit.core.clock.Clock
-import grit.mcp.wire.{Answer, Headers, McpError, McpTool, Rpc, Skipped, Sse}
+import grit.mcp.wire.{Answer, Headers, McpCalled, McpError, McpTool, Rpc, Skipped, Sse}
 
 /** A server's tools as listed: `tools`, those grit may offer, each name once, in the order
   * listed; `skipped`, the others and why; `unlisted`, the names the server's allowlist gives
@@ -79,7 +79,8 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
 
   /** `tool` called with `arguments` as the server's scope sends them
     * ([[grit.mcp.scope.McpScope.request]]): its answer as the scope shows it
-    * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, or why none;
+    * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, its items as the server's
+    * `accounts` read the shown result, whole; or why none:
     * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call;
     * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it. An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
@@ -87,13 +88,12 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     * [[McpClient.Timeout]].
     */
   def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
-    val answered = server.scope
-      .request(tool, arguments)
-      .left
-      .map(McpError.OutOfScope(_))
-      .flatMap(sent => exchange(Rpc.Call.CallTool(tool, sent)))
-      .flatMap(server.scope.shown(tool, _).left.map(McpError.Unattributed(_)))
-      .flatMap(Answer.of)
+    val answered = for {
+      sent <- server.scope.request(tool, arguments).left.map(McpError.OutOfScope(_))
+      result <- exchange(Rpc.Call.CallTool(tool, sent))
+      shown <- server.scope.shown(tool, result).left.map(McpError.Unattributed(_))
+      answer <- Answer.of(shown, server.accounts.items(McpCalled(tool.name, sent, shown)))
+    } yield answer
     // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
     // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is
     // re-read on every access, so `tool` already carries the schema the server holds and a

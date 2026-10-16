@@ -159,7 +159,7 @@ object AnswerTests extends TestSuite {
     test("a result with no content array, or an isError that is not a boolean, is unreadable") {
       val odd = result(text("x"))
       odd("isError") = "yes"
-      Vector(ujson.Obj("resultType" -> "complete"), odd).map(Answer.of) ==> Vector(
+      Vector(ujson.Obj("resultType" -> "complete"), odd).map(Answer.of(_)) ==> Vector(
         Left(McpError.Unreadable("a tools/call result has no content array")),
         Left(McpError.Unreadable("a tools/call result's isError is not a boolean"))
       )

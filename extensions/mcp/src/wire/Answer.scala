@@ -1,15 +1,17 @@
 package grit.mcp.wire
 
 import grit.core.host.{Clipped, Kept}
+import grit.core.visibility.Accounted
 
-/** What a call answered: `text`, what the model reads, and whether the tool reported an
-  * error (`isError`).
+/** What a call answered: `text`, what the model reads, whether the tool reported an error
+  * (`isError`), and what its server's extension read of its items (`items`).
   */
-final case class Answer private (text: String, isError: Boolean)
+final case class Answer private (text: String, isError: Boolean, items: Accounted)
 
 object Answer {
 
-  /** The answer a complete `tools/call` result is, `isError` absent read as false. Its text is
+  /** The answer a complete `tools/call` result is, its items `items`, `isError` absent read as
+    * false. Its text is
     * the result's content blocks, one after another on lines of their own: text, and an
     * embedded resource's text, as they are; a resource link as `[resource {name}: {uri}]`;
     * an image, audio, binary resource or a block of an unknown type as `[{mimeType}
@@ -23,7 +25,7 @@ object Answer {
     * [[McpError.Unreadable]] when the result has no `content` array, or an `isError` that is
     * not a boolean.
     */
-  def of(result: ujson.Obj): Either[McpError, Answer] = {
+  def of(result: ujson.Obj, items: Accounted = Accounted.Unread): Either[McpError, Answer] = {
     val o = result.obj
     for {
       content <- o
@@ -43,7 +45,7 @@ object Answer {
           .map(ujson.write(_))
       val all = blocks.map(_._1) ++ structured
       val clipped = byItems(all, blocks.map(_._2)).getOrElse(Clipped.head(all.mkString("\n"), hint))
-      new Answer(clipped.show, isError)
+      new Answer(clipped.show, isError, items)
     }
   }
 
