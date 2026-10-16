@@ -40,8 +40,10 @@ test JVM (`com.sun.net.httpserver`) that checks every request as the spec's serv
 `McpServerContract` is the exchanges a server must answer as the client reads them; the fake
 keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in test sources that
 needs a token and so is no tier, runs it against GitHub's (its doc says how). It passed whole
-there on 2026-09-30, so the fake is held to a real server as of that run, and between runs to
-the spec and go-sdk's source.
+there on 2026-09-30 and again on 2026-10-16, so the fake is held to a real server as of that
+run, and between runs to the spec and go-sdk's source. `GitHubItemsContract` is what
+`GitHubItems` needs of GitHub's answers: the recordings below keep it in the unit tier
+(`GitHubItemsRecordedTests`), and `LiveProbe` runs it too; it passed whole there on 2026-10-16.
 
 `test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
 server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons

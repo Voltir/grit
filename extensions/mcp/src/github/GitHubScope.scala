@@ -11,9 +11,12 @@ object GitHubScope {
     * not two non-blank segments.
     */
   def repository(fullName: String): Either[String, Bound] =
+    named(fullName).flatMap((owner, name) => Bound.of("owner" -> owner, "repo" -> name))
+
+  /** `fullName`'s owner and name, or why not: not two non-blank segments. */
+  private[github] def named(fullName: String): Either[String, (String, String)] =
     fullName.split("/", -1).toVector match {
-      case Vector(owner, name) if !owner.isBlank && !name.isBlank =>
-        Bound.of("owner" -> owner, "repo" -> name)
+      case Vector(owner, name) if !owner.isBlank && !name.isBlank => Right((owner, name))
       case _ => Left(s"a repository is {owner}/{name}, not '$fullName'")
     }
 
@@ -35,7 +38,7 @@ object GitHubScope {
     Searches.flatMap(McpScope.attributed(_, first, rest*))
 
   /** Where the issue and pull-request searches' results name their repository. */
-  private val Api = "https://api.github.com/repos/"
+  private[github] val Api = "https://api.github.com/repos/"
 
   /** The search tools, each with how its answers name each result's repository. */
   private val Searches: Either[String, Map[String, Attribution]] = {
@@ -49,10 +52,9 @@ object GitHubScope {
           result.objOpt.flatMap(_.get(key)).flatMap(_.strOpt) match {
             case None => Left(s"it has no $key string")
             case Some(at) =>
-              read(at).map(_.split("/", -1).toVector) match {
-                case Some(segments @ Vector(owner, name)) if owner.nonEmpty && name.nonEmpty =>
-                  Right(segments)
-                case _ => Left(s"its $key $at is not $form")
+              read(at).flatMap(named(_).toOption) match {
+                case Some((owner, name)) => Right(Vector(owner, name))
+                case None => Left(s"its $key $at is not $form")
               }
           }
       )
