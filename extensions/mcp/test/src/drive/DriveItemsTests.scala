@@ -3,7 +3,7 @@ package grit.mcp.drive
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Place, Service}
 import grit.core.tool.Fitted
-import grit.core.visibility.{Integrity, Itemised, Part, Provenance, Readers}
+import grit.core.visibility.{Integrity, Part, Provenance, Readers}
 
 import utest.*
 
