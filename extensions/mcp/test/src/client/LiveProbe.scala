@@ -115,8 +115,12 @@ object LiveProbe {
     message.flatMap(Rpc.result(id, _))
   }
 
+  /** `request` carrying `bearer`, for a probe in another of grit.mcp's test packages. */
+  private[mcp] def bearing(request: HttpRequest.Builder, bearer: Bearer): HttpRequest.Builder =
+    request.header("Authorization", s"Bearer ${bearer.value}")
+
   /** Request `id` making `call`, sent to `server` as its headers say, with `bearer`. */
-  private[mcp] def sent(
+  private def sent(
       http: HttpClient,
       server: McpServer,
       bearer: Bearer,

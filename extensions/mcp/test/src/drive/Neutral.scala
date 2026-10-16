@@ -12,8 +12,9 @@ import scala.util.Try
   *   - an address: `self@project.iam.example` for `self`, `writer-bot-N@project.iam.example`
   *     for `writers`, `person-N@example.com` in `domain` exactly, `outside-N@gmail.example` at
   *     gmail.com, `service-N@project.iam.example` for another service account, and
-  *     `outside-N@elsewhere.example` for anyone else; a `domain` is `example.com` when it is
-  *     `domain`, else `elsewhere.example`;
+  *     `outside-N@elsewhere.example` for anyone else; a `domain` holding a dot is `example.com`
+  *     when it is `domain`, else `elsewhere.example` (an error's `domain` of reasons, such as
+  *     `global`, is kept as a word);
   *   - a text block that holds JSON: that JSON with its stand-ins, written compact;
   *   - a string at a key naming a name, title, description, snippet, content or text, or of no
   *     other shape kept: `<key>-N`.
@@ -38,6 +39,9 @@ final class Neutral(
   private val Address = """[^@\s]+@([^@\s]+)""".r
   private val Named: Vector[String] =
     Vector("name", "title", "description", "snippet", "content", "text")
+
+  /** `body`, an exported file's text, with each run of letters and digits as `text`. */
+  def body(body: String): String = body.replaceAll("[\\p{L}\\p{N}]+", "text")
 
   /** `result` with its stand-ins. */
   def result(result: ujson.Obj): ujson.Obj = ujson.Obj.from(obj(result).value)
@@ -90,7 +94,8 @@ final class Neutral(
 
   private def string(key: String, s: String, permission: Boolean): String =
     if (key == "id" || key.endsWith("Id")) id(s, permission)
-    else if (key == "domain") if (s == domain) "example.com" else "elsewhere.example"
+    else if (key == "domain" && s.contains('.'))
+      if (s == domain) "example.com" else "elsewhere.example"
     else
       s match {
         case Address(at) => address(s, at)

@@ -54,9 +54,11 @@ there on 2026-09-30 and again on 2026-10-16, so the fake is held to a real serve
 run, and between runs to the spec and go-sdk's source. `GitHubItemsContract` is what
 `GitHubItems` needs of GitHub's answers: the recordings below keep it in the unit tier
 (`GitHubItemsRecordedTests`), and `LiveProbe` runs it too; it passed whole there on 2026-10-16.
-`DriveCapture`, a main beside it that needs a service account's key, records Drive's MCP server's
+`DriveCapture`, a main beside it that needs a service account's key, records Drive's v3 REST
 answers under `test/resources/drive/`, each written with `Neutral`'s stand-ins for its ids,
-addresses, titles and text, never as it came (its doc says how to run it).
+addresses, names and text, never as it came (its doc says how to run it). Drive's MCP server
+answers a service account's `tools/list` but refuses each of its `tools/call`s ("The caller does
+not have permission", 2026-10-16), so Drive is read over REST.
 
 `test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
 server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons

@@ -165,5 +165,45 @@ object NeutralTests extends TestSuite {
         )
       )
     }
+    test(
+      "an exported text keeps its lines and marks, each word replaced, an address and a URL too"
+    ) {
+      val exported =
+        "# Layoffs 2027\n\n| who | when |\n|---|---|\nsee jane@acme.test, https://x.io/a?b=1\n"
+      assert(
+        neutral.body(exported) ==
+          "# text text\n\n| text | text |\n|---|---|\ntext text@text.text, text://text.text/text?text=text\n"
+      )
+    }
+    test("an error's reason and its domain of reasons stay, and its message is replaced") {
+      val error = ujson.Obj(
+        "error" -> ujson.Obj(
+          "code" -> 403,
+          "message" -> s"Export only supports Docs Editors files: $Doc",
+          "errors" -> ujson.Arr(
+            ujson.Obj(
+              "domain" -> "global",
+              "reason" -> "fileNotExportable",
+              "message" -> "Export only"
+            )
+          )
+        )
+      )
+      assert(
+        neutral.result(error) == ujson.Obj(
+          "error" -> ujson.Obj(
+            "code" -> 403,
+            "message" -> "message-1",
+            "errors" -> ujson.Arr(
+              ujson.Obj(
+                "domain" -> "global",
+                "reason" -> "fileNotExportable",
+                "message" -> "message-2"
+              )
+            )
+          )
+        )
+      )
+    }
   }
 }
