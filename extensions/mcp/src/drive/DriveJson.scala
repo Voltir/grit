@@ -13,6 +13,29 @@ object DriveJson {
   /** The fields a search is asked for with. */
   val SearchFields: String = s"nextPageToken,incompleteSearch,files($FileFields)"
 
+  /** The fields shared drives are listed with. */
+  val DriveFields: String = "nextPageToken,drives(id,name)"
+
+  /** A `drives.list` answer: each drive's name, by its id; a drive on a later page is not read.
+    */
+  def drives(answer: ujson.Value): Either[String, Map[FileId, String]] =
+    for {
+      o <- obj(answer, "a list of drives")
+      listed <- o.get("drives") match {
+        case None => Right(Vector.empty)
+        case Some(ujson.Arr(ds)) => Right(ds.toVector)
+        case Some(_) => Left("a list of drives' drives are not a list")
+      }
+      named <- listed.foldLeft[Either[String, Map[FileId, String]]](Right(Map.empty)) { (read, d) =>
+        for {
+          kept <- read
+          drive <- obj(d, "a drive")
+          id <- str(drive, "id", "a drive").flatMap(FileId.of)
+          name <- str(drive, "name", "a drive")
+        } yield kept + (id -> name)
+      }
+    } yield named
+
   /** The fields a file's grants are asked for with. */
   val GrantFields: String = "nextPageToken,permissions(type,role,emailAddress,domain)"
 

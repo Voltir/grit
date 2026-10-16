@@ -76,6 +76,19 @@ object DriveRestTests extends TestSuite {
       }
     }
 
+    test(
+      "shared drives are listed a page of 100 at a time, asking supportsAllDrives only of files"
+    ) {
+      withFake { (fake, rest) =>
+        val _ = rest.drives()
+        val _ = rest.file(Recorded.id("file-1"))
+        fake.requests.map((path, q) => (path, q - "fields")) ==> Vector(
+          "drives" -> Map("pageSize" -> "100"),
+          "files/file-1" -> Map("supportsAllDrives" -> "true")
+        )
+      }
+    }
+
     test("a refused token is no token, and what the model reads of it names no setting") {
       withFake { (fake, rest) =>
         fake.answering("files/file-1", 401, error(401, "authError"))

@@ -83,8 +83,10 @@ object DriveReading {
 /** A Drive tool's exchange, as [[DriveItems]] reads it. */
 enum DriveCalled {
 
-  /** A search and its hits. */
-  case Searched(hits: Hits)
+  /** A search and its hits, beside the name of each shared drive grit is a member of, by its id
+    * (empty when they could not be listed).
+    */
+  case Searched(hits: Hits, drives: Map[FileId, String])
 
   /** A file read: what Drive says of it, its grants (`None` when they were not read whole), and
     * its text.

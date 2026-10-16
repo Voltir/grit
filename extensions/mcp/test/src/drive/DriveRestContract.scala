@@ -45,6 +45,15 @@ trait DriveRestContract extends TestSuite {
         (true, true, true)
     }
 
+    test("the shared drives the account is a member of are named, every hit's drive among them") {
+      val named = rest.drives()
+      val hits = rest.search(words, None).map(_.files.flatMap(_.drive).toSet)
+      (
+        named.map(_.values.forall(_.nonEmpty)),
+        hits.flatMap(h => named.map(n => h.subsetOf(n.keySet)))
+      ) ==> (Right(true), Right(true))
+    }
+
     test("a shared drive's top file lies within its drive, and a folder's file within its folder") {
       (rest.file(topFile._1).map(_.within), rest.file(folderFile._1).map(_.within)) ==>
         (Right(Some(topFile._2)), Right(Some(folderFile._2)))

@@ -127,6 +127,22 @@ object DriveJsonTests extends TestSuite {
         Right(Vector(email("person-1@example.com")))
     }
 
+    test(
+      "a listing of shared drives names each by its id; a drive with no name, or none listed, is refused"
+    ) {
+      (
+        DriveJson.drives(Recorded.json("drives-list")),
+        DriveJson.drives(ujson.Obj("drives" -> ujson.Arr(ujson.Obj("id" -> "drive-a")))),
+        DriveJson.drives(ujson.Obj("drives" -> "drive-a")),
+        DriveJson.drives(ujson.Obj())
+      ) ==> (
+        Right(Map(Recorded.id("drive-a") -> "name-1", Recorded.id("drive-b") -> "name-2")),
+        Left("a drive names no name"),
+        Left("a list of drives' drives are not a list"),
+        Right(Map.empty)
+      )
+    }
+
     test("an error answer's reasons are read in order") {
       (
         DriveJson.reasons(Recorded.json("error-export-folder")),

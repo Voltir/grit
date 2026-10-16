@@ -56,32 +56,35 @@ object DriveItemsTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a search hit is a names part, at member, at the place it lies within; a folder's at the service's own place"
+      "a search hit is a names part, at member, at the place it lies within, a folder's at the service's own place; each names its shared drive as listed, by its id when it is not"
     ) {
       val folder = right(DriveJson.file(Recorded.json("metadata-folder")))
       parts(
-        DriveCalled.Searched(Hits(Vector(file("file-4"), doc, folder), incomplete = false))
+        DriveCalled.Searched(
+          Hits(Vector(file("file-4"), doc, folder), incomplete = false),
+          Map(Recorded.id("drive-a") -> "Engineering", Recorded.id("drive-c") -> "Finance")
+        )
       ) ==> Vector(
         Part(
           Provenance(place("drive-a"), Integrity.Member),
           Readers.AtPlace,
-          "- name-13 (a PDF), id file-4, in drive-a"
+          "- name-13 (a PDF), id file-4, in the shared drive Engineering (drive-a)"
         ),
         Part(
           Provenance(place("folder-3"), Integrity.Member),
           Readers.AtPlace,
-          "- name-10 (a Doc), id file-1, in folder-3"
+          "- name-10 (a Doc), id file-1, in folder-3, in the shared drive Engineering"
         ),
         Part(
           Provenance(Drive.place, Integrity.Member),
           Readers.AtPlace,
-          "- name-3 (a folder), id folder-2, in folder-1"
+          "- name-3 (a folder), id folder-2, in folder-1, in the shared drive drive-b"
         )
       )
     }
 
     test(
-      "a name that is not a plain title is not shown, the hit saying so; the head names no file"
+      "a name that is not a plain title is not shown, the hit saying so, and a drive's is named by its id; the head names no file"
     ) {
       val named = (name: String) => doc.copy(name = name)
       val items = right(
@@ -97,7 +100,8 @@ object DriveItemsTests extends TestSuite {
                 named("Q3 plan_v2")
               ),
               incomplete = true
-            )
+            ),
+            Map(Recorded.id("drive-a") -> "see https://example.com")
           )
         )
       )
@@ -109,9 +113,9 @@ object DriveItemsTests extends TestSuite {
         false,
         true,
         Vector.fill(4)(
-          "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1, in folder-3"
+          "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1, in folder-3, in the shared drive drive-a"
         ) :+
-          "- Q3 plan_v2 (a Doc), id file-1, in folder-3"
+          "- Q3 plan_v2 (a Doc), id file-1, in folder-3, in the shared drive drive-a"
       )
     }
 

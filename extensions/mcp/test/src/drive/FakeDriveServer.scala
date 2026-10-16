@@ -14,9 +14,10 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * with its `metadata-*` recording or, for any other id the searches name, its entry there; a
   * file's grants with its drive's `permissions-*`; a Doc's markdown export with `export-doc.md`,
   * a Sheet's CSV export with `export-sheet.csv`, any other export with
-  * `error-export-folder` (403); an id the recordings do not name with `error-no-file` (404).
-  * Each request must be a GET carrying [[FakeDriveServer.Token]], `supportsAllDrives=true`, and
-  * `fields` unless it reads content; one that does not is answered 400. Every request's path
+  * `error-export-folder` (403); an id the recordings do not name with `error-no-file` (404); a
+  * listing of shared drives with `drives-list`. Each request must be a GET carrying
+  * [[FakeDriveServer.Token]], `supportsAllDrives=true` when it asks of files, and `fields`
+  * unless it reads content; one that does not is answered 400. Every request's path
   * and query are kept, in [[requests]].
   */
 final class FakeDriveServer private () {
@@ -81,7 +82,8 @@ final class FakeDriveServer private () {
         !Option(exchange.getRequestHeaders.getFirst("Authorization"))
           .contains(s"Bearer ${FakeDriveServer.Token}")
       ) Some("no bearer")
-      else if (!query.get("supportsAllDrives").contains("true")) Some("no supportsAllDrives")
+      else if (path.startsWith("files") && !query.get("supportsAllDrives").contains("true"))
+        Some("no supportsAllDrives")
       else if (!content && !query.contains("fields")) Some("no fields")
       else None
     val (status, body) = refused match {
@@ -99,6 +101,7 @@ final class FakeDriveServer private () {
   private def recorded(path: String, query: Map[String, String]): (Int, String) =
     path.split('/').toVector match {
       case Vector("files") => (200, Recorded.text("search-fulltext.json"))
+      case Vector("drives") => (200, Recorded.text("drives-list.json"))
       case Vector("files", id) =>
         FakeDriveServer.Metadata
           .get(id)

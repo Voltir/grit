@@ -23,7 +23,9 @@ object DriveItems {
 
   /** What `reading` makes of `called`:
     *   - a search: its head, then each hit as a names part, one line (its name, or a note that
-    *     it is not shown when [[shown]] refuses it, its type, its id and where it lies), at
+    *     it is not shown when [[shown]] refuses it, its type, its id, where it lies, and its
+    *     shared drive by the name the search lists, by its id when none is listed or [[shown]]
+    *     refuses it), at
     *     member, at the place it lies within ([[DriveReading.place]]), a folder's at the
     *     service's own place; a hit lying nowhere is left out;
     *   - a read: a head that names nothing of the file, then one part, its name and its text
@@ -40,7 +42,7 @@ object DriveItems {
     */
   def items(reading: DriveReading, called: DriveCalled): Either[String, Itemised.Parts] =
     called match {
-      case DriveCalled.Searched(hits) =>
+      case DriveCalled.Searched(hits, drives) =>
         val head =
           "Drive files whose text holds those words, one a line, each with its id; read one " +
             "with drive_read." +
@@ -52,7 +54,7 @@ object DriveItems {
           for {
             p <- place
             r <- readers(reading, f)
-          } yield Part(Provenance(p, Integrity.Member), r, line(f))
+          } yield Part(Provenance(p, Integrity.Member), r, line(f, drives))
         }
         Right(Itemised.Parts(head, parts))
       case DriveCalled.Read(file, grants, text) =>
@@ -103,10 +105,18 @@ object DriveItems {
     if (shown(file.name)) s"${file.name} (${file.kind})"
     else s"A file whose name is not shown, since it is not a plain title (${file.kind})"
 
-  /** A hit's line. */
-  private def line(file: DriveFile): String =
-    s"- ${title(file)}, id ${FileId.value(file.id)}" +
-      file.within.fold("")(w => s", in ${FileId.value(w)}")
+  /** A hit's line, its shared drive named as `drives` names it when that is shown as it is. */
+  private def line(file: DriveFile, drives: Map[FileId, String]): String = {
+    def drive(d: FileId): String =
+      s"the shared drive ${drives.get(d).filter(shown).getOrElse(FileId.value(d))}"
+    val where = (file.within, file.drive) match {
+      case (Some(w), Some(d)) if w == d => s", in ${drive(d)} (${FileId.value(d)})"
+      case (Some(w), Some(d)) => s", in ${FileId.value(w)}, in ${drive(d)}"
+      case (Some(w), None) => s", in ${FileId.value(w)}"
+      case (None, _) => ""
+    }
+    s"- ${title(file)}, id ${FileId.value(file.id)}$where"
+  }
 
   /** `title` and then `text`'s leading whole lines, as many as fit after `head` within
     * [[Clipped]]'s limits, with a line saying how many were kept when some were not.

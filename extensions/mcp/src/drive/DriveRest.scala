@@ -82,6 +82,15 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     json(s"files/${FileId.value(id)}", Vector("fields" -> DriveJson.FileFields))
       .flatMap(a => DriveJson.file(a).left.map(DriveError.Malformed(_)))
 
+  /** The name of each shared drive the account is a member of, by its id, of the first
+    * [[DriveRest.DrivesMost]] Drive lists.
+    */
+  def drives(): Either[DriveError, Map[FileId, String]] =
+    json(
+      "drives",
+      Vector("pageSize" -> DriveRest.DrivesMost.toString, "fields" -> DriveJson.DriveFields)
+    ).flatMap(a => DriveJson.drives(a).left.map(DriveError.Malformed(_)))
+
   /** `id`'s grants, `None` past one page of [[DriveRest.GrantsMost]]. */
   def grants(id: FileId): Either[DriveError, Option[Vector[Grant]]] =
     json(
@@ -126,7 +135,9 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
         .toRight(DriveError.Malformed("an answer that is not JSON"))
     )
 
-  /** The body of a GET of `path` with `query` and `supportsAllDrives`, as [[DriveError]] says. */
+  /** The body of a GET of `path` with `query`, and `supportsAllDrives` for a file's, as
+    * [[DriveError]] says.
+    */
   private def get(path: String, query: Vector[(String, String)]): Either[DriveError, String] =
     authorizer
       .bearer(clock)
@@ -136,7 +147,9 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
         case other => DriveError.NoToken(other.message)
       }
       .flatMap { bearer =>
-        val encoded = (query :+ ("supportsAllDrives" -> "true"))
+        // Only files' requests take supportsAllDrives; drives.list documents no such parameter.
+        val all = if (path.startsWith("files")) query :+ ("supportsAllDrives" -> "true") else query
+        val encoded = all
           .map((k, v) => s"$k=${URLEncoder.encode(v, UTF_8).replace("+", "%20")}")
           .mkString("&")
         val request = HttpRequest
@@ -181,6 +194,9 @@ object DriveRest {
 
   /** The most hits a search reads: 20. */
   val PageSize: Int = 20
+
+  /** The most shared drives named: 100, one page. */
+  val DrivesMost: Int = 100
 
   /** The most grants read of a file: 100, one page; a file shared more widely is read as not. */
   val GrantsMost: Int = 100

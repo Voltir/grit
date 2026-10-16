@@ -38,7 +38,12 @@ final class DriveTools(
 
   def run(route: Route, request: ToolRequest): Outcome = {
     val search: Tool.Offered^{clock} = DriveTools.Search.over(s =>
-      DriveTools.answer(reading, rest.search(s.text, s.folder).map(DriveCalled.Searched(_)))
+      DriveTools.answer(
+        reading,
+        rest
+          .search(s.text, s.folder)
+          .map(DriveCalled.Searched(_, rest.drives().getOrElse(Map.empty)))
+      )
     )
     val read: Tool.Offered^{clock} = DriveTools.Read.over { id =>
       DriveTools.answer(
@@ -84,7 +89,8 @@ object DriveTools {
     ToolSpec(
       ToolName("drive_search"),
       "Search the Drive files shared here for those whose text holds these words. Each hit " +
-        "gives the file's name, type and id, and the folder it is in. Files in folders no one " +
+        "gives the file's name, type and id, the folder it is in, and its shared drive. Files in " +
+        "folders no one " +
         "has labelled yet are not shown.",
       Args
         .of(
