@@ -30,7 +30,7 @@ private[turn] final class Rounding[C^](
     tooling: TurnTooling[C]^
 ) extends TurnRound.Env {
 
-  def gate(at: TurnRound.Rounds): Either[TurnFailure, Gated] =
+  def gate(at: TurnRound.Progress): Either[TurnFailure, Gated] =
     tools(at).flatMap { tools =>
       val l = at.looping
       // The name each item hidden so far was given, kept for as long as it stays hidden.
@@ -39,7 +39,7 @@ private[turn] final class Rounding[C^](
       Rounding.gateOf(env, l.turn, l.seen, l.offer.root, tools.set, prior, named)(using l.routed)
     }
 
-  def call(at: TurnRound.Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant] =
+  def call(at: TurnRound.Progress, use: ToolUse): Either[TurnFailure, Message.Assistant] =
     for {
       offer <- offered(at)
       pins <- at.looping.routed.picked(env)
@@ -55,7 +55,7 @@ private[turn] final class Rounding[C^](
       )(using env, pins, offer)
     } yield reply
 
-  def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
+  def record(at: TurnRound.Progress, reply: Message.Assistant, calls: Vector[Pending])(using
       Tx^
   ): Either[TurnFailure, TurnRound.Kept] =
     for {
@@ -86,7 +86,7 @@ private[turn] final class Rounding[C^](
     } yield TurnRound.Kept(kept, kinds)
 
   def hosted(
-      at: TurnRound.Rounds,
+      at: TurnRound.Progress,
       slot: TurnTools.Slot,
       pending: Pending
   ): Either[TurnFailure, Bound.Hosted] =
@@ -132,7 +132,7 @@ private[turn] final class Rounding[C^](
 
   def hosting: TurnHosting = env.hosting
 
-  private def tools(at: TurnRound.Rounds): Either[TurnFailure, Toolbox[C]] =
+  private def tools(at: TurnRound.Progress): Either[TurnFailure, Toolbox[C]] =
     offered(at).flatMap(Rounding.tools(tooling, _, at.looping.asked))
 
   // What round `at`'s offer names (TurnOffer.load says why a member may read it each time it
@@ -140,7 +140,7 @@ private[turn] final class Rounding[C^](
   // turn's own offer, kept by content id, and a clearance risen since must fail what the
   // turn reads of the store, not the offer it was already made.
   // Tool sets and prompt fragments are configuration, carrying no label, as profiles are.
-  private def offered(at: TurnRound.Rounds): Either[TurnFailure, TurnOffer] =
+  private def offered(at: TurnRound.Progress): Either[TurnFailure, TurnOffer] =
     env.db
       .read(Subject.Public)(
         TurnOffer.load(env.hosting.toolSets, env.hosting.prompts, at.looping.offer)
@@ -149,7 +149,7 @@ private[turn] final class Rounding[C^](
       .map(TurnFailure.ofStore)
 
   // What round `at.round`'s calls bind against again inside a step's body, once per body.
-  private def rebinding(at: TurnRound.Rounds): Either[TurnFailure, Binding^{this}] =
+  private def rebinding(at: TurnRound.Progress): Either[TurnFailure, Binding^{this}] =
     for {
       tools <- tools(at)
       pins <- at.looping.routed.picked(env)
@@ -157,7 +157,11 @@ private[turn] final class Rounding[C^](
 
   // What round `at.round`'s calls bind against, offered `tools` under `pins`, a tool that
   // reads the store reading as the turn's route bound it.
-  private def binding(at: TurnRound.Rounds, tools: Toolbox[C], pins: Turn.Picked): Binding^{this} =
+  private def binding(
+      at: TurnRound.Progress,
+      tools: Toolbox[C],
+      pins: Turn.Picked
+  ): Binding^{this} =
     new Binding(at, tools, pins, at.looping.routed.reads(env.db).as(Subject.Turn(at.looping.turn)))
 
   // A round's calls read against what round `at.round` offers: `tools`, after read_hidden and
@@ -167,7 +171,7 @@ private[turn] final class Rounding[C^](
   // Authority, so its calls bind to any tool whose requirement names no compartment, as every
   // turn's did before calls were stamped.
   private final class Binding(
-      at: TurnRound.Rounds,
+      at: TurnRound.Progress,
       tools: Toolbox[C],
       pins: Turn.Picked,
       reads: Reads^
@@ -225,7 +229,7 @@ private[turn] object Rounding {
     */
   def sent[C^](
       tooling: TurnTooling[C]^,
-      at: TurnRound.Rounds,
+      at: TurnRound.Progress,
       offer: TurnOffer,
       pins: Turn.Picked
   ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
@@ -251,7 +255,7 @@ private[turn] object Rounding {
     * that pair is.
     */
   private def shapeAs[C^](
-      at: TurnRound.Rounds,
+      at: TurnRound.Progress,
       tools: Toolbox[C],
       use: ToolUse,
       pins: Turn.Picked

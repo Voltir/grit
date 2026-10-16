@@ -138,7 +138,7 @@ object Sync {
                       val paths = text.map(_ => Sync.paths(l))
                       checked(path, paths, "directory listing") match {
                         case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                        case Right(Left(why)) => (Outcome.Withheld(why), read, labels)
+                        case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
                         case Right(Right(vetted)) =>
                           (Outcome.Listed(l), heard(read, vetted), labels.updated(path, at))
                       }
@@ -155,7 +155,7 @@ object Sync {
                       val head = Walk.head(whole)
                       checked(path, text.map(_ => head), "file") match {
                         case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
-                        case Right(Left(why)) => (Outcome.Withheld(why), read, labels)
+                        case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
                         case Right(Right(vetted)) =>
                           (
                             Outcome.Fetched(Fetched.Text(head, sha)),

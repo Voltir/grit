@@ -222,7 +222,7 @@ final class InMemorySchedules(
           when: When,
           grace: Grace,
           params: P
-      ): Either[DeskRefusal, Asked[P]] = {
+      ): Either[DeskRefusal, Requested[P]] = {
         val id = ScheduleId.asked(call)
         for {
           _ <- own(booking)
@@ -253,7 +253,7 @@ final class InMemorySchedules(
                         asked = Some(room)
                       )
                     )
-                    Right(Asked(id, at, params, believed))
+                    Right(Requested(id, at, params, believed))
                   }
                 case _ => Left(DeskRefusal.Unaddressed)
               }
@@ -318,12 +318,12 @@ final class InMemorySchedules(
       id: ScheduleId,
       r: Row,
       job: Job[P]
-  ): Either[DeskRefusal, Asked[P]] =
+  ): Either[DeskRefusal, Requested[P]] =
     r.rule match {
       case SlotRule.Once(at, _) =>
         job
           .read(r.params)
-          .map(Asked(id, at, _, r.integrity))
+          .map(Requested(id, at, _, r.integrity))
           .left
           .map(why => DeskRefusal.Unavailable(StoreError.Invalid(why)))
       case other => Left(DeskRefusal.Unavailable(StoreError.Invalid(s"asked, but $other")))

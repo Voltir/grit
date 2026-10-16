@@ -13,10 +13,10 @@ import utest.*
 /** [[About]]: the docs it ships, and which of them a call is answered with. */
 object AboutTests extends TestSuite {
 
-  private def loaded(persona: Persona): Tool[Option[About.Subject]] =
+  private def loaded(persona: Persona): Tool[Option[About.Section]] =
     About.load(persona).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  private lazy val about: Tool[Option[About.Subject]] = loaded(Persona.Grit)
+  private lazy val about: Tool[Option[About.Section]] = loaded(Persona.Grit)
 
   private val pip: Persona =
     Persona.of("Pip").fold(e => throw new java.lang.AssertionError(e), identity)

@@ -13,13 +13,13 @@ import grit.turn.{TurnRecord, Withheld}
   * once, in the order first withheld; and the items its last round still hid, each a closing
   * record counted in `closings` and every other in `hidden`.
   */
-final case class Gates(withheld: Vector[Withheld], hidden: Int, closings: Int) {
+final case class TurnGates(withheld: Vector[Withheld], hidden: Int, closings: Int) {
 
-  /** The withheld tools that write out ([[Gates.writes]]). */
-  def writesOut: Vector[Withheld] = withheld.filter(Gates.writes)
+  /** The withheld tools that write out ([[TurnGates.writes]]). */
+  def writesOut: Vector[Withheld] = withheld.filter(TurnGates.writes)
 }
 
-object Gates {
+object TurnGates {
 
   /** Whether `tool` writes out: it requires at least [[Integrity.Member]], the least level that
     * may drive a write out of grit.
@@ -30,19 +30,19 @@ object Gates {
     * withheld or hidden for a turn that recorded no gate. `Left` naming the step whose output
     * does not read.
     */
-  def of(steps: Vector[StepRecord]): Either[String, Gates] =
+  def of(steps: Vector[StepRecord]): Either[String, TurnGates] =
     TurnRecord.gates(steps).map { rounds =>
       val withheld = rounds.flatMap(_.withheld).distinctBy(_.tool)
       val (closings, other) =
         rounds.lastOption
           .fold(Vector.empty)(_.hidden)
           .partition((item, _) => TurnRecord.closing(item))
-      Gates(withheld, other.size, closings.size)
+      TurnGates(withheld, other.size, closings.size)
     }
 }
 
 /** Whether a turn's root asks for a write out, as the measure judged it. */
-enum Root {
+enum RootAsk {
 
   /** No write-out tool was withheld, so the root was not asked about. */
   case Unasked
@@ -55,14 +55,14 @@ enum Root {
 }
 
 /** One turn in the measure's window: its gates, and what its root was judged. */
-final case class TurnLoss(turn: TurnRef, gates: Gates, root: Root) {
+final case class TurnLoss(turn: TurnRef, gates: TurnGates, root: RootAsk) {
 
   /** A write-out tool was withheld and its root asks for a write out, at [[WriteOut.Threshold]]
     * or over.
     */
   def lost: Boolean = gates.writesOut.nonEmpty && (root match {
-    case Root.Asked(yes) => yes >= WriteOut.Threshold
-    case Root.Unasked | Root.Unjudged(_) => false
+    case RootAsk.Asked(yes) => yes >= WriteOut.Threshold
+    case RootAsk.Unasked | RootAsk.Unjudged(_) => false
   })
 }
 
@@ -83,8 +83,8 @@ final case class Conversation(id: ConversationId, turns: Vector[TurnLoss]) {
     */
   def unjudged: Boolean = !lost && turns.exists(t =>
     t.root match {
-      case Root.Unjudged(_) => true
-      case Root.Unasked | Root.Asked(_) => false
+      case RootAsk.Unjudged(_) => true
+      case RootAsk.Unasked | RootAsk.Asked(_) => false
     }
   )
 }
@@ -110,26 +110,26 @@ object Measure {
   /** The turns of `turns` whose root is to be asked about ([[WriteOut.question]]): those whose
     * gates withheld a write-out tool, in order.
     */
-  def toAsk(turns: Vector[(TurnRef, Gates)]): Vector[TurnRef] =
+  def toAsk(turns: Vector[(TurnRef, TurnGates)]): Vector[TurnRef] =
     turns.collect { case (turn, gates) if gates.writesOut.nonEmpty => turn }
 
   /** `turns`, each with its gates, by conversation in the order first seen, each turn's root
-    * judged by `asked`: [[Root.Unasked]] for a turn [[toAsk]] leaves out, [[Root.Asked]] at
-    * the probability `asked` holds for it, and [[Root.Unjudged]] with why `asked` holds, or
+    * judged by `asked`: [[RootAsk.Unasked]] for a turn [[toAsk]] leaves out, [[RootAsk.Asked]] at
+    * the probability `asked` holds for it, and [[RootAsk.Unjudged]] with why `asked` holds, or
     * with "not asked" when it holds nothing.
     */
   def of(
-      turns: Vector[(TurnRef, Gates)],
+      turns: Vector[(TurnRef, TurnGates)],
       asked: Map[TurnRef, Either[String, Probability]]
   ): Measure = {
     val judged = turns.map { (turn, gates) =>
       val root =
-        if (gates.writesOut.isEmpty) Root.Unasked
+        if (gates.writesOut.isEmpty) RootAsk.Unasked
         else
           asked.get(turn) match {
-            case Some(Right(yes)) => Root.Asked(yes)
-            case Some(Left(why)) => Root.Unjudged(why)
-            case None => Root.Unjudged("not asked")
+            case Some(Right(yes)) => RootAsk.Asked(yes)
+            case Some(Left(why)) => RootAsk.Unjudged(why)
+            case None => RootAsk.Unjudged("not asked")
           }
       TurnLoss(turn, gates, root)
     }
@@ -157,7 +157,7 @@ object Measure {
     def tools(ws: Vector[Withheld]): String = ws.map(w => ToolName.value(w.tool)).mkString(" ")
     val conversations = m.conversations.filter(_.withheld).map { c =>
       val withheld = c.turns.flatMap(_.gates.withheld).distinctBy(_.tool)
-      val writesOut = withheld.filter(Gates.writes)
+      val writesOut = withheld.filter(TurnGates.writes)
       val lostTurns = c.turns.filter(_.lost).map(t => TurnSeq.value(t.turn.turnSeq))
       s"  ${ConversationId.value(c.id)}: turns ${c.turns.size}, withheld ${tools(withheld)}" +
         (if (writesOut.isEmpty) "" else s"; writes out ${tools(writesOut)}") +
@@ -171,7 +171,7 @@ object Measure {
       s"lost: ${lost.hits} of ${lost.n} conversations ($share; $interval)",
       s"conversations: ${m.conversations.size}, turns ${all.size}; a tool withheld " +
         s"${m.withheld}, a write-out tool withheld ${m.writesOut}, unjudged ${m.unjudged}"
-    ) ++ all.collect { case t @ TurnLoss(_, _, Root.Unjudged(why)) =>
+    ) ++ all.collect { case t @ TurnLoss(_, _, RootAsk.Unjudged(why)) =>
       s"  unjudged ${id(t)}: $why"
     } ++
       Vector(s"conversations with a tool withheld: ${conversations.size}") ++ conversations ++

@@ -20,7 +20,6 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.job.{
-  Asked,
   Booking,
   Declared,
   DeskRefusal,
@@ -31,6 +30,7 @@ import grit.core.job.{
   Pending,
   Report,
   ReportJson,
+  Requested,
   Schedule,
   ScheduleDesk,
   ScheduleStore,
@@ -312,7 +312,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
           when: When,
           grace: Grace,
           params: P
-      ): Either[DeskRefusal, Asked[P]] =
+      ): Either[DeskRefusal, Requested[P]] =
         own(booking).flatMap { _ =>
           val id = ScheduleId.asked(call)
           val now = clock.now()
@@ -332,7 +332,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
                           Right(Left(DeskRefusal.TooMany(ScheduleDesk.PendingCap)))
                         else
                           insertAsked(id, call, booking.job, params, by, to, at, grace, now)
-                            .map(believed => Right(Asked(id, at, params, believed)))
+                            .map(believed => Right(Requested(id, at, params, believed)))
                       }
                   case _ => Right(Left(DeskRefusal.Unaddressed))
                 }
@@ -658,12 +658,12 @@ private[dbos] object SqlSchedules {
       id: ScheduleId,
       s: Schedule,
       job: Job[P]
-  ): Either[DeskRefusal, Asked[P]] =
+  ): Either[DeskRefusal, Requested[P]] =
     s.rule match {
       case SlotRule.Once(at, _) =>
         job
           .read(s.params)
-          .map(Asked(id, at, _, s.integrity))
+          .map(Requested(id, at, _, s.integrity))
           .left
           .map(why => DeskRefusal.Unavailable(StoreError.Invalid(why)))
       case other => Left(DeskRefusal.Unavailable(StoreError.Invalid(s"asked, but $other")))

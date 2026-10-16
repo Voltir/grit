@@ -82,7 +82,7 @@ private[turn] object TurnSteps {
       * [[TurnRound.Env.record]] does.
       */
     def sent(
-        at: TurnRound.Rounds,
+        at: TurnRound.Progress,
         offer: TurnOffer,
         pins: Turn.Picked
     ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)]
@@ -145,7 +145,7 @@ private[turn] object TurnSteps {
     def rounds: TurnRound.Env^{this} = rounding
 
     def sent(
-        at: TurnRound.Rounds,
+        at: TurnRound.Progress,
         offer: TurnOffer,
         pins: Turn.Picked
     ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
@@ -232,7 +232,7 @@ private[turn] object TurnSteps {
 
   /** What `at`'s steps from `assemble` to `append` came to: its reply entry, or why it has
     * none; the verdict's record when it failed without failing the turn; and the turn's level
-    * at its end, `None` when it ended before its loop had a reply ([[TurnRound.Rounds.level]]).
+    * at its end, `None` when it ended before its loop had a reply ([[TurnRound.Progress.level]]).
     */
   final case class Ended(
       at: Offered,
@@ -255,7 +255,7 @@ private[turn] object TurnSteps {
   }
 
   /** `at`'s draft, settled as `settling` says. */
-  final case class Settled(at: Ended, settling: Settling) extends OfTurn {
+  final case class DraftSettled(at: Ended, settling: Settling) extends OfTurn {
     def turn: TurnRef = at.turn
   }
 
@@ -545,8 +545,8 @@ private[turn] object TurnSteps {
     )
 
   /** `record-speech` for a heard-rooted turn's draft ([[recordSpeech]]). */
-  val speechSettled: Step[Env, Settled, Either[TurnFailure, Outcome]] =
-    Step.transact[Env, Settled, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
+  val speechSettled: Step[Env, DraftSettled, Either[TurnFailure, Outcome]] =
+    Step.transact[Env, DraftSettled, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
       in => (tx: Tx^) ?=> recordSpeech(r.env, in.turn, in.settling, in.at.level, r.env.clock.now())
     )
 

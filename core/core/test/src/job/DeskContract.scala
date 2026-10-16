@@ -58,10 +58,10 @@ abstract class DeskContract extends TestSuite {
       at: CallSlot,
       when: When,
       n: Int = 1
-  ): Either[DeskRefusal, Asked[Count]] =
+  ): Either[DeskRefusal, Requested[Count]] =
     desk.ask(at, booking(remind), when, hour, Count(n))
 
-  private def asked(e: Either[DeskRefusal, Asked[Count]]): ScheduleId =
+  private def asked(e: Either[DeskRefusal, Requested[Count]]): ScheduleId =
     e.fold(r => sys.error(s"$r"), _.id)
 
   val tests = Tests {
@@ -72,7 +72,7 @@ abstract class DeskContract extends TestSuite {
       import f.*
       val id = ScheduleId.asked(call("thread"))
       ask(desk, call("thread"), When.In(30.minutes), 3) ==> Right(
-        Asked(id, at("09:30"), Count(3), Integrity.Member)
+        Requested(id, at("09:30"), Count(3), Integrity.Member)
       )
       u.read(id) ==> Some(
         Schedule(
@@ -97,7 +97,7 @@ abstract class DeskContract extends TestSuite {
       u.asking(u.turn("low"), Ann, Some("C1/4.0"), Integrity.Outside)
       val id = ScheduleId.asked(call("low"))
       ask(desk, call("low"), When.In(30.minutes)) ==> Right(
-        Asked(id, at("09:30"), Count(1), Integrity.Outside)
+        Requested(id, at("09:30"), Count(1), Integrity.Outside)
       )
       u.read(id).map(_.integrity) ==> Some(Integrity.Outside)
     }
@@ -208,8 +208,8 @@ abstract class DeskContract extends TestSuite {
         Pending(
           at("09:05"),
           Vector(
-            Asked(soon, at("10:00"), Count(2), Integrity.Member),
-            Asked(late, at("12:00"), Count(1), Integrity.Member)
+            Requested(soon, at("10:00"), Count(2), Integrity.Member),
+            Requested(late, at("12:00"), Count(1), Integrity.Member)
           )
         )
       )

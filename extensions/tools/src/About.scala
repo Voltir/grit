@@ -14,19 +14,19 @@ object About {
   /** Its tool's name, `about`. */
   val Name: ToolName = ToolName("about")
 
-  /** What `about` can be asked about, in the order its schema lists them. [[Subject.Grit]]
-    * is the overview, answered when none is given; [[Subject.Security]] is how grit keeps who
-    * may see what and who may steer it, in words for anyone, and [[Subject.SecurityDetail]] the
+  /** What `about` can be asked about, in the order its schema lists them. [[Section.Grit]]
+    * is the overview, answered when none is given; [[Section.Security]] is how grit keeps who
+    * may see what and who may steer it, in words for anyone, and [[Section.SecurityDetail]] the
     * same in technical depth.
     */
-  enum Subject(val key: String) {
-    case Grit extends Subject("grit")
-    case Memory extends Subject("memory")
-    case Markers extends Subject("markers")
-    case Periods extends Subject("periods")
-    case Places extends Subject("places")
-    case Security extends Subject("security")
-    case SecurityDetail extends Subject("security_detail")
+  enum Section(val key: String) {
+    case Grit extends Section("grit")
+    case Memory extends Section("memory")
+    case Markers extends Section("markers")
+    case Periods extends Section("periods")
+    case Places extends Section("places")
+    case Security extends Section("security")
+    case SecurityDetail extends Section("security_detail")
   }
 
   /** `about` over the docs this module ships (`about/{key}.md` among its resources), read
@@ -37,13 +37,13 @@ object About {
     * are grit's own words ([[grit.core.tool.Believed.Own]]). `Left` naming each doc that is
     * missing or empty.
     */
-  def load(persona: Persona): Either[String, Tool[Option[Subject]]] = {
-    val read = Subject.values.toVector.map(s => s -> doc(s.key))
+  def load(persona: Persona): Either[String, Tool[Option[Section]]] = {
+    val read = Section.values.toVector.map(s => s -> doc(s.key))
     read.collect { case (s, None) => s.key } match {
       case missing if missing.nonEmpty =>
         Left(s"about: no doc for ${missing.map(k => s"about/$k.md").mkString(", ")}")
       case _ =>
-        val docs: Map[Subject, String] = read.collect { case (s, Some(text)) => s -> text }.toMap
+        val docs: Map[Section, String] = read.collect { case (s, Some(text)) => s -> text }.toMap
         Right(tool(docs, who(persona)))
     }
   }
@@ -56,7 +56,7 @@ object About {
         "described below."
 
   /** The tool answering from `docs`, one for each subject, the overview after `who`. */
-  private def tool(docs: Map[Subject, String], who: String): Tool[Option[Subject]] =
+  private def tool(docs: Map[Section, String], who: String): Tool[Option[Section]] =
     new Hosted(
       ToolSpec(
         Name,
@@ -70,24 +70,24 @@ object About {
             (topic =
               Field
                 .oneOf(
-                  "Which part: " + Subject.values.map(_.key).mkString(", ") + ". For how you " +
+                  "Which part: " + Section.values.map(_.key).mkString(", ") + ". For how you " +
                     "keep things safe, security is the plain explanation, to give by default; " +
                     "security_detail is the technical one, for when the person asks for detail " +
                     "or what you know of them (their role, how they asked) says they'd want it, " +
                     "never from a name alone.",
-                  Subject.Grit.key,
-                  Subject.values.toVector.drop(1).map(_.key)*
+                  Section.Grit.key,
+                  Section.values.toVector.drop(1).map(_.key)*
                 )
                 .optional
             )
           )
-          .map(_.topic.flatMap(k => Subject.values.find(_.key == k))),
+          .map(_.topic.flatMap(k => Section.values.find(_.key == k))),
         retry = Retry.Rerun
       ),
       Gate.Free,
       topic => topic.fold("")(_.key)
     ).own.over {
-      case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Subject.Grit, "")}")
+      case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Section.Grit, "")}")
       case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
     }
 

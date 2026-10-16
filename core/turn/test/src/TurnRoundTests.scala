@@ -68,11 +68,11 @@ object TurnRoundTests extends TestSuite {
       levels: Int -> Integrity,
       kept: Either[TurnFailure, EntryId]
   ) extends TurnRound.Env {
-    def gate(at: TurnRound.Rounds): Either[TurnFailure, Gated] =
+    def gate(at: TurnRound.Progress): Either[TurnFailure, Gated] =
       Right(Gated(levels(at.round.index), Vector.empty, Vector.empty))
-    def call(at: TurnRound.Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant] =
+    def call(at: TurnRound.Progress, use: ToolUse): Either[TurnFailure, Message.Assistant] =
       script(at.round, use)
-    def record(at: TurnRound.Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
+    def record(at: TurnRound.Progress, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
     ): Either[TurnFailure, TurnRound.Kept] =
       kept.map(
@@ -85,7 +85,7 @@ object TurnRoundTests extends TestSuite {
         )
       )
     def hosted(
-        at: TurnRound.Rounds,
+        at: TurnRound.Progress,
         slot: TurnTools.Slot,
         pending: Pending
     ): Either[TurnFailure, Bound.Hosted] = Left(TurnFailure.Store("nothing is hosted"))

@@ -541,7 +541,7 @@ object WalkTests extends TestSuite {
       val (steps, result) = drive(
         Walk.start(source(), 5, floor, heldAll()),
         {
-          case Step.Read("docs/a.md") => Outcome.Withheld("it could not be checked")
+          case Step.Read("docs/a.md") => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
         }
       )
@@ -558,7 +558,7 @@ object WalkTests extends TestSuite {
       val (steps, result) = drive(
         Walk.start(source(), 5, floor, heldAll()),
         {
-          case Step.List("docs") => Outcome.Withheld("it could not be checked")
+          case Step.List("docs") => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
         }
       )

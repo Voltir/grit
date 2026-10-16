@@ -11,7 +11,7 @@ import grit.core.id.{PluginName, ScheduleId, TestCallSlots}
 import grit.core.identity.TestAccounts
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
-import grit.core.job.{Asked, DeskRefusal, ScheduleDesk, When}
+import grit.core.job.{DeskRefusal, Requested, ScheduleDesk, When}
 
 import utest.*
 
@@ -42,7 +42,7 @@ object SqlDeskCapTests extends TestSuite {
         Vector(remind.name),
         new SetClock(java.time.Instant.parse("2026-10-07T09:00:00Z"))
       )
-      def ask(index: Int): Either[DeskRefusal, Asked[Count]] =
+      def ask(index: Int): Either[DeskRefusal, Requested[Count]] =
         desk.ask(
           TestCallSlots.at(thread, index = index),
           booking(remind),

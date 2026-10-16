@@ -17,7 +17,7 @@ before it and, of `Turn`, only its names and pins:
 - **`TurnShown`**: what the model is shown: the tools each call offers, the lines a gate
   adds, the request built from the window and the turn's own entries, the items it shows.
 - **`TurnRound`**: the tool loop, as a flow, and what its steps act through (`Env`); what a
-  loop runs under (`Looping`) and where it stands (`Rounds`), on the wire.
+  loop runs under (`Looping`) and where it stands (`Progress`), on the wire.
 - **`TurnRounding`**: the loop's `Env` over a turn's env and tools; a call bound again inside
   a step's body goes through its one rebinding.
 - **`TurnSteps`**: every other step as a value, with its body; what they act through (`Env`)

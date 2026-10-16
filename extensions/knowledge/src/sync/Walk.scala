@@ -27,7 +27,7 @@ import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing}
   * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
   * the units held and those written new reach it, and the walk goes on bringing the held up to
   * date. A file read with no version, a directory listed only in part (`listed only in part`),
-  * a unit whose list or read came to [[Outcome.Withheld]] (nothing beneath a withheld directory
+  * a unit whose list or read came to [[Outcome.NotTaken]] (nothing beneath a withheld directory
   * is listed, read or dropped) and a unit whose path makes no pointer are [[Unwritten]]; they,
   * and a unit not taken, leave
   * the cards of the directories above them unwritten, so the next run lists those again.
@@ -210,9 +210,9 @@ object Walk {
       case (_, Outcome.Stopped(why)) => halt(env, s, why)
       case (Waiting.Listing(path, version), Outcome.Listed(listing)) =>
         advance(env, listed(env, s, path, version, listing))
-      case (Waiting.Listing(path, _), Outcome.Withheld(why)) =>
+      case (Waiting.Listing(path, _), Outcome.NotTaken(why)) =>
         advance(env, unwritten(s, path, why))
-      case (Waiting.Reading(path, _), Outcome.Withheld(why)) =>
+      case (Waiting.Reading(path, _), Outcome.NotTaken(why)) =>
         advance(env, unwritten(s, path, why))
       case (Waiting.Reading(path, pointer), Outcome.Fetched(fetched)) =>
         fetched match {
@@ -257,7 +257,7 @@ object Walk {
     case Outcome.Fetched(_) => "a read's outcome"
     case Outcome.Summarised(_) => "a summary"
     case Outcome.Kept => "a keep's outcome"
-    case Outcome.Withheld(_) => "a withholding"
+    case Outcome.NotTaken(_) => "a withholding"
     case Outcome.Stopped(_) => "a stop"
   }
 

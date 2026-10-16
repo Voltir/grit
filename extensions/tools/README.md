@@ -15,7 +15,7 @@ One package, `grit.tools`:
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
 - `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how
-  it works, from the docs in `resources/about`, one per topic (`About.Subject`): grit itself,
+  it works, from the docs in `resources/about`, one per topic (`About.Section`): grit itself,
   memory, markers, periods, places, and security (who may see what, and how a person is known
   across sources).
 - `Cleared` — `clearance`: what the person asking is cleared for and why, answered only in a

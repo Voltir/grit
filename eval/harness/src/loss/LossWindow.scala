@@ -16,7 +16,7 @@ import grit.eval.harness.capture.{Capture, Fields}
 object LossWindow {
 
   /** Every turn workflow `reader`'s database created at or after `since` and before `until`,
-    * oldest first, each with its gates ([[Gates.of]]). Reads every turn workflow's record (its
+    * oldest first, each with its gates ([[TurnGates.of]]). Reads every turn workflow's record (its
     * status and creation, no output), then the recorded steps of those in the window alone:
     * one window of step outputs. `Left` naming what could not be read.
     */
@@ -24,7 +24,7 @@ object LossWindow {
       reader: Reader^,
       since: Instant,
       until: Instant
-  ): Either[String, Vector[(TurnRef, Gates)]] =
+  ): Either[String, Vector[(TurnRef, TurnGates)]] =
     for {
       workflows <- reader.turns(until).left.map(e => s"turn workflows unread: ${Capture.kind(e)}")
       window = workflows.collect {
@@ -36,7 +36,7 @@ object LossWindow {
           .steps(turn.workflowId)
           .left
           .map(e => s"steps of $id unread: ${Capture.kind(e)}")
-          .flatMap(Gates.of(_).left.map(why => s"$id: $why"))
+          .flatMap(TurnGates.of(_).left.map(why => s"$id: $why"))
           .map(turn -> _)
       }
     } yield gated

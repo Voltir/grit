@@ -40,15 +40,15 @@ object LossTests extends TestSuite {
   private def turn(conversation: String, seq: Long): TurnRef =
     TurnRef(ConversationId(conversation), TurnSeq(seq))
 
-  private val writing = Gates(Vector(Withheld(ToolName("post"), Integrity.Member)), 0, 0)
-  private val reading = Gates(Vector(Withheld(ToolName("peek"), Integrity.Outside)), 0, 0)
-  private val open = Gates(Vector.empty, 0, 0)
+  private val writing = TurnGates(Vector(Withheld(ToolName("post"), Integrity.Member)), 0, 0)
+  private val reading = TurnGates(Vector(Withheld(ToolName("peek"), Integrity.Outside)), 0, 0)
+  private val open = TurnGates(Vector.empty, 0, 0)
 
   val tests = Tests {
     test(
       "a turn's withheld tools are each named once, and only those requiring member or above write out"
     ) {
-      val gates = Gates.of(
+      val gates = TurnGates.of(
         Vector(
           StepRecord("record-window", Some("""{"ok":[]}"""), None),
           gate(0, "member", "", ""),
@@ -69,7 +69,7 @@ object LossTests extends TestSuite {
       // Round 0 hid a result and two closings; round 1 shows the result, lowering, and still
       // hides both closings, its own conversation's and a nearby one's: no round but the
       // last counts (0, 2).
-      val gates = Gates.of(
+      val gates = TurnGates.of(
         Vector(
           gate(
             0,
@@ -97,7 +97,8 @@ object LossTests extends TestSuite {
     }
 
     test("a gate whose output does not read is named") {
-      val read = Gates.of(Vector(gate(0, "member", "", ""), StepRecord("gate:1", Some("{}"), None)))
+      val read =
+        TurnGates.of(Vector(gate(0, "member", "", ""), StepRecord("gate:1", Some("{}"), None)))
       assert(read.left.exists(_.startsWith("gate:1:")))
     }
 

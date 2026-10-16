@@ -28,7 +28,7 @@ import TurnJournal.given
   * `call:n:send:{place}` to a service it reaches), and each call settled in order: in its
   * `call:n:j`, after `call:n:j:approve` and a person's answer for one that asks, and after a
   * hosted call's own steps ([[TurnHosted.settle]]). Until a reply answers, or a step fails. Its
-  * bodies act through an [[Env]]; what crosses its rounds is [[Rounds]], on the wire.
+  * bodies act through an [[Env]]; what crosses its rounds is [[Progress]], on the wire.
   */
 private[turn] object TurnRound {
 
@@ -43,12 +43,12 @@ private[turn] object TurnRound {
     /** `gate:n`'s body: round `at.round`'s gate, decided from the turn's start for the first
       * round and from `at.level` after.
       */
-    def gate(at: Rounds): Either[TurnFailure, Gated]
+    def gate(at: Progress): Either[TurnFailure, Gated]
 
     /** The body of round `at.round`'s model call: the model's reply, offered tools as `use`
       * says.
       */
-    def call(at: Rounds, use: ToolUse): Either[TurnFailure, Message.Assistant]
+    def call(at: Progress, use: ToolUse): Either[TurnFailure, Message.Assistant]
 
     /** `ask:n:record`'s body: `reply`, the reply to `at.round` that called tools, kept, and
       * what each of its `calls` is. Fails, as every member here does, when the tools the round
@@ -57,7 +57,7 @@ private[turn] object TurnRound {
       * prompt, or its route's profile, is not kept ([[TurnHosting.offered]],
       * [[Turn.Routed.picked]]).
       */
-    def record(at: Rounds, reply: Message.Assistant, calls: Vector[Pending])(using
+    def record(at: Progress, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
     ): Either[TurnFailure, Kept]
 
@@ -65,7 +65,7 @@ private[turn] object TurnRound {
       * each member below that binds a call does, with [[TurnFailure.ToolsChanged]] when it
       * binds otherwise than its round recorded.
       */
-    def hosted(at: Rounds, slot: Slot, pending: Pending): Either[TurnFailure, Bound.Hosted]
+    def hosted(at: Progress, slot: Slot, pending: Pending): Either[TurnFailure, Bound.Hosted]
 
     /** What a person is shown of `call` when its tool asks them first. */
     def shown(call: Call): Either[TurnFailure, String]
@@ -120,7 +120,7 @@ private[turn] object TurnRound {
     * the first first: the verdict on the message's topic is read from the first and checked
     * against them all.
     */
-  final case class Rounds(
+  final case class Progress(
       looping: Looping,
       round: Round,
       gates: Map[Int, Gated],
@@ -133,7 +133,7 @@ private[turn] object TurnRound {
     def level: Integrity =
       gates.values.map(_.level).reduceOption(_.meet(_)).getOrElse(Integrity.Authority)
 
-    private[TurnRound] def gatedBy(gate: Gated): Rounds =
+    private[TurnRound] def gatedBy(gate: Gated): Progress =
       copy(gates = gates.updated(round.index, gate))
   }
 
@@ -149,20 +149,20 @@ private[turn] object TurnRound {
   final case class Kept(reply: EntryId, kinds: Vector[Kind])
 
   /** A loop that answered with `answer`, the reply to `at.round` with its calls dropped. */
-  final case class Looped(answer: Message.Assistant, at: Rounds)
+  final case class Looped(answer: Message.Assistant, at: Progress)
 
   /** A loop that ended for `failure`, where `at` says. */
-  final case class Stalled(failure: TurnFailure, at: Rounds)
+  final case class Stalled(failure: TurnFailure, at: Progress)
 
   /** What the model call `ask:round` shows a reader of the turn's history: that round `round`
     * (from 0) was asked.
     */
-  final case class Asked(round: Int) extends Observed
+  final case class AskRecorded(round: Int) extends Observed
 
   /** The call `pending` of `at.round`'s reply, at `slot`, bound as `kind`; `sent`, whether its
     * round's free hosted calls to its place reached a serving edge.
     */
-  final case class Call(at: Rounds, slot: Slot, pending: Pending, kind: Kind, sent: Boolean)
+  final case class Call(at: Progress, slot: Slot, pending: Pending, kind: Kind, sent: Boolean)
       extends OfCall {
     def id: ToolCallId = pending.call.id
 
@@ -285,11 +285,11 @@ private[turn] object TurnRound {
   def flow: Flow[Env, Looping, Stalled, Looped] =
     Flow
       .pass[Looping]
-      .map(l => Rounds(l, Round.First, Map.empty, Vector.empty))
+      .map(l => Progress(l, Round.First, Map.empty, Vector.empty))
       .andThen(Flow.loop(round))
 
   /** What a row `turn` writes is believed at: `believed`, its level once it reached its loop
-    * ([[Rounds.level]]), or, for a turn that ended before it, what its entries say
+    * ([[Progress.level]]), or, for a turn that ended before it, what its entries say
     * ([[EntryStore.believed]]).
     */
   private[turn] def believedAt(entries: EntryStore, turn: TurnRef, believed: Option[Integrity])(
@@ -320,7 +320,7 @@ private[turn] object TurnRound {
 
   /** A reply to `at.round` that called tools, its `calls` to settle before the call `next`. */
   private final case class Settle(
-      at: Rounds,
+      at: Progress,
       reply: Message.Assistant,
       calls: Vector[Pending],
       next: Round
@@ -329,16 +329,16 @@ private[turn] object TurnRound {
   }
 
   /** `at.round`'s calls, each at its slot, bound as its kind, before the call `next`. */
-  private final case class Slotted(at: Rounds, next: Round, calls: Vector[(Slot, Pending, Kind)])
+  private final case class Slotted(at: Progress, next: Round, calls: Vector[(Slot, Pending, Kind)])
 
   /** `calls` of `at.round`'s reply, free and hosted at `place`, sent together. */
-  final case class Sending(at: Rounds, place: Place, calls: Vector[(Slot, Pending)])
+  final case class Sending(at: Progress, place: Place, calls: Vector[(Slot, Pending)])
       extends OfRound {
     def round: Round = at.round
   }
 
   /** `at.round`'s calls, to settle in order before the call `next`. */
-  private final case class Calls(at: Rounds, next: Round, calls: Vector[Call])
+  private final case class Calls(at: Progress, next: Round, calls: Vector[Call])
 
   /** A gated call, answered by `approval`. */
   private final case class Decided(call: Call, approval: Approval) extends OfCall {
@@ -346,26 +346,26 @@ private[turn] object TurnRound {
   }
 
   /** One round: its gate, its call, and, when its reply called tools, those calls settled. */
-  private def round: Flow[Env, Rounds, Stalled, Either[Rounds, Looped]] = {
-    val gate = Step[Env, Rounds, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
+  private def round: Flow[Env, Progress, Stalled, Either[Progress, Looped]] = {
+    val gate = Step[Env, Progress, Either[TurnFailure, Gated]](Names.gate)(r => at => r.gate(at))
     val gating = Flow.decide(gate)((at, g) => stalling(at)(g.map(at.gatedBy)))
-    val calling = Step[Env, Rounds, Either[TurnFailure, Message.Assistant]](
+    val calling = Step[Env, Progress, Either[TurnFailure, Message.Assistant]](
       Names.ask,
-      at => Some(Asked(at.round.index))
+      at => Some(AskRecorded(at.round.index))
     )(r => at => r.call(at, TurnLoop.use(at.looping.budget, at.round)))
     gating
       .andThen(Flow.decide(calling)(replied))
       .andThen(
         Flow.either(
-          settles.map[Either[Rounds, Looped]](Left(_)),
-          Flow.pass[Looped].map[Either[Rounds, Looped]](Right(_))
+          settles.map[Either[Progress, Looped]](Left(_)),
+          Flow.pass[Looped].map[Either[Progress, Looped]](Right(_))
         )
       )
   }
 
   /** What a round does after its call came to `called`: ends, answers, or settles its calls. */
   private def replied(
-      at: Rounds,
+      at: Progress,
       called: Either[TurnFailure, Message.Assistant]
   ): Either[Stalled, Either[Settle, Looped]] =
     called match {
@@ -385,7 +385,7 @@ private[turn] object TurnRound {
   /** A reply's calls settled: the reply kept with what each of its calls is, its free hosted
     * calls sent, and each call settled in order; then the round after.
     */
-  private def settles: Flow[Env, Settle, Stalled, Rounds] = {
+  private def settles: Flow[Env, Settle, Stalled, Progress] = {
     val record = Step.transact[Env, Settle, Either[TurnFailure, Kept]](
       Names.record,
       s => Subject.Turn(s.at.looping.turn)
@@ -491,6 +491,6 @@ private[turn] object TurnRound {
   }
 
   /** `failed`'s failure as the loop's stall, where `at` says. */
-  private def stalling[A](at: Rounds)(failed: Either[TurnFailure, A]): Either[Stalled, A] =
+  private def stalling[A](at: Progress)(failed: Either[TurnFailure, A]): Either[Stalled, A] =
     failed.left.map(Stalled(_, at))
 }

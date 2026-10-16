@@ -12,10 +12,15 @@ import grit.core.visibility.Integrity
 /** One asked schedule, as its asker sees it: believed at `integrity`, what its asking turn was
   * believed at when it asked.
   */
-final case class Asked[P <: caps.Pure](id: ScheduleId, at: Instant, params: P, integrity: Integrity)
+final case class Requested[P <: caps.Pure](
+    id: ScheduleId,
+    at: Instant,
+    params: P,
+    integrity: Integrity
+)
 
 /** The asker's pending schedules of one job, as of `now`, soonest first. */
-final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P]])
+final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Requested[P]])
 
 /** The schedules one plugin's tools write from a turn (ADR 0029). Each is a once slot, run for
   * the asker, the author of the message the turn at the call answers; reported where that
@@ -31,7 +36,7 @@ final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P
 trait ScheduleDesk extends caps.SharedCapability {
 
   /** Schedules `booking`'s job `when`, with `params`, to run as late as `grace` after its
-    * instant, kept as [[Slot.kept]] keeps it ([[Asked.at]]), at the asking turn's floor
+    * instant, kept as [[Slot.kept]] keeps it ([[Requested.at]]), at the asking turn's floor
     * ([[grit.core.store.Tx.floor]] of a transaction opened for that turn), its room's label:
     * what its runs, and what they keep, are kept at; and believed at what that turn is believed
     * at then ([[grit.core.store.EntryStore.believed]]), what its runs start at. The same call asking again (a call
@@ -51,7 +56,7 @@ trait ScheduleDesk extends caps.SharedCapability {
       when: When,
       grace: Grace,
       params: P
-  ): Either[DeskRefusal, Asked[P]]
+  ): Either[DeskRefusal, Requested[P]]
 
   /** The asker's pending schedules of `booking`'s job that the call's turn reads, as anything
     * recorded in the room each was asked in: one asked in a room labelled above what the turn

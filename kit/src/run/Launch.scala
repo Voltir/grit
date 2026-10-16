@@ -468,7 +468,7 @@ private[grit] object Launch {
       persona: Persona,
       askers: Askers
   ): Vector[Tool.Offered] = {
-    val about: Tool[Option[About.Subject]] =
+    val about: Tool[Option[About.Section]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
     Vector[Tool.Offered](about, Cleared.tool(askers))
   }

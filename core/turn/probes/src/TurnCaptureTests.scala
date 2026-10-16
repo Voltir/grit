@@ -123,8 +123,8 @@ object TurnCaptureTests extends TestSuite {
 
   /** A round's step, passing on `kept`, of the type `tpe`, as round state. */
   private def roundKept(tpe: String, kept: String) =
-    s"""def kept(using Journaled[(TurnRound.Rounds, $tpe)]): Step[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)] =
-      |  Step[TurnRound.Env, TurnRound.Rounds, (TurnRound.Rounds, $tpe)](StepName("kept"))(r => at => (at, $kept))
+    s"""def kept(using Journaled[(TurnRound.Progress, $tpe)]): Step[TurnRound.Env, TurnRound.Progress, (TurnRound.Progress, $tpe)] =
+      |  Step[TurnRound.Env, TurnRound.Progress, (TurnRound.Progress, $tpe)](StepName("kept"))(r => at => (at, $kept))
       |""".stripMargin
 
   private val keptSettling = roundKept("TurnTools.Settling^", "r.settling")

@@ -298,7 +298,7 @@ object Turn {
         .read(TurnFlow.flow, turn, steps)
         .left
         .map(why => s"$workflow does not read as this build's turn: $why")
-        .map(_.observed.collect { case TurnRound.Asked(n) => n })
+        .map(_.observed.collect { case TurnRound.AskRecorded(n) => n })
       // Each asked round's ask:n:record, which kept its reply when it called tools, and its
       // gate:n, recorded when the round was gated.
       looped = rounds.map(n => Round.at(n) -> Loop.Record(n).name)

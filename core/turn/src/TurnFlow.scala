@@ -233,11 +233,11 @@ private[turn] object TurnFlow {
       .branch((e: (Ended, EntryId)) =>
         if (e._1.at.offer.root == TurnOffer.Root.Named) Left(e._1) else Right(e._1)
       )(
-        Flow.pass[Ended].map(Settled(_, Settling.Named)),
+        Flow.pass[Ended].map(DraftSettled(_, Settling.Named)),
         Flow
           .step[Env, Ended, TurnJudge.Judgement](judge)
           .keeping
-          .map((e, j) => Settled(e, Settling.Judged(j)))
+          .map((e, j) => DraftSettled(e, Settling.Judged(j)))
       )
       .andThen(Flow.step(speechSettled).keeping)
       .keeping
