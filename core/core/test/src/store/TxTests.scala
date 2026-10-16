@@ -201,6 +201,39 @@ object TxTests extends TestSuite {
       }
 
       test(
+        "a room within an invited place that no edge reported is invited, so labelled unmapped, until a person labels it; the invited place itself takes its declared label"
+      ) {
+        val shared = service("drive").place
+        val folder = place("service:drive/folder")
+        val labelledFolder = place("service:drive/labelled")
+        val invitedAt = Visibility
+          .of(
+            Compartments
+              .of(Vector(trial, finance))
+              .fold(c => throw new java.lang.AssertionError(c), identity),
+            RoomLabels
+              .of(Vector(shared -> internal), Labelled.Mapped(Label.Public))
+              .fold(p => throw new java.lang.AssertionError(p.written), identity),
+            Vector.empty,
+            Vector.empty,
+            invited = Vector(shared)
+          )
+          .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+        given Tx = TestTx.fake(
+          Clearance.of(Label.Public),
+          invitedAt,
+          Recorded(Map(labelledFolder -> kept(label = Some(internalFinance))), Map.empty)
+        )
+        (
+          Vector(shared, folder, labelledFolder).map(Tx.access),
+          Vector(shared, folder, labelledFolder).map(Tx.roomLabel)
+        ) ==> (
+          Vector(None, Some(RoomAccess.Invited), Some(RoomAccess.Invited)),
+          Vector(internal, unmapped, internalFinance)
+        )
+      }
+
+      test(
         "a room's default is its label in force but for one set through grit, and only a set label is said to be set"
       ) {
         given Tx = under(

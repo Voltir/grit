@@ -95,9 +95,14 @@ object Tx {
   def labelSet(room: Place)(using tx: Tx^): Boolean =
     tx.recorded.rooms.get(room).exists(_.label.isDefined)
 
-  /** `room`'s access as its edge last reported it; `None` when no edge has reported one. */
+  /** `room`'s access as its edge last reported it; else [[RoomAccess.Invited]] when the
+    * deployment's visibility invites it ([[Visibility.invites]]); `None` otherwise.
+    */
   def access(room: Place)(using tx: Tx^): Option[RoomAccess] =
-    tx.recorded.rooms.get(room).flatMap(_.access)
+    tx.recorded.rooms
+      .get(room)
+      .flatMap(_.access)
+      .orElse(Option.when(tx.visibility.invites(room))(RoomAccess.Invited))
 
   /** Whether `room` is quiet: nothing is posted there unasked, so [[writable]] is `None` for
     * it.
