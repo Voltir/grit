@@ -3,7 +3,6 @@ package grit.dbos.workflow
 import java.sql.DriverManager
 import java.util.concurrent.{ConcurrentHashMap, CountDownLatch, TimeUnit}
 
-import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 import scala.util.Using
 
