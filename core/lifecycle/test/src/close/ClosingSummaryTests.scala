@@ -113,17 +113,17 @@ object ClosingSummaryTests extends TestSuite {
       // Two overheard closings as gpt-oss wrote them, with nothing known.
       val heard = Asked.Every.heard
       read(
-        "[s1] Nick Childers said he was testing bort now and hoped it would work.",
+        "[s1] Sam Rivera said he was testing pip now and hoped it would work.",
         heard,
         Balance.empty
-      ) ==> written("Nick Childers said he was testing bort now and hoped it would work.", None)
+      ) ==> written("Sam Rivera said he was testing pip now and hoped it would work.", None)
       read(
-        "[s1] Nick Childers asked Emily Childers ...; ... [o1] Nick Childers praised Emily Childers' sandwich choice.",
+        "[s1] Sam Rivera asked Emily Childers ...; ... [o1] Sam Rivera praised Emily Childers' sandwich choice.",
         heard,
         Balance.empty
       ) ==> written(
-        "Nick Childers asked Emily Childers ...; ...",
-        Some("Nick Childers praised Emily Childers' sandwich choice.")
+        "Sam Rivera asked Emily Childers ...; ...",
+        Some("Sam Rivera praised Emily Childers' sandwich choice.")
       )
     }
 
@@ -132,10 +132,10 @@ object ClosingSummaryTests extends TestSuite {
     ) {
       // An earned overheard closing as a real run stored it.
       read(
-        "[h1] Nick Childers said the standup is moving to 10:30 starting Monday.",
+        "[h1] Sam Rivera said the standup is moving to 10:30 starting Monday.",
         Asked.Every.heard,
         Balance.empty
-      ) ==> written("Nick Childers said the standup is moving to 10:30 starting Monday.", None)
+      ) ==> written("Sam Rivera said the standup is moving to 10:30 starting Monday.", None)
       read(
         "Summary: The api stays on 3000 [u4, t3] as [a5] said.\nOutcome: port 3000 [T3]",
         Asked(outcome = true, open = false, standing = false, settled = false)

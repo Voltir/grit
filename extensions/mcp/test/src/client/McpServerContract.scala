@@ -232,7 +232,7 @@ object McpServerFakeTests extends McpServerContract {
 
   protected val read: (String, ujson.Obj) = (
     "get_file_contents",
-    ujson.Obj("owner" -> "the-actual-best", "repo" -> "actualbest", "path" -> "README.md")
+    ujson.Obj("owner" -> "example-org", "repo" -> "widgets", "path" -> "README.md")
   )
 
   override def utestAfterAll(): Unit = fake.stop()

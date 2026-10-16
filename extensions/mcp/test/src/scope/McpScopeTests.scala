@@ -10,7 +10,7 @@ import utest.*
 /** [[McpScope]] and [[Bound]] over the entries GitHub's read-only server lists. */
 object McpScopeTests extends TestSuite {
 
-  /** The GitHub tools Bort allows, as GitHub's server lists them. */
+  /** The GitHub tools a deployment allows, as GitHub's server lists them. */
   private val Allowed: Vector[String] = Vector(
     "get_file_contents",
     "list_commits",
@@ -36,7 +36,7 @@ object McpScopeTests extends TestSuite {
   private def bound(first: (String, String), rest: (String, String)*): Bound =
     Bound.of(first, rest*).fold(why => throw new java.lang.AssertionError(why), identity)
 
-  private val Repository = bound("owner" -> "the-actual-best", "repo" -> "actualbest")
+  private val Repository = bound("owner" -> "example-org", "repo" -> "widgets")
 
   /** Results under `results`, counted at `count`, each placed by its `where`, `{owner}/{repo}`;
     * `fields` never sent.
@@ -73,7 +73,9 @@ object McpScopeTests extends TestSuite {
     ujson.Obj("title" -> title, "where" -> where)
 
   val tests = Tests {
-    test("within a repository, of Bort's tools exactly the three searches are not offered") {
+    test(
+      "within a repository, of the deployment's tools exactly the three searches are not offered"
+    ) {
       val scope = McpScope.within(Repository)
       listed(Allowed).flatMap(scope.excludes) ==> Vector(
         Skipped.OutOfScope("search_code"),
@@ -85,7 +87,7 @@ object McpScopeTests extends TestSuite {
     test(
       "within an owner, a tool requiring the owner alone is offered; one requiring no owner is not"
     ) {
-      val scope = McpScope.within(bound("owner" -> "the-actual-best"))
+      val scope = McpScope.within(bound("owner" -> "example-org"))
       listed(Vector("list_issue_types", "get_team_members", "get_me")).map(t =>
         (t.name, scope.excludes(t))
       ) ==> Vector(
@@ -106,21 +108,21 @@ object McpScopeTests extends TestSuite {
               repo.map("repo" -> _)
           )
         )
-      val limited = "its calls are limited to owner the-actual-best with repo actualbest"
+      val limited = "its calls are limited to owner example-org with repo widgets"
       Vector(
-        call("the-actual-best", Some("actualbest")),
-        call("actualbest", Some("actualbest")),
-        call("The-Actual-Best", Some("actualbest")),
-        call("the-actual-best", None),
-        call("the-actual-best", Some(ujson.Arr("actualbest")))
+        call("example-org", Some("widgets")),
+        call("widgets", Some("widgets")),
+        call("Example-Org", Some("widgets")),
+        call("example-org", None),
+        call("example-org", Some(ujson.Arr("widgets")))
       ) ==> Vector(
         Right(
-          ujson.Obj("owner" -> "the-actual-best", "path" -> "README.md", "repo" -> "actualbest")
+          ujson.Obj("owner" -> "example-org", "path" -> "README.md", "repo" -> "widgets")
         ),
-        Left(s"$limited, and this one has owner actualbest with repo actualbest"),
-        Left(s"$limited, and this one has owner The-Actual-Best with repo actualbest"),
-        Left(s"$limited, and this one has owner the-actual-best with no repo"),
-        Left(s"$limited, and this one has owner the-actual-best with repo [\"actualbest\"]")
+        Left(s"$limited, and this one has owner widgets with repo widgets"),
+        Left(s"$limited, and this one has owner Example-Org with repo widgets"),
+        Left(s"$limited, and this one has owner example-org with no repo"),
+        Left(s"$limited, and this one has owner example-org with repo [\"widgets\"]")
       )
     }
 
@@ -131,12 +133,12 @@ object McpScopeTests extends TestSuite {
         scope.request(tool("list_commits"), ujson.Obj("owner" -> "octocat", "repo" -> "x")),
         scope.request(types, ujson.Obj("owner" -> "octocat")),
         // the repository bound does not hold list_issue_types, which does not require repo
-        scope.request(types, ujson.Obj("owner" -> "the-actual-best", "repo" -> "actualbest"))
+        scope.request(types, ujson.Obj("owner" -> "example-org", "repo" -> "widgets"))
       ) ==> Vector(
         Right(ujson.Obj("owner" -> "octocat", "repo" -> "x")),
         Right(ujson.Obj("owner" -> "octocat")),
         Left(
-          "its calls are limited to owner octocat, and this one has owner the-actual-best"
+          "its calls are limited to owner octocat, and this one has owner example-org"
         )
       )
     }
@@ -146,7 +148,7 @@ object McpScopeTests extends TestSuite {
         .within(Repository)
         .request(
           tool("search_issues"),
-          ujson.Obj("query" -> "x", "owner" -> "the-actual-best", "repo" -> "actualbest")
+          ujson.Obj("query" -> "x", "owner" -> "example-org", "repo" -> "widgets")
         ) ==> Left("its scope does not offer search_issues")
     }
 
@@ -166,19 +168,19 @@ object McpScopeTests extends TestSuite {
           issues,
           ujson.Obj(
             "query" -> "x",
-            "owner" -> "the-actual-best",
-            "repo" -> "actualbest",
+            "owner" -> "example-org",
+            "repo" -> "widgets",
             "fields" -> ujson.Arr("title")
           )
         ),
-        Searched.request(issues, ujson.Obj("query" -> "x", "owner" -> "the-actual-best")),
+        Searched.request(issues, ujson.Obj("query" -> "x", "owner" -> "example-org")),
         // search_code declares neither owner nor repo: its answers alone hold it
         Searched.request(tool("search_code"), ujson.Obj("query" -> "x", "fields" -> ujson.Arr()))
       ) ==> Vector(
-        Right(ujson.Obj("query" -> "x", "owner" -> "the-actual-best", "repo" -> "actualbest")),
+        Right(ujson.Obj("query" -> "x", "owner" -> "example-org", "repo" -> "widgets")),
         Left(
-          "its calls are limited to owner the-actual-best with repo actualbest, " +
-            "and this one has owner the-actual-best with no repo"
+          "its calls are limited to owner example-org with repo widgets, " +
+            "and this one has owner example-org with no repo"
         ),
         Right(ujson.Obj("query" -> "x"))
       )
@@ -193,10 +195,10 @@ object McpScopeTests extends TestSuite {
           "count" -> 40,
           "more" -> true,
           "results" -> ujson.Arr(
-            result("the-actual-best/actualbest", "in"),
-            result("elsewhere/actualbest", "out"),
-            result("the-actual-best/other", "out too"),
-            result("the-actual-best/actualbest", "in too")
+            result("example-org/widgets", "in"),
+            result("elsewhere/widgets", "out"),
+            result("example-org/other", "out too"),
+            result("example-org/widgets", "in too")
           )
         )
       )
@@ -210,16 +212,16 @@ object McpScopeTests extends TestSuite {
                   "count" -> 2,
                   "more" -> true,
                   "results" -> ujson.Arr(
-                    result("the-actual-best/actualbest", "in"),
-                    result("the-actual-best/actualbest", "in too")
+                    result("example-org/widgets", "in"),
+                    result("example-org/widgets", "in too")
                   )
                 )
               )
             ),
             ujson.Obj(
               "type" -> "text",
-              "text" -> ("Withheld as outside this server's scope (owner the-actual-best with " +
-                "repo actualbest): 2 of the 4 results in this answer.")
+              "text" -> ("Withheld as outside this server's scope (owner example-org with " +
+                "repo widgets): 2 of the 4 results in this answer.")
             )
           ),
           "resultType" -> "complete"
@@ -229,11 +231,11 @@ object McpScopeTests extends TestSuite {
 
     test("an attributed answer with every result within a bound is shown as sent, recounted") {
       val sent = answer(
-        ujson.Obj("count" -> 9, "results" -> ujson.Arr(result("the-actual-best/actualbest", "a")))
+        ujson.Obj("count" -> 9, "results" -> ujson.Arr(result("example-org/widgets", "a")))
       )
       Searched.shown(tool("search_code"), sent) ==> Right(
         answer(
-          ujson.Obj("count" -> 1, "results" -> ujson.Arr(result("the-actual-best/actualbest", "a")))
+          ujson.Obj("count" -> 1, "results" -> ujson.Arr(result("example-org/widgets", "a")))
         )
       )
     }
@@ -251,7 +253,7 @@ object McpScopeTests extends TestSuite {
     }
 
     test("an attributed answer it cannot hold to its bounds is not shown, saying why") {
-      val one = ujson.Obj("results" -> ujson.Arr(result("the-actual-best/actualbest", "in")))
+      val one = ujson.Obj("results" -> ujson.Arr(result("example-org/widgets", "in")))
       val text = ujson.Obj("type" -> "text", "text" -> ujson.write(one))
       def content(blocks: ujson.Value*): ujson.Obj = ujson.Obj("content" -> ujson.Arr(blocks*))
       Vector(
@@ -262,7 +264,7 @@ object McpScopeTests extends TestSuite {
         answer(ujson.Arr(one)),
         answer(ujson.Obj("results" -> one)),
         answer(ujson.Obj("results" -> ujson.Arr(ujson.Obj("title" -> "nowhere")))),
-        answer(ujson.Obj("results" -> ujson.Arr(result("the-actual-best", "one segment"))))
+        answer(ujson.Obj("results" -> ujson.Arr(result("example-org", "one segment"))))
       ).map(Searched.shown(tool("search_issues"), _)) ==> Vector(
         Left("its answer has structuredContent, which grit cannot hold to its scope"),
         Left("its answer is not one text block"),

@@ -14,7 +14,7 @@ final case class Bound private (values: Vector[(String, String)]) {
   private[scope] def admits(arguments: ujson.Obj): Boolean =
     values.forall((name, value) => arguments.value.get(name).contains(ujson.Str(value)))
 
-  /** "owner the-actual-best with repo actualbest". */
+  /** "owner example-org with repo widgets". */
   private[scope] def written: String =
     values.map((name, value) => s"$name $value").mkString(" with ")
 

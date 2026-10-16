@@ -100,10 +100,10 @@ object McpToolsTests extends TestSuite {
     test("a request runs its tool on the server, with its arguments, and answers its text") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
-        fake.answers("get_file_contents", text("# actualbest"))
+        fake.answers("get_file_contents", text("# widgets"))
         val mcp = toolsOver(fake)
         val q = request("github_get_file_contents", Read)
-        mcp.run(route(q), q) ==> Outcome.Done("# actualbest")
+        mcp.run(route(q), q) ==> Outcome.Done("# widgets")
         fake.received
           .filter(_.method.contains("tools/call"))
           .map(r => ujson.read(r.body)("params")("arguments")) ==> Vector(Read)

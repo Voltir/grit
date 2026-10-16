@@ -345,7 +345,7 @@ object SpeechTests extends TestSuite {
         earlier,
         entry(11, Payload.Summary("grit's own")),
         entry(12, Payload.Heard("it's Thursday")),
-        entry(13, Payload.Message(Message.User("@bort?")))
+        entry(13, Payload.Message(Message.User("@pip?")))
       )
       Speech.spoken(root, people, Vector.empty) ==> None
       Speech.spoken(root, people :+ entry(14, reply), Vector.empty) ==>

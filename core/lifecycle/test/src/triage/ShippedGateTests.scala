@@ -51,7 +51,7 @@ object ShippedGateTests extends TestSuite {
       now
     )
 
-  /** Speech's triage check before the gate came from `Limits`, at Bort's `helpsAt` of 0.5:
+  /** Speech's triage check before the gate came from `Limits`, at the external deployment's `helpsAt` of 0.5:
     * chatter held, then a `helps` under 0.5 held with it; else drafted.
     */
   private def before(kind: Kind, helps: Double): Option[String] =

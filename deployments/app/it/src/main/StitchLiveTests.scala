@@ -27,7 +27,7 @@ import utest.*
 
 /** Topic stitching end to end (ADR 0023), over a live engine launched as the kit launches a
   * deployment, with the stub classifier: the Engine question and David's top-level replies
-  * from actualbest's channel, as they were said, stitched to it; a draft held because grit
+  * from a team's channel, as they were said, stitched to it; a draft held because grit
   * already replied in the strand; and a top-level mention whose window shows the strand.
   */
 object StitchLiveTests extends TestSuite {

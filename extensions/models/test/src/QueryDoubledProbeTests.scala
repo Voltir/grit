@@ -11,22 +11,22 @@ object QueryDoubledProbeTests extends TestSuite {
     test("doubled: a reply whose first three words recur, joined without a space or not") {
       // Two answers with reasoning text between them, then two run together, then three.
       QueryDoubledProbe.doubled(
-        "actualbest main commit git log recent three commits history repository branchWe need " +
-          "just the query line.actualbest main commit git log recent three commits history " +
+        "widgets main commit git log recent three commits history repository branchWe need " +
+          "just the query line.widgets main commit git log recent three commits history " +
           "repository branch"
       ) ==> "doubled"
       QueryDoubledProbe.doubled(
-        "actualbest main commits last three git logactualbest main commits last three git log"
+        "widgets main commits last three git logwidgets main commits last three git log"
       ) ==> "doubled"
       QueryDoubledProbe.doubled(
-        "actualbest main git commits three lastactualbest main git commits three latest " +
-          "recentactualbest main git commits three latest recent"
+        "widgets main git commits three lastwidgets main git commits three latest " +
+          "recentwidgets main git commits three latest recent"
       ) ==> "doubled"
     }
 
     test("doubled: a reply that repeats a word but not its opening three is single") {
       QueryDoubledProbe.doubled(
-        "actualbest main commits last three git log recent three commits actualbest repository\u0000"
+        "widgets main commits last three git log recent three commits widgets repository\u0000"
       ) ==> "single"
     }
   }

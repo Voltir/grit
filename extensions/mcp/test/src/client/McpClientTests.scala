@@ -65,10 +65,10 @@ object McpClientTests extends TestSuite {
     finally fake.stop()
   }
 
-  /** Within the repository `the-actual-best/actualbest`. */
+  /** Within the repository `example-org/widgets`. */
   private val Repository: McpScope =
     Bound
-      .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+      .of("owner" -> "example-org", "repo" -> "widgets")
       .fold(why => throw new java.lang.AssertionError(why), McpScope.within(_))
 
   private def offered(listed: Either[McpError, Listed]): Either[McpError, Vector[String]] =
@@ -166,15 +166,15 @@ object McpClientTests extends TestSuite {
         def read(owner: String): Either[McpError, Boolean] =
           c.tools()
             .flatMap(_.tools.headOption.toRight(McpError.Unreadable("unlisted")))
-            .flatMap(c.call(_, ujson.Obj("owner" -> owner, "repo" -> "actualbest")))
+            .flatMap(c.call(_, ujson.Obj("owner" -> owner, "repo" -> "widgets")))
             .map(_.isError)
-        val refused = read("actualbest")
+        val refused = read("widgets")
         val sent = fake.count("tools/call")
-        (refused, sent, read("the-actual-best"), fake.count("tools/call")) ==> (
+        (refused, sent, read("example-org"), fake.count("tools/call")) ==> (
           Left(
             McpError.OutOfScope(
-              "its calls are limited to owner the-actual-best with repo actualbest, " +
-                "and this one has owner actualbest with repo actualbest"
+              "its calls are limited to owner example-org with repo widgets, " +
+                "and this one has owner widgets with repo widgets"
             )
           ),
           0,
@@ -200,7 +200,7 @@ object McpClientTests extends TestSuite {
           )
           .fold(why => throw new java.lang.AssertionError(why), identity)
         val scope = Bound
-          .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+          .of("owner" -> "example-org", "repo" -> "widgets")
           .flatMap(McpScope.attributed(Map("search_code" -> where), _))
           .fold(why => throw new java.lang.AssertionError(why), identity)
         val c = client(fake, scope = scope)
@@ -216,15 +216,15 @@ object McpClientTests extends TestSuite {
         }
         Vector(
           answered(
-            """{"results":[{"where":"elsewhere/actualbest"},{"where":"the-actual-best/actualbest"}]}"""
+            """{"results":[{"where":"elsewhere/widgets"},{"where":"example-org/widgets"}]}"""
           ),
-          answered("""{"results":[{"where":"the-actual-best"}]}"""),
+          answered("""{"results":[{"where":"example-org"}]}"""),
           answered("not JSON")
         ) ==> Vector(
           Right(
-            """{"results":[{"where":"the-actual-best/actualbest"}]}""" + "\n" +
-              "Withheld as outside this server's scope (owner the-actual-best with repo " +
-              "actualbest): 1 of the 2 results in this answer."
+            """{"results":[{"where":"example-org/widgets"}]}""" + "\n" +
+              "Withheld as outside this server's scope (owner example-org with repo " +
+              "widgets): 1 of the 2 results in this answer."
           ),
           Left(
             McpError.Unattributed(

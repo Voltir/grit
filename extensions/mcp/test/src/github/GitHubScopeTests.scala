@@ -11,7 +11,7 @@ import utest.*
   */
 object GitHubScopeTests extends TestSuite {
 
-  /** The GitHub tools Bort allows, as GitHub's server lists them. */
+  /** The GitHub tools a deployment allows, as GitHub's server lists them. */
   private val Allowed: Vector[String] = Vector(
     "get_file_contents",
     "list_commits",
@@ -55,33 +55,33 @@ object GitHubScopeTests extends TestSuite {
 
   val tests = Tests {
     test("a repository is a bound on its owner and name; an owner, on owner alone") {
-      (GitHubScope.repository("the-actual-best/actualbest"), GitHubScope.owner("octocat")) ==> (
-        Bound.of("owner" -> "the-actual-best", "repo" -> "actualbest"),
+      (GitHubScope.repository("example-org/widgets"), GitHubScope.owner("octocat")) ==> (
+        Bound.of("owner" -> "example-org", "repo" -> "widgets"),
         Bound.of("owner" -> "octocat")
       )
     }
 
     test("a repository not two non-blank segments, or an owner blank or with /, is refused") {
       (
-        Vector("actualbest", "a/b/c", "/actualbest", "the-actual-best/", " / ")
+        Vector("widgets", "a/b/c", "/widgets", "example-org/", " / ")
           .map(GitHubScope.repository),
-        Vector("", "the-actual-best/actualbest").map(GitHubScope.owner)
+        Vector("", "example-org/widgets").map(GitHubScope.owner)
       ) ==> (
         Vector(
-          Left("a repository is {owner}/{name}, not 'actualbest'"),
+          Left("a repository is {owner}/{name}, not 'widgets'"),
           Left("a repository is {owner}/{name}, not 'a/b/c'"),
-          Left("a repository is {owner}/{name}, not '/actualbest'"),
-          Left("a repository is {owner}/{name}, not 'the-actual-best/'"),
+          Left("a repository is {owner}/{name}, not '/widgets'"),
+          Left("a repository is {owner}/{name}, not 'example-org/'"),
           Left("a repository is {owner}/{name}, not ' / '")
         ),
         Vector(
           Left("an owner is a login with no /, not ''"),
-          Left("an owner is a login with no /, not 'the-actual-best/actualbest'")
+          Left("an owner is a login with no /, not 'example-org/widgets'")
         )
       )
     }
 
-    test("within a repository, every one of Bort's tools is offered") {
+    test("within a repository, every one of the deployment's tools is offered") {
       listed(Allowed).flatMap(HelloWorld.excludes) ==> Vector.empty
     }
 

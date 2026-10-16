@@ -137,9 +137,9 @@ object HeadersTests extends TestSuite {
       )
       mirrored(
         entry,
-        ujson.Obj("owner" -> "the-actual-best", "repo" -> "actualbest", "path" -> "README.md")
+        ujson.Obj("owner" -> "example-org", "repo" -> "widgets", "path" -> "README.md")
       ) ==> Right(
-        Some(Vector("Mcp-Param-owner" -> "the-actual-best", "Mcp-Param-repo" -> "actualbest"))
+        Some(Vector("Mcp-Param-owner" -> "example-org", "Mcp-Param-repo" -> "widgets"))
       )
     }
 

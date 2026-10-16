@@ -196,7 +196,7 @@ object McpEdgeTests extends TestSuite {
             .map(FakeMcpServer.github)
         )
         val scope = Bound
-          .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+          .of("owner" -> "example-org", "repo" -> "widgets")
           .fold(why => throw new java.lang.AssertionError(why), McpScope.within(_))
         val allow = Set("get_file_contents", "search_code", "search_issues")
         opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), allow = allow, scope = scope)._3 ==>

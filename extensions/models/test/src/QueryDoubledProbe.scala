@@ -127,7 +127,7 @@ object QueryDoubledProbe {
   }
 
   /** `doubled` when the text's first three words appear again later in it, whether the second
-    * answer follows with whitespace, with none (`…logactualbest main…`) or after text between
+    * answer follows with whitespace, with none (`…logwidgets main…`) or after text between
     * the two; `single` otherwise, and for a text of fewer than three words.
     */
   private[models] def doubled(text: String): String = {
