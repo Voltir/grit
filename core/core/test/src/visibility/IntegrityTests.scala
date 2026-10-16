@@ -90,6 +90,11 @@ object IntegrityTests extends TestSuite {
     test("an integrity is below outside exactly when it is untrusted, in any compartments") {
       all1(a => a.belowOutside == (Integrity.level(a) == Level.Untrusted)) ==> None
     }
+    test("an integrity may write out exactly when it is member or authority, in any compartments") {
+      all1(a =>
+        a.mayWriteOut == Set(Level.Member, Level.Authority).contains(Integrity.level(a))
+      ) ==> None
+    }
 
     test(
       "an integrity's written form reads back as it, and its shown form names its level; a text naming no level first, or a compartment by no compartment's name, is refused saying which"

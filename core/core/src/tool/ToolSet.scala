@@ -75,11 +75,11 @@ object ToolSet {
         action: Option[String] = None
     ): Entry = Entry(name, does, parameters, asks, retry, writes, byShape(writes), action)
 
-    /** What a tool requires unless it declares otherwise: [[Integrity.Member]] for one that
+    /** What a tool requires unless it declares otherwise: [[Integrity.WritesOut]] for one that
       * writes outside grit (`writes` is some), nothing ([[Integrity.Untrusted]]) otherwise.
       */
     def byShape(writes: Option[Writes[Place]]): Integrity =
-      writes.fold(Integrity.Untrusted)(_ => Integrity.Member)
+      writes.fold(Integrity.Untrusted)(_ => Integrity.WritesOut)
   }
 
   val Empty: ToolSet = ToolSet(Vector.empty)

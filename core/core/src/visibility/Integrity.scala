@@ -42,6 +42,11 @@ object Integrity {
   /** [[Level.Member]], no compartment. */
   val Member: Integrity = at(Level.Member)
 
+  /** The least integrity that may steer a write out of grit: [[Member]], the team's. Below it,
+    * a thing came from outside the team.
+    */
+  val WritesOut: Integrity = Member
+
   /** [[Level.Authority]], no compartment. */
   val Authority: Integrity = at(Level.Authority)
 
@@ -59,6 +64,9 @@ object Integrity {
 
     /** Whether it is believed below [[Outside]]: at [[Level.Untrusted]], in any compartments. */
     def belowOutside: Boolean = !i.dominates(Outside)
+
+    /** Whether it may steer a write out of grit: it dominates [[WritesOut]]. */
+    def mayWriteOut: Boolean = i.dominates(WritesOut)
 
     /** The greatest integrity both dominate: what is made from both. */
     def meet(other: Integrity): Integrity = i.meet(other)

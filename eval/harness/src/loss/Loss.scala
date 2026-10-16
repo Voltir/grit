@@ -5,7 +5,6 @@ import grit.core.durable.StepRecord
 import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.period.Probability
 import grit.core.tool.ToolName
-import grit.core.visibility.Integrity
 import grit.eval.harness.stats.Proportion
 import grit.turn.{TurnRecord, Withheld}
 
@@ -21,10 +20,10 @@ final case class TurnGates(withheld: Vector[Withheld], hidden: Int, closings: In
 
 object TurnGates {
 
-  /** Whether `tool` writes out: it requires at least [[Integrity.Member]], the least level that
-    * may drive a write out of grit.
+  /** Whether `tool` writes out: what it requires may write out
+    * ([[grit.core.visibility.Integrity.WritesOut]]).
     */
-  def writes(tool: Withheld): Boolean = tool.requires.dominates(Integrity.Member)
+  def writes(tool: Withheld): Boolean = tool.requires.mayWriteOut
 
   /** The gates `steps` recorded, read by the turn's own codec ([[TurnRecord.gates]]); none
     * withheld or hidden for a turn that recorded no gate. `Left` naming the step whose output
