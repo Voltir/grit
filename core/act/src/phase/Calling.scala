@@ -178,8 +178,9 @@ object Calling {
     * edge serves it; claimed, waited on [[RunWithin]] more, then `Rung`, or `steps.abandon`:
     * answered meanwhile, `Answered`, else `Known(Interrupted)`. A step that cannot read the
     * request is `Unread`, as is one whose transaction knows more than the wait's bound
-    * ([[Tx.within]], checked first, saying to ask again). Its steps record what they found in
-    * `F`'s form.
+    * ([[Tx.within]], checked first, saying to ask again). An answer is read as [[answer]] reads
+    * one: only what the step's transaction may read of it, and `Unread` when what it kept is
+    * above that bound or the floor. Its steps record what they found in `F`'s form.
     */
   def await[I, F](steps: WaitSteps[I], waiting: I -> Waiting)(using
       faults: Faults[F],
@@ -191,7 +192,9 @@ object Calling {
     )(requests =>
       i => {
         val w = waiting(i)
-        standing(bounded(w.bound).flatMap(_ => requests.settle(w.cs)))
+        standing(
+          bounded(w.bound).flatMap(_ => requests.settle(w.cs)).flatMap(settled(_, w.bound))
+        )
       }
     )
     val abandon = Step.transact[ToolRequests, I, Either[F, RequestState]](
@@ -200,7 +203,9 @@ object Calling {
     )(requests =>
       i => {
         val w = waiting(i)
-        standing(bounded(w.bound).flatMap(_ => requests.abandon(w.cs)))
+        standing(
+          bounded(w.bound).flatMap(_ => requests.abandon(w.cs)).flatMap(settled(_, w.bound))
+        )
       }
     )
     // A recorded message, a ring or (from an earlier build) a whole outcome, is only a wake-up.
@@ -252,13 +257,17 @@ object Calling {
 
   /** The answer on the request at `cs`, read for this transaction, its edge having rung: a
     * `Failed` saying why when it holds none or is no longer kept; `Left`, the store's failure in
-    * `F`'s form, when it cannot be read. The one place an answer is read.
+    * `F`'s form, when it cannot be read. The one place an answer is read once its edge rang;
+    * [[await]]'s two steps read one that came as they settled. Each read shows only what this
+    * transaction may read of it ([[Outcome.readable]]), and is `Left`, saying to ask again and
+    * keeping nothing, when what it kept is above `bound` (`None`: unbounded) or the floor
+    * ([[Tx.holds]]).
     */
-  def answer[F](requests: ToolRequests, cs: CallSlot)(using
+  def answer[F](requests: ToolRequests, cs: CallSlot, bound: Option[Label])(using
       Tx^
   )(using faults: Faults[F]): Either[F, Outcome] =
     requests.answered(cs) match {
-      case Right(Some(o)) => Right(o)
+      case Right(Some(o)) => readable(o, bound).left.map(e => faults.store(e.toString))
       case Right(None) => Right(Outcome.Failed(RungUnanswered))
       case Left(StoreError.Invalid(_)) => Right(Outcome.Failed(RungGone))
       case Left(e) => Left(faults.store(e.toString))
@@ -266,6 +275,22 @@ object Calling {
 
   private def bounded(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
     bound.fold(Right(()))(Tx.within(_))
+
+  /** `o` as this transaction reads it, or why not: what it kept is above `bound` or the floor. */
+  private def readable(o: Outcome, bound: Option[Label])(using
+      tx: Tx^
+  ): Either[StoreError, Outcome] = {
+    val read = o.readable
+    Tx.holds(read.label, bound.getOrElse(Tx.floor(tx))).map(_ => read.outcome)
+  }
+
+  /** A settled request's state, any answer on it read as [[readable]] reads it. */
+  private def settled(state: RequestState, bound: Option[Label])(using
+      Tx^
+  ): Either[StoreError, RequestState] = state match {
+    case RequestState.Answered(o) => readable(o, bound).map(RequestState.Answered(_))
+    case other => Right(other)
+  }
 
   private def standing[F](state: Either[StoreError, RequestState])(using
       faults: Faults[F]

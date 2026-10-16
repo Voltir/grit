@@ -152,7 +152,11 @@ object TurnHosted {
             case Waited.Phase(Awaited.Rung(cs)) =>
               settling.answerFrom(slot, call, shown, from, at)(
                 pins.known
-                  .map(_ => Calling.answer[TurnFailure](requests, cs).fold(unreadable, identity))
+                  .map(_ =>
+                    Calling
+                      .answer[TurnFailure](requests, cs, pins.bound)
+                      .fold(unreadable, identity)
+                  )
               )
           }
         }

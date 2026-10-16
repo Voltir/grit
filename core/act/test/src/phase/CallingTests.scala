@@ -23,7 +23,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
-import grit.core.identity.Principal
+import grit.core.identity.{Email, Principal}
 import grit.core.job.{Declared, InMemorySchedules, JobRun, PlainJob, ScheduleContract, SlotRule}
 import grit.core.message.AssistantBlock
 import grit.core.place.{Directory, Place, Service}
@@ -41,7 +41,23 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.visibility.{Clearance, Label, Level, Subject}
+import grit.core.visibility.{
+  Accounted,
+  Clearance,
+  Compartment,
+  Compartments,
+  Integrity,
+  Label,
+  Labelled,
+  Labeller,
+  Level,
+  Part,
+  Provenance,
+  Readers,
+  Room,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -57,6 +73,18 @@ object CallingTests extends TestSuite {
 
   private val github: Service =
     Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** `path`'s place under [[github]]'s. */
+  private def under(path: String): Place =
+    Place.read(s"service:github/$path").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A person whose items a service's extension says only she may read. */
+  private val ana: Email =
+    Email.of("ana@example.com").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** Her direct message. */
+  private val anasRoom: Place =
+    Place.read("direct:slack/T/U").fold(e => throw new java.lang.AssertionError(e), identity)
 
   private def spec(name: ToolName): ToolSpec[String] =
     ToolSpec(name, "A tool.", Args.of((path = Field.text("A path."))).map(_.path))
@@ -382,6 +410,89 @@ object CallingTests extends TestSuite {
       ) ==> (true, true, Vector("expire:0:0"), true, true, Vector("expire:0:0", "abandon:0:0"))
     }
 
+    test(
+      "an answer's part its transaction may not read never reaches the outcome, at a ring, at expire and at abandon"
+    ) {
+      val staff = Provenance(under("octo/staff"), Integrity.Member)
+      val cut = Outcome.Done(
+        "Found:",
+        parts = Some(
+          Vector(
+            Part(
+              Provenance(under("octo/board"), Integrity.Member),
+              Readers.Originator(ana),
+              "board-minutes.md"
+            ),
+            Part(staff, Readers.AtPlace, "rota.md")
+          )
+        )
+      )
+      val shown = Outcome.Done("Found:\nrota.md", None, Accounted.of(Vector(staff)))
+      val answered = Meanwhile.Answered(cut)
+      val atExpire = new InMemoryDurable()
+      val (early, edge) = sent(claimed = true)
+      val first = waited(atExpire, new Racing(early, atExpire, edge, answered, Meanwhile.Quiet))
+      val atAbandon = new InMemoryDurable()
+      val (late, other) = sent(claimed = true)
+      val second = waited(atAbandon, new Racing(late, atAbandon, other, Meanwhile.Quiet, answered))
+      val (rung, by) = sent(claimed = true)
+      val _ = rung.answerAs(by, cs, cut)
+      given Tx = TestTx.fake
+      (first._1, second._1, Calling.answer[String](rung, cs, None)) ==> (
+        s"Answered($shown)",
+        s"Answered($shown)",
+        Right(shown)
+      )
+    }
+
+    test(
+      "a kept part above the routed bound fails the read, asking again, and keeps nothing"
+    ) {
+      val (internal, restricted) = (Label.at(Level.Internal), Label.at(Level.Restricted))
+      val board = under("octo/board")
+      val labelled = Visibility
+        .of(
+          Compartments.Shipped,
+          new Labeller[Room] {
+            def label(item: Room): Labelled =
+              Labelled.Mapped(if (item.place == board) restricted else Label.Public)
+            def requires: Vector[Compartment] = Vector.empty
+          },
+          Vector.empty,
+          Vector.empty
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      // Ana's own direct message, kept at internal: she reads what she originated there,
+      // wherever it lies, but the turn may not keep it there.
+      val inAnas: Subject -> Clearance =
+        _ => Clearance.inRoom(anasRoom, internal, internal, Set(ana))
+      val secret = Outcome.Done(
+        "Found:",
+        parts = Some(
+          Vector(
+            Part(Provenance(board, Integrity.Member), Readers.Originator(ana), "board-minutes.md")
+          )
+        )
+      )
+      val atExpire = new InMemoryDurable(resolve = inAnas, visibility = labelled)
+      val (early, edge) = sent(claimed = true)
+      val first = waited(
+        atExpire,
+        new Racing(early, atExpire, edge, Meanwhile.Answered(secret), Meanwhile.Quiet),
+        bound = Some(internal)
+      )
+      val (rung, by) = sent(claimed = true)
+      val _ = rung.answerAs(by, cs, secret)
+      given Tx = TestTx.fake(inAnas(Subject.Turn(turn)), labelled)
+      val refused = "store: Invalid(a read at [level: restricted] is above the [level: internal] " +
+        "its calls were routed for or the [level: internal] this is kept at: ask again)"
+      (
+        first._1,
+        atExpire.history(id).exists(_.toString.contains("board-minutes")),
+        Calling.answer[String](rung, cs, Some(internal))
+      ) ==> (s"Unread($refused)", false, Left(refused))
+    }
+
     test("a claimed request is waited on RunWithin more, then rung when its edge rings") {
       val durable = new InMemoryDurable()
       val (edges, edge) = sent(claimed = true)
@@ -472,7 +583,8 @@ object CallingTests extends TestSuite {
         def answered(slot: CallSlot)(using Tx^) =
           Left(StoreError.DatabaseError("the database is down"))
       }
-      Vector(done, open, new InMemoryEdges, broken).map(Calling.answer[String](_, cs)) ==> Vector(
+      Vector(done, open, new InMemoryEdges, broken)
+        .map(Calling.answer[String](_, cs, None)) ==> Vector(
         Right(Outcome.Done("ok")),
         Right(
           Outcome.Failed(

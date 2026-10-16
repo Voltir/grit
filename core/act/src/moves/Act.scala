@@ -340,7 +340,7 @@ private[moves] object Act {
             (tx: Tx^) ?=> {
               val c = s.call
               Calling
-                .answer[String](env.records.requests, c.cs)
+                .answer[String](env.records.requests, c.cs, None)
                 .map(o =>
                   called(
                     o,

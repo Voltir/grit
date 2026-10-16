@@ -3,11 +3,14 @@ package grit.turn
 import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
+import grit.core.edge.RequestState
 import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.store.Nearby
+import grit.core.tool.Outcome
+import grit.core.visibility.{Integrity, Part, Provenance, Readers}
 import grit.models.StubProvider
 
 import utest.*
@@ -19,6 +22,22 @@ object TurnJournalTests extends TestSuite {
 
   val tests = Tests {
     import TurnJournal.given
+
+    // A recorded step must never hold what only some readers may read.
+    test("a wait's step that found an answer cut by item records it without its parts") {
+      val part = Part(
+        Provenance(Place.read("service:files/board").fold(sys.error, identity), Integrity.Member),
+        Readers.AtPlace,
+        "only some may read this"
+      )
+      val found: Either[TurnFailure, RequestState] =
+        Right(RequestState.Answered(Outcome.Done("read", parts = Some(Vector(part)))))
+      val j = summon[Journaled[Either[TurnFailure, RequestState]]]
+      (j.encode(found).contains("only some"), roundTrip(found)) ==> (
+        false,
+        Right(Right(RequestState.Answered(Outcome.Done("read"))))
+      )
+    }
 
     test("outputs and failures read back as written") {
       val window: Either[TurnFailure, Window] = Right(Window(Vector(EntrySeq(0), EntrySeq(1))))
