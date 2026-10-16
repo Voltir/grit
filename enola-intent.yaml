@@ -212,6 +212,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
+  - id: only-dbos-imports-dbos-step-info
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.StepInfo"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
   - id: only-dbos-imports-dbos-enqueue-options
     forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.EnqueueOptions"
