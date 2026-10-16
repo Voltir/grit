@@ -11,6 +11,9 @@ names a generic protocol and no organisation, depends on `grit.core` and `grit.e
 named only by a deployment (`mcp-names-core-alone`). The JDK HTTP client's second egress
 beside `grit.models` (STYLE rule 8); neither names the other.
 
+It also holds one client that is not MCP's: Drive's REST API, until Drive's MCP server serves a
+service account (`drive`, below), reusing `client`'s credentials.
+
 In dependency order:
 
 - **`wire`**: the protocol over ujson, pure: the requests grit sends, the results and errors
@@ -37,6 +40,15 @@ In dependency order:
   lies is declared with lookups, read-only calls grit makes first with the same argument,
   whose answers the server's `Accounts` read beside the call's. The JDK HTTP client lives
   here alone. Imports `wire` and `scope`.
+- **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
+  Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
+  words asked, a file, its grants, a Doc's, a Sheet's or a text file's text, and each failure
+  as a `DriveError` whose words name no setting), how a deployment's Drive is read
+  (`DriveReading`: its people's domain, its own address, its declared writers), and
+  `DriveItems`, each hit and read a part at the folder or drive it lies within, a read
+  believed at the meet over its writers. `DriveEdge` serves `drive_search` and `drive_read`
+  at the service's place. Imports `wire` and `client`; nothing else in mcp imports it
+  (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`
@@ -54,7 +66,9 @@ there on 2026-09-30 and again on 2026-10-16, so the fake is held to a real serve
 run, and between runs to the spec and go-sdk's source. `GitHubItemsContract` is what
 `GitHubItems` needs of GitHub's answers: the recordings below keep it in the unit tier
 (`GitHubItemsRecordedTests`), and `LiveProbe` runs it too; it passed whole there on 2026-10-16.
-`DriveCapture`, a main beside it that needs a service account's key, records Drive's v3 REST
+`DriveRestContract` is what `DriveRest` needs of Drive's answers; `FakeDriveServer`, Drive's
+API in the test JVM answering from the recordings below, keeps it in the unit tier
+(`DriveRestRecordedTests`). `DriveCapture`, a main beside it that needs a service account's key, records Drive's v3 REST
 answers under `test/resources/drive/`, each written with `Neutral`'s stand-ins for its ids,
 addresses, names and text, never as it came (its doc says how to run it). Drive's MCP server
 answers a service account's `tools/list` but refuses each of its `tools/call`s ("The caller does
