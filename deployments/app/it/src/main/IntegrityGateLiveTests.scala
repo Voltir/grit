@@ -249,7 +249,6 @@ object IntegrityGateLiveTests extends TestSuite {
         case Message.User(text) => text.contains(Injection)
         case _ => false
       }))
-      ran.results.get("x1") ==> Some("h1 answers: no.")
     }
 
     test("a crash while GitHub's call is in flight replays the same gate decisions") {

@@ -10,6 +10,7 @@ import scala.util.Using
 import grit.core.durable.{Durable, DurableContract, DurableRuntime, Settled, StepRecord}
 import grit.core.id.WorkflowId
 import grit.core.visibility.Visibility
+import grit.dbos.engine.Link
 import grit.dbos.sql.{DbConfig, Opener, TestPostgres}
 
 import dev.dbos.transact.config.DBOSConfig
@@ -184,23 +185,10 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
   private def status(key: String): Option[WorkflowState] =
     dbos.getWorkflowStatus(key).toScala.map(_.status())
 
-  def recordedSteps(id: WorkflowId): Vector[String] =
-    dbos
-      .listWorkflowSteps(WorkflowId.value(id))
-      .asScala
-      .toVector
-      .sortBy(_.functionId())
-      .map(_.functionName())
+  def recordedSteps(id: WorkflowId): Vector[String] = recorded(id).map(_.name)
 
   def recorded(id: WorkflowId): Vector[StepRecord] =
-    dbos
-      .listWorkflowSteps(WorkflowId.value(id))
-      .asScala
-      .toVector
-      .sortBy(_.functionId())
-      .map(s =>
-        StepRecord(s.functionName(), Option(s.output()).collect { case o: String => o }, None)
-      )
+    Link.recorded(dbos.listWorkflowSteps(WorkflowId.value(id))).map(_.record.copy(started = None))
 
   def streamed(id: WorkflowId, key: String): Vector[String] =
     strings(

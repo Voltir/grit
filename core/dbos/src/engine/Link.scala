@@ -51,7 +51,7 @@ import grit.dbos.sql.{
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
-import dev.dbos.transact.workflow.WorkflowState
+import dev.dbos.transact.workflow.{StepInfo, WorkflowState}
 import org.postgresql.ds.PGSimpleDataSource
 
 /** An edge's view of a database's engine (ADR 0015): its inbox, reads, streams and turn
@@ -189,10 +189,13 @@ object Link {
     * what `client` throws.
     */
   private[dbos] def recorded(client: DBOSClient, id: WorkflowId): Vector[RecordedStep] =
-    client
-      .listWorkflowSteps(WorkflowId.value(id))
-      .asScala
-      .toVector
+    recorded(client.listWorkflowSteps(WorkflowId.value(id)))
+
+  /** `steps`, as DBOS lists a workflow's, in order, as a reader of its history sees them
+    * ([[RecordedStep]]); a step DBOS keeps no name for is left out.
+    */
+  private[dbos] def recorded(steps: java.util.List[StepInfo]): Vector[RecordedStep] =
+    steps.asScala.toVector
       .sortBy(_.functionId())
       .flatMap { step =>
         Option(step.functionName()).map { name =>

@@ -418,10 +418,12 @@ object SyncTests extends TestSuite {
     ) {
       val k = keeping(floor, new InMemoryDocuments, believedAt = untrusted, judged = Some(0.1))
       val reply = runOf(k)
-      (reply, held(k), k.made.map(MoveName.value).filter(_.startsWith("vet/")).size) ==> (
+      (reply, held(k), k.made.filter(MoveName.value(_).startsWith("vet/"))) ==> (
         line(written = 3),
         Vector(("docs", floor), ("docs/a.md", floor), ("docs/b.md", floor)),
-        4
+        Vector("/", "docs", "docs/a.md", "docs/b.md").map(p =>
+          CardMoves.vet(CardKey.of(name, p), 0)
+        )
       )
     }
 
