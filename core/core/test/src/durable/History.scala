@@ -1,5 +1,7 @@
 package grit.core.durable
 
+import scala.jdk.CollectionConverters.*
+
 import grit.core.durable.InMemoryDurable.Outcome
 import grit.core.id.WorkflowId
 
@@ -72,5 +74,25 @@ object History {
         }
       kept = o.get("kept").flatMap(_.objOpt).fold(ujson.Obj())(k => ujson.Obj.from(k))
     } yield History(workflow, WorkflowId(id), epoch, source, steps, kept)
+  }
+
+  /** Every `.json` history in `epoch`'s directory of the test module's recorded histories (the
+    * `GRIT_HISTORIES` its build sets), by file name in name order, each as [[read]] reads it:
+    * none when the epoch has no directory. Throws when `GRIT_HISTORIES` is unset or a file is
+    * not JSON.
+    */
+  def recorded(epoch: String): Vector[(String, Either[String, History])] = {
+    val dir = java.nio.file.Path.of(sys.env("GRIT_HISTORIES"), epoch)
+    if (!java.nio.file.Files.isDirectory(dir)) Vector.empty
+    else {
+      val listed = java.nio.file.Files.list(dir)
+      try {
+        listed.toList.asScala.toVector
+          .map(p => p.getFileName.toString -> p)
+          .filter(_._1.endsWith(".json"))
+          .sortBy(_._1)
+          .map((name, p) => name -> read(ujson.read(java.nio.file.Files.readString(p))))
+      } finally listed.close()
+    }
   }
 }

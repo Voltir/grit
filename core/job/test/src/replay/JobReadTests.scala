@@ -16,15 +16,7 @@ import utest.*
   */
 object JobReadTests extends TestSuite {
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def histories: Vector[(String, Either[String, History])] = History.recorded(Turn.Epoch)
 
   /** The one history whose run never ended: it made a move, and was redeployed before its next
     * step.
@@ -82,12 +74,12 @@ object JobReadTests extends TestSuite {
       "every run history of the current epoch names its next record at every prefix, inside its moves too, and as a whole has ended or stands where it stopped"
     ) {
       val runs = histories.collect {
-        case (path, Right(h)) if h.workflow == "run" => (path.last, h)
+        case (path, Right(h)) if h.workflow == "run" => (path, h)
       }
       val read = histories.flatMap {
-        case (path, Left(why)) => Vector(s"${path.last}: $why")
+        case (path, Left(why)) => Vector(s"$path: $why")
         case (path, Right(h)) if h.workflow == "run" =>
-          misread(h, path.last == Unended).map(m => s"${path.last}: $m")
+          misread(h, path == Unended).map(m => s"$path: $m")
         case _ => Vector()
       }
       // Without moves cut inside, and a wait among them, the gate would not reach the planner.

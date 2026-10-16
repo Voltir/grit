@@ -51,7 +51,9 @@ object TurnLoopTests extends TestSuite {
       Rounds.Fewest.calls ==> 2
     }
 
-    test("next") {
+    test(
+      "after each reply the loop answers, fails as silent, or settles its calls, refusing them when cut off"
+    ) {
       val b = budget(3)
       val calling = reply("", Vector("a", "b"))
       val table: Vector[(Round, Message.Assistant, Next)] = Vector(

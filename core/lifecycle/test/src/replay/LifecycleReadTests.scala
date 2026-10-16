@@ -19,15 +19,7 @@ import utest.*
   */
 object LifecycleReadTests extends TestSuite {
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def histories: Vector[(String, Either[String, History])] = History.recorded(Turn.Epoch)
 
   /** Each workflow's flow, by the name its histories are recorded under. */
   private val flows: Map[String, Flow[?, WorkflowId, ?, ?]] = Map(
@@ -60,11 +52,11 @@ object LifecycleReadTests extends TestSuite {
       "every lifecycle history of the current epoch names its next record at every prefix, and as a whole has ended"
     ) {
       val read = histories.flatMap {
-        case (path, Left(why)) => Vector(s"${path.last}: $why")
+        case (path, Left(why)) => Vector(s"$path: $why")
         case (path, Right(history)) =>
           flows.get(history.workflow) match {
-            case None => Vector(s"${path.last}: no flow for ${history.workflow}")
-            case Some(flow) => misread(flow, history).map(m => s"${path.last}: $m")
+            case None => Vector(s"$path: no flow for ${history.workflow}")
+            case Some(flow) => misread(flow, history).map(m => s"$path: $m")
           }
       }
       assert(histories.nonEmpty)

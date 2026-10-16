@@ -21,12 +21,8 @@ object LifecycleReplayTests extends TestSuite {
   import CloseFixtures.*
   import RecordLifecycleHistories.{Posted, postWorld}
 
-  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+  private def histories: Vector[(String, Either[String, History])] = historiesOf(Turn.Epoch)
 
-  /** The most bytes a step of each family may record in these histories, about twice the
-    * most any records today, each with what it records. A step new to these workflows has
-    * none until it is given one here.
-    */
   /** A close's summary step: its judgment's `made` holds what it wrote. */
   private val Summary = "ask:summary"
 
@@ -39,6 +35,10 @@ object LifecycleReplayTests extends TestSuite {
       .flatMap(_.strOpt)
       .flatMap(made => ujson.read(made).obj.get("closing"))
 
+  /** The most bytes a step of each family may record in these histories, about twice the
+    * most any records today, each with what it records. A step new to these workflows has
+    * none until it is given one here.
+    */
   private val Budgets: Map[String, Int] = Map(
     "check" -> 512, // what is due, and close's known record of the conversation
     "ask:summary" -> 1900, // the closing close drew up, whole, escaped in its judgment
@@ -64,22 +64,15 @@ object LifecycleReplayTests extends TestSuite {
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 2000
 
-  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
+    History.recorded(epoch)
 
   val tests = Tests {
     test(
       "each lifecycle history of the previous epoch names its steps as its scenario's in this one"
     ) {
       def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
-        historiesOf(epoch).collect { case (p, Right(h)) => p.last -> named(h) }.toMap
+        historiesOf(epoch).collect { case (p, Right(h)) => p -> named(h) }.toMap
       // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, a placement's
       // `stitch` is `ask:stitch`, and a close's `gate` and `summarise` are `ask:gate` and
       // `ask:summary`, each one's cost then
@@ -129,7 +122,7 @@ object LifecycleReplayTests extends TestSuite {
     test(
       "every step of the epoch records within its family's budget, every history within the whole's"
     ) {
-      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      val read = histories.collect { case (path, Right(h)) => path -> h }
       assert(read.size == histories.size)
       // A closing is not answers: the close's summary is its own family.
       def family(name: String): String =
@@ -196,7 +189,7 @@ object LifecycleReplayTests extends TestSuite {
               case other => Left(s"a $other history")
             }
         }
-        outcome.left.toOption.map(why => s"${path.last}: $why")
+        outcome.left.toOption.map(why => s"$path: $why")
       }
       assert(failures.isEmpty)
     }
@@ -208,7 +201,7 @@ object LifecycleReplayTests extends TestSuite {
         parsed.toOption.toVector
           .filter(_.workflow == "shadow")
           .flatMap(_.steps.collect {
-            case s if s.name == "ask:shadow" => (path.last, s.outcome)
+            case s if s.name == "ask:shadow" => (path, s.outcome)
           })
       }
       val read = rows.map {
@@ -286,7 +279,7 @@ object LifecycleReplayTests extends TestSuite {
               }
           })
           .flatten
-          .map(c => path.last -> c.flows.outcome)
+          .map(c => path -> c.flows.outcome)
       }
       ran.sortBy(_._1) ==> Vector(
         "close-ran-unreplied.json" -> Some("No reply."),
@@ -300,7 +293,7 @@ object LifecycleReplayTests extends TestSuite {
       // a stored closing of an earlier version is ClosingTests'.
       val closings = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Summary => (path.last, s.outcome)
+          case s if s.name == Summary => (path, s.outcome)
         })
       }
       val read = closings.map {

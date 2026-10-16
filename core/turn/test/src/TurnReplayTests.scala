@@ -13,17 +13,10 @@ import utest.*
 object TurnReplayTests extends TestSuite {
   import TurnFixtures.*
 
-  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+  private def histories: Vector[(String, Either[String, History])] = historiesOf(Turn.Epoch)
 
-  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
+    History.recorded(epoch)
 
   /** The epoch before this one, whose histories the rename map is checked against. */
   private val Previous = "2026-10-14"
@@ -96,7 +89,7 @@ object TurnReplayTests extends TestSuite {
 
   /** Each history of `epoch`, by its file's name, as the names of its steps. */
   private def namesOf(epoch: String): Map[String, Vector[String]] =
-    historiesOf(epoch).collect { case (path, Right(h)) => path.last -> h.steps.map(_.name) }.toMap
+    historiesOf(epoch).collect { case (path, Right(h)) => path -> h.steps.map(_.name) }.toMap
 
   val tests = Tests {
     test(
@@ -149,7 +142,7 @@ object TurnReplayTests extends TestSuite {
             }
           }
         }
-        outcome.left.toOption.map(why => s"${path.last}: $why")
+        outcome.left.toOption.map(why => s"$path: $why")
       }
       assert(failures.isEmpty)
     }
@@ -160,7 +153,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.weighed
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Turn.Step.Weigh => (path.last, s.outcome)
+          case s if s.name == Turn.Step.Weigh => (path, s.outcome)
         })
       }
       assert(outputs.map(_._1).toSet.size >= 4)
@@ -179,7 +172,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.routing
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Turn.Step.Route => (path.last, s.outcome)
+          case s if s.name == Turn.Step.Route => (path, s.outcome)
         })
       }
       assert(outputs.map(_._1).toSet.size >= 6)
@@ -195,7 +188,7 @@ object TurnReplayTests extends TestSuite {
     test(
       "every step of the epoch records within its family's budget, every history within the whole's"
     ) {
-      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      val read = histories.collect { case (path, Right(h)) => path -> h }
       assert(read.size == histories.size)
       val family = (name: String) => Turn.Step.family(name).getOrElse(name)
       RecordedSizes.breaches(read, family, Budgets, Whole) ==> Vector.empty
@@ -207,7 +200,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.recordedOffer
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Turn.Step.Offer => (path.last, s.outcome)
+          case s if s.name == Turn.Step.Offer => (path, s.outcome)
         })
       }
       assert(outputs.nonEmpty)
@@ -225,7 +218,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.gated
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if Turn.Step.family(s.name).contains(Turn.Step.Gate) => (path.last, s.outcome)
+          case s if Turn.Step.family(s.name).contains(Turn.Step.Gate) => (path, s.outcome)
         })
       }
       assert(outputs.exists(_._1 == "gated-withheld.json"))
@@ -248,7 +241,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.window
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Turn.Step.Assemble => (path.last, s.outcome)
+          case s if s.name == Turn.Step.Assemble => (path, s.outcome)
         })
       }
       assert(outputs.exists(_._1 == "documented.json"))
@@ -279,7 +272,7 @@ object TurnReplayTests extends TestSuite {
         else again(TurnJournal.requestState, text)
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(
-          _.steps.flatMap(s => kind(s.name).map((path.last, _, s.outcome)))
+          _.steps.flatMap(s => kind(s.name).map((path, _, s.outcome)))
         )
       }
       outputs.map(_._2).toSet ==> kinds
@@ -301,7 +294,7 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.classification
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == "classify" => (path.last, s.outcome)
+          case s if s.name == "classify" => (path, s.outcome)
         })
       }
       assert(outputs.nonEmpty)

@@ -861,7 +861,7 @@ object TurnTests extends TestSuite {
       durable.recordedSteps(turn.workflowId) ==> Recorded
     }
 
-    test("not a turn id") {
+    test("a workflow id that is not a turn's fails, naming it") {
       val entries = new InMemoryEntryStore
       new InMemoryDurable().run(WorkflowId("proof"))(
         turnBody(entries, new RecordingProvider)

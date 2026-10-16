@@ -13,15 +13,7 @@ import utest.*
   */
 object TurnReadTests extends TestSuite {
 
-  private def histories: Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def histories: Vector[(String, Either[String, History])] = History.recorded(Turn.Epoch)
 
   /** The two records a wait leaves, which a reader names by the wait's label. */
   private val Waits = Set(StepRecord.Received, StepRecord.Slept)
@@ -46,8 +38,7 @@ object TurnReadTests extends TestSuite {
     */
   private def misread(turn: TurnRef, history: History, inFlight: Boolean): Vector[String] = {
     val records: Vector[StepRecord] = history.steps.map(FlowFixtures.recorded)
-    def expected(k: Int, named: String): Boolean =
-      named == records(k).name || (Waits(records(k).name) && waits(named))
+    def expected(k: Int, named: String): Boolean = named == label(records.map(_.name), k)
     val prefixes = records.indices.toVector.flatMap { k =>
       val read = Flows.read(TurnFlow.flow, turn, records.take(k)).map(_.at) match {
         case Right(Flows.Read.Next(step, at)) if at == k && expected(k, step) => None
@@ -67,21 +58,39 @@ object TurnReadTests extends TestSuite {
     prefixes ++ whole
   }
 
-  /** Whether `name` labels a wait: a person's, or an edge's. */
-  private def waits(name: String): Boolean =
-    Turn.Step.family(name).exists(Set(Turn.Step.Wait, Turn.Step.Expire, Turn.Step.Abandon))
+  private val Approve = "(call:\\d+:\\d+):approve".r
+  private val Dispatch = "(call:\\d+:\\d+):dispatch".r
+  private val Expired = "(call:\\d+:\\d+):expire".r
+  private val Sent = "(call:\\d+):send".r
+  private val Answered = "(call:\\d+):(\\d+)".r
+
+  /** The name a reader gives `names(k)`: its own, or for a wait's record, by the step before
+    * the wait: after a person is asked to approve, its `wait`; after a dispatch or a send, the
+    * `expire` of the call the edge answers next; after an expiry, that call's `abandon`.
+    */
+  private def label(names: Vector[String], k: Int): String =
+    if (!Waits(names(k))) names(k)
+    else
+      names.take(k).filterNot(Waits).lastOption match {
+        case Some(Approve(call)) => s"$call:wait"
+        case Some(Dispatch(call)) => s"$call:expire"
+        case Some(Expired(call)) => s"$call:abandon"
+        case Some(Sent(call)) => s"$call:0:expire"
+        case Some(Answered(call, j)) => s"$call:${j.toInt + 1}:expire"
+        case other => s"a wait after $other"
+      }
 
   val tests = Tests {
     test(
       "every turn history of the current epoch names its next record at every prefix, shown as the running step, and as a whole has ended"
     ) {
       val read = histories.flatMap {
-        case (path, Left(why)) => Vector(s"${path.last}: $why")
+        case (path, Left(why)) => Vector(s"$path: $why")
         case (path, Right(history)) =>
           TurnRef.fromWorkflowId(history.id) match {
-            case None => Vector(s"${path.last}: not a turn's history")
+            case None => Vector(s"$path: not a turn's history")
             case Some(turn) =>
-              misread(turn, history, InFlight(path.last)).map(m => s"${path.last}: $m")
+              misread(turn, history, InFlight(path)).map(m => s"$path: $m")
           }
       }
       assert(histories.nonEmpty)

@@ -14,7 +14,7 @@ import utest.*
   */
 object JobReplayTests extends TestSuite {
 
-  private def histories: Vector[(os.Path, Either[String, History])] = historiesOf(Turn.Epoch)
+  private def histories: Vector[(String, Either[String, History])] = historiesOf(Turn.Epoch)
 
   /** The most bytes a step of each family may record in these histories, about twice the
     * most any records today, each with what it records. A step new to the run has none until
@@ -37,19 +37,12 @@ object JobReplayTests extends TestSuite {
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 1600
 
-  private def historiesOf(epoch: String): Vector[(os.Path, Either[String, History])] = {
-    val dir = os.Path(sys.env("GRIT_HISTORIES")) / epoch
-    if (!os.isDir(dir)) Vector.empty
-    else
-      os.list(dir)
-        .filter(_.ext == "json")
-        .toVector
-        .map(p => p -> History.read(ujson.read(os.read(p))))
-  }
+  private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
+    History.recorded(epoch)
 
   /** Each history of `epoch`, by its file's name, as the names of its steps. */
   private def namesOf(epoch: String): Map[String, Vector[String]] =
-    historiesOf(epoch).collect { case (path, Right(h)) => path.last -> h.steps.map(_.name) }.toMap
+    historiesOf(epoch).collect { case (path, Right(h)) => path -> h.steps.map(_.name) }.toMap
 
   /** The name the previous epoch's step `name` has in this one: a move's `move:{name}` named
     * for what it is, by the moves the recorder's jobs make (`a` and `j` ask, `c` calls, `note`
@@ -103,7 +96,7 @@ object JobReplayTests extends TestSuite {
           new InMemoryDurable().replay(history.id, history.steps)(Run.body(w.env(), jobs))
         }
       }
-      outcome.left.toOption.map(why => s"${path.last}: $why")
+      outcome.left.toOption.map(why => s"$path: $why")
     }
 
   val tests = Tests {
@@ -117,7 +110,7 @@ object JobReplayTests extends TestSuite {
 
     test("the current epoch has run histories to replay, redeployed ones and moves among them") {
       // Without them the gates below pass vacuously.
-      val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path.last }
+      val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path }
       val expected = Vector(
         "run-replied-then-redeployed",
         "run-asked",
@@ -140,7 +133,7 @@ object JobReplayTests extends TestSuite {
     test(
       "every step of the epoch records within its family's budget, every history within the whole's"
     ) {
-      val read = histories.collect { case (path, Right(h)) => path.last -> h }
+      val read = histories.collect { case (path, Right(h)) => path -> h }
       assert(read.size == histories.size)
       RecordedSizes.breaches(read, RecordedSizes.familyOf, Budgets, Whole) ==> Vector.empty
     }
@@ -163,7 +156,7 @@ object JobReplayTests extends TestSuite {
       "every run history that asked or called, and replied, replies under today's body as it recorded"
     ) {
       val replied = histories.collect {
-        case (path, Right(h)) if moved(h) && !kept(h) && recorded(h).nonEmpty => (path.last, h)
+        case (path, Right(h)) if moved(h) && !kept(h) && recorded(h).nonEmpty => (path, h)
       }
       // Every one that recorded a reply is compared: one whose reply no longer parses would
       // otherwise drop out of the gate unseen.
@@ -188,7 +181,7 @@ object JobReplayTests extends TestSuite {
 
     test("a run that recorded no move, resumed at another version, recorded superseded") {
       val replayed = histories.collect {
-        case (path, Right(h)) if path.last == "run-redeployed-before-moves.json" =>
+        case (path, Right(h)) if path == "run-redeployed-before-moves.json" =>
           new InMemoryDurable().replay(h.id, h.steps)(Run.body(new World().env(), jobs(2)))
       }
       replayed ==> Vector(Right("superseded: started at v1, its job at v2"))
@@ -198,7 +191,7 @@ object JobReplayTests extends TestSuite {
       "a run that made a move, resumed at another version, ends in error at its reply, which meets the move"
     ) {
       val replayed = histories.collect {
-        case (path, Right(h)) if path.last == "run-moved-then-redeployed.json" =>
+        case (path, Right(h)) if path == "run-moved-then-redeployed.json" =>
           new InMemoryDurable().replay(h.id, h.steps)(Run.body(new World().env(), jobs(2)))
       }
       replayed.map(_.left.map(_.replaceAll("workflow \\S+ ", "workflow "))) ==>

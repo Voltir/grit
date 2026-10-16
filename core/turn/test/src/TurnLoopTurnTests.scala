@@ -419,17 +419,6 @@ object TurnLoopTurnTests extends TestSuite {
       texts(entries).filter(_.startsWith("assistant:")) ==> Vector("assistant: more")
     }
 
-    test("a silent reply fails the turn") {
-      val entries = new InMemoryEntryStore
-      val ws = new Files(files)
-      val provider = new Scripted((_, n) =>
-        Right(if (n == 0) calling("", ("t1", "peek", "a.txt")) else calling(""))
-      )
-      val turn = say(entries, "go")
-      looped(new InMemoryDurable, entries, entries, turn, provider, ws) ==>
-        "failed: Model(the reply to ask:1 said nothing and called no tool)"
-    }
-
     test("a failed call after a tool round ends the turn with no reply") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

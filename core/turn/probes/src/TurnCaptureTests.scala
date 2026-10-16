@@ -91,6 +91,13 @@ object TurnCaptureTests extends TestSuite {
       |  Extract.tool(None, (_, _, _, _) => { val _ = m.catalog(); Left("unasked") })
       |""".stripMargin
 
+  private def says(text: String)(found: List[String]): Boolean = found.exists(_.contains(text))
+
+  /** The refusal of a step whose output keeps its env `r`, of type `env`, in `method`. */
+  private def escapes(env: String, method: String): String =
+    s"""Note that capability `r` cannot flow into capture set {any}
+       |because (r : grit.turn.$env^) is not visible from any in method $method.""".stripMargin
+
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
@@ -143,20 +150,27 @@ object TurnCaptureTests extends TestSuite {
   private lazy val rounds =
     Probes.batch(roundsPrelude, List(keptSettling, keptNow, keptRounds, keptEnv, keptWeighed))
 
+  /** Capture and separation checking off. */
+  private val off = options.filterNot(_.startsWith("-language:experimental."))
+
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
     erased(prelude),
     List(reads("spying"), editing, smuggled("TurnTooling"), extracting("Tool.Offered")).map(erased),
-    options.filterNot(_.startsWith("-language:experimental."))
+    off
   )
+
+  /** The rounds' breaches, their capture sets erased, compiled with capture checking off. */
+  private lazy val roundsUnchecked =
+    Probes.batch(erased(roundsPrelude), List(keptSettling, keptRounds, keptEnv).map(erased), off)
 
   val tests = Tests {
     test("the probe environment is set") {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
-    test("one compile answers every probe, with capture checking on and with it off") {
-      (compiled.runs, unchecked.runs) ==> (1, 1)
+    test("one compile answers each prelude's probes, with capture checking on and with it off") {
+      (compiled.runs, unchecked.runs, rounds.runs, roundsUnchecked.runs) ==> (1, 1, 1, 1)
     }
 
     test("a turn offered tools through what it names, and pure hosted tools, compiles") {
@@ -192,12 +206,20 @@ object TurnCaptureTests extends TestSuite {
 
     test("a round's state holds what its env's bodies found, never a capability they act through") {
       rounds.errors(keptNow) ==> List()
-      assert(rejected(rounds.errors(keptSettling)))
+      assert(says(escapes("TurnRound.Env", "kept"))(rounds.errors(keptSettling)))
     }
 
     test("what crosses a turn's steps holds what their bodies found, never what they act through") {
       rounds.errors(keptWeighed) ==> List()
-      assert(rejected(rounds.errors(keptRounds)), rejected(rounds.errors(keptEnv)))
+      assert(
+        says(escapes("TurnSteps.Env", "held"))(rounds.errors(keptRounds)),
+        says(escapes("TurnSteps.Env", "held"))(rounds.errors(keptEnv))
+      )
+    }
+
+    test("capture checking is what rejects a round's or a step's kept capability") {
+      Vector(keptSettling, keptRounds, keptEnv).map(p => roundsUnchecked.errors(erased(p))) ==>
+        Vector(List(), List(), List())
     }
 
     test("capture checking is what rejects a store that acts through a capability") {
