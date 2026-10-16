@@ -9,6 +9,8 @@ the packages' order, each one's idea, and the rules enforced outside the compile
 
 In dependency order, each with the core packages it imports:
 
+- **`either`**: a vector of `Either`s traversed, failing at the first `Left`. Imports nothing in
+  core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
 - **`id`**: the opaque ids, and the one short content hash every content-addressed id uses. A

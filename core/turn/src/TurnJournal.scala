@@ -4,6 +4,7 @@ import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
+import grit.core.either.Traversal.sequence
 import grit.core.id.{
   ConversationId,
   CorpusName,
@@ -195,11 +196,6 @@ private[turn] object TurnJournal {
       case (Some(id), Some(key)) => Right(TurnTopics.Shown(TopicId(id), key))
       case _ => Left("a topic shown: expected {id, key}")
     }
-
-  private def sequence[A](as: Vector[Either[String, A]]): Either[String, Vector[A]] =
-    as.foldLeft[Either[String, Vector[A]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => a.map(done :+ _))
-    )
 
   given reply: Journaled[Either[TurnFailure, Message.Assistant]] =
     outcome(

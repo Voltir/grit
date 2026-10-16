@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
@@ -399,8 +400,4 @@ object PayloadJson {
       case _ => Left(s"$key is not an array")
     }
 
-  private def traverse[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty)) { (acc, a) =>
-      acc.flatMap(bs => f(a).map(bs :+ _))
-    }
 }

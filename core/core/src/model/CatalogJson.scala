@@ -2,6 +2,8 @@ package grit.core.model
 
 import java.time.LocalDate
 
+import grit.core.either.Traversal.sequence
+
 /** The stored JSON forms of a [[Catalog]] (the seed file's form) and of a [[TurnProfile]].
   * Written by hand: it is persisted data, so a rename in Scala must not change it, and reading
   * it is total. An unmeasured setting is an absent key.
@@ -17,7 +19,9 @@ object CatalogJson {
       o <- obj(v, "catalog")
       policy <- field(o, "policy", "catalog").flatMap(readPolicy)
       list <- field(o, "profiles", "catalog").flatMap(_.arrOpt.toRight("profiles is not a list"))
-      profiles <- all(list.toVector.zipWithIndex.map((p, i) => readProfile(p, s"profiles[$i]")))
+      profiles <- sequence(
+        list.toVector.zipWithIndex.map((p, i) => readProfile(p, s"profiles[$i]"))
+      )
     } yield Catalog.of(policy, profiles)
 
   /** One profile's form, as the seed lists it: its pair, then each known setting. */
@@ -69,7 +73,7 @@ object CatalogJson {
       case "guidance" => GuidanceWords.read(v, name).map(Setting.Guidance(_))
       case "repairs" =>
         val words = value.split(",").toVector.map(_.trim).filter(_.nonEmpty)
-        all(words.zipWithIndex.map((w, i) => RepairWords.read(ujson.Str(w), s"$name[$i]")))
+        sequence(words.zipWithIndex.map((w, i) => RepairWords.read(ujson.Str(w), s"$name[$i]")))
           .map(rs => Setting.Repairs(rs.toSet))
       case other => Left(s"$other is not a setting: one of ${SettingNames.mkString(", ")}")
     }
@@ -287,11 +291,6 @@ object CatalogJson {
       scala.util.Try(LocalDate.parse(t)).toOption.toRight(s"$at.$key is not a date (yyyy-mm-dd)")
     )
 
-  private def all[A](each: Vector[Either[String, A]]): Either[String, Vector[A]] =
-    each.foldLeft[Either[String, Vector[A]]](Right(Vector.empty))((acc, e) =>
-      acc.flatMap(as => e.map(as :+ _))
-    )
-
   private def readRef(o: Fields, at: String): Either[String, ModelRef] =
     for {
       m <- text(o, "model", at)
@@ -336,7 +335,7 @@ object CatalogJson {
   ): Either[String, Vector[A]] =
     v.arrOpt match {
       case None => item(v, at).map(Vector(_))
-      case Some(items) => all(items.toVector.zipWithIndex.map((x, i) => item(x, s"$at[$i]")))
+      case Some(items) => sequence(items.toVector.zipWithIndex.map((x, i) => item(x, s"$at[$i]")))
     }
 
   private def readLadder(v: ujson.Value, at: String): Either[String, Ladder] =
@@ -355,7 +354,8 @@ object CatalogJson {
     v.arrOpt
       .toRight(s"$at is not a list")
       .flatMap(items =>
-        all(items.toVector.zipWithIndex.map((w, i) => RepairWords.read(w, s"$at[$i]"))).map(_.toSet)
+        sequence(items.toVector.zipWithIndex.map((w, i) => RepairWords.read(w, s"$at[$i]")))
+          .map(_.toSet)
       )
 
   private def readSource(v: ujson.Value, at: String): Either[String, Source] =

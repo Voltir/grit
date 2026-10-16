@@ -1,5 +1,6 @@
 package grit.core.topic
 
+import grit.core.either.Traversal.traverse
 import grit.core.id.TurnSeq
 
 /** The stored JSON form of [[TopicEvent]]s. Written by hand: it is persisted data, so a
@@ -190,8 +191,4 @@ object TopicJson {
   private def num(o: collection.Map[String, ujson.Value], key: String): Either[String, Double] =
     o.get(key).flatMap(_.numOpt).toRight(s"missing number $key")
 
-  private def traverse[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(bs => f(a).map(bs :+ _))
-    )
 }

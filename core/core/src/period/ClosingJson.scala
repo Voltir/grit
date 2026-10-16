@@ -1,5 +1,6 @@
 package grit.core.period
 
+import grit.core.either.Traversal.traverse
 import grit.core.id.PeriodSeq
 
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
@@ -41,7 +42,7 @@ object ClosingJson {
       outcome <- optionalString(f, "outcome")
       changes <- f.get("changes") match {
         case None => Right(Vector.empty)
-        case Some(ujson.Arr(items)) => all(items.toVector)(readChange(_, v))
+        case Some(ujson.Arr(items)) => traverse(items.toVector)(readChange(_, v))
         case Some(_) => Left("changes is not a list")
       }
       flows <- Flows.of(prose, outcome, changes).toRight("prose is blank")
@@ -65,10 +66,10 @@ object ClosingJson {
   def readBalance(v: ujson.Value, version: Int): Either[String, Balance] =
     for {
       o <- v.objOpt.toRight("balance is not an object")
-      lines <- all(Section.values.toVector) { s =>
+      lines <- traverse(Section.values.toVector) { s =>
         o.get(s.key) match {
           case None => Right(Vector.empty)
-          case Some(ujson.Arr(items)) => all(items.toVector)(readLine(Some(s), _, version))
+          case Some(ujson.Arr(items)) => traverse(items.toVector)(readLine(Some(s), _, version))
           case Some(_) => Left(s"balance ${s.key} is not a list")
         }
       }
@@ -167,8 +168,4 @@ object ClosingJson {
       case Some(_) => Left(s"$key is not a string")
     }
 
-  private def all[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
 }
