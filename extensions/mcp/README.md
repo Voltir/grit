@@ -14,8 +14,9 @@ beside `grit.models` (STYLE rule 8); neither names the other.
 In dependency order:
 
 - **`wire`**: the protocol over ujson, pure: the requests grit sends, the results and errors
-  read back, a response in an event stream, and a call's result as the text the model reads.
-  Imports nothing in mcp.
+  read back, a response in an event stream, a call's result as the text the model reads, and
+  `McpCalled`, the exchange a server's `Accounts` reads for its items (ADR 0036). Imports
+  nothing in mcp.
 - **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered, which
   calls are sent and which of their answers' results are shown, `Open` or held `Within` exact
   argument `Bound`s, so a deployment bounds a service at the edge rather than by asking the
@@ -23,8 +24,11 @@ In dependency order:
   outside every bound withheld; an answer it cannot place is not shown at all. Imports `wire`.
 - **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
   `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
-  repository each result names. It names a service, no organisation; which repositories
-  is the deployment's to say. Imports `scope`; nothing else in mcp imports it
+  repository each result names; and `GitHubItems`, repositories and owners as places under the
+  service's and the `Accounts` reading each item of its issue, pull-request and file tools at
+  its repository by its author's `author_association`, so a deployment's `Cap` on a repository
+  caps them. It names a service, no organisation; which repositories, and at what, is the
+  deployment's to say. Imports `scope`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`client`**: a server a deployment declares, reached over HTTP, each request a POST of its
   own held to its scope; its token is read from the environment and never shown. The JDK HTTP
