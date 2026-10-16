@@ -1,0 +1,66 @@
+# 0022. grit speaks unprompted when a heard message passes a gate, its draft a judge, and declared limits; one put to it by name is answered as addressed
+
+Status: accepted (2026-09-30); revised (2026-10-16)
+
+Context: a listened channel (ADR 0020) is kept, but grit only answered what was said to it.
+A deployment also wants grit to join in, with what a thread lacks, when that is worth the
+interruption. Turned down: a workflow of its own for speaking (it would duplicate the
+turn's window, ledger, delivery and recovery); the edge deciding (it would put triage and
+the ledger in the edge); gating on triage alone, or on the kind "question" (one let "yep"
+through, the other only answers); judging in triage (triage and the turn share their
+conversation's queue slot, so triage cannot wait for a draft); the drafting model as its
+own judge (dearer, and it grades its own work); a timed wait before drafting (it holds the
+queue, and DBOS has no delayed enqueue).
+
+Decision:
+
+- **The edge says where grit may answer**: it hears each message with a `Reach`, where a
+  reply would go and whom the message names. A past message has no address.
+- **The deployment says whether grit speaks**: `Speaking.Off`, `Shadow` (draft and judge,
+  never post) or `Within(Limits)`. `Limits` holds `drafts`, a gate over triage's answers;
+  `postAt`; freshness; post rates per thread, room and deployment; and a daily speech cap.
+  Speech also counts in the deployment's budget. A gate (`grit.core.triage.Gate`) is a bound
+  on a reading of a named answer, every one of some gates, or any one of them, a closed set
+  of forms a deployment composes. The reference deployment drafts by live triage's own
+  (`TriageQuestions.ShippedSpeak`). A gate reading a question live triage does not ask is
+  refused at declaration (`SpeechUnread`).
+- **Triage considers each heard message it tagged** (`Speech.decide`), holding on the first
+  check that fails, in `Silence`'s order: off, no address, believed below `Outside` (ADR
+  0036), stale, untagged, the gate (`Gated` with every failed bound; `Unasked` when its
+  answers cannot decide it), naming someone else, an unanswered unprompted turn in the
+  thread, a rate, the speech cap, the budget. It fails closed. A message said to grit is
+  never considered: it is answered because it was addressed (ADR 0025).
+- **A message put to grit by name is answered as said to grit.** When triage reads it as
+  directed at grit (`Tags.directed`, in the persona's name, ADR 0021), the decision is
+  `Answering`, held only as an addressed message could be: no address, the gate (none under
+  `Off`), or the budget. Its turn's root is `ByName`: offered, told and reached as
+  addressed, its reply the turn's own message (`Replied`), posted by the edge, counted in no
+  rate and no speech spend. This is the one point where a classifier's reading decides
+  addressing. Turned down: drafting it and letting it `pass`, which dropped answerable
+  questions. `TurnOffer.Root.Named` is that earlier path, kept for the offers that recorded
+  it.
+- **Otherwise the turn drafts** (root `Heard`): told it was not addressed, to add what the
+  thread lacks or reply `pass`. A draft is never shown, never searched, and not a period's
+  activity.
+- **A classifier judges the draft**: is it `grounded` in what the turn recalled, and `worth`
+  the interruption; the weaker is its score (`Judged.score`). A pass, or a window that
+  recalled nothing, is settled without asking.
+- **The draft is posted** in the message's thread only when its score reaches `postAt`,
+  speaking is `Within`, and the assistant has not replied since, in the thread or its strand
+  (ADR 0023), checked in the transaction that writes the reply.
+- **Replay.** Whether a turn drafts is recorded in its `offer` (`root`), never read from live
+  settings.
+- **Every decision, score and outcome is kept** (`grit.speech`) as long as its period's
+  usage. A heard turn that fails before its offer keeps `Failed` (`record-failure`).
+
+**Measuring the gate.** A person labels, by a reaction on a prompt in a private place,
+whether a reply would have been welcome (`grit.core.review`). Every message a review
+considers, picked or not, is a row of `grit.reviews` with its reason, keyed by its entry's
+id with no foreign key to `grit.entries` and cascading from its conversation, so labels and
+the population they were drawn from outlive the raw window (ADR 0014). It never holds the
+message's text (`Prompt` has no field for it); a label is read back by its entry id
+(`InboundId`).
+
+Consequences: every unprompted post traces to the scores that allowed it. Harder: every
+heard message in a speaking deployment writes a decision row. Enforced by `SpeechTests`,
+`ReviewContract`, and the replay gate (`TurnReplayTests`).
