@@ -22,15 +22,17 @@ import grit.mcp.wire.{McpError, McpTool, Rpc, Sse}
   * The key comes from `GRIT_DRIVE_SA_KEY` alone, as a path or as the JSON, and is never
   * printed or written. `<domain>` is the Workspace domain whose addresses are people; each
   * `writer` the exact address of an account that is not a person (another service's) that
-  * edits files. It asks with `drive.readonly`: `tools/list`; `search_files` for folders and for
-  * files (the first of [[FolderQueries]] and of [[FileQueries]] the server answers with an
-  * item); `get_file_metadata` of a file whose parent is no folder, a folder's file, a folder,
-  * and each parent that is no folder (a shared drive, as far as the answers tell);
-  * `get_file_permissions` of a file under each such parent; and `read_file_content` of one
-  * Google Doc, comments left out. Each answer is written into `dir` with [[Neutral]]'s
-  * stand-ins, never as it came; `tools/list` is written as it came, as it names nothing of the
-  * deployment's. What it found is printed in the same stand-ins and kinds, never a title, an
-  * id or an address. Exits 1 when the key is unset or not a key, or `tools/list` is not read.
+  * edits files. It asks with `drive.readonly`: `tools/list`; `list_recent_files`;
+  * `search_files` with each of [[Queries]], then with `parentId = '<id>'` for each parent the
+  * items met so far name (recording the first answer holding a folder, a file, and an item of
+  * a parent); `get_file_metadata` of a file whose parent is no folder, a folder's file, a
+  * folder, and each parent no item met as a folder; `get_file_permissions` of a file under each
+  * such parent that is no folder (a shared drive, as far as the answers tell); and
+  * `read_file_content` of one Google Doc, comments left out. Each answer is written into `dir`
+  * with [[Neutral]]'s stand-ins, never as it came; `tools/list` is written as it came, as it
+  * names nothing of the deployment's. What it found is printed as kinds, counts and booleans,
+  * and an error's text masked, never a title, an id or an address. Exits 1 when the key is
+  * unset or not a key, or `tools/list` is not read.
   */
 object DriveCapture {
 
@@ -45,13 +47,19 @@ object DriveCapture {
 
   val Doc = "application/vnd.google-apps.document"
 
-  /** `search_files` queries for folders, tried in order. */
-  val FolderQueries: Vector[String] =
-    Vector(s"mimeType = '$Folder'", "type = 'folder'", "folders")
+  /** `search_files` queries in the tool's documented grammar, tried in order; then
+    * `parentId = '<id>'` for each parent an item met by any other route names.
+    */
+  val Queries: Vector[String] = Vector(
+    s"mimeType = '$Folder'",
+    s"mimeType != '$Folder'",
+    "sharedWithMe = true",
+    "title contains 'a'",
+    "modifiedTime > '2000-01-01T00:00:00Z'"
+  )
 
-  /** `search_files` queries for files, tried in order. */
-  val FileQueries: Vector[String] =
-    Vector(s"mimeType != '$Folder'", "trashed = false", "*", "")
+  /** The most of an error's text printed. */
+  val Said = 300
 
   /** A file or folder as an answer names it: its id, type, parent and drive, when given. */
   final case class Item(id: String, mimeType: String, parent: Option[String], drive: Option[String])
@@ -143,9 +151,7 @@ object DriveCapture {
           ask(Rpc.Call.CallTool(t, arguments)) match {
             case Right(r) =>
               answers += recording -> r
-              report(
-                s"$recording: answered, isError ${r.value.get("isError").flatMap(_.boolOpt).getOrElse(false)}"
-              )
+              report(s"$recording: answered, isError ${isError(r)}${errorText(r)}")
               Some(r)
             case Left(e) =>
               report(s"$recording: ${kind(e)}")
@@ -153,29 +159,55 @@ object DriveCapture {
           }
       }
 
-    def search(queries: Vector[String], recording: String, folders: Boolean): Vector[Item] =
-      queries.zipWithIndex.iterator
-        .map { case (q, i) =>
-          tool.get("search_files").flatMap { t =>
-            ask(Rpc.Call.CallTool(t, ujson.Obj("query" -> q))) match {
-              case Right(r) =>
-                val found = items(r).filter(it => (it.mimeType == Folder) == folders)
-                report(s"$recording query ${i + 1}: isError ${isError(r)}, ${found.size} items")
-                if (found.nonEmpty) {
-                  answers += recording -> r
-                  Some(found)
-                } else None
-              case Left(e) =>
-                report(s"$recording query ${i + 1}: ${kind(e)}")
-                None
-            }
-          }
-        }
-        .collectFirst { case Some(found) => found }
-        .getOrElse(Vector.empty)
+    val recent = call(
+      "list_recent_files",
+      "list-recent-files",
+      ujson.Obj("pageSize" -> 100, "orderBy" -> "lastModified")
+    ).map(items).getOrElse(Vector.empty)
+    report(
+      s"list-recent-files: ${recent.size} items, ${recent.count(_.mimeType == Folder)} folders"
+    )
 
-    val folders = search(FolderQueries, "search-folders", folders = true)
-    val files = search(FileQueries, "search-files", folders = false)
+    // The first search answer holding a folder, a file, and an item of a named parent, recorded.
+    val recorded = mutable.Set.empty[String]
+    def search(q: String, label: String, parent: Boolean): Vector[Item] =
+      tool.get("search_files") match {
+        case None =>
+          report("search_files is not offered; not called")
+          Vector.empty
+        case Some(t) =>
+          ask(Rpc.Call.CallTool(t, ujson.Obj("query" -> q))) match {
+            case Right(r) =>
+              val found = items(r)
+              report(s"search $label: isError ${isError(r)}, ${found.size} items${errorText(r)}")
+              val names =
+                if (parent) Vector("search-in-parent" -> found.nonEmpty)
+                else
+                  Vector(
+                    "search-folders" -> found.exists(_.mimeType == Folder),
+                    "search-files" -> found.exists(_.mimeType != Folder)
+                  )
+              names.collect { case (n, true) if !recorded(n) => n }.foreach { n =>
+                recorded += n
+                answers += n -> r
+              }
+              found
+            case Left(e) =>
+              report(s"search $label: ${kind(e)}")
+              Vector.empty
+          }
+      }
+
+    val searched = Queries.zipWithIndex.flatMap { case (q, i) =>
+      search(q, s"query ${i + 1}", parent = false)
+    }
+    val parents = (recent ++ searched).flatMap(_.parent).distinct.take(10)
+    val inParents = parents.zipWithIndex.flatMap { case (p, i) =>
+      search(s"parentId = '$p'", s"parentId of item ${i + 1}", parent = true)
+    }
+    val pool = (recent ++ searched ++ inParents).distinctBy(_.id)
+    val folders = pool.filter(_.mimeType == Folder)
+    val files = pool.filterNot(_.mimeType == Folder)
     val folderIds = folders.map(_.id).toSet
     val top = files.find(_.parent.exists(p => !folderIds(p)))
     val inFolder = files.find(_.parent.exists(folderIds))
@@ -184,7 +216,7 @@ object DriveCapture {
     report(
       s"found ${folders.size} folders, ${files.size} files, ${drives.size} parents that are no folder"
     )
-    report(s"search items name a driveId: ${(folders ++ files).exists(_.drive.isDefined)}")
+    report(s"items name a driveId: ${(folders ++ files).exists(_.drive.isDefined)}")
 
     def metadata(it: Item, recording: String): Unit =
       call("get_file_metadata", recording, ujson.Obj("fileId" -> it.id)).foreach { r =>
@@ -198,16 +230,20 @@ object DriveCapture {
     top.foreach(metadata(_, "metadata-file-top"))
     inFolder.foreach(metadata(_, "metadata-file-in-folder"))
     folder.foreach(metadata(_, "metadata-folder"))
-    drives.zipWithIndex.foreach { case (d, i) =>
-      val letter = ('a' + i).toChar
-      call("get_file_metadata", s"metadata-drive-$letter", ujson.Obj("fileId" -> d)).foreach { r =>
-        val read = items(r).find(_.id == d)
-        report(
-          s"metadata-drive-$letter: an item ${read.isDefined}, a folder ${read.exists(_.mimeType == Folder)}, " +
-            s"titled ${read.isDefined && titled(r)}"
-        )
-      }
-    }
+    // A parent no item met as a folder: a shared drive, or a folder no answer listed.
+    val asFolders = drives.zipWithIndex.flatMap { case (d, i) =>
+      call("get_file_metadata", s"metadata-parent-${i + 1}", ujson.Obj("fileId" -> d)).toVector
+        .flatMap { r =>
+          val read = items(r).find(_.id == d)
+          report(
+            s"metadata-parent-${i + 1}: an item ${read.isDefined}, a folder ${read
+                .exists(_.mimeType == Folder)}, titled ${read.isDefined && titled(r)}, names a parent ${read
+                .exists(_.parent.isDefined)}"
+          )
+          read.filter(_.mimeType == Folder).map(_.id)
+        }
+    }.toSet
+    val roots = drives.filterNot(asFolders)
     top.foreach { t =>
       report(s"the top file's driveId is its parent: ${t.drive.isDefined && t.drive == t.parent}")
     }
@@ -217,7 +253,7 @@ object DriveCapture {
         val held = folders.filter(_.parent.contains(d)).map(_.id).toSet
         files.find(_.parent.exists(held))
       }
-    drives.zipWithIndex.foreach { case (d, i) =>
+    roots.zipWithIndex.foreach { case (d, i) =>
       val letter = ('a' + i).toChar
       under(d).foreach { f =>
         call("get_file_permissions", s"permissions-drive-$letter", ujson.Obj("fileId" -> f.id))
@@ -243,7 +279,7 @@ object DriveCapture {
         )
     }
 
-    val neutral = new Neutral(domain, self, writers, folderIds, drives)
+    val neutral = new Neutral(domain, self, writers, folderIds ++ asFolders, roots)
     answers.foreach { case (recording, r) =>
       val file = dir.resolve(s"$recording.json")
       Files.writeString(file, ujson.write(neutral.result(r), indent = 2))
@@ -256,15 +292,39 @@ object DriveCapture {
   private def isError(result: ujson.Obj): Boolean =
     result.value.get("isError").flatMap(_.boolOpt).getOrElse(false)
 
-  /** `e` as its kind and status, never what the server said, which may quote an id. */
+  /** `e` as its kind and status, and what the server said [[masked]]. */
   private def kind(e: McpError): String = e match {
-    case McpError.Rpc(code, _) => s"error $code"
-    case McpError.Rejected(status, _) => s"HTTP $status"
+    case McpError.Rpc(code, said) => s"error $code: ${masked(said)}"
+    case McpError.Rejected(status, said) => s"HTTP $status: ${masked(said)}"
     case McpError.Status(code) => s"HTTP $code"
     case McpError.Unauthorized(_) => "HTTP 401"
     case McpError.Forbidden(_) => "HTTP 403"
     case other => other.productPrefix
   }
+
+  /** An error result's text blocks, [[masked]], after `: `; empty when `result` is no error. */
+  private def errorText(result: ujson.Obj): String =
+    if (!isError(result)) ""
+    else
+      result.value
+        .get("content")
+        .flatMap(_.arrOpt)
+        .toVector
+        .flatten
+        .flatMap(_.objOpt.flatMap(_.get("text")).flatMap(_.strOpt))
+        .map(masked)
+        .mkString(": ", " | ", "")
+
+  /** `said`, at most [[Said]] characters, with any run of 20 or more id characters as `<id>`
+    * and any word holding `@` as `<address>`, so no id or address is printed.
+    */
+  private def masked(said: String): String =
+    said.linesIterator
+      .mkString(" ")
+      .split(" ")
+      .map(w => if (w.contains('@')) "<address>" else w.replaceAll("[A-Za-z0-9_-]{20,}", "<id>"))
+      .mkString(" ")
+      .take(Said)
 
   /** The JSON `result` holds: its `structuredContent`, else each text block that is JSON. */
   private def bodies(result: ujson.Obj): Vector[ujson.Value] =
