@@ -39,13 +39,16 @@ final class FakeDriveServer private () {
   /** The API's base, as [[DriveRest]] takes it. */
   def api: URI = URI.create(s"http://127.0.0.1:${http.getAddress.getPort}/drive/v3/")
 
-  /** A [[DriveRest]] over this fake, carrying [[FakeDriveServer.Token]], reading the system clock. */
-  def rest(): DriveRest^ = {
+  /** A [[DriveRest]] over this fake, carrying [[FakeDriveServer.Token]], reading the system's clock. */
+  def rest(): DriveRest^ = rest(Clock.system())
+
+  /** A [[DriveRest]] over this fake, carrying [[FakeDriveServer.Token]], reading `clock`. */
+  def rest(clock: Clock): DriveRest^{clock} = {
     val token = Variable("FAKE_DRIVE_TOKEN")
     val authorizer = Credential
       .open(Credential.static(token), Map(Variable.value(token) -> FakeDriveServer.Token))
       .fold(r => throw new java.lang.AssertionError(r.message), identity)
-    new DriveRest(api, authorizer, Clock.system())
+    new DriveRest(api, authorizer, clock)
   }
 
   /** Every request's path below the API and its query, in the order received. */

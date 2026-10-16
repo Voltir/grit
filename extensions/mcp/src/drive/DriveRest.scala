@@ -30,7 +30,7 @@ enum DriveError derives CanEqual {
   /** Drive could not be reached in [[DriveRest.Timeout]]: `why`, never the request. */
   case Unreachable(why: String)
 
-  /** Drive's answer was not in the form it documents: `why`. */
+  /** Drive's answer was not in the form it documents: `why`, for the operator's log alone. */
   case Malformed(why: String)
 
   /** The file is of a type grit does not read, `kind` in words ("a PDF"). */
@@ -44,7 +44,7 @@ enum DriveError derives CanEqual {
     case Hidden => "That file isn't shared here, or doesn't exist."
     case Busy(_) => "Drive is busy just now; try again in a minute."
     case Unreachable(why) => s"Drive could not be reached ($why); try again in a minute."
-    case Malformed(why) => s"Drive answered in a form that could not be read: $why."
+    case Malformed(_) => "Drive's answer couldn't be read; try again later."
     case Unreadable(kind) =>
       s"Only Docs, Sheets and text files in Drive can be read here, not $kind."
   }
