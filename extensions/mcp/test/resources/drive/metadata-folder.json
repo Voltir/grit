@@ -1,0 +1,10 @@
+{
+  "driveId": "drive-b",
+  "name": "name-3",
+  "mimeType": "application/vnd.google-apps.folder",
+  "id": "folder-2",
+  "inheritedPermissionsDisabled": false,
+  "parents": [
+    "folder-1"
+  ]
+}

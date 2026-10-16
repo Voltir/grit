@@ -96,3 +96,24 @@ holds GitHub's write tool `issue_write`, which that server does not list, as its
 it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
 (MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for
 its read tools.
+
+`test/resources/drive/` holds what Drive's v3 REST API answered `DriveCapture` on 2026-10-16,
+for a service account shared into two shared drives, every request with the fields the reader
+asks for: `drives-list.json`, and `drive-a.json`/`drive-b.json` (`drives.get`);
+`search-folders.json`, `search-files.json` and `search-fulltext.json` (`files.list` over every
+drive: the folders, the other files, and `fullText contains`); `metadata-*.json` (`files.get` of
+a drive's top file, a folder's file, a folder, and each drive's id, which Drive answers as a
+folder with no parents and one generic name for both); `permissions-drive-a.json` and
+`-b.json` (`permissions.list`, one page each); `export-doc.txt` and `.md` (one Doc exported as
+`text/plain`, with its byte-order mark, and as `text/markdown`) and `export-sheet.csv` (a
+Sheet's first sheet); and `error-export-folder.json` (a folder's export, 403
+`fileNotExportable`) and `error-no-file.json` (an id naming nothing, 404 `notFound`). Each was
+written through `Neutral`, never as it came: ids as `drive-a`, `folder-1` and `file-1`, a drive
+named so only when listed; names as `name-1`; people as `person-1@example.com`, the account
+itself as `self@project.iam.example` and another service account as
+`writer-bot-1@project.iam.example`; every word of text, a message included, as `text` or
+`message-1`, its punctuation and line breaks kept; lowercase single words at other keys (a
+reason, a role, a type) and every key and its order as sent. They show that every item names
+its drive, that a shared drive's top files have the drive's id as their only parent, that
+folders carry `inheritedPermissionsDisabled` and grants `permissionDetails.inherited`, and that
+the account's own address is among a file's grants.

@@ -1,0 +1,12 @@
+{
+  "drives": [
+    {
+      "name": "name-1",
+      "id": "drive-a"
+    },
+    {
+      "name": "name-2",
+      "id": "drive-b"
+    }
+  ]
+}

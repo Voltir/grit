@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": 404,
+    "message": "message-2",
+    "errors": [
+      {
+        "reason": "notFound",
+        "domain": "global",
+        "locationType": "parameter",
+        "location": "fileId",
+        "message": "message-2"
+      }
+    ]
+  }
+}

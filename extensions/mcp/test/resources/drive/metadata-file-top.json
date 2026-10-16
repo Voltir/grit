@@ -1,0 +1,10 @@
+{
+  "driveId": "drive-a",
+  "name": "name-13",
+  "mimeType": "application/pdf",
+  "id": "file-4",
+  "inheritedPermissionsDisabled": false,
+  "parents": [
+    "drive-a"
+  ]
+}

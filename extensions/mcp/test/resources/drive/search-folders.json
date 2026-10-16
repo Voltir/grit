@@ -1,0 +1,68 @@
+{
+  "files": [
+    {
+      "driveId": "drive-b",
+      "name": "name-3",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-2",
+      "parents": [
+        "folder-1"
+      ]
+    },
+    {
+      "driveId": "drive-b",
+      "name": "name-4",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-1",
+      "parents": [
+        "drive-b"
+      ]
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-5",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-3",
+      "parents": [
+        "drive-a"
+      ]
+    },
+    {
+      "driveId": "drive-b",
+      "name": "name-6",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-4",
+      "parents": [
+        "drive-b"
+      ]
+    },
+    {
+      "driveId": "drive-b",
+      "name": "name-7",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-5",
+      "parents": [
+        "drive-b"
+      ]
+    },
+    {
+      "driveId": "drive-b",
+      "name": "name-8",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-6",
+      "parents": [
+        "drive-b"
+      ]
+    },
+    {
+      "driveId": "drive-b",
+      "name": "name-9",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-7",
+      "parents": [
+        "drive-b"
+      ]
+    }
+  ],
+  "incompleteSearch": false
+}

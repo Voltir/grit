@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": 403,
+    "message": "message-1",
+    "errors": [
+      {
+        "reason": "fileNotExportable",
+        "domain": "global",
+        "message": "message-1"
+      }
+    ]
+  }
+}

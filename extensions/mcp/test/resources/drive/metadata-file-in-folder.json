@@ -1,0 +1,10 @@
+{
+  "driveId": "drive-a",
+  "name": "name-10",
+  "mimeType": "application/vnd.google-apps.document",
+  "id": "file-1",
+  "inheritedPermissionsDisabled": false,
+  "parents": [
+    "folder-3"
+  ]
+}

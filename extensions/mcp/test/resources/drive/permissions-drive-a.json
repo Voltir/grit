@@ -1,0 +1,48 @@
+{
+  "permissions": [
+    {
+      "emailAddress": "person-1@example.com",
+      "role": "organizer",
+      "permissionDetails": [
+        {
+          "role": "organizer",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    },
+    {
+      "emailAddress": "person-2@example.com",
+      "role": "organizer",
+      "permissionDetails": [
+        {
+          "role": "organizer",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    },
+    {
+      "emailAddress": "person-3@example.com",
+      "role": "organizer",
+      "permissionDetails": [
+        {
+          "role": "organizer",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    },
+    {
+      "emailAddress": "self@project.iam.example",
+      "role": "writer",
+      "permissionDetails": [
+        {
+          "role": "writer",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    }
+  ]
+}
