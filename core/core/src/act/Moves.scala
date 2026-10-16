@@ -46,8 +46,8 @@ object Posed {
     * each option or level, and read as `questions` reads them ([[grit.core.classify.Ask.read]]).
     * `request` is what the classifier is sent: the state as its
     * [[grit.core.classify.StateJson]] writes it, and `questions`' questions. The classifier is
-    * a third party the deployment trusts with everything sent to it, as it trusts a model's
-    * provider: nothing checks what goes there. Made by [[judge]].
+    * cleared as the service it calls (ADR 0031): only what that clearance dominates is sent to it.
+    * Made by [[judge]].
     */
   final case class Judgment[T] private[Posed] (request: Request, questions: Ask[?, T])
       extends Posed[T]
