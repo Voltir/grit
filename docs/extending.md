@@ -4,7 +4,7 @@ Where code goes, what a deployment can add to grit, and how a module is added.
 
 ## Where code goes
 
-[ADR 0021](decisions/0021-grit-owns-six-semantics-and-a-deployment-is-a-value-built-against-its-kit.md)
+[ADR 0021](decisions/0021-grit-owns-six-semantics-compiled-in-and-a-deployment-is-a-value-built-against-its-kits-surface.md)
 places code by three questions, asked in order: does the thesis fail without it; does it
 name a generic protocol, tool or service and no organisation; does it name an
 organisation's systems, data or people. The repository's top-level folders are the answers.
@@ -77,7 +77,7 @@ Its sources are declared with `Knowledge.of`, which refuses a source its runs co
 send to under the deployment's `Visibility`. The reference deployment turns it on for
 `GRIT_PLUGINS=knowledge`; its README says what a deployment declares.
 
-**Jobs and schedules** ([ADR 0029](decisions/0029-a-job-is-versioned-code-a-schedule-is-data-and-a-clock-edge-starts-each-due-slot.md)).
+**Jobs and schedules** ([ADR 0029](decisions/0029-a-job-is-versioned-code-run-as-a-turn-of-its-slots-conversation-a-schedule-is-data-and-a-clock-edge-starts-each-due-slot.md)).
 A `Job[P]` is versioned code: its `name`, its `version`, a codec for its parameters `P`
 (`write`, `read`), its `limits` (how many asks and calls one run may make, none unless it
 says), and `run`, which makes its moves and returns the text the run replies with. A schedule runs a job
@@ -123,7 +123,7 @@ job's moves under a new `version`. `core/act` (`grit.act`) is grit's own module 
 these moves as durable steps, shared with the turn; a job or plugin never names it, only
 `grit.core.act`'s traits.
 
-**Visibility** ([ADR 0030](decisions/0030-visibility-is-a-label-lattice-read-down-write-up-and-a-room-admits-its-members-to-its-own-speech.md)).
+**Visibility** ([ADR 0030](decisions/0030-visibility-is-a-bell-lapadula-label-lattice-and-a-turn-reads-for-its-room-and-its-asker.md)).
 Who may see what is the one value a deployment injects into core about it,
 `Deployment.of(visibility = …)`, a `Visibility` built by `Visibility.of`, which refuses a
 mistake in it; left out, it is `Visibility.Shipped`, under which every label is public. Each
@@ -156,9 +156,8 @@ part is declared data or a pure function:
   attests them); and what each group's members are cleared for: a person is cleared for the
   join of the grants of every group any of their accounts puts them in.
 - `clearances`: what each party grit sends to is cleared for, as a label
-  ([ADR 0037](decisions/0037-every-party-grit-sends-to-is-cleared-and-every-model-call-goes-to-a-cleared-pair-or-is-not-made.md)):
+  ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-every-party-grit-sends-to-is-cleared-and-every-model-call-goes-to-a-cleared-pair-or-is-not-made.md)):
   an outside service (`service:{name}`), sent a call's arguments
-  ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md))
   or a classifier's states, and a model at one named upstream; public for a party it does not
   name. It is the most grit may send the party. What a service contains is another label, its
   place's, given by `rooms` as any room's. Grants clear people, clearances clear parties, and
@@ -175,7 +174,7 @@ chooses among: [`deployments/app/README.md`](../deployments/app/README.md).
 
 What leaves grit is written to a place, and a turn writes only to a place whose label is set
 through grit or that `rooms` maps explicitly, never a quiet one, at a label dominating its
-room's ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md)):
+room's ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-every-party-grit-sends-to-is-cleared-and-every-model-call-goes-to-a-cleared-pair-or-is-not-made.md)):
 a writing tool's destinations, such as Slack's channels for `slack_post`
 (`slack:{team}/{channel id}`), and a review's place, where only messages whose room's label
 it dominates are picked and prompted. So a place a deployment posts to that its members do

@@ -195,7 +195,7 @@ object Eval {
       live: Provider^
   ): Either[String, Score] = {
     // Every query is written by the strategy's writer, whatever pin it is asked under: the
-    // first of the writer's pins cleared for what the case's turn knows (ADR 0037).
+    // first of the writer's pins cleared for what the case's turn knows (ADR 0031).
     val routed =
       engine.db.read(Subject.Turn(loaded.turn))(Right(Routed.of)).left.map(e => s"eval: $e")
     // The settings are one row for the whole database: each run sets the case's scope, so

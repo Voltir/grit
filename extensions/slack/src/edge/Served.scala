@@ -103,7 +103,7 @@ private[slack] object Served {
                   slack.close()
                   Left(EdgeRefusal.Refused(why))
                 case Right(()) =>
-                  // The deployment's persona is the assistant's name (ADR 0026); Slack's, logged,
+                  // The deployment's persona is the assistant's name (ADR 0021); Slack's, logged,
                   // is what people see and may type.
                   edge.displayName() match {
                     case Right(name) => log(s"slack: grit's bot is named $name in Slack")

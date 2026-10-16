@@ -4,7 +4,7 @@ import grit.core.model.Pins
 import grit.core.store.{Db, Reads, StoreError, Tx}
 import grit.core.visibility.{Classification, Clearances, Party, Subject}
 
-/** What a read was routed for (ADR 0037): the classification of what its transaction knew, and
+/** What a read was routed for (ADR 0031): the classification of what its transaction knew, and
   * the deployment's clearances it read under. Made only from a transaction ([[Routed.of]]), so
   * its classification is some transaction's floor; pure, so a site carries it past the read.
   */

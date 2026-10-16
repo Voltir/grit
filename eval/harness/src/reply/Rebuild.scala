@@ -91,7 +91,7 @@ object Rebuild {
         s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
       }
 
-  /** What a read for `turn` through `db` was routed for (ADR 0037): whom a query written from
+  /** What a read for `turn` through `db` was routed for (ADR 0031): whom a query written from
     * its window may be sent to ([[Routed.cleared]]), and the bound the window's reads are held
     * to ([[Routed.bound]]). `Left` naming what failed.
     */

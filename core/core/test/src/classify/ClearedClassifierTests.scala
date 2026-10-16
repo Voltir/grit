@@ -8,7 +8,7 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** The deployment's classifier asked only about what its service is cleared for (ADR 0037). */
+/** The deployment's classifier asked only about what its service is cleared for (ADR 0031). */
 object ClearedClassifierTests extends TestSuite {
 
   private final case class Note(text: String)

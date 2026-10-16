@@ -28,7 +28,7 @@ In dependency order:
 - **`deployment`**: what a deployment declares, built by `Deployment.of`, whose doc lists each
   refusal: its plugins and its own jobs (ADR 0029), the tools every turn is offered, how a
   window is assembled and messages placed among topics, triage's shadows and the corpora they
-  ask about, a review, the turn recipe (ADR 0025), the persona (ADR 0026), its visibility (ADR
+  ask about, a review, the turn recipe (ADR 0025), the persona (ADR 0021), its visibility (ADR
   0030) and its identities (ADR 0032), and by core's links which conversations work in or reach
   a service an edge hosts. Imports nothing in kit.
 - **`environment`**: what the process environment supplies, never declared: a `.env` file under

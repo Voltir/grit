@@ -206,7 +206,7 @@ object Tx {
 
   /** What a turn routed for `bound` sends and writes out at in this transaction: `bound`
     * joined with [[classification]], so never below what the transaction knows. A routed turn
-    * holds its routed classification while it runs (tranquility, ADR 0037): a floor that fell
+    * holds its routed classification while it runs (tranquility, ADR 0031): a floor that fell
     * since does not lower what it may send to.
     */
   def locked(bound: Label)(using tx: Tx^): Classification =

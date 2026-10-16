@@ -13,7 +13,7 @@ import grit.kit.run.Launch
 
 import utest.*
 
-/** The reference deployment's clearances (ADR 0037) in stub mode, against a real Postgres. */
+/** The reference deployment's clearances (ADR 0031) in stub mode, against a real Postgres. */
 object ClearedLiveTests extends TestSuite {
 
   private def right[E, A](e: Either[E, A]): A =

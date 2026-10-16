@@ -112,7 +112,7 @@ trait Moves {
     * is recorded once, under the run's conversation, with who served it. Admitted once, before
     * its first call (a [[Posed.Json]] repair is not admitted again). [[MoveError.Capped]] when
     * the allowance does not admit it, and [[MoveError.Uncleared]] when no summary model (or
-    * the classifier's service) is cleared for what the conversation knows (ADR 0037): in
+    * the classifier's service) is cleared for what the conversation knows (ADR 0031): in
     * both, nothing is called. [[MoveError.Model]] when no catalog reads (for a text or JSON
     * ask), the provider or classifier fails after its retries, or the reply does not read
     * ([[Posed.Json]]: after its repairs). Its reply is believed as `posed` is.

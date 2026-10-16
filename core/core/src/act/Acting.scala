@@ -63,7 +63,7 @@ enum Allowance {
 enum Gates {
 
   /** Sent once its turn's asker approves it ([[grit.core.approval.Approval]], answered through
-    * the inbox, ADR 0010), waiting up to `within`; declined, or unanswered by then, it is not
+    * the inbox, ADR 0017), waiting up to `within`; declined, or unanswered by then, it is not
     * sent.
     */
   case Asker(within: FiniteDuration)

@@ -18,7 +18,7 @@ object Uncleared {
       "answer here."
 }
 
-/** Which of a role's pins a call may be made with (ADR 0037). */
+/** Which of a role's pins a call may be made with (ADR 0031). */
 object Routing {
 
   /** `pins` whose pair is cleared for `classification`, in order; `None` when none is. A pair

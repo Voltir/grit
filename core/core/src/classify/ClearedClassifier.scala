@@ -4,7 +4,7 @@ import grit.core.place.Service
 import grit.core.route.{Routed, Uncleared}
 import grit.core.visibility.{Label, Party}
 
-/** The deployment's classifier behind its clearance check (ADR 0037): its states go to one
+/** The deployment's classifier behind its clearance check (ADR 0031): its states go to one
   * service, cleared like any party, as the deployment's visibility declares. A capability
   * shared like the classifier it holds.
   */

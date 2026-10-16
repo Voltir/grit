@@ -9,7 +9,7 @@ import grit.slack.event.TeamId
 
 import utest.*
 
-/** Which parties the reference deployment clears (ADR 0037), and what `grit serve` says of
+/** Which parties the reference deployment clears (ADR 0031), and what `grit serve` says of
   * the ones it cannot.
   */
 object ClearanceChoiceTests extends TestSuite {

@@ -7,7 +7,7 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** One routed read per site (ADR 0037): what it was routed for, chosen from and bounded by. */
+/** One routed read per site (ADR 0031): what it was routed for, chosen from and bounded by. */
 object RoutedTests extends TestSuite {
 
   private def model(id: String): ModelId =

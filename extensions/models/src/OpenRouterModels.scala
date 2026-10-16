@@ -50,7 +50,7 @@ final class StubModels(delayMs: Long = 0) extends Models {
 object StubModels {
 
   /** The stub's pair: [[StubProvider.Model]] at an upstream named `stub`, so a deployment can
-    * clear it as a party (ADR 0037); nothing is sent outside grit.
+    * clear it as a party (ADR 0031); nothing is sent outside grit.
     */
   val Ref: grit.core.model.ModelRef =
     grit.core.model.ModelRef(

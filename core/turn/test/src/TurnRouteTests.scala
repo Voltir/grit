@@ -29,7 +29,7 @@ import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** A turn's calls go only to pairs cleared for what it knows (ADR 0037): the `route` step. */
+/** A turn's calls go only to pairs cleared for what it knows (ADR 0031): the `route` step. */
 object TurnRouteTests extends TestSuite {
   import TurnFixtures.*
 

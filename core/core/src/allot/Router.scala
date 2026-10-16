@@ -6,7 +6,7 @@ import grit.core.model.{Effort, Grade}
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
 
-/** The effort a turn's root calls for, from its task features and the day's headroom (ADR 0037:
+/** The effort a turn's root calls for, from its task features and the day's headroom (ADR 0031:
   * it chooses only among the pins safety cleared). It names grades, never models.
   */
 object Router {

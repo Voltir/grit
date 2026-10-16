@@ -50,7 +50,7 @@ object WindowOnly {
   enum Query {
 
     /** Nothing: no pin of the seed's query role is cleared for what its turn knows
-      * (ADR 0037), so its query is withheld and its window drawn without one.
+      * (ADR 0031), so its query is withheld and its window drawn without one.
       */
     case Withheld
 

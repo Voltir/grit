@@ -444,7 +444,7 @@ object grit extends Module {
     }
   }
 
-  /* The Slack edge (ADR 0019): the Slack SDK's quarantine (STYLE rule 8), and the edge that
+  /* The Slack edge (ADR 0023): the Slack SDK's quarantine (STYLE rule 8), and the edge that
    * brings Slack threads in and posts grit's replies out, over core's traits alone, and serves
    * slack_post with grit.edge's server. The SDK
    * is slack-api-client, without Bolt: grit acknowledges an event only after it is recorded,

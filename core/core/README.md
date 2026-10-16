@@ -16,7 +16,7 @@ In dependency order, each with the core packages it imports:
 - **`id`**: the opaque ids, and the one short content hash every content-addressed id uses. A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
   (enola-intent.yaml). Imports nothing in core.
-- **`persona`**: who grit presents as; a deployment declares one (ADR 0026). Imports nothing in
+- **`persona`**: who grit presents as; a deployment declares one (ADR 0021). Imports nothing in
   core.
 - **`place`**: where conversations happen (ADR 0013): one containment tree, one namespace per
   source, and the scope and weight a window draws on beside its own conversation. Imports
@@ -27,7 +27,7 @@ In dependency order, each with the core packages it imports:
 - **`model`**: what grit knows about models, as data: the catalog, the settings a call is made
   under, and the policy of which pair does each job. Imports nothing in core.
 - **`visibility`**: security labels on both axes over one compartment set: who may see what
-  (ADR 0030), with the clearances of people and of the parties grit sends to (ADR 0037), and
+  (ADR 0030), with the clearances of people and of the parties grit sends to (ADR 0031), and
   what may be believed (`Integrity`, ADR 0036), with what each service's results and each room's
   speech are believed at; and what a transaction is opened for. `Label` and `Integrity` are
   opaque, never taken apart; `LabelParts`, a label's stored form, may be named only here and in
@@ -45,7 +45,7 @@ In dependency order, each with the core packages it imports:
   at the clearance it resolves to (ADRs 0030, 0031); the stores, each a trait `grit.dbos`
   implements. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`,
   `retention`, `prompt`
-- **`route`**: which of a role's pairs a call is made with (ADR 0037): the pins cleared for what
+- **`route`**: which of a role's pairs a call is made with (ADR 0031): the pins cleared for what
   a transaction knows, the pin a wanted grade picks among them, the narrowing to a day's ceiling
   and the raising to a room's baseline, and what a turn says when none is. ← `model`, `store`,
   `visibility`
@@ -58,7 +58,7 @@ In dependency order, each with the core packages it imports:
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates
   over their answers, shadow variants, and the corpora that could supply what a message asks
   for. ← `id`, `message`, `place`, `period`, `store`, `spend`, `classify`
-- **`allot`**: what effort a turn's root calls for (ADR 0037's stages after safety): the task
+- **`allot`**: what effort a turn's root calls for (ADR 0031's stages after safety): the task
   questions' features, the day's headroom, and the router that allots a grade, reasoning
   effort and calls from them. Not in `route`, which `classify` imports. ← `id`, `message`,
   `model`, `period`, `spend`, `classify`, `triage`
@@ -66,7 +66,7 @@ In dependency order, each with the core packages it imports:
   a message believed below `Outside`. ← `id`, `identity`, `visibility`, `message`, `period`,
   `place`, `spend`, `store`, `triage`
 - **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a
-  day; kept after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`, `speech`
+  day; kept after the message's entry is gone (ADR 0022). ← `id`, `classify`, `store`, `speech`
 - **`durable`**: steps that survive a crash, and waits for a message; a workflow's steps as a
   flow of pure step values, run over `Durable` and read over a recorded history (ADR 0038). Not
   the `flow` package below, whose values carry integrity. ← `id`, `visibility`, `store`

@@ -914,7 +914,7 @@ CREATE INDEX IF NOT EXISTS idx_speech_turn ON grit.speech (conversation_id, turn
 -- edge); and the verdict its rater reacted with, the latest standing.
 -- Every message considered is kept, picked or not, so what was picked can be weighed against
 -- what was not. No text: neither the message's nor a draft's. No foreign key to the entry: a
--- label outlives the raw text it was given on (ADR 0024).
+-- label outlives the raw text it was given on (ADR 0022).
 -- Retention: ledger: with its conversation (Target.Quiet), by cascade.
 CREATE TABLE IF NOT EXISTS grit.reviews (
     entry_id        TEXT PRIMARY KEY,
