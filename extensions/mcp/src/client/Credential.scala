@@ -3,6 +3,7 @@ package grit.mcp.client
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Path
 import java.security.interfaces.RSAPrivateKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.{KeyFactory, Signature}
@@ -40,10 +41,11 @@ object Credential {
   /** `token`'s value, as it is ([[Bearer.of]]'s refusals). */
   def static(token: Variable): Credential = Static(token)
 
-  /** A service account's access tokens for `scopes`: `key`'s value is its JSON key as Google
-    * issues it (`client_email`, `private_key` in PKCS#8 PEM, `token_uri`, an `https` URL);
-    * each token got at `token_uri` by a JWT the key signs (RS256, lasting [[Lifetime]]), kept,
-    * and got again once less than [[Renew]] of it is left.
+  /** A service account's access tokens for `scopes`: `key`'s value is the absolute path of its
+    * JSON key file as Google issues it (`client_email`, `private_key` in PKCS#8 PEM,
+    * `token_uri`, an `https` URL), `~` not expanded; each token got at `token_uri` by a JWT the
+    * key signs (RS256, lasting [[Lifetime]]), kept, and got again once less than [[Renew]] of
+    * it is left.
     */
   def serviceAccount(key: Variable, scopes: Set[String]): Credential = ServiceAccount(key, scopes)
 
@@ -53,22 +55,18 @@ object Credential {
   /** 1 hour, the most Google allows: how long the JWT asking for a token lasts. */
   val Lifetime: FiniteDuration = 1.hour
 
-  /** Opened over `env`, or why not: a variable unset or blank, a key not JSON naming those
-    * fields, a `token_uri` not `https` (`http` only on a loopback host), or a PEM not an RSA
-    * key; each naming the variable, never its value. A static token is refused as
-    * [[Bearer.of]] says.
-    */
   /** The address `credential` acts as: a service account's `client_email`, or why not, as
     * [[open]] refuses its key or the address is not an email's; `None` for a static token.
     */
   def account(
       credential: Credential,
-      env: Map[String, String]
+      env: Map[String, String],
+      files: KeyFiles
   ): Either[EdgeRefusal, Option[Email]] =
     credential match {
       case Static(_) => Right(None)
       case ServiceAccount(key, _) =>
-        open(credential, env).flatMap(_.source match {
+        open(credential, env, files).flatMap(_.source match {
           case Left(account) =>
             Email
               .of(account.email)
@@ -79,7 +77,17 @@ object Credential {
         })
     }
 
-  def open(credential: Credential, env: Map[String, String]): Either[EdgeRefusal, Authorizer] =
+  /** Opened over `env`, a service account's key read from `files`, or why not: a variable
+    * unset or blank, a key's path not absolute, its file missing or unreadable, a key not JSON
+    * naming those fields, a `token_uri` not `https` (`http` only on a loopback host), or a PEM
+    * not an RSA key; each naming the variable, never its value or the file's contents. A static
+    * token is refused as [[Bearer.of]] says.
+    */
+  def open(
+      credential: Credential,
+      env: Map[String, String],
+      files: KeyFiles
+  ): Either[EdgeRefusal, Authorizer] =
     credential match {
       case Static(token) => Bearer.of(env, token).map(b => new Authorizer(Right(b)))
       case ServiceAccount(key, scopes) =>
@@ -87,11 +95,13 @@ object Credential {
           case None => Left(EdgeRefusal.Missing(key))
           case Some(v) if v.trim.isEmpty => Left(EdgeRefusal.Malformed(key, "it is blank"))
           case Some(v) =>
-            Account
-              .read(v, scopes.toVector.sorted.mkString(" "))
-              .left
-              .map(EdgeRefusal.Malformed(key, _))
-              .map(a => new Authorizer(Left(a)))
+            (for {
+              path <- Try(Path.of(v)).toOption
+                .filter(_.isAbsolute)
+                .toRight("it is not an absolute path (~ is not expanded)")
+              json <- files.read(path)
+              account <- Account.read(json, scopes.toVector.sorted.mkString(" "))
+            } yield new Authorizer(Left(account))).left.map(EdgeRefusal.Malformed(key, _))
         }
     }
 }
@@ -106,7 +116,7 @@ private[client] final case class Account(
 
 private[client] object Account {
 
-  /** `json` read as a service account's key, or why not, never quoting it. */
+  /** `json`, a key file's text, read as a service account's key, or why not, never quoting it. */
   def read(json: String, scope: String): Either[String, Account] = {
     def field(o: ujson.Obj, name: String): Either[String, String] =
       o.value
@@ -118,7 +128,7 @@ private[client] object Account {
       o <- Try(ujson.read(json)).toOption
         .flatMap(_.objOpt)
         .map(ujson.Obj.from(_))
-        .toRight("it is not a service account's JSON key")
+        .toRight("its file is not a service account's JSON key")
       email <- field(o, "client_email")
       pem <- field(o, "private_key")
       uri <- field(o, "token_uri")

@@ -36,7 +36,8 @@ In dependency order:
 - **`client`**: a server a deployment declares, reached over HTTP, each request a POST of its
   own held to its scope, carrying the token its `Credential` gives: a static token, or a
   service account's, got by a JWT its key signs and kept until near expiry; the secret is
-  read from the environment and never shown. A tool that names its subject but not where it
+  read from the environment, or a service account's key from the file a variable names
+  (`KeyFiles`), and never shown. A tool that names its subject but not where it
   lies is declared with lookups, read-only calls grit makes first with the same argument,
   whose answers the server's `Accounts` read beside the call's. The JDK HTTP client lives
   here alone. Imports `wire` and `scope`.

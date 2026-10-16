@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.clock.Clock
 import grit.core.edge.Variable
-import grit.mcp.client.Credential
+import grit.mcp.client.{Credential, KeyFiles}
 
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
@@ -47,7 +47,11 @@ final class FakeDriveServer private () {
   def rest(clock: Clock): DriveRest^{clock} = {
     val token = Variable("FAKE_DRIVE_TOKEN")
     val authorizer = Credential
-      .open(Credential.static(token), Map(Variable.value(token) -> FakeDriveServer.Token))
+      .open(
+        Credential.static(token),
+        Map(Variable.value(token) -> FakeDriveServer.Token),
+        KeyFiles.Local
+      )
       .fold(r => throw new java.lang.AssertionError(r.message), identity)
     new DriveRest(api, authorizer, clock)
   }

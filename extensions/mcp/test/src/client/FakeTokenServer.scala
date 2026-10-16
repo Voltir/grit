@@ -51,6 +51,9 @@ final class FakeTokenServer private (val keys: KeyPair) {
   /** Stops answering. */
   def stop(): Unit = http.stop(0)
 
+  /** [[key]] in a fresh temporary file, as [[FakeTokenServer.written]] writes it: its path. */
+  def keyFile(email: String = FakeTokenServer.Email): String = FakeTokenServer.written(key(email))
+
   /** A service account's JSON key for `keys`, its token URI this server's. */
   def key(email: String = FakeTokenServer.Email): String = {
     val pem =
@@ -141,5 +144,13 @@ object FakeTokenServer {
     val generator = KeyPairGenerator.getInstance("RSA")
     generator.initialize(2048)
     new FakeTokenServer(generator.generateKeyPair())
+  }
+
+  /** `text` in a fresh temporary file, deleted when the JVM exits: its absolute path. */
+  def written(text: String): String = {
+    val file = java.nio.file.Files.createTempFile("grit-key-", ".json")
+    file.toFile.deleteOnExit()
+    val _ = java.nio.file.Files.writeString(file, text)
+    file.toAbsolutePath.toString
   }
 }

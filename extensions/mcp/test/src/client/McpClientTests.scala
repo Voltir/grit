@@ -44,10 +44,11 @@ object McpClientTests extends TestSuite {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }
-    val authorizer = Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> token)) match {
-      case Right(a) => a
-      case Left(why) => throw new java.lang.AssertionError(why.message)
-    }
+    val authorizer =
+      Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> token), KeyFiles.Local) match {
+        case Right(a) => a
+        case Left(why) => throw new java.lang.AssertionError(why.message)
+      }
     new McpClient(server, authorizer, clock)
   }
 
@@ -454,7 +455,7 @@ object McpClientTests extends TestSuite {
         def fresh() = new McpClient(
           server,
           Credential
-            .open(credential, Map("DRIVE_SA_KEY" -> tokens.key()))
+            .open(credential, Map("DRIVE_SA_KEY" -> tokens.keyFile()), KeyFiles.Local)
             .fold(why => throw new java.lang.AssertionError(why.message), identity),
           new Hands()
         )
@@ -510,7 +511,7 @@ object McpClientTests extends TestSuite {
         val c = new McpClient(
           server,
           Credential
-            .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token))
+            .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
             .fold(why => throw new java.lang.AssertionError(why.message), identity),
           new Hands()
         )

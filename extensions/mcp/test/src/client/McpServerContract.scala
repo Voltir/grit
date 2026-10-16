@@ -203,7 +203,8 @@ abstract class McpServerContract extends TestSuite {
     test("a token it does not know is refused: 401, with its challenge") {
       Credential.open(
         Credential.static(Variable("UNKNOWN_TOKEN")),
-        Map("UNKNOWN_TOKEN" -> unknownToken)
+        Map("UNKNOWN_TOKEN" -> unknownToken),
+        KeyFiles.Local
       ) match {
         case Right(wrong) =>
           // The challenge's scheme: the rest is the server's to word.
@@ -235,7 +236,7 @@ object McpServerFakeTests extends McpServerContract {
     }
 
   protected val authorizer: Authorizer =
-    Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token)) match {
+    Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local) match {
       case Right(a) => a
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }

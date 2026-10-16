@@ -49,7 +49,7 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.github.{GitHubCards, SyncSchedule}
 import grit.knowledge.plugin.{CardSource, Knowledge}
-import grit.mcp.client.{Credential, McpServer}
+import grit.mcp.client.{Credential, KeyFiles, McpServer}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
@@ -145,9 +145,10 @@ import grit.turn.TurnLoop
   *     server at `GRIT_GITHUB_MCP_URL` (default [[GithubUrl]]), the tools `GRIT_GITHUB_TOOLS`
   *     names (comma-separated; default [[GithubTools]]). It refuses to start when that server
   *     cannot be reached, refuses the token, or offers none of those tools. With
-  *     `GRIT_DRIVE_SA_KEY` set it also serves Drive's files at `service:drive` ([[drive]]),
-  *     offered to every Slack conversation's turns addressed to grit, its folders named in the
-  *     slash command by their links; it refuses to start when Drive refuses the key.
+  *     `GRIT_DRIVE_SA_KEY` set, the path of a service account's key file, it also serves
+  *     Drive's files at `service:drive` ([[drive]]), offered to every Slack conversation's
+  *     turns addressed to grit, its folders named in the slash command by their links; it
+  *     refuses to start when the key's file cannot be read or Drive refuses the key.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
   *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel its bot is in said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
@@ -192,7 +193,7 @@ object Main {
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
     // And Drive's, when GRIT_DRIVE_SA_KEY is set, its folders named in Slack's commands.
-    val driveEdge = if (serving) exitOnLeft(drive(env)) else None
+    val driveEdge = if (serving) exitOnLeft(drive(env, KeyFiles.Local)) else None
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
       (if (slack)
@@ -1014,8 +1015,8 @@ object Main {
         edge <- McpEdge.serving(service, Vector(server))
       } yield Some((edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service)))
 
-  /** The variable holding the JSON key, on one line, of the service account Drive's files are
-    * read as; unset, `grit serve` serves no Drive edge.
+  /** The variable naming the absolute path of the JSON key file of the service account Drive's
+    * files are read as (`~` is not expanded); unset, `grit serve` serves no Drive edge.
     */
   private val DriveKeyVar = "GRIT_DRIVE_SA_KEY"
 
@@ -1051,17 +1052,21 @@ object Main {
     * Drive's read-only scope): the files of every shared drive shared with the key's service
     * account, read as [[DriveReading]] says, its people those of [[DriveDomainVar]], its own
     * address the key's, and [[DriveWritersVar]]'s addresses believed at member; `None` when the
-    * key is unset. Why not, naming the variable: the key not a service account's, the domain
+    * key is unset. The key is read from `files`, as [[Credential.open]] reads it. Why not,
+    * naming the variable: the key's file unread or not a service account's key, the domain
     * unset or not one claimed, or a writer not an address, in the domain, or the key's own.
     */
-  private[main] def drive(env: Map[String, String]): Either[String, Option[Drive]] =
+  private[main] def drive(
+      env: Map[String, String],
+      files: KeyFiles
+  ): Either[String, Option[Drive]] =
     if (!env.contains(DriveKeyVar)) Right(None)
     else {
       val credential = Credential.serviceAccount(Variable(DriveKeyVar), DriveRest.ReadOnly)
       for {
         service <- DriveAt
         self <- Credential
-          .account(credential, env)
+          .account(credential, env, files)
           .left
           .map(_.message)
           .flatMap(_.toRight(s"$DriveKeyVar names no service account"))

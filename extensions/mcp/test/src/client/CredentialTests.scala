@@ -24,17 +24,25 @@ object CredentialTests extends TestSuite {
     finally fake.stop()
   }
 
-  /** The service account `key` opens as. */
-  private def opened(key: String): Authorizer =
-    Credential.open(Credential.serviceAccount(Key, Scopes), Map("DRIVE_SA_KEY" -> key)) match {
+  /** The service account whose key file is at `path` opens as. */
+  private def opened(path: String): Authorizer =
+    Credential.open(
+      Credential.serviceAccount(Key, Scopes),
+      Map("DRIVE_SA_KEY" -> path),
+      KeyFiles.Local
+    ) match {
       case Right(a) => a
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
 
-  /** Why the service account `key` does not open, if it does not. */
-  private def refusal(key: Option[String]): Option[EdgeRefusal] =
+  /** Why the service account does not open with its variable set to `value`, if it does not. */
+  private def refusal(value: Option[String]): Option[EdgeRefusal] =
     Credential
-      .open(Credential.serviceAccount(Key, Scopes), key.map("DRIVE_SA_KEY" -> _).toMap)
+      .open(
+        Credential.serviceAccount(Key, Scopes),
+        value.map("DRIVE_SA_KEY" -> _).toMap,
+        KeyFiles.Local
+      )
       .swap
       .toOption
 
@@ -45,7 +53,7 @@ object CredentialTests extends TestSuite {
     ) {
       withTokens { fake =>
         val clock = new Hands(start = Start)
-        val authorizer = opened(fake.key())
+        val authorizer = opened(fake.keyFile())
         authorizer.bearer(clock).map(_.value) ==> Right("token-1")
         val (header, claims) = fake.assertions match {
           case Vector(one) => one
@@ -72,7 +80,7 @@ object CredentialTests extends TestSuite {
     test("a token endpoint's refusal is NoToken naming its URL; the next bearer asks again") {
       withTokens { fake =>
         val clock = new Hands(start = Start)
-        val authorizer = opened(fake.key())
+        val authorizer = opened(fake.keyFile())
         fake.refuses()
         authorizer.bearer(clock) ==>
           Left(
@@ -85,18 +93,30 @@ object CredentialTests extends TestSuite {
       }
     }
 
-    test("a malformed key is refused naming the variable, never its value") {
+    test(
+      "a key file unset, not at an absolute path, missing, unreadable or malformed is refused " +
+        "naming the variable, never the file's contents"
+    ) {
       withTokens { fake =>
         val good = ujson.read(fake.key()).obj.toVector
-        def without(field: String) = Some(ujson.write(ujson.Obj.from(good.filter(_._1 != field))))
+        def file(json: String) = Some(FakeTokenServer.written(json))
+        def without(field: String) = file(ujson.write(ujson.Obj.from(good.filter(_._1 != field))))
         def changed(field: String, value: String) =
-          Some(
+          file(
             ujson.write(ujson.Obj.from(good.filter(_._1 != field) :+ (field -> ujson.Str(value))))
           )
         def malformed(why: String) = Some(EdgeRefusal.Malformed(Key, why))
+        val missing = java.nio.file.Files.createTempDirectory("grit-key-").resolve("key.json")
+        val directory = missing.getParent.toString
         refusal(None) ==> Some(EdgeRefusal.Missing(Key))
         refusal(Some("  ")) ==> malformed("it is blank")
-        refusal(Some("not json")) ==> malformed("it is not a service account's JSON key")
+        refusal(Some("key.json")) ==> malformed("it is not an absolute path (~ is not expanded)")
+        refusal(Some("~/key.json")) ==> malformed("it is not an absolute path (~ is not expanded)")
+        refusal(Some(missing.toString)) ==> malformed("no file is at its path")
+        refusal(Some(directory)) ==> malformed("its file cannot be read (IOException)")
+        // A key's JSON in the variable itself is no path.
+        refusal(Some(fake.key())) ==> malformed("it is not an absolute path (~ is not expanded)")
+        refusal(file("not json")) ==> malformed("its file is not a service account's JSON key")
         refusal(without("client_email")) ==> malformed("its JSON names no client_email")
         refusal(without("private_key")) ==> malformed("its JSON names no private_key")
         refusal(without("token_uri")) ==> malformed("its JSON names no token_uri")
@@ -113,9 +133,9 @@ object CredentialTests extends TestSuite {
       Credential.static(token).needs ==> Vector(token)
       Credential.serviceAccount(Key, Scopes).needs ==> Vector(Key)
       Credential
-        .open(Credential.static(token), Map("GITHUB_MCP_TOKEN" -> "github_pat_x1"))
+        .open(Credential.static(token), Map("GITHUB_MCP_TOKEN" -> "github_pat_x1"), KeyFiles.Local)
         .map(_.bearer(new Hands()).map(_.value)) ==> Right(Right("github_pat_x1"))
-      Credential.open(Credential.static(token), Map.empty).map(_ => ()) ==>
+      Credential.open(Credential.static(token), Map.empty, KeyFiles.Local).map(_ => ()) ==>
         Left(EdgeRefusal.Missing(token))
     }
 
@@ -127,10 +147,15 @@ object CredentialTests extends TestSuite {
         (
           Credential.account(
             Credential.serviceAccount(Key, Scopes),
-            Map("DRIVE_SA_KEY" -> fake.key("Reader@Proj.iam.example"))
+            Map("DRIVE_SA_KEY" -> fake.keyFile("Reader@Proj.iam.example")),
+            KeyFiles.Local
           ),
-          Credential.account(Credential.static(token), Map("GITHUB_MCP_TOKEN" -> "github_pat_x1")),
-          Credential.account(Credential.serviceAccount(Key, Scopes), Map.empty)
+          Credential.account(
+            Credential.static(token),
+            Map("GITHUB_MCP_TOKEN" -> "github_pat_x1"),
+            KeyFiles.Local
+          ),
+          Credential.account(Credential.serviceAccount(Key, Scopes), Map.empty, KeyFiles.Local)
         ) ==> (
           Email.of("reader@proj.iam.example").map(Some(_)),
           Right(None),

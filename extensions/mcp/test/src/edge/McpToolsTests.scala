@@ -19,7 +19,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
-import grit.mcp.client.{Credential, FakeMcpServer, McpClient, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, KeyFiles, McpClient, McpServer}
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
 
@@ -47,7 +47,7 @@ object McpToolsTests extends TestSuite {
         identity
       )
     val authorizer = Credential
-      .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token))
+      .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
       .fold(
         why => throw new java.lang.AssertionError(why.message),
         identity

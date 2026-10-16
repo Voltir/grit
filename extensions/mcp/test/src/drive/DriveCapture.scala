@@ -12,17 +12,18 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.edge.Variable
-import grit.mcp.client.{Credential, LiveProbe}
+import grit.core.identity.Email
+import grit.mcp.client.{Credential, KeyFiles, LiveProbe}
 
 /** Drive's v3 REST answers recorded as fixtures, read-only (no model call, no spend):
   *
   * {{{
-  * GRIT_DRIVE_SA_KEY=<key file or its JSON> ./mill grit.mcp.test.runMain \
+  * GRIT_DRIVE_SA_KEY=<the key file's absolute path> ./mill grit.mcp.test.runMain \
   *   grit.mcp.drive.DriveCapture <domain> <dir> [writer@…]
   * }}}
   *
-  * The key comes from `GRIT_DRIVE_SA_KEY` alone, as a path or as the JSON, and is never
-  * printed or written. `<domain>` is the Workspace domain whose addresses are people; each
+  * The key is read from the file `GRIT_DRIVE_SA_KEY` names, as [[Credential.open]] reads it,
+  * and is never printed or written. `<domain>` is the Workspace domain whose addresses are people; each
   * `writer` the exact address of an account that is not a person (another service's) that
   * edits files. It asks, at `drive.readonly`, each with the `fields` rev 3b names:
   * `drives.list`; `files.list` in every drive for folders, for other files, and for
@@ -32,8 +33,8 @@ import grit.mcp.client.{Credential, LiveProbe}
   * and, for their error bodies, a folder's export (a 403) and a file id that names nothing (a
   * 404). Each answer is written into `dir` with [[Neutral]]'s stand-ins, never as it came:
   * JSON as `<name>.json`, an export as `<name>.txt`, `.md` or `.csv`. What it found is printed
-  * as counts and booleans, never a name, an id or an address. Exits 1 when the key is unset or
-  * not a key, or Drive refuses its token.
+  * as counts and booleans, never a name, an id or an address. Exits 1 when the key is unset,
+  * its file unread or not a key, or Drive refuses its token.
   */
 object DriveCapture {
 
@@ -68,31 +69,19 @@ object DriveCapture {
         System.err.println("usage: DriveCapture <domain> <dir> [writer@…]")
         sys.exit(2)
     }
-    val keyJson = sys.env.get(Variable.value(Key)).map(_.trim).filter(_.nonEmpty) match {
-      case None =>
-        System.err.println(s"${Variable.value(Key)} is not set")
+    val credential = Credential.serviceAccount(Key, ReadOnly)
+    val (self, authorizer) = (for {
+      account <- Credential.account(credential, sys.env, KeyFiles.Local).map(_.map(Email.value))
+      authorizer <- Credential.open(credential, sys.env, KeyFiles.Local)
+    } yield (account, authorizer)) match {
+      case Right((Some(s), a)) => (s, a)
+      case Right((None, _)) =>
+        System.err.println(s"${Variable.value(Key)} names no service account")
         sys.exit(1)
-      case Some(v) if v.startsWith("{") => v
-      case Some(v) =>
-        Try(Files.readString(Path.of(v))).getOrElse {
-          System.err.println(s"${Variable.value(Key)} is neither a key's JSON nor a readable file")
-          sys.exit(1)
-        }
+      case Left(why) =>
+        System.err.println(why.message)
+        sys.exit(1)
     }
-    val self = Try(ujson.read(keyJson)("client_email").str).getOrElse {
-      System.err.println(s"${Variable.value(Key)} names no client_email")
-      sys.exit(1)
-    }
-    val authorizer =
-      Credential.open(
-        Credential.serviceAccount(Key, ReadOnly),
-        sys.env.updated(Variable.value(Key), keyJson)
-      ) match {
-        case Right(a) => a
-        case Left(why) =>
-          System.err.println(why.message)
-          sys.exit(1)
-      }
     val clock = Clock.system()
     val http = HttpClient.newHttpClient()
     // Scoped mutation: every answer, kept in memory until the stand-ins are known, and the lines

@@ -8,7 +8,7 @@ import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.edge.{PlaceFragments, Server}
-import grit.mcp.client.{Authorizer, Credential, McpClient, McpServer}
+import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer}
 import grit.mcp.wire.{McpError, Skipped}
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
@@ -69,7 +69,8 @@ object McpEdge {
       val place = service.place
       val opened =
         servers.foldLeft[Either[EdgeRefusal, Vector[Authorizer]]](Right(Vector.empty)) {
-          (read, server) => read.flatMap(as => Credential.open(server.credential, env).map(as :+ _))
+          (read, server) =>
+            read.flatMap(as => Credential.open(server.credential, env, KeyFiles.Local).map(as :+ _))
         }
       opened match {
         case Left(refusal) => Left(refusal)

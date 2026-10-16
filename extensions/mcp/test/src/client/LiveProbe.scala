@@ -40,7 +40,10 @@ object LiveProbe {
     val probe = for {
       server <- McpServer.of("github", Endpoint, Credential.static(Token), McpScope.Open)
       bearer <- Bearer.of(sys.env, Token).left.map(_.message)
-      authorizer <- Credential.open(server.credential, sys.env).left.map(_.message)
+      authorizer <- Credential
+        .open(server.credential, sys.env, KeyFiles.Local)
+        .left
+        .map(_.message)
     } yield (server, bearer, authorizer)
     probe match {
       case Left(why) =>

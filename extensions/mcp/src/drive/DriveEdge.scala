@@ -8,7 +8,7 @@ import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.edge.{PlaceFragments, Server}
-import grit.mcp.client.Credential
+import grit.mcp.client.{Credential, KeyFiles}
 
 /** An edge serving Drive's files at its service's place (ADR 0017). */
 object DriveEdge {
@@ -32,7 +32,8 @@ object DriveEdge {
     * serves them, and serves the requests addressed there with [[DriveTools]], logging what
     * they say of each run. It needs the
     * credential's variables, answers no ask, and delivers no replies. Opening it is refused,
-    * naming the credential's variables, when the credential does not open or Drive does not
+    * naming the credential's variables, when the credential does not open (its key read from
+    * this machine's files, [[KeyFiles.Local]]) or Drive does not
     * take its token; and when Drive cannot be reached, or the desk cannot be registered or
     * advertise.
     */
@@ -73,7 +74,7 @@ object DriveEdge {
     ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] = {
       val place = reading.service.place
       val check = s"check ${credential.needs.map(Variable.value).mkString(", ")}"
-      Credential.open(credential, env).flatMap { authorizer =>
+      Credential.open(credential, env, KeyFiles.Local).flatMap { authorizer =>
         val rest: DriveRest^{clock} = new DriveRest(api, authorizer, clock)
         rest.reachable() match {
           case Left(DriveError.NoToken(why)) =>

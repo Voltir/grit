@@ -18,7 +18,7 @@ import grit.core.visibility.{
   Room
 }
 import grit.kit.deployment.Offered
-import grit.mcp.client.Credential
+import grit.mcp.client.{Credential, KeyFiles}
 import grit.mcp.wire.McpCalled
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
@@ -398,7 +398,7 @@ object ServeChoiceTests extends TestSuite {
       val env = DriveEnv
       (
         Main
-          .drive(env)
+          .drive(env, KeyFiles.Local)
           .map(
             _.map(d =>
               (
@@ -412,11 +412,14 @@ object ServeChoiceTests extends TestSuite {
               )
             )
           ),
-        Main.drive(env + ("GRIT_DRIVE_DOMAIN" -> "elsewhere.com")).map(_ => ()),
+        Main.drive(env + ("GRIT_DRIVE_DOMAIN" -> "elsewhere.com"), KeyFiles.Local).map(_ => ()),
         Main
-          .drive(env + ("GRIT_DRIVE_WRITERS" -> "bot@vendor.example, not-an-address"))
+          .drive(
+            env + ("GRIT_DRIVE_WRITERS" -> "bot@vendor.example, not-an-address"),
+            KeyFiles.Local
+          )
           .map(_ => ()),
-        Main.drive(env - "GRIT_DRIVE_SA_KEY")
+        Main.drive(env - "GRIT_DRIVE_SA_KEY", KeyFiles.Local)
       ) ==> (
         Right(
           Some(
@@ -443,7 +446,7 @@ object ServeChoiceTests extends TestSuite {
       val conversation = Place.under(Namespace.Slack, Vector("T0123", "C0456"))
       val served = for {
         github <- Main.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
-        drive <- Main.drive(DriveEnv)
+        drive <- Main.drive(DriveEnv, KeyFiles.Local)
       } yield {
         val (worksIn, reaches) = Main.links(github.map(_._2), drive)
         (
@@ -478,21 +481,29 @@ object ServeChoiceTests extends TestSuite {
     }
   }
 
-  /** A service account's key, as Google issues one, for a fresh RSA key pair. */
+  /** The path of a service account's key file, as Google issues one, for a fresh RSA key pair:
+    * a temporary file, deleted when the JVM exits.
+    */
   private lazy val DriveKey: String = {
     val generator = java.security.KeyPairGenerator.getInstance("RSA")
     generator.initialize(2048)
     val pem = java.util.Base64
       .getMimeEncoder(64, "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
       .encodeToString(generator.generateKeyPair().getPrivate.getEncoded)
-    ujson.write(
-      ujson.Obj(
-        "type" -> "service_account",
-        "client_email" -> "grit-drive@project.iam.example",
-        "private_key" -> s"-----BEGIN PRIVATE KEY-----\n$pem\n-----END PRIVATE KEY-----\n",
-        "token_uri" -> "https://oauth2.example/token"
+    val file = java.nio.file.Files.createTempFile("grit-drive-key-", ".json")
+    file.toFile.deleteOnExit()
+    val _ = java.nio.file.Files.writeString(
+      file,
+      ujson.write(
+        ujson.Obj(
+          "type" -> "service_account",
+          "client_email" -> "grit-drive@project.iam.example",
+          "private_key" -> s"-----BEGIN PRIVATE KEY-----\n$pem\n-----END PRIVATE KEY-----\n",
+          "token_uri" -> "https://oauth2.example/token"
+        )
       )
     )
+    file.toAbsolutePath.toString
   }
 
   /** Drive declared: its key, a claimed domain, and one writer that is no person. */
