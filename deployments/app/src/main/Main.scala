@@ -18,7 +18,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.model.{Ladder, ModelId, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
-import grit.core.place.{Directory, Namespace, Place, Service, WorksIn}
+import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
 import grit.core.speech.Speaking
@@ -146,8 +146,8 @@ import grit.turn.TurnLoop
   *     names (comma-separated; default [[GithubTools]]). It refuses to start when that server
   *     cannot be reached, refuses the token, or offers none of those tools. With
   *     `GRIT_DRIVE_SA_KEY` set it also serves Drive's files at `service:drive` ([[drive]]),
-  *     every Slack conversation working there, its folders named in the slash command by
-  *     their links; it refuses to start when Drive refuses the key.
+  *     offered to every Slack conversation's turns addressed to grit, its folders named in the
+  *     slash command by their links; it refuses to start when Drive refuses the key.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
   *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel its bot is in said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
@@ -217,9 +217,10 @@ object Main {
           env,
           offered,
           edges,
-          githubEdge.map(_._2).toVector ++ driveEdge.map(_.worksIn),
+          githubEdge.map(_._2).toVector,
           java.time.ZoneId.systemDefault(),
-          slackIn
+          slackIn,
+          driveEdge.map(_.reaches).toVector
         )
       )
     val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))
@@ -663,8 +664,9 @@ object Main {
       else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
     }
 
-  /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`
-    * and the conversations `worksIn` links working in their services, its days beginning in
+  /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
+    * the conversations `worksIn` links working in their services and `reaches` links reaching
+    * theirs, its days beginning in
     * `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
     * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
@@ -682,7 +684,8 @@ object Main {
       edges: Vector[ServedEdge],
       worksIn: Vector[WorksIn],
       zone: java.time.ZoneId,
-      slackIn: Option[TeamId] = None
+      slackIn: Option[TeamId] = None,
+      reaches: Vector[Reaches] = Vector.empty
   ): Either[String, Deployment] = {
     val serving = edges.nonEmpty
     for {
@@ -725,6 +728,7 @@ object Main {
           visibility = visible,
           edges = edges,
           worksIn = worksIn,
+          reaches = reaches,
           plugins = plugins,
           policy = models,
           offer = Offer(offered, rounds),
@@ -1027,10 +1031,11 @@ object Main {
   /** The service Drive's files are kept at: `service:drive`. */
   private[main] val DriveAt: Either[String, Service] = Service.of("drive")
 
-  /** What `grit serve` serves of Drive: its edge, the link that makes every Slack conversation
-    * work in its service, and how a command names its folders.
+  /** What `grit serve` serves of Drive: its edge, the link that offers its tools to every Slack
+    * conversation's turns addressed to grit (beside the service a conversation works in, such as
+    * GitHub's), and how a command names its folders.
     */
-  private[main] final case class Drive(edge: ServedEdge, worksIn: WorksIn, names: PlaceNames)
+  private[main] final case class Drive(edge: ServedEdge, reaches: Reaches, names: PlaceNames)
 
   /** The Drive edge `grit serve` serves when `env` sets [[DriveKeyVar]] ([[DriveEdge]], over
     * Drive's read-only scope): the files of every shared drive shared with the key's service
@@ -1075,7 +1080,7 @@ object Main {
           }
         edge <- DriveEdge.serving(credential, reading)
       } yield Some(
-        Drive(edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service), reading.names)
+        Drive(edge, Reaches(Place.under(Namespace.Slack, Vector.empty), service), reading.names)
       )
     }
 

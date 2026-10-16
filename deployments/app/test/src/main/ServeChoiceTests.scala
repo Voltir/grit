@@ -393,7 +393,7 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "with GRIT_DRIVE_SA_KEY set, serve serves Drive at service:drive, Slack's conversations working there and its folders named by their links; an unclaimed domain, or a writer that is no address, is refused naming its variable; unset, no Drive edge"
+      "with GRIT_DRIVE_SA_KEY set, serve serves Drive at service:drive, reached from Slack's conversations, and its folders named by their links; an unclaimed domain, or a writer that is no address, is refused naming its variable; unset, no Drive edge"
     ) {
       val env = DriveEnv
       (
@@ -404,8 +404,8 @@ object ServeChoiceTests extends TestSuite {
               (
                 EdgeName.value(d.edge.name),
                 d.edge.needs,
-                d.worksIn.within.written,
-                d.worksIn.service.place.written,
+                d.reaches.within.written,
+                d.reaches.service.place.written,
                 d.names
                   .place("https://drive.google.com/drive/folders/0AbCdEfGhIjKlUk9PVA")
                   .map(_.written)
