@@ -34,7 +34,7 @@ object McpToolsTests extends TestSuite {
   private def client(
       fake: FakeMcpServer,
       clock: Clock,
-      accounts: Accounts[McpCalled] = Accounts.none
+      accounts: Accounts[McpCalled]
   ): McpClient^{clock} = {
     val server = McpServer
       .of("github", fake.endpoint, Token, McpScope.Open, accounts = accounts)
