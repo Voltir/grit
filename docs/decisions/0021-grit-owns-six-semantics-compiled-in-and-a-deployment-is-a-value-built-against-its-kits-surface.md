@@ -14,7 +14,7 @@ own changes.
 
 Decision:
 
-- Two guarantees, durable work (ADR 0004) and capability typing (ADR 0003), carry six
+- Two guarantees, durable work (ADR 0004; ADR 0017, "The call's step") and capability typing (ADR 0003), carry six
   semantics grit owns because the thesis fails without each: memory (entries never
   rewritten, periods closing into grounded records), the window (each model call's context
   assembled from memory), the turn (moves chosen by a planner: the model's loop, or a job's
