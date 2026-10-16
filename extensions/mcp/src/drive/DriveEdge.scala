@@ -20,8 +20,9 @@ object DriveEdge {
     "drive_search finds Drive files by the words in them, and drive_read reads one by its id. " +
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
-      "can open it by typing `label <level> at service:drive/<folder id>` (for example, " +
-      "`label internal at service:drive/abc123`), with the folder's id from a search."
+      "can open it to you with the label command, typing " +
+      "`label internal at <the folder's link or id>`: the link Drive shows for the folder, or " +
+      "the folder's id from a search."
 
   /** The edge named for `reading`'s service, serving [[DriveTools.Search]] and
     * [[DriveTools.Read]] there over Drive's API at `api` with `credential`'s tokens, read as

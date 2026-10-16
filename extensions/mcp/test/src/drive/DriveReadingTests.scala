@@ -48,5 +48,35 @@ object DriveReadingTests extends TestSuite {
       of(Claimed, "writer-bot-1@project.iam.example").map(_.place(Recorded.id("folder-3"))) ==>
         Place.read("service:drive/folder-3")
     }
+
+    test(
+      "a folder's or a shared drive's link, in each form Drive gives it, or an id of 19 characters or more alone, names the place its files are kept; a file's link, a shorter word or another site's link names none"
+    ) {
+      val names = right(of(Claimed)).names
+      val folder = Place.read("service:drive/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234")
+      val drive = Place.read("service:drive/0AbCdEfGhIjKlUk9PVA")
+      (
+        Vector(
+          "https://drive.google.com/drive/folders/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234",
+          "https://drive.google.com/drive/u/0/folders/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234?usp=sharing",
+          "drive.google.com/drive/folders/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234/",
+          "https://drive.google.com/open?id=1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234",
+          "1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234"
+        ).map(names.place),
+        Vector("https://drive.google.com/drive/folders/0AbCdEfGhIjKlUk9PVA", "0AbCdEfGhIjKlUk9PVA")
+          .map(names.place),
+        Vector(
+          "https://docs.google.com/document/d/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234/edit",
+          "0AbCdEfGhIjKlUk9PV",
+          "engineering",
+          "https://example.com/drive/folders/1AbC-dEf_GhIjKlMnOpQrStUvWxYz01234",
+          "https://drive.google.com/drive/folders/has/a/slash"
+        ).map(names.place)
+      ) ==> (
+        Vector.fill(5)(folder.toOption),
+        Vector.fill(2)(drive.toOption),
+        Vector.fill(5)(None)
+      )
+    }
   }
 }

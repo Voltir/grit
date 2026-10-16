@@ -133,6 +133,15 @@ object DriveEdgeTests extends TestSuite {
 
   val tests = Tests {
     test(
+      "what the model is told of Drive says how a folder is labelled, by its link or id, and names no place as grit writes one"
+    ) {
+      (
+        DriveEdge.Instructions.contains("`label internal at <the folder's link or id>`"),
+        DriveEdge.Instructions.contains("service:")
+      ) ==> (true, false)
+    }
+
+    test(
       "the edge is named for its service, needs its credential's variable, and answers no ask; blank instructions or an API that is no URL are refused"
     ) {
       val edge = right(DriveEdge.serving(Credential.static(Token), reading))

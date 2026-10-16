@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-import grit.core.admin.{Command, PlaceNames}
+import grit.core.admin.Command
 import grit.core.clock.Clock
 import grit.core.edge.{
   Acknowledgement,
@@ -230,7 +230,8 @@ final class SlackEdge(
   /** One slash command's payload ([[Events.command]]): when it is `registered`, run and
     * answered to its asker alone at its response url ([[Slack.respond]]); any other command is
     * ignored, and said. Its words are read by [[Command.read]], a mention (`<@U…>`) naming
-    * that user's account in the command's team. Its asker's account is checked first
+    * that user's account in the command's team, a link as Slack wraps one read as the link,
+    * and a place named as `registered`'s places name it ([[SlackCommand.places]]). Its asker's account is checked first
     * ([[Attesting.before]]), then the command is run as theirs ([[Administration.run]]), now,
     * in its room: its channel's (`slack:{team}/{channel}`), whether grit's bot is a member
     * there or not, or, asked in any direct message, the asker's own direct room. Words read
@@ -257,13 +258,17 @@ final class SlackEdge(
                 val room =
                   if (c.direct) Origin.Direct(asker, "").room
                   else Origin.channel(TeamId.value(c.team), ChannelId.value(c.channel))
-                // A mention as Slack escapes it, `<@U…|name>`, is read as the user alone.
-                val words = Mentioned.replaceAllIn(c.text, m => s"<@${m.group(1)}>")
+                // A mention as Slack escapes it, `<@U…|name>`, is read as the user alone, and a
+                // link, `<https://…|label>`, as the link alone.
+                val words = Linked.replaceAllIn(
+                  Mentioned.replaceAllIn(c.text, m => s"<@${m.group(1)}>"),
+                  m => scala.util.matching.Regex.quoteReplacement(m.group(1))
+                )
                 def person(word: String): Option[Account] = word match {
                   case Mentioned(user) => SlackAccounts.account(c.team, UserId(user)).toOption
                   case _ => None
                 }
-                Command.read(words, person, PlaceNames.None) match {
+                Command.read(words, person, registered.places) match {
                   case Left(why) => why
                   case Right(command) =>
                     stores.administration.run(asker, room, command, clock.now()) match {
@@ -1238,6 +1243,9 @@ object SlackEdge {
 
   /** `<@U…>` in a message's text. */
   private val Mentioned = "<@([A-Z0-9]+)(?:\\|[^>]*)?>".r
+
+  /** A link as Slack escapes one in a message's text, `<https://…>` or `<https://…|label>`. */
+  private val Linked = "<(https?://[^|>]+)(?:\\|[^>]*)?>".r
 
   /** The Slack messages of a reply: its text as [[RichText]] renders it, or, when it has no
     * text, one line saying grit could not answer, and `outcome`.

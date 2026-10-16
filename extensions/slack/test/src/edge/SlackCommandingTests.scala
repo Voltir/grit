@@ -9,6 +9,7 @@ import grit.core.admin.{
   Change,
   Command,
   InMemoryAdministration,
+  PlaceNames,
   Refusal
 }
 import grit.core.edge.{
@@ -25,7 +26,7 @@ import grit.core.place.Place
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
 import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
-import grit.core.visibility.TestLabels.{compartment, group}
+import grit.core.visibility.TestLabels.{compartment, group, place}
 import grit.core.visibility.{
   Compartments,
   Grant,
@@ -73,7 +74,7 @@ object SlackCommandingTests extends TestSuite {
   private val trial = compartment("trial")
 
   /** grit's team's full members cleared internal; [[Ada]] administers; trial's own group
-    * granted internal·trial and its steward.
+    * granted internal·trial and its steward; `service:files` invited.
     */
   private val Declared: Visibility =
     (for {
@@ -92,7 +93,8 @@ object SlackCommandingTests extends TestSuite {
             Grant(group("trial"), Label.at(Level.Internal, trial))
           ),
           administrators = Some(group("admins")),
-          stewards = Vector(Steward(trial, group("trial")))
+          stewards = Vector(Steward(trial, group("trial"))),
+          invited = Vector(place("service:files"))
         )
         .left
         .map(_.toString)
@@ -197,6 +199,31 @@ object SlackCommandingTests extends TestSuite {
       (w.answers, w.admin.kept) ==> (
         Vector(Answer.relabelled(change, here = true).text),
         Vector(AdministrationContract.Kept(of(Ada), Now, change))
+      )
+    }
+
+    test(
+      "a place its words name by a link, wrapped as Slack wraps one or not, is the place the command's places name"
+    ) {
+      val w = World()
+      val folder = place("service:files/folder")
+      val naming = Grit.naming(new PlaceNames {
+        def place(word: String): Option[Place] =
+          Option.when(word == "https://files.example/folder")(folder)
+      })
+      w.edge.command(naming)(
+        command("label internal at <https://files.example/folder|folder>", user = Ada)
+      )
+      w.edge.command(naming)(
+        command("label confidential at https://files.example/folder", user = Ada)
+      )
+      w.admin.kept.map(_.change) ==> Vector(
+        Change.Relabel(folder, Label.Unmapped, Change.To.Set(Label.at(Level.Internal))),
+        Change.Relabel(
+          folder,
+          Label.at(Level.Internal),
+          Change.To.Set(Label.at(Level.Confidential))
+        )
       )
     }
 

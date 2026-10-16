@@ -1,5 +1,6 @@
 package grit.mcp.drive
 
+import grit.core.admin.PlaceNames
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.visibility.Integrity
@@ -21,9 +22,40 @@ final case class DriveReading private (
     */
   def place(parent: FileId): Place =
     Place.under(Namespace.Service, Vector(service.name, FileId.value(parent)))
+
+  /** How a person names, in a command, where a folder's or a shared drive's files are kept
+    * ([[place]]): by its link as Drive gives it (`https://drive.google.com/drive/folders/{id}`,
+    * with `/u/{n}/` before `folders` or not, and a query after or not; or
+    * `https://drive.google.com/open?id={id}`), its scheme written or not; or by its id alone, of
+    * at least [[DriveReading.ShortestId]] characters. A file's link, a shorter word and any
+    * other site's link name none.
+    */
+  def names: PlaceNames = new PlaceNames {
+    def place(word: String): Option[Place] = {
+      val linked = word match {
+        case DriveReading.FolderLink(id) => Some(id)
+        case DriveReading.OpenLink(id) => Some(id)
+        case id if id.length >= DriveReading.ShortestId => Some(id)
+        case _ => None
+      }
+      linked.flatMap(id => FileId.of(id).toOption).map(DriveReading.this.place)
+    }
+  }
 }
 
 object DriveReading {
+
+  /** The fewest characters an id read alone has: 19, a shared drive's, the shortest Drive
+    * gives; so a word such as a compartment's name is never read as one.
+    */
+  val ShortestId: Int = 19
+
+  /** A folder's or a shared drive's link, its id the group. */
+  private val FolderLink =
+    "(?:https?://)?drive\\.google\\.com/drive/(?:u/\\d+/)?folders/([A-Za-z0-9_-]+)/?(?:[?#].*)?".r
+
+  /** Drive's older link to a file or folder by id, its id the group. */
+  private val OpenLink = "(?:https?://)?drive\\.google\\.com/open\\?id=([A-Za-z0-9_-]+)(?:&.*)?".r
 
   /** These, or why not: `domain` not one `identities` claims; a writer in `domain`, whose
     * people are believed as people; or `self` among the writers.
