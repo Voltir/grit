@@ -36,5 +36,4 @@ Consequences:
 - Only the kit opens an engine (`Engine.open` is `private[grit]`); an edge works through core's
   traits (`Inbox` and the stores) over the database.
 - Enforced by the law: `slack-names-core-prose-and-edge`, `mcp-names-core-alone` and
-  `tui-names-core-alone` keep the
-  edge modules off the turn and the engine.
+  `tui-names-core-alone` keep the edge modules off the turn and the engine.
