@@ -17,16 +17,15 @@ is invited).
 Decision:
 
 - **An edge hears where its bot is a member**, public or private, and reports each room's
-  access (`RoomAccess.Open`, anyone in the workspace may join; `RoomAccess.Invited`, only whom its members
-  invite). It records each join and leave in order, and checks them against its source's list
+  access (`RoomAccess.Open`: anyone in the workspace may join; `Invited`: only whom its
+  members invite). It records each join and leave in order, checked against its source's list
   whenever it opens. Being removed stops hearing at once. A channel grit's bot is not in, and a
   group direct message, are never served; a direct message is ADR 0032's.
 - **A room's label is set through grit**, by command, in the room it labels, whether or not
   grit is a member there; a place within one a service shares (ADR 0039) is labelled from
-  any room, by `label … at <place>`, and any other place named so is refused. Core decides each change by one rule (`Authority.decide`, the only
-  way to the value applying it, `Authority.Allowed`) and keeps each change allowed with an
-  audit row (`grit.visibility_changes`). The rule decides on what a change raises, lowers and
-  removes:
+  any room, by `label … at <place>`, and any other place named so is refused. Core decides
+  each change by one rule (`Authority.decide`, yielding `Authority.Allowed`) and keeps each
+  change allowed with an audit row (`grit.visibility_changes`):
   - in an invited room, raising is free to any person a trusted realm vouches a full member;
   - a room not invited is relabelled only by an administrator: raising it would make it a
     destination higher rooms write down to (ADR 0031);
@@ -57,8 +56,8 @@ Consequences:
   another's name line can be forged by anyone who can write there.
 - **Posting.** grit posts outside the thread it answers only through `slack_post`, hosted at
   `service:slack` (ADR 0017): to any member channel not quiet, by id, within a rate the
-  deployment declares, on turns addressed to grit (never a heard one), never asking first and
-  never run again after a crash; narrowed per turn by ADR 0031. Its text is literal, so it never
+  deployment declares, on turns addressed to grit, never asking first and never run again
+  after a crash; narrowed per turn by ADR 0031. Its text is literal, so it never
   mentions or broadcasts; it is grit's bot's message, so it is never heard or answered. A
   top-level post begins the thread under it once someone's message there is recorded.
 - A room can be made quiet by any full member: grit then posts nothing there unasked, neither
