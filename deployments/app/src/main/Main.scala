@@ -365,14 +365,7 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(
-          config,
-          deployment.runsUnder,
-          identity,
-          deployment.budget,
-          deployment.visibility,
-          clock
-        ) match {
+        Kit.open(config, deployment, clock) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
             val link =

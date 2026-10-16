@@ -14,7 +14,8 @@ import grit.core.place.Place
 import grit.core.spend.Budget
 import grit.core.store.{Linking, StoreError, Tx}
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.engine.{Engine, Link}
+import grit.dbos.engine.{Engine, Link, Unopened}
+import grit.dbos.sql.DbConfig
 import grit.host.LocalMachine
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
@@ -87,7 +88,7 @@ object Kit {
     preflight(deployment, env, deployment.edges.toList.map(e => (e.name, e.needs))) match {
       case Left(failure) => Left(failure)
       case Right(secrets) =>
-        open(deployment, secrets, clock) match {
+        trusted(deployment, secrets, clock) match {
           case Left(failure) => Left(failure)
           case Right(engine) =>
             val stopped = new CountDownLatch(1)
@@ -189,7 +190,7 @@ object Kit {
       case Right(secrets) =>
         // The process's own time, read here at the catch-up's root and passed down.
         val clock: Clock^ = Clock.system() // clock-check: the composition root of a catch-up
-        open(deployment, secrets, clock) match {
+        trusted(deployment, secrets, clock) match {
           case Left(failure) => Left(failure)
           case Right(engine) =>
             val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
@@ -250,7 +251,7 @@ object Kit {
   /** Ends what `deployment`'s identities no longer support ([[Engine.untrust]]), logging each
     * change at info in the `grit.serve` log; and warns there when realms are trusted and no email
     * domain is claimed, so no account is linked to another by email. `Store` when the database
-    * fails. Called through [[open]] by [[serve]] and [[catchUp]] alone, both built from the whole
+    * fails. Called through [[trusted]] by [[serve]] and [[catchUp]] alone, both built from the whole
     * deployment and every attester it trusts; a chat start ([[launch]]) never withdraws trust,
     * since a chat may be declared with fewer edges, and so trust fewer realms.
     */
@@ -317,22 +318,34 @@ object Kit {
     }
   }
 
-  /** `deployment`'s engine, opened with `clock`, with what its identities no longer trust
-    * ended; a refusal says when, by `clock`, the database's engine was last seen held.
+  /** `deployment`'s engine over `database`, held by this machine's process and opened with
+    * `clock`, under the deployment's version, budget and visibility; it ends nothing. Refused
+    * as [[Engine.open]] refuses: [[grit.dbos.engine.Unopened.Lock]] while another process holds
+    * the database's engine.
     */
-  private def open(
+  private[grit] def open(
+      database: DbConfig,
       deployment: Deployment,
-      secrets: Secrets,
       clock: Clock^
-  ): Either[KitFailure, Engine^] =
+  ): Either[Unopened, Engine^] =
     Engine.open(
-      secrets.database,
+      database,
       deployment.runsUnder,
       LocalMachine.identity(),
       deployment.budget,
       deployment.visibility,
       clock
-    ) match {
+    )
+
+  /** [[open]] over `secrets`' database, with what `deployment`'s identities no longer trust
+    * ended; a refusal says when, by `clock`, the database's engine was last seen held.
+    */
+  private def trusted(
+      deployment: Deployment,
+      secrets: Secrets,
+      clock: Clock^
+  ): Either[KitFailure, Engine^] =
+    open(secrets.database, deployment, clock) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
       case Right(engine) =>
         trusting(engine, deployment) match {

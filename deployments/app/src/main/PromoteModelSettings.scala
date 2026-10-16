@@ -2,12 +2,11 @@ package grit.app.main
 
 import grit.core.clock.Clock
 import grit.core.model.{Catalog, CatalogJson, Profile}
-import grit.core.spend.Budget
 import grit.core.visibility.Subject
-import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Offered
 import grit.kit.environment.DotEnv
+import grit.kit.run.Kit
 import grit.models.Seed
 
 /** Prints the seed catalog with every model setting approved at runtime laid over it, in the seed's
@@ -40,17 +39,10 @@ object PromoteModelSettings {
       .deployment(env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
       .fold(fail, identity)
     // The engine's lock, like any engine: while grit runs on this database, this says so.
-    val engine = Engine.open(
-      config,
-      deployment.runsUnder,
-      grit.host.LocalMachine.identity(),
-      // It takes no messages: no cap, and any zone.
-      Budget(java.time.ZoneOffset.UTC, None),
-      // A database that ran under compartments the deployment does not declare is refused,
-      // naming one, rather than opened as if it had not.
-      deployment.visibility,
-      clock
-    ) match {
+    // A database that ran under compartments the deployment does not declare is refused,
+    // naming one, rather than opened as if it had not. It takes no messages, so the
+    // deployment's budget caps nothing here.
+    val engine = Kit.open(config, deployment, clock) match {
       case Right(open) => open
       case Left(refused) => fail(refused.message(clock.now()))
     }
