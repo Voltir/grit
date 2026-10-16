@@ -61,7 +61,7 @@ object AuthorityTests extends TestSuite {
   private def relabel(from: Label, to: Label, room: Place = ops): Change =
     Change.Relabel(room, from, Change.To.Set(to))
 
-  private val first = Label.at(Level.Public, Compartment.Unmapped)
+  private val first = Label.Unmapped
   private def at(level: Level, cs: Compartment*): Label = Label.at(level, cs*)
 
   val tests = Tests {
@@ -156,7 +156,7 @@ object AuthorityTests extends TestSuite {
         decide(both, By.Administrator),
         decide(none, By.Steward(trial, acme)),
         decide(none, By.Administrator),
-        decide(relabel(first, at(Level.Confidential, Compartment.Unmapped, trial)), By.Member)
+        decide(relabel(first, at(Level.Confidential, trial).join(Label.Unmapped)), By.Member)
       ) ==> Vector(
         Right(both),
         Left(Refusal.NotSteward(acme)),
@@ -164,7 +164,7 @@ object AuthorityTests extends TestSuite {
         Right(both),
         Left(Refusal.NotAdministrator),
         Right(none),
-        Right(relabel(first, at(Level.Confidential, Compartment.Unmapped, trial)))
+        Right(relabel(first, at(Level.Confidential, trial).join(Label.Unmapped)))
       )
     }
 

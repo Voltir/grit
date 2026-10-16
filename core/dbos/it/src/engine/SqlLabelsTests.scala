@@ -56,13 +56,20 @@ object SqlLabelsTests extends TestSuite {
       LiveEngine.open(config, "test", visibility = declaring("trial")).close()
       LiveEngine.open(config, "test", visibility = declaring("trial")).close()
       LiveEngine.open(config, "test", visibility = declaring("trial", "acme")).close()
-      versions(config) ==> Vector(
-        "1|trial",
-        "1|unmapped",
-        "2|acme",
-        "2|trial",
-        "2|unmapped"
+      versions(config) ==> Vector("1|trial", "2|acme", "2|trial")
+    }
+
+    test(
+      "a database that recorded the unmapped mark among its compartments opens under the same set without it, and records nothing"
+    ) {
+      val config = TestPostgres.freshDatabase("labels_marked")
+      LiveEngine.open(config, "test", visibility = declaring("trial")).close()
+      val _ = rows(
+        config,
+        "INSERT INTO grit.compartments (version, compartment) VALUES (1, 'unmapped') RETURNING version"
       )
+      LiveEngine.open(config, "test", visibility = declaring("trial")).close()
+      versions(config) ==> Vector("1|trial", "1|unmapped")
     }
 
     test(
@@ -86,7 +93,7 @@ object SqlLabelsTests extends TestSuite {
       }
       (refused, versions(config), rows(config, "SELECT count(*) FROM grit.engine_starts")) ==> (
         Some(Unopened.Dropped(compartment("trial"))),
-        Vector("1|acme", "1|trial", "1|unmapped"),
+        Vector("1|acme", "1|trial"),
         starts
       )
       // Its lock was let go: the next start, declaring what it ran under, opens.

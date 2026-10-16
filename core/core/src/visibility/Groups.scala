@@ -28,7 +28,7 @@ object GroupName {
 final case class Group(name: GroupName, accounts: Set[Account], realms: Set[Realm] = Set.empty)
 
 /** `group`'s members are cleared for `label`. */
-final case class Grant(group: GroupName, label: Label)
+final case class Grant(group: GroupName, label: DeclaredLabel)
 
 /** The declared members of `group` (never people added through grit) steward `compartment`:
   * they may clear and remove people for it, and remove it from a private room's label

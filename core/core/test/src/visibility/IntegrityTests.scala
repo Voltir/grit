@@ -18,12 +18,15 @@ object IntegrityTests extends TestSuite {
     for {
       level <- Level.values.toVector
       mask <- (0 until 8).toVector
-    } yield Integrity.at(
-      level,
-      Vector(trial, acme, Compartment.Unmapped).zipWithIndex.collect {
-        case (c, i) if (mask & (1 << i)) != 0 => c
-      }*
-    )
+    } yield {
+      val endorsed = Integrity.at(
+        level,
+        Vector(trial, acme).zipWithIndex.collect {
+          case (c, i) if (mask & (1 << i)) != 0 => c
+        }*
+      )
+      if ((mask & 4) != 0) endorsed.join(TestLabels.unmappedIntegrity) else endorsed
+    }
 
   /* The first counterexample, or `None`. */
   private def all1(p: Integrity => Boolean): Option[Integrity] = all.find(!p(_))
@@ -63,7 +66,7 @@ object IntegrityTests extends TestSuite {
     ) {
       val top = Integrity.top(declared)
       all1(a => top.meet(a) == a && a.meet(top) == a && top.dominates(a)) ==> None
-      top ==> Integrity.at(Level.Authority, trial, acme, Compartment.Unmapped)
+      top ==> Integrity.at(Level.Authority, trial, acme).join(TestLabels.unmappedIntegrity)
     }
 
     test(

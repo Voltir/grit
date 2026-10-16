@@ -21,7 +21,7 @@ object Authority {
     *    room would make it a destination higher rooms write down to (ADR 0031);
     *  - in an invited room: allowed when the new label dominates the one in force; otherwise a
     *    lower level needs `administers`, each compartment removed needs `administers` or to be
-    *    in `stewards`, and replacing [[Compartment.Unmapped]] (a room's first label) needs
+    *    in `stewards`, and replacing the unmapped mark ([[grit.core.visibility.Label.Unmapped]], a room's first label) needs
     *    `administers`, or a new label holding a compartment, each in `stewards`;
     *  - a room's baseline, set, raised, lowered or cleared, in any room: only when `administers`
     *    ([[Refusal.NotAdministrator]]), since it spends the deployment's budget;
@@ -63,14 +63,16 @@ object Authority {
                   else
                     Option
                       .when(lowered(from, to.label))(Refusal.NotAdministrator)
-                      .orElse(removed(from, to.label, compartments).flatMap { c =>
-                        if (c != Compartment.Unmapped) steward(c)
+                      .orElse(removed(from, to.label, compartments).flatMap(steward).headOption)
+                      .orElse(
+                        if (!from.dominates(Label.Unmapped) || to.label.dominates(Label.Unmapped))
+                          None
                         else
                           held(to.label, compartments) match {
                             case Vector() => Some(Refusal.NotAdministrator)
                             case cs => cs.flatMap(steward).headOption
                           }
-                      }.headOption)
+                      )
                 }
           case Change.Clear(_, c) =>
             declared(c)

@@ -10,7 +10,7 @@ import scala.collection.immutable.SortedSet
  * outside this package finds no structure to take apart. */
 private[visibility] final class Levelled[L <: reflect.Enum & caps.Pure](
     val level: L,
-    val compartments: SortedSet[Compartment]
+    val compartments: SortedSet[Mark]
 )(using val levels: Levels[L])
     extends caps.Pure {
 
@@ -30,12 +30,12 @@ private[visibility] final class Levelled[L <: reflect.Enum & caps.Pure](
     )
 
   def written: String =
-    (levels.name(level) +: compartments.toVector.map(Compartment.name)).mkString("+")
+    (levels.name(level) +: compartments.toVector.map(Mark.name)).mkString("+")
 
   def shown: String = {
     val in =
       if (compartments.isEmpty) ""
-      else compartments.toVector.map(Compartment.name).mkString(", in: {", ", ", "}")
+      else compartments.toVector.map(Mark.name).mkString(", in: {", ", ", "}")
     s"[${levels.shownAs}: ${levels.name(level)}$in]"
   }
 
@@ -49,7 +49,7 @@ private[visibility] final class Levelled[L <: reflect.Enum & caps.Pure](
 
 private[visibility] object Levelled {
 
-  def at[L <: reflect.Enum & caps.Pure](level: L, compartments: Seq[Compartment])(using
+  def at[L <: reflect.Enum & caps.Pure](level: L, compartments: Seq[Mark])(using
       Levels[L]
   ): Levelled[L] =
     new Levelled(level, SortedSet.from(compartments))
@@ -63,8 +63,8 @@ private[visibility] object Levelled {
           level <- levels.all
             .find(levels.name(_) == head)
             .toRight(s"$text names no ${levels.refusedAs} first: $head")
-          compartments <- rest.foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) {
-            (acc, c) => acc.flatMap(cs => Compartment.of(c).map(cs :+ _))
+          compartments <- rest.foldLeft[Either[String, Vector[Mark]]](Right(Vector.empty)) {
+            (acc, c) => acc.flatMap(cs => Mark.read(c).map(cs :+ _))
           }
         } yield at(level, compartments)
       case _ => Left(s"$text names no ${levels.refusedAs}")

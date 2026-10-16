@@ -8,7 +8,6 @@ import grit.core.place.{Namespace, Place, Service}
 import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cleared,
-  Compartment,
   Compartments,
   Label,
   Labelled,
@@ -110,9 +109,9 @@ object KnowledgeTests extends TestSuite {
     }
 
     test("a source over an unmapped service place is refused unless its label holds unmapped") {
-      val unmapped = Label.at(Level.Public, Compartment.Unmapped)
+      val unmapped = Label.Unmapped
       val under =
-        visibility(Labelled.Unmapped(Label.Public), Label.at(Level.Internal, Compartment.Unmapped))
+        visibility(Labelled.Unmapped(Label.Public), Label.at(Level.Internal).join(Label.Unmapped))
       (
         declared(Vector(source(Some(internal))), under),
         declared(Vector(source(None)), under)

@@ -632,13 +632,10 @@ object DeploymentTests extends TestSuite {
       (
         Deployments.of(plugins = naming(trial, client), visibility = trialDeclared).map(_ => ()),
         Deployments.of(plugins = naming(trial)).map(_ => ()),
-        Deployments.of(plugins = naming(trial), visibility = trialDeclared).map(_ => ()),
-        // Every deployment declares unmapped.
-        Deployments.of(plugins = naming(Compartment.Unmapped)).map(_ => ())
+        Deployments.of(plugins = naming(trial), visibility = trialDeclared).map(_ => ())
       ) ==> (
         Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByPlugin(name("p")), client)),
         Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByPlugin(name("p")), trial)),
-        Right(()),
         Right(())
       )
     }

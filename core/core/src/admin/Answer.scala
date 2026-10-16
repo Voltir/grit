@@ -136,8 +136,7 @@ object Answer {
     Changed(change, s"Removed from $c. ${clearance(after)}$kept")
   }
 
-  /** The compartments the deployment's `compartments` declare, by name, never
-    * [[Compartment.Unmapped]]: every one when the asker `administers`; otherwise those their
+  /** The compartments the deployment's `compartments` declare, by name: every one when the asker `administers`; otherwise those their
     * clearance, `cleared`, holds, and those they steward, `stewards`.
     */
   def compartments(
@@ -147,7 +146,7 @@ object Answer {
       cleared: Label
   ): Answer = {
     val named =
-      compartments.declared.toVector.filter(_ != Compartment.Unmapped).sortBy(Compartment.name)
+      compartments.declared.toVector.sortBy(Compartment.name)
     def names(cs: Vector[Compartment]): String = Command.and(cs.map(Compartment.name))
     if (administers)
       Shown(

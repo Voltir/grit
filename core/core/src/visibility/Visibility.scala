@@ -17,8 +17,16 @@ final case class Visibility private (
     clearances: Clearances,
     administrators: Option[GroupName],
     stewards: Vector[Steward],
-    private val caps: PlaceMap[Integrity]
+    private val caps: PlaceMap[Integrity],
+    private val invited: Vector[Place]
 ) {
+
+  /** Whether `room` lies strictly within a place the deployment declares invited: a service's
+    * place it shares only with the people it names, each room of it read as invited when no
+    * edge reports its access.
+    */
+  def invites(room: Place): Boolean =
+    invited.exists(p => room != p && room.within(p))
 
   /** The cap on what is said at `place` ([[Cap]]): the declared one at the deepest place `place`
     * is or lies within; `None` when no declared cap covers it.
@@ -67,7 +75,8 @@ object Visibility {
       Clearances.Empty,
       None,
       Vector.empty,
-      PlaceMap.Empty
+      PlaceMap.Empty,
+      Vector.empty
     )
 
   /** These, or the first mistake: a room declared within `direct` (`DirectDeclared`); a
@@ -79,13 +88,16 @@ object Visibility {
     * join.
     * `administrators`' declared members alone may make the changes
     * [[grit.core.admin.Authority]] reserves to administrators; with none, no one may. A
-    * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), of
-    * [[Compartment.Unmapped]] (`StewardsUnmapped`), through a group not declared
+    * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), through a
+    * group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),
     * or one compartment stewarded twice (`StewardedTwice`), is refused too. So is a cap at a
     * directory under `fs`, a direct message's room or everywhere (`CapOutside`), a place capped
     * twice (`CappedTwice`), or a cap naming a compartment `compartments` does not declare
     * (`Undeclared`, by [[Namer.CapOf]]).
+    * `invited` are places a service shares only with the people it names ([[invites]]); one
+    * that is not under a service's own place (`service:<name>`, or a place within it) is
+    * refused (`InvitedOutside`).
     */
   def of(
       compartments: Compartments,
@@ -95,7 +107,8 @@ object Visibility {
       clearances: Vector[Cleared] = Vector.empty,
       administrators: Option[GroupName] = None,
       stewards: Vector[Steward] = Vector.empty,
-      caps: Vector[Cap] = Vector.empty
+      caps: Vector[Cap] = Vector.empty,
+      invited: Vector[Place] = Vector.empty
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -141,8 +154,7 @@ object Visibility {
         })
         .orElse(stewards.flatMap { st =>
           val c = st.compartment
-          if (c == Compartment.Unmapped) Some(VisibilityRefusal.StewardsUnmapped)
-          else if (!compartments.declared.contains(c))
+          if (!compartments.declared.contains(c))
             Some(VisibilityRefusal.Undeclared(Namer.Stewarded(c), c))
           else if (!names.contains(st.group)) Some(VisibilityRefusal.NoSuchGroup(st.group))
           else
@@ -161,6 +173,11 @@ object Visibility {
             VisibilityRefusal.CapOutside(c.place)
         })
         .orElse(capped.left.toOption)
+        .orElse(invited.collectFirst {
+          case p
+              if p.segments.headOption.forall(_ != Namespace.Service.key) || p.segments.size < 2 =>
+            VisibilityRefusal.InvitedOutside(p)
+        })
         .orElse(caps.flatMap { cap =>
           Integrity
             .compartments(cap.integrity)
@@ -179,7 +196,8 @@ object Visibility {
       c,
       administrators,
       stewards,
-      m
+      m,
+      invited
     )
   }
 }
@@ -234,9 +252,6 @@ enum VisibilityRefusal {
     */
   case StewardsThroughCompartment(compartment: Compartment, group: GroupName)
 
-  /** [[Compartment.Unmapped]] is grit's, and no one stewards it. */
-  case StewardsUnmapped
-
   /** Two stewards are declared for `compartment`. */
   case StewardedTwice(compartment: Compartment)
 
@@ -255,4 +270,10 @@ enum VisibilityRefusal {
     * message's room is labelled at its person's clearance, never by the labeller.
     */
   case DirectDeclared(place: Place)
+
+  /** `place` is declared invited, and is no service's place, or is the service namespace
+    * itself: only a service's own places are shared with grit by invitation, and a room
+    * anywhere else reports its own access.
+    */
+  case InvitedOutside(place: Place)
 }

@@ -17,11 +17,17 @@ object TestLabels {
   def group(name: String): GroupName =
     GroupName.of(name).fold(e => throw new java.lang.AssertionError(e), identity)
 
+  /** Untrusted, holding the unmapped mark alone: what an integrity is joined with to hold it,
+    * as grit's own top does.
+    */
+  val unmappedIntegrity: Integrity =
+    Integrity.read("untrusted+unmapped").fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** The compartment the contracts label rooms and documents with. */
   val trial: Compartment = compartment("trial")
 
   /** Public, in [[trial]]. */
-  val Trial: Label = Label.at(Level.Public, trial)
+  val Trial: DeclaredLabel = Label.at(Level.Public, trial)
 
   /** The account of the one person [[Trialled]] clears for [[Trial]]. */
   val Trialist: Account = TestAccounts.account("slack:T1/U-trialist")

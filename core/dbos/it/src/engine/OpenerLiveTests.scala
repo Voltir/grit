@@ -14,6 +14,7 @@ import grit.core.visibility.{
   Clearance,
   Compartment,
   Compartments,
+  DeclaredLabel,
   Grant,
   Group,
   GroupName,
@@ -42,7 +43,7 @@ object OpenerLiveTests extends TestSuite {
   private val trial: Compartment =
     Compartment.of("trial").fold(e => throw new java.lang.AssertionError(e), identity)
 
-  private val trialLabel: Label = Label.at(Level.Public, trial)
+  private val trialLabel: DeclaredLabel = Label.at(Level.Public, trial)
 
   private val cleared = TestAccounts.account("slack:T1/U-cleared")
   private val uncleared = TestAccounts.account("slack:T1/U-uncleared")

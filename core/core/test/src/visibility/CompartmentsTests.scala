@@ -8,15 +8,15 @@ object CompartmentsTests extends TestSuite {
   private val trial = compartment("trial")
   private val acme = compartment("acme")
   private val ops = compartment("ops")
-  private val unmapped = Label.at(Level.Public, Compartment.Unmapped)
+  private val unmapped = Label.Unmapped
 
   private def declared(cs: Compartment*): Compartments =
     Compartments.of(cs.toVector).fold(c => throw new java.lang.AssertionError(c), identity)
 
   val tests = Tests {
-    test("a deployment's compartments always hold unmapped, and refuse one named twice") {
-      declared(trial).declared ==> Set(trial, Compartment.Unmapped)
-      Compartments.Shipped.declared ==> Set(Compartment.Unmapped)
+    test("a deployment's compartments are those it declares, and refuse one named twice") {
+      declared(trial).declared ==> Set(trial)
+      Compartments.Shipped.declared ==> Set.empty
       Compartments.of(Vector(trial, acme, trial)) ==> Left(trial)
     }
 
@@ -24,19 +24,19 @@ object CompartmentsTests extends TestSuite {
       val cs = declared(trial)
       cs.admit(Label.at(Level.Internal, trial)) ==> Label.at(Level.Internal, trial)
       cs.admit(Label.at(Level.Confidential, trial, acme, ops)) ==>
-        Label.at(Level.Confidential, trial, Compartment.Unmapped)
+        Label.at(Level.Confidential, trial).join(Label.Unmapped)
       cs.admit(Label.at(Level.Public, acme)) ==> unmapped
     }
 
     test("the first undeclared compartment of a label is named, in order") {
       val cs = declared(trial)
       cs.undeclared(Label.at(Level.Internal, trial, ops, acme)) ==> Some(acme)
-      cs.undeclared(Label.at(Level.Restricted, trial, Compartment.Unmapped)) ==> None
+      cs.undeclared(Label.at(Level.Restricted, trial).join(Label.Unmapped)) ==> None
     }
 
     test("top is restricted in every declared compartment, unmapped included") {
       declared(trial, acme).top ==>
-        Label.at(Level.Restricted, trial, acme, Compartment.Unmapped)
+        Label.at(Level.Restricted, trial, acme).join(Label.Unmapped)
     }
 
     test("compartments keep an earlier set when they only add to it, never when one is dropped") {

@@ -65,7 +65,7 @@ enum Outcome {
         case Accounted.Unread => if (read.isEmpty) Accounted.Unread else Accounted.of(read)
         case Accounted.Items(had) => Accounted.of(had ++ read)
       }
-      val label = read.map(p => Tx.roomLabel(p.place)).foldLeft(Label.Public)(_.join(_))
+      val label = read.map(p => Tx.roomLabel(p.place)).foldLeft[Label](Label.Public)(_.join(_))
       Outcome.Read(Done(shown, integrity, accounted, None), label)
     case other => Outcome.Read(other, Label.Public)
   }

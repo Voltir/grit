@@ -141,10 +141,10 @@ object LabelTests extends TestSuite {
 
     test("stored parts naming no compartment, or a rank naming no level, read high and unmapped") {
       LabelParts.of(1, Vector("trial", "Not-A-Name")) ==>
-        Label.at(Level.Internal, trial, Compartment.Unmapped)
-      LabelParts.of(0, Vector("confidential")) ==> Label.at(Level.Public, Compartment.Unmapped)
-      LabelParts.of(4, Vector("trial")) ==> Label.at(Level.Restricted, trial, Compartment.Unmapped)
-      LabelParts.of(-1, Vector.empty) ==> Label.at(Level.Restricted, Compartment.Unmapped)
+        Label.at(Level.Internal, trial).join(Label.Unmapped)
+      LabelParts.of(0, Vector("confidential")) ==> Label.Unmapped
+      LabelParts.of(4, Vector("trial")) ==> Label.at(Level.Restricted, trial).join(Label.Unmapped)
+      LabelParts.of(-1, Vector.empty) ==> Label.at(Level.Restricted).join(Label.Unmapped)
       // A clearance at the top level, with every other compartment, reads none of them.
       val cleared = Label.at(Level.Restricted, trial, acme, ops)
       assert(
@@ -163,6 +163,12 @@ object LabelTests extends TestSuite {
       Compartment.of("a" * 33).left.map(_.take(36)) ==> Left("a" * 33 + " is")
       Compartment.of("client-7").map(c => Label.written(Label.at(Level.Public, c))) ==>
         Right("public+client-7")
+    }
+
+    test("unmapped is grit's own mark for what no label placed, never a compartment's name") {
+      Compartment.of("unmapped") ==> Left(
+        "unmapped is grit's mark for what no label placed, never a compartment's name"
+      )
     }
   }
 }

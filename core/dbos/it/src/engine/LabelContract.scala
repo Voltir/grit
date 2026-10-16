@@ -135,7 +135,7 @@ object LabelContract extends TestSuite {
       val inSql = query(sql)(
         _.setString(1, ujson.Arr.from(lists.map(l => ujson.Arr.from(l.map(json)))).render())
       )(rs => parts(rs.getInt(2), rs.getString(3)))
-      inSql ==> lists.map(l => stored(l.foldLeft(Label.Public)(_.join(_))))
+      inSql ==> lists.map(l => stored(l.foldLeft[Label](Label.Public)(_.join(_))))
     }
 
     test(

@@ -50,9 +50,11 @@ object Integrity {
   /** [[Level.Authority]], no compartment. */
   val Authority: Integrity = at(Level.Authority)
 
-  /** grit's own text: [[Level.Authority]] in every one of `compartments`; the meet's identity. */
+  /** grit's own text: [[Level.Authority]] in every one of `compartments` and the unmapped mark;
+    * the meet's identity.
+    */
   def top(compartments: Compartments): Integrity =
-    at(Level.Authority, compartments.declared.toVector*)
+    Levelled.at(Level.Authority, compartments.declared.toVector :+ Mark.Unmapped)
 
   /** `level` in `compartments`, read as the compartments it is *endorsed in*: the reverse of
     * `Label.at`'s reading, so the usual value names none.
@@ -100,8 +102,16 @@ object Integrity {
   /** The integrity `text` writes, or why not. */
   def read(text: String): Either[String, Integrity] = Levelled.read[Level](text)
 
-  /** `i`'s compartments, in order, for this package's own checks. */
-  private[visibility] def compartments(i: Integrity): Vector[Compartment] = i.compartments.toVector
+  /** `i`'s compartments, in order and without the unmapped mark, for this package's own checks. */
+  private[visibility] def compartments(i: Integrity): Vector[Compartment] =
+    i.compartments.toVector.flatMap(Compartment.marked)
+
+  /** `level` in `marks`, the unmapped mark among them or not. */
+  private[visibility] def marked(level: Level, marks: Seq[Mark]): Integrity =
+    Levelled.at(level, marks)
+
+  /** `i`'s compartments and mark, in order: what it is stored as. */
+  private[visibility] def marks(i: Integrity): Vector[Mark] = i.compartments.toVector
 
   /** `i`'s level, for this package's own checks. */
   private[visibility] def level(i: Integrity): Level = i.level
@@ -139,16 +149,16 @@ object IntegrityParts {
   /** `i`'s compartments' names, distinct and sorted bytewise: the form
     * `grit.canonical_compartments` keeps.
     */
-  def compartments(i: Integrity): Vector[String] =
-    Integrity.compartments(i).map(Compartment.name)
+  def compartments(i: Integrity): Vector[String] = Integrity.marks(i).map(Mark.name)
 
-  /** The integrity stored as `rank` and `compartments`. Total, and failing closed: a rank naming
-    * no level reads as [[Integrity.Level.Untrusted]], and a name that is no compartment's
-    * ([[Compartment.of]]) is dropped, so it is endorsed in none it cannot name.
+  /** The integrity stored as `rank` and `compartments`, the unmapped mark among them as its
+    * name. Total, and failing closed: a rank naming no level reads as
+    * [[Integrity.Level.Untrusted]], and a name that is no compartment's ([[Compartment.of]]) is
+    * dropped, so it is endorsed in none it cannot name.
     */
   def of(rank: Int, compartments: Vector[String]): Integrity =
-    Integrity.at(
+    Integrity.marked(
       Integrity.Level.values.lift(rank).getOrElse(Integrity.Level.Untrusted),
-      compartments.flatMap(Compartment.of(_).toOption)*
+      compartments.flatMap(Mark.read(_).toOption)
     )
 }

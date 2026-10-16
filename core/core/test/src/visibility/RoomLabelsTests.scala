@@ -44,7 +44,7 @@ object RoomLabelsTests extends TestSuite {
     test("a room of unreported access within no declared place takes otherwise, kept at unmapped") {
       rooms.label(unreported("slack:other/#x")) ==> Labelled.Unmapped(Label.Public)
       rooms.label(unreported("slack:other/#x")).label ==>
-        Label.at(Level.Public, Compartment.Unmapped)
+        Label.Unmapped
       RoomLabels.Public.label(unreported("fs:/home/nick")) ==> Labelled.Mapped(Label.Public)
     }
 
@@ -68,7 +68,7 @@ object RoomLabelsTests extends TestSuite {
       opening.label(Room(place("slack:acme/#private"), Some(RoomAccess.Invited))) ==>
         Labelled.Unmapped(Label.Public)
       opening.label(Room(place("slack:acme/#private"), Some(RoomAccess.Invited))).label ==>
-        Label.at(Level.Public, Compartment.Unmapped)
+        Label.Unmapped
     }
 
     test(
@@ -88,9 +88,10 @@ object RoomLabelsTests extends TestSuite {
         Labelled.Unmapped(Label.Public)
     }
 
-    test("a room labeller requires every compartment its labels hold, open's among them") {
-      rooms.requires.toSet ==>
-        Set(compartment("trial"), compartment("ops"), Compartment.Unmapped)
+    test(
+      "a room labeller requires every compartment its labels hold, open's among them, and never the unmapped mark"
+    ) {
+      rooms.requires.toSet ==> Set(compartment("trial"), compartment("ops"))
       RoomLabels
         .of(Vector.empty, Labelled.Mapped(Label.Public), Some(Labelled.Mapped(ops)))
         .map(_.requires) ==> Right(Vector(compartment("ops")))

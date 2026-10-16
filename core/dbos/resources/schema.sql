@@ -389,7 +389,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id
 -- (Joins.KeptLeft) and has not rejoined, unless someone labelled, quieted or set a baseline for
 -- it (Joins.forget); kept that long so a join reported late is still ordered against the leave.
 -- Bounded by the rooms the bots are in, those left within the day, and those people decided
--- anything of: tens to hundreds. Its place is kept while it exists.
+-- anything of, places labelled from elsewhere among them (a service's folder, which no bot is
+-- in, labelled at its place; never forgotten, as it was decided): tens to hundreds. Its place is
+-- kept while it exists.
 CREATE TABLE IF NOT EXISTS grit.rooms (
     place_id        UUID PRIMARY KEY REFERENCES grit.places(id),
     name            TEXT,   -- the name its edge last reported (`meeting-notes`)

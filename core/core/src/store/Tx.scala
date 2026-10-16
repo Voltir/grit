@@ -77,7 +77,7 @@ object Tx {
     * room ([[Place.direct]]) [[grit.core.visibility.Compartments.top]], since its person's
     * clearance needs the opener (ADR 0032); the label set for it through grit; otherwise what
     * the deployment's labeller gives it as a [[Room]] with its reported access ([[access]]). A
-    * compartment not declared is kept at [[grit.core.visibility.Compartment.Unmapped]] instead.
+    * compartment not declared is kept at unmapped ([[grit.core.visibility.Label.Unmapped]]) instead.
     * Conversations already created keep theirs.
     */
   def roomLabel(room: Place)(using tx: Tx^): Label =
@@ -120,7 +120,7 @@ object Tx {
     principal match {
       case Principal.Grit => tx.visibility.compartments.top
       case Principal.Person(_, held) =>
-        memberships(held).map(_.label).foldLeft(Label.Public)(_.join(_))
+        memberships(held).map(_.label).foldLeft[Label](Label.Public)(_.join(_))
     }
 
   /** `principal`'s integrity, as their words enter grit before their room's cap: grit's,
@@ -194,7 +194,7 @@ object Tx {
 
   /** Whether what `source` contains may be read in this transaction: as anything recorded in a
     * room at `source` is read ([[Clearance.reads]]), at the label in force there
-    * ([[roomLabel]]), an unplaced one at [[grit.core.visibility.Compartment.Unmapped]] (no read
+    * ([[roomLabel]]), an unplaced one at unmapped ([[grit.core.visibility.Label.Unmapped]]) (no read
     * up). A transaction's own room is read up to its own label; any other place up to
     * `everywhere`. What is offered or sent outside grit; reads of grit's own rows are filtered
     * by each row's own label.
@@ -290,7 +290,7 @@ object Tx {
       Option.when(through.nonEmpty || members.nonEmpty || added.nonEmpty)(
         Explanation.In(
           g.name,
-          v.grants.filter(_.group == g.name).map(_.label).foldLeft(Label.Public)(_.join(_)),
+          v.grants.filter(_.group == g.name).map(_.label).foldLeft[Label](Label.Public)(_.join(_)),
           through.map(h => Explanation.Namespace.of(h.account)),
           members.map(Explanation.Namespace.of),
           added.map(h => Explanation.Namespace.of(h.account))

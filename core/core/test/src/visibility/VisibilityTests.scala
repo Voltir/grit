@@ -121,7 +121,7 @@ object VisibilityTests extends TestSuite {
 
     test("grit is cleared for every declared compartment at the top level") {
       Explained.cleared(visibility, Principal.Grit) ==>
-        Label.at(Level.Restricted, trial, acme, Compartment.Unmapped)
+        Label.at(Level.Restricted, trial, acme).join(Label.Unmapped)
     }
 
     test("the shipped visibility clears no one beyond public and labels every room public") {
@@ -272,11 +272,6 @@ object VisibilityTests extends TestSuite {
           Left(VisibilityRefusal.StewardsThroughCompartment(trial, group("acme")))
       }
 
-      test("a steward of unmapped is refused") {
-        stewarded(Steward(Compartment.Unmapped, group("stewards"))) ==>
-          Left(VisibilityRefusal.StewardsUnmapped)
-      }
-
       test("a steward of a compartment not declared is refused, saying it is stewarded") {
         val finance = compartment("finance")
         stewarded(Steward(finance, group("stewards"))) ==>
@@ -424,6 +419,58 @@ object VisibilityTests extends TestSuite {
     }
 
     test(
+      "an invited place that is no service's, or the service namespace itself, is refused"
+    ) {
+      def inviting(at: Place) =
+        Visibility
+          .of(compartments, RoomLabels.Public, groups, grants, invited = Vector(at))
+          .map(_ => ())
+      val channel = place("slack:acme/#general")
+      val direct = place("direct:slack/T0123/U0456")
+      val directory = place("fs:/home/nick/vendor")
+      val services = place("service:")
+      (
+        inviting(channel),
+        inviting(direct),
+        inviting(directory),
+        inviting(Place.Everywhere),
+        inviting(services),
+        inviting(place("service:drive")),
+        inviting(place("service:drive/drive-a"))
+      ) ==> (
+        Left(VisibilityRefusal.InvitedOutside(channel)),
+        Left(VisibilityRefusal.InvitedOutside(direct)),
+        Left(VisibilityRefusal.InvitedOutside(directory)),
+        Left(VisibilityRefusal.InvitedOutside(Place.Everywhere)),
+        Left(VisibilityRefusal.InvitedOutside(services)),
+        Right(()),
+        Right(())
+      )
+    }
+
+    test(
+      "a place strictly within an invited place is invited; the invited place itself and others are not"
+    ) {
+      val v = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          invited = Vector(place("service:drive"))
+        )
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      Vector(
+        "service:drive/folder-1",
+        "service:drive/drive-a/folder-1",
+        "service:drive",
+        "service:github/acme",
+        "slack:acme/#general"
+      )
+        .map(p => v.invites(place(p))) ==> Vector(true, true, false, false, false)
+    }
+
+    test(
       "an item is believed at its author's level met with the deepest cap holding it, else at its service's output"
     ) {
       val v = capping(
@@ -529,7 +576,7 @@ object VisibilityTests extends TestSuite {
         person(TestAccounts.account("slack:T1/U1") -> false),
         person(cy -> false)
       ).map(Tx.integrityOf) ==> Vector(
-        Integrity.at(Integrity.Level.Authority, trial, acme, Compartment.Unmapped),
+        Integrity.at(Integrity.Level.Authority, trial, acme).join(TestLabels.unmappedIntegrity),
         Integrity.at(Integrity.Level.Authority),
         Integrity.at(Integrity.Level.Authority),
         Integrity.at(Integrity.Level.Authority, trial),

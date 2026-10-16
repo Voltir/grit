@@ -13,7 +13,6 @@ import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{
-  Compartment,
   Compartments,
   Grant,
   Group,
@@ -268,7 +267,7 @@ object SlackEdgeLiveTests extends TestSuite {
       (received, labels) ==> (
         Vector(true, true),
         Vector(
-          Some(Label.at(Level.Public, Compartment.Unmapped)),
+          Some(Label.Unmapped),
           Some(Label.at(Level.Confidential))
         )
       )

@@ -128,7 +128,10 @@ private[dbos] object SqlLabels {
     }
     rows.flatMap { rows =>
       val version = rows.map(_._1).maxOption.getOrElse(0)
+      // A database made before the unmapped mark was told apart from the compartments
+      // recorded it among them: it is no compartment, and every set has it.
       rows
+        .filter(_._2 != LabelParts.compartments(Label.Unmapped).mkString)
         .foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) { (acc, row) =>
           acc.flatMap(cs => Compartment.of(row._2).map(cs :+ _))
         }

@@ -6,6 +6,7 @@ import grit.core.id.PrincipalId
 import grit.core.identity.{Account, Domain, Email, Realm, Standing, TestAccounts, Vouched}
 import grit.core.visibility.{
   Compartments,
+  DeclaredLabel,
   Grant,
   Group,
   GroupName,
@@ -210,9 +211,9 @@ object VoucherContract {
   val Claimed: Set[Domain] =
     Set(Domain.of("example.com").fold(e => throw new java.lang.AssertionError(e), identity))
 
-  val Internal: Label = Label.at(Level.Internal)
+  val Internal: DeclaredLabel = Label.at(Level.Internal)
 
-  val Restricted: Label = Label.at(Level.Restricted)
+  val Restricted: DeclaredLabel = Label.at(Level.Restricted)
 
   /** The one account a group names, `named`. */
   val Named: Account = TestAccounts.account("slack:T1/U-one-a")

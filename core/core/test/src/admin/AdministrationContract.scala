@@ -10,6 +10,7 @@ import grit.core.visibility.TestLabels.{compartment, group, place}
 import grit.core.visibility.{
   Compartment,
   Compartments,
+  DeclaredLabel,
   Grant,
   Group,
   Label,
@@ -393,12 +394,12 @@ object AdministrationContract {
   val trial: Compartment = compartment("trial")
   val finance: Compartment = compartment("finance")
 
-  val internal: Label = Label.at(Level.Internal)
+  val internal: DeclaredLabel = Label.at(Level.Internal)
   val confidential: Label = Label.at(Level.Confidential)
-  val internalTrial: Label = Label.at(Level.Internal, trial)
+  val internalTrial: DeclaredLabel = Label.at(Level.Internal, trial)
   val confidentialTrial: Label = Label.at(Level.Confidential, trial)
-  val confidentialFinance: Label = Label.at(Level.Confidential, finance)
-  val unmapped: Label = Label.at(Level.Public, Compartment.Unmapped)
+  val confidentialFinance: DeclaredLabel = Label.at(Level.Confidential, finance)
+  val unmapped: Label = Label.Unmapped
 
   /** An administrator, declared by account. */
   val ada: Account = TestAccounts.account("slack:T1/U-ada")

@@ -18,7 +18,7 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.{Compartment, GroupName, Integrity, Label, Level, TestLabels}
+import grit.core.visibility.{GroupName, Integrity, Label, Level, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -52,7 +52,7 @@ abstract class ScheduleContract extends TestSuite {
       val once = SlotRule.Once(at("2026-10-07T09:00:00Z"), hour)
       u.declare(Vector(declared("standup", daily(9), 1), declared("launch", once, 2)), "10:00")
       // grit's own: authority in every compartment its transactions run under, Trialled's.
-      val gritOwn = Integrity.at(Integrity.Level.Authority, TestLabels.trial, Compartment.Unmapped)
+      val gritOwn = Integrity.top(TestLabels.Trialled.compartments)
       u.read(id("standup")) ==>
         Some(
           Schedule(

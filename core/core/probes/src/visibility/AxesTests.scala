@@ -38,7 +38,7 @@ object AxesTests extends TestSuite {
     """Found:    (grit.core.visibility.Integrity.Member : grit.core.visibility.Integrity)
       |Required: grit.core.visibility.Label""".stripMargin
   private val LabelForIntegrity =
-    """Found:    (grit.core.visibility.Label.Public : grit.core.visibility.Label)
+    """Found:    (grit.core.visibility.Label.Public : grit.core.visibility.DeclaredLabel)
       |Required: grit.core.visibility.Integrity""".stripMargin
 
   val tests = Tests {

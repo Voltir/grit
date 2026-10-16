@@ -9,14 +9,14 @@ enum Labelled {
   case Mapped(placed: Label)
 
   /** Not fully placed: `partial` is what could be, and it is kept at `partial` joined with
-    * [[Compartment.Unmapped]].
+    * [[Label.Unmapped]].
     */
   case Unmapped(partial: Label)
 
   /** The label it is kept at. */
   def label: Label = this match {
     case Mapped(placed) => placed
-    case Unmapped(partial) => partial.join(Label.at(Level.Public, Compartment.Unmapped))
+    case Unmapped(partial) => partial.join(Label.Unmapped)
   }
 }
 
@@ -29,7 +29,7 @@ trait Labeller[-A] extends caps.Pure {
   /** The compartments its labels may hold; a deployment not declaring each is refused. A label
     * it returns is admitted against the deployment's declared compartments
     * ([[Compartments.admit]]): one the deployment does not declare is kept at
-    * [[Compartment.Unmapped]] instead.
+    * unmapped ([[Label.Unmapped]]) instead.
     */
   def requires: Vector[Compartment]
 }
@@ -40,7 +40,7 @@ trait Labeller[-A] extends caps.Pure {
   * or `otherwise`. Which rooms are labelled how, never which rooms may read which.
   */
 final case class RoomLabels private (
-    declared: Vector[(Place, Label)],
+    declared: Vector[(Place, DeclaredLabel)],
     otherwise: Labelled,
     open: Labelled
 ) extends Labeller[Room] {
@@ -59,7 +59,7 @@ final case class RoomLabels private (
   def declares(item: Room): Boolean = declaredFor(item).isDefined
 
   /** The label declared for `item`, as [[declares]] says. */
-  private def declaredFor(item: Room): Option[Label] =
+  private def declaredFor(item: Room): Option[DeclaredLabel] =
     declared.collectFirst { case (place, l) if place == item.place => l }.orElse {
       if (item.access.isDefined) None
       else
@@ -81,7 +81,7 @@ object RoomLabels {
 
   /** These, or the place declared twice; `open` is `otherwise` when not given. */
   def of(
-      declared: Vector[(Place, Label)],
+      declared: Vector[(Place, DeclaredLabel)],
       otherwise: Labelled,
       open: Option[Labelled] = None
   ): Either[Place, RoomLabels] = {

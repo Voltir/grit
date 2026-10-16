@@ -42,7 +42,7 @@ object ClassificationTests extends TestSuite {
         errs.size == 1,
         errs.forall(e =>
           e.contains(
-            "Found:    (grit.core.visibility.Label.Public : grit.core.visibility.Label)"
+            "Found:    (grit.core.visibility.Label.Public : grit.core.visibility.DeclaredLabel)"
           ) &&
             e.contains("Required: grit.core.visibility.Classification")
         )

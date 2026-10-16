@@ -34,7 +34,7 @@ object TxTests extends TestSuite {
   private val confidentialTrial = Label.at(Level.Confidential, trial)
   private val internal = Label.at(Level.Internal)
   private val internalFinance = Label.at(Level.Internal, finance)
-  private val unmapped = Label.at(Level.Public, Compartment.Unmapped)
+  private val unmapped = Label.Unmapped
 
   private val room = place("slack:T/C-trial")
   private val sameLevel = place("slack:T/C-trial-two")
@@ -167,7 +167,7 @@ object TxTests extends TestSuite {
           (
             internalFinance,
             confidentialTrial,
-            Label.at(Level.Restricted, trial, finance, Compartment.Unmapped)
+            Label.at(Level.Restricted, trial, finance).join(Label.Unmapped)
           )
         (Tx.writable(room), Tx.writable(public)) ==> (
           Some(internalFinance),
@@ -180,7 +180,7 @@ object TxTests extends TestSuite {
       ) {
         given Tx = under(room -> kept(label = Some(Label.at(Level.Internal, ops))))
         (Tx.roomLabel(room), Tx.writable(room)) ==>
-          (Label.at(Level.Internal, Compartment.Unmapped), None)
+          (Label.at(Level.Internal).join(Label.Unmapped), None)
       }
 
       test(
@@ -218,7 +218,7 @@ object TxTests extends TestSuite {
             unmapped,
             internal,
             Label.Public,
-            Label.at(Level.Restricted, trial, finance, Compartment.Unmapped)
+            Label.at(Level.Restricted, trial, finance).join(Label.Unmapped)
           ),
           Vector(true, true, false, false, false)
         )

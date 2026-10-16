@@ -3,7 +3,7 @@ package grit.core.admin
 import grit.core.identity.TestAccounts
 import grit.core.model.Grade
 import grit.core.visibility.TestLabels.{compartment, group, place}
-import grit.core.visibility.{Compartment, Compartments, Explained, Label, Level, RoomAccess}
+import grit.core.visibility.{Compartments, Explained, Label, Level, RoomAccess}
 
 import utest.*
 
@@ -31,7 +31,7 @@ object AnswerTests extends TestSuite {
         Answer.label(internal, Answer.Source.Declared, Some(RoomAccess.Open)),
         Answer.label(internal, Answer.Source.Default, Some(RoomAccess.Open)),
         Answer.label(
-          Label.at(Level.Public, Compartment.Unmapped),
+          Label.Unmapped,
           Answer.Source.Default,
           Some(RoomAccess.Invited)
         ),
@@ -152,7 +152,7 @@ object AnswerTests extends TestSuite {
       "compartments shows an administrator every one, a steward also those they steward, and " +
         "anyone else those they are cleared for"
     ) {
-      val cleared = Label.at(Level.Internal, trial, Compartment.Unmapped)
+      val cleared = Label.at(Level.Internal, trial).join(Label.Unmapped)
       Vector(
         Answer.compartments(compartments, administers = true, Set.empty, Label.Public),
         Answer.compartments(compartments, administers = false, Set(finance), cleared),
