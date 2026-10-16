@@ -34,19 +34,30 @@ object AxesTests extends TestSuite {
 
   private def probe(body: String): List[String] = compiled.errors(body)
 
+  private val IntegrityForLabel =
+    """Found:    (grit.core.visibility.Integrity.Member : grit.core.visibility.Integrity)
+      |Required: grit.core.visibility.Label""".stripMargin
+  private val LabelForIntegrity =
+    """Found:    (grit.core.visibility.Label.Public : grit.core.visibility.Label)
+      |Required: grit.core.visibility.Integrity""".stripMargin
+
   val tests = Tests {
     test("control: each axis compares, joins and meets within itself") {
       probe(within) ==> Nil
     }
 
     test("an integrity is never a label, nor a label an integrity") {
-      val errs = probe(integrityAsLabel) ++ probe(labelAsIntegrity)
-      errs.count(_.contains("Found:")) ==> 2
+      (probe(integrityAsLabel), probe(labelAsIntegrity)) ==> (
+        List(IntegrityForLabel),
+        List(LabelForIntegrity)
+      )
     }
 
     test("an integrity and a label are never compared, joined or met with each other") {
-      val errs = probe(dominatesAcross) ++ probe(meetAcross)
-      errs.count(_.contains("Found:")) ==> 2
+      (probe(dominatesAcross), probe(meetAcross)) ==> (
+        List(IntegrityForLabel),
+        List(LabelForIntegrity)
+      )
     }
 
     test("an integrity and a label are never tested for equality") {

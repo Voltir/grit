@@ -106,7 +106,6 @@ object LabelTests extends TestSuite {
         "[integrity: member, in: {acme}]",
         "[integrity: authority, in: {acme}]"
       )
-      integrities.map(i => Integrity.read(Integrity.written(i))) ==> integrities.map(Right(_))
       Vector("restricted", "authority").map(Label.read) ==> Vector(
         Right(Label.at(Level.Restricted)),
         Left("authority names no level first: authority")

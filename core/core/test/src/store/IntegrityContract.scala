@@ -79,20 +79,20 @@ abstract class IntegrityContract extends TestSuite {
       val c = conversation(Origin.Task("open", "turns"))
       val first = turn(c)
       transaction(right(entries.believed(first))) ==> Integrity.Untrusted
-      say(first, "outside", Integrity.Outside)
-      transaction(right(entries.believed(first))) ==> Integrity.Outside
-      // Lowest first: the meet is not the latest entry's.
-      say(first, "endorsed", Trial)
-      transaction(right(entries.believed(first))) ==> Integrity.Outside
+      say(first, "member, endorsed", MemberTrial)
+      transaction(right(entries.believed(first))) ==> MemberTrial
+      // Incomparable: the meet is neither the first entry's nor the latest's.
+      say(first, "authority", Integrity.at(Integrity.Level.Authority))
+      transaction(right(entries.believed(first))) ==> Integrity.Member
     }
 
     test("a closing is believed at the meet of its period's entries") {
       val c = conversation(Origin.Task("open", "closing"))
       val first = turn(c)
-      // Lowest in the first turn: the meet is not the closing turn's alone.
-      say(first, "outside", Integrity.Outside)
+      // Incomparable across two turns: the meet is neither the first turn's nor the closing's.
+      say(first, "member, endorsed", MemberTrial)
       val second = turn(c)
-      say(second, "endorsed", Trial)
+      say(second, "authority", Integrity.at(Integrity.Level.Authority))
       val period = PeriodRef(c, PeriodSeq.of(1).getOrElse(throw new java.lang.AssertionError(1)))
       val outcome = transaction(
         right(
@@ -107,7 +107,7 @@ abstract class IntegrityContract extends TestSuite {
         )
       )
       outcome ==> Sealed.Closed(period.closingId)
-      believed(period.closingId) ==> Some(Integrity.Outside)
+      believed(period.closingId) ==> Some(Integrity.Member)
     }
   }
 }
@@ -119,6 +119,11 @@ object IntegrityContract {
 
   /** Authority endorsed in the contracts' compartment: kept apart from member by both parts. */
   val Trial: Integrity = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+
+  /** Member endorsed in the contracts' compartment: incomparable with authority alone, whose
+    * meet with it is member.
+    */
+  val MemberTrial: Integrity = Integrity.at(Integrity.Level.Member, TestLabels.trial)
 
   /** The shipped labels, with the room of every [[CappedRoom]] task capped at outside. */
   val Capping: Visibility = Visibility

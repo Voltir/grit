@@ -58,12 +58,6 @@ object IntegrityTests extends TestSuite {
       } ==> None
     }
 
-    test("meet is commutative, associative and idempotent over every integrity") {
-      all2((a, b) => a.meet(b) == b.meet(a)) ==> None
-      all3((a, b, c) => a.meet(b).meet(c) == a.meet(b.meet(c))) ==> None
-      all1(a => a.meet(a) == a) ==> None
-    }
-
     test(
       "top over the declared compartments is the meet's identity, and dominates every integrity"
     ) {

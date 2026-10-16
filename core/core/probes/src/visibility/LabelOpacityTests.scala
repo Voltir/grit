@@ -74,8 +74,20 @@ object LabelOpacityTests extends TestSuite {
     }
 
     test("a label's compartments and level cannot be read outside its package") {
-      val errs = probe(readCompartments) ++ probe(readLevel)
-      errs.count(_.contains("cannot be accessed")) ==> 2
+      assert(
+        probe(readCompartments).exists(
+          _.contains(
+            "private[visibility] method compartments can only be accessed from package " +
+              "grit.core.visibility in package grit.core."
+          )
+        ),
+        probe(readLevel).exists(
+          _.contains(
+            "private[visibility] method level can only be accessed from package " +
+              "grit.core.visibility in package grit.core."
+          )
+        )
+      )
     }
 
     test("an integrity, over the same representation, is as opaque outside its package") {

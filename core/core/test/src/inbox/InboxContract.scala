@@ -380,6 +380,7 @@ abstract class InboxContract extends TestSuite {
       val capped = Origin.Task("capped-room", "posted")
       val open = Origin.Task("inbox", "posted-open")
       val asking = Origin.Task("inbox", "posting")
+      val askingOutside = Origin.Task("inbox", "posting-outside")
       val capping = Visibility
         .of(
           Compartments.Shipped,
@@ -390,19 +391,40 @@ abstract class InboxContract extends TestSuite {
         )
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       withInbox(Uncapped, capping) { (inbox, store) =>
-        // The operator's turn, believed at authority, makes both posts.
-        val by = inbox
+        def slot(turn: TurnRef): CallSlot =
+          CallSlot
+            .of(turn, 0, 1)
+            .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
+        // The operator's turn, believed at authority, posts in the capped room.
+        val clean = inbox
           .ingest(asking, SourceId("m1"), said("post the summary"), Account.Local)
           .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
-        val call = CallSlot
-          .of(by, 0, 1)
-          .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
-        inbox.posted(open, SourceId("root"), "the summary", PostedAt, call, Account.Local) ==>
+        // The turn of a person no realm vouches, believed at outside, posts in the open room
+        // through the operator's account: the post is believed as its turn, not its account.
+        val ana = TestAccounts.account("task:ana-posting")
+        val lowered = inbox
+          .ingest(askingOutside, SourceId("m1"), said("post the summary"), ana)
+          .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        inbox.posted(
+          capped,
+          SourceId("root"),
+          "the summary",
+          PostedAt,
+          slot(clean),
+          Account.Local
+        ) ==>
           Right(true)
-        inbox.posted(capped, SourceId("root"), "the summary", PostedAt, call, Account.Local) ==>
+        inbox.posted(
+          open,
+          SourceId("root"),
+          "the summary",
+          PostedAt,
+          slot(lowered),
+          Account.Local
+        ) ==>
           Right(true)
         (store.believed(open), store.believed(capped)) ==>
-          (Vector(Integrity.at(Integrity.Level.Authority)), Vector(Integrity.Outside))
+          (Vector(Integrity.Outside), Vector(Integrity.Outside))
       }
     }
 

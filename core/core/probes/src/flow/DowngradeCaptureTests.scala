@@ -99,6 +99,7 @@ object DowngradeCaptureTests extends TestSuite {
   )
 
   private def probe(body: String): List[String] = compiled.errors(body)
+  private def says(text: String)(found: List[String]): Boolean = found.exists(_.contains(text))
 
   val tests = Tests {
     test("controls: a node on a step, a bounded value, a raise used in its body or program") {
@@ -107,51 +108,83 @@ object DowngradeCaptureTests extends TestSuite {
     }
 
     test("a node made after map, on glue rather than a step's output, is refused") {
-      probe(afterMap).exists(_.contains("Step")) ==> true
+      assert(
+        says(
+          """Found:    grit.core.durable.Flow[Any, String, Nothing, String]
+            |Required: grit.core.durable.Step[Nothing, Nothing, Any]""".stripMargin
+        )(probe(afterMap))
+      )
     }
 
     test("free text has no bound, so is never endorsed") {
-      probe(freeText).exists(_.contains("Bounded")) ==> true
+      assert(
+        says(
+          "No given instance of type grit.core.flow.Bounded[String, (256 : Int)] was found " +
+            "for parameter x$1 of method extraction in object Downgrade"
+        )(probe(freeText))
+      )
     }
 
     test("a value of more than K bits is never endorsed") {
-      (
-        probe(wideEnough),
-        probe(tooWide).exists(_.contains("Cannot prove that B <= grit.core.flow.Bounded.K"))
-      ) ==> (Nil, true)
+      probe(wideEnough) ==> Nil
+      assert(
+        says("Cannot prove that B <= grit.core.flow.Bounded.K =:= (true : Boolean).")(
+          probe(tooWide)
+        )
+      )
     }
 
     test("a raise does not escape into a pure function, nor into a map") {
-      val pure = "capability `r` cannot flow into capture set {}"
-      (probe(raiseInPure).exists(_.contains(pure)), probe(raiseInMap).exists(_.contains(pure))) ==>
-        (true, true)
+      assert(
+        says(
+          """Found:    (t: Option[Boolean]) ->{r} grit.core.flow.Trusted[Option[Boolean]]
+            |Required: Option[Boolean] -> grit.core.flow.Trusted[Option[Boolean]]
+            |
+            |Note that capability `r` cannot flow into capture set {}.""".stripMargin
+        )(probe(raiseInPure)),
+        says(
+          """Found:    (a: Option[Boolean]) ->{r} Boolean
+            |Required: Option[Boolean] -> Boolean
+            |
+            |Note that capability `r` cannot flow into capture set {}.""".stripMargin
+        )(probe(raiseInMap))
+      )
     }
 
     test("a description of free text by a code rule cannot be built outside the package") {
-      probe(textRule).exists(_.contains("Described")) ==> true
+      assert(says("object Described in object Downgrade does not take parameters")(probe(textRule)))
     }
 
     test("a sanitiser cannot be made, nor a node's rule run, outside grit.core") {
-      (
-        probe(sanitiserOutside).exists(_.contains("sanitiser")),
-        probe(ruleOutside).exists(_.contains("rule"))
-      ) ==>
-        (true, true)
+      assert(
+        says(
+          "private[core] method sanitiser can only be accessed from package grit.core in package grit."
+        )(probe(sanitiserOutside)),
+        says(
+          "private[flow] value rule can only be accessed from package grit.core.flow in package grit.core."
+        )(probe(ruleOutside))
+      )
     }
 
     test("a raise is neither made nor forged outside the package") {
-      (
-        probe(raiseMinted).exists(_.contains("Of")),
-        probe(raiseForged).exists(_.contains("Raise"))
-      ) ==> (true, true)
+      assert(
+        says(
+          "private[flow] class Of can only be accessed from package grit.core.flow in package grit.core."
+        )(probe(raiseMinted)),
+        says("Cannot extend sealed class Raise in a different source file")(probe(raiseForged))
+      )
     }
 
     test("a raise returned past its step's body is refused") {
-      probe(raiseKept).exists(_.contains("outlives its scope")) ==> true
+      assert(
+        says("Capability `any` outlives its scope: it leaks into outer capture set")(
+          probe(raiseKept)
+        )
+      )
     }
 
     test("a program's raise returned past the program is refused") {
-      probe(programKept).exists(_.contains("is not visible from")) ==> true
+      assert(says("is not visible from any in value p.")(probe(programKept)))
     }
   }
 }

@@ -28,8 +28,9 @@ object HardFlagsTests extends TestSuite {
       val (cyrillicA, cyrillicDe, alpha, beta) = (cp(0x430), cp(0x434), cp(0x3b1), cp(0x3b2))
       (
         fired(s"log in at p${cyrillicA}ypal"),
+        fired(s"log in at p${alpha}ypal"),
         fired(s"$cyrillicDe$cyrillicA$cyrillicDe and $alpha$beta$alpha and yes")
-      ) ==> (Vector(Reason.Hidden), Vector())
+      ) ==> (Vector(Reason.Hidden), Vector(Reason.Hidden), Vector())
     }
 
     test(
