@@ -1,7 +1,8 @@
 package grit.core.edge
 
+import grit.core.identity.Email
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Integrity, Provenance, TestLabels}
+import grit.core.visibility.{Accounted, Integrity, Part, Provenance, Readers, TestLabels}
 
 import utest.*
 
@@ -47,6 +48,39 @@ object OutcomeJsonTests extends TestSuite {
       )
       all.map((o, _) => OutcomeJson.write(o).render()) ==> all.map(_._2)
       all.map((_, j) => OutcomeJson.read(ujson.read(j))) ==> all.map((o, _) => Right(o))
+    }
+
+    // A recorded step must never hold what only some readers may read: the journals record
+    // `write`'s form, and only a request's row holds `answer`'s.
+    test("a done with parts is recorded without them; its answer form keeps them, and reads back") {
+      val folder = TestLabels.place("service:files/confidential")
+      val ana =
+        Email.of("ana@example.com").fold(e => throw new java.lang.AssertionError(e), identity)
+      val cut = Outcome.Done(
+        "2 files",
+        None,
+        Accounted.of(Vector.empty),
+        Some(
+          Vector(
+            Part(Provenance(folder, Integrity.Member), Readers.AtPlace, "plan.md"),
+            Part(Provenance(folder, Integrity.Untrusted), Readers.Originator(ana), "notes.md")
+          )
+        )
+      )
+      val answered =
+        """{"kind":"done","text":"2 files","items":[],"parts":[""" +
+          """{"place":"service:files/confidential","author":"member","readers":"place","text":"plan.md"},""" +
+          """{"place":"service:files/confidential","author":"untrusted",""" +
+          """"readers":{"originator":"ana@example.com"},"text":"notes.md"}]}"""
+      (
+        OutcomeJson.write(cut).render(),
+        OutcomeJson.answer(cut).render(),
+        OutcomeJson.read(ujson.read(answered))
+      ) ==> (
+        """{"kind":"done","text":"2 files","items":[]}""",
+        answered,
+        Right(cut)
+      )
     }
   }
 }

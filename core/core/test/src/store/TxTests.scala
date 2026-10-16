@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.identity.Email
 import grit.core.model.{Grade, ModelId, Upstream}
 import grit.core.place.{Place, Service}
 import grit.core.visibility.*
@@ -264,6 +265,45 @@ object TxTests extends TestSuite {
         )
         Tx.readsFrom(public) ==> false
       }
+    }
+
+    test(
+      "an item its originator alone reads is read in their direct message whatever its place's label, and nowhere else; one read at its place as the place is read from"
+    ) {
+      val ana =
+        Email.of("ana@example.com").fold(e => throw new java.lang.AssertionError(e), identity)
+      val inAnas =
+        at(Clearance.inRoom(place("direct:slack/T/U"), internal, internal, Set(ana)))
+      val inChannel = at(Clearance.inRoom(room, confidentialTrial, internal, Set(ana)))
+      Vector(inAnas, inChannel).map { tx =>
+        given Tx = tx
+        (
+          Tx.readsItem(jira.place, Readers.Originator(ana)),
+          Tx.readsItem(jira.place, Readers.AtPlace)
+        )
+      } ==> Vector((true, false), (false, false))
+      given Tx = inChannel
+      Tx.readsItem(github.place, Readers.AtPlace) ==> true
+    }
+
+    test("holds refuses a read label above the floor or the bound") {
+      given Tx = inRoom(internal)
+      val restricted = Label.at(Level.Restricted, trial)
+      def refused(read: Label, bound: Label) = Left(
+        StoreError.Invalid(
+          s"a read at ${Label.shown(read)} is above the ${Label.shown(bound)} its calls were " +
+            s"routed for or the ${Label.shown(confidentialTrial)} this is kept at: ask again"
+        )
+      )
+      Vector(
+        Tx.holds(internal, confidentialTrial),
+        Tx.holds(restricted, restricted),
+        Tx.holds(confidentialTrial, internal)
+      ) ==> Vector(
+        Right(()),
+        refused(restricted, restricted),
+        refused(confidentialTrial, internal)
+      )
     }
 
     test("a source is read from up to the room's label in its own room, elsewhere up to the meet") {

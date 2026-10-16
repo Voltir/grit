@@ -1,7 +1,7 @@
 package grit.mcp.github
 
 import grit.core.place.{Place, Service}
-import grit.core.visibility.{Accounted, Integrity, Provenance}
+import grit.core.visibility.{Accounted, Integrity, Itemised, Provenance}
 import grit.mcp.wire.McpCalled
 
 import utest.*
@@ -45,7 +45,10 @@ trait GitHubItemsContract extends TestSuite {
     val text = result("content").arr.find(_("type").str == "text").map(_("text").str)
     (
       text.flatMap(t => scala.util.Try(ujson.read(t)).toOption).getOrElse(ujson.Null),
-      GitHubItems.accounts(Github).items(McpCalled(tool, args, result))
+      GitHubItems.accounts(Github).items(McpCalled(tool, args, result)) match {
+        case Itemised.Whole(items) => items
+        case other => throw new java.lang.AssertionError(s"$tool's answer is not whole: $other")
+      }
     )
   }
 

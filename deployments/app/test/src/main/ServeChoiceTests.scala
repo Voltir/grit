@@ -6,7 +6,7 @@ import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
 import grit.core.place.{Place, Scope as PlaceScope, Service}
 import grit.core.spend.DailyCap
-import grit.core.visibility.{Accounted, Group, Integrity, Provenance}
+import grit.core.visibility.{Accounted, Group, Integrity, Itemised, Provenance}
 import grit.kit.deployment.Offered
 import grit.mcp.client.Credential
 import grit.mcp.wire.McpCalled
@@ -301,11 +301,13 @@ object ServeChoiceTests extends TestSuite {
       Main
         .githubServer(Map("GITHUB_MCP_TOKEN" -> "never-read"))
         .map(_.accounts.items(called)) ==> Right(
-        Accounted.of(
-          Vector(
-            Provenance(
-              Place.read("service:github/octo/widgets").fold(sys.error, identity),
-              Integrity.Member
+        Itemised.Whole(
+          Accounted.of(
+            Vector(
+              Provenance(
+                Place.read("service:github/octo/widgets").fold(sys.error, identity),
+                Integrity.Member
+              )
             )
           )
         )

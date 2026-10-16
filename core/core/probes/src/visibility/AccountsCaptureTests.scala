@@ -20,20 +20,20 @@ object AccountsCaptureTests extends TestSuite {
 
   private val byResult =
     """object ByResult extends Accounts[String] {
-      |    def items(result: String): Accounted =
-      |      if (result.isEmpty) Accounted.Unread
-      |      else Accounted.of(Vector(Provenance(Place.Everywhere, Integrity.Member)))
+      |    def items(result: String): Itemised =
+      |      if (result.isEmpty) Itemised.Whole(Accounted.Unread)
+      |      else Itemised.Whole(Accounted.of(Vector(Provenance(Place.Everywhere, Integrity.Member))))
       |  }""".stripMargin
 
   private val holdingClock =
     """final class Timed(clock: Clock^) extends Accounts[String] {
-      |    def items(result: String): Accounted = { val _ = clock.now(); Accounted.Unread }
+      |    def items(result: String): Itemised = { val _ = clock.now(); Itemised.Unplaced("") }
       |  }""".stripMargin
 
   private val closingOverTx =
     """def reading(tx: Tx^): Unit = {
       |    val made = new Accounts[String] {
-      |      def items(result: String): Accounted = { val _ = Tx.visibility(tx); Accounted.Unread }
+      |      def items(result: String): Itemised = { val _ = Tx.visibility(tx); Itemised.Unplaced("") }
       |    }
       |    val _ = made.items("")
       |  }""".stripMargin

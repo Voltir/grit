@@ -1,5 +1,6 @@
 package grit.core.visibility
 
+import grit.core.identity.Email
 import grit.core.place.Place
 
 /** One item of a service's results as the extension reading them accounts for it (ADR 0036):
@@ -43,21 +44,57 @@ object Accounted {
   }
 }
 
-/** How a service's extension accounts for the items of its results (ADR 0036), `R` one result
-  * as that extension holds it. Pure: it reads only the result it is given.
+/** Who may read one item of a service's result. */
+enum Readers derives CanEqual {
+
+  /** Whoever reads what its item's place contains ([[grit.core.store.Tx.readsFrom]]). */
+  case AtPlace
+
+  /** Only its originator: read only in the direct message of the person holding `email`, as
+    * the opener claims it for them ([[Clearance.readsOriginated]]), whatever else a reader is
+    * cleared for; by no one when no person holds it.
+    */
+  case Originator(email: Email)
+}
+
+/** One item of a service's result as its extension cut it: `item`, where it is kept and what
+  * its author is vouched at; `readers`, who may read it; `text`, what the model reads of it.
+  */
+final case class Part(item: Provenance, readers: Readers, text: String) derives CanEqual
+
+/** What a service's extension read of one result. */
+enum Itemised derives CanEqual {
+
+  /** Shown whole, as every reader of its service reads it, its items `items`. */
+  case Whole(items: Accounted)
+
+  /** `head`, read by every reader of its service, then each of `parts` read only by those its
+    * readers admit.
+    */
+  case Parts(head: String, parts: Vector[Part])
+
+  /** Read as its tool's but not placed: nothing of it is shown, saying `why` in words the model
+    * reads.
+    */
+  case Unplaced(why: String)
+}
+
+/** How a service's extension cuts and accounts for the items of its results (ADR 0036), `R`
+  * one result as that extension holds it. Pure: it reads only the result it is given.
   */
 trait Accounts[-R] extends caps.Pure {
 
-  /** `result`'s items ([[Accounted.of]]); [[Accounted.Unread]] when this reads no result of its
-    * tool; [[Accounted.Unaccountable]] when it reads them but cannot read this one.
+  /** `result` as this extension reads it: [[Itemised.Whole]] of [[Accounted.Unread]] when it
+    * reads no result of its tool. A whole result's items are [[Accounted.of]] them, and
+    * [[Accounted.Unaccountable]] when it reads results of its tool but cannot read this one.
     */
-  def items(result: R): Accounted
+  def items(result: R): Itemised
 }
 
 object Accounts {
 
-  /** Reads no result: every one [[Accounted.Unread]]. */
+  /** Reads no result: every one whole and [[Accounted.Unread]]. */
   def none[R]: Accounts[R] = new Accounts[R] {
-    def items(result: R): Accounted = Accounted.Unread
+    def items(result: R): Itemised = Itemised.Whole(Accounted.Unread)
   }
 }

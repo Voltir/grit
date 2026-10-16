@@ -12,6 +12,7 @@ import grit.core.visibility.{
   Label,
   Labelled,
   Party,
+  Readers,
   Recorded,
   Room,
   RoomAccess,
@@ -201,6 +202,15 @@ object Tx {
   def readsFrom(source: Place)(using tx: Tx^): Boolean =
     tx.clearance.reads(Item.InRoom(source), roomLabel(source))
 
+  /** Whether this transaction reads an item of a service's result kept at `place` and read by
+    * `readers`: [[readsFrom]] `place` for [[Readers.AtPlace]]; for [[Readers.Originator]],
+    * [[Clearance.readsOriginated]], whatever `place` is labelled.
+    */
+  def readsItem(place: Place, readers: Readers)(using tx: Tx^): Boolean = readers match {
+    case Readers.AtPlace => readsFrom(place)
+    case Readers.Originator(email) => tx.clearance.readsOriginated(email)
+  }
+
   /** What this transaction knows is classified at: [[floor]]. */
   def classification(using tx: Tx^): Classification = Classification(floor(tx))
 
@@ -227,6 +237,20 @@ object Tx {
       )
     )
   }
+
+  /** `Right` when both its [[floor]] and `bound` dominate `read`, the label of what a read just
+    * took in; otherwise `StoreError.Invalid`, naming the read, the bound and the floor and
+    * saying to ask again.
+    */
+  def holds(read: Label, bound: Label)(using tx: Tx^): Either[StoreError, Unit] =
+    Either.cond(
+      bound.dominates(read) && floor(tx).dominates(read),
+      (),
+      StoreError.Invalid(
+        s"a read at ${Label.shown(read)} is above the ${Label.shown(bound)} its calls were " +
+          s"routed for or the ${Label.shown(floor(tx))} this is kept at: ask again"
+      )
+    )
 
   /** Whether what was read at `at` may be sent to `party`, as this transaction's deployment
     * clears it ([[grit.core.visibility.Clearances.clears]]). `at` is [[classification]], or a

@@ -79,7 +79,7 @@ object ClearedTests extends TestSuite {
   }
 
   private def text(o: Outcome): String = o match {
-    case Outcome.Done(t, _, _) => t
+    case Outcome.Done(t, _, _, _) => t
     case other => throw new java.lang.AssertionError(s"not done: $other")
   }
 
@@ -88,7 +88,7 @@ object ClearedTests extends TestSuite {
       "clearance reads no row that carries an integrity, so its answers are believed at its declared untrusted"
     ) {
       calledUnder(After, Clearance.of(confidentialTrial)) match {
-        case Outcome.Done(_, believed, _) => believed ==> None
+        case Outcome.Done(_, believed, _, _) => believed ==> None
         case other => throw new java.lang.AssertionError(s"not done: $other")
       }
       Cleared.tool(danaAsks).output ==> Believed.At(Integrity.Untrusted)

@@ -1,7 +1,7 @@
 package grit.mcp.github
 
 import grit.core.place.{Place, Service}
-import grit.core.visibility.{Accounted, Integrity, Provenance}
+import grit.core.visibility.{Accounted, Integrity, Itemised, Provenance}
 import grit.mcp.client.FakeMcpServer
 import grit.mcp.wire.McpCalled
 
@@ -29,9 +29,16 @@ object GitHubItemsTests extends TestSuite {
 
   private val AtHello = asked("octocat", "Hello-World")
 
-  /** `tool` called with `arguments`, answered as the recording `answer`. */
+  /** `called`'s items, failing the test unless it is read whole, as every GitHub answer is. */
+  private def whole(called: McpCalled): Accounted = Read.items(called) match {
+    case Itemised.Whole(items) => items
+    case other =>
+      throw new java.lang.AssertionError(s"${called.tool}'s answer is not whole: $other")
+  }
+
+  /** `tool` called with `arguments`, answered as the recording `answer`: its items. */
   private def items(tool: String, arguments: ujson.Obj, answer: String): Accounted =
-    Read.items(McpCalled(tool, arguments, FakeMcpServer.githubAnswer(answer)))
+    whole(McpCalled(tool, arguments, FakeMcpServer.githubAnswer(answer)))
 
   private def method(m: String): ujson.Obj = asked("octocat", "Hello-World", "method" -> m)
 
@@ -126,7 +133,7 @@ object GitHubItemsTests extends TestSuite {
 
     test("a search's results are each their author's, at the repository each names") {
       Vector("search_issues", "search_pull_requests").map(tool =>
-        Read.items(McpCalled(tool, ujson.Obj("query" -> "x"), FakeMcpServer.githubSearch(tool)))
+        whole(McpCalled(tool, ujson.Obj("query" -> "x"), FakeMcpServer.githubSearch(tool)))
       ) ==> Vector.fill(2)(
         Accounted.of(
           Vector(Provenance(Hello, Integrity.Member), Provenance(Elsewhere, Integrity.Member))
@@ -159,16 +166,16 @@ object GitHubItemsTests extends TestSuite {
       val renamed = ujson.read(issue("content")(0)("text").str)
       renamed("issue")("html_url") = "https://example.com/issue/7"
       Vector(
-        Read.items(McpCalled("issue_read", method("get"), text("not JSON"))),
-        Read.items(McpCalled("issue_read", method("get"), text(ujson.write(renamed)))),
-        Read.items(McpCalled("issue_read", method("get_everything"), issue)),
-        Read.items(McpCalled("issue_read", ujson.Obj("method" -> "get_labels"), text("[]")))
+        whole(McpCalled("issue_read", method("get"), text("not JSON"))),
+        whole(McpCalled("issue_read", method("get"), text(ujson.write(renamed)))),
+        whole(McpCalled("issue_read", method("get_everything"), issue)),
+        whole(McpCalled("issue_read", ujson.Obj("method" -> "get_labels"), text("[]")))
       ) ==> Vector.fill(4)(Accounted.Unaccountable)
     }
 
     test("a tool it does not cover is unread") {
       Vector("search_code", "list_commits", "get_commit", "get_me").map(tool =>
-        Read.items(McpCalled(tool, AtHello, FakeMcpServer.githubSearch("search_code")))
+        whole(McpCalled(tool, AtHello, FakeMcpServer.githubSearch("search_code")))
       ) ==> Vector.fill(4)(Accounted.Unread)
     }
   }

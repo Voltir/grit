@@ -92,7 +92,7 @@ final class SqlDesk private (
     ).map(_ == 1)
 
   def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] = {
-    val json = ujson.write(OutcomeJson.write(outcome))
+    val json = ujson.write(OutcomeJson.answer(outcome))
     changed(
       """UPDATE grit.tool_requests SET state = 'answered', outcome = ?::jsonb,
         |  answered_at = clock_timestamp()
@@ -121,7 +121,7 @@ final class SqlDesk private (
           acc.flatMap { reruns =>
             q.retry match {
               case Retry.Interrupt =>
-                val json = ujson.write(OutcomeJson.write(Outcome.Interrupted))
+                val json = ujson.write(OutcomeJson.answer(Outcome.Interrupted))
                 changed(
                   """UPDATE grit.tool_requests SET state = 'answered', outcome = ?::jsonb,
                     |  answered_at = clock_timestamp()

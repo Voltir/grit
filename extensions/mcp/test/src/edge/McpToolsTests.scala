@@ -11,6 +11,7 @@ import grit.core.visibility.{
   Cap,
   Compartments,
   Integrity,
+  Itemised,
   Provenance,
   RoomLabels,
   Visibility
@@ -71,12 +72,14 @@ object McpToolsTests extends TestSuite {
     * `repo`, and the answer's first text block, vouched at `vouched`.
     */
   private def placing(vouched: Integrity): Accounts[McpCalled] = new Accounts[McpCalled] {
-    def items(c: McpCalled): Accounted =
-      Accounted.of(
-        Vector(
-          Provenance(
-            at(c.tool, c.arguments("repo").str, c.result("content")(0)("text").str),
-            vouched
+    def items(c: McpCalled): Itemised =
+      Itemised.Whole(
+        Accounted.of(
+          Vector(
+            Provenance(
+              at(c.tool, c.arguments("repo").str, c.result("content")(0)("text").str),
+              vouched
+            )
           )
         )
       )

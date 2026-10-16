@@ -1,5 +1,7 @@
 package grit.core.visibility
 
+import grit.core.identity.Email
+
 import utest.*
 import TestLabels.{compartment, place}
 
@@ -78,6 +80,21 @@ object ClearanceTests extends TestSuite {
         (c.reads(Item.InRoom(dm), trialLabel), c.reads(Item.Kept(Some(dm)), trialLabel))
       ) ==> Vector((false, false), (false, false), (true, true), (false, false))
       inDm.reads(Item.InRoom(dm), top) ==> false
+    }
+
+    test(
+      "an originated item is read only in a direct message whose person holds its email: not another's, not an open room, not by top, not by maintenance"
+    ) {
+      def email(raw: String) =
+        Email.of(raw).fold(e => throw new java.lang.AssertionError(e), identity)
+      val ana = email("ana@example.com")
+      val bo = email("bo@example.com")
+      val top = Label.at(Level.Restricted, compartment("trial"))
+      val inAnas = Clearance.inRoom(place("direct:slack/T/U"), top, top, Set(ana))
+      val inBos = Clearance.inRoom(place("direct:slack/T/V"), top, top, Set(bo))
+      val inChannel = Clearance.inRoom(room, top, top, Set(ana))
+      Vector(inAnas, inBos, inChannel, Clearance.of(top), Maintenance.clearance(top))
+        .map(_.readsOriginated(ana)) ==> Vector(true, false, false, false, false)
     }
 
     test("maintenance reads a direct message's items, as every other row") {

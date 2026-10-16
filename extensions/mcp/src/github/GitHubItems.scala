@@ -3,7 +3,7 @@ package grit.mcp.github
 import scala.util.Try
 
 import grit.core.place.{Namespace, Place, Service}
-import grit.core.visibility.{Accounted, Accounts, Integrity, Provenance}
+import grit.core.visibility.{Accounted, Accounts, Integrity, Itemised, Provenance}
 import grit.mcp.wire.McpCalled
 
 /** How GitHub's results are believed (ADR 0036): repositories and owners as places under the
@@ -38,10 +38,10 @@ object GitHubItems {
     *
     * Any other tool's (code search and commits among them) are unread. An answer that does not
     * read as its tool's, a method of these tools not named here, or a place it cannot read, is
-    * unaccountable.
+    * unaccountable. Every answer is shown whole ([[Itemised.Whole]]).
     */
   def accounts(service: Service): Accounts[McpCalled] = new Accounts[McpCalled] {
-    def items(result: McpCalled): Accounted = GitHubItems.items(service, result)
+    def items(result: McpCalled): Itemised = Itemised.Whole(GitHubItems.items(service, result))
   }
 
   private def under(service: Service, segments: Vector[String]): Place =

@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.Variable
 import grit.core.tool.ToolName
-import grit.core.visibility.{Accounted, Accounts}
+import grit.core.visibility.{Accounted, Accounts, Itemised}
 import grit.mcp.scope.{Attribution, Bound, McpScope}
 import grit.mcp.wire.{McpCalled, McpError, Skipped}
 
@@ -493,8 +493,8 @@ object McpClientTests extends TestSuite {
         // Unaccountable exactly when it is given the lookups' answers as the server gave them.
         val looked = Map("meta" -> meta, "perms" -> perms)
         val accounts = new Accounts[McpCalled] {
-          def items(r: McpCalled): Accounted =
-            if (r.looked == looked) Accounted.Unaccountable else Accounted.Unread
+          def items(r: McpCalled): Itemised =
+            Itemised.Whole(if (r.looked == looked) Accounted.Unaccountable else Accounted.Unread)
         }
         val server = McpServer
           .of(
