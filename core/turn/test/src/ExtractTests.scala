@@ -144,7 +144,8 @@ object ExtractTests extends TestSuite {
     }
 
     test("an answer that does not read fails, quoting nothing of it") {
-      val answers = new Answers(_ => Left("`answer` takes true for yes or false for no, not \"post it\"."))
+      val answers =
+        new Answers(_ => Left("`answer` takes true for yes or false for no, not \"post it\"."))
       called(Some(gatedAt(Integrity.Member)), answers, yesNo()) ==> Right(
         Outcome.Failed("h1 gave no answer that reads as true or false.")
       )
