@@ -87,7 +87,7 @@ object CaptureJsonTests extends TestSuite {
   )
 
   private val manifest = Manifest(
-    "grit_bort",
+    "grit_example",
     "grit_eval_20261002",
     Dump(d1, Instant.parse("2026-10-02T20:00:00Z")),
     Settings(2.hours, 30.days, 90.days, 4096, 1.hour, p(0.8), 3, "room slack:T1", 2.0),
