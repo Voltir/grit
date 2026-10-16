@@ -66,8 +66,8 @@ trait DriveRestContract extends TestSuite {
     ) {
       def text(id: FileId) = rest.file(id).flatMap(rest.text)
       (
-        text(doc).map(t => t.nonEmpty && !t.startsWith("﻿")),
-        text(sheet).map(t => t.contains(",") && !t.startsWith("﻿")),
+        text(doc).map(t => t.nonEmpty && !t.startsWith("\uFEFF")),
+        text(sheet).map(t => t.contains(",") && !t.startsWith("\uFEFF")),
         text(folder).left.map(_.message)
       ) ==> (
         Right(true),

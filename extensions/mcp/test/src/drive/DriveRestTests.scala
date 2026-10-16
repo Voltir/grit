@@ -110,7 +110,7 @@ object DriveRestTests extends TestSuite {
       withFake { (fake, rest) =>
         val recorded = Recorded.text("export-doc.txt")
         fake.answering("files/file-1/export", 200, recorded)
-        (recorded.startsWith("﻿"), rest.file(file1).flatMap(rest.text)) ==>
+        (recorded.startsWith("\uFEFF"), rest.file(file1).flatMap(rest.text)) ==>
           (true, Right(recorded.drop(1)))
       }
     }

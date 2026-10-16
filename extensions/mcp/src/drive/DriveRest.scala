@@ -101,7 +101,7 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
         get(s"files/$id/export", Vector("mimeType" -> "text/csv"))
       else if (file.mimeType.startsWith("text/")) get(s"files/$id", Vector("alt" -> "media"))
       else Left(DriveError.Unreadable(DriveRest.kind(file.mimeType)))
-    read.map(_.stripPrefix("﻿"))
+    read.map(_.stripPrefix("\uFEFF"))
   }
 
   /** Whether the account's token is taken: one search of one file. */
