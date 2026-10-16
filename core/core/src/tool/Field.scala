@@ -1,5 +1,6 @@
 package grit.core.tool
 
+import grit.core.flow.{Extracted, Shape}
 import grit.core.model.ArgRepair
 
 /** One argument of a tool: its JSON type, what the model is told it means, and how the value
@@ -96,6 +97,33 @@ object Field {
           .filter(n => n.isWhole && n >= min.toDouble && n <= max.toDouble)
           .map(as)
     )
+
+  /** An answer in `shape`: what [[Shape.answer]] reads, typed in the schema as the shape is (a
+    * boolean, a whole number in its range, a string, or one of its options), and refused, as
+    * not [[Shape.accepts]], when it does not read. `Left`, saying why, for a [[Shape.OneOf]] of
+    * no options.
+    */
+  def shaped(meaning: String, shape: Shape): Either[String, Field[Extracted]] = {
+    val typing: Either[String, Field[?]] = shape match {
+      case Shape.YesNo => Right(flag(meaning))
+      case Shape.Number(min, max) => Right(integer(meaning, min, max))
+      case Shape.Day | Shape.Token(_) => Right(text(meaning))
+      case Shape.OneOf(first +: rest) => Right(oneOf(meaning, first, rest*))
+      case Shape.OneOf(_) => Left(s"one_of lists 1 to ${Shape.MaxOptions} options, not 0")
+    }
+    // Only the schema is the typing field's: the answer is read as the shape reads it.
+    typing.map(typed =>
+      new Field(
+        strict => typed.schema(strict),
+        shape.accepts,
+        (path, v, _) =>
+          Shape
+            .answer(shape, v)
+            .toRight(ArgsError.Invalid(path, shape.accepts, ArgsError.shown(v))),
+        None
+      )
+    )
+  }
 
   /** `true` or `false`. */
   def flag(meaning: String): Field[Boolean] =

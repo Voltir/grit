@@ -18,6 +18,15 @@ enum Shape {
 
   /** At most `max` characters of `[A-Za-z0-9_-]`. */
   case Token(max: Int)
+
+  /** What an answer in this shape is, in words for the model: "an ISO date". */
+  def accepts: String = this match {
+    case YesNo => "true for yes or false for no"
+    case Number(min, max) => s"a whole number from $min to $max"
+    case Day => "an ISO date"
+    case OneOf(options) => s"exactly one of ${options.map(o => s"\"$o\"").mkString(", ")}"
+    case Token(max) => s"at most $max characters of A-Z, a-z, 0-9, _ and -"
+  }
 }
 
 object Shape {
