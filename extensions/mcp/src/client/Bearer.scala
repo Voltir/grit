@@ -3,7 +3,8 @@ package grit.mcp.client
 import grit.core.edge.{EdgeRefusal, Variable}
 
 /** A credential; never shown. */
-final class Bearer private (private[client] val value: String) {
+// Read by grit.mcp's two HTTP clients alone: the MCP client and Drive's.
+final class Bearer private (private[mcp] val value: String) {
   override def toString: String = "Bearer(<redacted>)"
 }
 
