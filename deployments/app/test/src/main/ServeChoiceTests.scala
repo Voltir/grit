@@ -4,7 +4,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
-import grit.core.place.{Place, Scope as PlaceScope, Service}
+import grit.core.place.{Namespace, Place, Reaches, Scope as PlaceScope, Service, WorksIn}
 import grit.core.spend.DailyCap
 import grit.core.visibility.{
   Accounted,
@@ -435,6 +435,23 @@ object ServeChoiceTests extends TestSuite {
         ),
         Right(None)
       )
+    }
+
+    test(
+      "serving GitHub and Drive, a Slack conversation works in GitHub and its addressed turns reach Drive beside it"
+    ) {
+      val conversation = Place.under(Namespace.Slack, Vector("T0123", "C0456"))
+      val served = for {
+        github <- Main.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
+        drive <- Main.drive(DriveEnv)
+      } yield {
+        val (worksIn, reaches) = Main.links(github.map(_._2), drive)
+        (
+          WorksIn.of(worksIn, conversation).map(_.place.written),
+          Reaches.of(reaches, conversation).map(_.place.written)
+        )
+      }
+      served ==> Right((Some("service:github"), Vector("service:drive")))
     }
 
     test(

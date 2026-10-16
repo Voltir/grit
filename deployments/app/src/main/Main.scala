@@ -211,16 +211,17 @@ object Main {
     // people are.
     val slackIn =
       if (slack) Some(exitOnLeft(SlackEdge.installedIn(env).left.map(_.message))) else None
+    val (worksIn, reaches) = links(githubEdge.map(_._2), driveEdge)
     val deployment =
       exitOnLeft(
         Main.deployment(
           env,
           offered,
           edges,
-          githubEdge.map(_._2).toVector,
+          worksIn,
           java.time.ZoneId.systemDefault(),
           slackIn,
-          driveEdge.map(_.reaches).toVector
+          reaches
         )
       )
     val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))
@@ -1036,6 +1037,15 @@ object Main {
     * GitHub's), and how a command names its folders.
     */
   private[main] final case class Drive(edge: ServedEdge, reaches: Reaches, names: PlaceNames)
+
+  /** The links `grit serve` declares, from GitHub's link (`github`) and Drive (`drive`): the
+    * conversations working in a service, and those reaching one beside it.
+    */
+  private[main] def links(
+      github: Option[WorksIn],
+      drive: Option[Drive]
+  ): (Vector[WorksIn], Vector[Reaches]) =
+    (github.toVector, drive.map(_.reaches).toVector)
 
   /** The Drive edge `grit serve` serves when `env` sets [[DriveKeyVar]] ([[DriveEdge]], over
     * Drive's read-only scope): the files of every shared drive shared with the key's service
