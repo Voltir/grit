@@ -58,7 +58,7 @@ enum Refusal {
         "be changed."
     case NotForYou => "Only an administrator can see another person's clearance."
     case NotShared =>
-      "That isn't a folder another app has shared with grit. To label a channel, run the " +
+      "That isn't a folder another app has shared here. To label a channel, run the " +
         "command in that channel."
   }
 }

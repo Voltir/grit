@@ -169,7 +169,7 @@ object Command {
       "label: this room's label",
       "label <level> [compartment…]: set this room's label",
       "unlabel: set this room's label back to its default",
-      "label at <link>: the label of a folder another app shares with grit, named by its link",
+      "label at <link>: the label of a folder another app shares here, named by its link",
       "label <level> [compartment…] at <link>: set that folder's label",
       "unlabel at <link>: set that folder's label back to its default",
       "clearance [person]: your clearance, or another person's",

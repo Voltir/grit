@@ -187,5 +187,14 @@ object AnswerTests extends TestSuite {
         Command.Usage
       )
     }
+
+    test(
+      "a label asked at a place no service shares is refused as no folder shared here, saying " +
+        "where a channel is labelled"
+    ) {
+      Refusal.NotShared.text ==>
+        "That isn't a folder another app has shared here. To label a channel, run the command " +
+        "in that channel."
+    }
   }
 }
