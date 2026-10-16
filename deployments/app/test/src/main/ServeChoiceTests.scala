@@ -4,10 +4,11 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
-import grit.core.place.{Scope as PlaceScope, Service}
+import grit.core.place.{Place, Scope as PlaceScope, Service}
 import grit.core.spend.DailyCap
-import grit.core.visibility.{Group, Integrity}
+import grit.core.visibility.{Accounted, Group, Integrity, Provenance}
 import grit.kit.deployment.Offered
+import grit.mcp.wire.McpCalled
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
 
@@ -258,6 +259,55 @@ object ServeChoiceTests extends TestSuite {
         Right((3, 50, 4)),
         Left("GRIT_BACKFILL_MESSAGES is a whole number above zero, not '0'"),
         Left("GRIT_BACKFILL_JOINS_PER_DAY is a whole number above zero, not 'ten'")
+      )
+    }
+
+    test(
+      "github's caps hold the member repositories at member, and the rest of GitHub at untrusted; a repository not owner/name is refused naming the variable"
+    ) {
+      def capped(env: Map[String, String]) =
+        Main
+          .deployment(env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
+          .map(d =>
+            Vector(
+              "service:github/octo/widgets",
+              "service:github/octo/gadgets",
+              "service:github/octo/other",
+              "service:github"
+            ).map(p => Place.read(p).toOption.flatMap(d.visibility.capOf).map(Integrity.written))
+          )
+      (
+        capped(Map("GRIT_GITHUB_MEMBER_REPOS" -> " Octo/Widgets , octo/gadgets ,")),
+        capped(Map.empty),
+        capped(Map("GRIT_GITHUB_MEMBER_REPOS" -> "widgets"))
+      ) ==> (
+        Right(Vector(Some("member"), Some("member"), Some("untrusted"), Some("untrusted"))),
+        Right(Vector.fill(4)(Some("untrusted"))),
+        Left("GRIT_GITHUB_MEMBER_REPOS: a repository is {owner}/{name}, not 'widgets'")
+      )
+    }
+
+    test("the GitHub server reads its answers' items by their authors") {
+      val issue = ujson.Obj(
+        "issue" -> ujson.Obj(
+          "author_association" -> "MEMBER",
+          "html_url" -> "https://github.com/octo/widgets/issues/1"
+        )
+      )
+      val result =
+        ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> ujson.write(issue))))
+      val called = McpCalled("issue_read", ujson.Obj("method" -> "get"), result)
+      Main
+        .githubServer(Map("GITHUB_MCP_TOKEN" -> "never-read"))
+        .map(_.accounts.items(called)) ==> Right(
+        Accounted.of(
+          Vector(
+            Provenance(
+              Place.read("service:github/octo/widgets").fold(sys.error, identity),
+              Integrity.Member
+            )
+          )
+        )
       )
     }
 

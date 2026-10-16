@@ -48,6 +48,7 @@ import grit.knowledge.github.{GitHubCards, SyncSchedule}
 import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.mcp.client.McpServer
 import grit.mcp.edge.McpEdge
+import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
 import grit.models.{
   JevClassifier,
@@ -692,7 +693,8 @@ object Main {
       )
       identities <- Identities.of(trusted, domains).left.map(_.message)
       named <- admins(env)
-      visible <- visibility(named, slackIn, cleared(models))
+      capped <- caps(env)
+      visible <- visibility(named, slackIn, cleared(models), capped)
       plugins <- pluginChoice(env, visible, zone)
       deployment <- Deployment
         .of(
@@ -779,13 +781,14 @@ object Main {
     * workspace `slackIn` and `admins` named, the shipped one but for [[Administrators]],
     * declared as those users' accounts there (`slack:{team}/{id}`), who alone may lower a
     * room's label or label a public channel; otherwise [[Visibility.Shipped]], under which no
-    * one may, with `parties` cleared. Either way what is said at its places is capped as
-    * [[Caps]] declares. A party named twice is refused.
+    * one may, with `parties` cleared. Either way what is said at its places is capped as `caps`
+    * declare ([[caps]]). A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
       slackIn: Option[TeamId],
-      parties: Vector[Cleared]
+      parties: Vector[Cleared],
+      caps: Vector[Cap]
   ): Either[String, Visibility] =
     slackIn.filter(_ => admins.nonEmpty) match {
       case None =>
@@ -796,7 +799,7 @@ object Main {
             Vector.empty,
             Vector.empty,
             parties,
-            caps = Caps
+            caps = caps
           )
           .left
           .map(r => s"the deployment's clearances: $r")
@@ -816,26 +819,35 @@ object Main {
                 Vector.empty,
                 parties,
                 administrators = Some(Administrators),
-                caps = Caps
+                caps = caps
               )
               .left
               .map(r => s"$AdminsVar: $r")
           )
     }
 
-  /** The reference deployment's caps (ADR 0036): Slack's posting service's results
-    * ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's account of a post it
-    * made; GitHub's at `Untrusted`, since its token may reach repositories anyone may write in.
-    * Any other service's are `Untrusted`, undeclared, and no room is capped.
+  /** The reference deployment's caps (ADR 0036) as `env` declares them: Slack's posting
+    * service's results ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's account
+    * of a post it made; each repository [[GithubMemberReposVar]] names at `Member`; the rest of
+    * GitHub at `Untrusted`, since its token may reach repositories anyone may write in. Any other
+    * service's are `Untrusted`, undeclared, and no room is capped. Why not, naming the variable,
+    * when it names a repository that is not `{owner}/{name}`.
     */
-  private[main] val Caps: Vector[Cap] = Vector(
-    Cap(SlackEdge.PostsAt.place, Integrity.Member),
-    // "github" is a service's name by Service.of's rule, so the Left is never taken.
-    Cap(
-      Service.of("github").fold(why => throw new IllegalStateException(why), identity).place,
-      Integrity.Untrusted
-    )
-  )
+  private[main] def caps(env: Map[String, String]): Either[String, Vector[Cap]] =
+    for {
+      github <- Service.of("github")
+      members <- env
+        .get(GithubMemberReposVar)
+        .fold(Vector.empty[String])(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+        .foldLeft[Either[String, Vector[Place]]](Right(Vector.empty))((kept, name) =>
+          kept.flatMap(ps => GitHubItems.repository(github, name).map(ps :+ _))
+        )
+        .left
+        .map(why => s"$GithubMemberReposVar: $why")
+    } yield Vector(
+      Cap(SlackEdge.PostsAt.place, Integrity.Member),
+      Cap(github.place, Integrity.Untrusted)
+    ) ++ members.distinct.map(Cap(_, Integrity.Member))
 
   /** The reference deployment's clearances (ADR 0031), each at [[Compartments.Shipped]]'s top:
     * every pair `policy` pins that names its upstream ([[Party.of]]; grit's own deployment
@@ -893,6 +905,13 @@ object Main {
   /** GitHub's hosted MCP server, listing only the tools that read. */
   private[main] val GithubUrl = "https://api.githubcopilot.com/mcp/readonly"
 
+  /** The variable naming, comma-separated as `{owner}/{name}`, the GitHub repositories whose
+    * items are believed up to member: each repository named here is one where every account
+    * that can write is a realm member, and whose default branch takes only their merges. Unset,
+    * it names none.
+    */
+  private val GithubMemberReposVar = "GRIT_GITHUB_MEMBER_REPOS"
+
   /** The variable naming the GitHub tools offered, comma-separated; [[GithubTools]] when unset. */
   private val GithubToolsVar = "GRIT_GITHUB_TOOLS"
 
@@ -915,7 +934,7 @@ object Main {
   /** GitHub's MCP server as `env` declares it: named `github`, at [[GithubUrlVar]], its token
     * [[GithubTokenVar]], allowing the tools [[GithubToolsVar]] names, its scope
     * [[McpScope.Open]]: every allowed tool offered and every call sent, reaching whatever the
-    * token reaches; why not, naming the variable, when the URL is not one [[McpServer.of]]
+    * token reaches; its answers' items read by [[GitHubItems.accounts]]; why not, naming the variable, when the URL is not one [[McpServer.of]]
     * takes or the list names no tool.
     */
   private[main] def githubServer(env: Map[String, String]): Either[String, McpServer] = {
@@ -924,13 +943,15 @@ object Main {
       .fold(GithubTools)(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).toSet)
     for {
       _ <- Either.cond(allow.nonEmpty, (), s"$GithubToolsVar names no tool")
+      github <- Service.of("github")
       server <- McpServer
         .of(
           "github",
           env.getOrElse(GithubUrlVar, GithubUrl),
           grit.core.edge.Variable(GithubTokenVar),
           McpScope.Open,
-          allow
+          allow,
+          GitHubItems.accounts(github)
         )
         .left
         .map(why => s"$GithubUrlVar: $why")
