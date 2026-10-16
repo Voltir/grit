@@ -29,7 +29,8 @@ Decision:
   compartments), met with its room's cap in the entries insert, so no caller can forget it. A
   deployment caps (`Cap`) what is said at a place and every place within it no deeper cap
   covers: a room's speech, a service's results, a repository's items. A tool result is believed
-  per item: its service's extension reads each item's place and author (`Accounts`); the result
+  per item: its service's extension reads each item's place and author (`Accounts`; a file
+  read, the meet over everyone who may edit it, ADR 0039); the result
   takes the meet of each author's level met with its place's cap, untrusted if unaccountable,
   its service's cap if unread (untrusted when none, as for a relaying service). What grit
   writes takes its writer's current level.

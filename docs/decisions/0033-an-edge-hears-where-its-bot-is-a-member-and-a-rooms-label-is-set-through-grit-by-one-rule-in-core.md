@@ -22,7 +22,8 @@ Decision:
   whenever it opens. Being removed stops hearing at once. A channel grit's bot is not in, and a
   group direct message, are never served; a direct message is ADR 0032's.
 - **A room's label is set through grit**, by command, in the room it labels, whether or not
-  grit is a member there. Core decides each change by one rule (`Authority.decide`, the only
+  grit is a member there; a place within one a service shares (ADR 0039) is labelled from
+  any room, by `label … at <place>`, and any other place named so is refused. Core decides each change by one rule (`Authority.decide`, the only
   way to the value applying it, `Authority.Allowed`) and keeps each change allowed with an
   audit row (`grit.visibility_changes`). The rule decides on what a change raises, lowers and
   removes:
@@ -39,7 +40,8 @@ Decision:
   people added through grit are never either.
 - **A room's label in force** is, in order: a direct message's, its person's clearance; the
   label set through grit; the label declared at the room's own place; for a reported access,
-  the deployment's `open` label or `unmapped` for an invited room; else the label at the
+  the deployment's `open` label or `unmapped` for an invited room (a room strictly within a
+  place the deployment declares invited is one until an edge reports it); else the label at the
   longest declared place enclosing it, else `otherwise`. An unlabelled invited room fails high.
 - **What grit records is read as each transaction opens** (`Tx.roomLabel`, `Tx.writable`,
   `Tx.quiet`), so every check in it sees one state. A conversation keeps its creation label

@@ -43,11 +43,13 @@ In dependency order:
 - **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
   Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
   words asked, a file, its grants, a Doc's, a Sheet's or a text file's text, and each failure
-  as a `DriveError` whose words name no setting), how a deployment's Drive is read
-  (`DriveReading`: its people's domain, its own address, its declared writers), and
-  `DriveItems`, each hit and read a part at the folder or drive it lies within, a read
-  believed at the meet over its writers. `DriveEdge` serves `drive_search` and `drive_read`
-  at the service's place. Imports `wire` and `client`; nothing else in mcp imports it
+  as a `DriveError` whose words name no setting, its cause for the operator's log alone), how
+  a deployment's Drive is read (`DriveReading`: its people's domain, its own address, its
+  declared writers, and how a person names a folder in a command, by its link or id), and
+  `DriveItems`, each hit and read a part at the folder or drive it lies within, a hit naming
+  its shared drive as listed, a read believed at the meet over its writers (ADR 0039).
+  `DriveEdge` serves `drive_search` and `drive_read` at the service's place, its tools telling
+  the operator's log what the model is not. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
