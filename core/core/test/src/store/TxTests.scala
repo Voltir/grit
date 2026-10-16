@@ -203,9 +203,9 @@ object TxTests extends TestSuite {
       test(
         "a room within an invited place that no edge reported is invited, so labelled unmapped, until a person labels it; the invited place itself takes its declared label"
       ) {
-        val shared = service("drive").place
-        val folder = place("service:drive/folder")
-        val labelledFolder = place("service:drive/labelled")
+        val shared = service("files").place
+        val folder = place("service:files/folder")
+        val labelledFolder = place("service:files/labelled")
         val invitedAt = Visibility
           .of(
             Compartments
