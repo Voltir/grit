@@ -27,6 +27,32 @@ object Clipped {
   def head(text: String, hint: Option[Kept] -> Option[String]): Clipped =
     clip(text, hint, fromEnd = false)
 
+  /** Whether `text` is whole within the limits: [[head]] keeps it as it is only then. */
+  def fits(text: String): Boolean = head(text, _ => None).text == text
+
+  /** The greatest `k` from 0 to `n` whose `text(k)` [[fits]], where `text(k)` grows with `k`;
+    * 0 when none does.
+    */
+  def most(n: Int)(text: Int -> String): Int = {
+    var lo = 0
+    var hi = n
+    while (lo < hi) {
+      val mid = (lo + hi + 1) / 2
+      if (fits(text(mid))) lo = mid else hi = mid - 1
+    }
+    lo
+  }
+
+  /** What an answer cut by [[head]] says of what it kept: how many of its lines, or that its
+    * first line alone was too long; `None` when nothing was cut.
+    */
+  def cutHint(kept: Option[Kept]): Option[String] =
+    kept.map { k =>
+      if (k.lines == 0)
+        s"The answer's first line alone is over $MaxBytes bytes, so none of it is shown."
+      else s"The answer was cut to its first ${k.lines} of ${k.total} lines."
+    }
+
   /** `text` whole when it fits, else its last lines that do; when its last line alone is
     * over [[MaxBytes]], the end of that line, cut at a character. `hint` as for [[head]].
     */

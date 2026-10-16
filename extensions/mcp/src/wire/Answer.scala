@@ -1,6 +1,7 @@
 package grit.mcp.wire
 
-import grit.core.host.{Clipped, Kept}
+import grit.core.host.Clipped
+import grit.core.tool.Fitted
 import grit.core.visibility.{Accounted, Part}
 
 /** What a call answered: `text`, what the model reads, whether the tool reported an error
@@ -41,38 +42,20 @@ object Answer {
           .filter(_ => !blocks.exists(_._2))
           .map(ujson.write(_))
       val all = blocks.map(_._1) ++ structured
-      val clipped = byItems(all, blocks.map(_._2)).getOrElse(Clipped.head(all.mkString("\n"), hint))
+      val clipped =
+        byItems(all, blocks.map(_._2)).getOrElse(Clipped.head(all.mkString("\n"), Clipped.cutHint))
       new Answer(clipped.show, isError, items, None)
     }
 
   /** The answer a complete `tools/call` result is as its server's extension cut it: its text
-    * `head`, its items unread, its parts `parts`, `isError` read as [[of]] reads it. When `head`
-    * then every part, each on lines of its own, are over [[Clipped]]'s limits, its trailing parts
-    * are left out: it keeps the most that fit with a hint after `head` saying some were left
-    * out, never how many, since a reader may be shown fewer. When not even one fits, it is
-    * `head` alone, cut as [[of]] cuts a text, with that hint, and no parts.
-    * [[McpError.Unreadable]] as for [[of]].
+    * `head`, its items unread, its parts `parts`, the two fitted to [[Clipped]]'s limits as
+    * [[Fitted.of]] fits them, `isError` read as [[of]] reads it. [[McpError.Unreadable]] as for
+    * [[of]].
     */
   def cut(result: ujson.Obj, head: String, parts: Vector[Part]): Either[McpError, Answer] =
     read(result).map { (_: Vector[ujson.Value], isError: Boolean) =>
-      def shown(top: String, k: Int): String = (top +: parts.take(k).map(_.text)).mkString("\n")
-      val hinted = Clipped.head(
-        head,
-        {
-          case None =>
-            Some(
-              "Some of this answer was left out to fit; call again asking for fewer, or for " +
-                "the next page, to see the rest."
-            )
-          case kept => hint(kept)
-        }
-      )
-      if (fits(shown(head, parts.size))) new Answer(head, isError, Accounted.Unread, Some(parts))
-      else {
-        val k = most(parts.size - 1)(k => fits(shown(hinted.show, k)))
-        if (k == 0) new Answer(hinted.show, isError, Accounted.Unread, None)
-        else new Answer(hinted.show, isError, Accounted.Unread, Some(parts.take(k)))
-      }
+      val fitted = Fitted.of(head, parts)
+      new Answer(fitted.head, isError, Accounted.Unread, fitted.parts)
     }
 
   /** `result`'s content blocks and whether it is an error; [[McpError.Unreadable]] when it has
@@ -93,24 +76,6 @@ object Answer {
     } yield (content.toVector, isError)
   }
 
-  /** The greatest `k` from 0 to `n` that `fits`, which holds of each `k` up to some bound and of
-    * none after it; 0 when it holds of none.
-    */
-  private def most(n: Int)(fits: Int => Boolean): Int = {
-    var lo = 0
-    var hi = n
-    while (lo < hi) {
-      val mid = (lo + hi + 1) / 2
-      if (fits(mid)) lo = mid else hi = mid - 1
-    }
-    lo
-  }
-
-  /** Whether `text` is whole within [[Clipped]]'s limits: [[Clipped.head]] keeps it as it is
-    * only then.
-    */
-  private def fits(text: String): Boolean = Clipped.head(text, _ => None).text == text
-
   /** `all`, the answer's blocks as the model reads them, with its first text block
     * (`isText`) that is a JSON list (`listed`) cut to the most leading items with which `all`
     * fits, as compact JSON, and a hint saying how many of how many are shown when some are
@@ -118,7 +83,7 @@ object Answer {
     * fits.
     */
   private def byItems(all: Vector[String], isText: Vector[Boolean]): Option[Clipped] =
-    if (fits(all.mkString("\n"))) None
+    if (Clipped.fits(all.mkString("\n"))) None
     else
       all.indices.iterator
         .filter(i => isText.lift(i).contains(true))
@@ -129,10 +94,10 @@ object Answer {
           def joined(k: Int): String =
             all.updated(i, ujson.write(list.holding(items.take(k)))).mkString("\n")
           // joined(k) grows with k, so the most items that fit are the last k that does.
-          val k = most(items.size)(k => fits(joined(k)))
+          val k = Clipped.most(items.size)(joined)
           val n = items.size
           Option.when(k > 0) {
-            if (k == n) Clipped.head(joined(k), hint)
+            if (k == n) Clipped.head(joined(k), Clipped.cutHint)
             else
               Clipped.head(
                 joined(k),
@@ -142,7 +107,7 @@ object Answer {
                       s"Showing the first $k of the $n items in this answer; call again " +
                         "asking for fewer, or for the next page, to see the rest."
                     )
-                  case kept => hint(kept)
+                  case kept => Clipped.cutHint(kept)
                 }
               )
           }
@@ -203,10 +168,4 @@ object Answer {
     }
   }
 
-  private def hint(kept: Option[Kept]): Option[String] =
-    kept.map { k =>
-      if (k.lines == 0)
-        s"The answer's first line alone is over ${Clipped.MaxBytes} bytes, so none of it is shown."
-      else s"The answer was cut to its first ${k.lines} of ${k.total} lines."
-    }
 }

@@ -83,8 +83,8 @@ In dependency order, each with the core packages it imports:
   pure rules they share. ← `place`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
-  a call. ← `id`, `place`, `visibility`, `message`, `model`, `schema`, `store`, `provider`,
-  `approval`, `flow`
+  a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
+  `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
   key, or a withdrawal, supersedes it. ← `id`, `place`, `visibility`, `store`, `tool`
 - **`context`**: the `ContextAssembler` trait, and what the model is shown of a window. ← `id`,
