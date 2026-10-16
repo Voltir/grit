@@ -176,6 +176,19 @@ abstract class ScheduleContract extends TestSuite {
       (u.read(id("launch")).flatMap(_.ended), u.due("10:59"), u.due("11:00")) ==>
         (None, Vector(), Vector(id("launch")))
     }
+    test("a declared once schedule that ran is re-armed when declared again as a recurrence") {
+      val u = fresh()
+      val nine = at("2026-10-07T09:00:00Z")
+      u.declare(Vector(declared("launch", SlotRule.Once(nine, hour))), "08:00")
+      u.start(Slot(id("launch"), nine), 1, None)
+      u.replied(Slot(id("launch"), nine), 1, "09:01")
+      u.declare(Vector(declared("launch", daily(9))), "10:00")
+      (
+        u.read(id("launch")).flatMap(_.ended),
+        u.due("2026-10-08T08:59:00Z"),
+        u.due("2026-10-08T09:00:00Z")
+      ) ==> (None, Vector(), Vector(id("launch")))
+    }
 
     test(
       "due lists those due with no run in flight, soonest first, ties by id; in flight, those with one, earliest slot first, ties by id; each at most n"

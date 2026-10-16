@@ -31,6 +31,21 @@ object SlotRuleTests extends TestSuite {
     }
 
     test(
+      "an ended once rule re-arms at another instant or as a recurrence; not at the same instant, a grace alone, or from a recurrence"
+    ) {
+      val nine = SlotRule.Once(at("2026-10-07T09:00:00Z"), Grace.Zero)
+      val daily = SlotRule.Daily(LocalTime.of(9, 0), Paris)
+      val longer = Grace.of(1.hour).getOrElse(sys.error("1 h"))
+      Vector(
+        nine.rearms(nine),
+        SlotRule.Once(at("2026-10-07T11:00:00Z"), Grace.Zero).rearms(nine),
+        SlotRule.Once(at("2026-10-07T09:00:00Z"), longer).rearms(nine),
+        daily.rearms(nine),
+        nine.rearms(daily),
+        SlotRule.Weekdays(LocalTime.of(9, 0), Paris).rearms(daily)
+      ) ==> Vector(false, true, false, true, false, false)
+    }
+    test(
       "a new schedule's first slot is a once slot's own instant, however far past; a recurrence's first after now"
     ) {
       val now = at("2026-10-07T12:00:00Z")
