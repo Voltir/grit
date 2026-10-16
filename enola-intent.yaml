@@ -125,8 +125,9 @@ components:
   - {name: eval-code,      kind: module, match: ["eval/src", "eval/src/**"]}
   # The kit's .env loader alone, for the harness's rule: it reads the key as grit.app does.
   - {name: kit-environment, kind: module, match: ["kit/src/environment", "kit/src/environment/**"]}
-  # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
-  # and edge generic: GitHub's names are a package a deployment uses, never one they import.
+  # grit.mcp less its github and drive packages, for the rule that keeps the protocol, client,
+  # scope and edge generic: a service's names are a package a deployment uses, never one they
+  # import.
   # The deployment surface: what a deployment outside grit names (docs/extending.md, "Outside
   # grit"). Core, the kit (which exports the few types its signatures take from past it), and
   # each extension's entry folders. No rule names it: code outside `grit` is held to it by the
@@ -139,6 +140,7 @@ components:
             "extensions/slack/src/edge", "extensions/slack/src/edge/**", "extensions/slack/src/event", "extensions/slack/src/event/**",
             "extensions/mcp/src/client", "extensions/mcp/src/client/**", "extensions/mcp/src/edge", "extensions/mcp/src/edge/**",
             "extensions/mcp/src/scope", "extensions/mcp/src/scope/**", "extensions/mcp/src/github", "extensions/mcp/src/github/**",
+            "extensions/mcp/src/drive", "extensions/mcp/src/drive/**",
             "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**"]
@@ -322,8 +324,8 @@ rules:
 
   # -------------------------------------------------------------------------------------
   # 1c. Only grit.models and grit.mcp import the JDK HTTP client: each is an egress of its
-  # own, grit.models for model calls and grit.mcp for MCP servers, and neither names the
-  # other (mcp-names-core-alone, models-names-core-alone).
+  # own, grit.models for model calls and grit.mcp for MCP servers and Drive's REST API, and
+  # neither names the other (mcp-names-core-alone, models-names-core-alone).
   # -------------------------------------------------------------------------------------
   - id: only-models-imports-http-client
     forbid_name: outside-egress
@@ -340,6 +342,12 @@ rules:
   - id: only-models-imports-http-response
     forbid_name: outside-egress
     pattern: "* -> java.net.http.HttpResponse"
+    mode: strict
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
+
+  - id: only-models-imports-http-timeout
+    forbid_name: outside-egress
+    pattern: "* -> java.net.http.HttpTimeoutException"
     mode: strict
     because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
 
@@ -763,7 +771,7 @@ rules:
     only: [core-modules, mcp-generic]
     via: imports
     mode: strict
-    because: "extensions/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github, which a deployment names and they never do"
+    because: "extensions/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github and Drive's REST client grit.mcp.drive, which a deployment names and they never do"
 
   - id: knowledge-names-core-alone
     allow: knowledge-code
