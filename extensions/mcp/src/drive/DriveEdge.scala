@@ -29,7 +29,8 @@ object DriveEdge {
     * `reading` says, with `instructions` as the place's Place layer; or why not:
     * `instructions` blank, or `api` not an absolute URL. Opened, it registers the service's
     * place for grit itself ([[PrincipalId.Grit]]), advertises the two there, logs that it
-    * serves them, and serves the requests addressed there with [[DriveTools]]. It needs the
+    * serves them, and serves the requests addressed there with [[DriveTools]], logging what
+    * they say of each run. It needs the
     * credential's variables, answers no ask, and delivers no replies. Opening it is refused,
     * naming the credential's variables, when the credential does not open or Drive does not
     * take its token; and when Drive cannot be reached, or the desk cannot be registered or

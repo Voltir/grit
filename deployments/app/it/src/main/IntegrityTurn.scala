@@ -196,7 +196,7 @@ object IntegrityTurn {
     /** Every request it ran, in order. */
     def ran: Vector[ToolRequest] = synchronized(kept)
 
-    def run(route: Route, request: ToolRequest): Outcome = {
+    def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
       synchronized { kept = kept :+ request }
       Outcome.Done(s"Posted in ${request.destination.fold("nowhere")(_.written)}.")
     }

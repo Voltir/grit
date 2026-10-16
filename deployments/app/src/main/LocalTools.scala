@@ -17,7 +17,7 @@ import grit.tools.Coding
   */
 private[main] final class LocalTools(offered: Offered) extends Tools {
 
-  def run(route: Route, request: ToolRequest): Outcome = route match {
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = route match {
     case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)
     // This edge registers only directories, so a service route never reaches it.
     case Route.Service(service) =>

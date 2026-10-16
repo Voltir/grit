@@ -74,7 +74,7 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
   @caps.unsafe.untrackedCaptures
   private val lock = new ReentrantLock()
 
-  def run(route: Route, request: ToolRequest): Outcome =
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome =
     current.get() match {
       case None =>
         Outcome.Failed(

@@ -67,7 +67,7 @@ final class McpTools(
     * `advertise` ([[offered]]'s `Left`) does not fail it: the run proceeds with the servers'
     * current lists.
     */
-  def run(route: Route, request: ToolRequest): Outcome = {
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
     val _ = offered()
     val tools: Vector[Tool.Offered^{clock}] =
       McpTools.current(clock, clients).flatMap { (at, tool) =>

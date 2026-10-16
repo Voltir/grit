@@ -42,7 +42,7 @@ object ServerTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var runs = Vector.empty[String]
     def note(key: String): Unit = runs = runs :+ key
-    def run(route: Route, request: ToolRequest): Outcome = {
+    def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
       note(request.slot.key)
       route match {
         case Route.Directory(root) => Outcome.Done(s"ran in ${Directory.value(root)}")
@@ -129,7 +129,7 @@ object ServerTests extends TestSuite {
         using TestTx.fake
       )
       val tools = new Tools {
-        def run(route: Route, q: ToolRequest): Outcome =
+        def run(route: Route, q: ToolRequest, said: String => Unit): Outcome =
           if (q.slot == failed.slot) Outcome.Failed(s"bad arguments: ${q.arguments}")
           else throw new IllegalStateException(s"bad arguments: ${q.arguments}")
       }
@@ -140,6 +140,23 @@ object ServerTests extends TestSuite {
         Outcome.Failed("The edge failed running it: bad arguments: {\"text\":\"the secret plan\"}")
       )
       said.lines ==> Vector()
+    }
+
+    test("what a run's tools say reaches what the server says, named by the request's slot") {
+      val edges = new InMemoryEdges
+      val q = request(0, api)
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
+      val tools = new Tools {
+        def run(route: Route, q: ToolRequest, said: String => Unit): Outcome = {
+          said("the answer could not be read")
+          Outcome.Failed("try again")
+        }
+      }
+      val said = new Said
+      new Server(edges.desk(Set(api)), tools, inline, said.hear).pass() ==> 1
+      said.lines ==> Vector(s"${q.slot.key}: the answer could not be read")
     }
 
     test("a request another edge claimed first is not run here") {

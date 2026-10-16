@@ -22,11 +22,11 @@ import grit.edge.{Run, Tools}
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
   * [[Run.request]] runs a tool: [[DriveTools.Search]] and [[DriveTools.Read]], each answered
   * [[Outcome.Done]] with the parts [[DriveItems.items]] cuts, fitted as [[Fitted.of]] fits
-  * them, or [[Outcome.Failed]] with a [[DriveError]]'s words or why it was not placed.
+  * them, or [[Outcome.Failed]] with a [[DriveError]]'s words or why it was not placed. The
+  * run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
+  * search's drives could not be listed (its hits then name them by id) or a read's grants
+  * could not be read (it is then believed untrusted).
   */
-// It logs nothing: the edge's Server is handed the log too, and separation checking lets no
-// two of its arguments share one. Why an answer could not be read reaches the operator when the
-// edge opens (DriveEdge), and the model is told only to try again.
 // `clock` is a parameter, rather than a capture-set parameter over `rest`, so the class's
 // captures are in its signature (docs/capture-checking.md, "A capset parameter a class's body
 // alone uses").
@@ -36,25 +36,47 @@ final class DriveTools(
     reading: DriveReading
 ) extends Tools {
 
-  def run(route: Route, request: ToolRequest): Outcome = {
-    val search: Tool.Offered^{clock} = DriveTools.Search.over(s =>
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
+    // `e` told the operator after `what`, when it is not a person's own miss.
+    def heard[A](what: String, e: Either[DriveError, A]): Either[DriveError, A] = {
+      e.left.foreach(_.logged.foreach(why => said(s"$what: $why")))
+      e
+    }
+    val search: Tool.Offered^{clock, said} = DriveTools.Search.over { s =>
+      val drives = rest.drives() match {
+        case Right(named) => named
+        case Left(e) =>
+          said(
+            "drive_search: Drive's shared drives could not be listed, so hits name them by id: " +
+              e.logged.getOrElse(e.message)
+          )
+          Map.empty
+      }
       DriveTools.answer(
         reading,
-        rest
-          .search(s.text, s.folder)
-          .map(DriveCalled.Searched(_, rest.drives().getOrElse(Map.empty)))
-      )
-    )
-    val read: Tool.Offered^{clock} = DriveTools.Read.over { id =>
-      DriveTools.answer(
-        reading,
-        for {
-          file <- rest.file(id)
-          text <- rest.text(file)
-        } yield DriveCalled.Read(file, rest.grants(id).toOption.flatten, text)
+        heard("drive_search", rest.search(s.text, s.folder)).map(DriveCalled.Searched(_, drives))
       )
     }
-    Toolbox.of[caps.CapSet^{clock}](search, read) match {
+    val read: Tool.Offered^{clock, said} = DriveTools.Read.over { id =>
+      DriveTools.answer(
+        reading,
+        heard(
+          "drive_read",
+          for {
+            file <- rest.file(id)
+            text <- rest.text(file)
+          } yield DriveCalled.Read(
+            file,
+            heard(
+              "drive_read: its grants could not be read, so it is believed untrusted",
+              rest.grants(id)
+            ).toOption.flatten,
+            text
+          )
+        )
+      )
+    }
+    Toolbox.of[caps.CapSet^{clock, said}](search, read) match {
       case Right(box) => Run.request(request, box)
       // The two are named apart.
       case Left(repeated) =>

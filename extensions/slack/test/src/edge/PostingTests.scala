@@ -56,7 +56,7 @@ object PostingTests extends TestSuite {
     def call(arguments: ujson.Obj, destination: Option[Place] = Some(SkynetAt)): Outcome = {
       val q = request(arguments, calls, destination)
       calls += 1
-      posting.run(route(q), q)
+      posting.run(route(q), q, _ => ())
     }
 
     /** What Slack was posted: channel, thread, fallback text, tag. */

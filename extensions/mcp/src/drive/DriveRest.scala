@@ -39,6 +39,17 @@ enum DriveError derives CanEqual {
   /** What the model reads, and may say: what happened and what a person can do, in plain
     * words naming no setting and no name of the deployment's own.
     */
+  /** What the operator's log is told of it beside [[message]]: its cause; `None` for an answer
+    * a person's own ask explains (a file not shared, or of a type not read).
+    */
+  def logged: Option[String] = this match {
+    case NoToken(why) => Some(s"Drive gave no access: $why")
+    case Hidden | Unreadable(_) => None
+    case Busy(status) => Some(s"Drive answered $status")
+    case Unreachable(why) => Some(s"Drive could not be reached: $why")
+    case Malformed(why) => Some(s"Drive's answer could not be read: $why")
+  }
+
   def message: String = this match {
     case NoToken(_) => "Drive access isn't working just now; tell an administrator."
     case Hidden => "That file isn't shared here, or doesn't exist."

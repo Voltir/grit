@@ -430,6 +430,11 @@ object grit extends Module {
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
     }
+
+    /* What separation checking rejects of a server's tools and its log. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
   }
 
   /* The MCP client: grit's toolbox over Model Context Protocol servers (revision 2026-07-28,

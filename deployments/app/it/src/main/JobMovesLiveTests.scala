@@ -79,7 +79,7 @@ object JobMovesLiveTests extends TestSuite {
       )
       .fold(d => sys.error(d.toString), identity)
 
-    def run(route: Route, request: ToolRequest): Outcome =
+    def run(route: Route, request: ToolRequest, said: String => Unit): Outcome =
       Outcome.Done(s"read ${request.arguments.obj.get("path").flatMap(_.strOpt).getOrElse("")}")
   }
 

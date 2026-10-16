@@ -88,7 +88,7 @@ object ReachLiveTests extends TestSuite {
       )
       .fold(d => sys.error(d.toString), identity)
 
-    def run(route: Route, request: ToolRequest): Outcome =
+    def run(route: Route, request: ToolRequest, said: String => Unit): Outcome =
       Outcome.Done(s"noted at ${request.workspace.written}")
   }
 

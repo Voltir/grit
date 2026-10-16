@@ -12,7 +12,12 @@ import grit.core.tool.Outcome
   * ([[Route]]). Never throws: every failure is an [[Outcome]].
   */
 trait Tools {
-  def run(route: Route, request: ToolRequest): Outcome
+
+  /** `request` run where `route` says; `said` hears what an operator would want to know of the
+    * run that the model is not told (why an answer could not be read, say), never its arguments
+    * or its answer.
+    */
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome
 }
 
 /** Serves `desk`'s requests (ADR 0017): each request [[Edges.authorize]] allows is claimed,
@@ -20,7 +25,9 @@ trait Tools {
   * run together), and answered; one another edge claimed first is skipped. Orphans in the
   * registered places are settled on every pass ([[Desk.orphans]]), and those that rerun are
   * run. `said` hears what an operator would want to know: an answer that came too late, a
-  * request refused, each named by its slot, never by its arguments or its answer.
+  * request refused, and what `tools` say of a run, each named by its slot, never by its
+  * arguments or its answer. `tools` are lent `said` for each run rather than given it: under
+  * separation checking no capability the server's `said` holds may also be hidden in `tools`.
   */
 final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, said: String => Unit)
     extends AutoCloseable {
@@ -61,7 +68,7 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
       case Right(route) =>
         runner { () =>
           val outcome =
-            try tools.run(route, q)
+            try tools.run(route, q, line => said(s"${q.slot.key}: $line"))
             catch {
               case NonFatal(e) => Outcome.Failed(s"The edge failed running it: ${e.getMessage}")
             }

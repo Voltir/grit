@@ -121,14 +121,19 @@ object DriveEdgeTests extends TestSuite {
     )
   }
 
-  /** `tool` run with `arguments` by [[DriveTools]] over `fake`. */
-  private def run(fake: FakeDriveServer, tool: String, arguments: ujson.Value): Outcome = {
+  /** `tool` run with `arguments` by [[DriveTools]] over `fake`, telling `said` what it says. */
+  private def run(
+      fake: FakeDriveServer,
+      tool: String,
+      arguments: ujson.Value,
+      said: String => Unit = _ => ()
+  ): Outcome = {
     val q = request(tool, arguments)
     val route: Route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val clock = Clock.system()
-    new DriveTools(clock, fake.rest(clock), reading).run(route, q)
+    new DriveTools(clock, fake.rest(clock), reading).run(route, q, said)
   }
 
   val tests = Tests {
@@ -139,6 +144,40 @@ object DriveEdgeTests extends TestSuite {
         DriveEdge.Instructions.contains("`label internal at <the folder's link or id>`"),
         DriveEdge.Instructions.contains("service:")
       ) ==> (true, false)
+    }
+
+    test(
+      "what the model cannot be told of a failed run reaches the operator's log, naming no argument; a person's own miss, nothing; a read whose grants were not read, that it is believed untrusted"
+    ) {
+      withFake { fake =>
+        val log = Vector.newBuilder[String]
+        fake.answering("files/file-1", 200, "not json")
+        fake.answering("files/file-4", 404, Recorded.text("error-no-file.json"))
+        fake.answering("drives", 500, "{}")
+        fake.answering("files/file-2/permissions", 503, "{}")
+        val outcomes = Vector(
+          run(fake, "drive_read", ujson.Obj("file" -> "file-1"), log += _),
+          run(fake, "drive_read", ujson.Obj("file" -> "file-2"), log += _),
+          run(fake, "drive_read", ujson.Obj("file" -> "file-4"), log += _),
+          run(fake, "drive_search", ujson.Obj("text" -> "plan"), log += _)
+        ).map {
+          case Outcome.Done(_, _, _, parts) => s"done, ${parts.map(_.size)}"
+          case other => other.toString
+        }
+        (outcomes, log.result()) ==> (
+          Vector(
+            "Failed(Drive's answer couldn't be read; try again later.)",
+            "done, Some(1)",
+            "Failed(That file isn't shared here, or doesn't exist.)",
+            "done, Some(17)"
+          ),
+          Vector(
+            "drive_read: Drive's answer could not be read: an answer that is not JSON",
+            "drive_read: its grants could not be read, so it is believed untrusted: Drive answered 503",
+            "drive_search: Drive's shared drives could not be listed, so hits name them by id: Drive answered 500"
+          )
+        )
+      }
     }
 
     test(
