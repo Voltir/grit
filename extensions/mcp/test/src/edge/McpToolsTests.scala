@@ -2,6 +2,7 @@ package grit.mcp.edge
 
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Edges, Permit, Registration, Route, ToolRequest, Variable}
+import grit.core.host.Clipped
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Namespace, Place, Service}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
@@ -12,7 +13,9 @@ import grit.core.visibility.{
   Compartments,
   Integrity,
   Itemised,
+  Part,
   Provenance,
+  Readers,
   RoomLabels,
   Visibility
 }
@@ -185,6 +188,62 @@ object McpToolsTests extends TestSuite {
         val mcp = toolsOver(fake, accounts = placing(Integrity.Authority))
         val q = request("github_get_file_contents", Read)
         visibility.believed(Github, mcp.run(route(q), q).accounted) ==> Integrity.Member
+      }
+    }
+
+    test(
+      "a server's cut answer is a done whose parts are its items and whose text is the head; " +
+        "an unplaced one is a failed call saying so"
+    ) {
+      val parts = Vector(
+        Part(Provenance(at("r", "a"), Integrity.Member), Readers.AtPlace, "alpha"),
+        Part(Provenance(at("r", "b"), Integrity.Outside), Readers.AtPlace, "beta")
+      )
+      val cutting = new Accounts[McpCalled] {
+        def items(c: McpCalled): Itemised =
+          if (c.tool == "search_code") Itemised.Parts("found:", parts)
+          else Itemised.Unplaced("the file's folder could not be looked up")
+      }
+      withFake { fake =>
+        fake.lists(
+          Vector(FakeMcpServer.github("search_code"), FakeMcpServer.github("get_file_contents"))
+        )
+        fake.answers("search_code", text("alpha and beta"))
+        fake.answers("get_file_contents", text("widgets"))
+        val mcp = toolsOver(fake, accounts = cutting)
+        val search = request("github_search_code", ujson.Obj("query" -> "x"))
+        val read = request("github_get_file_contents", Read)
+        Vector(mcp.run(route(search), search), mcp.run(route(read), read)) ==> Vector(
+          Outcome.Done("found:", parts = Some(parts)),
+          Outcome.Failed(
+            "github answered, but grit could not tell who may see the answer, so none of it " +
+              "is shown: the file's folder could not be looked up"
+          )
+        )
+      }
+    }
+
+    test(
+      "a cut answer over Clipped's limits keeps the leading parts that fit, saying only that " +
+        "some were left out"
+    ) {
+      val wide = "x" * 2000
+      val parts = Vector.tabulate(30)(i =>
+        Part(Provenance(at("r", s"f$i"), Integrity.Member), Readers.AtPlace, wide)
+      )
+      val cutting = new Accounts[McpCalled] {
+        def items(c: McpCalled): Itemised = Itemised.Parts("found:", parts)
+      }
+      val head = "found:\n\n[Some of this answer was left out to fit; call again asking for " +
+        "fewer, or for the next page, to see the rest.]"
+      // Each kept part adds its line: a newline and its text.
+      val fit = (Clipped.MaxBytes - head.length) / (wide.length + 1)
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("search_code")))
+        fake.answers("search_code", text("thirty files"))
+        val mcp = toolsOver(fake, accounts = cutting)
+        val search = request("github_search_code", ujson.Obj("query" -> "x"))
+        mcp.run(route(search), search) ==> Outcome.Done(head, parts = Some(parts.take(fit)))
       }
     }
 

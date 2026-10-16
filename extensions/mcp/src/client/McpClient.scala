@@ -83,10 +83,11 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
   /** `tool` called with `arguments` as the server's scope sends them
     * ([[grit.mcp.scope.McpScope.request]]): its answer as the scope shows it
     * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, its items as the server's
-    * `accounts` read the shown result, whole; or why none:
+    * `accounts` read the shown result: whole ([[Answer.of]]) or cut by item ([[Answer.cut]]);
+    * or why none:
     * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call;
-    * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it or
-    * `accounts` does not read it whole;
+    * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it;
+    * [[McpError.Unplaced]], with none of it shown, when `accounts` cannot place it;
     * [[McpError.NotLooked]], with the call not sent, when a lookup it needs first cannot be
     * made ([[McpServer.lookups]], whose answers the `accounts` read beside it). An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
@@ -99,14 +100,11 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
       looked <- look(tool.name, sent)
       result <- exchange(Rpc.Call.CallTool(tool, sent))
       shown <- server.scope.shown(tool, result).left.map(McpError.Unattributed(_))
-      items <- server.accounts.items(McpCalled(tool.name, sent, shown, looked)) match {
-        case Itemised.Whole(items) => Right(items)
-        // No reader of this client's servers cuts an answer yet, and an answer is shown whole
-        // or not at all: one cut or unplaced shows nothing.
-        case Itemised.Parts(_, _) => Left(McpError.Unattributed("its answer was cut by item"))
-        case Itemised.Unplaced(why) => Left(McpError.Unattributed(why))
+      answer <- server.accounts.items(McpCalled(tool.name, sent, shown, looked)) match {
+        case Itemised.Whole(items) => Answer.of(shown, items)
+        case Itemised.Parts(head, parts) => Answer.cut(shown, head, parts)
+        case Itemised.Unplaced(why) => Left(McpError.Unplaced(why))
       }
-      answer <- Answer.of(shown, items)
     } yield answer
     // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
     // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is

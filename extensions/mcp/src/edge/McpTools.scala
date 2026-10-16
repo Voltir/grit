@@ -119,7 +119,7 @@ object McpTools {
           case Left(error) => Outcome.Failed(s"${client.server.name} ${error.message}")
           case Right(answer) =>
             if (answer.isError) Outcome.Failed(answer.text)
-            else Outcome.Done(answer.text, items = answer.items)
+            else Outcome.Done(answer.text, items = answer.items, parts = answer.parts)
         }
     }
 }

@@ -46,6 +46,12 @@ enum McpError {
     */
   case Unattributed(why: String)
 
+  /** The call was answered, but its server's extension could not tell who may read the answer,
+    * so none of it is shown: `why`, in words the model reads
+    * ([[grit.core.visibility.Itemised.Unplaced]]).
+    */
+  case Unplaced(why: String)
+
   /** No token could be got for the request, so it was not sent: `why`, naming the token URL
     * and what it answered, if anything.
     */
@@ -76,6 +82,8 @@ enum McpError {
         "reach; do not answer with something else in its place."
     case Unattributed(why) =>
       s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
+    case Unplaced(why) =>
+      s"answered, but grit could not tell who may see the answer, so none of it is shown: $why"
     case NoToken(why) => s"was not asked: grit could not get a token for it: $why"
     case NotLooked(why) =>
       s"was not asked, since grit could not first look up what it would read: $why"

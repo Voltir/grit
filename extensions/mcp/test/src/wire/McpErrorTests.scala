@@ -22,6 +22,7 @@ object McpErrorTests extends TestSuite {
         McpError.Status(502),
         McpError.OutOfScope("its scope does not offer search_code"),
         McpError.Unattributed("its answer's text is not a JSON object"),
+        McpError.Unplaced("the file's folder could not be looked up"),
         McpError.NoToken("https://oauth2.example.com/token answered HTTP 400: invalid_grant"),
         McpError.NotLooked("the call names no fileId, which grit looks up with meta first")
       ).map(_.message) ==> Vector(
@@ -43,6 +44,8 @@ object McpErrorTests extends TestSuite {
           "Tell the person this is out of reach; do not answer with something else in its place.",
         "answered, but grit cannot hold the answer to its scope, so none of it is shown: " +
           "its answer's text is not a JSON object",
+        "answered, but grit could not tell who may see the answer, so none of it is shown: " +
+          "the file's folder could not be looked up",
         "was not asked: grit could not get a token for it: " +
           "https://oauth2.example.com/token answered HTTP 400: invalid_grant",
         "was not asked, since grit could not first look up what it would read: " +
