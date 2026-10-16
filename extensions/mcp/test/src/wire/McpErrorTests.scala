@@ -22,7 +22,8 @@ object McpErrorTests extends TestSuite {
         McpError.Status(502),
         McpError.OutOfScope("its scope does not offer search_code"),
         McpError.Unattributed("its answer's text is not a JSON object"),
-        McpError.NoToken("https://oauth2.example.com/token answered HTTP 400: invalid_grant")
+        McpError.NoToken("https://oauth2.example.com/token answered HTTP 400: invalid_grant"),
+        McpError.NotLooked("the call names no fileId, which grit looks up with meta first")
       ).map(_.message) ==> Vector(
         "could not be reached: connection refused",
         "refused grit's token (HTTP 401; it asks: Bearer realm=\"mcp\")",
@@ -43,7 +44,9 @@ object McpErrorTests extends TestSuite {
         "answered, but grit cannot hold the answer to its scope, so none of it is shown: " +
           "its answer's text is not a JSON object",
         "was not asked: grit could not get a token for it: " +
-          "https://oauth2.example.com/token answered HTTP 400: invalid_grant"
+          "https://oauth2.example.com/token answered HTTP 400: invalid_grant",
+        "was not asked, since grit could not first look up what it would read: " +
+          "the call names no fileId, which grit looks up with meta first"
       )
     }
   }

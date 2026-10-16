@@ -71,6 +71,39 @@ object McpServerTests extends TestSuite {
         )
     }
 
+    test(
+      "a lookup names a tool and an argument; a tool may not look itself up, or one tool twice"
+    ) {
+      Lookup.of(" ", "fileId") ==> Left("a lookup names no tool")
+      Lookup.of("meta", "") ==> Left("a lookup of meta names no argument")
+      // The lookups `read` keeps, declared as `ls`, each as (tool, argument).
+      def looking(ls: Vector[(String, String)]): Either[String, Vector[(String, String)]] = {
+        val declared: Vector[Lookup] =
+          ls.map((t, a) =>
+            Lookup.of(t, a).fold(why => throw new java.lang.AssertionError(why), identity)
+          )
+        McpServer
+          .of(
+            "drive",
+            "https://example.com/mcp",
+            Credential.static(token),
+            McpScope.Open,
+            lookups = Map("read" -> declared)
+          )
+          .map { s =>
+            val kept: Vector[Lookup] = s.lookups.getOrElse("read", Vector.empty)
+            val pairs: Vector[(String, String)] = kept.map(l => (l.tool, l.argument))
+            pairs
+          }
+      }
+      looking(Vector("meta" -> "fileId", "perms" -> "fileId")) ==>
+        Right(Vector("meta" -> "fileId", "perms" -> "fileId"))
+      looking(Vector("meta" -> "fileId", "read" -> "fileId")) ==>
+        Left("drive's read looks itself up")
+      looking(Vector("meta" -> "fileId", "meta" -> "id")) ==>
+        Left("drive's read looks up meta twice")
+    }
+
     test("a token is never shown") {
       Bearer.of(Map("GITHUB_MCP_TOKEN" -> "github_pat_x1"), token).map(_.toString) ==>
         Right("Bearer(<redacted>)")

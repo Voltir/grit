@@ -42,11 +42,12 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
   @caps.unsafe.untrackedCaptures
   private val ids = new AtomicLong(0L)
 
-  // The list as last read, and the Clock.millis reading until which it is fresh. Replaced
-  // whole through the reference's own atomic operations, so a reader sees one list or the
-  // other; two callers that both find it stale both list, and either result is right.
+  // The list as last read, the read-only tools it lists that a lookup names, by name, and the
+  // Clock.millis reading until which it is fresh. Replaced whole through the reference's own
+  // atomic operations, so a reader sees one list or the other; two callers that both find it
+  // stale both list, and either result is right.
   @caps.unsafe.untrackedCaptures
-  private val kept = new AtomicReference[Option[(Listed, Long)]](None)
+  private val kept = new AtomicReference[Option[(Listed, Map[String, McpTool], Long)]](None)
 
   /** The tools grit may offer from `server`, every page of its list, less those its allowlist
     * leaves out ([[Skipped.NotAllowed]]) and then those its scope excludes
@@ -59,11 +60,11 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
   def tools(): Either[McpError, Listed] = {
     val held = kept.get()
     held match {
-      case Some((listed, until)) if clock.millis() < until => Right(listed)
+      case Some((listed, _, until)) if clock.millis() < until => Right(listed)
       case _ =>
         list() match {
-          case Right((listed, until)) =>
-            kept.set(Some((listed, until)))
+          case Right(read @ (listed, _, _)) =>
+            kept.set(Some(read))
             Right(listed)
           case Left(e) => held.map(_._1).toRight(e)
         }
@@ -74,7 +75,7 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
     * that fails.
     */
   def stale(): Unit = {
-    kept.updateAndGet(_.map((listed, _) => (listed, Long.MinValue)))
+    kept.updateAndGet(_.map((listed, lookable, _) => (listed, lookable, Long.MinValue)))
     ()
   }
 
@@ -83,17 +84,20 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
     * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, its items as the server's
     * `accounts` read the shown result, whole; or why none:
     * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call;
-    * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it. An
+    * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it;
+    * [[McpError.NotLooked]], with the call not sent, when a lookup it needs first cannot be
+    * made ([[McpServer.lookups]], whose answers the `accounts` read beside it). An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
     * [[stale]], since the server's tools may have changed. Blocks on the server for up to
-    * [[McpClient.Timeout]].
+    * [[McpClient.Timeout]] a request: the call and each of its lookups.
     */
   def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
     val answered = for {
       sent <- server.scope.request(tool, arguments).left.map(McpError.OutOfScope(_))
+      looked <- look(tool.name, sent)
       result <- exchange(Rpc.Call.CallTool(tool, sent))
       shown <- server.scope.shown(tool, result).left.map(McpError.Unattributed(_))
-      answer <- Answer.of(shown, server.accounts.items(McpCalled(tool.name, sent, shown)))
+      answer <- Answer.of(shown, server.accounts.items(McpCalled(tool.name, sent, shown, looked)))
     } yield answer
     // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
     // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is
@@ -106,8 +110,52 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
     answered
   }
 
-  /** Every page of the list, from the first, and the reading until which it is fresh. */
-  private def list(): Either[McpError, (Listed, Long)] = {
+  /** The answers of `tool`'s lookups ([[McpServer.lookups]]) for a call sending `sent`, each by
+    * its tool's name; [[McpError.NotLooked]], with none sent, when `sent` lacks an argument one
+    * names, and with none after it sent, when one cannot be made. A lookup's tool is read from
+    * the kept list, stale or not, and the list is read only when none is kept.
+    */
+  private def look(tool: String, sent: ujson.Obj): Either[McpError, Map[String, ujson.Obj]] = {
+    val lookups = server.lookups.getOrElse(tool, Vector.empty)
+    val valued = lookups.foldLeft[Either[McpError, Vector[(Lookup, ujson.Value)]]](
+      Right(Vector.empty)
+    ) { (read, lookup) =>
+      read.flatMap(vs =>
+        sent.value
+          .get(lookup.argument)
+          .map(v => vs :+ (lookup -> v))
+          .toRight(
+            McpError.NotLooked(
+              s"the call names no ${lookup.argument}, which grit looks up with ${lookup.tool} first"
+            )
+          )
+      )
+    }
+    def lookable(): Either[McpError, Map[String, McpTool]] = kept.get() match {
+      case Some((_, held, _)) => Right(held)
+      case None => tools().map(_ => kept.get().fold(Map.empty[String, McpTool])(_._2))
+    }
+    valued.flatMap(
+      _.foldLeft[Either[McpError, Map[String, ujson.Obj]]](Right(Map.empty)) {
+        case (read, (lookup, value)) =>
+          def failed(e: McpError) = McpError.NotLooked(s"${lookup.tool} ${e.message}")
+          for {
+            looked <- read
+            held <- lookable().left.map(failed)
+            listed <- held
+              .get(lookup.tool)
+              .toRight(McpError.NotLooked(s"${lookup.tool} is not a read-only tool it lists"))
+            result <- exchange(Rpc.Call.CallTool(listed, ujson.Obj(lookup.argument -> value))).left
+              .map(failed)
+          } yield looked + (lookup.tool -> result)
+      }
+    )
+  }
+
+  /** Every page of the list, from the first; the read-only tools on it that a lookup names; and
+    * the reading until which it is fresh.
+    */
+  private def list(): Either[McpError, (Listed, Map[String, McpTool], Long)] = {
     def from(
         cursor: Option[String],
         pages: Int,
@@ -130,12 +178,14 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
       val (allowed, unallowed) =
         listed.partition(t => server.allow.isEmpty || server.allow.contains(t.name))
       val held = allowed.map(t => (t, server.scope.excludes(t)))
+      val looked = server.lookups.values.flatten.map(_.tool).toSet
       (
         Listed(
           held.collect { case (t, None) => t },
           skipped ++ unallowed.map(t => Skipped.NotAllowed(t.name)) ++ held.flatMap(_._2),
           server.allow -- listed.map(_.name) -- skipped.flatMap(named)
         ),
+        listed.filter(t => looked.contains(t.name)).map(t => t.name -> t).toMap,
         read.map(_._2).minOption.getOrElse(Long.MinValue)
       )
     }

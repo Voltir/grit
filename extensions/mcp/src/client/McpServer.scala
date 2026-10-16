@@ -12,7 +12,12 @@ import grit.mcp.wire.McpCalled
   * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any
   * and `scope` offers; its calls are sent, and their answers shown, as `scope` sends and shows
   * them, and their items read by `accounts`; each request carries `Authorization: Bearer` with
-  * the token `credential` gives.
+  * the token `credential` gives. Before a call of a tool `lookups` names, each of its lookups
+  * is called, in order, and its answer, as the server gave it, read by `accounts` beside the
+  * call's ([[grit.mcp.wire.McpCalled.looked]]); a call lacking a lookup's argument, or one
+  * whose lookup the server refuses or does not list as read-only, is not sent
+  * ([[grit.mcp.wire.McpError.NotLooked]]). A lookup is grit's own call, made whatever `allow`
+  * and `scope` say of its tool, with the one argument the call already sends.
   */
 final case class McpServer private (
     name: String,
@@ -20,14 +25,30 @@ final case class McpServer private (
     credential: Credential,
     scope: McpScope,
     allow: Set[String],
-    accounts: Accounts[McpCalled]
+    accounts: Accounts[McpCalled],
+    lookups: Map[String, Vector[Lookup]]
 )
+
+/** A call made before a call of a tool that names its subject by `argument` but not where it
+  * lies: `tool`, by the server's own name, called with `{argument: <the call's value>}`.
+  */
+final case class Lookup private (tool: String, argument: String)
+
+object Lookup {
+
+  /** The lookup, or why not: either blank. */
+  def of(tool: String, argument: String): Either[String, Lookup] =
+    if (tool.trim.isEmpty) Left("a lookup names no tool")
+    else if (argument.trim.isEmpty) Left(s"a lookup of $tool names no argument")
+    else Right(Lookup(tool, argument))
+}
 
 object McpServer {
 
   /** The server, or why not: `name` not a lowercase letter then lowercase letters, digits or
     * `_` (at most 16 characters); `endpoint` not an absolute `https` URL with a host (`http`
-    * only on a loopback host: `localhost`, `127.x.x.x` or `[::1]`).
+    * only on a loopback host: `localhost`, `127.x.x.x` or `[::1]`); a tool in `lookups`
+    * looking itself up, or one tool twice.
     */
   def of(
       name: String,
@@ -35,7 +56,8 @@ object McpServer {
       credential: Credential,
       scope: McpScope,
       allow: Set[String] = Set.empty,
-      accounts: Accounts[McpCalled] = Accounts.none
+      accounts: Accounts[McpCalled] = Accounts.none,
+      lookups: Map[String, Vector[Lookup]] = Map.empty
   ): Either[String, McpServer] =
     for {
       _ <- Either.cond(
@@ -52,7 +74,19 @@ object McpServer {
         (),
         s"$name's endpoint must be https (http only on a loopback host): '$endpoint'"
       )
-    } yield new McpServer(name, uri, credential, scope, allow, accounts)
+      _ <- lookups.toVector.sortBy(_._1).foldLeft[Either[String, Unit]](Right(())) {
+        case (read, (tool, ls)) =>
+          val tools = ls.map(_.tool)
+          read.flatMap { _ =>
+            if (tools.contains(tool)) Left(s"$name's $tool looks itself up")
+            else
+              tools
+                .diff(tools.distinct)
+                .headOption
+                .fold(Right(()))(t => Left(s"$name's $tool looks up $t twice"))
+          }
+      }
+    } yield new McpServer(name, uri, credential, scope, allow, accounts, lookups)
 
   private val Name = "[a-z][a-z0-9_]{0,15}".r
 

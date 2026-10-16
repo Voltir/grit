@@ -51,6 +51,11 @@ enum McpError {
     */
   case NoToken(why: String)
 
+  /** The call was not sent: a lookup it needs first (`grit.mcp.client.McpServer.lookups`)
+    * could not be made; `why` says which, and why.
+    */
+  case NotLooked(why: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused grit's token"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -72,6 +77,8 @@ enum McpError {
     case Unattributed(why) =>
       s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
     case NoToken(why) => s"was not asked: grit could not get a token for it: $why"
+    case NotLooked(why) =>
+      s"was not asked, since grit could not first look up what it would read: $why"
   }
 
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")

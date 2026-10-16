@@ -7,8 +7,9 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.Variable
 import grit.core.tool.ToolName
+import grit.core.visibility.{Accounted, Accounts}
 import grit.mcp.scope.{Attribution, Bound, McpScope}
-import grit.mcp.wire.{McpError, Skipped}
+import grit.mcp.wire.{McpCalled, McpError, Skipped}
 
 import utest.*
 
@@ -470,6 +471,72 @@ object McpClientTests extends TestSuite {
       } finally {
         fake.stop()
         tokens.stop()
+      }
+    }
+
+    test(
+      "a call of a tool with lookups first calls each with its argument, its readers read " +
+        "their answers; a refused lookup, or a call lacking the argument, sends nothing"
+    ) {
+      withFake { fake =>
+        val meta = ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> "f")))
+        // An isError answer is passed on to the readers as it is.
+        val perms = ujson.Obj(
+          "content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> "no access")),
+          "isError" -> true
+        )
+        fake.lists(Vector(tool("read"), tool("meta"), tool("perms")))
+        fake.answers("meta", meta)
+        fake.answers("perms", perms)
+        def lookup(t: String) =
+          Lookup.of(t, "fileId").fold(why => throw new java.lang.AssertionError(why), identity)
+        // Unaccountable exactly when it is given the lookups' answers as the server gave them.
+        val looked = Map("meta" -> meta, "perms" -> perms)
+        val accounts = new Accounts[McpCalled] {
+          def items(r: McpCalled): Accounted =
+            if (r.looked == looked) Accounted.Unaccountable else Accounted.Unread
+        }
+        val server = McpServer
+          .of(
+            "fake",
+            fake.endpoint,
+            Credential.static(Token),
+            McpScope.Open,
+            allow = Set("read"),
+            accounts = accounts,
+            lookups = Map("read" -> Vector(lookup("meta"), lookup("perms")))
+          )
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+        val c = new McpClient(
+          server,
+          Credential
+            .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token))
+            .fold(why => throw new java.lang.AssertionError(why.message), identity),
+          new Hands()
+        )
+        val read = c
+          .tools()
+          .flatMap(_.tools.find(_.name == "read").toRight(McpError.Unreadable("unlisted")))
+          .fold(e => throw new java.lang.AssertionError(e.message), identity)
+        def sent(from: Int) = fake.received
+          .drop(from)
+          .map(r => (r.headers.get("mcp-name"), ujson.read(r.body)("params")("arguments")))
+        val f1 = ujson.Obj("fileId" -> "f1")
+        val listed = fake.received.size
+        c.call(read, f1).map(_.items) ==> Right(Accounted.Unaccountable)
+        sent(listed) ==> Vector(Some("meta") -> f1, Some("perms") -> f1, Some("read") -> f1)
+        val lacking = fake.received.size
+        c.call(read, ujson.Obj("other" -> "x")) ==>
+          Left(McpError.NotLooked("the call names no fileId, which grit looks up with meta first"))
+        fake.received.size ==> lacking
+        // The server stops listing perms, so refuses a call of it.
+        fake.lists(Vector(tool("read"), tool("meta")))
+        val refused = fake.received.size
+        c.call(read, f1).left.map {
+          case McpError.NotLooked(why) => why.takeWhile(_ != ':')
+          case other => other.message
+        } ==> Left("perms answered error -32602")
+        sent(refused).map(_._1) ==> Vector(Some("meta"), Some("perms"))
       }
     }
 
