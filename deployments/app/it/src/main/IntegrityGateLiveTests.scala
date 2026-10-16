@@ -128,7 +128,7 @@ object IntegrityGateLiveTests extends TestSuite {
   private def reference =
     Main
       .caps(Map.empty)
-      .flatMap(Main.visibility(Vector.empty, None, Vector.empty, _))
+      .flatMap(Main.visibility(Vector.empty, None, Vector.empty, _, Vector.empty))
       .fold(sys.error(_), identity)
 
   /** The turn `name` on `engine`, its model's calls made by an [[Obeying]] model for `issue`
