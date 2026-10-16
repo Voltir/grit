@@ -48,7 +48,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.host` | `grit.host` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
-| `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0019) and the Slack SDK's quarantine |
+| `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0023) and the Slack SDK's quarantine |
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `edge` | core, edge | the MCP client: a declared server's read-only tools at a service place (ADR 0017) |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
