@@ -157,7 +157,7 @@ abstract class ScheduleContract extends TestSuite {
       u.due("2026-10-07T09:00:00.000001Z") ==> Vector(id("launch"))
     }
 
-    test("a declared schedule that ran stays ended when declared again") {
+    test("a declared schedule that ran stays ended when declared again at the same instant") {
       val u = fresh()
       val nine = at("2026-10-07T09:00:00Z")
       u.declare(Vector(declared("launch", SlotRule.Once(nine, hour))), "08:00")
@@ -165,6 +165,16 @@ abstract class ScheduleContract extends TestSuite {
       u.replied(Slot(id("launch"), nine), 1, "09:01")
       u.declare(Vector(declared("launch", SlotRule.Once(nine, hour))), "10:00")
       u.read(id("launch")).flatMap(_.ended) ==> Some(Ending.Ran)
+    }
+    test("a declared once schedule that ran is re-armed when declared again at another instant") {
+      val u = fresh()
+      val (nine, eleven) = (at("2026-10-07T09:00:00Z"), at("2026-10-07T11:00:00Z"))
+      u.declare(Vector(declared("launch", SlotRule.Once(nine, hour))), "08:00")
+      u.start(Slot(id("launch"), nine), 1, None)
+      u.replied(Slot(id("launch"), nine), 1, "09:01")
+      u.declare(Vector(declared("launch", SlotRule.Once(eleven, hour))), "10:00")
+      (u.read(id("launch")).flatMap(_.ended), u.due("10:59"), u.due("11:00")) ==>
+        (None, Vector(), Vector(id("launch")))
     }
 
     test(

@@ -34,6 +34,15 @@ enum SlotRule {
     case Once(at, _) => Some(at)
     case Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) => after(now)
   }
+
+  /** Whether a schedule that ended under `was` is pending again when declared as this: a once
+    * rule at another instant is a new slot. The same instant, a grace alone changed, or any
+    * recurrence is not.
+    */
+  def rearms(was: SlotRule): Boolean = (was, this) match {
+    case (Once(before, _), Once(after, _)) => before != after
+    case _ => false
+  }
 }
 
 object SlotRule {

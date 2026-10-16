@@ -33,8 +33,9 @@ trait ScheduleStore {
     * is written with its first slot after `now` (a once slot at its instant, however past),
     * kept as [[Slot.kept]] keeps it, believed at grit's own integrity ([[Integrity.top]] of
     * the transaction's compartments). A changed one (its job, parameters, rule or clearance) is
-    * rewritten in place, its next slot recomputed only when its rule changed. One ended undeclared is revived
-    * with the first slot after `now`, as a new one is; one ended any other way stays ended.
+    * rewritten in place, its next slot recomputed only when its rule changed. One ended
+    * undeclared, or ended any way and declared at a new slot ([[SlotRule.rearms]]), is pending
+    * again with its first slot, as a new one is; one ended any other way stays ended.
     * Every pending declared one not among them is ended undeclared. An asked schedule is never
     * touched.
     */

@@ -116,7 +116,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             SqlIntegrity.bind(ps, 11, declared)
           }
         case Some((rule, ended)) =>
-          val revived = ended.contains(Ending.Undeclared.word)
+          val revived =
+            ended.contains(Ending.Undeclared.word) || (ended.nonEmpty && rule.exists(d.rule.rearms))
           val keepsEnd = ended.nonEmpty && !revived
           val keepsNext = !keepsEnd && !revived && rule == Right(d.rule)
           update(

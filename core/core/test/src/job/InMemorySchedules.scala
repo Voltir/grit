@@ -150,7 +150,7 @@ final class InMemorySchedules(
             Integrity.top(Tx.visibility(tx).compartments)
           )
         case Some(r) =>
-          val ended = r.ended.filterNot(_ == Ending.Undeclared)
+          val ended = r.ended.filterNot(_ == Ending.Undeclared || d.rule.rearms(r.rule))
           r.copy(
             job = d.job.name,
             params = d.written,
