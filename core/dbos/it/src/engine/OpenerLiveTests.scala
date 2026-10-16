@@ -6,7 +6,7 @@ import java.time.Instant
 import scala.util.Using
 
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.identity.TestAccounts
+import grit.core.identity.{TestAccounts, Vouched}
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Integrity
@@ -172,6 +172,27 @@ object OpenerLiveTests extends TestSuite {
     test("a gone conversation's work reads only what is public") {
       val gone = ConversationId("01920000-0000-7000-8000-000000000001")
       resolved(Subject.Conversation(gone)) ==> Right(Clearance.of(Label.Public))
+    }
+
+    test(
+      "a direct message's work reads what its person originated, by the email they hold, and no one else's; a channel's reads none"
+    ) {
+      val ana = TestAccounts.sourced("slack:T1/U-ana-originates")
+      val engine = LiveEngine.open(config, "test")
+      val voucher =
+        try engine.voucher(Set(Vouchings.T1), Vouchings.Claimed)
+        finally engine.close()
+      LiveDb
+        .transaction(config)(voucher.vouch(Vouched(ana, Vouchings.full("ana@example.com"))))
+        .isRight ==> true
+      val dm = LiveDb.conversation(config, Origin.Direct(ana, "1.0")).id
+      val channel = slack("originates")
+      val asked = first(LiveDb.conversation(config, channel).id)
+      LiveDb.asking(config, asked, ana, Some("ana@example.com"))
+      val (hers, bos) = (Vouchings.email("ana@example.com"), Vouchings.email("bo@example.com"))
+      Vector(Subject.Conversation(dm), Subject.Turn(first(dm)), Subject.Turn(asked))
+        .map(resolved(_).map(c => (c.readsOriginated(hers), c.readsOriginated(bos)))) ==>
+        Vector(Right((true, false)), Right((true, false)), Right((false, false)))
     }
 
     test("the public subject reads only what is public") {

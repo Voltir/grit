@@ -4,8 +4,8 @@ import java.sql.Connection
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, TurnRef, TurnSeq}
-import grit.core.identity.Principal
+import grit.core.id.{ConversationId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.identity.{Email, Principal}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Maintenance, RoomLabels, Subject, Visibility}
 
@@ -122,13 +122,43 @@ private[dbos] final class Opener(visibility: Visibility) {
       .flatMap(_.fold(Right(None))(n => Opener.asker(n.origin, n.first)))
 
   /** A direct message's conversation `n` as any of its subjects reads it: its person's
-    * clearance now ([[Opener.asker]]), and its own room up to its stored label met with that.
+    * clearance now ([[Opener.asker]]), its own room up to its stored label met with that, and
+    * what that person originated by the email they claim now ([[Clearance.readsOriginated]]).
     */
   private def direct(n: Named)(using Tx^): Either[StoreError, Clearance] =
-    Opener.asker(n.origin, n.first).map { asker =>
+    for {
+      asker <- Opener.asker(n.origin, n.first)
+      originates <- asker match {
+        case Some(Principal.Person(id, _)) => claimed(id)
+        case Some(Principal.Grit) | None => Right(Set.empty[Email])
+      }
+    } yield {
       val cleared = asker.fold(Label.Public)(Tx.clearanceOf)
-      Clearance.inRoom(n.origin.room, n.label.meet(cleared), cleared)
+      Clearance.inRoom(n.origin.room, n.label.meet(cleared), cleared, originates)
     }
+
+  /** The emails `person` claims: at most one, by `grit.emails`' unique `principal_id`. */
+  private def claimed(person: PrincipalId)(using tx: Tx^): Either[StoreError, Set[Email]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT email FROM grit.emails WHERE principal_id = ?")
+      ) { ps =>
+        ps.setString(1, PrincipalId.value(person))
+        Using.resource(ps.executeQuery()) { rs =>
+          val out = Vector.newBuilder[String]
+          while (rs.next()) out += rs.getString(1)
+          out.result()
+        }
+      }
+    }.flatMap(
+      _.foldLeft[Either[StoreError, Set[Email]]](Right(Set.empty))((acc, raw) =>
+        acc.flatMap(got =>
+          Email.of(raw).map(got + _).left.map(why => StoreError.Invalid(s"a claimed email: $why"))
+        )
+      )
+    )
+  }
 
   /** A conversation as a subject names it: where it is, its label, and, when a turn was named,
     * that turn's first entry, if any, as whom its account is linked to (`None` when grit's own).
