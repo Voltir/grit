@@ -355,7 +355,7 @@ private[moves] object Act {
     val waited: Flow[MovesEnv, Sending, Nothing, Either[MoveError, Called]] =
       awaiting.keeping
         .map {
-          case (s, Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _))) => Left(s)
+          case (s, Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _, _))) => Left(s)
           case (_, Awaited.Answered(Outcome.Interrupted) | Awaited.Known(Outcome.Interrupted)) =>
             Right(Right(Called.Interrupted))
           case (_, Awaited.Answered(o)) => Right(Right(Called.Failed(failed(o))))
@@ -604,7 +604,7 @@ private[moves] object Act {
     * `believed`.
     */
   private def called(o: Outcome, at: Label, believed: Integrity): Called = o match {
-    case Outcome.Done(text, _) => Called.Done(Mint.tainted(text, believed), at)
+    case Outcome.Done(text, _, _) => Called.Done(Mint.tainted(text, believed), at)
     case Outcome.Interrupted => Called.Interrupted
     case other => Called.Failed(failed(other))
   }

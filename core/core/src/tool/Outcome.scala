@@ -2,7 +2,7 @@ package grit.core.tool
 
 import grit.core.id.ToolCallId
 import grit.core.message.Message
-import grit.core.visibility.Integrity
+import grit.core.visibility.{Accounted, Integrity}
 
 /** What settling a tool call came to. Every case reaches the model as the call's result
   * ([[result]]), and the loop carries on: none of them fails the turn. A command's non-zero
@@ -12,9 +12,15 @@ enum Outcome {
 
   /** It ran; `text` is what the model reads, believed at `integrity` when the tool knows (the
     * meet of the rows it read), else at its tool's ([[Believed]]). Only a tool grit runs is
-    * believed when it says: an edge's `integrity` is not read.
+    * believed when it says: an edge's `integrity` is not read. An edge's result is believed at
+    * what its service declares of `items`, the provenances its extension read
+    * ([[grit.core.visibility.Visibility.believed]]); a tool grit runs leaves them unread.
     */
-  case Done(text: String, integrity: Option[Integrity] = None)
+  case Done(
+      text: String,
+      integrity: Option[Integrity] = None,
+      items: Accounted = Accounted.Unread
+  )
 
   /** It could not run, or could not finish: an unknown tool, arguments that do not read, a
     * bad path, an `oldText` not found, a timeout (`why` holding the output so far).
@@ -37,7 +43,7 @@ enum Outcome {
     * tried again.
     */
   def result(call: ToolCallId): Message.ToolResult = this match {
-    case Done(text, _) => Message.ToolResult(call, text, isError = false)
+    case Done(text, _, _) => Message.ToolResult(call, text, isError = false)
     case Failed(why) => Message.ToolResult(call, why, isError = true)
     case Declined(reason) =>
       val said = reason.fold("")(r => s" Their reason: $r")

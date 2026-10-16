@@ -321,7 +321,7 @@ object TurnTools {
       case From(from) => from
       case Ran(output) =>
         o match {
-          case Outcome.Done(_, Some(integrity)) => Left(integrity)
+          case Outcome.Done(_, Some(integrity), _) => Left(integrity)
           case _ => Left(output)
         }
     }

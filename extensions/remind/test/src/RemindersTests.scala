@@ -330,12 +330,12 @@ object RemindersTests extends TestSuite {
       d.run(Reminders.RemindMe, d.asked(3), "text" -> "nap", "in_minutes" -> 10)
       // Due between the others: neither the first reminder read nor the last.
       d.run(Reminders.List, d.asked(4)) match {
-        case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
+        case Outcome.Done(_, believed, _) => believed ==> Some(Integrity.Outside)
         case other => sys.error(s"not done: $other")
       }
       val none = new Desk
       none.run(Reminders.List, none.asked(1)) match {
-        case Outcome.Done(_, believed) => believed ==> None
+        case Outcome.Done(_, believed, _) => believed ==> None
         case other => sys.error(s"not done: $other")
       }
       Reminders.List.described.output ==> Believed.At(Integrity.Member)

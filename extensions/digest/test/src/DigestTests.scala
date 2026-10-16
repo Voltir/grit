@@ -285,7 +285,7 @@ object DigestTests extends TestSuite {
       )
       // Posted, and dated, between the others: neither the first document read nor the last.
       run(new FakeDb, posted((periods.take(2) ++ Vector(heard) ++ periods.drop(2))*)) match {
-        case Outcome.Done(_, believed) => believed ==> Some(Integrity.Outside)
+        case Outcome.Done(_, believed, _) => believed ==> Some(Integrity.Outside)
         case other => sys.error(s"not done: $other")
       }
       run(new FakeDb, new Kept) ==> Outcome.Done("No conversation has closed yet.", None)

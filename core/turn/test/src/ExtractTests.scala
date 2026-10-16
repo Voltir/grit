@@ -101,7 +101,7 @@ object ExtractTests extends TestSuite {
     test("each shape's answer is written as the model reads it") {
       def answering(x: Extracted, args: ujson.Obj) =
         called(Some(gatedAt(Integrity.Member)), new Answers(_ => Right(Some(x))), args)
-          .map { case Outcome.Done(text, _) => text; case other => other.toString }
+          .map { case Outcome.Done(text, _, _) => text; case other => other.toString }
       val base = ujson.Obj("name" -> "h1", "question" -> "Which?")
       def args(fields: (String, ujson.Value)*): ujson.Obj =
         ujson.Obj.from(base.value ++ fields)

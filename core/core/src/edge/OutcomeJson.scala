@@ -1,21 +1,31 @@
 package grit.core.edge
 
+import grit.core.place.Place
 import grit.core.tool.Outcome
-import grit.core.visibility.Integrity
+import grit.core.visibility.{Accounted, Integrity, Provenance}
 
 /** An [[Outcome]]'s stored and wire form: what an edge writes on a request's row and sends
   * to the turn waiting on it, and what the turn records. `{"kind":"done","text":…}`, with
   * `"integrity"` ([[Integrity.written]]) only when the outcome says one, so one that does not
-  * keeps the form it had before,
-  * `{"kind":"failed","why":…}`, `{"kind":"denied","reason":…|null}` (a declined call; the
+  * keeps the form it had before, and `"items"` only when not unread:
+  * `[{"place":…,"author":…}]` ([[grit.core.place.Place.written]], [[Integrity.written]]) or
+  * `"unaccountable"`; `{"kind":"failed","why":…}`, `{"kind":"denied","reason":…|null}` (a declined call; the
   * key predates the case's name), `{"kind":"unanswered"}`, `{"kind":"interrupted"}`.
   */
 object OutcomeJson {
 
   def write(outcome: Outcome): ujson.Value = outcome match {
-    case Outcome.Done(text, integrity) =>
+    case Outcome.Done(text, integrity, items) =>
       val done = ujson.Obj("kind" -> "done", "text" -> text)
       integrity.foreach(i => done("integrity") = Integrity.written(i))
+      items match {
+        case Accounted.Unread => ()
+        case Accounted.Unaccountable => done("items") = "unaccountable"
+        case Accounted.Items(provenances) =>
+          done("items") = ujson.Arr.from(provenances.map { p =>
+            ujson.Obj("place" -> p.place.written, "author" -> Integrity.written(p.vouched))
+          })
+      }
       done
     case Outcome.Failed(why) => ujson.Obj("kind" -> "failed", "why" -> why)
     case Outcome.Declined(reason) =>
@@ -43,7 +53,10 @@ object OutcomeJson {
                   .flatMap(Integrity.read)
                   .map(Some(_))
               )
-          } yield Outcome.Done(text, integrity)
+            items <- o
+              .get("items")
+              .fold[Either[String, Accounted]](Right(Accounted.Unread))(itemsOf)
+          } yield Outcome.Done(text, integrity, items)
         case "failed" => str(o, "why").map(Outcome.Failed(_))
         case "denied" => Right(Outcome.Declined(o.get("reason").flatMap(_.strOpt)))
         case "unanswered" => Right(Outcome.Unanswered)
@@ -51,5 +64,30 @@ object OutcomeJson {
         case other => Left(s"no outcome $other")
       }
     } yield outcome
+  }
+
+  /** The items stored as `v`: `"unaccountable"`, or an array of `{"place","author"}`. */
+  private def itemsOf(v: ujson.Value): Either[String, Accounted] = v match {
+    case ujson.Str("unaccountable") => Right(Accounted.Unaccountable)
+    case ujson.Arr(stored) =>
+      stored.toVector
+        .foldLeft[Either[String, Vector[Provenance]]](Right(Vector.empty)) { (acc, item) =>
+          for {
+            read <- acc
+            o <- item.objOpt.toRight("an outcome's item is not an object")
+            place <- o
+              .get("place")
+              .flatMap(_.strOpt)
+              .toRight("an outcome's item has no place")
+              .flatMap(Place.read)
+            author <- o
+              .get("author")
+              .flatMap(_.strOpt)
+              .toRight("an outcome's item has no author")
+              .flatMap(Integrity.read)
+          } yield read :+ Provenance(place, author)
+        }
+        .map(Accounted.of)
+    case _ => Left("an outcome's items are neither unaccountable nor an array")
   }
 }
