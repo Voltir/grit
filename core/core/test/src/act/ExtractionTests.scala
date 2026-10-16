@@ -1,6 +1,6 @@
 package grit.core.act
 
-import grit.core.flow.{Extracted, Shape}
+import grit.core.flow.Shape
 
 import utest.*
 
@@ -47,25 +47,6 @@ object ExtractionTests extends TestSuite {
       sent(Shape.OneOf(Vector.empty)) ==> Left("one_of lists 1 to 64 options, not 0")
     }
 
-    test(
-      "an answer the shape reads is read; null is none; another is refused, saying what it takes"
-    ) {
-      def read(shape: Shape, answer: String): Either[String, Option[Extracted]] =
-        Extraction.reply(shape).flatMap { t =>
-          t.schema
-            .check(ujson.read(s"""{"answer":$answer}"""), Set.empty)
-            .left
-            .map(_.toString)
-            .flatMap(t.read)
-        }
-      read(Shape.Day, "\"2026-10-14\"") ==> Right(
-        Some(Extracted.Day(java.time.LocalDate.of(2026, 10, 14)))
-      )
-      read(Shape.Day, "null") ==> Right(None)
-      read(Shape.Day, "\"Tuesday\"") ==> Left("`answer` takes an ISO date, not \"Tuesday\".")
-      read(Shape.Token(4), "\"a b\"") ==>
-        Left("`answer` takes at most 4 characters of A-Z, a-z, 0-9, _ and -, not \"a b\".")
-    }
     test("a number shape whose least is above its most writes no schema, saying why") {
       sent(Shape.Number(5, 1)) ==>
         Left("SchemaError(properties.answer,`minimum` 5 is above `maximum` 1)")

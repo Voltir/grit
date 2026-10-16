@@ -224,14 +224,14 @@ object ExtractTests extends TestSuite {
       )
       read(Shape.Day, ujson.Str("2026-03-09")) ==>
         Right(Some(Extracted.Day(LocalDate.of(2026, 3, 9))))
-      read(Shape.Day, ujson.Str("soon")) ==> Left("the answer is not an ISO date: \"soon\"")
+      read(Shape.Day, ujson.Str("soon")) ==> Left("`answer` takes an ISO date, not \"soon\".")
       read(Shape.OneOf(Vector("open", "closed")), ujson.Str("closed")) ==>
         Right(Some(Extracted.Chosen("closed")))
       read(Shape.OneOf(Vector("open", "closed")), ujson.Str("merged")) ==>
         Left("Mismatch(answer,expected one of \"open\", \"closed\", null, got \"merged\")")
       read(Shape.Token(4), ujson.Str("ab-1")) ==> Right(Some(Extracted.Token("ab-1")))
       read(Shape.Token(4), ujson.Str("ab cd")) ==>
-        Left("the answer is not at most 4 characters of A-Z, a-z, 0-9, _ and -: \"ab cd\"")
+        Left("`answer` takes at most 4 characters of A-Z, a-z, 0-9, _ and -, not \"ab cd\".")
     }
 
     test(
