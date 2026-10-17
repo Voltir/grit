@@ -104,5 +104,11 @@ object PointerLinesTests extends TestSuite {
       PointerLines.variant(request, Vector(document(3, "Kept with no pointer", None))) ==>
         request
     }
+
+    test("the lead line names documents, never the program") {
+      PointerLines.Lead ==>
+        "[doc] documents found for this turn but judged not relevant, " +
+        "so not shown; any of them can still be read:"
+    }
   }
 }

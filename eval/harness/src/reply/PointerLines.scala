@@ -22,7 +22,7 @@ object PointerLines {
 
   /** What opens the message of pointer lines ([[variant]]). */
   val Lead: String =
-    s"${SectionTag.Document.tag} documents grit found for this turn but judged not relevant, " +
+    s"${SectionTag.Document.tag} documents found for this turn but judged not relevant, " +
       "so not shown; any of them can still be read:"
 
   /** The documents `retrieval`'s verdicts rejected, in its results' order. */
