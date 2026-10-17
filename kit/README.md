@@ -46,5 +46,7 @@ In dependency order:
   `Rehearsal` runs a body once and tells each step as it goes; nothing replays, and it is never
   handed to a workflow that must survive a crash. `RehearsalRunner` runs the workflows one
   message starts, in the session that recorded it, and answers their placements from its own.
+  `Taps` are a dry rehearsal's models and classifier: every call is kept on its `Tape`,
+  answered by `Answers`, and the turn's own call stops the rehearsal (`Stop`).
 
 No source file sits at the module's root, and the test tree mirrors it.

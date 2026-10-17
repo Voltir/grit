@@ -3,10 +3,9 @@ package grit.models
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Db, ModelSettingStore}
-import grit.core.visibility.Subject
 
 /** [[Models]] over OpenRouter: the catalog in force is `seed` with every setting kept in `settings`
-  * laid over it, read through `db` each time it is asked for. Each pin's calls are made with
+  * laid over it, read through `db` each time it is asked for ([[KeptCatalog.read]]). Each pin's calls are made with
   * `key` as [[OpenRouterConfig.of]] says; the providers for `seed`'s own pins are made once,
   * here, and any other pin gets a new provider on each call.
   */
@@ -20,11 +19,7 @@ final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: Mode
   )
   private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query.first))
 
-  def catalog(): Either[String, Catalog] =
-    db.read(Subject.Public)(settings.all())
-      .map(kept => seed.overlaid(kept.map(_.settings)))
-      .left
-      .map(e => s"the kept model settings cannot be read: $e")
+  def catalog(): Either[String, Catalog] = KeptCatalog.read(seed, db, settings)
 
   def provider(pinned: Pinned): Provider^ =
     if (pinned == pins.turn.first) turn
