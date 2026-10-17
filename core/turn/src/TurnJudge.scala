@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.classify.{Ask, Classifier, StateJson}
 import grit.core.context.{Shown, Window}
+import grit.core.document.{DocLabel, Document}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
@@ -44,8 +45,8 @@ object TurnJudge {
     /** The draft passed ([[said]]): nothing was asked. */
     case Passed
 
-    /** The turn recalled no record and no other conversation: nothing to ground a draft in,
-      * so nothing was asked.
+    /** The turn recalled no record, no other conversation and no document: nothing to ground
+      * a draft in, so nothing was asked.
       */
     case NothingRecalled
 
@@ -105,18 +106,19 @@ object TurnJudge {
       }
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
-    * `window` the turn's window over them, `near` the other conversations' entries its
-    * sections name, `strand` what its strand said, and `speakers` who wrote each: the thread
-    * is the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's
-    * message and each reply so far, the heard message and every reply after it included,
-    * within [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name ("Assistant" for grit's); recalled is each record the window showed and
-    * each other conversation's section but its strand's, as the model was shown them
-    * ([[Shown]]): a strand is context, not recall.
+    * `showing` what the turn's request over `window` was shown ([[TurnShown.shown]]), `strand`
+    * what its strand said, and `speakers` who wrote `all` and the strand: the thread is the
+    * strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's message
+    * and each reply so far, the heard message and every reply after it included, within
+    * [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name
+    * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
+    * conversation's section but its strand's, then of each document but its pointer's line,
+    * then of each record among the window's entries: a strand is context, not recall.
     */
-  def state(
+  private[turn] def state(
       all: Vector[Entry],
+      showing: TurnShown.Showing,
       window: Window,
-      near: Vector[Entry],
       strand: Strand.Read,
       strandChars: Int,
       speakers: Speakers,
@@ -131,22 +133,25 @@ object TurnJudge {
         case p => p.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _))
       }
     }
-    val bySeq = all.map(e => e.seq -> e).toMap
-    val records = window.entries
-      .flatMap(bySeq.get)
+    val sections = window.nearby
+      .filter {
+        case Nearby.Along(_, _, _) => false
+        case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) | Nearby.Asked(_, _, _) => true
+      }
+      .flatMap(Shown.section(_, showing.near, showing.named))
+    val records = showing.window
       .filter(e =>
         e.payload match {
           case Payload.Closed(_, _, _) => true
           case _ => false
         }
       )
-    val recalled = records.flatMap(Shown.of(_, speakers)) ++
-      window.nearby
-        .filter {
-          case Nearby.Along(_, _, _) => false
-          case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) | Nearby.Asked(_, _, _) => true
-        }
-        .flatMap(Shown.section(_, near, speakers))
+      .flatMap(Shown.of(_, showing.named))
+    // The judge reads nothing: a document's line saying how to read it is left out.
+    val documents = showing.documents.map((d: Document, label: DocLabel) =>
+      Shown.document(d.copy(pointer = None), label)
+    )
+    val recalled = sections ++ documents ++ records
     State(
       Stitching.thread(
         Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),

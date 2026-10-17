@@ -819,22 +819,23 @@ private[turn] object TurnSteps {
       .read(Subject.Turn(turn)) { (tx: Tx^) ?=>
         for {
           all <- records.entries.list(turn.conversationId)
-          window = all.collectFirst {
-            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, _), _, _)
-                if id == Turn.windowId(turn) =>
-              Window(entries, Vector.empty, nearby)
-          }
-          near <- window.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(w =>
-            Nearby.read(w.nearby, records.entries)
-          )
+          window = all
+            .collectFirst {
+              case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, documents), _, _)
+                  if id == Turn.windowId(turn) =>
+                Window(entries = entries, nearby = nearby, documents = documents)
+            }
+            .getOrElse(Window(Vector.empty))
+          // What the model was shown, read as its own request reads it.
+          showing <- TurnShown.shown(records, turn, window)
           strand <- strandOf(stitching, conversations, turn, all, now)
           named <- records.principals.speakers((all ++ strand.shown).map(_.id))
-          // Routed by the read that built the state: the classifier is asked only when its
-          // service is cleared for it.
-        } yield (Routed.of, Judging(all, window, near, strand, named))
+          // Routed by the read that built the state, documents included: the classifier is
+          // asked only when its service is cleared for it.
+        } yield (Routed.of, Judging(all, window, showing, strand, named))
       } match {
       case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${TurnFailure.describe(e)}")
-      case Right((routed, Judging(all, window, near, strand, named))) =>
+      case Right((routed, Judging(all, window, showing, strand, named))) =>
         (
           all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),
           all.collectFirst {
@@ -850,8 +851,8 @@ private[turn] object TurnSteps {
                   records.estimator,
                   TurnJudge.state(
                     all,
-                    window.getOrElse(Window(Vector.empty)),
-                    near,
+                    showing,
+                    window,
                     strand,
                     stitching.tuning.strandChars,
                     named,
@@ -867,8 +868,8 @@ private[turn] object TurnSteps {
   /** What the `judge` step reads. */
   private final case class Judging(
       all: Vector[Entry],
-      window: Option[Window],
-      near: Vector[Entry],
+      window: Window,
+      showing: TurnShown.Showing,
       strand: Strand.Read,
       named: grit.core.store.Speakers
   )

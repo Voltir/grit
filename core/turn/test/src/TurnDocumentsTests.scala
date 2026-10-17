@@ -269,6 +269,31 @@ object TurnDocumentsTests extends TestSuite {
       )
     }
 
+    test(
+      "a heard turn whose window held only a document is judged against it, not left unrecalled"
+    ) {
+      val w = speechWorld(recalled = false)
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val card = write(documents, digest, "Cards", "freeze", "The freeze ends on Thursday.")
+      val judge = new Judge(Some((0.9, 0.9)))
+      val done = new InMemoryDurable().run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new Scripted((_, _) => Right(said("It ends on Thursday."))),
+          windowing(Window(Vector.empty, documents = Vector(card))),
+          w.ledger,
+          judge,
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
+          documents = documents
+        )
+      )
+      (done.takeWhile(_ != ':'), judge.states.map(_("recalled").str)) ==> (
+        "posted",
+        Vector("[doc] Cards, at slack:T1/C1, 2026-09-30:\nThe freeze ends on Thursday.")
+      )
+    }
+
     test("a document whose reading would withdraw a tool is shown as its stub under its label") {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider

@@ -4,12 +4,23 @@ import java.time.Instant
 
 import grit.core.classify.StateJson
 import grit.core.context.Window
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq}
+import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  PluginName,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
 import grit.core.stitch.{Said, Strand}
 import grit.core.store.{Entry, Nearby, Payload, Speakers}
+import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -50,11 +61,41 @@ object TurnJudgeTests extends TestSuite {
   private val all: Vector[Entry] = Vector(record, asked, answered, root, later)
   private val names = Speakers(Map(EntryId("e1") -> "Ana", EntryId("e3") -> "Ben"))
 
+  /** [[TurnJudge.state]] over a request that showed `all`'s entries at `window`'s seqs,
+    * `near`, `documents` and the turn's own `mine`, each named as `speakers` names them.
+    */
+  private def judging(
+      all: Vector[Entry],
+      window: Window,
+      near: Vector[Entry],
+      strand: Strand.Read,
+      strandChars: Int,
+      speakers: Speakers,
+      draft: String,
+      documents: Vector[(Document, DocLabel)] = Vector.empty,
+      mine: Vector[Entry] = Vector.empty
+  ): TurnJudge.State =
+    TurnJudge.state(
+      all,
+      TurnShown.Showing(
+        all.filter(e => window.entries.contains(e.seq)),
+        mine,
+        near,
+        speakers,
+        documents
+      ),
+      window,
+      strand,
+      strandChars,
+      speakers,
+      draft
+    )
+
   val tests = Tests {
     test(
       "the judge sees every message so far under names, replies after the root included, and only the records it recalled"
     ) {
-      val state = TurnJudge.state(
+      val state = judging(
         all,
         Window(all.map(_.seq)),
         Vector.empty,
@@ -91,7 +132,7 @@ object TurnJudgeTests extends TestSuite {
       )
       val markup = other(2, "m", Payload.Heard("I marked up the contract."))
       val question = entry(1, Payload.Heard("where did we land on the term?"))
-      val state = TurnJudge.state(
+      val state = judging(
         Vector(record, question),
         Window(
           Vector(record.seq, question.seq),
@@ -140,7 +181,7 @@ object TurnJudgeTests extends TestSuite {
       val strand =
         Strand.Read(Some(opening), Vector(opening), Vector.empty, Set(opening.conversation))
       val long = entry(2, Payload.Heard("x" * TurnJudge.ThreadChars))
-      val state = TurnJudge.state(
+      val state = judging(
         Vector(real, long),
         Window(
           Vector(real.seq),
@@ -163,17 +204,15 @@ object TurnJudgeTests extends TestSuite {
     test("the judge's thread shows grit's post the thread begins with as grit's line") {
       val posted = entry(0, Payload.Posted("The engine's open issues."))
       val heard = entry(1, Payload.Heard("why this?"))
-      TurnJudge
-        .state(
-          Vector(posted, heard),
-          Window(Vector(posted.seq)),
-          Vector.empty,
-          Strand.Read.empty,
-          800,
-          Speakers(Map(heard.id -> "Nick")),
-          "draft"
-        )
-        .thread ==> "Assistant: The engine's open issues.\nNick: why this?"
+      judging(
+        Vector(posted, heard),
+        Window(Vector(posted.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        Speakers(Map(heard.id -> "Nick")),
+        "draft"
+      ).thread ==> "Assistant: The engine's open issues.\nNick: why this?"
     }
 
     test("an asked section is recalled: what grit was asked elsewhere grounds a draft") {
@@ -188,28 +227,63 @@ object TurnJudgeTests extends TestSuite {
         Instant.EPOCH,
         Integrity.Member
       )
-      TurnJudge
-        .state(
-          Vector(root),
-          Window(
-            Vector.empty,
-            Vector.empty,
-            Vector(Nearby.Asked(ConversationId("asker"), place, Vector(ask.seq)))
-          ),
-          Vector(ask),
-          Strand.Read.empty,
-          800,
-          Speakers(Map(ask.id -> "Nick")),
-          "draft"
-        )
-        .recalled
+      judging(
+        Vector(root),
+        Window(
+          Vector.empty,
+          Vector.empty,
+          Vector(Nearby.Asked(ConversationId("asker"), place, Vector(ask.seq)))
+        ),
+        Vector(ask),
+        Strand.Read.empty,
+        800,
+        Speakers(Map(ask.id -> "Nick")),
+        "draft"
+      ).recalled
         .contains("Nick: post the open issues") ==> true
     }
 
+    test(
+      "a document the window held is recalled under its label, place and date, its read line left out"
+    ) {
+      def got[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val card = Document(
+        got(DocumentVersion.of(7).toRight("version")),
+        got(PluginName.of("cards")),
+        got(DocKey.of("docs/release.md")),
+        grit.core.visibility.Label.Public,
+        Integrity.Member,
+        got(Place.read("slack:T1/C1")),
+        got(DocText.of("Releases are cut on Tuesdays.")),
+        ujson.Obj(),
+        Some(got(Pointer.of(ToolName("read"), "path" -> ujson.Str("docs/release.md")))),
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z")),
+        None
+      )
+      judging(
+        Vector(root),
+        Window(Vector.empty, documents = Vector(card.version)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "draft",
+        documents = Vector(card -> got(DocLabel.of("Cards")))
+      ).recalled ==> "[doc] Cards, at slack:T1/C1, 2026-09-30:\nReleases are cut on Tuesdays."
+    }
+
     test("a window with no record recalls nothing") {
-      TurnJudge
-        .state(all, Window(Vector(asked.seq)), Vector.empty, Strand.Read.empty, 800, names, "d")
-        .recalled ==> ""
+      judging(
+        all,
+        Window(Vector(asked.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "d"
+      ).recalled ==> ""
     }
 
     test("the judge is shown the thread's end and the recalled's start, each cut to its limit") {
