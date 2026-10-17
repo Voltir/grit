@@ -10,16 +10,20 @@ import utest.*
 
 object StaleLineTests extends TestSuite {
 
-  /** A temp root with two Mill modules: `m`, whose package `p` holds objects A to D each with a member `f`, and `n`,
-    * whose package `q` holds E with an `f`; compiled once, the checkout untouched.
+  /** A temp root with three Mill modules: `m`, whose package `p` holds objects A to D each with a member `f`, `n`,
+    * whose package `q` holds E with an `f`, and `k`, whose package `r` holds a trait T and its implementation U, each in
+    * its own file; compiled once, the checkout untouched.
     */
   private lazy val dir: os.Path = {
     val d = os.temp.dir(prefix = "outline-stale-line-")
     os.write(d / "build.mill", "")
-    def module(name: String, pkg: String, objects: Vector[String]): Unit = {
-      val sources = objects.map { o =>
-        val src = d / name / "src" / pkg / s"$o.scala"
-        os.write(src, s"package $pkg\nobject $o { def f: Int = 1 }\n", createFolders = true)
+    def module(name: String, pkg: String, objects: Vector[String]): Unit =
+      compiled(name, pkg, objects.map(o => o -> s"object $o { def f: Int = 1 }"))
+    // Each source is its package line and one line of `text`.
+    def compiled(name: String, pkg: String, texts: Vector[(String, String)]): Unit = {
+      val sources = texts.map { case (file, text) =>
+        val src = d / name / "src" / pkg / s"$file.scala"
+        os.write(src, s"package $pkg\n$text\n", createFolders = true)
         src
       }
       val classes = d / "out" / name / "compile.dest" / "classes"
@@ -32,6 +36,11 @@ object StaleLineTests extends TestSuite {
     }
     module("m", "p", Vector("A", "B", "C", "D"))
     module("n", "q", Vector("E"))
+    compiled(
+      "k",
+      "r",
+      Vector("T" -> "trait T { def g: Int }", "U" -> "object U extends T { def g: Int = 2 }")
+    )
     d
   }
 
@@ -118,6 +127,25 @@ object StaleLineTests extends TestSuite {
         )
         assert(lines.contains("== m/src/p/A.scala  p  [stale: source newer than .tasty]"))
       } finally os.mtime.set(laterTasty, compiledAt)
+    }
+
+    test("a family reading an implementation from a stale file tags that file's == line") {
+      touch(stale = true)
+      val (answer, _) = Query.family(
+        Root(dir),
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        "r.T",
+        member = None,
+        withBody = false,
+        cap = 80000
+      )
+      assert(
+        answer.text.linesIterator.contains(
+          "== k/src/r/U.scala  r  [stale: source newer than .tasty]"
+        )
+      )
     }
   }
 }

@@ -395,7 +395,7 @@ object Query {
                     overloaded,
                     cap,
                     holding.view.mapValues(_.name).toMap,
-                    staleFiles(root, layout, kept.map(_.file)),
+                    staleFiles(root, state, kept.map(_.file)),
                     ownerSizes(kept, holding, state),
                     allSites
                   ),
@@ -636,17 +636,19 @@ object Query {
         }
     }
 
-  /** The files among `files` that `Locate.staleness` judges `Stale` against their packages' `.tasty` files: what every
-    * query's file tags and its stale line say.
+  /** The files among `files` that `Locate.staleness` judges `Stale` against the `.tasty` files of `loaded.consulted` they
+    * were read from: what every query's file tags and its stale line say. A file no consulted `.tasty` was read from is
+    * not stale.
     */
-  private[query] def staleFiles(root: Root, layout: Layout, files: Vector[String]): Set[String] = {
+  private[query] def staleFiles(root: Root, loaded: Loaded, files: Vector[String]): Set[String] = {
     val distinct = files.distinct
+    val wanted = distinct.toSet
+    val readFrom: Map[String, Vector[os.Path]] = loaded.consulted.toVector
+      .flatMap(p => loaded.sourceOf(p).filter(wanted.contains).map(_ -> p))
+      .groupMap(_._1)(_._2)
     val judged = Locate.staleness(
       root,
-      distinct.map { file =>
-        val rel = os.RelPath(file)
-        rel -> Locate.inPackageOf(root, layout, rel)
-      }
+      distinct.map(file => os.RelPath(file) -> readFrom.getOrElse(file, Vector.empty))
     )
     distinct
       .zip(judged)
@@ -710,7 +712,7 @@ object Query {
                     (Answer(message, Status.Failed), Roots.put(roots, root, loaded))
                   case Right((defns, next, _)) =>
                     val src = os.read(root.dir / rel)
-                    val stale = staleFiles(root, layout, Vector(file)).nonEmpty
+                    val stale = staleFiles(root, next, Vector(file)).nonEmpty
                     (
                       Answer(
                         s"$head\n${Render.file(file, defns.filter(_.file == file), src, stale, cap)}",
@@ -800,7 +802,7 @@ object Query {
                   )
                 val head =
                   (Vector(header(root)) ++ resolved.notes ++ notes ++ bodyNotes).mkString("\n")
-                val stale = staleFiles(root, layout, Vector(d.file)).nonEmpty
+                val stale = staleFiles(root, afterFixtures, Vector(d.file)).nonEmpty
                 (
                   Answer(
                     Render.tests(
@@ -1063,7 +1065,7 @@ object Query {
           familyOf(defns, traitName, member, withBody) match {
             case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
             case Right(f) =>
-              val stale = staleFiles(root, layout, files.map(_.toString))
+              val stale = staleFiles(root, next, files.map(_.toString))
               (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
           }
       }
@@ -1116,7 +1118,7 @@ object Query {
         dir <- dirs.find(p.startsWith)
       } yield (layout.moduleOf(root, dir), d.file)
     }.distinct
-    val staleSources = staleFiles(root, layout, compiled.map(_._2))
+    val staleSources = staleFiles(root, loaded, compiled.map(_._2))
     val stale = compiled.filter { case (_, file) => staleSources.contains(file) }
     val byModule = stale.groupMap(_._1)(_._2).toVector.sortBy(_._1)
     if (byModule.isEmpty) None
@@ -1521,7 +1523,7 @@ object Query {
             }
           )
           val loadedDefns = companions.toVector
-          val stale = staleFiles(root, layout, loadedDefns.map(_.file))
+          val stale = staleFiles(root, state, loadedDefns.map(_.file))
           val rendered = Render.show(
             named = tops,
             traced = traced,

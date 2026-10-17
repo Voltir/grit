@@ -210,16 +210,30 @@ object TestsTests extends TestSuite {
         )
         java.nio.file.Files
           .setLastModifiedTime(tasty.toNIO, java.nio.file.attribute.FileTime.fromMillis(now))
-        val layout: Layout = new Layout {
-          def classesDirs(root: Root) = Vector(root.dir / "out" / "classes")
-          def libraryJars(root: Root) = Vector.empty
-          def notCompiled(root: Root) = "not compiled"
-          def moduleOf(root: Root, classesDir: os.Path): String = "m"
-          def compile(modules: Vector[String]): String = "compile"
-          def isTest(classesDir: os.Path) = false
-          def isTestSource(file: os.RelPath) = false
-        }
-        val stale = Query.staleFiles(Root(tmp), layout, Vector(rel))
+        val store = grit.outline.model.Defn(
+          kind = grit.outline.model.Kind.Object,
+          name = "Store",
+          fullName = "grit.outline.fixture.store.Store",
+          file = rel,
+          lines = grit.outline.model.Lines(3, 3),
+          doc = None,
+          signature = "object Store",
+          head = "object Store",
+          body = None,
+          size = None,
+          closing = None,
+          members = Vector.empty,
+          refs = Vector.empty,
+          parents = Vector.empty,
+          isPrivate = false,
+          isAbstract = false
+        )
+        // As a query that read Store from this .tasty leaves its cache.
+        val loaded = Loaded(
+          byTasty = Map(tasty -> Cached(now, Vector(store))),
+          consulted = Set(tasty)
+        )
+        val stale = Query.staleFiles(Root(tmp), loaded, Vector(rel))
         assert(stale == Set(rel))
         assert(
           grit.outline.render.Render.fileLine(rel, "grit.outline.fixture.store", stale = true) ==

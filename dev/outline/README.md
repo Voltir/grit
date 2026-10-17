@@ -157,8 +157,8 @@ says on stderr why it ends, then or when stdin closes.
   The answer then says so on its second line, naming each module whose stale files it read, at most three
   file names a module and `+N` for the rest, and the command that compiles them:
   `-- stale since the last compile: grit.core (Label.scala, Tx.scala), grit.dbos (A.scala, B.scala, C.scala +2): ./mill grit.core.compile + grit.dbos.compile`.
-  Only the files the query read are checked: a look at each of their sources, and a read of its
-  package's `.tasty` headers only for a source newer than one of them. The tags and the line judge alike.
+  Only the files the query read are checked: a look at each of their sources and the `.tasty` files it was read
+  from, and a read of those `.tasty` headers only for a source newer than one of them. The tags and the line judge alike.
   A definition that ran past where its source now ends is shown by the compiler's signature, on a
   `-- not file text` line, with its lines as compiled and no doc or body.
 - A `.tasty` the inspector cannot read, such as one left by a test source whose last compile failed, or one a

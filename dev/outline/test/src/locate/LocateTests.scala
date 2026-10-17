@@ -148,5 +148,25 @@ object LocateTests extends TestSuite {
         )
       )
     }
+
+    test("a .tasty deleted since it was read is left out of the judging, not an error") {
+      val t0 = 1700000000000L
+      val root = tree("core/x/src/A.scala", "out/a/compile.dest/classes/grit/core/x/A.tasty")
+      val file = os.RelPath("core/x/src/A.scala")
+      val kept = at(root, "out/a/compile.dest/classes/grit/core/x/A.tasty")
+      val deleted = at(root, "out/a/compile.dest/classes/grit/core/x/A$.tasty")
+      os.mtime.set(at(root, "core/x/src/A.scala"), t0 + 5000)
+      os.mtime.set(kept, t0)
+      assert(
+        Locate.staleness(root, Vector(file -> Vector(kept, deleted))).headOption == Some(
+          Staleness.Stale(Instant.ofEpochMilli(t0 + 5000), Instant.ofEpochMilli(t0))
+        )
+      )
+      assert(
+        Locate.staleness(root, Vector(file -> Vector(deleted))).headOption == Some(
+          Staleness.NoTasty
+        )
+      )
+    }
   }
 }

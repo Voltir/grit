@@ -21,6 +21,15 @@ final case class Loaded(
 
   /** The cached entries: one per `.tasty` file whose definitions are cached and one per file whose references are indexed. */
   def entries: Int = byTasty.size + refs.size
+
+  /** The repo-relative source `tasty` was compiled from, as its cached definitions or references name it; none when
+    * neither is cached or both are empty.
+    */
+  def sourceOf(tasty: os.Path): Option[String] =
+    byTasty
+      .get(tasty)
+      .flatMap(_.defns.headOption.map(_.file))
+      .orElse(refs.get(tasty).flatMap(_.uses.headOption.map(_.file)))
 }
 
 object Loaded {

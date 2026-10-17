@@ -139,12 +139,12 @@ object Locate {
     ).sortBy(_.toString)
       .toVector
 
-  /** Each of `files`, a source with the `.tasty` files of its package, judged against the `.tasty` compiled from it, in
-    * order. A source no newer than every one of them is `Fresh`, read no further. Otherwise it is `Fresh` when no newer
+  /** Each of `files`, a source with the `.tasty` files to judge it by (those it was read from, or its package's), judged
+    * against the `.tasty` compiled from it, in order. A source no newer than every one of them is `Fresh`, read no further. Otherwise it is `Fresh` when no newer
     * than the newest `.tasty` compiled from it, or when its lines are as many and as long as that `.tasty` records, so a
     * checkout that rewrites a file with the same content leaves it `Fresh`; else `Stale`. An edit that keeps every line's
-    * length reads `Fresh`. A source no `.tasty` records as its own is judged by the package's newest. `NoTasty` when its
-    * `.tasty` files are none, `NoSource` when the source is missing.
+    * length reads `Fresh`. A source no `.tasty` records as its own is judged by the newest given. `NoTasty` when its
+    * `.tasty` files are none, or none is there now, `NoSource` when the source is missing.
     */
   def staleness(root: Root, files: Vector[(os.RelPath, Vector[os.Path])]): Vector[Staleness] = {
     // Each `.tasty` read once in a call: a package's files share one set.
@@ -152,7 +152,7 @@ object Locate {
     def recorded(p: os.Path): Option[TastySource] = read.getOrElseUpdate(p, TastySource.of(p))
     files.map { case (file, tasty) =>
       val path = root.dir / file
-      val byAge = tasty.map(p => p -> os.mtime(p)).sortBy(-_._2)
+      val byAge = tasty.flatMap(p => Try(os.mtime(p)).toOption.map(p -> _)).sortBy(-_._2)
       byAge.headOption match {
         case None => Staleness.NoTasty
         case Some(_) if !os.isFile(path) => Staleness.NoSource
