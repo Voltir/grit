@@ -7,10 +7,10 @@ import grit.outline.locate.{MemoLayout, MillLayout, Root}
 import grit.outline.query.{Config, Entry, Help, Query, Roots}
 import grit.outline.render.TestsShown
 
-/** The server between calls: each root's cache, the root a call without one uses, and whether a call so far
-  * named a root other than that one.
+/** The server between calls: each root's cache, the root a call without one uses, and the other roots calls so far
+  * named, in the order first named, each once.
   */
-final case class State(roots: Roots, defaultRoot: Root, namedOther: Boolean = false)
+final case class State(roots: Roots, defaultRoot: Root, others: Vector[Root] = Vector.empty)
 
 object Server {
 
@@ -339,20 +339,18 @@ object Server {
             val named = rootArg(args).toOption.flatten
             val (body, next, tool) = run(name, args, state, cap)
             val noted =
-              if (named.isEmpty && state.namedOther) body.map(forDefault(_, state.defaultRoot))
+              if (named.isEmpty && state.others.nonEmpty)
+                body.map(forDefault(_, state.defaultRoot, state.others))
               else body
-            (
-              noted,
-              next.copy(namedOther = state.namedOther || named.exists(_ != state.defaultRoot)),
-              tool
-            )
+            val others = named.filter(r => r != state.defaultRoot && !state.others.contains(r))
+            (noted, next.copy(others = state.others ++ others), tool)
         }
     }
 
-  /** `result` with a line after its `## root` line saying it answers for `root`, the default checkout; any
-    * other result, an error's or one with no such line, as it is.
+  /** `result` opening with a line, before its `## root` line, saying it answers for `root`, the default checkout, not
+    * `others`, and which root to pass; any other result, an error's or one with no such line, as it is.
     */
-  private def forDefault(result: ujson.Value, root: Root): ujson.Value = {
+  private def forDefault(result: ujson.Value, root: Root, others: Vector[Root]): ujson.Value = {
     val text = field(result, "content")
       .flatMap(_.arrOpt)
       .flatMap(_.headOption)
@@ -361,10 +359,15 @@ object Server {
     val failed = field(result, "isError").flatMap(_.boolOpt).getOrElse(true)
     text match {
       case Some(t) if !failed && t.startsWith("## root") =>
-        val (first, rest) = t.span(_ != '\n')
-        val note =
-          s"-- answered for the default checkout, ${root.dir}; pass root to ask about another"
-        toolResult(s"$first\n$note$rest", isError = false)
+        val lead = s"-- no root given, so this answers for the default checkout, ${root.dir}, not"
+        val note = others match {
+          case Vector(other) =>
+            s"$lead ${other.dir}, which an earlier call named; if your work is there, pass root \"${other.dir}\""
+          case firsts :+ last =>
+            s"$lead ${firsts.map(_.dir).mkString(", ")} or ${last.dir}, which earlier calls named; pass as root the one your work is in"
+          case _ => s"$lead another checkout; pass as root the one your work is in"
+        }
+        toolResult(s"$note\n$t", isError = false)
       case _ => result
     }
   }

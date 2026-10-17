@@ -129,11 +129,13 @@ says on stderr why it ends, then or when stdin closes.
 ## Roots and freshness
 
 - Every answer starts with a `## root` line naming its root, its branch and its HEAD's first
-  8 characters. Read it first: it says which checkout the answer describes.
+  8 characters, but for the MCP note below. Read it first: it says which checkout the answer describes.
 - `--root DIR` picks the root; without it, the repository above the working directory. An MCP
   server's calls use its start-up root unless a call names one. Once a call has named another root,
-  an answer for the start-up root says so on its second line:
-  `-- answered for the default checkout, <dir>; pass root to ask about another`.
+  an answer to a call naming none opens, before its `## root` line, with a line naming the roots named
+  so far, since one server answers every agent of a session and the caller may be working in one of them:
+  `-- no root given, so this answers for the default checkout, <dir>, not <other>, which an earlier call named; if your work is there, pass root "<other>"`,
+  or with several, `not <a> or <b>, which earlier calls named; pass as root the one your work is in`.
 - A query reads only that root's build output, and refuses any TASTy whose sources lie outside
   the root.
 - A source that changed since its `.tasty` was compiled is flagged as stale: the definition reflects

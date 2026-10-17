@@ -236,7 +236,7 @@ object ServerTests extends TestSuite {
     }
 
     test(
-      "a call without root, after one that named another, says it answers for the default checkout"
+      "a call without root, after one that named another, opens saying it answers for the default checkout and naming the other as the root to pass"
     ) {
       val r1 = checkout("default", one)
       val r2 = checkout("other", two)
@@ -246,13 +246,39 @@ object ServerTests extends TestSuite {
       )
       val (r, _) = reply(call(7, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"))), s1)
       val lines = textOf(r).getOrElse("").linesIterator.toVector
-      assert(lines.headOption.exists(_.startsWith(s"## root ${r1.dir} ")))
       assert(
-        lines.lift(1) == Some(
-          s"-- answered for the default checkout, ${r1.dir}; pass root to ask about another"
+        lines.headOption == Some(
+          s"-- no root given, so this answers for the default checkout, ${r1.dir}, not ${r2.dir}, which an earlier call named; if your work is there, pass root \"${r2.dir}\""
         )
       )
+      assert(lines.lift(1).exists(_.startsWith(s"## root ${r1.dir} ")))
       assert(lines.exists(_.contains("def f(a: Int): Int")))
+    }
+
+    test(
+      "after calls naming two other checkouts, a call without root names both and says to pass the one the work is in"
+    ) {
+      val r1 = checkout("default", one)
+      val r2 = checkout("other", two)
+      val r3 = checkout("third", two)
+      val (_, s1) = reply(
+        call(6, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"), "root" -> r2.dir.toString)),
+        State(Roots.empty(6000), r1)
+      )
+      val (_, s2) = reply(
+        call(7, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"), "root" -> r3.dir.toString)),
+        s1
+      )
+      val (_, s3) = reply(
+        call(8, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"), "root" -> r2.dir.toString)),
+        s2
+      )
+      val (r, _) = reply(call(9, "show", ujson.Obj("symbols" -> ujson.Arr("S.f"))), s3)
+      assert(
+        textOf(r).getOrElse("").linesIterator.nextOption() == Some(
+          s"-- no root given, so this answers for the default checkout, ${r1.dir}, not ${r2.dir} or ${r3.dir}, which earlier calls named; pass as root the one your work is in"
+        )
+      )
     }
 
     test("a session whose calls named no root but the default gets no default-checkout line") {
