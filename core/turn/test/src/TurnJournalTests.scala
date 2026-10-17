@@ -1,11 +1,12 @@
 package grit.turn
 
 import grit.core.allot.{Allotment, Headroom}
-import grit.core.context.{AssemblyNote, Window}
+import grit.core.context.{AssemblyNote, Results, Retrieved, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
+import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.store.Nearby
@@ -501,6 +502,33 @@ object TurnJournalTests extends TestSuite {
       gated.map(j.encode) ==> Right(pinned)
       assert(j.decode(pinned.replace("\"kind\":\"own\"", "\"kind\":\"mine\"")).isLeft)
       assert(j.decode(pinned.replace("\"name\":\"h1\"", "\"name\":\"h0\"")).isLeft)
+    }
+
+    test(
+      "a search's results and a batch's verdicts read back as written, in their pinned form, each kind found among them"
+    ) {
+      val (own, near, closed) =
+        (
+          Retrieved.Own(TurnSeq(2)),
+          Retrieved.Near(ConversationId("c2"), TurnSeq(5)),
+          Retrieved.Closed(ConversationId("c3"))
+        )
+      val doc =
+        Retrieved.Doc(DocumentVersion.of(7).getOrElse(sys.error("unreachable: 7 is a version")))
+      val results = Results(Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5), beyond = 3)
+      val verdicts = Vector(
+        own -> TurnRelevance.Verdict.Passed(Probability.clamped(0.75)),
+        doc -> TurnRelevance.Verdict.Rejected(Probability.clamped(0.25)),
+        closed -> TurnRelevance.Verdict.Unjudged(TurnRelevance.Gone)
+      )
+      roundTrip(results) ==> Right(results)
+      roundTrip(verdicts) ==> Right(verdicts)
+      summon[Journaled[Results]].encode(Results(Vector(own -> 6.0, doc -> 0.5), 3)) ==>
+        """{"ranked":[{"own":2,"score":6},{"doc":7,"score":0.5}],"beyond":3}"""
+      summon[Journaled[Vector[(Retrieved, TurnRelevance.Verdict)]]].encode(verdicts) ==>
+        """[{"own":2,"passed":0.75},{"doc":7,"rejected":0.25},{"closed":"c3","unjudged":"gone before it was briefed"}]"""
+      summon[Journaled[Results]].encode(Results(Vector(near -> 1.0))) ==>
+        """{"ranked":[{"near":"c2","turn":5,"score":1}],"beyond":0}"""
     }
 
     test("a record in neither shape is rejected") {

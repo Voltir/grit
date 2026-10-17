@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
-import grit.core.context.{AssemblyNote, Width, Window}
+import grit.core.context.{AssemblyNote, Results, Retrieved, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.either.Traversal.sequence
@@ -837,6 +837,126 @@ private[turn] object TurnJournal {
           case _ => Left("judgement: expected a judgement")
         }
     )
+
+  /** A `search` step's output: `{"ranked": [{found, "score": s}, ...], "beyond": n}`, each found
+    * candidate's fields as [[writeFound]] writes them.
+    */
+  given results: Journaled[Results] =
+    Journaled.json[Results](
+      r =>
+        ujson.Obj(
+          "ranked" -> ujson.Arr.from(
+            r.ranked.map((f, s) => writeFound(f, "score" -> ujson.Num(s)))
+          ),
+          "beyond" -> r.beyond.toDouble
+        ),
+      v =>
+        for {
+          o <- v.objOpt.toRight("results: expected an object")
+          ranked <- o.get("ranked").flatMap(_.arrOpt).toRight("results: no ranked")
+          found <- sequence(ranked.toVector.map { item =>
+            for {
+              f <- readFound(item)
+              s <- item.objOpt
+                .flatMap(_.get("score"))
+                .flatMap(_.numOpt)
+                .toRight("results: no score")
+            } yield (f, s)
+          })
+          beyond <- o
+            .get("beyond")
+            .flatMap(_.numOpt)
+            .filter(n => n.isWhole && n >= 0)
+            .toRight("results: no beyond")
+        } yield Results(found, beyond.toInt)
+    )
+
+  /** An `ask:relevance-n` step's verdicts, in order: `[{found, "passed": p} | {found,
+    * "rejected": p} | {found, "unjudged": why}, ...]`, each found candidate's fields as
+    * [[writeFound]] writes them.
+    */
+  given verdicts: Journaled[Vector[(Retrieved, TurnRelevance.Verdict)]] =
+    Journaled.json[Vector[(Retrieved, TurnRelevance.Verdict)]](
+      vs =>
+        ujson.Arr.from(vs.map { (f, verdict) =>
+          writeFound(
+            f,
+            verdict match {
+              case TurnRelevance.Verdict.Passed(p) => "passed" -> ujson.Num(Probability.value(p))
+              case TurnRelevance.Verdict.Rejected(p) =>
+                "rejected" -> ujson.Num(Probability.value(p))
+              case TurnRelevance.Verdict.Unjudged(why) => "unjudged" -> ujson.Str(why)
+            }
+          )
+        }),
+      v =>
+        v.arrOpt
+          .toRight("verdicts: expected an array")
+          .flatMap(items =>
+            sequence(items.toVector.map { item =>
+              val o = item.objOpt.getOrElse(ujson.Obj().value)
+              def p(key: String) = o
+                .get(key)
+                .flatMap(_.numOpt)
+                .flatMap(Probability.of)
+                .toRight(s"verdicts: $key is not a probability")
+              val verdict =
+                if (o.contains("passed")) p("passed").map(TurnRelevance.Verdict.Passed(_))
+                else if (o.contains("rejected"))
+                  p("rejected").map(TurnRelevance.Verdict.Rejected(_))
+                else
+                  o.get("unjudged")
+                    .flatMap(_.strOpt)
+                    .toRight("verdicts: expected a verdict")
+                    .map(TurnRelevance.Verdict.Unjudged(_))
+              readFound(item).flatMap(f => verdict.map(f -> _))
+            })
+          )
+    )
+
+  /** A found candidate as an object's fields, then `more`: `{"own": seq}`, `{"near":
+    * conversation, "turn": seq}`, `{"closed": conversation}` or `{"doc": version}`.
+    */
+  private def writeFound(found: Retrieved, more: (String, ujson.Value)*): ujson.Obj = {
+    val fields: Vector[(String, ujson.Value)] = found match {
+      case Retrieved.Own(t) => Vector("own" -> ujson.Num(TurnSeq.value(t).toDouble))
+      case Retrieved.Near(c, t) =>
+        Vector(
+          "near" -> ujson.Str(ConversationId.value(c)),
+          "turn" -> ujson.Num(TurnSeq.value(t).toDouble)
+        )
+      case Retrieved.Closed(c) => Vector("closed" -> ujson.Str(ConversationId.value(c)))
+      case Retrieved.Doc(d) => Vector("doc" -> ujson.Num(DocumentVersion.value(d).toDouble))
+    }
+    ujson.Obj.from(fields ++ more)
+  }
+
+  /** The found candidate `v`'s fields name ([[writeFound]]), or why none. */
+  private def readFound(v: ujson.Value): Either[String, Retrieved] = {
+    val o = v.objOpt.getOrElse(ujson.Obj().value)
+    def seq(key: String): Either[String, TurnSeq] =
+      o.get(key)
+        .flatMap(_.numOpt)
+        .filter(_.isWhole)
+        .map(n => TurnSeq(n.toLong))
+        .toRight(s"found: no $key")
+    def conversation(key: String): Option[ConversationId] =
+      o.get(key).flatMap(_.strOpt).map(ConversationId(_))
+    if (o.contains("own")) seq("own").map(Retrieved.Own(_))
+    else if (o.contains("near"))
+      conversation("near")
+        .toRight("found: no near")
+        .flatMap(c => seq("turn").map(Retrieved.Near(c, _)))
+    else if (o.contains("closed"))
+      conversation("closed").toRight("found: no closed").map(Retrieved.Closed(_))
+    else
+      o.get("doc")
+        .flatMap(_.numOpt)
+        .filter(_.isWhole)
+        .flatMap(n => DocumentVersion.of(n.toLong))
+        .toRight("found: expected an own, near, closed or doc candidate")
+        .map(Retrieved.Doc(_))
+  }
 
   /** A named turn's `judge` step, as recorded before named drafts went unjudged: the call
     * when it scored the draft, `None` otherwise; its scores are not read. `None` is written
