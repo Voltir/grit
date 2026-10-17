@@ -167,6 +167,7 @@ object RebuildTests extends TestSuite {
             engine.voices,
             engine.askers
           ),
+          grit.kit.run.Launch.moveRecords(engine),
           new RetrievalAssembler(
             engine.entries,
             engine.conversations,

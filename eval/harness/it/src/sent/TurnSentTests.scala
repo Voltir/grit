@@ -140,6 +140,7 @@ object TurnSentTests extends TestSuite {
             engine.voices,
             engine.askers
           ),
+          grit.kit.run.Launch.moveRecords(engine),
           new LinearAssembler(
             engine.entries,
             engine.periods,

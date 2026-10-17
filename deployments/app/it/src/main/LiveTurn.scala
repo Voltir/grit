@@ -182,6 +182,7 @@ object LiveTurn {
               engine.voices,
               engine.askers
             ),
+            grit.kit.run.Launch.moveRecords(engine),
             new LinearAssembler(
               entries,
               engine.periods,

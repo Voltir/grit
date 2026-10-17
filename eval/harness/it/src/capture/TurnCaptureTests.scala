@@ -250,6 +250,7 @@ object TurnCaptureTests extends TestSuite {
             engine.voices,
             engine.askers
           ),
+          grit.kit.run.Launch.moveRecords(engine),
           new Holding(
             new LinearAssembler(
               engine.entries,

@@ -2,6 +2,7 @@ package grit.turn
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.act.phase.Placing
 import grit.core.allot.Tasking
 import grit.core.classify.ClearedClassifier
@@ -46,11 +47,13 @@ import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
   * which queues an opening's placement and waits for it, so a step body that captures this
   * can otherwise only read it. `weighing` is what its root's answers are read from, or
   * asked of, before its offer ([[TurnWeighing]]); `routing`, what its `route` step reads
-  * besides its clearances ([[TurnRouting]]).
+  * besides its clearances ([[TurnRouting]]). `moveRecords` keeps the costs of the asks it makes
+  * as moves ([[moves]]).
   */
 final case class TurnEnv(
     records: TurnRecords,
     hosting: TurnHosting,
+    moveRecords: MoveRecords,
     assembler: ContextAssembler,
     classifier: ClearedClassifier^,
     models: Models^,
@@ -61,7 +64,14 @@ final case class TurnEnv(
     stitching: TurnStitching^,
     weighing: TurnWeighing^,
     routing: TurnRouting^
-)
+) {
+
+  /** What the turn's moves are made with: its own models, classifier, db and clock, their costs
+    * kept by `moveRecords`.
+    */
+  def moves: MovesEnv^{models, classifier, db, clock} =
+    MovesEnv(moveRecords, models, classifier, db, clock)
+}
 
 /** What a turn's `route` step reads besides its clearances: the task questions it asks its root
   * when the pins it may be routed to are of more than one grade (`tasks`), and the daily budget

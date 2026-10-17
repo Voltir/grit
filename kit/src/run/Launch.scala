@@ -146,7 +146,7 @@ private[grit] object Launch {
       case Assembly.Linear(budget) =>
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     }
-    // What every move is made with: a job's, and the lifecycle's asks.
+    // What every move is made with: a job's, the lifecycle's and the turn's asks.
     val moves: MovesEnv^{engine, models, classifier, clock} =
       Launch.moves(engine, models, classifier, clock)
     // The one wait for an opening's placement, the turn's and triage's.
@@ -193,6 +193,7 @@ private[grit] object Launch {
             engine.voices,
             engine.askers
           ),
+          moves.records,
           assembler,
           classifier,
           models,
@@ -428,7 +429,7 @@ private[grit] object Launch {
     engine
   }
 
-  /** What `engine`'s moves are made with: a job's, and the lifecycle's asks, their costs kept
+  /** What `engine`'s moves are made with: a job's, the lifecycle's and the turn's asks, their costs kept
     * in its ledger and admitted against its spending, `models` answering their asks and
     * `classifier` their judgments, at `clock`.
     */
@@ -438,22 +439,22 @@ private[grit] object Launch {
       classifier: ClearedClassifier^,
       clock: Clock^
   ): MovesEnv^{engine, models, classifier, clock} =
-    MovesEnv(
-      MoveRecords(
-        engine.ledger,
-        engine.spending,
-        engine.requests,
-        engine.edgeDirectory,
-        engine.toolSets,
-        engine.schedules,
-        engine.askers,
-        CharEstimate,
-        engine.savepoints
-      ),
-      models,
-      classifier,
-      engine.db,
-      clock
+    MovesEnv(moveRecords(engine), models, classifier, engine.db, clock)
+
+  /** Where `engine`'s moves keep what they did: its ledger and spending, its edges' requests,
+    * its schedules and savepoints.
+    */
+  def moveRecords(engine: Engine^): MoveRecords =
+    MoveRecords(
+      engine.ledger,
+      engine.spending,
+      engine.requests,
+      engine.edgeDirectory,
+      engine.toolSets,
+      engine.schedules,
+      engine.askers,
+      CharEstimate,
+      engine.savepoints
     )
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it

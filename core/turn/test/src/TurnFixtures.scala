@@ -155,6 +155,50 @@ object TurnFixtures {
   }
 
   /** Askers that resolve every turn to `asker`. */
+  /** A fixture turn's env: [[TurnEnv]] with its moves' records drawn from `records`, `hosting`
+    * and `routing`, so a move's ledger row lands in the turn's ledger and is admitted against
+    * its routing's spend; no schedule or savepoint of theirs is ever read by the turn's moves.
+    */
+  def turnEnv(
+      records: TurnRecords,
+      hosting: TurnHosting,
+      assembler: ContextAssembler,
+      classifier: grit.core.classify.ClearedClassifier^,
+      models: Models^,
+      db: Db^,
+      clock: Clock^,
+      fresh: Fresh^,
+      speech: TurnSpeech,
+      stitching: TurnStitching^,
+      weighing: TurnWeighing^,
+      routing: TurnRouting^
+  ): TurnEnv^{classifier, models, db, clock, fresh, stitching, weighing, routing} =
+    TurnEnv(
+      records,
+      hosting,
+      grit.act.moves.MoveRecords(
+        records.ledger,
+        routing.spending,
+        hosting.requests,
+        hosting.edges,
+        hosting.toolSets,
+        new grit.core.job.InMemorySchedules(),
+        hosting.askers,
+        records.estimator,
+        new InMemoryDocuments().savepoints
+      ),
+      assembler,
+      classifier,
+      models,
+      db,
+      clock,
+      fresh,
+      speech,
+      stitching,
+      weighing,
+      routing
+    )
+
   def askedBy(asker: Option[Principal]): Askers = new Askers {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(asker)
   }
@@ -818,7 +862,7 @@ object TurnFixtures {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           ledger,
@@ -1319,7 +1363,7 @@ object TurnFixtures {
       seen: Pinnings = new Pinnings
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           ledger,
@@ -1373,7 +1417,7 @@ object TurnFixtures {
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           ledger,
@@ -1421,7 +1465,7 @@ object TurnFixtures {
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           new InMemoryUsageLedger,
@@ -1710,7 +1754,7 @@ object TurnFixtures {
       stitching: TurnStitching^ = unstitched()
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           ledger,
@@ -1764,7 +1808,7 @@ object TurnFixtures {
       calls: Int = 5
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
-      TurnEnv(
+      turnEnv(
         TurnRecords(
           entries,
           new InMemoryUsageLedger,
