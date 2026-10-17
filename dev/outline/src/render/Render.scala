@@ -357,16 +357,24 @@ object Render {
   /** The most sites `uses` lists one by one without `allSites`; past it, each file and owner prints its count instead. */
   val SitesListed: Int = 20
 
-  /** The `find` answer under `header`: each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes. */
-  def find(found: Vector[Defn], header: String, cap: Int): String = {
-    val chunks = found.map { d =>
-      Vector(
+  /** The `find` answer under `header`: `notes`, a line each, then each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes between lines. */
+  def find(notes: Vector[String], found: Vector[Defn], header: String, cap: Int): String = {
+    val body = linesUnder(
+      notes ++ found.map(d =>
         s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
-      )
-    }
-    val (kept, truncated) = fit(chunks, cap)
-    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
+      ),
+      header,
+      cap
+    )
     body + s"[${kilobytes(bytesOf(body))} KB]"
+  }
+
+  /** `header`, then the leading `lines` that fit in `cap` bytes, then the cut line saying how many more there are and the
+    * budget that shows them all; each line ends with its newline.
+    */
+  def linesUnder(lines: Vector[String], header: String, cap: Int): String = {
+    val (kept, truncated) = fit(lines.map(Vector(_)), cap)
+    (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
   }
 
   /** A definition of an area, with the role its family gives it: `prefix` is "" for a symbol or a trait, "impl " for an implementation, "contract " for a contract. */

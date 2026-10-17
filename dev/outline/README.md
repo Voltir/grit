@@ -70,7 +70,8 @@ of characters within one segment: `find '*Shelf*'`, `find '*.placed'`, `find 'Mo
 sources hold no match, test sources' matches follow a `-- no definition in main sources matches` note;
 when neither does, a renaming import giving the name (`import a.X as Y`, or a braced selector `X as Y` or `X => Y`,
 read from source text) is named, with `X`'s definition. A pattern whose owner is a method (`Read.read.*`) says `find`
-lists no definition local to one, and names the `show` that prints its body. `--private` lists private members too (a
+lists no definition local to one, and names the `show` that prints its body, for each method whose body holds a word the
+last segment matches (so `*.setLabel*` names only the methods that mention one); those notes are cut at `--max-kb` like matches. `--private` lists private members too (a
 definition lent to the top package, `private[grit]`, counts as public; one lent to a narrower package as private); without it, a pattern only private names match says how many, in a
 `-- N private matches: add --private` note. A `show`
 that matches nothing suggests `find` with the name's last segment.

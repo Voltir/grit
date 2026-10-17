@@ -22,10 +22,10 @@ object FindTests extends TestSuite {
   private lazy val root: Root = Root(repoRoot)
 
   /** `find`'s answer over the fixture, which the build compiles before the tests run, so no file of it reads stale. */
-  private def find(pattern: String, withPrivate: Boolean = false): Answer = {
+  private def find(pattern: String, withPrivate: Boolean = false, cap: Int = 80000): Answer = {
     val answer =
       Query
-        .find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, withPrivate, 80000)
+        .find(root, FixtureLayout, Config.empty, Roots.empty(6000), pattern, withPrivate, cap)
         ._1
     val staleLine = answer.text.linesIterator.find(_.startsWith("-- stale since"))
     assert(staleLine.isEmpty)
@@ -186,6 +186,25 @@ object FindTests extends TestSuite {
         notes == Vector(
           "-- grit.outline.fixture.Outer.Inner.deep is a def: find lists no definition local to a method; show grit.outline.fixture.Outer.Inner --body deep --private prints its body"
         )
+      )
+    }
+    test(
+      "an owner glob of * names only the methods whose body holds the last segment: *.doubled names deep alone"
+    ) {
+      val answer = find("*.doubled")
+      assert(answer.status == Status.NoMatch)
+      val notes = answer.text.linesIterator.filter(_.startsWith("-- ")).toVector
+      assert(
+        notes == Vector(
+          "-- grit.outline.fixture.Outer.Inner.deep is a def: find lists no definition local to a method; show grit.outline.fixture.Outer.Inner --body deep --private prints its body"
+        )
+      )
+    }
+    test("the method notes are cut at the budget like matches, the cut line saying how many more") {
+      val lines = find("*.doubled", cap = 120).text.linesIterator.toVector
+      assert(!lines.exists(_.contains("is a def: find lists")))
+      assert(
+        lines.exists(_.startsWith("-- cut at 0.1 KB: 1 more entry, ~1 KB; rerun with --max-kb 1"))
       )
     }
     test("each line ends with its definition's size: StoreSuite's 455 bytes are [0.4 KB]") {

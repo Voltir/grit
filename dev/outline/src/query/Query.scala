@@ -48,7 +48,7 @@ object Query {
     (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
   }
 
-  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import, unless the pattern's segments before its last match a method, when a note says so in place of them. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; cut at `cap` bytes. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
+  /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import, unless the pattern's segments before its last match a method whose body holds a word matching the last segment, when a note per such method says so in place of them. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; the method and import notes and the matches are cut at `cap` bytes, between lines. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
   def find(
       root: Root,
       layout: Layout,
@@ -117,8 +117,9 @@ object Query {
       def privateNote(n: Int): Vector[String] =
         if (n == 0) Vector.empty
         else Vector(s"-- $n private match${if (n == 1) "" else "es"}: add --private")
-      val (found, loaded, notes, lead) =
-        if (inMain.nonEmpty) (inMain, afterMain, mainNotes, Vector.empty[String])
+      val (found, loaded, notes, lead, listed) =
+        if (inMain.nonEmpty)
+          (inMain, afterMain, mainNotes, Vector.empty[String], Vector.empty[String])
         else {
           val (inTests, afterTests, testNotes, testPrivate) =
             matching(segments.map(segmentGlob), Scope.WithTests, files, afterMain)
@@ -128,22 +129,19 @@ object Query {
               afterTests,
               mainNotes ++ testNotes,
               privateNote(mainPrivate) ++
-                Vector(s"-- no definition in main sources matches $pattern; in test sources:")
+                Vector(s"-- no definition in main sources matches $pattern; in test sources:"),
+              Vector.empty[String]
             )
           else {
-            // A pattern under a method names its locals, which no .tasty lists as definitions.
+            // A pattern under a method names its locals, which no .tasty lists as definitions; a local is a word of its
+            // method's body, so only a method whose body holds one is named, and an owner glob of `*` names no other.
             val (methods, afterMethods, _, _) =
               if (segments.size < 2) (Vector.empty, afterTests, Vector.empty, 0)
-              else {
-                val init = segments.dropRight(1)
-                matching(
-                  init.map(segmentGlob),
-                  Scope.WithTests,
-                  Locate.holding(root, wordPattern(init.last)),
-                  afterTests
-                )
-              }
-            val defs = methods.filter(_.kind == Kind.Def)
+              else
+                matching(segments.dropRight(1).map(segmentGlob), Scope.WithTests, files, afterTests)
+            val defs = methods.filter(d =>
+              d.kind == Kind.Def && d.body.exists(b => word.findFirstIn(b).isDefined)
+            )
             val renamings =
               if (defs.nonEmpty) Vector.empty else renamingImports(root, files, word)
             val (targets, afterTargets, targetNotes) =
@@ -165,7 +163,8 @@ object Query {
               targets.distinct,
               afterTargets,
               mainNotes ++ targetNotes,
-              privateNote(testPrivate) ++ defs.map(_.fullName).distinct.map { m =>
+              privateNote(testPrivate),
+              defs.map(_.fullName).distinct.map { m =>
                 val owner = m.split('.').dropRight(1).mkString(".")
                 val name = m.split('.').lastOption.getOrElse(m)
                 s"-- $m is a def: find lists no definition local to a method; show $owner --body $name --private prints its body"
@@ -177,8 +176,12 @@ object Query {
         }
       val head = (header(root) +: (notes ++ lead)).mkString("\n")
       val answer =
-        if (found.isEmpty) Answer(s"$head\nno definition matches $pattern", Status.NoMatch)
-        else Answer(Render.find(found, head, cap), Status.Found)
+        if (found.isEmpty)
+          Answer(
+            s"${Render.linesUnder(listed, head, cap)}no definition matches $pattern",
+            Status.NoMatch
+          )
+        else Answer(Render.find(listed, found, head, cap), Status.Found)
       (answer, Roots.put(roots, root, loaded))
     }
   }
