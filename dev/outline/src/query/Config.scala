@@ -17,7 +17,11 @@ final case class Config(
     testCall: String = Config.defaultTestCall,
     secondary: Vector[String] = Vector.empty,
     ignored: Vector[String] = Vector.empty
-)
+) {
+
+  /** Whether `path` (repo-relative source path text) lies under one of the `hidden` prefixes. */
+  def hides(path: String): Boolean = hidden.exists(prefix => path.startsWith(prefix))
+}
 
 object Config {
 

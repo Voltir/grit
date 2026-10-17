@@ -70,7 +70,7 @@ object Query {
       )
     else if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
     else {
-      def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
+      def hidden(d: Defn): Boolean = config.hides(d.file)
       def visible(ds: Vector[Defn]): Vector[Defn] =
         ds.filter(d => withPrivate || !d.isPrivate).flatMap(d => d +: visible(d.members))
 
@@ -554,9 +554,7 @@ object Query {
             state = next
             notes ++= loadNotes
             listed ++= defns
-              .filter(d =>
-                !d.isPrivate && !config.hidden.exists(prefix => d.file.startsWith(prefix))
-              )
+              .filter(d => !d.isPrivate && !config.hides(d.file))
               .map(d => Render.Listed(d, ""))
           }
 
@@ -953,7 +951,7 @@ object Query {
     val (mentioning, words) =
       Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
     val files = mentioning
-      .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
+      .filter(file => exact || !config.hides(file.toString))
     val (tasty, unsearched) = packagesOf(root, layout.classesDirs(root), files)
     val (defns, next, missing) =
       loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
@@ -1264,9 +1262,7 @@ object Query {
     val (tasty, unsearched) = packagesOf(root, classes, found.filter(keep))
     (
       tasty,
-      unsearched.filterNot(file =>
-        config.hidden.exists(prefix => file.toString.startsWith(prefix))
-      ),
+      unsearched.filterNot(file => config.hides(file.toString)),
       words
     )
   }
@@ -1646,7 +1642,7 @@ object Query {
             val (defns, next, _) = loadAll(root, layout, tasty, state)
             state = next
             everyDefnOf(defns)
-              .filter(d => d.name == name && !config.hidden.exists(p => d.file.startsWith(p)))
+              .filter(d => d.name == name && !config.hides(d.file))
               .distinct
           }
           val bodyNotes =

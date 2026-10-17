@@ -17,6 +17,15 @@ object ConfigTests extends TestSuite {
     }
 
     test(
+      "hides answers for a path under a hidden prefix, not one outside it, and a prefix ending in / does not hide a path sharing only its leading characters"
+    ) {
+      val config = Config(Vector("dev/"), Vector.empty)
+      assert(config.hides("dev/outline/src/A.scala"))
+      assert(!config.hides("src/A.scala"))
+      assert(!config.hides("devel/A.scala"))
+    }
+
+    test(
       "a line naming a setting this outline does not know is ignored and kept, so a newer .outline.conf still reads"
     ) {
       val dir = os.temp.dir()

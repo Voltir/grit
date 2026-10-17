@@ -126,7 +126,7 @@ object Resolve {
       sym: String,
       in: Loaded
   ): Either[String, Resolved] = {
-    def hidden(d: Defn): Boolean = config.hidden.exists(prefix => d.file.startsWith(prefix))
+    def hidden(d: Defn): Boolean = config.hides(d.file)
     def everyDefn(ds: Vector[Defn]): Vector[Defn] = ds.flatMap(d => d +: everyDefn(d.members))
     def simple(name: String): String = name.split('.').last
     def owner(d: Defn): String = d.fullName.take(math.max(d.fullName.lastIndexOf('.'), 0))
