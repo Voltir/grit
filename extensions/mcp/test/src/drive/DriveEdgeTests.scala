@@ -239,7 +239,7 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "open is refused, saying why, when Drive's answer cannot be read, Drive is busy, or it cannot be reached"
+      "open is refused, telling the operator the cause, when Drive's answer cannot be read, Drive is busy, or it cannot be reached"
     ) {
       withFake { fake =>
         fake.answering("files", 200, "not json")
@@ -249,17 +249,8 @@ object DriveEdgeTests extends TestSuite {
         fake.stop()
         (malformed, busy, opened(fake, Env)._1) ==> (
           Left(EdgeRefusal.Refused("Drive's answer could not be read: an answer that is not JSON")),
-          Left(
-            EdgeRefusal.Refused(
-              "Drive could not be read: Drive is busy just now; try again in a minute."
-            )
-          ),
-          Left(
-            EdgeRefusal.Refused(
-              "Drive could not be read: Drive could not be reached (ConnectException); try " +
-                "again in a minute."
-            )
-          )
+          Left(EdgeRefusal.Refused("Drive answered 503")),
+          Left(EdgeRefusal.Refused("Drive could not be reached: ConnectException"))
         )
       }
     }

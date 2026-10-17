@@ -34,8 +34,8 @@ object DriveEdge {
     * credential's variables, answers no ask, and delivers no replies. Opening it is refused,
     * naming the credential's variables, when the credential does not open (its key read from
     * this machine's files, [[KeyFiles.Local]]) or Drive does not
-    * take its token; and when Drive cannot be reached, or the desk cannot be registered or
-    * advertise.
+    * take its token; when Drive cannot be reached, is busy or answers what cannot be read, saying
+    * its cause ([[DriveError.logged]]); or when the desk cannot be registered or advertise.
     */
   def serving(
       credential: Credential,
@@ -79,10 +79,13 @@ object DriveEdge {
         rest.reachable() match {
           case Left(DriveError.NoToken(why)) =>
             Left(EdgeRefusal.Refused(s"Drive gave grit no access ($why); $check"))
-          case Left(DriveError.Malformed(why)) =>
-            Left(EdgeRefusal.Refused(s"Drive's answer could not be read: $why"))
+          // The operator reads a refusal: its cause, and the model's words only where it has none.
           case Left(other) =>
-            Left(EdgeRefusal.Refused(s"Drive could not be read: ${other.message}"))
+            Left(
+              EdgeRefusal.Refused(
+                other.logged.getOrElse(s"Drive could not be read: ${other.message}")
+              )
+            )
           case Right(()) =>
             stores.desks.register(PrincipalId.Grit, Set(place)) match {
               case Left(e) =>
