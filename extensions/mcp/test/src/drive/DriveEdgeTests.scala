@@ -238,18 +238,59 @@ object DriveEdgeTests extends TestSuite {
       }
     }
 
-    test("a search is answered with its hits as parts, each at the place it lies within") {
+    test(
+      "open is refused, saying why, when Drive's answer cannot be read, Drive is busy, or it cannot be reached"
+    ) {
       withFake { fake =>
-        run(fake, "drive_search", ujson.Obj("text" -> "plan")) match {
-          case Outcome.Done(_, _, _, Some(parts)) =>
-            (
-              parts.size,
-              parts.map(_.item.place).distinct.size > 1,
-              parts.forall(_.item.vouched == Integrity.Member)
-            ) ==>
-              (17, true, true)
-          case other => throw new java.lang.AssertionError(other.toString)
-        }
+        fake.answering("files", 200, "not json")
+        val malformed = opened(fake, Env)._1
+        fake.answering("files", 503, "{}")
+        val busy = opened(fake, Env)._1
+        fake.stop()
+        (malformed, busy, opened(fake, Env)._1) ==> (
+          Left(EdgeRefusal.Refused("Drive's answer could not be read: an answer that is not JSON")),
+          Left(
+            EdgeRefusal.Refused(
+              "Drive could not be read: Drive is busy just now; try again in a minute."
+            )
+          ),
+          Left(
+            EdgeRefusal.Refused(
+              "Drive could not be read: Drive could not be reached (ConnectException); try " +
+                "again in a minute."
+            )
+          )
+        )
+      }
+    }
+
+    test(
+      "a search is answered with its hits as parts, each at the place it lies within; one held to a folder, with that folder's alone"
+    ) {
+      withFake { fake =>
+        def placed(arguments: ujson.Obj): Vector[(String, String)] =
+          run(fake, "drive_search", arguments) match {
+            case Outcome.Done(_, _, _, Some(parts)) =>
+              parts.map(p => (p.text, p.item.place.written))
+            case other => throw new java.lang.AssertionError(other.toString)
+          }
+        val open = placed(ujson.Obj("text" -> "plan"))
+        val held = placed(ujson.Obj("text" -> "plan", "folder" -> "folder-3"))
+        def at(name: String, in: Vector[(String, String)]) =
+          in.collectFirst { case (text, place) if text.startsWith(s"- $name ") => place }
+        (
+          open.size,
+          at("name-22", open),
+          at("name-13", open),
+          held.map(_._2).distinct,
+          held.map(_._1.drop(2).takeWhile(_ != ' '))
+        ) ==> (
+          17,
+          Some("service:drive/folder-4"),
+          Some("service:drive/drive-a"),
+          Vector("service:drive/folder-3"),
+          Vector("name-19", "name-18", "name-17", "name-12", "name-10")
+        )
       }
     }
 
@@ -259,13 +300,16 @@ object DriveEdgeTests extends TestSuite {
       withFake { fake =>
         (
           run(fake, "drive_read", ujson.Obj("file" -> "file-1")) match {
-            case Outcome.Done(_, _, _, Some(Vector(part))) =>
-              (part.item.vouched, part.text.startsWith("name-10 (a Doc):\n"))
+            case Outcome.Done(_, _, _, Some(Vector(part))) => (part.item.vouched, part.text)
             case other => throw new java.lang.AssertionError(other.toString)
           },
           run(fake, "drive_read", ujson.Obj("file" -> "file-404"))
         ) ==> (
-          (Integrity.Member, true),
+          // Its name and type, then the export's lines, the last one's newline ending it.
+          (
+            Integrity.Member,
+            s"name-10 (a Doc):\n${Recorded.text("export-doc.md").stripSuffix("\n")}"
+          ),
           Outcome.Failed("That file isn't shared here, or doesn't exist.")
         )
       }
@@ -277,11 +321,24 @@ object DriveEdgeTests extends TestSuite {
           run(fake, "drive_read", ujson.Obj("file" -> "../x")),
           run(fake, "drive_search", ujson.Obj("text" -> "plan", "folder" -> "a b")),
           run(fake, "drive_search", ujson.Obj("text" -> " "))
-        ).map {
-          case Outcome.Failed(_) => true
-          case _ => false
-        }
-        (failed, fake.requests) ==> (Vector(true, true, true), Vector())
+        )
+        (failed, fake.requests) ==> (
+          Vector(
+            Outcome.Failed(
+              "The call to `drive_read` was not run: A Drive file's id holds only letters, " +
+                "digits, - and _, not ../x. You sent: {\"file\":\"../x\"}"
+            ),
+            Outcome.Failed(
+              "The call to `drive_search` was not run: A Drive file's id holds only letters, " +
+                "digits, - and _, not a b. You sent: {\"text\":\"plan\",\"folder\":\"a b\"}"
+            ),
+            Outcome.Failed(
+              "The call to `drive_search` was not run: Give at least one word to search for. " +
+                "You sent: {\"text\":\" \"}"
+            )
+          ),
+          Vector()
+        )
       }
     }
   }

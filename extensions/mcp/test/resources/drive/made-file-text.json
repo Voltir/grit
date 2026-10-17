@@ -1,0 +1,9 @@
+{
+  "driveId": "drive-a",
+  "name": "name-30",
+  "mimeType": "text/plain",
+  "id": "file-text",
+  "parents": [
+    "folder-3"
+  ]
+}

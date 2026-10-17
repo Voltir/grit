@@ -10,14 +10,17 @@ import grit.mcp.client.{Credential, KeyFiles}
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** Drive's v3 REST API in this JVM, on a loopback port, answering from the recordings
-  * ([[Recorded]]) the requests [[DriveRest]] makes: a search with `search-fulltext`, a file
-  * with its `metadata-*` recording or, for any other id the searches name, its entry there; a
-  * file's grants with its drive's `permissions-*`; a Doc's markdown export with `export-doc.md`,
-  * a Sheet's CSV export with `export-sheet.csv`, any other export with
-  * `error-export-folder` (403); an id the recordings do not name with `error-no-file` (404); a
-  * listing of shared drives with `drives-list`. Each request must be a GET carrying
-  * [[FakeDriveServer.Token]], `supportsAllDrives=true` when it asks of files, and `fields`
-  * unless it reads content; one that does not is answered 400. Every request's path
+  * ([[Recorded]]) and the hand-made `made-*` fixtures the requests [[DriveRest]] makes: a
+  * search with `search-fulltext`, or, when its query holds `'{id}' in parents`, with those of
+  * its files whose parents name that id; a file with its `metadata-*` recording or, for any
+  * other id the searches or `made-file-text` name, its entry there; a text file's content
+  * (`alt=media`) with its `made-{id}.txt`, byte-order mark and all; a file's grants with its
+  * own `made-permissions-{id}` when it has one, else its drive's `permissions-*`; a Doc's
+  * markdown export with `export-doc.md`, a Sheet's CSV export with `export-sheet.csv`, any
+  * other export with `error-export-folder` (403); an id the recordings do not name with
+  * `error-no-file` (404); a listing of shared drives with `drives-list`. Each request must be a
+  * GET carrying [[FakeDriveServer.Token]], `supportsAllDrives=true` when it asks of files, and
+  * `fields` unless it reads content; one that does not is answered 400. Every request's path
   * and query are kept, in [[requests]].
   */
 final class FakeDriveServer private () {
@@ -59,7 +62,9 @@ final class FakeDriveServer private () {
   /** Every request's path below the API and its query, in the order received. */
   def requests: Vector[(String, Map[String, String])] = lock.synchronized(kept)
 
-  /** Requests for `path` below the API are answered `status` with `body` from now. */
+  /** Requests for `path` below the API are answered `status` with `body` from now; a file's
+    * content (`alt=media`) apart from its metadata, as `files/{id}?alt=media`.
+    */
   def answering(path: String, status: Int, body: String): Unit =
     lock.synchronized { overrides = overrides.updated(path, (status, body)) }
 
@@ -75,11 +80,12 @@ final class FakeDriveServer private () {
         URLDecoder.decode(k, UTF_8) -> URLDecoder.decode(v.drop(1), UTF_8)
       }
       .toMap
+    val media = query.get("alt").contains("media")
     val overridden = lock.synchronized {
       kept = kept :+ (path -> query)
-      overrides.get(path)
+      overrides.get(if (media) s"$path?alt=media" else path)
     }
-    val content = query.contains("alt") || path.endsWith("/export")
+    val content = media || path.endsWith("/export")
     val refused =
       if (exchange.getRequestMethod != "GET") Some("not a GET")
       else if (
@@ -102,16 +108,34 @@ final class FakeDriveServer private () {
     exchange.close()
   }
 
-  private def recorded(path: String, query: Map[String, String]): (Int, String) =
+  private def recorded(path: String, query: Map[String, String]): (Int, String) = {
+    val media = query.get("alt").contains("media")
     path.split('/').toVector match {
-      case Vector("files") => (200, Recorded.text("search-fulltext.json"))
+      case Vector("files") =>
+        val all = Recorded.json("search-fulltext")
+        query.get("q").flatMap(FakeDriveServer.Parent.findFirstMatchIn).map(_.group(1)) match {
+          case None => (200, ujson.write(all))
+          case Some(parent) =>
+            val within = all.obj.get("files").flatMap(_.arrOpt).toVector.flatten.filter { f =>
+              f.obj.get("parents").flatMap(_.arrOpt).exists(_.exists(_.strOpt.contains(parent)))
+            }
+            (200, ujson.write(ujson.Obj.from(all.obj.toSeq :+ ("files" -> ujson.Arr(within*)))))
+        }
       case Vector("drives") => (200, Recorded.text("drives-list.json"))
+      case Vector("files", id) if media =>
+        FakeDriveServer.listed
+          .get(id)
+          .filter(_.obj.get("mimeType").flatMap(_.strOpt).exists(_.startsWith("text/")))
+          .map(_ => (200, Recorded.text(s"made-$id.txt")))
+          .getOrElse(FakeDriveServer.missing)
       case Vector("files", id) =>
         FakeDriveServer.Metadata
           .get(id)
           .map(r => (200, Recorded.text(s"$r.json")))
           .orElse(FakeDriveServer.listed.get(id).map(f => (200, ujson.write(f))))
           .getOrElse(FakeDriveServer.missing)
+      case Vector("files", id, "permissions") if FakeDriveServer.OwnGrants(id) =>
+        (200, Recorded.text(s"made-permissions-$id.json"))
       case Vector("files", id, "permissions") =>
         FakeDriveServer.listed
           .get(id)
@@ -131,6 +155,7 @@ final class FakeDriveServer private () {
         }
       case _ => FakeDriveServer.missing
     }
+  }
 }
 
 object FakeDriveServer {
@@ -147,9 +172,21 @@ object FakeDriveServer {
     "folder-2" -> "metadata-folder"
   )
 
-  /** Every file and folder the recorded searches name, by id. */
+  /** The parent a search's query holds it to, as [[DriveRest.search]] writes it. */
+  private val Parent = "'([A-Za-z0-9_-]+)' in parents".r
+
+  /** The ids with grants of their own, `made-permissions-{id}`. */
+  private val OwnGrants: Set[String] = Set("file-text")
+
+  /** Every file and folder the recorded searches and `made-file-text` name, by id. */
   private lazy val listed: Map[String, ujson.Value] =
-    Vector("search-files", "search-folders", "metadata-drive-a", "metadata-drive-b")
+    Vector(
+      "search-files",
+      "search-folders",
+      "metadata-drive-a",
+      "metadata-drive-b",
+      "made-file-text"
+    )
       .map(Recorded.json)
       .flatMap(a => a.obj.get("files").flatMap(_.arrOpt).map(_.toVector).getOrElse(Vector(a)))
       .flatMap(f => f.obj.get("id").flatMap(_.strOpt).map(_ -> f))

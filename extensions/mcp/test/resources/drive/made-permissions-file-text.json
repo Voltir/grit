@@ -1,0 +1,37 @@
+{
+  "permissions": [
+    {
+      "emailAddress": "person-1@example.com",
+      "role": "organizer",
+      "permissionDetails": [
+        {
+          "role": "organizer",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    },
+    {
+      "emailAddress": "person-4@elsewhere.example",
+      "role": "writer",
+      "permissionDetails": [
+        {
+          "role": "writer",
+          "inherited": false
+        }
+      ],
+      "type": "user"
+    },
+    {
+      "emailAddress": "self@project.iam.example",
+      "role": "reader",
+      "permissionDetails": [
+        {
+          "role": "reader",
+          "inherited": true
+        }
+      ],
+      "type": "user"
+    }
+  ]
+}

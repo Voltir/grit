@@ -103,6 +103,9 @@ object DriveTools {
         }
     }
 
+  /** `why`, a clause [[FileId.of]] gives, as the sentence a refused argument says. */
+  private def sentence(why: String): String = s"${why.capitalize}."
+
   /** A search's arguments: its words, and the folder it is held to, if any. */
   final case class Searching(text: String, folder: Option[FileId])
 
@@ -130,7 +133,7 @@ object DriveTools {
               .map(FileId.of(_).map(Some(_)))
               .getOrElse(Right(None))
               .left
-              .map(ArgsError.Refused("folder", _))
+              .map(why => ArgsError.Refused("folder", DriveTools.sentence(why)))
               .map(Searching(a.text.trim, _))
         },
       Retry.Rerun
@@ -147,7 +150,9 @@ object DriveTools {
         "sheet as CSV, or a text file as it is.",
       Args
         .of((file = Field.text("The file's id, from a search.")))
-        .refine(a => FileId.of(a.file).left.map(ArgsError.Refused("file", _))),
+        .refine(a =>
+          FileId.of(a.file).left.map(why => ArgsError.Refused("file", DriveTools.sentence(why)))
+        ),
       Retry.Rerun
     ),
     Gate.Free,
