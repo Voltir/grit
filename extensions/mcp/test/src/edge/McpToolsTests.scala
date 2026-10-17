@@ -9,6 +9,7 @@ import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Accounted,
   Accounts,
+  Facts,
   Integrity,
   Itemised,
   Provenance,
@@ -167,16 +168,17 @@ object McpToolsTests extends TestSuite {
     }
 
     test(
-      "a server's cut answer is a done whose parts are its items and whose text is the head; " +
-        "an unplaced one is a failed call saying so"
+      "a server's cut answer is a done whose parts are its items, whose text is the head and " +
+        "whose facts are the head's; an unplaced one is a failed call saying so"
     ) {
       val parts = Vector(
         ResultPart(Provenance(at("r", "a"), Integrity.Member), Readers.AtPlace, "alpha"),
         ResultPart(Provenance(at("r", "b"), Integrity.Outside), Readers.AtPlace, "beta")
       )
+      val said = Facts.of(ujson.Obj("found" -> 2))
       val cutting = new Accounts[McpCalled] {
         def items(c: McpCalled): Itemised =
-          if (c.tool == "search_code") Itemised.Parts("found:", parts)
+          if (c.tool == "search_code") Itemised.Parts("found:", parts, Some(said))
           else Itemised.Unplaced("the file's folder could not be looked up")
       }
       withFake { fake =>
@@ -192,7 +194,7 @@ object McpToolsTests extends TestSuite {
           mcp.run(route(search), search, _ => ()),
           mcp.run(route(read), read, _ => ())
         ) ==> Vector(
-          Outcome.Done("found:", parts = Some(parts)),
+          Outcome.Done("found:", parts = Some(parts), facts = Some(said)),
           Outcome.Failed(
             "github answered, but grit could not tell who may see the answer, so none of it " +
               "is shown: the file's folder could not be looked up"

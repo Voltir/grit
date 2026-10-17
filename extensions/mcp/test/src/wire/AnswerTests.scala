@@ -1,6 +1,7 @@
 package grit.mcp.wire
 
 import grit.core.host.Clipped
+import grit.core.visibility.{Facts, Itemised}
 
 import utest.*
 
@@ -147,6 +148,40 @@ object AnswerTests extends TestSuite {
       Answer.of(result(text(ujson.write(page(thirty))), text(withheld))).map(_.text) ==> Right(
         ujson.write(page(thirty.take(k))) + "\n" + withheld + "\n\n" + showing(k, 30)
       )
+    }
+
+    test(
+      "a result's facts are its structured content: whole when its text is, its list cut to " +
+        "the items the text keeps when that is cut by items, and none when it is cut by lines"
+    ) {
+      def page(items: Vector[ujson.Value]): ujson.Obj =
+        ujson.Obj("total_count" -> 30, "items" -> ujson.Arr.from(items))
+      def structured(payload: ujson.Value): ujson.Obj = {
+        val r = result(text(ujson.write(payload)))
+        r("structuredContent") = payload
+        r
+      }
+      val k = most(thirty, Clipped.MaxBytes - bytes(ujson.write(page(Vector.empty))))
+      val two = ujson.Obj("items" -> ujson.Arr.from(thirty), "more" -> ujson.Arr(1, 2))
+      Vector(
+        structured(page(thirty.take(2))),
+        structured(page(thirty)),
+        structured(two),
+        result(text(ujson.write(page(thirty.take(2)))))
+      ).map(Answer.of(_).map(_.facts)) ==> Vector(
+        Right(Some(Facts.of(page(thirty.take(2))))),
+        Right(Some(Facts.of(page(thirty.take(k))))),
+        Right(None),
+        Right(None)
+      )
+    }
+
+    test("a cut answer's facts are those its server's extension gave beside the head") {
+      val said = Facts.of(ujson.Obj("head" -> "rendered from this"))
+      Answer
+        .cut(result(text("x")), Itemised.Parts("head", Vector.empty, Some(said)))
+        .map(_.facts) ==>
+        Right(Some(said))
     }
 
     test("an object holding two arrays, over the limit, is cut by lines as any text is") {

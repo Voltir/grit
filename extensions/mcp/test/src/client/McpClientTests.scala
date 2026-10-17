@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.Variable
 import grit.core.tool.ToolName
-import grit.core.visibility.{Accounted, Accounts, Itemised}
+import grit.core.visibility.{Accounted, Accounts, Facts, Itemised}
 import grit.mcp.scope.{Attribution, Bound, McpScope}
 import grit.mcp.wire.{McpCalled, McpError, Skipped}
 
@@ -38,9 +38,17 @@ object McpClientTests extends TestSuite {
       clock: Clock = new Hands(),
       allow: Set[String] = Set.empty,
       token: String = "fake-token",
-      scope: McpScope = McpScope.Open
+      scope: McpScope = McpScope.Open,
+      accounts: Accounts[McpCalled] = Accounts.none
   ): McpClient^{clock} = {
-    val server = McpServer.of("fake", fake.endpoint, Credential.static(Token), scope, allow) match {
+    val server = McpServer.of(
+      "fake",
+      fake.endpoint,
+      Credential.static(Token),
+      scope,
+      allow,
+      accounts
+    ) match {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }
@@ -370,6 +378,36 @@ object McpClientTests extends TestSuite {
         fake.received.lastOption.map(r =>
           (r.method, r.headers.get("mcp-name"), ujson.read(r.body)("params")("arguments"))
         ) ==> Some((Some("tools/call"), Some("get_weather"), ujson.Obj("location" -> "New York")))
+      }
+    }
+
+    test(
+      "a call's answer keeps its result's facts: its structured content, or those its " +
+        "server's accounts give beside the head they cut"
+    ) {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.Weather))
+        val weather = ujson.Obj("temperature" -> 72, "conditions" -> "Partly cloudy")
+        fake.answers(
+          "get_weather",
+          ujson.Obj(
+            "content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> ujson.write(weather))),
+            "structuredContent" -> weather
+          )
+        )
+        val said = Facts.of(ujson.Obj("cut" -> "by its accounts"))
+        val cutting = new Accounts[McpCalled] {
+          def items(c: McpCalled): Itemised = Itemised.Parts("cut:", Vector.empty, Some(said))
+        }
+        def facts(c: McpClient^): Either[McpError, Option[Facts]] =
+          c.tools()
+            .flatMap(_.tools.find(_.name == "get_weather").toRight(McpError.Unreadable("unlisted")))
+            .flatMap(c.call(_, ujson.Obj("location" -> "New York")))
+            .map(_.facts)
+        (facts(client(fake)), facts(client(fake, accounts = cutting))) ==> (
+          Right(Some(Facts.of(weather))),
+          Right(Some(said))
+        )
       }
     }
 
