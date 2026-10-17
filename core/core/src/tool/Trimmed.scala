@@ -1,13 +1,13 @@
 package grit.core.tool
 
 import grit.core.host.Clipped
-import grit.core.visibility.Part
+import grit.core.visibility.ResultPart
 
 /** A cut result's `head` and the `parts` kept of it ([[Outcome.Done]]'s text and parts),
   * within [[Clipped]]'s limits whatever a reader keeps of them ([[Outcome.readable]]);
   * `parts` is `None` when not one fits.
   */
-final case class Trimmed private (head: String, parts: Option[Vector[Part]])
+final case class Trimmed private (head: String, parts: Option[Vector[ResultPart]])
 
 object Trimmed {
 
@@ -17,7 +17,7 @@ object Trimmed {
     * many, since a reader may be shown fewer; else `head` alone, cut as [[Clipped.head]] cuts
     * it, with that hint, and no parts.
     */
-  def of(head: String, parts: Vector[Part]): Trimmed = {
+  def of(head: String, parts: Vector[ResultPart]): Trimmed = {
     // A reader keeping none of the parts is shown the head and NoneShown in their place, so
     // parts are kept only where that fits too.
     def roomy(top: String): Boolean = Clipped.fits(s"$top\n${Outcome.NoneShown}")

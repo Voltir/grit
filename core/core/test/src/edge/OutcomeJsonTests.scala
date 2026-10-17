@@ -2,7 +2,7 @@ package grit.core.edge
 
 import grit.core.identity.Email
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Integrity, Part, Provenance, Readers, TestLabels}
+import grit.core.visibility.{Accounted, Integrity, Provenance, Readers, ResultPart, TestLabels}
 
 import utest.*
 
@@ -62,8 +62,8 @@ object OutcomeJsonTests extends TestSuite {
         Accounted.of(Vector.empty),
         Some(
           Vector(
-            Part(Provenance(folder, Integrity.Member), Readers.AtPlace, "plan.md"),
-            Part(Provenance(folder, Integrity.Untrusted), Readers.Originator(ana), "notes.md")
+            ResultPart(Provenance(folder, Integrity.Member), Readers.AtPlace, "plan.md"),
+            ResultPart(Provenance(folder, Integrity.Untrusted), Readers.Originator(ana), "notes.md")
           )
         )
       )

@@ -51,9 +51,9 @@ import grit.core.visibility.{
   Labelled,
   Labeller,
   Level,
-  Part,
   Provenance,
   Readers,
+  ResultPart,
   Room,
   Subject,
   Visibility
@@ -418,12 +418,12 @@ object CallingTests extends TestSuite {
         "Found:",
         parts = Some(
           Vector(
-            Part(
+            ResultPart(
               Provenance(under("octo/board"), Integrity.Member),
               Readers.Originator(ana),
               "board-minutes.md"
             ),
-            Part(staff, Readers.AtPlace, "rota.md")
+            ResultPart(staff, Readers.AtPlace, "rota.md")
           )
         )
       )
@@ -470,7 +470,11 @@ object CallingTests extends TestSuite {
         "Found:",
         parts = Some(
           Vector(
-            Part(Provenance(board, Integrity.Member), Readers.Originator(ana), "board-minutes.md")
+            ResultPart(
+              Provenance(board, Integrity.Member),
+              Readers.Originator(ana),
+              "board-minutes.md"
+            )
           )
         )
       )

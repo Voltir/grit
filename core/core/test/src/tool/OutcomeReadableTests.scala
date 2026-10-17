@@ -56,8 +56,8 @@ object OutcomeReadableTests extends TestSuite {
           Accounted.of(Vector.empty),
           Some(
             Vector(
-              Part(minutes, Readers.AtPlace, "board-minutes.md"),
-              Part(staff, Readers.AtPlace, "rota.md")
+              ResultPart(minutes, Readers.AtPlace, "board-minutes.md"),
+              ResultPart(staff, Readers.AtPlace, "rota.md")
             )
           )
         )
@@ -70,7 +70,7 @@ object OutcomeReadableTests extends TestSuite {
     test(
       "a cut result none of whose parts is read says NoneShown, as one with no parts does; one not cut reads as it is"
     ) {
-      val hidden = Some(Vector(Part(minutes, Readers.AtPlace, "board-minutes.md")))
+      val hidden = Some(Vector(ResultPart(minutes, Readers.AtPlace, "board-minutes.md")))
       val whole = Outcome.Done("rota.md", None, Accounted.of(Vector(staff)))
       Vector(
         Outcome.Done("Found:", parts = hidden).readable,

@@ -6,7 +6,6 @@ import grit.core.tool.{
   Args,
   ArgsError,
   Field,
-  Trimmed,
   Gate,
   Hosted,
   Outcome,
@@ -15,7 +14,8 @@ import grit.core.tool.{
   ToolName,
   ToolSet,
   ToolSpec,
-  Toolbox
+  Toolbox,
+  Trimmed
 }
 import grit.edge.{Run, Tools}
 

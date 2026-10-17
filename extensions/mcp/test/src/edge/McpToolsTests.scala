@@ -13,9 +13,9 @@ import grit.core.visibility.{
   Compartments,
   Integrity,
   Itemised,
-  Part,
   Provenance,
   Readers,
+  ResultPart,
   RoomLabels,
   Visibility
 }
@@ -196,8 +196,8 @@ object McpToolsTests extends TestSuite {
         "an unplaced one is a failed call saying so"
     ) {
       val parts = Vector(
-        Part(Provenance(at("r", "a"), Integrity.Member), Readers.AtPlace, "alpha"),
-        Part(Provenance(at("r", "b"), Integrity.Outside), Readers.AtPlace, "beta")
+        ResultPart(Provenance(at("r", "a"), Integrity.Member), Readers.AtPlace, "alpha"),
+        ResultPart(Provenance(at("r", "b"), Integrity.Outside), Readers.AtPlace, "beta")
       )
       val cutting = new Accounts[McpCalled] {
         def items(c: McpCalled): Itemised =
@@ -232,7 +232,7 @@ object McpToolsTests extends TestSuite {
     ) {
       val wide = "x" * 2000
       val parts = Vector.tabulate(30)(i =>
-        Part(Provenance(at("r", s"f$i"), Integrity.Member), Readers.AtPlace, wide)
+        ResultPart(Provenance(at("r", s"f$i"), Integrity.Member), Readers.AtPlace, wide)
       )
       val cutting = new Accounts[McpCalled] {
         def items(c: McpCalled): Itemised = Itemised.Parts("found:", parts)

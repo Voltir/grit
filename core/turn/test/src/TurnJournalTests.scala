@@ -10,7 +10,7 @@ import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.store.Nearby
 import grit.core.tool.Outcome
-import grit.core.visibility.{Integrity, Part, Provenance, Readers}
+import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart}
 import grit.models.StubProvider
 
 import utest.*
@@ -25,7 +25,7 @@ object TurnJournalTests extends TestSuite {
 
     // A recorded step must never hold what only some readers may read.
     test("a wait's step that found an answer cut by item records it without its parts") {
-      val part = Part(
+      val part = ResultPart(
         Provenance(Place.read("service:files/board").fold(sys.error, identity), Integrity.Member),
         Readers.AtPlace,
         "only some may read this"

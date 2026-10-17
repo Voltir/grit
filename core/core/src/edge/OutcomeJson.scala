@@ -3,7 +3,7 @@ package grit.core.edge
 import grit.core.identity.Email
 import grit.core.place.Place
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Integrity, Part, Provenance, Readers}
+import grit.core.visibility.{Accounted, Integrity, Provenance, Readers, ResultPart}
 
 /** An [[Outcome]]'s stored and wire form: what an edge writes on a request's row and sends
   * to the turn waiting on it, and what the turn records. `{"kind":"done","text":…}`, with
@@ -68,7 +68,9 @@ object OutcomeJson {
               .fold[Either[String, Accounted]](Right(Accounted.Unread))(itemsOf)
             parts <- o
               .get("parts")
-              .fold[Either[String, Option[Vector[Part]]]](Right(None))(partsOf(_).map(Some(_)))
+              .fold[Either[String, Option[Vector[ResultPart]]]](Right(None))(
+                partsOf(_).map(Some(_))
+              )
           } yield Outcome.Done(text, integrity, items, parts)
         case "failed" => str(o, "why").map(Outcome.Failed(_))
         case "denied" => Right(Outcome.Declined(o.get("reason").flatMap(_.strOpt)))
@@ -111,7 +113,7 @@ object OutcomeJson {
   }
 
   /** The parts stored as `v`: an array of `{"place","author","readers","text"}`. */
-  private def partsOf(v: ujson.Value): Either[String, Vector[Part]] = v match {
+  private def partsOf(v: ujson.Value): Either[String, Vector[ResultPart]] = v match {
     case ujson.Arr(stored) =>
       each(
         stored.toVector,
@@ -124,7 +126,7 @@ object OutcomeJson {
               .toRight("an outcome's part has no readers")
               .flatMap(readersOf)
             text <- o.get("text").flatMap(_.strOpt).toRight("an outcome's part has no text")
-          } yield Part(item, readers, text)
+          } yield ResultPart(item, readers, text)
       )
     case _ => Left("an outcome's parts are not an array")
   }

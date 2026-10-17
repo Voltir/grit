@@ -186,7 +186,10 @@ final class Authorizer private[client] (private[client] val source: Either[Accou
   }
 
   /** A token for `account`, asked for at `now`, and when it expires. */
-  private def exchange(account: Account, now: Instant): Either[McpError.NoToken, (Bearer, Instant)] = {
+  private def exchange(
+      account: Account,
+      now: Instant
+  ): Either[McpError.NoToken, (Bearer, Instant)] = {
     val url = account.tokenUri.toString
     val encode = Base64.getUrlEncoder.withoutPadding
     def part(o: ujson.Obj) = encode.encodeToString(ujson.write(o).getBytes(UTF_8))

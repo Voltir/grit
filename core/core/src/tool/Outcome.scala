@@ -3,7 +3,7 @@ package grit.core.tool
 import grit.core.id.ToolCallId
 import grit.core.message.Message
 import grit.core.store.Tx
-import grit.core.visibility.{Accounted, Integrity, Label, Part}
+import grit.core.visibility.{Accounted, Integrity, Label, ResultPart}
 
 /** What settling a tool call came to. Every case reaches the model as the call's result
   * ([[result]]), and the loop carries on: none of them fails the turn. A command's non-zero
@@ -23,7 +23,7 @@ enum Outcome {
       text: String,
       integrity: Option[Integrity] = None,
       items: Accounted = Accounted.Unread,
-      parts: Option[Vector[Part]] = None
+      parts: Option[Vector[ResultPart]] = None
   )
 
   /** It could not run, or could not finish: an unknown tool, arguments that do not read, a

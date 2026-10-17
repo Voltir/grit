@@ -20,9 +20,9 @@ import grit.core.visibility.{
   Itemised,
   Label,
   Level,
-  Part,
   Provenance,
-  Readers
+  Readers,
+  ResultPart
 }
 
 import utest.*
@@ -937,7 +937,7 @@ object TurnHostedTests extends TestSuite {
             "found:",
             answer.linesIterator.toVector.map { line =>
               val at = Place.under(Namespace.Service, Vector(github.name, line.takeWhile(_ != ' ')))
-              Part(Provenance(at, Integrity.Member), Readers.AtPlace, line)
+              ResultPart(Provenance(at, Integrity.Member), Readers.AtPlace, line)
             }
           )
       }

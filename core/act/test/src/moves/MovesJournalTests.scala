@@ -13,7 +13,7 @@ import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.{Integrity, Label, Level, Part, Provenance, Readers}
+import grit.core.visibility.{Integrity, Label, Level, Provenance, Readers, ResultPart}
 
 import utest.*
 
@@ -269,7 +269,7 @@ object MovesJournalTests extends TestSuite {
     test(
       "a call's expire or abandon step that found an answer cut by item records it without its parts"
     ) {
-      val part = Part(
+      val part = ResultPart(
         Provenance(probe.place, Integrity.Member),
         Readers.AtPlace,
         "only some may read this"

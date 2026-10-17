@@ -2,7 +2,7 @@ package grit.mcp.wire
 
 import grit.core.host.Clipped
 import grit.core.tool.Trimmed
-import grit.core.visibility.{Accounted, Part}
+import grit.core.visibility.{Accounted, ResultPart}
 
 /** What a call answered: `text`, what the model reads, whether the tool reported an error
   * (`isError`), what its server's extension read of its items (`items`), and the parts it cut
@@ -13,7 +13,7 @@ final case class Answer private (
     text: String,
     isError: Boolean,
     items: Accounted,
-    parts: Option[Vector[Part]]
+    parts: Option[Vector[ResultPart]]
 )
 
 object Answer {
@@ -52,7 +52,7 @@ object Answer {
     * [[Trimmed.of]] trims them, `isError` read as [[of]] reads it. [[McpError.Unreadable]] as for
     * [[of]].
     */
-  def cut(result: ujson.Obj, head: String, parts: Vector[Part]): Either[McpError, Answer] =
+  def cut(result: ujson.Obj, head: String, parts: Vector[ResultPart]): Either[McpError, Answer] =
     read(result).map { (_: Vector[ujson.Value], isError: Boolean) =>
       val trimmed = Trimmed.of(head, parts)
       new Answer(trimmed.head, isError, Accounted.Unread, trimmed.parts)

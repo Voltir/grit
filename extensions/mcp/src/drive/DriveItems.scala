@@ -2,7 +2,7 @@ package grit.mcp.drive
 
 import grit.core.host.{Clipped, Kept}
 import grit.core.identity.Email
-import grit.core.visibility.{Integrity, Itemised, Part, Provenance, Readers}
+import grit.core.visibility.{Integrity, Itemised, Provenance, Readers, ResultPart}
 
 /** How Drive's exchanges are believed (ADR 0036): each hit and each read a part of its own, at
   * the place it lies within, so a label on that place decides who reads it.
@@ -63,14 +63,14 @@ object DriveItems {
           for {
             p <- place
             r <- readers(reading, f)
-          } yield Part(Provenance(p, Integrity.Member), r, line(f, drives))
+          } yield ResultPart(Provenance(p, Integrity.Member), r, line(f, drives))
         }
         Right(Itemised.Parts(head, parts))
       case DriveCalled.Read(file, grants, text) =>
         file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
           val head = "The Drive file asked for:"
           val part = readers(reading, file).map { r =>
-            Part(
+            ResultPart(
               Provenance(reading.place(at), believed(reading, grants)),
               r,
               fitted(head, s"${title(file)}:", text)

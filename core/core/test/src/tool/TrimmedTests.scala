@@ -1,14 +1,14 @@
 package grit.core.tool
 
 import grit.core.host.Clipped
-import grit.core.visibility.{Integrity, Part, Provenance, Readers, TestLabels}
+import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart, TestLabels}
 
 import utest.*
 
 object TrimmedTests extends TestSuite {
 
-  private def part(text: String): Part =
-    Part(
+  private def part(text: String): ResultPart =
+    ResultPart(
       Provenance(TestLabels.place("service:drive/folder-1"), Integrity.Member),
       Readers.AtPlace,
       text
@@ -21,7 +21,10 @@ object TrimmedTests extends TestSuite {
       // The head and its one part fit by three bytes; the head and NoneShown would not.
       val head = "h" * (Clipped.MaxBytes - 6)
       assert(Clipped.fits(s"$head\nab"), !Clipped.fits(s"$head\n${Outcome.NoneShown}"))
-      (Trimmed.of("found:", Vector(part("ab"))).parts, Trimmed.of(head, Vector(part("ab"))).parts) ==>
+      (
+        Trimmed.of("found:", Vector(part("ab"))).parts,
+        Trimmed.of(head, Vector(part("ab"))).parts
+      ) ==>
         (Some(Vector(part("ab"))), None)
     }
   }

@@ -3,7 +3,7 @@ package grit.mcp.drive
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Place, Service}
 import grit.core.tool.Trimmed
-import grit.core.visibility.{Integrity, Part, Provenance, Readers}
+import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart}
 
 import utest.*
 
@@ -47,7 +47,7 @@ object DriveItemsTests extends TestSuite {
   private def grants(recording: String): Option[Vector[Grant]] =
     right(DriveJson.grants(Recorded.json(recording)))
 
-  private def parts(called: DriveCalled): Vector[Part] = right(
+  private def parts(called: DriveCalled): Vector[ResultPart] = right(
     DriveItems.items(reading, called)
   ).parts
 
@@ -68,17 +68,17 @@ object DriveItemsTests extends TestSuite {
           Map(Recorded.id("drive-a") -> "Engineering", Recorded.id("drive-c") -> "Finance")
         )
       ) ==> Vector(
-        Part(
+        ResultPart(
           Provenance(place("drive-a"), Integrity.Member),
           Readers.AtPlace,
           "- name-13 (a PDF), id file-4, in the shared drive Engineering (drive-a)"
         ),
-        Part(
+        ResultPart(
           Provenance(place("folder-3"), Integrity.Member),
           Readers.AtPlace,
           "- name-10 (a Doc), id file-1, in folder-3, in the shared drive Engineering"
         ),
-        Part(
+        ResultPart(
           Provenance(Drive.place, Integrity.Member),
           Readers.AtPlace,
           "- name-3 (a folder), id folder-2, in folder-1, in the shared drive drive-b"
