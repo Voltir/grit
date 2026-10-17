@@ -8,7 +8,7 @@ import scala.util.Using
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, ClearedClassifier, Question}
 import grit.core.clock.SetClock
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.SourceId
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
@@ -153,7 +153,7 @@ object RehearseLiveTests extends TestSuite {
         val before = (model.sent.size, classifier.sent.size)
         // Rehearsed beside the running engine, on the database as the engine's run will find it.
         val shown = Rehearse
-          .dryAt(
+          .dry(
             config,
             deployment,
             Situation.Said(origin, Account.Local, text),

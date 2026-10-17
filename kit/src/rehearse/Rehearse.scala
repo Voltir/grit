@@ -18,23 +18,13 @@ object Rehearse {
     * it stands now, every model and classifier call answered by `answers` and none sent: each
     * workflow the situation starts runs in the order the engine starts it, until the turn's
     * own model call ([[grit.turn.Turn.Step.answering]]), which is shown and never answered.
-    * Nothing written outlives it ([[Rehearsing]]). `Left` when the seed catalog cannot be read,
-    * the database cannot be opened, `d`'s lifecycle settings or schedules cannot be written
-    * there, the inbox refuses the message (one at a place `d` does not serve among them), or
-    * the rehearsal outlasts [[Rehearsing.Within]].
+    * The message and every workflow are dated by `clock`. Nothing written outlives it
+    * ([[Rehearsing]]). `Left` when the seed catalog cannot be read, the database cannot be
+    * opened, `d`'s lifecycle settings or schedules cannot be written there, the inbox refuses
+    * the message (one at a place `d` does not serve among them), or the rehearsal outlasts
+    * [[Rehearsing.Within]].
     */
   def dry(
-      config: DbConfig,
-      d: Deployment,
-      situation: Situation,
-      answers: Answers
-  ): Either[String, Rehearsed] =
-    dryAt(config, d, situation, answers, Clock.system())
-
-  /** As [[dry]], every workflow and the message dated by `clock`: a test's, so a live run on
-    * the same clock dates what it sends alike.
-    */
-  private[grit] def dryAt(
       config: DbConfig,
       d: Deployment,
       situation: Situation,
