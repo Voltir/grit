@@ -44,7 +44,7 @@ final class Folders(
   def calls(perRun: Int): Int = 10
 
   def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Folders.Names] =
-    Folders.Walking(
+    Folders.Scripted(
       corpus,
       Step.List("/", Way.Run) :: order.toList.flatMap { folder =>
         val file = if (folder == "a") "a/x" else "b/y"
@@ -67,7 +67,7 @@ object Folders {
   val Version: UnitVersion = UnitVersion.Changed(Instant.EPOCH)
 
   /** A walk with `todo` left, `written` cards kept so far, stopped saying `stop` if it was. */
-  private final case class Walking(
+  private final case class Scripted(
       corpus: CorpusName,
       todo: List[Step],
       written: Int,
@@ -79,7 +79,7 @@ object Folders {
       case _ => Left(Synced(corpus, written, 0, 0, 0, 0, 0, Vector.empty, stop))
     }
 
-    def after(outcome: Outcome[Names]): Walking = (todo, outcome) match {
+    def after(outcome: Outcome[Names]): Scripted = (todo, outcome) match {
       case (Step.List(_, _) :: rest, Outcome.Listed(_, _)) => copy(todo = rest)
       case (Step.Read(path, _) :: rest, Outcome.Fetched(Fetched.Text(text, version), _)) =>
         copy(todo = Step.Summarise(path, s"The file `$path`", text, version) :: rest)
