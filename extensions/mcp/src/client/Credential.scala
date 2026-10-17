@@ -166,11 +166,11 @@ final class Authorizer private[client] (private[client] val source: Either[Accou
   private val kept = new AtomicReference[Option[(Bearer, Instant)]](None)
 
   /** The bearer for the next request, at `clock`'s time: a kept token, or a new one when none
-    * is kept or less than [[Credential.Renew]] of it is left; [[McpError.NoToken]] naming the
-    * token URL when getting one fails, and the next call asks again. Blocks up to
+    * is kept or less than [[Credential.Renew]] of it is left; its miss naming the token URL
+    * when getting one fails, and the next call asks again. Blocks up to
     * [[McpClient.Timeout]].
     */
-  def bearer(clock: Clock): Either[McpError, Bearer] = source match {
+  def bearer(clock: Clock): Either[McpError.NoToken, Bearer] = source match {
     case Right(fixed) => Right(fixed)
     case Left(account) =>
       val now = clock.now()
@@ -186,7 +186,7 @@ final class Authorizer private[client] (private[client] val source: Either[Accou
   }
 
   /** A token for `account`, asked for at `now`, and when it expires. */
-  private def exchange(account: Account, now: Instant): Either[McpError, (Bearer, Instant)] = {
+  private def exchange(account: Account, now: Instant): Either[McpError.NoToken, (Bearer, Instant)] = {
     val url = account.tokenUri.toString
     val encode = Base64.getUrlEncoder.withoutPadding
     def part(o: ujson.Obj) = encode.encodeToString(ujson.write(o).getBytes(UTF_8))
@@ -238,7 +238,8 @@ final class Authorizer private[client] (private[client] val source: Either[Accou
             .toRight(s"$url answered no access_token and expires_in")
       }
       .left
-      .map(McpError.NoToken(_))
+      // `new`, since an enum case's apply is typed as the enum, and only this case is a miss.
+      .map(new McpError.NoToken(_))
   }
 
   override def toString: String = "Authorizer(<redacted>)"

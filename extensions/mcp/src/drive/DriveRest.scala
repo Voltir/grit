@@ -153,10 +153,7 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     authorizer
       .bearer(clock)
       .left
-      .map {
-        case McpError.NoToken(why) => DriveError.NoToken(why)
-        case other => DriveError.NoToken(other.message)
-      }
+      .map(miss => DriveError.NoToken(miss.why))
       .flatMap { bearer =>
         // Only files' requests take supportsAllDrives; drives.list documents no such parameter.
         val all = if (path.startsWith("files")) query :+ ("supportsAllDrives" -> "true") else query
