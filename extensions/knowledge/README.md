@@ -24,6 +24,9 @@ Packages, in one-way order (each names only those before it):
   is `{server}_get_file_contents` with `owner`, `repo` and `path` and no `ref`. A file's card is
   written only at its blob SHA; a file answered without one is not carded. Imports `card` and
   `sync`; another source is a package beside it, and neither names the other.
+- **`drive`**: Drive's shared drives as a card source, read through grit's own Drive tools
+  (`drive_list`, `drive_read`) by the facts their answers carry, which it decodes itself since
+  it may not name grit.mcp. Imports `card` and `sync`, never `github`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
   `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
   `sync`.

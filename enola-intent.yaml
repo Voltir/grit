@@ -124,6 +124,7 @@ components:
   # the run source-neutral and the sources apart.
   - {name: knowledge-sync, kind: module, match: ["extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**"]}
   - {name: knowledge-github, kind: module, match: ["extensions/knowledge/src/github", "extensions/knowledge/src/github/**"]}
+  - {name: knowledge-drive, kind: module, match: ["extensions/knowledge/src/drive", "extensions/knowledge/src/drive/**"]}
   - {name: harness-code,   kind: module, match: ["eval/harness/src", "eval/harness/src/**"]}
   # grit.eval's main sources alone (its cases and their layout), for its rule and the
   # harness's; its integration sources, the assembly eval, are unruled.
@@ -149,6 +150,7 @@ components:
             "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**",
+            "extensions/knowledge/src/drive", "extensions/knowledge/src/drive/**",
             "extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**"]
   # Every edge extension's main sources: an edge a deployment serves (ADR 0023, ADR 0017). The
   # kit names none of them (kit-names-no-edge-or-deployment's `only` leaves them out), and
@@ -806,6 +808,13 @@ rules:
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: each source is a package beside the others over card and sync; GitHub's names no other source's, nor the plugin that gathers them"
+
+  - id: knowledge-drive-names-no-other-source
+    allow: knowledge-drive
+    only: [core-code, knowledge-card, knowledge-sync, knowledge-drive]
+    via: imports
+    mode: strict
+    because: "extensions/knowledge/README.md: each source is a package beside the others over card and sync; Drive's names no other source's, nor the plugin that gathers them"
 
   - id: tui-names-core-alone
     allow: tui-code
