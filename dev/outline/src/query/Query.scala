@@ -953,10 +953,7 @@ object Query {
       Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
     val files = mentioning
       .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
-    val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
-    val inPackage = files.map(file => file -> inPackages(file))
-    val tasty = inPackage.flatMap(_._2).distinct
-    val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
+    val (tasty, unsearched) = packagesOf(root, layout.classesDirs(root), files)
     val (defns, next, missing) =
       loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
     FamilyRead(
@@ -1263,15 +1260,25 @@ object Query {
       known: SourceWords
   ): (Vector[os.Path], Vector[os.RelPath], SourceWords) = {
     val (found, words) = candidates(root, searches, known)
-    val kept = found.filter(keep)
+    val (tasty, unsearched) = packagesOf(root, classes, found.filter(keep))
+    (
+      tasty,
+      unsearched.filterNot(file => config.hidden.exists(prefix => file.toString.startsWith(prefix))),
+      words
+    )
+  }
+
+  /** The `.tasty` files in the package dirs of `files` across `classes`, each once, in order; with them, those of `files`
+    * whose package has none there, in order.
+    */
+  private def packagesOf(
+      root: Root,
+      classes: Vector[os.Path],
+      files: Vector[os.RelPath]
+  ): (Vector[os.Path], Vector[os.RelPath]) = {
     val inPackages = Locate.inPackagesIn(root, classes)
-    val inPackage = kept.map(file => file -> inPackages(file))
-    val unsearched = inPackage.collect {
-      case (file, found)
-          if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
-        file
-    }
-    (inPackage.flatMap(_._2).distinct, unsearched, words)
+    val inPackage = files.map(file => file -> inPackages(file))
+    (inPackage.flatMap(_._2).distinct, inPackage.collect { case (file, found) if found.isEmpty => file })
   }
 
   /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the files `toRead` gives; with them, the files `toRead` names as not searched, and the cache after. The references are `Left` when their index cannot be read. */
