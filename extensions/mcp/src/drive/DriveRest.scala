@@ -109,10 +109,10 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     json(s"files/${FileId.value(id)}", Vector("fields" -> DriveJson.FileFields))
       .flatMap(a => DriveJson.file(a).left.map(DriveError.Malformed(_)))
 
-  /** The name of each shared drive the account is a member of, by its id, of the first
-    * [[DriveRest.DrivesMost]] Drive lists.
+  /** The first [[DriveRest.DrivesMost]] shared drives the account is a member of; `incomplete`
+    * when Drive had more.
     */
-  def drives(): Either[DriveError, Map[FileId, String]] =
+  def drives(): Either[DriveError, SharedDrives] =
     json(
       "drives",
       Vector("pageSize" -> DriveRest.DrivesMost.toString, "fields" -> DriveJson.DriveFields)

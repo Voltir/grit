@@ -203,7 +203,9 @@ object DriveRestTests extends TestSuite {
           Email.of(e).fold(w => throw new java.lang.AssertionError(w), identity)
         (
           rest.search("text", None).map(h => (h.files.map(f => FileId.value(f.id)), h.incomplete)),
-          rest.drives().map(_.map((id, name) => (FileId.value(id), name))),
+          rest
+            .drives()
+            .map(d => (d.names.map((id, name) => (FileId.value(id), name)), d.incomplete)),
           rest.grants(file1)
         ) ==> (
           Right(
@@ -214,7 +216,7 @@ object DriveRestTests extends TestSuite {
               false
             )
           ),
-          Right(Map("drive-a" -> "name-1", "drive-b" -> "name-2")),
+          Right((Map("drive-a" -> "name-1", "drive-b" -> "name-2"), false)),
           Right(
             Some(
               Vector(

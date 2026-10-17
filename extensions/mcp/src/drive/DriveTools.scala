@@ -45,7 +45,7 @@ final class DriveTools(
     }
     val search: Tool.Offered^{clock, said} = DriveTools.Search.over { s =>
       val drives = rest.drives() match {
-        case Right(named) => named
+        case Right(shared) => shared.names
         case Left(e) =>
           said(
             "drive_search: Drive's shared drives could not be listed, so hits name them by id: " +

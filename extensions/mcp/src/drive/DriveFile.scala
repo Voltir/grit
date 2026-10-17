@@ -56,6 +56,11 @@ object DriveFile {
   */
 final case class Hits(files: Vector[DriveFile], incomplete: Boolean)
 
+/** The first page of shared drives grit is a member of, each one's name by its id;
+  * `incomplete` when Drive has more than these.
+  */
+final case class SharedDrives(names: Map[FileId, String], incomplete: Boolean)
+
 /** A grant's role, as `permissions.list` names it. */
 enum Role derives CanEqual {
   case Owner, Organizer, FileOrganizer, Writer, Commenter, Reader

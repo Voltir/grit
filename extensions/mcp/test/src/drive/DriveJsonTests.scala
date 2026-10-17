@@ -177,11 +177,27 @@ object DriveJsonTests extends TestSuite {
         DriveJson.drives(ujson.Obj("drives" -> "drive-a")),
         DriveJson.drives(ujson.Obj())
       ) ==> (
-        Right(Map(Recorded.id("drive-a") -> "name-1", Recorded.id("drive-b") -> "name-2")),
+        Right(
+          SharedDrives(
+            Map(Recorded.id("drive-a") -> "name-1", Recorded.id("drive-b") -> "name-2"),
+            incomplete = false
+          )
+        ),
         Left("a drive names no name"),
         Left("a listing's drives are not a list"),
-        Right(Map.empty)
+        Right(SharedDrives(Map.empty, incomplete = false))
       )
+    }
+
+    test("a listing of shared drives naming a next page is incomplete") {
+      DriveJson
+        .drives(
+          ujson.Obj(
+            "nextPageToken" -> "page-2",
+            "drives" -> ujson.Arr(ujson.Obj("id" -> "drive-a", "name" -> "Engineering"))
+          )
+        )
+        .map(_.incomplete) ==> Right(true)
     }
 
     test("an error answer's reasons are read in order") {

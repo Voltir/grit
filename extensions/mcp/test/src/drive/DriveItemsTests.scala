@@ -182,6 +182,25 @@ object DriveItemsTests extends TestSuite {
       )
     }
 
+    test("the shared drives' head says, when Drive had more, that only the first are listed") {
+      val head = (incomplete: Boolean) =>
+        right(
+          DriveItems.items(
+            reading,
+            DriveCalled.Drives(SharedDrives(Map(Recorded.id("drive-a") -> "a"), incomplete))
+          )
+        ).head
+      val opens =
+        "Files in folders that no one has labelled yet aren't listed. An administrator can " +
+          "open such a folder by typing `label internal at <the folder's link or id>`."
+      val lead = "The shared drives here, one a line, each with its id; list one's files and " +
+        "folders by its id."
+      (head(false), head(true)) ==> (
+        s"$lead $opens",
+        s"$lead Drive has more than these; only the first 100 are listed. $opens"
+      )
+    }
+
     test(
       "the shared drives are names parts at the service's own place, by name, one whose name is not a plain title saying so"
     ) {
@@ -189,10 +208,13 @@ object DriveItemsTests extends TestSuite {
         DriveItems.items(
           reading,
           DriveCalled.Drives(
-            Map(
-              Recorded.id("drive-b") -> "Finance",
-              Recorded.id("drive-a") -> "Engineering",
-              Recorded.id("drive-c") -> "<b>x</b>"
+            SharedDrives(
+              Map(
+                Recorded.id("drive-b") -> "Finance",
+                Recorded.id("drive-a") -> "Engineering",
+                Recorded.id("drive-c") -> "<b>x</b>"
+              ),
+              incomplete = false
             )
           )
         )

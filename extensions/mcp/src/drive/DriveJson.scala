@@ -19,9 +19,10 @@ object DriveJson {
   /** The fields shared drives are listed with. */
   val DriveFields: String = "nextPageToken,drives(id,name)"
 
-  /** A `drives.list` answer: each drive's name, by its id; a drive on a later page is not read.
+  /** A `drives.list` answer: each drive's name, by its id; incomplete when it names a next page,
+    * which is not read.
     */
-  def drives(answer: ujson.Value): Either[String, Map[FileId, String]] =
+  def drives(answer: ujson.Value): Either[String, SharedDrives] =
     for {
       o <- obj(answer, "a list of drives")
       listed <- o.get("drives") match {
@@ -37,7 +38,7 @@ object DriveJson {
           name <- str(drive, "name", "a drive")
         } yield kept + (id -> name)
       }
-    } yield named
+    } yield SharedDrives(named, incomplete = o.contains("nextPageToken"))
 
   /** The fields a file's grants are asked for with. */
   val GrantFields: String = "nextPageToken,permissions(type,role,emailAddress,domain)"

@@ -106,8 +106,8 @@ enum DriveCalled {
     */
   case Searched(hits: Hits, drives: Map[FileId, String])
 
-  /** The shared drives grit is a member of: each one's name, by its id. */
-  case Drives(drives: Map[FileId, String])
+  /** The shared drives grit is a member of. */
+  case Drives(drives: SharedDrives)
 
   /** A listing of one folder's or shared drive's own files and folders. */
   case Listed(files: Hits)

@@ -32,7 +32,9 @@ object DriveItems {
     *     refuses it), at
     *     member, at the place it lies within ([[DriveReading.place]]), a folder's at the
     *     service's own place; a hit lying nowhere is left out;
-    *   - the shared drives: a head (ending as a search's, "listed" for "searched"), then each
+    *   - the shared drives: a head (saying, when Drive had more, that only the first
+    *     [[DriveRest.DrivesMost]] are listed, and ending as a search's, "listed" for
+    *     "searched"), then each
     *     drive as a names part, one line (its name, or a note that it is not shown, and its
     *     id), at member, at the service's own place, by name;
     *   - a listing of one folder: a head (saying, when Drive had more, that only the first
@@ -68,8 +70,12 @@ object DriveItems {
         Right(Itemised.Parts(head, names(reading, hits.files, line(_, drives))))
       case DriveCalled.Drives(drives) =>
         val head = "The shared drives here, one a line, each with its id; list one's files and " +
-          "folders by its id." + unlabelled("listed")
-        val parts = drives.toVector
+          "folders by its id." +
+          (if (drives.incomplete)
+             s" Drive has more than these; only the first ${DriveRest.DrivesMost} are listed."
+           else "") +
+          unlabelled("listed")
+        val parts = drives.names.toVector
           .sortBy((id, name) => (Some(name).filter(shown).getOrElse(""), FileId.value(id)))
           .map { (id, name) =>
             val title =

@@ -50,8 +50,8 @@ trait DriveRestContract extends TestSuite {
       val named = rest.drives()
       val hits = rest.search(words, None).map(_.files.flatMap(_.drive).toSet)
       (
-        named.map(_.values.forall(_.nonEmpty)),
-        hits.flatMap(h => named.map(n => h.subsetOf(n.keySet)))
+        named.map(_.names.values.forall(_.nonEmpty)),
+        hits.flatMap(h => named.map(n => h.subsetOf(n.names.keySet)))
       ) ==> (Right(true), Right(true))
     }
 
