@@ -90,9 +90,32 @@ object RehearsingScopeTests extends TestSuite {
       |}
       |""".stripMargin
 
-  private val escapes = List(session, reads, writes, writing, runtime, placements, body, kept)
+  /** The session's reads, taken through the `Runtime` view `Launch.asking` sees. */
+  private val runtimeReads = within("Db^", "{ val rt: Runtime^ = r; rt.db }")
 
-  private lazy val compiled = Probes.batch(prelude, readOut :: runtimeReadOut :: escapes)
+  /** A body over the reads of the `Runtime` view, not of the session. */
+  private val runtimeBody =
+    within(
+      "WorkflowId => Durable^ ?=> String",
+      "{ val rt: Runtime^ = r; (id: WorkflowId) => (_: Durable^) ?=> rt.db.read(Subject.Public)(Right(1)).toString }"
+    )
+
+  private val escapes =
+    List(
+      session,
+      reads,
+      writes,
+      writing,
+      runtime,
+      placements,
+      body,
+      kept,
+      runtimeReads,
+      runtimeBody
+    )
+
+  private lazy val compiled =
+    Probes.batch(prelude, readOut :: runtimeReadOut :: escapes)
 
   /** Whether `errs` reject a capability for leaving the block it was given to: as a value it
     * outlives its scope; captured by a closure, it is not visible where the closure goes.
@@ -147,6 +170,14 @@ object RehearsingScopeTests extends TestSuite {
 
     test("a runner keeping the body it is handed in a var outside the block is rejected") {
       assert(leaves(compiled.errors(kept)))
+    }
+
+    test("the session's reads carried out of its block as a runtime's are rejected") {
+      assert(leaves(compiled.errors(runtimeReads)))
+    }
+
+    test("a body over the runtime's reads, carried out of its block, is rejected") {
+      assert(leaves(compiled.errors(runtimeBody)))
     }
 
     test("capture checking is what rejects them") {
