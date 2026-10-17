@@ -29,10 +29,22 @@ object Rehearse {
       situation: Situation,
       answers: Answers
   ): Either[String, Rehearsed] =
+    dryAt(config, d, situation, answers, Clock.system())
+
+  /** As [[dry]], every workflow and the message dated by `clock`: a test's, so a live run on
+    * the same clock dates what it sends alike.
+    */
+  private[grit] def dryAt(
+      config: DbConfig,
+      d: Deployment,
+      situation: Situation,
+      answers: Answers,
+      clock: Clock^
+  ): Either[String, Rehearsed] =
     Taps.seed(d.policy).flatMap { seed =>
       val tape = new Tape
       val runner = new RehearsalRunner(arrives(situation), tape)
-      Rehearsing(config, d.budget, d.visibility, Clock.system(), runner) { r =>
+      Rehearsing(config, d.budget, d.visibility, clock, runner) { r =>
         val classifier = Taps.classifier(d.topics, answers, tape)
         // Launch.asking throws only for what its deployment cannot write or offer.
         try {

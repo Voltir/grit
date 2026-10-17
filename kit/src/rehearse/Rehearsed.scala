@@ -75,16 +75,35 @@ object Rehearsed {
   )
 
   /** A call made in the step `step` (`None`: between operations) to `to` (a model, with its
-    * output budget, effort and tool use, or a classifier's service), its input by part, routed
-    * for `label` (`None`: no record the rehearsal ran names it), and how it was answered.
+    * output budget, effort and tool use, or a classifier's service), sent `input`, routed for
+    * `label` (`None`: no record the rehearsal ran names it), and how it was answered.
     */
   final case class Call(
       step: Option[String],
       to: String,
       label: Option[Label],
-      parts: Vector[Part],
+      input: Input,
       answered: Answered
-  )
+  ) {
+
+    /** Its input by part: a request's system prompt, each tool and each message; a
+      * classifier's state and each question.
+      */
+    def parts: Vector[Part] = input match {
+      case Input.Model(request) => Rehearsed.parts(request)
+      case Input.Classifier(state, questions) => judged(state, questions)
+    }
+  }
+
+  /** What a call was sent. */
+  enum Input {
+
+    /** A model's request. */
+    case Model(request: ModelRequest)
+
+    /** A classifier's questions about a state. */
+    case Classifier(state: ujson.Value, questions: Vector[Question])
+  }
 
   /** One part of a call's input, `name`d, its `text` as sent, `chars` long, estimated at
     * `tokens` by [[CharEstimate]].
@@ -142,7 +161,7 @@ object Rehearsed {
             step,
             model(pinned, request),
             asked(step, at).orElse(routed),
-            parts(request),
+            Input.Model(request),
             answered.fold(Answered.Unsent)(a => Answered.StandIn(a.by, said(a.answer)))
           )
         case Tape.Call.Classifier(step, service, state, questions, answered) =>
@@ -150,7 +169,7 @@ object Rehearsed {
             step,
             service.place.written,
             asked(step, at).orElse(routed),
-            judged(state, questions),
+            Input.Classifier(state, questions),
             Answered.StandIn(answered.by, judgment(answered.answer))
           )
       }
