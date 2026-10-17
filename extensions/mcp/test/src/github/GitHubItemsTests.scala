@@ -52,13 +52,15 @@ object GitHubItemsTests extends TestSuite {
       (
         GitHubItems.repository(Github, "Octocat/Hello-World"),
         GitHubItems.owner(Github, "Octocat"),
-        Vector("widgets", "a/b/c", " /x", "o/").map(GitHubItems.repository(Github, _).isLeft),
-        Vector("", " ", "a/b").map(GitHubItems.owner(Github, _).isLeft)
+        Vector("widgets", "a/b/c", " /x", "o/").map(GitHubItems.repository(Github, _)),
+        Vector("", " ", "a/b").map(GitHubItems.owner(Github, _))
       ) ==> (
         Right(Hello),
         Place.read("service:github/octocat"),
-        Vector(true, true, true, true),
-        Vector(true, true, true)
+        Vector("widgets", "a/b/c", " /x", "o/").map(n =>
+          Left(s"a repository is {owner}/{name}, not '$n'")
+        ),
+        Vector("", " ", "a/b").map(n => Left(s"an owner is a login with no /, not '$n'"))
       )
     }
 
