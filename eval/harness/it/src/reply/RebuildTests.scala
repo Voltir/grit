@@ -418,10 +418,10 @@ object RebuildTests extends TestSuite {
   }
 
   /** Two task conversations told the Falcon budget, the second as a rumour, then a third asking
-    * it, its turn judged by a [[Sceptic]]; the two told, that turn's window rebuilt, and what its
-    * search recorded.
+    * it, its turn judged by a [[Sceptic]]; the two told, that turn's window rebuilt, what its
+    * search recorded, and how many searches the rebuild made.
     */
-  private lazy val judged: (Reader, TurnRef, TurnRef, RebuiltWindow, TurnRecord.Retrieval) = {
+  private lazy val judged: (Reader, TurnRef, TurnRef, RebuiltWindow, TurnRecord.Retrieval, Int) = {
     val config = TestPostgres.freshDatabase("harness_rebuild_judged")
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
@@ -433,10 +433,11 @@ object RebuildTests extends TestSuite {
       val rumoured = ask(engine, "f", "a rumour says the Falcon budget is 1")
       val g = ask(engine, "g", "what is the Falcon budget?")
       val reader = Reader.open(config)
+      val counted = new Searches(reader)
       val rebuilt =
         right(
           Rebuild.recorded(
-            reader,
+            counted,
             g.workflowId,
             Assembled.Shipped,
             Admission.Shipped,
@@ -444,8 +445,83 @@ object RebuildTests extends TestSuite {
           )
         )
       val retrieval = right(right(reader.steps(g.workflowId).map(TurnRecord.retrieval)))
-      (reader, told, rumoured, rebuilt, right(retrieval.toRight("no search recorded")))
+      (
+        reader,
+        told,
+        rumoured,
+        rebuilt,
+        right(retrieval.toRight("no search recorded")),
+        counted.made
+      )
     } finally engine.close()
+  }
+
+  /** `inner`, counting each search made of it: `made`. */
+  private final class CountedSearch(inner: grit.core.store.EntrySearch)
+      extends grit.core.store.EntrySearch {
+    // Untracked: a CountedSearch is made by one [[Searches]], used by the one rebuild `judged`
+    // runs on its own thread, and its count read once that rebuild returns. No other code
+    // holds it.
+    @caps.unsafe.untrackedCaptures
+    var made: Int = 0
+    def search(
+        conversation: ConversationId,
+        from: TurnSeq,
+        before: TurnSeq,
+        query: String,
+        limit: Int
+    )(using grit.core.store.Tx^) = {
+      made += 1
+      inner.search(conversation, from, before, query, limit)
+    }
+    def nearby(open: Vector[grit.core.store.OpenPeriod], query: String, limit: Int)(using
+        grit.core.store.Tx^
+    ) = {
+      made += 1
+      inner.nearby(open, query, limit)
+    }
+    def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+        grit.core.store.Tx^
+    ) = {
+      made += 1
+      inner.closings(conversations, query, limit)
+    }
+    def room(room: grit.core.place.Place, from: Instant, until: Instant, query: String, limit: Int)(
+        using grit.core.store.Tx^
+    ) = {
+      made += 1
+      inner.room(room, from, until, query, limit)
+    }
+  }
+
+  /** `reader`, counting each search made of its entries: `made`. */
+  private final class Searches(reader: Reader^) extends Reader {
+    private val counted = new CountedSearch(reader.search)
+    def made: Int = counted.made
+    val db: grit.core.store.Db = reader.db
+    val all: grit.core.store.Reads = reader.all
+    val entries: grit.core.store.EntryStore = reader.entries
+    val conversations: grit.core.store.ConversationStore = reader.conversations
+    val periods: grit.core.store.PeriodStore = reader.periods
+    val lifecycle: grit.core.store.LifecycleStore = reader.lifecycle
+    val stitches: grit.core.stitch.StitchStore = reader.stitches
+    val rooms: grit.core.recipe.RoomReads = reader.rooms
+    val search: grit.core.store.EntrySearch = counted
+    val documents: grit.core.document.DocumentSearch = reader.documents
+    def current()(using grit.core.store.Tx^) = reader.current()
+    val principals: grit.core.store.Principals = reader.principals
+    val triage: grit.core.triage.TriageStore = reader.triage
+    val shadows: grit.core.triage.TriageShadows = reader.shadows
+    val reviews: grit.core.review.ReviewStore = reader.reviews
+    val ledger: grit.core.store.UsageLedger = reader.ledger
+    val prompts: grit.core.store.PromptStore = reader.prompts
+    val toolSets: grit.core.tool.ToolSets = reader.toolSets
+    val profiles: grit.core.store.ModelProfileStore = reader.profiles
+    def turns(until: Instant) = reader.turns(until)
+    def steps(id: WorkflowId) = reader.steps(id)
+    def workflow(id: WorkflowId) = reader.workflow(id)
+    def starts() = reader.starts()
+    def close(): Unit = ()
   }
 
   private def conversations(n: Vector[Nearby]): Vector[ConversationId] = n.map(_.conversation)
@@ -480,7 +556,7 @@ object RebuildTests extends TestSuite {
     }
 
     test("a turn rebuilt from its recorded verdicts shows none it rejected") {
-      val (_, told, rumoured, r, retrieval) = judged
+      val (_, told, rumoured, r, retrieval, _) = judged
       // The rumour was found, and its judge rejected it; the budget it passed.
       retrieval.verdicts.collect {
         case (Retrieved.Near(c, _), Verdict.Passed(_)) => c -> "passed"
@@ -489,6 +565,12 @@ object RebuildTests extends TestSuite {
       r.recorded.map(w => conversations(w.nearby)) ==> Some(Vector(told.conversationId))
       (conversations(r.rebuilt.nearby), r.drift) ==>
         (Vector(told.conversationId), Some(Drift.Same))
+    }
+
+    test("a turn rebuilt from its recorded search searches nothing, its query the one recorded") {
+      val (_, _, _, r, retrieval, searches) = judged
+      (searches, r.rebuilt.notes.collect { case q: AssemblyNote.Queried => q.query }) ==>
+        (0, Vector(retrieval.written.text))
     }
 
     test("a message said elsewhere after a turn's assembly is absent from its rebuild") {

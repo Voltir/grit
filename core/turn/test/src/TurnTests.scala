@@ -609,7 +609,7 @@ object TurnTests extends TestSuite {
       TurnRecord.retrieval(durable.history(turn.workflowId).map(FlowFixtures.recorded)) ==> Right(
         Some(
           TurnRecord.Retrieval(
-            "hello greeting",
+            grit.core.context.Querying.Written("hello greeting", queried),
             grit.core.context.Results(found.map(n => ownTurn(n) -> (12 - n).toDouble)),
             found.map(n =>
               ownTurn(n) -> (

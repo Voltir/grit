@@ -272,7 +272,7 @@ object TurnRecord {
     * each judged one's verdict, in its batches' order.
     */
   final case class Retrieval(
-      query: String,
+      written: Querying.Written,
       results: Results,
       verdicts: Vector[(Retrieved, TurnRelevance.Verdict)]
   )
@@ -300,8 +300,8 @@ object TurnRecord {
           .map(made[Vector[(Retrieved, TurnRelevance.Verdict)]](_))
       )
     } yield (queried.flatMap(_.toOption), found.flatMap(_.toOption)) match {
-      case (Some(Querying.Written(text, _)), Some(results)) =>
-        Some(Retrieval(text, results, verdicts.flatten))
+      case (Some(written: Querying.Written), Some(results)) =>
+        Some(Retrieval(written, results, verdicts.flatten))
       case _ => None
     }
   }

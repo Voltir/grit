@@ -2,10 +2,10 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
-import grit.core.context.{Results, Retrieved}
+import grit.core.context.{AssemblyNote, Querying, Results, Retrieved}
 import grit.core.document.{DocText, Document, Placement, Pointer}
 import grit.core.id.{DocKey, DocumentVersion, PluginName, TurnSeq}
-import grit.core.message.Message
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolSchema}
@@ -56,7 +56,10 @@ object PointerLinesTests extends TestSuite {
   val tests = Tests {
     test("the documents rejected are those the verdicts rejected, in the results' order") {
       val retrieval = TurnRecord.Retrieval(
-        "Falcon budget",
+        Querying.Written(
+          "Falcon budget",
+          AssemblyNote.Queried("Falcon budget", "writer", Usage.Zero, Tokens.Zero)
+        ),
         Results(
           Vector(
             Retrieved.Doc(version(3)) -> 3.0,

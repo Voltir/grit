@@ -1,7 +1,8 @@
 package grit.eval.harness.reply
 
-import grit.core.context.{Results, Retrieved}
+import grit.core.context.{AssemblyNote, Querying, Results, Retrieved}
 import grit.core.id.TurnSeq
+import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.turn.{TurnRecord, TurnRelevance}
 
@@ -16,7 +17,10 @@ object AdmissionTests extends TestSuite {
 
   // Four found: one passed at 0.6, one rejected at 0.4, one unjudged, one passed at 0.9.
   private val retrieval = TurnRecord.Retrieval(
-    "Falcon budget",
+    Querying.Written(
+      "Falcon budget",
+      AssemblyNote.Queried("Falcon budget", "writer", Usage.Zero, Tokens.Zero)
+    ),
     Results(Vector(own(0) -> 4.0, own(1) -> 3.0, own(2) -> 2.0, own(3) -> 1.0)),
     Vector(
       own(0) -> Verdict.Passed(p(0.6)),

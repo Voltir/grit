@@ -9,8 +9,8 @@ import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
   ContextAssembler,
+  Packing,
   Prepared,
-  Results,
   Width,
   Window
 }
@@ -78,43 +78,36 @@ object Rebuild {
       width: Width,
       query: Option[Pinned]
   )(using Db^): Either[String, Window] =
-    drawn(view, turn, assembled, writer, width, query)(found => found)
-
-  /** [[window]], its search's results first handed to `admit`, which says which are packed. */
-  private def drawn(
-      view: AsOf,
-      turn: TurnRef,
-      assembled: Assembled,
-      writer: Provider^,
-      width: Width,
-      query: Option[Pinned]
-  )(admit: Results -> Results)(using Db^): Either[String, Window] =
     ContextAssembler
-      .draw(
-        new RetrievalAssembler(
-          view.entries,
-          view.conversations,
-          view.periods,
-          view.principals,
-          view.lifecycle,
-          view.search,
-          view.documents,
-          view.stitches,
-          CharEstimate,
-          assembled.window,
-          assembled.tail,
-          assembled.tuning,
-          assembled.hits
-        ),
-        AssemblyRequest(turn, width)
-      )(
+      .draw(shipped(view, assembled), AssemblyRequest(turn, width))(
         asked => query.fold(Left(Prepared.NoPin))(_ => writer.complete(asked).left.map(_.cause)),
-        admit
+        found => found
       )
       .left
-      .map { case AssemblyError.Store(e) =>
-        s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
-      }
+      .map(unbuilt(turn))
+
+  /** The shipped [[RetrievalAssembler]], built as `assembled` says over `view`. */
+  private def shipped(view: AsOf, assembled: Assembled): RetrievalAssembler =
+    new RetrievalAssembler(
+      view.entries,
+      view.conversations,
+      view.periods,
+      view.principals,
+      view.lifecycle,
+      view.search,
+      view.documents,
+      view.stitches,
+      CharEstimate,
+      assembled.window,
+      assembled.tail,
+      assembled.tuning,
+      assembled.hits
+    )
+
+  private def unbuilt(turn: TurnRef)(e: AssemblyError): String = e match {
+    case AssemblyError.Store(e) =>
+      s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
+  }
 
   /** What a read for `turn` through `db` was routed for (ADR 0031): whom a query written from
     * its window may be sent to ([[Routed.cleared]]), and the bound the window's reads are held
@@ -127,14 +120,15 @@ object Rebuild {
         s"the routing of ${WorkflowId.value(turn.workflowId)} was not read: ${Capture.kind(e)}"
       )
 
-  /** The window of the turn `workflow` recorded, rebuilt [[window]] over `reader`'s database as
-    * it stood when the turn's `assemble` step started, its query the one the turn recorded:
-    * asked for one, the writer answers with it, so nothing is spent; a turn that recorded none
-    * is rebuilt with a writer that fails, as live's did or was never asked. A turn that
+  /** The window of the turn `workflow` recorded, rebuilt by the shipped assembler over
+    * `reader`'s database as it stood when the turn's `assemble` step started. A turn that
     * recorded its search ([[TurnRecord.retrieval]]) packs what `admission` admits of the
-    * results it recorded by the verdicts it recorded, no classifier asked; one that recorded
-    * none packs all its search finds. `Left` when the turn recorded no `assemble` step or no
-    * start for it, or what it needs cannot be read.
+    * results it recorded by the verdicts it recorded, under the query it recorded: no search
+    * is run, no query written, no classifier asked. One that recorded none is drawn again
+    * ([[window]]), packing all its search finds, its query the one the turn recorded: asked
+    * for one, the writer answers with it, so nothing is spent; a turn that recorded none is
+    * rebuilt with a writer that fails, as live's did or was never asked. `Left` when the turn
+    * recorded no `assemble` step or no start for it, or what it needs cannot be read.
     */
   def recorded(
       reader: Reader^,
@@ -185,18 +179,28 @@ object Rebuild {
         .retrieval(steps)
         .left
         .map(why => s"the search of $name does not read: $why")
-      seed <- Seed.catalog
-      // The writer replays the query the turn recorded, and sends nothing.
-      rebuilt <- drawn(
-        AsOf(reader, at),
-        turn,
-        assembled,
-        new Replayed(query),
-        width,
-        Some(seed.pin.query.first)
-      )(
-        searched.fold[Results -> Results](found => found)(r => _ => admission.admitted(r))
-      )(using reader.db)
+      rebuilt <- searched match {
+        case Some(r) =>
+          shipped(AsOf(reader, at), assembled)
+            .assemble(
+              AssemblyRequest(turn, width),
+              Packing.Searched(r.written, admission.admitted(r))
+            )(using reader.db)
+            .left
+            .map(unbuilt(turn))
+        case None =>
+          // The writer replays the query the turn recorded, and sends nothing.
+          Seed.catalog.flatMap(seed =>
+            window(
+              AsOf(reader, at),
+              turn,
+              assembled,
+              new Replayed(query),
+              width,
+              Some(seed.pin.query.first)
+            )(using reader.db)
+          )
+      }
     } yield RebuiltWindow(at, recorded, rebuilt, lost)
   }
 
