@@ -6,7 +6,7 @@ asked of it (`TurnWeighing`), route it (the pairs cleared for what it reads, und
 ceiling; its root's task asked when those span grades; the grade, reasoning and calls allotted
 from that, raised to its room's baseline; ADR 0031), decide what it offers (its tools and its system prompt as fragments, among them its own room's label and, in brief, who may see what and how grit keeps it; ADRs 0016, 0017),
 shaped by its deployment's recipe (ADR 0025), place its message among the
-conversation's topics (ADR 0008), assemble, call the model (each call gated by what the turn has read, its tools offered only when what it read is believed enough for them; ADR 0036), send its hosted tool calls to
+conversation's topics (ADR 0008), draw its window (its search query written, what that finds judged, only what passed packed; ADR 0040), call the model (each call gated by what the turn has read, its tools offered only when what it read is believed enough for them; ADR 0036), send its hosted tool calls to
 the edge serving its directory and wait for their answers, append, summarise.
 Written against `grit.core`'s seams and `Durable`, never DBOS, so its tests run it over
 core's in-memory fakes (`InMemoryDurable`, `InMemoryEntryStore`).
@@ -22,12 +22,14 @@ before it and, of `Turn`, only its names and pins:
   a step's body goes through its one rebinding.
 - **`TurnSteps`**: every other step as a value, with its body; what they act through (`Env`)
   and its implementation, `Turning`; what crosses between them.
+- **`TurnAssembly`**: the steps the window is drawn in, from the placed message: the query, the
+  search, each batch judged, the window packed.
 - **`TurnFlow`**: the description: the steps in order, which run when, and what follows the
   reply. Which steps a turn records, and in what order, is read from it alone.
 - **`Turn`**: the body that runs the flow and the readers of a recorded turn, each reading it
   over the flow (`running`, `rebuilt`), beside the step names and pins.
 
 The other files are the helpers these steps call: an offer (`TurnOffer`), a route
-(`TurnRoute`), topics, a verdict, a summary, a judge, a gate (`TurnGate`), hosted calls
+(`TurnRoute`), topics, a verdict, a summary, a judge, what a search found judged (`TurnRelevance`), a gate (`TurnGate`), hosted calls
 (`TurnHosted`), the tool calls (`TurnTools`), the loop's pure decisions (`TurnLoop`), and the
 recorded codecs (`TurnJournal`).

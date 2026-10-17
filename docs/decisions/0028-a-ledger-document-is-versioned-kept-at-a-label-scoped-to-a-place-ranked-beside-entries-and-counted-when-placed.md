@@ -52,7 +52,7 @@ Consequences:
   nothing it pointed to.
 - The weight makes what documents add measurable on the eval; a window's record says which
   versions it showed.
-- Recording a window's documents and counting follows add writes inside `assemble`,
-  `record-window` and `append`, not steps: no patch (ADR 0004), and a replayed turn counts
-  nothing again. Enforced by the replay gate (`TurnReplayTests`, `documented.json`) and
+- Recording a window's documents and counting follows add writes inside `record-window` and
+  `append`, not steps, and a replayed turn counts nothing again; `append` records the versions it
+  counted followed (ADR 0040). Enforced by the replay gate (`TurnReplayTests`, `documented.json`) and
   `DocumentContract`.

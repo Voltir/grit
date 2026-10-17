@@ -1,6 +1,6 @@
 # 0013. A conversation has a place, and open periods near it in scope are retrieval candidates
 
-Status: accepted (2026-09-26); revised (2026-09-28)
+Status: accepted (2026-09-26); revised (2026-10-16)
 
 Context: grit runs in several directories and sessions at once, and in Slack channels and
 threads, and what one conversation is doing is often what another needs. A conversation keyed
@@ -30,7 +30,8 @@ Decision:
   grounds (ADR 0018). A conversation with open turns among the candidates is shown by those
   alone. Nothing else a close wrote elsewhere is a candidate.
 - **One pool.** They rank by BM25 with the conversation's own candidates, whose scores are
-  multiplied by a weight (data, at least 1), in one budget with no reserved share.
+  multiplied by a weight (data, at least 1), in one budget with no reserved share. The first
+  thirty are judged for relevance, and only those passed or unjudged are packed (ADR 0040).
 - **The model is shown them as one section per conversation**, labelled with its place, never
   as turns of its own conversation, ahead of the conversation's closing and turns.
 - **A close is shown what its period drew from elsewhere** as known, and never records it as
@@ -50,8 +51,8 @@ Consequences:
   the pool has to be in that index.
 - A window names entries of other conversations, which can be purged before a crashed turn
   resumes; the turn then shows what remains of them.
-- A balance elsewhere is reached only as a whole record, ranked by its flows. Judging its
-  lines one by one is deferred to a relevance judge, not ruled out.
+- A balance elsewhere is reached only as a whole record, ranked by its flows, and judged
+  whole; judging its lines one by one is deferred, not ruled out.
 - Narrowing the default is a setting, not a migration: a deployment seeds the scope (the
   reference deployment, serving an edge, seeds `room`).
 - Enforced by `PlaceTests` (scopes and rooms) and `RetrievalAssemblerTests`, and by the period

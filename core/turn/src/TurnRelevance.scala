@@ -5,9 +5,9 @@ import grit.core.classify.{Answered, Ask, ClassifierError, StateJson}
 import grit.core.context.{Briefs, Results, Retrieved}
 import grit.core.period.Probability
 
-/** How a turn judges what its search found: its first [[Judged]] of the [[Recorded]]
-  * results, [[PerCall]] to a classifier call, each passing at [[Pass]] or more, each shown cut
-  * to [[Chars]].
+/** How a turn judges what its search found (ADR 0040): its first [[Judged]] of the
+  * [[Recorded]] results, [[PerCall]] to a classifier call, each passing at [[Pass]] or more,
+  * each shown cut to [[Chars]].
   */
 object TurnRelevance {
 

@@ -20,9 +20,10 @@ a **computed projection** of that store. Three traits carry the whole design:
 - `ContextAssembler` — the projection; *the* trait the thesis hangs on
 - `Provider` — the model call
 
-Retrieval, summaries, relevance checks and LSP code context are all future
-`ContextAssembler` implementations, so that signature is the real design work; everything
-else swaps behind it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
+Retrieval, summaries and LSP code context are all future `ContextAssembler`
+implementations; the relevance check is the turn's own move between the assembler's reads
+([ADR 0040](docs/decisions/0040-a-turn-draws-its-window-in-recorded-steps-and-only-candidates-judged-relevant-are-packed.md)),
+so that signature is the real design work; everything else swaps behind it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
 checking rejects any attempt to let it outlive its block.
 
 Mill modules, and what each may name. A module's folder follows ADR 0021's three questions
