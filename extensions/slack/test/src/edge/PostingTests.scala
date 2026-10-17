@@ -180,7 +180,7 @@ object PostingTests extends TestSuite {
       w.call(post("two"))
       w.clock.at = w.clock.at.plusSeconds(1799)
       w.call(post("three")) ==> Outcome.Failed(
-        "grit has made 2 posts in the last 1 hour, as many as it may. Nothing was posted."
+        "You have made 2 posts in the last 1 hour, as many as you may. Nothing was posted."
       )
       w.clock.at = w.clock.at.plusSeconds(1)
       w.call(post("four")) ==> Outcome.Done("Posted in #probably-not-skynet.")
@@ -195,7 +195,7 @@ object PostingTests extends TestSuite {
       w.call(post("two"))
       w.posting.offer(Vector(("general", General))).map(_ => ()) ==> Right(())
       w.call(post("three"), Some(GeneralAt)) ==> Outcome.Failed(
-        "grit has made 2 posts in the last 1 hour, as many as it may. Nothing was posted."
+        "You have made 2 posts in the last 1 hour, as many as you may. Nothing was posted."
       )
       w.posted.map(_._3) ==> Vector("one", "two")
     }
@@ -216,7 +216,7 @@ object PostingTests extends TestSuite {
         ),
         ToolSet.Empty,
         Outcome.Failed(
-          "grit's bot is in no channel slack_post may post in now. Nothing was posted."
+          "You are in no channel slack_post may post in now. Nothing was posted."
         ),
         Vector.empty
       )
@@ -226,7 +226,7 @@ object PostingTests extends TestSuite {
       val w = new World
       w.slack.notIn = Set(Skynet)
       w.call(post("one")) ==> Outcome.Failed(
-        "grit's bot is not in #probably-not-skynet, so it cannot post there. Nothing was posted."
+        "You are not in #probably-not-skynet, so you cannot post there. Nothing was posted."
       )
       w.slack.notIn = Set.empty
       w.call(post("two"))
@@ -267,7 +267,7 @@ object PostingTests extends TestSuite {
         )
       )
       w.posting.offered.tools.map(_.does) ==> Vector(
-        "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
+        "Post a message in a Slack channel, as yourself: at the channel's top level, or as a " +
           "reply in a thread when `thread` is a link to a message in that channel. It makes " +
           "at most 2 posts per 1 hour across its channels. Use it only when the person asks " +
           "for something to be posted there; your reply to them is posted where they wrote, " +

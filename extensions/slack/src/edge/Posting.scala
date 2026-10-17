@@ -78,7 +78,7 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
     current.get() match {
       case None =>
         Outcome.Failed(
-          s"grit's bot is in no channel ${ToolName.value(Name)} may post in now. $Unposted"
+          s"You are in no channel ${ToolName.value(Name)} may post in now. $Unposted"
         )
       case Some(hosted) =>
         Toolbox.of(hosted.over((a, to) => post(request.slot.key, a, to))) match {
@@ -135,7 +135,7 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
       val recent = made.filter(_.isAfter(now.minusNanos(rate.per.toNanos)))
       if (recent.size >= rate.count)
         Left(
-          s"grit has made ${rate.count} posts in the last ${rate.per}, as many as it may. $Unposted"
+          s"You have made ${rate.count} posts in the last ${rate.per}, as many as you may. $Unposted"
         )
       else {
         val result = body()
@@ -183,7 +183,7 @@ private[slack] object Posting {
       hosted <- Hosted.writing[PostArgs, Channel](
         ToolSpec[PostArgs](
           Name,
-          "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
+          "Post a message in a Slack channel, as yourself: at the channel's top level, or as a " +
             "reply in a thread when `thread` is a link to a message in that channel. It makes " +
             s"at most ${rate.count} posts per ${rate.per} across its channels. Use it only " +
             "when the person asks for something to be posted there; your reply to them is " +
@@ -220,12 +220,12 @@ private[slack] object Posting {
   /** Why Slack's `e` left a post to #`name` unmade, or possibly made. */
   private def failed(e: SlackError, name: String): String = e match {
     case SlackError.Refused("not_in_channel") =>
-      s"grit's bot is not in #$name, so it cannot post there. $Unposted"
+      s"You are not in #$name, so you cannot post there. $Unposted"
     case SlackError.Refused(code) => s"Slack refused the post ($code). $Unposted"
     case SlackError.MessageGone =>
       s"Slack refused the post: the message it answers is gone. $Unposted"
     case SlackError.Limited(after) =>
-      s"Slack is limiting grit's posts; it may post again after ${after.toSeconds} s. $Unposted"
+      s"Slack is limiting your posts; you may post again after ${after.toSeconds} s. $Unposted"
     case SlackError.Unreachable(cause) =>
       s"Slack could not be reached ($cause): the post may or may not have been made."
   }
