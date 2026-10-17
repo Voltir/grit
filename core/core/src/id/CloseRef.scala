@@ -25,22 +25,17 @@ object CloseRef {
     new CloseRef(period, last, due.truncatedTo(ChronoUnit.MILLIS))
 
   /** What the workflow id of every attempt on `period` starts with, and no other period's. */
-  def prefix(period: PeriodRef): String =
-    s"$Name:${ConversationId.value(period.conversationId)}:${PeriodSeq.value(period.seq)}:"
+  def prefix(period: PeriodRef): String = period.workflowPrefix(Name)
 
   /** The attempt whose workflow id is `id`, or `None` if `id` is not a close's. */
   def fromWorkflowId(id: WorkflowId): Option[CloseRef] =
     WorkflowId.value(id).split(':') match {
       case Array(Name, conversation, period, last, due) if conversation.nonEmpty =>
         for {
-          p <- period.toLongOption.flatMap(PeriodSeq.of)
+          p <- PeriodRef.parse(conversation, period)
           t <- last.toLongOption.filter(_ >= 0)
           d <- due.toLongOption
-        } yield CloseRef(
-          PeriodRef(ConversationId(conversation), p),
-          TurnSeq(t),
-          Instant.ofEpochMilli(d)
-        )
+        } yield CloseRef(p, TurnSeq(t), Instant.ofEpochMilli(d))
       case _ => None
     }
 }

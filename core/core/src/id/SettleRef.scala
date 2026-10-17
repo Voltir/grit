@@ -29,22 +29,17 @@ object SettleRef {
   /** What the workflow id of every question about `period` starts with, and no other
     * period's.
     */
-  def prefix(period: PeriodRef): String =
-    s"$Name:${ConversationId.value(period.conversationId)}:${PeriodSeq.value(period.seq)}:"
+  def prefix(period: PeriodRef): String = period.workflowPrefix(Name)
 
   /** The question whose workflow id is `id`, or `None` if `id` is not a settle's. */
   def fromWorkflowId(id: WorkflowId): Option[SettleRef] =
     WorkflowId.value(id).split(':') match {
       case Array(Name, conversation, period, last, activity) if conversation.nonEmpty =>
         for {
-          p <- period.toLongOption.flatMap(PeriodSeq.of)
+          p <- PeriodRef.parse(conversation, period)
           t <- last.toLongOption.filter(_ >= 0)
           a <- activity.toLongOption
-        } yield SettleRef(
-          PeriodRef(ConversationId(conversation), p),
-          TurnSeq(t),
-          Instant.ofEpochMilli(a)
-        )
+        } yield SettleRef(p, TurnSeq(t), Instant.ofEpochMilli(a))
       case _ => None
     }
 }
