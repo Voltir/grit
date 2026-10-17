@@ -380,6 +380,85 @@ object SyncTests extends TestSuite {
       (walked(Vector("a", "b")), walked(Vector("b", "a"))) ==> (expected, expected)
     }
 
+    test("a Drive run keeps each card at the floor, believed at its own way") {
+      import grit.knowledge.drive.{DriveCards, DriveCardsTests}
+      val drive: DriveCards = DriveCardsTests.cards(Vector(floor))
+      def facts(complete: Boolean, parts: ujson.Obj*) = grit.core.tool.Outcome.Stated(
+        Some(grit.core.visibility.Facts.of(ujson.Obj("complete" -> complete))),
+        parts.toVector.map(grit.core.visibility.Facts.of)
+      )
+      def doc(id: String, within: String) = ujson.Obj(
+        "id" -> id,
+        "kind" -> "document",
+        "name" -> s"name of $id",
+        "changed" -> "2026-09-01T10:00:00Z",
+        "within" -> within
+      )
+      // Each call's answer, its label and what it is believed at: `drive-a` is listed below the
+      // floor and believed `Member`; everything else is read at the floor, believed `Authority`.
+      def answered(args: ujson.Obj): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
+        (
+          args.value.get("folder").flatMap(_.strOpt),
+          args.value.get("file").flatMap(_.strOpt)
+        ) match {
+          case (None, None) =>
+            val drives = Vector("drive-a", "drive-b")
+              .map(id => ujson.Obj("id" -> id, "kind" -> "drive", "name" -> id))
+            Some((facts(true, drives*), floor, Integrity.Authority))
+          case (Some("drive-a"), _) =>
+            Some((facts(true, doc("file-a", "drive-a")), lower, Integrity.Member))
+          case (Some("drive-b"), _) =>
+            Some((facts(true, doc("file-b", "drive-b")), floor, Integrity.Authority))
+          case (_, Some(id)) =>
+            val opened = doc(id, "drive-x")
+            opened("text") = s"What $id holds."
+            opened("complete") = true
+            Some(
+              (
+                grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
+                floor,
+                Integrity.Authority
+              )
+            )
+          case _ => None
+        }
+      val documents = new InMemoryDocuments
+      val sync = new Sync(Vector(drive))
+      val k = new ScriptedKeeping(
+        sync.limits,
+        floor,
+        plugin,
+        terms,
+        _ => Left(MoveError.Model("no text ask")),
+        (_, _, args) =>
+          Right(answered(args).fold(Called.Failed("Not Found")) { (stated, at, believed) =>
+            Called.Done(
+              TestTainted.at(grit.core.act.Answer("not read", stated), believed),
+              at
+            )
+          }),
+        (system, messages) => reply(Summaries.Fixed, floor, Map.empty, system, messages),
+        _ => Left(MoveError.Model("the classifier is unavailable: down")),
+        documents
+      )
+      val watched = new Watched(k)
+      val said = sync.run(
+        TestTainted.trusted(
+          JobRun(SyncParams(drive.corpus, 5), Instant.EPOCH, Instant.EPOCH)
+        ),
+        watched
+      )
+      def written(id: String) = CardMoves.of(Phase.Write, CardKey.of(drive.corpus, id))
+      assert(
+        said == "shared: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run"
+      )
+      assert(held(k) == Vector(("file-a", floor), ("file-b", floor)))
+      assert(
+        watched.believed.filter(_._1 != CardMoves.Held) ==
+          Vector(written("file-a") -> Integrity.Member, written("file-b") -> Integrity.Authority)
+      )
+    }
+
     test("a file whose SHA changed is rewritten, with its directory; the rest are untouched") {
       val documents = firstAt(floor)
       val before = keeping(floor, documents).kept.map(d => pathOf(d) -> d.version).toMap
