@@ -133,7 +133,7 @@ object RehearsalRunnerTests extends TestSuite {
       r.runs(
         new RehearsalTests.Writes,
         Right(Starts.Heard(None, Some(heard))),
-        turn = id =>
+        turn = _ =>
           d ?=> {
             d.step[String]("ask:0")(() => throw Stop("ask:0"))
             "answered"
