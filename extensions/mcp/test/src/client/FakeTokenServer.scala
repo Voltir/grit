@@ -12,7 +12,8 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * the access token request"): a form POST whose `grant_type` is
   * `urn:ietf:params:oauth:grant-type:jwt-bearer` and whose `assertion` is a JWT signed RS256
   * by `keys`' private key. It answers a good one with `{access_token, expires_in, token_type}`,
-  * the token `token-<n>` for the n-th it issues, lasting [[lasting]] seconds; anything else,
+  * the token `token-<n>` for the n-th it issues, lasting [[lasting]] seconds (3600 until a
+  * test says otherwise); anything else,
   * or every request after [[refuses]], with `400 {"error": "invalid_grant", ...}`. Each good
   * assertion's header and claims are kept, in [[assertions]].
   */
@@ -27,7 +28,7 @@ final class FakeTokenServer private (val keys: KeyPair) {
   private var kept = Vector.empty[(ujson.Obj, ujson.Obj)]
 
   @caps.unsafe.untrackedCaptures
-  private var seconds = 3600L
+  private var seconds: Option[Long] = Some(3600L)
 
   @caps.unsafe.untrackedCaptures
   private var refusing = false
@@ -39,8 +40,10 @@ final class FakeTokenServer private (val keys: KeyPair) {
   /** The URL it answers at. */
   def uri: String = s"http://127.0.0.1:${http.getAddress.getPort}/token"
 
-  /** Each token it issues from now lasts `s` seconds. */
-  def lasting(s: Long): Unit = lock.synchronized { seconds = s }
+  /** Each token it issues from now lasts `s` seconds, its answer saying so in `expires_in`; with
+    * `None`, its answer holds no `expires_in`.
+    */
+  def lasting(s: Option[Long]): Unit = lock.synchronized { seconds = s }
 
   /** Every request from now is refused, or, with `on` false, answered again. */
   def refuses(on: Boolean = true): Unit = lock.synchronized { refusing = on }
@@ -85,10 +88,10 @@ final class FakeTokenServer private (val keys: KeyPair) {
       read match {
         case Some(parts) if !refusing =>
           kept = kept :+ parts
-          val reply = ujson.Obj(
-            "access_token" -> s"token-${kept.size}",
-            "expires_in" -> ujson.Num(seconds.toDouble),
-            "token_type" -> "Bearer"
+          val reply = ujson.Obj.from(
+            Vector[(String, ujson.Value)]("access_token" -> s"token-${kept.size}") ++
+              seconds.map(s => "expires_in" -> ujson.Num(s.toDouble)) ++
+              Vector("token_type" -> ujson.Str("Bearer"))
           )
           send(exchange, 200, ujson.write(reply))
         case _ =>

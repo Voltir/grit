@@ -49,11 +49,14 @@ object CredentialTests extends TestSuite {
   val tests = Tests {
     test(
       "a service account's token is got by a JWT its key signs (RS256; iss, scope, aud = " +
-        "token_uri, exp ≤ iat + 1 h), kept, and got again only once less than Renew is left"
+        "token_uri, exp = iat + 1 h), kept, and got again only once less than Renew is left " +
+        "of what its expires_in says"
     ) {
       withTokens { fake =>
         val clock = new Hands(start = Start)
         val authorizer = opened(fake.keyFile())
+        // Shorter than the JWT's own hour, so the expiry kept is the answer's.
+        fake.lasting(Some(600L))
         authorizer.bearer(clock).map(_.value) ==> Right("token-1")
         val (header, claims) = fake.assertions match {
           case Vector(one) => one
@@ -66,14 +69,26 @@ object CredentialTests extends TestSuite {
           claims("aud").str,
           claims("iat").num.toLong
         ) ==> (FakeTokenServer.Email, Scopes.head, fake.uri, Start / 1000)
-        assert(claims("exp").num.toLong - claims("iat").num.toLong <= 3600L)
-        // The token lasts 3600 s: kept while Renew or more of it is left.
-        clock.at = Start + 3600_000L - Credential.Renew.toMillis
+        claims("exp").num.toLong - claims("iat").num.toLong ==> 3600L
+        // The token lasts 600 s: kept while Renew or more of it is left.
+        clock.at = Start + 600_000L - Credential.Renew.toMillis
         authorizer.bearer(clock).map(_.value) ==> Right("token-1")
         fake.assertions.size ==> 1
         clock.at += 1000
         authorizer.bearer(clock).map(_.value) ==> Right("token-2")
         fake.assertions.lift(1).map(_._2("iat").num.toLong) ==> Some(clock.at / 1000)
+      }
+    }
+
+    test("a token answered with no expires_in, or one of 0, is NoToken naming its URL") {
+      withTokens { fake =>
+        val clock = new Hands(start = Start)
+        val authorizer = opened(fake.keyFile())
+        val missed = Left(McpError.NoToken(s"${fake.uri} answered no access_token and expires_in"))
+        fake.lasting(None)
+        val unsaid = authorizer.bearer(clock)
+        fake.lasting(Some(0L))
+        (unsaid, authorizer.bearer(clock)) ==> (missed, missed)
       }
     }
 
