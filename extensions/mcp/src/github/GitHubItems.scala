@@ -33,8 +33,10 @@ object GitHubItems {
     *     request, the issue and pull-request lists, review comments) or when its author is a bot
     *     (a login ending `[bot]`, or a `type` of `Bot`).
     *   - A pull request's diff, files or status, and an issue's labels: untrusted.
-    *   - A file read with no `ref` or `sha` (the default branch) at member; one read at any
-    *     `ref` or `sha`, even the default branch's name, at outside.
+    *   - A file read on the default branch, or at a `ref` naming a branch or tag, at member: only
+    *     the repository's writers push those. One read at a `sha`, or at a `ref` of 7 to 40 hex
+    *     digits or starting `refs/pull/` or `pull/`, at outside: a fork's commit or a pull
+    *     request's head may be reached through the repository.
     *
     * Any other tool's (code search and commits among them) are unread. An answer that does not
     * read as its tool's, a method of these tools not named here, or a place it cannot read, is
@@ -90,12 +92,19 @@ object GitHubItems {
       case ("list_pull_requests", _) => parsed(each)
       case ("search_issues" | "search_pull_requests", _) => parsed(at("items"))
       case ("get_file_contents", _) =>
-        val explicit = c.arguments.obj.contains("ref") || c.arguments.obj.contains("sha")
-        val level = if (explicit) Integrity.Outside else Integrity.Member
+        val args = c.arguments.obj
+        val foreign = args.contains("sha") || args.get("ref").exists(_.strOpt.forall(outsiders))
+        val level = if (foreign) Integrity.Outside else Integrity.Member
         all(Vector(file(service, c).map(Provenance(_, level))))
       case _ => Accounted.Unread
     }
   }
+
+  /** Whether a file's `ref` may name a commit the repository's writers did not push: a sha, or a
+    * pull request's head or merge.
+    */
+  private def outsiders(ref: String): Boolean =
+    ref.matches("[0-9a-fA-F]{7,40}") || ref.startsWith("refs/pull/") || ref.startsWith("pull/")
 
   /** Every item, or unaccountable when one's place is unread. */
   private def all(read: Vector[Read]): Accounted =

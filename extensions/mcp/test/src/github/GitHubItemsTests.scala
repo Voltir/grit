@@ -148,11 +148,28 @@ object GitHubItemsTests extends TestSuite {
         at(Hello, Integrity.Member)
     }
 
-    test("a file read at any ref, the default branch's name included, is outside") {
-      Vector("ref" -> ujson.Str("main"), "ref" -> ujson.Str("a-branch"), "sha" -> ujson.Str("0a"))
+    test("a file read at a branch or tag is member: the repository's own writing") {
+      Vector("main", "a-branch", "v1.2.0", "refs/heads/main", "refs/tags/v1", "abc123")
         .map(r =>
-          items("get_file_contents", asked("o", "r", "path" -> "README.md", r), "get-file-contents")
-        ) ==> Vector.fill(3)(at(Hello, Integrity.Outside))
+          items(
+            "get_file_contents",
+            asked("o", "r", "path" -> "README.md", "ref" -> ujson.Str(r)),
+            "get-file-contents"
+          )
+        ) ==> Vector.fill(6)(at(Hello, Integrity.Member))
+    }
+
+    test("a file read at a sha, or at a pull request's ref, is outside") {
+      val sha = "0123456789abcdef0123456789ABCDEF01234567"
+      Vector(
+        "sha" -> ujson.Str("0a"),
+        "ref" -> ujson.Str(sha),
+        "ref" -> ujson.Str("abc1234"),
+        "ref" -> ujson.Str("refs/pull/12/head"),
+        "ref" -> ujson.Str("pull/12/merge")
+      ).map(r =>
+        items("get_file_contents", asked("o", "r", "path" -> "README.md", r), "get-file-contents")
+      ) ==> Vector.fill(5)(at(Hello, Integrity.Outside))
     }
 
     test("an item is placed at the repository its answer names, not the one the call asked for") {
