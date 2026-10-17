@@ -113,7 +113,9 @@ object TurnJudge {
     * [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name
     * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
-    * then of each record among the window's entries: a strand is context, not recall.
+    * then of each record among the window's entries, then each of the turn's own tool
+    * results but a failed one, under its call as a person is shown it: a strand is context,
+    * not recall.
     */
   private[turn] def state(
       all: Vector[Entry],
@@ -151,7 +153,13 @@ object TurnJudge {
     val documents = showing.documents.map((d: Document, label: DocLabel) =>
       Shown.document(d.copy(pointer = None), label)
     )
-    val recalled = sections ++ documents ++ records
+    // What the draft's own calls read, each under its call; a failed call grounds nothing.
+    val read = showing.mine.collect {
+      case Entry(_, _, _, _, _, Payload.Result(r, call), _, _) if !r.isError =>
+        s"$call:\n${Shown.result(r).content}"
+    }
+    val recalled =
+      (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
     State(
       Stitching.thread(
         Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
@@ -160,9 +168,7 @@ object TurnJudge {
         ThreadChars
       ),
       draft,
-      recalled
-        .collect { case Message.User(text) => text }
-        .mkString("\n\n")
+      recalled.mkString("\n\n")
     )
   }
 }

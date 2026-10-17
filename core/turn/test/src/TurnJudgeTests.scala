@@ -13,6 +13,7 @@ import grit.core.id.{
   EntrySeq,
   PeriodSeq,
   PluginName,
+  ToolCallId,
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
@@ -272,6 +273,26 @@ object TurnJudgeTests extends TestSuite {
         "draft",
         documents = Vector(card -> got(DocLabel.of("Cards")))
       ).recalled ==> "[doc] Cards, at slack:T1/C1, 2026-09-30:\nReleases are cut on Tuesdays."
+    }
+
+    test("what the draft's own tool calls read is recalled under each call; a failed one is not") {
+      def result(n: Long, content: String, failed: Boolean, shown: String) = entry(
+        n,
+        Payload.Result(Message.ToolResult(ToolCallId(s"c$n"), content, failed), shown)
+      )
+      judging(
+        Vector(root),
+        Window(Vector.empty),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "draft",
+        mine = Vector(
+          result(5, "Releases are cut on Tuesdays.", false, "read docs/release.md"),
+          result(6, "no such file", true, "read docs/old.md")
+        )
+      ).recalled ==> "read docs/release.md:\nReleases are cut on Tuesdays."
     }
 
     test("a window with no record recalls nothing") {
