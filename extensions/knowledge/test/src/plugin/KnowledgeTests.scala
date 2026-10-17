@@ -250,7 +250,7 @@ object KnowledgeTests extends TestSuite {
       )
     }
 
-    test("a Drive card at a label its source no longer declares is undeclared, and no other is") {
+    test("a card at a label its source does not declare is undeclared, Drive's or GitHub's") {
       val plugin = right(
         Knowledge.of(
           name,
@@ -259,8 +259,12 @@ object KnowledgeTests extends TestSuite {
         )
       )
       val restricted = Label.at(Level.Restricted)
-      Vector(card("shared", internal), card("shared", restricted), card("repo", restricted))
-        .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false)
+      Vector(
+        card("shared", internal),
+        card("shared", restricted),
+        card("repo", internal),
+        card("repo", confidential)
+      ).map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false, true)
     }
 
     test("a card of a corpus no source declares is undeclared, and a document no card is not") {
