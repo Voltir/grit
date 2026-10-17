@@ -10,77 +10,20 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.document.{DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.durable.{Durable, StepRecord}
-import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
+import grit.core.edge.{Desk, DeskError}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, Domain, Identities, Principal, Realm}
+import grit.core.identity.{Account, Domain, Identities, Realm}
 import grit.core.inbox.Inbox
-import grit.core.job.{ScheduleDesk, ScheduleStore}
+import grit.core.job.ScheduleDesk
 import grit.core.place.Place
-import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
-import grit.core.speech.SpeechStore
-import grit.core.spend.{Budget, Spending}
-import grit.core.store.{
-  Askers,
-  ClosedPeriod,
-  ConversationStore,
-  Db,
-  EntrySearch,
-  EntryStore,
-  Jot,
-  LifecycleStore,
-  Linking,
-  ModelProfileStore,
-  ModelSettingStore,
-  Origin,
-  PeriodStore,
-  Principals,
-  PromptStore,
-  Savepoints,
-  StoreError,
-  Tombstones,
-  Tx,
-  UsageLedger,
-  VoiceStore,
-  Voucher
-}
-import grit.core.tool.ToolSets
-import grit.core.triage.{Shadowing, TriageShadows, TriageStore}
+import grit.core.plugin.Plugin
+import grit.core.spend.Budget
+import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Voucher}
+import grit.core.triage.Shadowing
 import grit.core.visibility.{Compartment, Visibility}
-import grit.dbos.sql.{
-  DbConfig,
-  Opener,
-  SqlCacheDocs,
-  SqlConversationStore,
-  SqlDb,
-  SqlDocuments,
-  SqlEdgeDirectory,
-  SqlEntrySearch,
-  SqlEntryStore,
-  SqlJot,
-  SqlLabels,
-  SqlLifecycleStore,
-  SqlModelProfileStore,
-  SqlModelSettingStore,
-  SqlPeriodStore,
-  SqlPluginCursors,
-  SqlPluginDocs,
-  SqlPrincipals,
-  SqlPromptStore,
-  SqlSavepoints,
-  SqlSchedules,
-  SqlSpeechStore,
-  SqlTombstones,
-  SqlToolRequests,
-  SqlToolSets,
-  SqlTriageShadows,
-  SqlTriageStore,
-  SqlUsageLedger,
-  SqlVoiceStore,
-  SqlVoucher
-}
+import grit.dbos.sql.{DbConfig, Opener, SqlDb, SqlJot, SqlLabels, SqlVoucher}
 import grit.dbos.workflow.{
   Closes,
   DurableWorkflow,
@@ -123,48 +66,7 @@ final class Engine private (
       * by.
       */
     val clock: Clock^
-) extends Link {
-
-  val conversations: ConversationStore = new SqlConversationStore()
-
-  val entries: EntryStore = new SqlEntryStore()
-
-  val search: EntrySearch = new SqlEntrySearch()
-
-  private val sqlLedger = new SqlUsageLedger()
-
-  val ledger: UsageLedger = sqlLedger
-
-  val spending: Spending = sqlLedger
-
-  /** Which profile each turn's model calls were made under. */
-  val profiles: ModelProfileStore = new SqlModelProfileStore()
-
-  /** The system prompt each turn was sent, its fragments kept by id (ADR 0016). */
-  val prompts: PromptStore = new SqlPromptStore()
-
-  /** Every tool set a turn was offered, by id. */
-  val toolSets: ToolSets = new SqlToolSets()
-
-  /** The requests hosted tool calls become (ADR 0017). */
-  val requests: ToolRequests = new SqlToolRequests()
-
-  /** Which live edge serves each place, and what it offers there. */
-  val edgeDirectory: EdgeDirectory = new SqlEdgeDirectory()
-
-  /** Settings of model pairs approved while grit runs, over the seed catalog. */
-  val modelSettings: ModelSettingStore = new SqlModelSettingStore()
-
-  /** Each conversation's periods, and their closing entries. */
-  val periods: PeriodStore = new SqlPeriodStore(entries)
-
-  /** The lifecycle's settings in force. */
-  val lifecycle: LifecycleStore = new SqlLifecycleStore()
-
-  /** The voice grit talks to the person in. */
-  val voices: VoiceStore = new SqlVoiceStore()
-
-  val principals: Principals = new SqlPrincipals()
+) extends Stores(visibility), Link {
 
   /** The voucher for `realms` ([[Voucher]]), keeping an attested email only in one of
     * `domains`: what a deployment records its trusted attesters' answers with, for the realms it
@@ -188,48 +90,8 @@ final class Engine private (
       new SqlVoucher(identities.realms, identities.domains).untrust
     )
 
-  val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
-
-  /** The messages an edge marks as being answered while their turns run. */
-  val acknowledgements: grit.core.edge.Acknowledgements = new grit.dbos.sql.SqlAcknowledgements()
-
-  /** What grit has decided to delete, and when. */
-  val tombstones: Tombstones = new SqlTombstones
-
-  /** What triage made of each heard message. */
-  val triage: TriageStore = new SqlTriageStore
-
-  /** What each declared shadow variant made of heard messages already triaged. */
-  val shadows: TriageShadows = new SqlTriageShadows
-
-  /** Where each heard message could be answered, and grit's decisions on each. */
-  val speech: SpeechStore = new SqlSpeechStore
-
-  /** Which heard messages a review considered, their prompts, and the labels standing on
-    * them.
-    */
-  val reviews: grit.core.review.ReviewStore = new grit.dbos.sql.SqlReviews
-
-  /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
-  val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
-
-  /** What each room said before a time, as a pool reads it. */
-  val rooms: grit.core.recipe.RoomReads = new grit.dbos.sql.SqlRoomReads
-
-  /** How each transaction the engine opens gets its clearance. */
-  private val opener = new Opener(visibility)
-
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource, opener)
-
-  /** Who each turn answers, as this engine's transactions resolve it. */
-  val askers: Askers = {
-    val resolving = opener
-    new Askers {
-      def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
-        resolving.asker(turn)
-    }
-  }
 
   /** Short write transactions, for a step that records what it did as it goes. */
   val jot: Jot = new SqlJot(dataSource, opener)
@@ -243,8 +105,6 @@ final class Engine private (
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
   private val client = new DBOSClient(dataSource)
-
-  private val sqlSchedules = new SqlSchedules(tombstones)
 
   val inbox: Inbox =
     new SqlInbox(
@@ -264,41 +124,11 @@ final class Engine private (
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)
 
-  /** Every job's schedules (ADR 0029), as the engine keeps them. */
-  val schedules: ScheduleStore = sqlSchedules
-
   /** `plugin`'s desk (ADR 0029): the schedules its tools write, of the jobs named `jobs`, each
     * in a transaction of its own, dated by the clock the engine was opened with.
     */
   def desk(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
     sqlSchedules.desk(plugin, jobs, jot, clock)
-
-  /** Each plugin's cursor. */
-  val cursors: PluginCursors = new SqlPluginCursors(tombstones)
-
-  private val sqlDocuments = new SqlDocuments(tombstones)
-
-  /** Every plugin's documents (ADR 0028), as windows draw on them and as the engine itself
-    * writes them.
-    */
-  val documents: DocumentStore = sqlDocuments
-
-  /** Each plugin's own documents as its tools and its service read them: given a plugin's
-    * name, its own, and no other plugin's.
-    */
-  val reads: PluginName -> PluginReads =
-    plugin => PluginReads(new SqlPluginDocs(plugin), sqlDocuments.shelf(plugin))
-
-  /** Given a plugin and its terms, its documents as its posting writes them. */
-  val keeper: (PluginName, DocumentTerms) -> DocumentKeeper =
-    (plugin, terms) => sqlDocuments.keeper(plugin, terms)
-
-  /** What undoes part of one of its transactions. */
-  val savepoints: Savepoints = SqlSavepoints
-
-  /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
-  val cache: (PluginName, ClosedPeriod) -> CacheDocs =
-    (plugin, closed) => new SqlCacheDocs(plugin, closed.order)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
@@ -309,7 +139,7 @@ final class Engine private (
     * enabled, and the sweep posts to those with something to post ([[Plugin.posts]]), and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
     * keeping nothing. The terms of `plugins`' documents are declared the ones in force
-    * ([[DocumentStore.declare]]), and each one's documents swept ([[grit.core.plugin.Documents.sweep]]), at
+    * ([[grit.core.document.DocumentStore.declare]]), and each one's documents swept ([[grit.core.plugin.Documents.sweep]]), at
     * every label, before anything runs. Makes the engine's epoch the
     * database's latest application version, so work enqueued without one (every grit
     * enqueue) runs here whatever epochs the database has seen. Once. Throws when the terms
