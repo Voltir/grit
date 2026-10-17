@@ -1,6 +1,6 @@
 package grit.outline.query
 
-import grit.outline.locate.{Layout, Root}
+import grit.outline.locate.{Layout, MillLayout, Root}
 import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
@@ -354,6 +354,48 @@ object TestsTests extends TestSuite {
         .toVector
       assert(from > 0)
       assert(printed == file.slice(from - 1, to))
+    }
+
+    test(
+      "a suite whose source no .tasty records is named by its file and the command compiling its module"
+    ) {
+      // A temp Mill root: module m's test sources p/OtherTests.scala, compiled, and p/GoneTests.scala, never compiled.
+      val d = os.temp.dir(prefix = "outline-tests-gone-")
+      os.write(d / "build.mill", "")
+      val other = d / "m" / "test" / "src" / "p" / "OtherTests.scala"
+      os.write(other, "package p\nobject OtherTests\n", createFolders = true)
+      val classes = d / "out" / "m" / "test" / "compile.dest" / "classes"
+      os.makeDir.all(classes)
+      val reporter = dotty.tools.dotc.Main.process(
+        Array(
+          "-d",
+          classes.toString,
+          "-classpath",
+          System.getProperty("java.class.path"),
+          other.toString
+        )
+      )
+      assert(!reporter.hasErrors)
+      os.write(
+        d / "m" / "test" / "src" / "p" / "GoneTests.scala",
+        "package p\nobject GoneTests {\n}\n"
+      )
+      val (gone, _) =
+        Query.tests(
+          Root(d),
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          "GoneTests",
+          None,
+          Set.empty,
+          80000
+        )
+      assert(
+        gone.text.linesIterator.toVector.drop(1) == Vector(
+          "no class or object GoneTests compiled: m/test/src/p/GoneTests.scala defines it, but no .tasty records that file, so its last compile failed or never ran; compile it first: ./mill m.test.compile"
+        )
+      )
     }
   }
 }

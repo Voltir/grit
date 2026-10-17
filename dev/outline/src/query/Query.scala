@@ -692,16 +692,9 @@ object Query {
           files match {
             case Vector(file) =>
               val rel = os.RelPath(file)
-              val tasty = Locate
-                .inPackageOf(root, layout, rel)
-                .filter(t => TastySource.of(t).exists(_.isOf(rel)))
+              val tasty = recording(root, classes, rel)
               if (tasty.isEmpty) {
-                val modules = Locate
-                  .inPackageOf(root, layout, rel)
-                  .flatMap(t => classes.find(t.startsWith))
-                  .distinct
-                  .map(layout.moduleOf(root, _))
-                val how = if (modules.isEmpty) layout.notCompiled(root) else layout.compile(modules)
+                val how = compiling(root, layout, classes, Vector(rel))
                 (
                   Answer(s"$head\nno .tasty records $file: compile it first: $how", Status.Failed),
                   Roots.put(roots, root, loaded)
@@ -739,7 +732,50 @@ object Query {
     }
   }
 
-  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies, or, when it starts no test as written, comma-separated prefixes. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled; cut at `cap` bytes. */
+  /** The `.tasty` files in `classes` compiled from the source `file`. */
+  private def recording(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] =
+    Locate.inPackageIn(root, classes, file).filter(t => TastySource.of(t).exists(_.isOf(file)))
+
+  /** The command compiling the modules whose classes hold `.tasty` files of `files`' packages, or `layout`'s line for an
+    * uncompiled root when none does.
+    */
+  private def compiling(
+      root: Root,
+      layout: Layout,
+      classes: Vector[os.Path],
+      files: Vector[os.RelPath]
+  ): String = {
+    val modules = files
+      .flatMap(Locate.inPackageIn(root, classes, _))
+      .flatMap(t => classes.find(t.startsWith))
+      .distinct
+      .map(layout.moduleOf(root, _))
+      .distinct
+    if (modules.isEmpty) layout.notCompiled(root) else layout.compile(modules)
+  }
+
+  /** For a class or object `name` no `.tasty` holds: the note naming the sources whose text defines it (in its package,
+    * when `name` is a full name) and no `.tasty` records, with the command compiling their modules; none when there are none.
+    */
+  private def uncompiled(root: Root, layout: Layout, name: String): Option[String] = {
+    val classes = layout.classesDirs(root)
+    val simple = name.split('.').last
+    val pkg = name.split('.').dropRight(1).mkString(".")
+    val defines = ("\\b(?:object|class)\\s+" + java.util.regex.Pattern.quote(simple) + "\\b").r
+    val files = Locate
+      .holding(root, defines)
+      .filter(f =>
+        (pkg.isEmpty || Locate.packageIn(root, f) == pkg) && recording(root, classes, f).isEmpty
+      )
+    Option.when(files.nonEmpty) {
+      val (define, those) =
+        if (files.size == 1) ("defines", "that file") else ("define", "those files")
+      s"no class or object $simple compiled: ${files.mkString(", ")} $define it, but no .tasty records $those, so its " +
+        s"last compile failed or never ran; compile it first: ${compiling(root, layout, classes, files)}"
+    }
+  }
+
+  /** The `tests` answer for the suite `suite`, named as `show` names a symbol: its helpers (the members whose range holds no test call, private ones included, and the other top-level definitions of its file beside it, by line) and its tests with their line ranges, read from the file the suite is defined in. `test` is a prefix whose tests print their verbatim bodies, or, when it starts no test as written, comma-separated prefixes. `NoMatch` when no class or object is named `suite`; `Failed` when the layout is not compiled, or when the only sources defining a class or object `suite` are ones no `.tasty` records, naming them and the command compiling their modules; cut at `cap` bytes. */
   def tests(
       root: Root,
       layout: Layout,
@@ -761,7 +797,12 @@ object Query {
           def isSuite(d: Defn): Boolean = d.kind == Kind.Class || d.kind == Kind.Object
           val ambiguous = resolved.defns.filter(isSuite).map(_.fullName).distinct.sizeIs > 1
           resolved.defns.find(isSuite) match {
-            case None => (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
+            case None =>
+              uncompiled(root, layout, suite) match {
+                case Some(note) =>
+                  (Answer(s"${header(root)}\n$note", Status.Failed), nextRoots)
+                case None => (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
+              }
             case Some(_) if ambiguous =>
               (
                 Answer((Vector(header(root)) ++ resolved.notes).mkString("\n"), Status.NoMatch),

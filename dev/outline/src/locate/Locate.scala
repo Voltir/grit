@@ -83,10 +83,7 @@ object Locate {
 
   /** `inPackageOf` over the classes dirs the caller already found, so a query finds them once. */
   def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] = {
-    val source = root.dir / file
-    val segments =
-      if (!os.isFile(source)) Vector.empty
-      else packageOf(os.read.lines(source)).flatMap(_.split('.')).toVector
+    val segments = packageIn(root, file).split('.').toVector.filter(_.nonEmpty)
     if (segments.isEmpty) Vector.empty
     else {
       val rel = os.RelPath(segments.mkString("/"))
@@ -201,6 +198,12 @@ object Locate {
             }
       }
     }
+  }
+
+  /** The package the source `file` declares, its leading package clauses dot-joined; empty when it has none or is missing. */
+  def packageIn(root: Root, file: os.RelPath): String = {
+    val source = root.dir / file
+    if (!os.isFile(source)) "" else packageOf(os.read.lines(source)).mkString(".")
   }
 
   /** The package clause segments that lead a source file, in order; stops at the first line that is not a package clause, blank or a line comment. */

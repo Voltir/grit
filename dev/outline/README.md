@@ -96,7 +96,9 @@ names, and its tests' names with line ranges. A fixture is a top-level definitio
 that the suite's TASTy refers to; they print under one `fixtures` header, a line each naming its file, its ranges
 (a class and its companion on one line) and the members the suite names. `--test NAME` prints each test whose name
 starts with NAME, or with any of its comma-separated prefixes when NAME as written starts none; `--body h[,h…]` prints a helper's own lines, or, when no helper has the name, a used fixture
-member's; `--fixtures` lists the used members' signatures. What is named is printed first when the answer is cut.
+member's; `--fixtures` lists the used members' signatures. What is named is printed first when the answer is cut. A suite
+no `.tasty` holds, whose source no `.tasty` records (its last compile failed or never ran), is named by that source and the
+command compiling its module.
 
     scripts/outline tests Suite [--test NAME] [--body h[,h…]] [--fixtures] [--max-kb N] [--root DIR]
 

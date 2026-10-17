@@ -211,7 +211,7 @@ object Help {
     query = "tests",
     operand = Operand("Suite", "suite", "the suite's class or object, by name or fully qualified."),
     purpose =
-      "To add or change a test in a suite: its file's imports and its own loose lines as file text, its head and closing lines as file text, its helpers' signatures, the test-source fixtures it uses with the members it names, and its tests' names with line ranges, each line naming a definition or a test ending with its size, `[N.N KB]`. `--test NAME` prints each test whose name starts with NAME; `--body h[,h…]` prints a helper's or a used fixture member's own lines; `--fixtures` lists the used members' signatures. What is named is printed first when the answer is cut.",
+      "To add or change a test in a suite: its file's imports and its own loose lines as file text, its head and closing lines as file text, its helpers' signatures, the test-source fixtures it uses with the members it names, and its tests' names with line ranges, each line naming a definition or a test ending with its size, `[N.N KB]`. `--test NAME` prints each test whose name starts with NAME; `--body h[,h…]` prints a helper's or a used fixture member's own lines; `--fixtures` lists the used members' signatures. What is named is printed first when the answer is cut. A suite whose source no .tasty records, its last compile failed or never run, is named by that source and the command compiling its module.",
     examples = Vector(
       Example(
         "read the bodies of OneLineTests' tests named \"a trait\"",
