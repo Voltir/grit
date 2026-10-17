@@ -20,6 +20,7 @@ import grit.core.context.{
   AssemblyRequest,
   Briefs,
   ContextAssembler,
+  Packing,
   Prepared,
   Querying,
   Results,
@@ -511,8 +512,7 @@ object RetrievalAssemblerTests extends TestSuite {
     )
       .assemble(
         AssemblyRequest(TurnRef(c1, TurnSeq(6))),
-        Querying.Drawn(Vector.empty),
-        Results.empty
+        Packing.Drawn(Querying.Drawn(Vector.empty))
       )(using
         new FakeDb
       )

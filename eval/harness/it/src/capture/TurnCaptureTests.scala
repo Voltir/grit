@@ -12,6 +12,7 @@ import grit.core.context.{
   AssemblyRequest,
   Briefs,
   ContextAssembler,
+  Packing,
   Prepared,
   Querying,
   Results,
@@ -165,10 +166,10 @@ object TurnCaptureTests extends TestSuite {
     def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
     ): Either[AssemblyError, Briefs] = under.briefs(request, retrieved, chars)
-    def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+    def assemble(request: AssemblyRequest, packing: Packing)(using
         Db^
     ): Either[AssemblyError, Window] =
-      under.assemble(request, querying, admitted).map(_.copy(documents = held))
+      under.assemble(request, packing).map(_.copy(documents = held))
   }
 
   /** The plugin every document here is kept by. */

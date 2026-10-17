@@ -5,6 +5,7 @@ import grit.core.context.{
   AssemblyRequest,
   Briefs,
   ContextAssembler,
+  Packing,
   Prepared,
   Querying,
   Results,
@@ -65,17 +66,19 @@ final class LinearAssembler(
     }.left
       .map(AssemblyError.Store(_))
 
-  /** Within `budget`, or the budget `request.width` names; `querying`'s notes on it. */
-  def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+  /** Within `budget`, or the budget `request.width` names; the drawn notes, or the query's, on
+    * it.
+    */
+  def assemble(request: AssemblyRequest, packing: Packing)(using
       db: Db^
   ): Either[AssemblyError, Window] = {
     val budget = request.width match {
       case Width.Deployed => this.budget
       case Width.Within(b, _) => b
     }
-    val notes = querying match {
-      case Querying.Drawn(notes) => notes
-      case Querying.Written(_, queried) => Vector(queried)
+    val notes = packing match {
+      case Packing.Drawn(drawn) => drawn.notes
+      case Packing.Searched(written, _) => Vector(written.queried)
     }
     db.read(Subject.Turn(request.turn)) {
       for {

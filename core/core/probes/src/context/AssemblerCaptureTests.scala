@@ -31,7 +31,7 @@ object AssemblerCaptureTests extends TestSuite {
        |        Right(Results.empty)
        |      def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using Db^): Either[AssemblyError, Briefs] =
        |        Right(Briefs("", Vector.empty))
-       |      def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using Db^): Either[AssemblyError, Window] =
+       |      def assemble(request: AssemblyRequest, packing: Packing)(using Db^): Either[AssemblyError, Window] =
        |        Right(Window(Vector.empty))
        |    }
        |    val _ = made

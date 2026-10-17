@@ -35,13 +35,12 @@ trait ContextAssembler extends caps.Pure {
       chars: Int
   )(using Db^): Either[AssemblyError, Briefs]
 
-  /** `request.turn`'s window. Drawn: the window with no search, `querying`'s notes on it;
-    * `admitted` is not read. Written: that window's recent part, then each of `admitted` still
-    * there and in scope, in `admitted`'s order, each one that fits what is left; one not in
-    * `admitted` is never shown. Its notes are `querying`'s, then which earlier turns of its own
-    * it recalled.
+  /** `request.turn`'s window. Drawn: the window with no search. Searched: that window's recent
+    * part, then each admitted result still there and in scope, in its order, each one that fits
+    * what is left; one not admitted is never shown. Its notes are the query's, then which
+    * earlier turns of its own it recalled.
     */
-  def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+  def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
   ): Either[AssemblyError, Window]
 }
@@ -57,14 +56,14 @@ object ContextAssembler {
       admit: Results -> Results
   )(using Db^): Either[AssemblyError, Window] =
     assembler.prepare(request).flatMap {
-      case Prepared.Drawn(drawn) => assembler.assemble(request, drawn, Results.empty)
+      case Prepared.Drawn(drawn) => assembler.assemble(request, Packing.Drawn(drawn))
       case Prepared.Asking(asked, written) =>
         written(write(asked)) match {
-          case drawn: Querying.Drawn => assembler.assemble(request, drawn, Results.empty)
+          case drawn: Querying.Drawn => assembler.assemble(request, Packing.Drawn(drawn))
           case query: Querying.Written =>
             assembler
               .search(request, query)
-              .flatMap(found => assembler.assemble(request, query, admit(found)))
+              .flatMap(found => assembler.assemble(request, Packing.Searched(query, admit(found))))
         }
     }
 }
@@ -118,6 +117,16 @@ final case class Results(ranked: Vector[(Retrieved, Double)], beyond: Int = 0)
 
 object Results {
   val empty: Results = Results(Vector.empty)
+}
+
+/** What a window packs beyond the one drawn with no search. */
+enum Packing {
+
+  /** Nothing: no search was made, and `drawn`'s notes are on the window. */
+  case Drawn(drawn: Querying.Drawn)
+
+  /** Of what `written`'s query found, the results the turn admits, in their order. */
+  case Searched(written: Querying.Written, admitted: Results)
 }
 
 /** The turn's own messages as one text, and what was found, each as text, in the order asked. */

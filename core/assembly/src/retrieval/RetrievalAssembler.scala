@@ -7,6 +7,7 @@ import grit.core.context.{
   AssemblyRequest,
   Briefs,
   ContextAssembler,
+  Packing,
   Prepared,
   Querying,
   Results,
@@ -132,15 +133,15 @@ final class RetrievalAssembler(
     }
 
   /** Within `budget` and `hits`, or those `request.width` names. */
-  def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+  def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
   ): Either[AssemblyError, Window] =
     based(request).flatMap { base =>
-      querying match {
-        case Querying.Drawn(notes) => Right(drawn(base, base.linear, notes))
-        case Querying.Written(_, queried) if !base.searchable =>
+      packing match {
+        case Packing.Drawn(d) => Right(drawn(base, base.linear, d.notes))
+        case Packing.Searched(Querying.Written(_, queried), _) if !base.searchable =>
           Right(drawn(base, base.linear, Vector(queried)))
-        case Querying.Written(_, queried) =>
+        case Packing.Searched(Querying.Written(_, queried), admitted) =>
           looked(request, base, admitted.ranked.map(_._1)).map { found =>
             val packed = pack(
               found,

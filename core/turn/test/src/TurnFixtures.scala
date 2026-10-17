@@ -1078,11 +1078,7 @@ object TurnFixtures {
     def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
     ): Either[AssemblyError, Briefs] = Right(Briefs("", Vector.empty))
-    def assemble(
-        request: AssemblyRequest,
-        querying: grit.core.context.Querying,
-        admitted: Results
-    )(using
+    def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
     ): Either[AssemblyError, Window] = window(request)
   }
@@ -1259,15 +1255,13 @@ object TurnFixtures {
           }
         )
       )
-    override def assemble(
-        request: AssemblyRequest,
-        querying: grit.core.context.Querying,
-        admitted: Results
-    )(using Db^): Either[AssemblyError, Window] =
-      querying match {
-        case grit.core.context.Querying.Drawn(notes) => window(request).map(_.copy(notes = notes))
-        case grit.core.context.Querying.Written(_, q) =>
-          window(request).map(_.copy(notes = Vector(q)))
+    override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
+        Db^
+    ): Either[AssemblyError, Window] =
+      packing match {
+        case grit.core.context.Packing.Drawn(d) => window(request).map(_.copy(notes = d.notes))
+        case grit.core.context.Packing.Searched(w, _) =>
+          window(request).map(_.copy(notes = Vector(w.queried)))
       }
   }
 
