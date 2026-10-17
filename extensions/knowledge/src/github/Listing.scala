@@ -82,7 +82,7 @@ object Listing {
       kind <- str("type")
       path <- str("path")
       sha <- str("sha")
-      version <- UnitVersion.of(sha)
+      version <- UnitVersion.sha(sha)
     } yield kind match {
       case "file" => Some(Entry(path, UnitKind.File, version))
       case "dir" => Some(Entry(path, UnitKind.Directory, version))

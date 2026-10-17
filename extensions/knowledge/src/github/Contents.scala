@@ -22,7 +22,7 @@ object Contents {
     first match {
       case Downloaded(sha) =>
         UnitVersion
-          .of(sha)
+          .sha(sha)
           .fold(_ => Fetched.Unversioned(s"its SHA, $sha, is no git SHA"), Fetched.Text(text, _))
       case _ if first.startsWith(TextPrefix) =>
         Fetched.Unversioned("read at another ref than the source's")

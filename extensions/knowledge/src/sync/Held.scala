@@ -42,7 +42,7 @@ object Held {
   /** `document`, one of the knowledge plugin's, as a card of `corpus` that a run holds; `None`
     * when it is another source's card (its key is not that of `corpus` and its data's path). Or
     * why not, naming its key: the key is no card's key, or its data holds no string `path`, or
-    * no string `version` that is a git SHA, or a `scope` that is no scope.
+    * no string `version` that is a version ([[UnitVersion.of]]), or a `scope` that is no scope.
     */
   def read(corpus: CorpusName, document: Document): Either[String, Option[Held]] = {
     val k = DocKey.value(document.key)
@@ -56,7 +56,10 @@ object Held {
       key <- CardKey.parse(k).left.map(_ => no("its key is not 64 lowercase hex digits"))
       path <- str("path")
       text <- str("version")
-      version <- UnitVersion.of(text).left.map(_ => no(s"its data's version, $text, is no git SHA"))
+      version <- UnitVersion
+        .of(text)
+        .left
+        .map(_ => no(s"its data's version, $text, is no git SHA or instant"))
       scope <- document.data.objOpt.flatMap(_.get("scope")) match {
         case None => Right(None)
         case Some(value) =>

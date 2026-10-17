@@ -49,6 +49,14 @@ object HeldTests extends TestSuite {
       )
     }
 
+    test("a card changed at an instant reads back at that instant, its title aside") {
+      val changed = UnitVersion.Changed(Instant.parse("2026-10-14T09:30:00Z"))
+      val file = Card.file(name, "docs/b.md", changed, summary, pointer, Some("B"))
+      assert(
+        Held.read(name, document(file.docKey, file.data)) ==
+          Right(Some(Held.of(name, "docs/b.md", label, changed, None)))
+      )
+    }
     test("a directory's card reads back with the scope it was made under") {
       val scope = Scope.of(Set("include docs"))
       val dir = Card.directory(name, "docs", version, scope, summary, pointer)
@@ -72,7 +80,7 @@ object HeldTests extends TestSuite {
         Held.read(name, document(data = noPath)) ==
           Left(s"the document $k is no card: its data holds no string path"),
         Held.read(name, document(data = badVersion)) ==
-          Left(s"the document $k is no card: its data's version, v1, is no git SHA"),
+          Left(s"the document $k is no card: its data's version, v1, is no git SHA or instant"),
         Held.read(
           name,
           document(data = ujson.Obj.from(card.data.value.toSeq :+ ("scope" -> ujson.Num(7))))

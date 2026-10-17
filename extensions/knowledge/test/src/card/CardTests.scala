@@ -1,5 +1,7 @@
 package grit.knowledge.card
 
+import java.time.Instant
+
 import grit.core.document.{DocText, Pointer}
 import grit.core.id.{CorpusName, DocKey}
 import grit.core.tool.ToolName
@@ -23,6 +25,18 @@ object CardTests extends TestSuite {
       version,
       right(CardSummary.of("How the project is tested.", terms)),
       pointer
+    )
+
+  private val changed = Instant.parse("2026-10-14T09:30:00Z")
+
+  private def drive(title: Option[String]): Card =
+    Card.file(
+      corpus,
+      "docs/testing.md",
+      UnitVersion.Changed(changed),
+      right(CardSummary.of("How the project is tested.", Vector("unit tests"))),
+      pointer,
+      title
     )
 
   val tests = Tests {
@@ -100,6 +114,65 @@ object CardTests extends TestSuite {
       assert(UnitVersion.of("a" * 64).isRight)
       assert(UnitVersion.of("a" * 41).isLeft)
       assert(UnitVersion.of("A" * 40).isLeft)
+      assert(UnitVersion.sha("a" * 40) == UnitVersion.of("a" * 40))
+      assert(UnitVersion.sha(UnitVersion.value(UnitVersion.Changed(changed))).isLeft)
+    }
+    test("a version is read back by its written form, a SHA or an instant") {
+      val sha = UnitVersion.of("a" * 40)
+      val at = UnitVersion.Changed(changed)
+      assert(
+        UnitVersion.value(at) == "2026-10-14T09:30:00Z",
+        UnitVersion.of(UnitVersion.value(at)) == Right(at),
+        sha.map(UnitVersion.value) == Right("a" * 40),
+        UnitVersion.of("2026-10-14").isLeft
+      )
+    }
+    test("a Changed card's text begins with its title and the day it changed") {
+      val text = DocText.value(drive(Some("Budget 2027")).text)
+      assert(
+        text == "Budget 2027, last changed 2026-10-14.\n\n" +
+          "How the project is tested.\n\nTerms: unit tests"
+      )
+    }
+    test("a Changed card with no title begins with its kind") {
+      val text = DocText.value(drive(None).text)
+      assert(text.startsWith("File, last changed 2026-10-14.\n\nHow the project is tested."))
+    }
+    test("a title is its first 80 characters, its line breaks made spaces") {
+      val text = DocText.value(drive(Some("a\nb" + "c" * 100)).text)
+      assert(text.startsWith("a b" + "c" * 77 + ", last changed 2026-10-14."))
+    }
+    test("a Changed card's data holds its title and the day it changed too") {
+      assert(
+        drive(Some("Budget 2027")).data == ujson.Obj(
+          "kind" -> "file",
+          "path" -> "docs/testing.md",
+          "terms" -> ujson.Arr("unit tests"),
+          "version" -> "2026-10-14T09:30:00Z",
+          "changed" -> "2026-10-14",
+          "title" -> "Budget 2027"
+        )
+      )
+    }
+    test("a Sha card's text and data are as before, a title in its data alone") {
+      val titled = Card.file(
+        corpus,
+        "docs/testing.md",
+        version,
+        right(CardSummary.of("How the project is tested.", Vector.empty)),
+        pointer,
+        Some("Testing")
+      )
+      assert(
+        DocText.value(titled.text) == "How the project is tested.",
+        titled.data == ujson.Obj(
+          "kind" -> "file",
+          "path" -> "docs/testing.md",
+          "terms" -> ujson.Arr(),
+          "version" -> "3068d045f21e723190d01fed918ed7e6651bf59a",
+          "title" -> "Testing"
+        )
+      )
     }
   }
 }

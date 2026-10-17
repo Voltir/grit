@@ -8,8 +8,9 @@ read through the MCP tools a deployment offers, never a client of its own.
 Packages, in one-way order (each names only those before it):
 
 - **`card`**: what a card is, whatever its source: a unit's key (the SHA-256 of its corpus and
-  path), its version (a git SHA), its summary, and its document's key, text and data; and the
-  names of a sync run's moves (`{phase}/{key}`, `held`, `drop`).
+  path), its version (a git SHA, or when a file last changed), its title, its summary, and its
+  document's key, text and data; and the names of a sync run's moves (`{phase}/{key}`, `held`,
+  `drop`).
 - **`sync`**: a sync run over any source. A `Source` says how a run reads it: the tool and
   arguments of each list and read, what an answer holds, what of a listing is checked, and its
   `Walk`, the run's plan, which is pure: from the cards a run holds and each step's outcome, the
