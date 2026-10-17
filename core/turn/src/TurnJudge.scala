@@ -12,7 +12,8 @@ import grit.core.stitch.{Stitching, Strand}
 import grit.core.store.{Entry, Nearby, Payload, Speakers}
 
 /** What judges an unprompted turn's draft before it is posted (ADR 0022): one classifier call,
-  * two yes/no questions about the draft against its thread and what the turn recalled. Their
+  * two yes/no questions: whether what the draft states is in what the turn recalled or its
+  * thread, and whether it answers the message the turn heard, not answered already. Their
   * weakest answer is its score ([[Judged.score]]).
   */
 object TurnJudge {
@@ -26,13 +27,15 @@ object TurnJudge {
   /** How much of what the turn recalled, from its start, the judge is shown. */
   val RecalledChars = 60_000
 
-  /** The judge's state: `{"thread": ..., "draft": ..., "recalled": ...}`, the thread's last
-    * [[ThreadChars]], the draft, and what the turn recalled its first [[RecalledChars]].
+  /** The judge's state: `{"message": ..., "thread": ..., "draft": ..., "recalled": ...}`,
+    * the heard message's first [[ThreadChars]], the thread's last [[ThreadChars]], the draft,
+    * and what the turn recalled its first [[RecalledChars]].
     */
-  final case class State(thread: String, draft: String, recalled: String)
+  final case class State(message: String, thread: String, draft: String, recalled: String)
 
   given StateJson[State] = StateJson.instance(s =>
     ujson.Obj(
+      "message" -> s.message.take(ThreadChars),
       "thread" -> s.thread.takeRight(ThreadChars),
       "draft" -> s.draft,
       "recalled" -> s.recalled.take(RecalledChars)
@@ -65,14 +68,15 @@ object TurnJudge {
   private def yesNo(instructions: String) = Ask.yesNo[State](instructions, None, None)
 
   private val grounded = yesNo(
-    "Read draft and recalled. Is what draft states found in recalled? Anything that recalled " +
-      "does not contain is no, however true it may be."
+    "Read draft, recalled and thread. Is every fact draft states found in recalled or " +
+      "thread? Anything neither contains is no, however true it may be."
   )
 
+  // `worth` asks whether the draft answers the message: kept under its name, as `Judged` is.
   private val worth = yesNo(
-    "Read thread and draft. Would the people in thread want to be interrupted by draft now? " +
-      "Recalling a decision, fact or earlier discussion they are asking about or reaching for " +
-      "is yes. Small talk, or correcting a detail nobody relies on, is no."
+    "Read message, thread and draft. Does draft answer what message asks, and is it not " +
+      "already answered in thread? A greeting, an aside, or a reply that only restates the " +
+      "question is no."
   )
 
   /** A draft's text: `None` when it passes, its whole text, trimmed and lower-cased,
@@ -107,8 +111,9 @@ object TurnJudge {
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
     * `showing` what the turn's request over `window` was shown ([[TurnShown.shown]]), `strand`
-    * what its strand said, and `speakers` who wrote `all` and the strand: the thread is the
-    * strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's message
+    * what its strand said, and `speakers` who wrote `all` and the strand: the message is the
+    * turn's own first message under its speaker's name, empty when it has none; the thread is
+    * the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's message
     * and each reply so far, the heard message and every reply after it included, within
     * [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name
     * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
@@ -174,7 +179,13 @@ object TurnJudge {
     }
     val recalled =
       (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
+    val message = showing.mine
+      .sortBy(e => EntrySeq.value(e.seq))
+      .flatMap(e => e.payload.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _)))
+      .headOption
+      .fold("")(_.shown)
     State(
+      message,
       thread.text,
       draft,
       recalled.mkString("\n\n")

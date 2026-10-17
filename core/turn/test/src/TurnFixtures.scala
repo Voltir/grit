@@ -1665,9 +1665,12 @@ object TurnFixtures {
     // the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var calls = 0
-    // Each state asked about, in order; written and read as `calls` is.
+    // Each state asked about, and each yes/no question's instructions, in order; written and
+    // read as `calls` is.
     @caps.unsafe.untrackedCaptures
     var states = Vector.empty[ujson.Value]
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[String]
 
     protected def answer(
         state: ujson.Value,
@@ -1675,6 +1678,7 @@ object TurnFixtures {
     ): Either[ClassifierError, Answers] = {
       calls += 1
       states :+= state
+      asked ++= questions.collect { case q: Question.YesNo => q.instructions }
       answers match {
         case None => Left(ClassifierError.Unavailable("down"))
         case Some(_) if questions.size != 2 =>

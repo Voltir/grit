@@ -324,6 +324,34 @@ object TurnJudgeTests extends TestSuite {
       )
     }
 
+    test(
+      "the judge is shown the heard message apart, and asks whether the draft is grounded in recalled or thread and answers the message"
+    ) {
+      val state = judging(
+        all,
+        Window(all.map(_.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "It moved to Thursday.",
+        mine = Vector(root, later)
+      )
+      val judge = new TurnFixtures.Judge(Some((0.9, 0.9)))
+      TurnJudge.judge(judge, grit.assembly.estimate.CharEstimate, state)
+      (state.message, judge.states.map(_("message").str), judge.asked) ==> (
+        "Ben: is it still on?",
+        Vector("Ben: is it still on?"),
+        Vector(
+          "Read draft, recalled and thread. Is every fact draft states found in recalled or " +
+            "thread? Anything neither contains is no, however true it may be.",
+          "Read message, thread and draft. Does draft answer what message asks, and is it not " +
+            "already answered in thread? A greeting, an aside, or a reply that only restates " +
+            "the question is no."
+        )
+      )
+    }
+
     test("a window with no record recalls nothing") {
       judging(
         all,
@@ -339,6 +367,7 @@ object TurnJudgeTests extends TestSuite {
     test("the judge is shown the thread's end and the recalled's start, each cut to its limit") {
       val json = StateJson[TurnJudge.State].json(
         TurnJudge.State(
+          "m",
           "x" * 10 + "y" * TurnJudge.ThreadChars,
           "d",
           "a" * TurnJudge.RecalledChars + "b"

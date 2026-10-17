@@ -42,8 +42,9 @@ Decision:
 - **Otherwise the turn drafts** (root `Heard`): told it was not addressed, to add what the
   thread lacks or reply `pass`. A draft is never shown, never searched, and not a period's
   activity.
-- **A classifier judges the draft**: is it `grounded` in what the turn recalled, and `worth`
-  the interruption; the weaker is its score (`Judged.score`). A pass, or a window that
+- **A classifier judges the draft**: is it `grounded` in what the turn recalled or its
+  thread, and `worth` posting, answering the heard message where the thread has not; the
+  weaker is its score (`Judged.score`). A pass, or a window that
   recalled nothing, is settled without asking.
 - **The draft is posted** in the message's thread only when its score reaches `postAt`,
   speaking is `Within`, and the assistant has not replied since, in the thread or its strand

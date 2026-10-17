@@ -140,8 +140,8 @@ enum Silence {
 }
 
 /** The judge's scores for an unprompted draft: the probability that it is `grounded` in what
-  * the turn recalled, and that it is `worth` the interruption; the `model` that weighed them,
-  * and what the call consumed.
+  * the turn recalled or its thread, and that it is `worth` posting, answering the heard
+  * message where the thread has not; the `model` that weighed them, and what the call consumed.
   */
 final case class Judged(
     grounded: Probability,
