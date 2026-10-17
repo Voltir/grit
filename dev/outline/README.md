@@ -47,7 +47,8 @@ primary ones first and the others tagged.
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
 `--member` narrows each to one member. A short name reads as in show; one it leaves ambiguous answers only
-the `-- ambiguous` list, no family picked from it.
+the `-- ambiguous` list, no family picked from it. A name that is no trait or abstract class, such as an opaque type,
+says what it is and names the `show` and `uses` for it.
 
     scripts/outline family Trait [--member m] [--body] [--max-kb N] [--root DIR]
 

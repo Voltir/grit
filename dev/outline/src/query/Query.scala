@@ -864,7 +864,7 @@ object Query {
     }
   }
 
-  /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`. */
+  /** The definitions of the family `name` (its trait, implementations and contracts, each with its role as a prefix), the notes its loading raised, and the cache after; `Left` when no trait or abstract class is named `name`, saying what a definition of that name is instead. */
   private def areaFamily(
       root: Root,
       layout: Layout,
@@ -908,7 +908,7 @@ object Query {
     (answer, Roots.put(roots, root, loaded))
   }
 
-  /** The family of the trait or abstract class `name` among `defns` (top-level, as loaded; their members are read here): its implementations, its contracts (abstract classes that do not extend it and have a member referring to it), and each contract's suites (the definitions extending it), in source order. `Left` when no trait or abstract class is named `name`. */
+  /** The family of the trait or abstract class `name` among `defns` (top-level, as loaded; their members are read here): its implementations, its contracts (abstract classes that do not extend it and have a member referring to it), and each contract's suites (the definitions extending it), in source order. `Left` when no trait or abstract class is named `name`, saying what a definition of that name is instead. */
   def familyOf(
       defns: Vector[Defn],
       name: String,
@@ -921,7 +921,11 @@ object Query {
     all.find(d =>
       named(d) && (d.kind == Kind.Trait || (d.kind == Kind.Class && d.isAbstract))
     ) match {
-      case None => Left(s"no trait or abstract class named $name")
+      case None =>
+        Left(all.find(named).fold(s"no trait or abstract class named $name") { d =>
+          val n = d.fullName
+          s"$n is ${article(kindName(d.kind))}, not a trait or abstract class, so it has no family: show $n reads it, uses $n lists what names it"
+        })
       case Some(t) =>
         val contracts = inSourceOrder(
           all.filter(c =>

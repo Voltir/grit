@@ -154,5 +154,18 @@ object FamilyTests extends TestSuite {
       val (answer, _) = family("Unrelated", None, false)
       assert(answer.status == Status.NoMatch)
     }
+
+    test(
+      "an opaque type is NoMatch saying it is one, with the show and the uses that answer for it"
+    ) {
+      val (answer, _) = family("Ids.Id", None, false)
+      assert(answer.status == Status.NoMatch)
+      assert(
+        answer.text.linesIterator.filterNot(_.startsWith("-- not compiled")).drop(1).toVector ==
+          Vector(
+            "grit.outline.fixture.Ids.Id is an opaque type, not a trait or abstract class, so it has no family: show grit.outline.fixture.Ids.Id reads it, uses grit.outline.fixture.Ids.Id lists what names it"
+          )
+      )
+    }
   }
 }

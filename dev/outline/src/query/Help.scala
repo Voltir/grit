@@ -105,7 +105,7 @@ object Help {
     operand = Operand(
       "Trait",
       "trait",
-      "the trait or abstract class, by name; a short name several definitions end with means its one candidate outside test and secondary sources, as in show, and with none or several the answer lists each, picking none: name one fully."
+      "the trait or abstract class, by name; a short name several definitions end with means its one candidate outside test and secondary sources, as in show, and with none or several the answer lists each, picking none: name one fully. A name that is no trait or abstract class, such as an opaque type, answers what it is and the show and uses for it."
     ),
     purpose =
       "To implement or change a trait: its implementations, contracts and their suites, each definition's line ending with its size, `[N.N KB]`; the trait, and with --member its member shown without its body when that member is a type, ends with its closing lines.",
