@@ -83,7 +83,7 @@ object LocateTests extends TestSuite {
     }
 
     test(
-      "inPackageOf reads the .tasty files directly in the source's package dir from every classes dir"
+      "inPackageIn reads the .tasty files directly in the source's package dir from every classes dir"
     ) {
       val root = tree(
         "core/act/src/Moves.scala",
@@ -96,7 +96,11 @@ object LocateTests extends TestSuite {
         "package grit.core.act\n\nobject Moves\n"
       )
       assert(
-        Locate.inPackageOf(root, MillLayout, os.RelPath("core/act/src/Moves.scala")) == Vector(
+        Locate.inPackageIn(
+          root,
+          MillLayout.classesDirs(root),
+          os.RelPath("core/act/src/Moves.scala")
+        ) == Vector(
           at(root, "out/a/compile.dest/classes/grit/core/act/X.tasty"),
           at(root, "out/b/x/compile.dest/classes/grit/core/act/Y.tasty")
         )

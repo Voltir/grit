@@ -77,11 +77,9 @@ object Locate {
     }
   }
 
-  /** The `.tasty` files directly in the source file's package dir across all classes dirs; empty when the file is missing or has no package line. */
-  def inPackageOf(root: Root, layout: Layout, file: os.RelPath): Vector[os.Path] =
-    inPackageIn(root, layout.classesDirs(root), file)
-
-  /** `inPackageOf` over the classes dirs the caller already found, so a query finds them once. */
+  /** The `.tasty` files directly in the source `file`'s package dir across the classes dirs `classes`, sorted; empty when
+    * the file is missing or has no package line.
+    */
   def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] =
     inPackage(classes, packageIn(root, file))
 

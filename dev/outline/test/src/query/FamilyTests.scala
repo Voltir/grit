@@ -49,7 +49,11 @@ object FamilyTests extends TestSuite {
         root,
         FixtureLayout,
         Locate
-          .inPackageOf(root, FixtureLayout, os.RelPath("dev/outline/fixture/src/store/Store.scala"))
+          .inPackageIn(
+            root,
+            FixtureLayout.classesDirs(root),
+            os.RelPath("dev/outline/fixture/src/store/Store.scala")
+          )
       ) match {
         case Right(ds) => ds
         case Left(message) => throw new Exception(message)

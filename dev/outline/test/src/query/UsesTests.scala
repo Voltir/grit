@@ -56,9 +56,9 @@ object UsesTests extends TestSuite {
     test(
       "the uses of Store.get include StoreContract.keepsWhatItIsGiven and Caller.all, named by their enclosing definitions, and not MemStore.get's Map.get"
     ) {
-      val storeTasty = Locate.inPackageOf(
+      val storeTasty = Locate.inPackageIn(
         root,
-        FixtureLayout,
+        FixtureLayout.classesDirs(root),
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val sites =
@@ -128,9 +128,9 @@ object UsesTests extends TestSuite {
     test(
       "a call split across lines is a site on its name's line: its text is that line, and its enclosing definition is Caller.split"
     ) {
-      val storeTasty = Locate.inPackageOf(
+      val storeTasty = Locate.inPackageIn(
         root,
-        FixtureLayout,
+        FixtureLayout.classesDirs(root),
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val sites =
@@ -424,9 +424,9 @@ object UsesTests extends TestSuite {
     }
 
     test("a second uses call over unchanged tasty reads no file") {
-      val storeTasty = Locate.inPackageOf(
+      val storeTasty = Locate.inPackageIn(
         root,
-        FixtureLayout,
+        FixtureLayout.classesDirs(root),
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val first = loadedUses(storeTasty, Loaded.empty)
@@ -438,9 +438,9 @@ object UsesTests extends TestSuite {
     test(
       "a uses read caches the definitions of the files it read, so a defns read after it reads no file"
     ) {
-      val storeTasty = Locate.inPackageOf(
+      val storeTasty = Locate.inPackageIn(
         root,
-        FixtureLayout,
+        FixtureLayout.classesDirs(root),
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val afterUses = loadedUses(storeTasty, Loaded.empty)
@@ -452,9 +452,9 @@ object UsesTests extends TestSuite {
     }
 
     test("a uses call after a tasty file's mtime changes reads that file again") {
-      val storeTasty = Locate.inPackageOf(
+      val storeTasty = Locate.inPackageIn(
         root,
-        FixtureLayout,
+        FixtureLayout.classesDirs(root),
         os.RelPath("dev/outline/fixture/src/store/Store.scala")
       )
       val dir = os.temp.dir(prefix = "outline-uses-mtime-")
