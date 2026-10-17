@@ -11,7 +11,6 @@ import scala.jdk.DurationConverters.*
 
 import grit.core.clock.Clock
 import grit.mcp.client.Authorizer
-import grit.mcp.wire.McpError
 
 /** Why a request to Drive answered nothing grit reads. */
 enum DriveError derives CanEqual {
