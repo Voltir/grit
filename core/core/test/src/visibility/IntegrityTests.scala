@@ -94,6 +94,18 @@ object IntegrityTests extends TestSuite {
     }
 
     test(
+      "an integrity holding the unmapped mark is shown as endorsed in what no one has labelled yet, never naming the mark"
+    ) {
+      (
+        Integrity.shown(Integrity.top(declared)),
+        Integrity.shown(Integrity.marked(Level.Member, Vector(Mark.Unmapped)))
+      ) ==> (
+        "[integrity: authority, in: {acme, trial}, and what no one has labelled yet]",
+        "[integrity: member, and what no one has labelled yet]"
+      )
+    }
+
+    test(
       "an integrity's written form reads back as it, and its shown form names its level; a text naming no level first, or a compartment by no compartment's name, is refused saying which"
     ) {
       all1(a => Integrity.read(Integrity.written(a)) == Right(a)) ==> None

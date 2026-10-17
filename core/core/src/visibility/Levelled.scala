@@ -32,15 +32,8 @@ private[visibility] final class Levelled[L <: reflect.Enum & caps.Pure](
   def written: String =
     (levels.name(level) +: compartments.toVector.map(Mark.name)).mkString("+")
 
+  /* The unmapped mark is read as what no one has labelled yet, never named. */
   def shown: String = {
-    val in =
-      if (compartments.isEmpty) ""
-      else compartments.toVector.map(Mark.name).mkString(", in: {", ", ", "}")
-    s"[${levels.shownAs}: ${levels.name(level)}$in]"
-  }
-
-  /* As `shown`, the unmapped mark read as what no one has labelled yet rather than named. */
-  def plain: String = {
     val named = compartments.toVector.filter(_ != Mark.Unmapped).map(Mark.name)
     val in = if (named.isEmpty) "" else named.mkString(", in: {", ", ", "}")
     val unlabelled =

@@ -126,7 +126,7 @@ object Label {
     * `[level: restricted, in: {acme}, and what no one has labelled yet]`. A thing's own label
     * is [[shown]] or [[described]].
     */
-  def clearance(l: Label): String = l.plain
+  def clearance(l: Label): String = l.shown
 
   private val NotLabelled = "not labelled yet (no one can read it)"
 

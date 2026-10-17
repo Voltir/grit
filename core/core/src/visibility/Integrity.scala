@@ -96,7 +96,9 @@ object Integrity {
   /** Its written form, stable across releases; parsed by [[read]]. */
   def written(i: Integrity): String = i.written
 
-  /** Its form for people and the model, e.g. `[integrity: member]`. Never parsed. */
+  /** Its form for people and the model, e.g. `[integrity: member]`, or with the unmapped mark
+    * `[integrity: authority, in: {acme}, and what no one has labelled yet]`. Never parsed.
+    */
   def shown(i: Integrity): String = i.shown
 
   /** The integrity `text` writes, or why not. */
