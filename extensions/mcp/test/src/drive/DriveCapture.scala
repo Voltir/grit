@@ -25,7 +25,7 @@ import grit.mcp.client.{Credential, KeyFiles, LiveProbe}
   * The key is read from the file `GRIT_DRIVE_SA_KEY` names, as [[Credential.open]] reads it,
   * and is never printed or written. `<domain>` is the Workspace domain whose addresses are people; each
   * `writer` the exact address of an account that is not a person (another service's) that
-  * edits files. It asks, at `drive.readonly`, each with the `fields` rev 3b names:
+  * edits files. It asks, at `drive.readonly`, each with the `fields` [[DriveRest]] asks:
   * `drives.list`; `files.list` in every drive for folders, for other files, and for
   * `fullText contains 'a'`; `files.get` of a file whose parent is no folder, a folder's file, a
   * folder and each drive's id; `drives.get` of each drive; `permissions.list` of a file in each
@@ -51,8 +51,14 @@ object DriveCapture {
 
   val Sheet = "application/vnd.google-apps.spreadsheet"
 
-  /** The fields a file is asked for, in a list and alone. */
-  val FileFields = "id,name,mimeType,parents,driveId,owners(emailAddress)"
+  /** The fields a search is asked for with: the client's. */
+  val SearchFields: String = DriveJson.SearchFields
+
+  /** The fields one file is asked for with: the client's, and whether it inherits its grants. */
+  val MetadataFields: String = s"${DriveJson.FileFields},inheritedPermissionsDisabled"
+
+  /** The fields shared drives are listed with: the client's. */
+  val DriveFields: String = DriveJson.DriveFields
 
   /** A file or folder as Drive names it: its id, type, parents and drive. */
   final case class Item(
@@ -141,7 +147,7 @@ object DriveCapture {
       }
 
     val drivesListed =
-      json("drives-list", "drives", "pageSize" -> "100", "fields" -> "drives(id,name)")
+      json("drives-list", "drives", "pageSize" -> "100", "fields" -> DriveFields)
     if (drivesListed.isEmpty) {
       said.foreach(println)
       System.err.println("drives.list was not answered; nothing written")
@@ -158,7 +164,7 @@ object DriveCapture {
         "includeItemsFromAllDrives" -> "true",
         "supportsAllDrives" -> "true",
         "pageSize" -> size.toString,
-        "fields" -> s"nextPageToken,incompleteSearch,files($FileFields)"
+        "fields" -> SearchFields
       ).toVector.flatMap(items(_, "files"))
 
     val folders = search("search-folders", s"mimeType = '$Folder' and trashed = false", 100)
@@ -183,7 +189,7 @@ object DriveCapture {
         recording,
         s"files/$id",
         "supportsAllDrives" -> "true",
-        "fields" -> s"$FileFields,inheritedPermissionsDisabled"
+        "fields" -> MetadataFields
       )
     tops.headOption.foreach(t => metadata("metadata-file-top", t.id))
     files.find(_.parents.exists(folderIds)).foreach(f => metadata("metadata-file-in-folder", f.id))
