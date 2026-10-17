@@ -164,5 +164,8 @@ object DriveJson {
       key: String,
       what: String
   ): Either[String, String] =
-    o.get(key).flatMap(_.strOpt).toRight(s"$what names no $key")
+    o.get(key) match {
+      case None => Left(s"$what names no $key")
+      case Some(v) => v.strOpt.toRight(s"$what's $key is not a string")
+    }
 }
