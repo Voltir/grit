@@ -2,6 +2,7 @@ package grit.outline.query
 
 import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root, SourceWords}
+import grit.outline.read.Read
 import grit.outline.render.TestsShown
 import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
@@ -658,6 +659,98 @@ object QueryTests extends TestSuite {
           tests = TestsShown.Listed
         )
       assert(answer.text.contains("\n  11-12 SampleTests: helper made\n"))
+    }
+
+    test("every query's answer over an uncompiled root says so under the root line") {
+      val uncompiled = new Layout {
+        def isTestSource(file: os.RelPath): Boolean = false
+        def classesDirs(root: Root): Vector[os.Path] = Vector.empty
+        def libraryJars(root: Root): Vector[os.Path] = Vector.empty
+        def notCompiled(root: Root): String = "not compiled"
+        def moduleOf(root: Root, classesDir: os.Path): String = "m"
+        def compile(modules: Vector[String]): String = "compile"
+        def isTest(classesDir: os.Path): Boolean = false
+      }
+      val config =
+        Config(Vector.empty, Vector(Area("a", Vector("grit.outline.fixture.A"), Vector.empty)))
+      val sym = "grit.outline.fixture.A"
+      val answers = Map(
+        "show" -> Query
+          .show(
+            root,
+            uncompiled,
+            config,
+            Roots.empty(6000),
+            Vector(sym),
+            0,
+            Set.empty,
+            false,
+            80000
+          )
+          ._1,
+        "find" -> Query.find(root, uncompiled, config, Roots.empty(6000), "A", false, 80000)._1,
+        "uses" -> Query
+          .uses(root, uncompiled, config, Roots.empty(6000), Vector(sym), None, None, 80000)
+          ._1,
+        "area" -> Query.area(root, uncompiled, config, Roots.empty(6000), Vector("a"), 1, 80000)._1,
+        "file" -> Query.file(root, uncompiled, config, Roots.empty(6000), sym, 80000)._1,
+        "tests" -> Query
+          .tests(root, uncompiled, config, Roots.empty(6000), sym, None, Set.empty, 80000)
+          ._1,
+        "family" -> Query
+          .family(root, uncompiled, config, Roots.empty(6000), sym, None, false, 80000)
+          ._1
+      )
+      val wrong = answers.collect {
+        case (query, answer)
+            if answer.status != Status.Failed ||
+              !answer.text.startsWith(s"## root ${root.dir} (") ||
+              answer.text.linesIterator.drop(1).toVector != Vector("not compiled") =>
+          s"$query: $answer"
+      }
+      assert(wrong.isEmpty)
+    }
+
+    test("a read refused as built in another checkout says so under the root line") {
+      val elsewhere = Root(os.temp.dir(prefix = "outline-elsewhere-"))
+      val sym = "grit.outline.fixture.A"
+      val config = Config(Vector.empty, Vector(Area("a", Vector(sym), Vector.empty)))
+      val answers = Map(
+        "show" -> Query
+          .show(
+            elsewhere,
+            FixtureLayout,
+            config,
+            Roots.empty(6000),
+            Vector(sym),
+            0,
+            Set.empty,
+            false,
+            80000
+          )
+          ._1,
+        "uses" -> Query
+          .uses(elsewhere, FixtureLayout, config, Roots.empty(6000), Vector(sym), None, None, 80000)
+          ._1,
+        "area" -> Query
+          .area(elsewhere, FixtureLayout, config, Roots.empty(6000), Vector("a"), 1, 80000)
+          ._1,
+        "file" -> Query.file(elsewhere, FixtureLayout, config, Roots.empty(6000), sym, 80000)._1,
+        "tests" -> Query
+          .tests(elsewhere, FixtureLayout, config, Roots.empty(6000), sym, None, Set.empty, 80000)
+          ._1,
+        "family" -> Query
+          .family(elsewhere, FixtureLayout, config, Roots.empty(6000), sym, None, false, 80000)
+          ._1
+      )
+      val wrong = answers.collect {
+        case (query, answer)
+            if answer.status != Status.Failed ||
+              !answer.text.startsWith(s"## root ${elsewhere.dir} (") ||
+              !answer.text.contains(Read.builtElsewhere) =>
+          s"$query: $answer"
+      }
+      assert(wrong.isEmpty)
     }
   }
 }

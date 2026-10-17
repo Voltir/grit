@@ -45,7 +45,7 @@ object Query {
         tests,
         fullDocs
       )
-    (answer.copy(text = s"${header(root)}\n${answer.text}"), Roots.put(roots, root, loaded))
+    (answer, Roots.put(roots, root, loaded))
   }
 
   /** The `find` answer for `pattern`: every definition in main sources, members included, whose full name ends in segments matching `pattern`'s dot-separated segments, each matched whole, with `*` standing for any run of characters within one segment (`*Shelf*`, `Corp*`, `*.placed`, `Moves.a*`). `config.hidden` sources are left out, and so are private members and what they hold unless `withPrivate`; without it, a note counts the private definitions matching when main sources hold no other match. One line per match, `<full name>  <file>:<lines>  <collapsed signature>`, sorted by full name, under `root`'s `## root` line. When no main definition matches, the test sources' matches, under a note saying so; when none matches there either, the definitions of each target a renaming import gives a name matching the last segment (`renamingImports`), under a note naming each import, unless the pattern's segments before its last match a method whose body holds a word matching the last segment, when a note per such method says so in place of them. `NoMatch` when nothing matches, `Failed` for a pattern with an empty segment or when the layout is not compiled; the method and import notes and the matches are cut at `cap` bytes, between lines. Reads, into `root`'s cache in `roots`, the `.tasty` of each package whose sources hold a word matching `pattern`'s last segment: every package for a last segment of `*` alone. */
@@ -63,7 +63,7 @@ object Query {
     if (segments.exists(_.isEmpty))
       (
         Answer(
-          s"${header(root)}\n$pattern has an empty segment\n${Help.usage(Help.find)}",
+          s"$pattern has an empty segment\n${Help.usage(Help.find)}",
           Status.Failed
         ),
         roots
@@ -277,7 +277,7 @@ object Query {
     val bare = syms.filter(sym => !sym.contains('.') && sym.length < shortestBare)
     lazy val classes = layout.classesDirs(root)
     if (bare.nonEmpty)
-      (Answer(s"${header(root)}\n${refusal(bare, Roots.of(roots, root))}", Status.NoMatch), roots)
+      (Answer(refusal(bare, Roots.of(roots, root)), Status.NoMatch), roots)
     else if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
     else {
       // The cache read in this query, threaded through a scoped local, as `showIn` does.
@@ -493,13 +493,13 @@ object Query {
     else if (names.isEmpty) {
       val listed = config.areas.map(a => a.purpose.fold(a.name)(p => s"${a.name}  $p"))
       if (listed.isEmpty)
-        (Answer(s"${header(root)}\nno area declared in .outline.conf", Status.NoMatch), roots)
+        (Answer("no area declared in .outline.conf", Status.NoMatch), roots)
       else (Answer((header(root) +: listed).mkString("\n"), Status.Found), roots)
     } else {
       val classes = layout.classesDirs(root)
       val stands = names.distinct.map(n => standFor(layout, config, classes, n))
       stands.collectFirst { case Left(message) => message } match {
-        case Some(message) => (Answer(s"${header(root)}\n$message", Status.NoMatch), roots)
+        case Some(message) => (Answer(message, Status.NoMatch), roots)
         case None if classes.isEmpty =>
           (Answer(layout.notCompiled(root), Status.Failed), roots)
         case None =>
@@ -791,9 +791,9 @@ object Query {
             case None =>
               uncompiled(root, layout, suite) match {
                 case Some(note) =>
-                  (Answer(s"${header(root)}\n$note", Status.Failed), nextRoots)
+                  (Answer(note, Status.Failed), nextRoots)
                 case None =>
-                  (Answer(s"${header(root)}\nno class or object $suite", Status.NoMatch), nextRoots)
+                  (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
               }
             case Some(_) if ambiguous =>
               (
@@ -1075,10 +1075,10 @@ object Query {
       cap: Int
   ): (Answer, Loaded) =
     if (layout.classesDirs(root).isEmpty)
-      (Answer(s"${header(root)}\n${layout.notCompiled(root)}", Status.Failed), in)
+      (Answer(layout.notCompiled(root), Status.Failed), in)
     else
       Resolve.resolve(root, layout, config, Scope.WithTests, name, in) match {
-        case Left(message) => (Answer(s"${header(root)}\n$message", Status.Failed), in)
+        case Left(message) => (Answer(message, Status.Failed), in)
         case Right(resolved) if resolved.defns.map(_.fullName).distinct.size > 1 =>
           // A family is one trait's: an ambiguous name answers its candidates, as resolve lists them.
           (Answer((header(root) +: resolved.notes).mkString("\n"), Status.NoMatch), resolved.loaded)
@@ -1108,14 +1108,19 @@ object Query {
           }
       }
 
-  /** `query`'s answer, run over `roots` with `root`'s consulted files cleared, and after the answer's `## root` line the
-    * line naming `config`'s ignored lines and `staleLine`'s line, each when there is one.
+  /** `query`'s answer, run over `roots` with `root`'s consulted files cleared, opening with `root`'s `## root` line (put
+    * first when `query` gave none), and after it the line naming `config`'s ignored lines and `staleLine`'s line, each
+    * when there is one.
     */
   private def staled(root: Root, layout: Layout, config: Config, roots: Roots)(
       query: Roots => (Answer, Roots)
   ): (Answer, Roots) = {
-    val (answer, next) =
+    val (queried, next) =
       query(Roots.put(roots, root, Roots.of(roots, root).copy(consulted = Set.empty)))
+    // A query whose notes lead its answer writes the root line above them; any other answer, such as a failure, gets it here.
+    val answer =
+      if (queried.text.startsWith("## root ")) queried
+      else queried.copy(text = s"${header(root)}\n${queried.text}")
     val loaded = Roots.of(next, root)
     // The files this query asked for that the inspector could not read, named once whichever query read them.
     val unread =
@@ -1132,7 +1137,7 @@ object Query {
       s"-- .outline.conf lines this outline does not know, ignored (a newer outline may read them): ${config.ignored.mkString(", ")}"
     )
     val lines = ignored.toVector ++ staleLine(root, layout, loaded) ++ unread
-    if (lines.isEmpty || !answer.text.startsWith("## root")) (answer, next)
+    if (lines.isEmpty) (answer, next)
     else {
       val (first, rest) = answer.text.span(_ != '\n')
       (answer.copy(text = s"$first\n${lines.mkString("\n")}$rest"), next)
