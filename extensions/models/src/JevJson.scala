@@ -146,7 +146,10 @@ object JevJson {
           .toRight(unreadable(s"$name: no noul"))
     }
 
-  /** The error in a non-200 response with status `status`. */
+  /** The error in a non-200 response with status `status`, as `HTTP <status>: <detail>`:
+    * `Unavailable` for a status another try may get past ([[OpenRouterJson.transient]]: 408,
+    * 429, every 5xx), `Refused` for any other.
+    */
   def error(status: Int, body: String): ClassifierError = {
     val detail = scala.util
       .Try(ujson.read(body))
@@ -155,7 +158,9 @@ object JevJson {
       .flatMap(o => o.get("detail").orElse(o.get("error")).orElse(o.get("message")))
       .map(v => v.strOpt.getOrElse(ujson.write(v)).take(300))
       .getOrElse(body.take(300))
-    ClassifierError.Unavailable(s"HTTP $status: $detail")
+    val cause = s"HTTP $status: $detail"
+    if (OpenRouterJson.transient(status)) ClassifierError.Unavailable(cause)
+    else ClassifierError.Refused(cause)
   }
 
   private def unreadable(why: String): ClassifierError =

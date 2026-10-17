@@ -119,10 +119,28 @@ object JevJsonTests extends TestSuite {
       }
     }
 
-    test("error: the status and the body's detail") {
-      JevJson.error(422, """{"detail": "questions.q.criteria: field required"}""") ==>
-        ClassifierError.Unavailable("HTTP 422: questions.q.criteria: field required")
-      JevJson.error(529, "overloaded") ==> ClassifierError.Unavailable("HTTP 529: overloaded")
+    test("error: a 408, 429 or 5xx is Unavailable, with the status and the body's detail") {
+      (
+        JevJson.error(408, "timed out"),
+        JevJson.error(429, """{"error": "rate limited"}"""),
+        JevJson.error(503, "down"),
+        JevJson.error(529, "overloaded")
+      ) ==> (
+        ClassifierError.Unavailable("HTTP 408: timed out"),
+        ClassifierError.Unavailable("HTTP 429: rate limited"),
+        ClassifierError.Unavailable("HTTP 503: down"),
+        ClassifierError.Unavailable("HTTP 529: overloaded")
+      )
+    }
+
+    test("error: any other status is Refused, with the status and the body's detail") {
+      (
+        JevJson.error(401, """{"message": "bad key"}"""),
+        JevJson.error(422, """{"detail": "questions.q.criteria: field required"}""")
+      ) ==> (
+        ClassifierError.Refused("HTTP 401: bad key"),
+        ClassifierError.Refused("HTTP 422: questions.q.criteria: field required")
+      )
     }
 
     test(

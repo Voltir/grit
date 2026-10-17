@@ -6,8 +6,9 @@ import scala.util.control.NonFatal
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
 
-/** [[Classifier]] over Jev (`POST /v1/systemone`), one request per call, no retries: a 429
-  * or 529 comes back as `Unavailable`, for the caller to back off.
+/** [[Classifier]] over Jev (`POST /v1/systemone`), one request per call, no retries: a failed
+  * connection or a transient status ([[JevJson.error]]) comes back as `Unavailable`, for the
+  * caller to back off; any other status or failure as `Refused`.
   */
 final class JevClassifier(config: JevConfig) extends Classifier {
 
@@ -40,8 +41,10 @@ final class JevClassifier(config: JevConfig) extends Classifier {
       else Left(JevJson.error(response.statusCode, response.body))
     } catch {
       // The message never includes the request, so never the key.
-      case NonFatal(e) =>
+      case e: java.io.IOException =>
         Left(ClassifierError.Unavailable(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
+      case NonFatal(e) =>
+        Left(ClassifierError.Refused(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
     }
 }
 
