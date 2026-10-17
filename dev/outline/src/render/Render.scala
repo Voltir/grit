@@ -365,7 +365,10 @@ object Render {
 
   /** `d` on one line, as `find` lists it: `<full name>  <file>:<lines>  <collapsed signature>` and its size tag. */
   def listing(d: Defn): String =
-    s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
+    s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${signatureLine(d)}${sizeTag(d.size)}"
+
+  /** `d`'s signature on one line, its docs dropped. */
+  def signatureLine(d: Defn): String = collapse(withoutDocs(d.signature))
 
   /** `header`, then the leading `lines` that fit in `cap` bytes, then the cut line saying how many more there are and the
     * budget that shows them all; each line ends with its newline.

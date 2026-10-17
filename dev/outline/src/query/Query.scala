@@ -1322,12 +1322,17 @@ object Query {
   }
 
   /** The note for each `--body` name that no shown definition has: `tops` and their members (those withPrivate
-    * or public), whose simple names it lists, sorted; a name only a private member has is named as private.
+    * or public), whose simple names it lists, sorted; a name only a private member has is named as private. A name
+    * none of them has, defined in a val's or def's body among them, is named with its line; else, when `tops` hold a
+    * type, of `elsewhere(name, typeNames)`, main-source definitions of that simple name, those whose signature names one
+    * of those types are listed, each with the `show` printing it, and when none does the note names the `find` listing
+    * every one.
     */
   private def bodyMisses(
       bodies: Set[String],
       tops: Vector[Defn],
-      withPrivate: Boolean
+      withPrivate: Boolean,
+      elsewhere: (String, Vector[String]) => Vector[Defn]
   ): Vector[String] = {
     val shown = tops.flatMap(d => d +: d.members.filter(m => withPrivate || !m.isPrivate))
     val names = shown.map(_.name).distinct.sorted
@@ -1344,7 +1349,9 @@ object Query {
     def anonymous(name: String): Option[String] = {
       val defining =
         raw"^\s*(?:override\s+)?(?:def|val|var|lazy\s+val)\s+${java.util.regex.Pattern.quote(name)}\b.*".r
-      tops
+      def withMembers(ds: Vector[Defn]): Vector[Defn] =
+        ds.flatMap(d => d +: withMembers(d.members.filter(m => withPrivate || !m.isPrivate)))
+      withMembers(tops)
         .filter(d => d.kind == Kind.Val || d.kind == Kind.Def)
         .flatMap { d =>
           val text = (d.head +: d.body.toVector).mkString("\n").split("\n", -1).toVector
@@ -1358,14 +1365,44 @@ object Query {
           s"-- --body $name is defined in $owner's body, in an anonymous class or as a local, at line $line: --body ${d.name} prints it whole"
         }
     }
+    // A type's reader may be another type's member; a shown def or val has none.
+    val typeNames = tops
+      .filter(d =>
+        d.kind != Kind.Def && d.kind != Kind.Val && d.kind != Kind.Var && d.kind != Kind.Given
+      )
+      .map(_.name)
+      .distinct
+    val whose = typeNames.mkString(" or ")
+    def foreign(name: String): String = {
+      val here = s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"
+      val naming =
+        if (typeNames.isEmpty) Vector.empty
+        else
+          elsewhere(name, typeNames)
+            .filterNot(tops.contains)
+            .filter(d =>
+              typeNames.exists(t => wordPattern(t).findFirstIn(Render.signatureLine(d)).nonEmpty)
+            )
+      def showing(d: Defn): String =
+        s"show ${d.fullName.split('.').dropRight(1).mkString(".")} --body $name${
+            if (d.isPrivate && !withPrivate) " --private" else ""
+          }"
+      naming match {
+        case Vector(d) =>
+          s"-- --body $name is not $whose's; defined elsewhere naming $whose: ${Render.listing(d)}: ${showing(d)} prints it"
+        case Vector() if typeNames.isEmpty => here
+        case Vector() =>
+          s"$here; no $name elsewhere names $whose in its signature: find '*.$name' lists every $name"
+        case several =>
+          (s"-- --body $name is not $whose's; defined elsewhere naming $whose, each printed by its show:" +:
+            several.map(d => s"--   ${Render.listing(d)}: ${showing(d)}")).mkString("\n")
+      }
+    }
     several ++ bodies.toVector.sorted
       .filterNot(name => names.contains(name) || answered(name))
       .map { name =>
         if (privateNames.contains(name)) s"-- --body $name is private: add --private"
-        else
-          anonymous(name).getOrElse(
-            s"-- --body $name matches nothing shown; names here: ${names.mkString(", ")}"
-          )
+        else anonymous(name).getOrElse(foreign(name))
       }
   }
 
@@ -1489,8 +1526,28 @@ object Query {
             },
             fullDocs = fullDocs
           )
+          // Read only for a --body name nothing shown has: the packages of the main sources holding it and a shown
+          // type's name as words, since a signature naming that type is written in such a file.
+          def elsewhere(name: String, types: Vector[String]): Vector[Defn] = {
+            val holdingType = types.flatMap(t => Locate.holding(root, wordPattern(t))).toSet
+            val tasty = Resolve.usable(
+              root,
+              layout,
+              Scope.Main,
+              Locate
+                .holding(root, wordPattern(name))
+                .filter(holdingType.contains)
+                .flatMap(file => Locate.inPackageIn(root, classes, file))
+                .distinct
+            )
+            val (defns, next, _) = loadAll(root, layout, tasty, state)
+            state = next
+            everyDefnOf(defns)
+              .filter(d => d.name == name && !config.hidden.exists(p => d.file.startsWith(p)))
+              .distinct
+          }
           val bodyNotes =
-            (bodyMisses(bodies, tops, withPrivate) ++ testNotes).map(_ + "\n").mkString
+            (bodyMisses(bodies, tops, withPrivate, elsewhere) ++ testNotes).map(_ + "\n").mkString
           val text = noteText + bodyNotes + rendered
           (Answer(text, Status.Found), state)
       }

@@ -199,6 +199,44 @@ object QueryTests extends TestSuite {
     }
 
     test(
+      "a --body name an anonymous class in a shown object's val defines is named with its line, and the --body printing that val"
+    ) {
+      val text = shownWith("Greeters", Set("greet"))
+      assert(
+        text.linesIterator.contains(
+          "-- --body greet is defined in Greeters.polite's body, in an anonymous class or as a local, at line 21: --body polite prints it whole"
+        )
+      )
+      assert(!text.contains("matches nothing shown"))
+    }
+
+    test(
+      "a --body name the shown type lacks, defined elsewhere taking it, is named with its place and the show printing it"
+    ) {
+      val text = shownWith("Spot", Set("isNamed"))
+      assert(
+        text.linesIterator.contains(
+          "-- --body isNamed is not Spot's; defined elsewhere naming Spot: grit.outline.fixture.Spots.isNamed  dev/outline/fixture/src/Foreign.scala:9-10  def isNamed(spot: Spot): Boolean  [0.2 KB]: show grit.outline.fixture.Spots --body isNamed prints it"
+        )
+      )
+      assert(!text.contains("matches nothing shown"))
+    }
+
+    test(
+      "a --body name no signature elsewhere names the shown type in says so, and names the find listing every definition of it"
+    ) {
+      val line = shownWith("Spot", Set("greet")).linesIterator
+        .find(_.startsWith("-- --body greet matches nothing shown; names here: "))
+      assert(
+        line.exists(
+          _.endsWith(
+            "; no greet elsewhere names Spot in its signature: find '*.greet' lists every greet"
+          )
+        )
+      )
+    }
+
+    test(
       "a .tasty deleted between its listing and its read is skipped and named, and the rest load"
     ) {
       val classes = FixtureLayout.classesDirs(root)
