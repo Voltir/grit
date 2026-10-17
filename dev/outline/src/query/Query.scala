@@ -736,14 +736,18 @@ object Query {
       classes: Vector[os.Path],
       files: Vector[os.RelPath]
   ): String = {
-    val modules = files
-      .flatMap(Locate.inPackagesIn(root, classes))
-      .flatMap(t => classes.find(t.startsWith))
-      .distinct
-      .map(layout.moduleOf(root, _))
-      .distinct
+    val modules = modulesOf(root, layout, classes, files.flatMap(Locate.inPackagesIn(root, classes)))
     if (modules.isEmpty) layout.notCompiled(root) else layout.compile(modules)
   }
+
+  /** The modules whose classes dirs, among `classes`, hold the `.tasty` files `tasty`, each once, in their order. */
+  private def modulesOf(
+      root: Root,
+      layout: Layout,
+      classes: Vector[os.Path],
+      tasty: Vector[os.Path]
+  ): Vector[String] =
+    tasty.flatMap(t => classes.find(t.startsWith)).distinct.map(layout.moduleOf(root, _)).distinct
 
   /** For a class or object `name` no `.tasty` holds: the note naming the sources whose text defines it (in its package,
     * when `name` is a full name) and no `.tasty` records, with the command compiling their modules; none when there are none.
@@ -1052,7 +1056,6 @@ object Query {
         (leftDefns ++ rightDefns, afterRight, leftFailed ++ rightFailed)
     }
 
-  /** The first line the inspector captured, from a read's complaint, cut at 160 characters; empty when it captured none. */
   /** The one line naming `files`, which the inspector could not read, each with the first line of its message in
     * `loaded`, then `complaint`'s cause when there is one, then the command compiling their modules; none for no file.
     */
@@ -1071,16 +1074,13 @@ object Query {
           s"$name (${Read.plain(message).takeWhile(_ != '\n').take(160)})"
         }
       }
-      val modules = files
-        .flatMap(p => layout.classesDirs(root).find(p.startsWith))
-        .distinct
-        .map(layout.moduleOf(root, _))
-        .distinct
+      val modules = modulesOf(root, layout, layout.classesDirs(root), files)
       val compile =
         if (modules.isEmpty) "" else s"; compile to read them: ${layout.compile(modules)}"
       s"-- not loaded: ${named.mkString(", ")}$cause$compile"
     }
 
+  /** The first line the inspector captured, from a read's complaint, cut at 160 characters; empty when it captured none. */
   private def captured(complaint: String): String =
     complaint.takeWhile(_ != '\n').dropWhile(_ != ':').drop(1).trim.take(160)
 
