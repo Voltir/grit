@@ -2,7 +2,7 @@ package grit.core.plugin
 
 import java.time.Instant
 
-import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.document.{Document, DocumentKeeper, DocumentTerms}
 import grit.core.id.PluginName
 import grit.core.job.{Declared, Job}
 import grit.core.period.CloseOrdinal
@@ -73,6 +73,26 @@ trait CachePosting extends caps.Pure {
 trait Documents extends caps.Pure {
   def terms: DocumentTerms
   def posting: Option[DocumentPosting]
+
+  /** Whether `document`, one of its plugin's current ones, is kept where its plugin no longer
+    * declares anything: [[sweep]] withdraws it. None is, unless the plugin says otherwise.
+    */
+  def undeclared(document: Document): Boolean = false
+
+  /** Withdraws through `keeper`, at `at`, each of its current documents `keeper`'s transaction
+    * reads that is [[undeclared]]; how many it withdrew. The engine sweeps every enabled
+    * plugin's at each start, before anything runs, in a transaction that reads every label, so
+    * none is missed for its label.
+    */
+  final def sweep(keeper: DocumentKeeper, at: Instant)(using Tx^): Either[StoreError, Int] =
+    // Every current one: the bound in force may be below what an earlier bound kept.
+    keeper
+      .newest(Int.MaxValue)
+      .flatMap(
+        _.filter(undeclared).foldLeft[Either[StoreError, Int]](Right(0))((n, d) =>
+          n.flatMap(done => keeper.withdraw(d.key, d.label, at).map(_ => done + 1))
+        )
+      )
 }
 
 /** A plugin's posting to its documents. */

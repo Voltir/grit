@@ -824,6 +824,38 @@ abstract class DocumentContract extends TestSuite {
       ) ==> (Vector(), Vector(), Vector())
     }
 
+    test("a sweep withdraws each current document its plugin no longer declares, at any label") {
+      val p = name("doc-sweep")
+      val declaring = terms()
+      val k = keeper(p, declaring)
+      val trialled = Clearance.of(TestLabels.Trial)
+      val gone = ujson.Obj("gone" -> true)
+      put(k, "stays", "kept on", 1)
+      put(k, "public", "dropped", 2, data = gone)
+      opened(trialled)(
+        ok(
+          k.write(
+            key("trial"),
+            TestLabels.Trial,
+            Integrity.Member,
+            place("here"),
+            text("dropped"),
+            gone,
+            None,
+            at(3)
+          )
+        )
+      )
+      val documents = new grit.core.plugin.Documents {
+        val terms: DocumentTerms = declaring
+        val posting: Option[grit.core.plugin.DocumentPosting] = None
+        override def undeclared(document: Document): Boolean =
+          document.data.objOpt.exists(_.contains("gone"))
+      }
+      val swept = opened(trialled)(ok(documents.sweep(k, at(4))))
+      (swept, opened(trialled)(keys(ok(shelf(p).newest(10))))) ==> (2, Vector("stays"))
+    }
+
     test("kept is every plugin with documents, withdrawn or not") {
       val (p, q, r) = (name("doc-kept-p"), name("doc-kept-q"), name("doc-kept-r"))
       put(keeper(p, terms()), "k", "words", 1)

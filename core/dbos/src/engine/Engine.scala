@@ -309,10 +309,11 @@ final class Engine private (
     * enabled, and the sweep posts to those with something to post ([[Plugin.posts]]), and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
     * keeping nothing. The terms of `plugins`' documents are declared the ones in force
-    * ([[DocumentStore.declare]]) before anything runs. Makes the engine's epoch the
+    * ([[DocumentStore.declare]]), and each one's documents swept ([[grit.core.plugin.Documents.sweep]]), at
+    * every label, before anything runs. Makes the engine's epoch the
     * database's latest application version, so work enqueued without one (every grit
     * enqueue) runs here whatever epochs the database has seen. Once. Throws when the terms
-    * cannot be recorded, as DBOS's own launch throws when it cannot start.
+    * cannot be recorded or a sweep fails, as DBOS's own launch throws when it cannot start.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
@@ -338,9 +339,16 @@ final class Engine private (
     enabled.set(plugins.map(p => (p.name, p.version)))
     posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
+    val declaring = plugins.flatMap(p => p.documents.map(d => (p.name, d)))
     Link
       .transaction(dataSource, opener)(
-        documents.declare(plugins.flatMap(p => p.documents.map(d => p.name -> d.terms)))
+        documents
+          .declare(declaring.map((name, d) => name -> d.terms))
+          .flatMap(_ =>
+            declaring.foldLeft[Either[StoreError, Unit]](Right(())) { case (done, (name, d)) =>
+              done.flatMap(_ => d.sweep(keeper(name, d.terms), clock.now()).map(_ => ()))
+            }
+          )
       )
       .left
       .foreach(e => throw new IllegalStateException(s"the plugins' document terms: $e"))
