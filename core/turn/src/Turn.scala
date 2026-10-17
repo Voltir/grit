@@ -97,6 +97,12 @@ object Turn {
     private val RelevanceBatch = "ask:relevance-\\d+".r
     private val RelevanceBatchRecord = "ask:relevance-\\d+:record".r
 
+    /** Whether `name` is a step of the turn's loop in which its own model is called (`ask:n`,
+      * of [[Ask]]): what a rehearsal stops at. The assembly's asks ([[Query]], [[Relevance]]),
+      * a round's [[Record]] and the summary are not.
+      */
+    def answering(name: String): Boolean = family(name).contains(Ask)
+
     /** The family of `call:n:j`, the tool loop's settling of call j of round n's reply. */
     val Call: String = "call"
 

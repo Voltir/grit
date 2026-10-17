@@ -262,6 +262,20 @@ object TurnTests extends TestSuite {
       )
     }
 
+    test(
+      "only a loop round's ask is answering: not the query, a judging batch, a record or the summary"
+    ) {
+      Vector(
+        "ask:0",
+        "ask:3",
+        "ask:query",
+        "ask:relevance-1",
+        "ask:2:record",
+        "gate:2",
+        Turn.Step.Summarise
+      ).map(Turn.Step.answering) ==> Vector(true, true, false, false, false, false, false)
+    }
+
     test("each assembly step is named by its family, not read as a loop round") {
       Vector(
         "ask:query",
