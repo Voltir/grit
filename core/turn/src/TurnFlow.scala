@@ -153,7 +153,7 @@ private[turn] object TurnFlow {
           .andThen(Flow.step(append))
           .keeping
           .map { case ((a, unrecorded), kept) =>
-            Ended(a.at.at, kept, unrecorded, Some(a.looped.at.level))
+            Ended(a.at.at, kept.map(_.reply), unrecorded, Some(a.looped.at.level))
           }
       )
 

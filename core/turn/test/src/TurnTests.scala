@@ -594,6 +594,37 @@ object TurnTests extends TestSuite {
       )
     }
 
+    test("a turn's search reads back as its query, the results it recorded and each verdict") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new StubProvider(),
+          new Searching(entries, 12),
+          new InMemoryUsageLedger,
+          new Sifter
+        )
+      ) ==> Done
+      val found = (0 until 12).toVector
+      TurnRecord.retrieval(durable.history(turn.workflowId).map(FlowFixtures.recorded)) ==> Right(
+        Some(
+          TurnRecord.Retrieval(
+            "hello greeting",
+            grit.core.context.Results(found.map(n => ownTurn(n) -> (12 - n).toDouble)),
+            found.map(n =>
+              ownTurn(n) -> (
+                if (n % 2 == 0)
+                  TurnRelevance.Verdict.Passed(grit.core.period.Probability.clamped(0.9))
+                else TurnRelevance.Verdict.Rejected(grit.core.period.Probability.clamped(0.1))
+              )
+            )
+          )
+        )
+      )
+    }
+
     test(
       "a turn resumed after its first relevance batch asks the classifier nothing again for it, and its ledger holds one row for it"
     ) {

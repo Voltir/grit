@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.durable.{History, InMemoryDurable, StepRecord}
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.speech.Outcome
 import grit.core.tool.ToolSetId
 
@@ -207,6 +207,26 @@ object TurnRecordTests extends TestSuite {
         None,
         None,
         None,
+        None,
+        None
+      )
+    }
+
+    test(
+      "a move's ledger row reads as the turn's query or the batch it judged, and only its turn's"
+    ) {
+      val other = TurnRef(ConversationId("c1"), TurnSeq(4))
+      val (mine, theirs) = (WorkflowId.value(turn.workflowId), WorkflowId.value(other.workflowId))
+      Vector(
+        s"move:$mine:query",
+        s"move:$mine:relevance-0",
+        s"move:$mine:relevance-2",
+        s"move:$mine:relevance-x",
+        s"move:$theirs:relevance-0"
+      ).map(id => TurnRecord.role(turn, EntryId(id))) ==> Vector(
+        Some(TurnRecord.Role.Query),
+        Some(TurnRecord.Role.Relevance(0)),
+        Some(TurnRecord.Role.Relevance(2)),
         None,
         None
       )

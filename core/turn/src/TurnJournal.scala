@@ -213,6 +213,34 @@ private[turn] object TurnJournal {
       v => v.strOpt.map(EntryId(_)).toRight("entry id: expected a string")
     )
 
+  /** An `append` step's output: the reply's entry id alone when nothing was followed, as it
+    * was written before follows were recorded; else `{"reply": entry id, "followed": [...]}`
+    * ([[PayloadJson.writeVersions]]).
+    */
+  given appended: Journaled[Either[TurnFailure, TurnSteps.Appended]] =
+    outcome(
+      a =>
+        if (a.followed.isEmpty) ujson.Str(EntryId.value(a.reply))
+        else
+          ujson.Obj(
+            "reply" -> EntryId.value(a.reply),
+            "followed" -> PayloadJson.writeVersions(a.followed)
+          ),
+      v =>
+        v match {
+          case ujson.Str(id) => Right(TurnSteps.Appended(EntryId(id), Vector.empty))
+          case o: ujson.Obj =>
+            for {
+              reply <- o.value.get("reply").flatMap(_.strOpt).toRight("appended: no reply")
+              followed <- o.value
+                .get("followed")
+                .toRight("appended: no followed")
+                .flatMap(PayloadJson.readVersions)
+            } yield TurnSteps.Appended(EntryId(reply), followed)
+          case _ => Left("appended: expected an entry id or an object")
+        }
+    )
+
   /** A `ask:n:record` step's output: `{"reply": entry id, "kinds": [kind, …]}`, each call's
     * kind in order: `"refused"`, `"free"`, `"gated"`, or `{"hosted": tool, "asks": boolean,
     * "place": place written | null}`.

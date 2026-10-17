@@ -17,7 +17,7 @@ import grit.core.document.{
   Pointer,
   Written
 }
-import grit.core.durable.{Durable, InMemoryDurable}
+import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -363,6 +363,29 @@ object TurnDocumentsTests extends TestSuite {
       (following(documents, held), once.headOption.flatten.isDefined) ==> (once, true)
       assert(durable.replay(turn.workflowId, durable.history(turn.workflowId))(body(_)).isRight)
       following(documents, held) ==> once
+    }
+
+    test("the versions a turn's append counted followed read back from the steps it recorded") {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Cards")))(using TestTx.fake)
+      val followed =
+        write(documents, digest, "Cards", "readme", "Readme.", pointing("peek", "README.md"))
+      val other = write(documents, digest, "Cards", "other", "Other.", pointing("peek", "OTHER.md"))
+      val turn = say(entries, "what does the readme say?")
+      val durable = new InMemoryDurable
+      val output = durable.run(turn.workflowId)(
+        followingBody(
+          entries,
+          documents,
+          Vector(followed, other),
+          calling("peek", "README.md"),
+          succeeding
+        )
+      )
+      assert(output.startsWith("replied:"))
+      TurnRecord.followed(durable.history(turn.workflowId).map(FlowFixtures.recorded)) ==>
+        Right(Some(Vector(followed)))
     }
 
     test("a heard-rooted turn whose draft's call followed a document's pointer counts it") {

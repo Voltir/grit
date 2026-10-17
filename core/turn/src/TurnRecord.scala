@@ -1,9 +1,12 @@
 package grit.turn
 
+import grit.act.moves.Judging
+import grit.core.context.{Querying, Results, Retrieved}
 import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.either.Traversal.sequence
+import grit.core.id.{DocumentVersion, EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
@@ -206,6 +209,8 @@ object TurnRecord {
       case -1 => None
       case k => id.drop(k + 1).toIntOption.filter(_ >= 0)
     }
+    // Where a move's answered call is kept, as its record step keeps it: `move:{wf}:{name}`.
+    val moves = s"move:${WorkflowId.value(turn.workflowId)}:"
     if (entry == turn.replyId || entry == turn.draftId) Some(Role.Reply)
     else if (entry == TurnJudge.id(turn)) Some(Role.Judge)
     else if (entry == TurnSummary.id(turn)) Some(Role.Summary)
@@ -217,6 +222,9 @@ object TurnRecord {
         .contains(entry)
     ) Some(Role.Topic)
     else if ((0 +: last.toVector).exists(i => Turn.queryId(turn, i) == entry)) Some(Role.Query)
+    else if (id == s"${moves}query") Some(Role.Query)
+    else if (id.startsWith(s"${moves}relevance-"))
+      id.stripPrefix(s"${moves}relevance-").toIntOption.filter(_ >= 0).map(Role.Relevance(_))
     else last.filter(n => TurnTools.callId(turn, TurnLoop.Round.at(n)) == entry).map(Role.Round(_))
   }
 
@@ -225,6 +233,9 @@ object TurnRecord {
 
     /** Assembly's search query. */
     case Query
+
+    /** A classifier call judging batch `batch` (from 0) of what the turn's search found. */
+    case Relevance(batch: Int)
 
     /** Placing the turn's message among its conversation's topics, describing a topic, or
       * the reply's verdict on one.
@@ -257,6 +268,51 @@ object TurnRecord {
   /** The output of the step named `name` among `steps`, read by `A`'s journal; `None` when no
     * such step recorded one.
     */
+  /** What a turn's search was: the query it wrote, the results its `search` step recorded, and
+    * each judged one's verdict, in its batches' order.
+    */
+  final case class Retrieval(
+      query: String,
+      results: Results,
+      verdicts: Vector[(Retrieved, TurnRelevance.Verdict)]
+  )
+
+  /** What `steps` recorded of the turn's search; `None` when the turn wrote no query, its
+    * search failed, or it ran before its window was drawn in steps. `Left` when an output does
+    * not read.
+    */
+  def retrieval(steps: Vector[StepRecord]): Either[String, Option[Retrieval]] = {
+    def made[A](s: StepRecord)(using grit.core.durable.Journaled[A]): Either[String, A] =
+      s.output
+        .toRight("no output")
+        .flatMap(Judging.made[A](_))
+        .left
+        .map(why => s"${s.name}: $why")
+    for {
+      queried <- steps.find(_.name == Turn.Step.Query) match {
+        case None => Right(None)
+        case Some(s) => made[Either[TurnFailure, Querying]](s).map(Some(_))
+      }
+      found <- read[Either[TurnFailure, Results]](steps, Turn.Step.Search)
+      verdicts <- sequence(
+        steps
+          .filter(s => Turn.Step.family(s.name).contains(Turn.Step.Relevance))
+          .map(made[Vector[(Retrieved, TurnRelevance.Verdict)]](_))
+      )
+    } yield (queried.flatMap(_.toOption), found.flatMap(_.toOption)) match {
+      case (Some(Querying.Written(text, _)), Some(results)) =>
+        Some(Retrieval(text, results, verdicts.flatten))
+      case _ => None
+    }
+  }
+
+  /** The document versions the turn's reply or draft counted as followed; `None` when `append`
+    * is not recorded, or recorded a failure. `Left` when its output does not read.
+    */
+  def followed(steps: Vector[StepRecord]): Either[String, Option[Vector[DocumentVersion]]] =
+    read[Either[TurnFailure, TurnSteps.Appended]](steps, Turn.Step.Append)
+      .map(_.flatMap(_.toOption).map(_.followed))
+
   private def read[A](steps: Vector[StepRecord], name: String)(using
       journal: grit.core.durable.Journaled[A]
   ): Either[String, Option[A]] =

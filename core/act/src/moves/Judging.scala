@@ -170,6 +170,12 @@ object Judging {
       )
   }
 
+  /** What a judgment's recorded `ask:{name}` step `output` says its workflow made; `Left` when
+    * it does not read as one.
+    */
+  def made[B](output: String)(using Journaled[B]): Either[String, B] =
+    MovesJournal.posed[B].decode(output).map(_.made)
+
   /** Whether `budget`'s daily cap admits an ask for `subject` now; `Left`, why not. */
   private def admitted(env: MovesEnv^, budget: Budget, subject: Subject): Either[String, Unit] =
     Act.admission(env.records, env.db, env.clock, Allowance.Daily(budget), subject) match {

@@ -15,7 +15,7 @@ import grit.core.context.{
 }
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
-import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{DocumentVersion, EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{Grade, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
@@ -238,6 +238,11 @@ private[turn] object TurnSteps {
   final case class Answered(at: Assembled, looped: TurnRound.Looped) extends OfTurn {
     def turn: TurnRef = at.turn
   }
+
+  /** What `append` kept: the reply or draft, and the window's documents whose pointer its
+    * calls followed, each counted as followed.
+    */
+  final case class Appended(reply: EntryId, followed: Vector[DocumentVersion])
 
   /** What `at`'s steps from `assemble` to `append` came to: its reply entry, or why it has
     * none; the verdict's record when it failed without failing the turn; and the turn's level
@@ -524,8 +529,8 @@ private[turn] object TurnSteps {
     * the offer its `offer` step names and the pins its `route` step names
     * ([[TurnHosting.offered]], [[Turn.Routed.pickedIn]], whose failures it records).
     */
-  val append: Step[Env, Answered, Either[TurnFailure, EntryId]] =
-    Step.transact[Env, Answered, Either[TurnFailure, EntryId]](Names.append, onTurn)(r =>
+  val append: Step[Env, Answered, Either[TurnFailure, Appended]] =
+    Step.transact[Env, Answered, Either[TurnFailure, Appended]](Names.append, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
           val (env, rounds, a) = (r.env, in.looped.at, in.at.at)
@@ -1134,7 +1139,7 @@ private[turn] object TurnSteps {
       shape: ModelRequest -> ModelRequest,
       believed: Option[Integrity],
       at: Instant
-  )(using Tx^): Either[TurnFailure, EntryId] = {
+  )(using Tx^): Either[TurnFailure, Appended] = {
     val (id, payload) = offer.root match {
       case TurnOffer.Root.Addressed | TurnOffer.Root.ByName =>
         (turn.replyId, Payload.Message(message))
@@ -1175,7 +1180,7 @@ private[turn] object TurnSteps {
             .map(TurnFailure.ofStore)
         case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named => Right(true)
       }
-    } yield id
+    } yield Appended(id, followed)
   }
 
   /** Each tool call among `own`, a turn's own entries, by the name it was made under, with

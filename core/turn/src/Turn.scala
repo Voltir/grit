@@ -350,7 +350,7 @@ object Turn {
             recorded[TurnRound.Kept](name).map(kept => done ++ kept.map(round -> _.reply))
           )
       }
-      answer <- recorded[EntryId](Step.Append)
+      answer <- recorded[TurnSteps.Appended](Step.Append).map(_.map(_.reply))
       gates <- gated.foldLeft[Either[String, Map[Int, Gated]]](Right(Map.empty)) {
         case (acc, (round, name)) =>
           acc.flatMap(done => recorded[Gated](name).map(g => done ++ g.map(round -> _)))
