@@ -233,6 +233,24 @@ object TurnTests extends TestSuite {
       )
     }
 
+    test("each assembly step is named by its family, not read as a loop round") {
+      Vector(
+        "ask:query",
+        "ask:query:record",
+        "ask:relevance-0",
+        "ask:relevance-2:record",
+        "ask:relevance-x",
+        "ask:3"
+      ).map(Turn.Step.family) ==> Vector(
+        Some("ask:query"),
+        Some("ask:query:record"),
+        Some("ask:relevance"),
+        Some("ask:relevance:record"),
+        None,
+        Some("ask")
+      )
+    }
+
     test("a wait for a person is named for the call it waits on, once it has ended") {
       Turn.Step.named(
         Vector(

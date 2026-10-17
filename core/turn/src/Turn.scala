@@ -79,6 +79,23 @@ object Turn {
       */
     val Gate: String = "gate"
 
+    /** The turn's query written for its search, a move of its own. */
+    val Query: String = "ask:query"
+
+    /** The cost of the turn's query recorded, when its writer answered. */
+    val QueryRecord: String = "ask:query:record"
+
+    /** The family of `ask:relevance-n`, the turn's judging batch n of what its search found. */
+    val Relevance: String = "ask:relevance"
+
+    /** The family of `ask:relevance-n:record`, batch n's cost recorded, when its classifier
+      * answered.
+      */
+    val RelevanceRecord: String = "ask:relevance:record"
+
+    private val RelevanceBatch = "ask:relevance-\\d+".r
+    private val RelevanceBatchRecord = "ask:relevance-\\d+:record".r
+
     /** The family of `call:n:j`, the tool loop's settling of call j of round n's reply. */
     val Call: String = "call"
 
@@ -114,13 +131,23 @@ object Turn {
       */
     val Wait: String = "call:wait"
 
-    /** The step `name` stands for among [[all]] and the tool loop's families ([[Gate]],
-      * [[Record]], [[Approve]], [[Wait]], [[Call]], [[Send]], [[Dispatch]], [[Expire]],
-      * [[Abandon]]): its round, index or place dropped (`ask:3` is [[Ask]], `call:1:0` is
-      * [[Call]]). `None` for a name that is not the turn's, such as a patch's marker or
+    /** The step `name` stands for among [[all]], the assembly's asks ([[Query]],
+      * [[QueryRecord]], [[Relevance]], [[RelevanceRecord]]) and the tool loop's families
+      * ([[Gate]], [[Record]], [[Approve]], [[Wait]], [[Call]], [[Send]], [[Dispatch]],
+      * [[Expire]], [[Abandon]]): its round, batch, index or place dropped (`ask:3` is [[Ask]],
+      * `ask:relevance-1` is [[Relevance]], `call:1:0` is [[Call]]). `None` for a name that is not the turn's, such as a patch's marker or
       * DBOS's own records of a wait ([[StepRecord.Received]] before [[named]] renames it).
       */
     def family(name: String): Option[String] =
+      name match {
+        case Query | QueryRecord => Some(name)
+        case RelevanceBatch() => Some(Relevance)
+        case RelevanceBatchRecord() => Some(RelevanceRecord)
+        case _ => loopFamily(name)
+      }
+
+    /** `name`'s family when it is the tool loop's, or else one of [[all]]. */
+    private def loopFamily(name: String): Option[String] =
       Loop.of(name) match {
         case Some(Loop.Ask(_)) => Some(Ask)
         case Some(Loop.Gate(_)) => Some(Gate)
