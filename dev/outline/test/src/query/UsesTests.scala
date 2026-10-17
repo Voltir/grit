@@ -7,7 +7,7 @@ import grit.outline.locate.{Layout, Locate, MillLayout, Root, SourceWords}
 import grit.outline.model.Use
 import grit.outline.read.Read
 import grit.outline.render.Render
-import grit.outline.testing.{FixtureLayout, FixtureTestLayout}
+import grit.outline.testing.{Dotc, FixtureLayout, FixtureTestLayout}
 
 import utest.*
 
@@ -146,22 +146,10 @@ object UsesTests extends TestSuite {
     test(
       "a candidate file with no compiled tasty is named as not searched, with its path under src"
     ) {
-      val dir = os.temp.dir(prefix = "outline-not-compiled-")
-      os.write(dir / "build.mill", "")
+      val dir = Dotc.millRoot("outline-not-compiled-")
       val src = dir / "src" / "p" / "S.scala"
       os.write(src, "package p\nobject S { def f(a: Int): Int = a }\n", createFolders = true)
-      val classes = dir / "out" / "m" / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          src.toString
-        )
-      )
-      assert(!reporter.hasErrors)
+      Dotc.compile(Dotc.classesOf(dir, os.sub / "m"), Vector(src))
       os.write(
         dir / "src" / "q" / "T.scala",
         "package q\nobject T { def g: Int = p.S.f(1) }\n",
@@ -291,26 +279,15 @@ object UsesTests extends TestSuite {
     }
 
     test("a site's file edited since its tasty is tagged stale on its == line") {
-      val dir = os.temp.dir(prefix = "outline-uses-stale-")
-      os.write(dir / "build.mill", "")
+      val dir = Dotc.millRoot("outline-uses-stale-")
       val src = dir / "src" / "p" / "S.scala"
       os.write(
         src,
         "package p\nobject S { def f(a: Int): Int = a }\nobject T { def g: Int = S.f(1) }\n",
         createFolders = true
       )
-      val classes = dir / "out" / "m" / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          src.toString
-        )
-      )
-      assert(!reporter.hasErrors)
+      val classes = Dotc.classesOf(dir, os.sub / "m")
+      Dotc.compile(classes, Vector(src))
       def query(): Answer =
         Query
           .uses(
@@ -533,8 +510,7 @@ object UsesTests extends TestSuite {
     }
 
     test("an object's definition is not a use of it: uses of O lists P.b's site alone") {
-      val d = os.temp.dir(prefix = "outline-uses-self-")
-      os.write(d / "build.mill", "")
+      val d = Dotc.millRoot("outline-uses-self-")
       val sources = Vector(
         "O" -> "object O {\n\n  /** A. */\n  val a: Vector[Int] = Vector(1)\n}",
         "P" -> "object P { def b: Vector[Int] = O.a }"
@@ -543,13 +519,7 @@ object UsesTests extends TestSuite {
         os.write(src, s"package p\n$text\n", createFolders = true)
         src
       }
-      val classes = d / "out" / "m" / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array("-d", classes.toString, "-classpath", System.getProperty("java.class.path")) ++
-          sources.map(_.toString)
-      )
-      assert(!reporter.hasErrors)
+      Dotc.compile(Dotc.classesOf(d, os.sub / "m"), sources)
       val (answer, _) =
         Query.uses(
           Root(d),

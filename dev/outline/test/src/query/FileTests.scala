@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 
 import grit.outline.locate.{MillLayout, Root}
-import grit.outline.testing.FixtureLayout
+import grit.outline.testing.{Dotc, FixtureLayout}
 
 import utest.*
 
@@ -39,23 +39,11 @@ object FileTests extends TestSuite {
     * `p/Z.scala`, never compiled.
     */
   private lazy val dir: os.Path = {
-    val d = os.temp.dir(prefix = "outline-file-")
-    os.write(d / "build.mill", "")
+    val d = Dotc.millRoot("outline-file-")
     def module(name: String, pkg: String): Unit = {
       val src = d / name / "src" / pkg / "A.scala"
       os.write(src, s"package $pkg\nobject A { def f: Int = 1 }\n", createFolders = true)
-      val classes = d / "out" / name / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          src.toString
-        )
-      )
-      assert(!reporter.hasErrors)
+      Dotc.compile(Dotc.classesOf(d, os.sub / name), Vector(src))
     }
     module("m", "p")
     module("n", "q")

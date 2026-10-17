@@ -4,7 +4,7 @@ import grit.outline.cli.Main
 import grit.outline.locate.{Layout, Locate, MillLayout, Root, SourceWords}
 import grit.outline.read.Read
 import grit.outline.render.TestsShown
-import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
+import grit.outline.testing.{Dotc, FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
 
@@ -281,25 +281,13 @@ object QueryTests extends TestSuite {
     test(
       "a .tasty naming a class its module's failed compile removed is named with the compiler's error and the command compiling it"
     ) {
-      val dir = os.temp.dir(prefix = "outline-removed-")
-      os.write(dir / "build.mill", "")
+      val dir = Dotc.millRoot("outline-removed-")
       val world = dir / "m" / "src" / "p" / "World.scala"
       val user = dir / "m" / "src" / "p" / "User.scala"
       os.write(world, "package p\nclass World\n", createFolders = true)
       os.write(user, "package p\nobject User { def w = new World }\n")
-      val classes = dir / "out" / "m" / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val compiled = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          world.toString,
-          user.toString
-        )
-      )
-      assert(!compiled.hasErrors)
+      val classes = Dotc.classesOf(dir, os.sub / "m")
+      Dotc.compile(classes, Vector(world, user))
       // What a failed incremental compile of World.scala leaves: its classes gone, User's kept.
       os.list(classes / "p").filter(_.last.startsWith("World")).foreach(os.remove)
       val (_, _, notes) =
@@ -362,17 +350,7 @@ object QueryTests extends TestSuite {
         createFolders = true
       )
       val classes = dir / "classes"
-      os.makeDir.all(classes)
-      val compiled = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          src.toString
-        )
-      )
-      assert(!compiled.hasErrors)
+      Dotc.compile(classes, Vector(src))
       os.write.over(src, "package q\n\n/** A shelf. */\ntrait Shelf {\n}\n")
       os.mtime.set(src, os.mtime(classes / "q" / "Shelf.tasty") + 3600 * 1000)
       val layout = new Layout {

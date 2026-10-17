@@ -4,7 +4,7 @@ import java.io.{ByteArrayOutputStream, PrintStream}
 
 import grit.outline.locate.{Layout, Root}
 import grit.outline.model.{Defn, Kind, Lines, Ref}
-import grit.outline.testing.OutlineLayout
+import grit.outline.testing.{Dotc, OutlineLayout}
 
 import utest.*
 
@@ -255,23 +255,8 @@ object ReadTests extends TestSuite {
     os.write(srcB, "package q\nclass B(a: A)\n", createFolders = true)
     val aClasses = dir / "a"
     val bClasses = dir / "b"
-    os.makeDir.all(aClasses)
-    os.makeDir.all(bClasses)
-    val scalaClasspath = System.getProperty("java.class.path")
-    val compiledA =
-      dotty.tools.dotc.Main
-        .process(Array("-d", aClasses.toString, "-classpath", scalaClasspath, srcA.toString))
-    assert(!compiledA.hasErrors)
-    val compiledB = dotty.tools.dotc.Main.process(
-      Array(
-        "-d",
-        bClasses.toString,
-        "-classpath",
-        aClasses.toString + java.io.File.pathSeparator + scalaClasspath,
-        srcB.toString
-      )
-    )
-    assert(!compiledB.hasErrors)
+    Dotc.compile(aClasses, Vector(srcA))
+    Dotc.compile(bClasses, Vector(srcB), classpath = Vector(aClasses))
     (dir, bClasses)
   }
 

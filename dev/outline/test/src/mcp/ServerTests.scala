@@ -2,6 +2,7 @@ package grit.outline.mcp
 
 import grit.outline.locate.Root
 import grit.outline.query.{Help, Roots}
+import grit.outline.testing.Dotc
 
 import utest.*
 
@@ -9,22 +10,10 @@ object ServerTests extends TestSuite {
 
   /** A checkout under a fresh temp dir: an empty `build.mill`, `src/p/S.scala` holding `source`, compiled into its `out`. */
   private def checkout(name: String, source: String): Root = {
-    val dir = os.temp.dir(prefix = s"outline-$name-")
-    os.write(dir / "build.mill", "")
+    val dir = Dotc.millRoot(s"outline-$name-")
     val src = dir / "src" / "p" / "S.scala"
     os.write(src, source, createFolders = true)
-    val classes = dir / "out" / "m" / "compile.dest" / "classes"
-    os.makeDir.all(classes)
-    val reporter = dotty.tools.dotc.Main.process(
-      Array(
-        "-d",
-        classes.toString,
-        "-classpath",
-        System.getProperty("java.class.path"),
-        src.toString
-      )
-    )
-    assert(!reporter.hasErrors)
+    Dotc.compile(Dotc.classesOf(dir, os.sub / "m"), Vector(src))
     Root(dir)
   }
 

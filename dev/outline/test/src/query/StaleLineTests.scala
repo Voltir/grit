@@ -5,6 +5,7 @@ import java.nio.file.attribute.FileTime
 
 import grit.outline.locate.{MillLayout, Root}
 import grit.outline.render.TestsShown
+import grit.outline.testing.Dotc
 
 import utest.*
 
@@ -15,8 +16,7 @@ object StaleLineTests extends TestSuite {
     * its own file; compiled once, the checkout untouched.
     */
   private lazy val dir: os.Path = {
-    val d = os.temp.dir(prefix = "outline-stale-line-")
-    os.write(d / "build.mill", "")
+    val d = Dotc.millRoot("outline-stale-line-")
     def module(name: String, pkg: String, objects: Vector[String]): Unit =
       compiled(name, pkg, objects.map(o => o -> s"object $o { def f: Int = 1 }"))
     // Each source is its package line and one line of `text`.
@@ -26,13 +26,7 @@ object StaleLineTests extends TestSuite {
         os.write(src, s"package $pkg\n$text\n", createFolders = true)
         src
       }
-      val classes = d / "out" / name / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array("-d", classes.toString, "-classpath", System.getProperty("java.class.path")) ++
-          sources.map(_.toString)
-      )
-      assert(!reporter.hasErrors)
+      Dotc.compile(Dotc.classesOf(d, os.sub / name), sources)
     }
     module("m", "p", Vector("A", "B", "C", "D"))
     module("n", "q", Vector("E"))

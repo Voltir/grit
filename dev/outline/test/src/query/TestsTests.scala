@@ -1,7 +1,7 @@
 package grit.outline.query
 
 import grit.outline.locate.{Layout, MillLayout, Root}
-import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
+import grit.outline.testing.{Dotc, FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
 import utest.*
 
@@ -367,22 +367,10 @@ object TestsTests extends TestSuite {
       "a suite whose source no .tasty records is named by its file and the command compiling its module, and not a file declaring a longer name through `$`"
     ) {
       // A temp Mill root: module m's test sources p/OtherTests.scala, compiled, and p/GoneTests.scala, never compiled.
-      val d = os.temp.dir(prefix = "outline-tests-gone-")
-      os.write(d / "build.mill", "")
+      val d = Dotc.millRoot("outline-tests-gone-")
       val other = d / "m" / "test" / "src" / "p" / "OtherTests.scala"
       os.write(other, "package p\nobject OtherTests\n", createFolders = true)
-      val classes = d / "out" / "m" / "test" / "compile.dest" / "classes"
-      os.makeDir.all(classes)
-      val reporter = dotty.tools.dotc.Main.process(
-        Array(
-          "-d",
-          classes.toString,
-          "-classpath",
-          System.getProperty("java.class.path"),
-          other.toString
-        )
-      )
-      assert(!reporter.hasErrors)
+      Dotc.compile(Dotc.classesOf(d, os.sub / "m" / "test"), Vector(other))
       os.write(
         d / "m" / "test" / "src" / "p" / "GoneTests.scala",
         "package p\nobject GoneTests {\n}\n"
