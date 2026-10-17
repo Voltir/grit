@@ -43,7 +43,8 @@ primary ones first and the others tagged.
     scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--docs] [--tests|--no-tests] [--max-kb N] [--root DIR]
 
 **family**: To implement or change a trait: its implementations, contracts and their suites.
-`--member` narrows each to one member.
+`--member` narrows each to one member. A short name reads as in show; one it leaves ambiguous answers only
+the `-- ambiguous` list, no family picked from it.
 
     scripts/outline family Trait [--member m] [--body] [--max-kb N] [--root DIR]
 

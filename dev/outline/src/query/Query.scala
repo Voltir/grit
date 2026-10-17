@@ -892,7 +892,7 @@ object Query {
       }
     }
 
-  /** The `family` answer for `name` (a trait, or an abstract class), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. `member` narrows the trait's and each implementation's text to that member, with its body under `withBody`. Every answer starts with `root`'s `## root` line. */
+  /** The `family` answer for `name` (a trait, or an abstract class), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. `member` narrows the trait's and each implementation's text to that member, with its body under `withBody`. A `name` `Resolve.resolve` leaves naming several definitions is `Status.NoMatch`, its notes listing them and no family picked. Every answer starts with `root`'s `## root` line. */
   def family(
       root: Root,
       layout: Layout,
@@ -1030,10 +1030,13 @@ object Query {
     else
       Resolve.resolve(root, layout, config, Scope.WithTests, name, in) match {
         case Left(message) => (Answer(s"${header(root)}\n$message", Status.Failed), in)
+        case Right(resolved) if resolved.defns.map(_.fullName).distinct.size > 1 =>
+          // A family is one trait's: an ambiguous name answers its candidates, as resolve lists them.
+          (Answer((header(root) +: resolved.notes).mkString("\n"), Status.NoMatch), resolved.loaded)
         case Right(resolved) =>
           // A name matched exactly keeps its hidden candidate files; a short name does not reach them.
           val exact = resolved.defns.exists(_.fullName == name)
-          val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
+          val traitName = resolved.defns.map(_.fullName).headOption.getOrElse(name)
           val files = Locate
             .mentioning(root, name.split('.').last)
             .filter(file =>

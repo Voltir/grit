@@ -102,7 +102,11 @@ object Help {
 
   val family: Entry = Entry(
     query = "family",
-    operand = Operand("Trait", "trait", "the trait or abstract class, by name."),
+    operand = Operand(
+      "Trait",
+      "trait",
+      "the trait or abstract class, by name; a short name several definitions end with means its one candidate outside test and secondary sources, as in show, and with none or several the answer lists each, picking none: name one fully."
+    ),
     purpose =
       "To implement or change a trait: its implementations, contracts and their suites, each definition's line ending with its size, `[N.N KB]`; the trait, and with --member its member shown without its body when that member is a type, ends with its closing lines.",
     examples = Vector(

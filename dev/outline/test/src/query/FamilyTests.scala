@@ -24,11 +24,16 @@ object FamilyTests extends TestSuite {
 
   private val storePackage = "grit.outline.fixture.store"
 
-  private def family(name: String, member: Option[String], withBody: Boolean): (Answer, Roots) =
+  private def family(
+      name: String,
+      member: Option[String],
+      withBody: Boolean,
+      config: Config = Config.empty
+  ): (Answer, Roots) =
     Query.family(
       root,
       FixtureLayout,
-      Config.empty,
+      config,
       Roots.empty(6000),
       name,
       member,
@@ -117,6 +122,32 @@ object FamilyTests extends TestSuite {
     test("a name that is no trait or abstract class is NoMatch") {
       val (answer, _) = family("Nope", None, false)
       assert(answer.status == Status.NoMatch)
+    }
+
+    test(
+      "a short name two traits share is NoMatch listing both, and no family is picked from them"
+    ) {
+      val (answer, _) = family("Tx", None, false)
+      assert(answer.status == Status.NoMatch)
+      assert(
+        answer.text.linesIterator.drop(1).toVector == Vector(
+          "-- ambiguous Tx, name one fully:",
+          "--   grit.outline.fixture.Tx  dev/outline/fixture/src/Sample.scala:3-4  trait Tx extends caps.SharedCapability  [0.2 KB]",
+          "--   grit.outline.fixture.store.Tx  dev/outline/fixture/src/store/Store.scala:53-54  trait Tx  [0.2 KB]"
+        )
+      )
+    }
+
+    test(
+      "a short name with one primary trait among its candidates is that trait's family, under the note naming the other"
+    ) {
+      val secondary = Config.empty.copy(secondary = Vector("dev/outline/fixture/src/store"))
+      val (answer, _) = family("Tx", None, false, secondary)
+      val lines = answer.text.linesIterator.toVector
+      assert(answer.status == Status.Found)
+      assert(lines.exists(_.startsWith("-- Tx taken as grit.outline.fixture.Tx, the only one")))
+      assert(lines.contains("== dev/outline/fixture/src/Sample.scala  grit.outline.fixture"))
+      assert(!lines.exists(_.startsWith("== dev/outline/fixture/src/store/Store.scala")))
     }
 
     test("an object, Unrelated, is NoMatch: it is not a trait") {
