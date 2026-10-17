@@ -82,15 +82,32 @@ object Locate {
     inPackageIn(root, layout.classesDirs(root), file)
 
   /** `inPackageOf` over the classes dirs the caller already found, so a query finds them once. */
-  def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] = {
-    val segments = packageIn(root, file).split('.').toVector.filter(_.nonEmpty)
+  def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] =
+    inPackage(classes, packageIn(root, file))
+
+  /** `inPackageIn` for each file asked of it, each package's dirs listed once, however many files share it: for a query
+    * that asks it of many files, and does not outlive that query, since a build after its first call is not seen.
+    */
+  def inPackagesIn(root: Root, classes: Vector[os.Path]): os.RelPath => Vector[os.Path] = {
+    // Local to the function returned, and grows by one entry per package it is asked about.
+    val listed = scala.collection.mutable.Map.empty[String, Vector[os.Path]]
+    file => {
+      val pkg = packageIn(root, file)
+      listed.getOrElseUpdate(pkg, inPackage(classes, pkg))
+    }
+  }
+
+  /** The `.tasty` files directly in package `pkg`'s dir across `classes`, sorted; none for the empty package. */
+  private def inPackage(classes: Vector[os.Path], pkg: String): Vector[os.Path] = {
+    val segments = pkg.split('.').toVector.filter(_.nonEmpty)
     if (segments.isEmpty) Vector.empty
     else {
       val rel = os.RelPath(segments.mkString("/"))
       classes
         .map(c => c / rel)
         .filter(os.isDir)
-        .flatMap(d => os.list(d).filter(p => os.isFile(p) && p.ext == "tasty"))
+        // A package dir holds several .class files a .tasty, so the name is checked before the stat.
+        .flatMap(d => os.list(d, sort = false).filter(p => p.ext == "tasty" && os.isFile(p)))
         .sortBy(_.toString)
         .toVector
     }

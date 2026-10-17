@@ -91,7 +91,7 @@ object Query {
           root,
           layout,
           scope,
-          files.flatMap(file => Locate.inPackageIn(root, classes, file)).distinct
+          files.flatMap(Locate.inPackagesIn(root, classes)).distinct
         )
         val (defns, loaded, notes) =
           tasty
@@ -746,7 +746,7 @@ object Query {
       files: Vector[os.RelPath]
   ): String = {
     val modules = files
-      .flatMap(Locate.inPackageIn(root, classes, _))
+      .flatMap(Locate.inPackagesIn(root, classes))
       .flatMap(t => classes.find(t.startsWith))
       .distinct
       .map(layout.moduleOf(root, _))
@@ -921,7 +921,8 @@ object Query {
       val files = Locate
         .mentioning(root, name.split('.').last)
         .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
-      val inPackage = files.map(file => file -> Locate.inPackageOf(root, layout, file))
+      val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
+      val inPackage = files.map(file => file -> inPackages(file))
       val tasty = inPackage.flatMap(_._2).distinct
       val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
       val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
@@ -1096,7 +1097,8 @@ object Query {
             .filter(file =>
               exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
             )
-          val inPackage = files.map(file => file -> Locate.inPackageOf(root, layout, file))
+          val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
+          val inPackage = files.map(file => file -> inPackages(file))
           val tasty = inPackage.flatMap(_._2).distinct
           val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
           val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
@@ -1232,7 +1234,8 @@ object Query {
       keep: os.RelPath => Boolean
   ): (Vector[os.Path], Vector[os.RelPath]) = {
     val kept = candidates(root, searches).filter(keep)
-    val inPackage = kept.map(file => file -> Locate.inPackageIn(root, classes, file))
+    val inPackages = Locate.inPackagesIn(root, classes)
+    val inPackage = kept.map(file => file -> inPackages(file))
     val unsearched = inPackage.collect {
       case (file, found)
           if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
@@ -1329,9 +1332,10 @@ object Query {
         case Left(message) => (Vector.empty, Vector(message), found)
         case Right(sites) =>
           val fileNames = sites.map(_.file).distinct
+          val inTestPackages = Locate.inPackagesIn(root, testClasses)
           val tasty =
             fileNames
-              .flatMap(file => Locate.inPackageIn(root, testClasses, os.RelPath(file)))
+              .flatMap(file => inTestPackages(os.RelPath(file)))
               .distinct
           Loaded.defns(root, layout, tasty, found) match {
             case Left(message) => (Vector.empty, Vector(message), found)
@@ -1594,7 +1598,7 @@ object Query {
               Locate
                 .holding(root, wordPattern(name))
                 .filter(holdingType.contains)
-                .flatMap(file => Locate.inPackageIn(root, classes, file))
+                .flatMap(Locate.inPackagesIn(root, classes))
                 .distinct
             )
             val (defns, next, _) = loadAll(root, layout, tasty, state)

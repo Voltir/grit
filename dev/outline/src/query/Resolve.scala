@@ -152,7 +152,7 @@ object Resolve {
             scope,
             Locate
               .mentioning(root, last)
-              .flatMap(file => Locate.inPackageIn(root, classes, file))
+              .flatMap(Locate.inPackagesIn(root, classes))
               .distinct
           )
           load(tasty, loaded).map { case (more, after) =>

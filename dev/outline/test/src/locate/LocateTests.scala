@@ -104,6 +104,44 @@ object LocateTests extends TestSuite {
     }
 
     test(
+      "inPackagesIn gives each file its own package's .tasty files, as inPackageIn does, though two files in one dir declare two packages"
+    ) {
+      val root = tree(
+        "core/act/src/Moves.scala",
+        "core/act/src/Acts.scala",
+        "core/act/src/sub/Sub.scala",
+        "out/a/compile.dest/classes/grit/core/act/X.tasty",
+        "out/a/compile.dest/classes/grit/core/act/X.class",
+        "out/a/compile.dest/classes/grit/core/act/sub/Z.tasty"
+      )
+      os.write.over(
+        root.dir / "core/act/src/Moves.scala",
+        "package grit.core.act\n\nobject Moves\n"
+      )
+      os.write.over(
+        root.dir / "core/act/src/Acts.scala",
+        "package grit.core\npackage act.sub\n\nobject Acts\n"
+      )
+      os.write.over(
+        root.dir / "core/act/src/sub/Sub.scala",
+        "package grit.core.act.sub\n\nobject Sub\n"
+      )
+      val classes = MillLayout.classesDirs(root)
+      val files =
+        Vector("core/act/src/sub/Sub.scala", "core/act/src/Moves.scala", "core/act/src/Acts.scala")
+          .map(os.RelPath(_))
+      val inPackages = Locate.inPackagesIn(root, classes)
+      assert(files.map(inPackages) == files.map(Locate.inPackageIn(root, classes, _)))
+      assert(
+        files.map(inPackages) == Vector(
+          Vector(at(root, "out/a/compile.dest/classes/grit/core/act/sub/Z.tasty")),
+          Vector(at(root, "out/a/compile.dest/classes/grit/core/act/X.tasty")),
+          Vector(at(root, "out/a/compile.dest/classes/grit/core/act/sub/Z.tasty"))
+        )
+      )
+    }
+
+    test(
       "mentioning finds the source that uses the name as a whole word, and not build output or a longer name"
     ) {
       val root = tree("core/x/src/A.scala", "core/x/src/B.scala", "out/x/src/C.scala")
