@@ -24,7 +24,7 @@ object DriveJson {
       listed <- o.get("drives") match {
         case None => Right(Vector.empty)
         case Some(ujson.Arr(ds)) => Right(ds.toVector)
-        case Some(_) => Left("a list of drives' drives are not a list")
+        case Some(_) => Left("a listing's drives are not a list")
       }
       named <- listed.foldLeft[Either[String, Map[FileId, String]]](Right(Map.empty)) { (read, d) =>
         for {
@@ -43,9 +43,10 @@ object DriveJson {
   def hits(answer: ujson.Value): Either[String, Hits] =
     for {
       o <- obj(answer, "a search")
-      files <- o.get("files").flatMap(_.arrOpt) match {
+      files <- o.get("files").map(_.arrOpt) match {
         case None => Left("a search names no files")
-        case Some(fs) =>
+        case Some(None) => Left("a search's files are not a list")
+        case Some(Some(fs)) =>
           fs.toVector.foldLeft[Either[String, Vector[DriveFile]]](Right(Vector.empty)) {
             (read, f) => read.flatMap(kept => file(f).map(kept :+ _))
           }
@@ -104,10 +105,10 @@ object DriveJson {
   def grants(answer: ujson.Value): Either[String, Option[Vector[Grant]]] =
     for {
       o <- obj(answer, "a file's grants")
-      listed <- o
-        .get("permissions")
-        .flatMap(_.arrOpt)
-        .toRight("a file's grants name no permissions")
+      listed <- o.get("permissions") match {
+        case None => Left("a file's grants name no permissions")
+        case Some(ps) => ps.arrOpt.toRight("a file's permissions are not a list")
+      }
       read <- listed.toVector.foldLeft[Either[String, Vector[Grant]]](Right(Vector.empty)) {
         (read, g) => read.flatMap(kept => grant(g).map(kept :+ _))
       }

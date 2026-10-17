@@ -116,6 +116,20 @@ object DriveJsonTests extends TestSuite {
       ) ==> Left("a file's name is not a string")
     }
 
+    test("a search or a file's grants naming no list says so, apart from one not a list") {
+      (
+        DriveJson.hits(ujson.Obj()),
+        DriveJson.hits(ujson.Obj("files" -> "file-1")),
+        DriveJson.grants(ujson.Obj()),
+        DriveJson.grants(ujson.Obj("permissions" -> "anyone"))
+      ) ==> (
+        Left("a search names no files"),
+        Left("a search's files are not a list"),
+        Left("a file's grants name no permissions"),
+        Left("a file's permissions are not a list")
+      )
+    }
+
     test("a file naming no name says so, apart from one whose name is not a string") {
       DriveJson.file(ujson.Obj("id" -> "file-1", "mimeType" -> "text/plain")) ==>
         Left("a file names no name")
@@ -149,7 +163,7 @@ object DriveJsonTests extends TestSuite {
       ) ==> (
         Right(Map(Recorded.id("drive-a") -> "name-1", Recorded.id("drive-b") -> "name-2")),
         Left("a drive names no name"),
-        Left("a list of drives' drives are not a list"),
+        Left("a listing's drives are not a list"),
         Right(Map.empty)
       )
     }
