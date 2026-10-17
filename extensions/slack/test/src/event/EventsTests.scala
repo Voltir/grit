@@ -107,6 +107,14 @@ object EventsTests extends TestSuite {
         Right(said("7.0", "7.0", "see file", false))
     }
 
+    test("a shared file is said as [file: name] after the message's text; a file alone, alone") {
+      val files = "files" -> ujson.Arr(ujson.Obj("name" -> "q3.pdf"), ujson.Obj("title" -> "Plan"))
+      Events.read(message("7.0", "see", extra = Seq("subtype" -> "file_share", files)), bot) ==>
+        Right(said("7.0", "7.0", "see [file: q3.pdf] [file: Plan]", false))
+      Events.read(message("7.0", "", extra = Seq("subtype" -> "file_share", files)), bot) ==>
+        Right(said("7.0", "7.0", "[file: q3.pdf] [file: Plan]", false))
+    }
+
     test(
       "a post grit's bot made at a channel's top level is a bot's message, as a message and as a mention of grit"
     ) {

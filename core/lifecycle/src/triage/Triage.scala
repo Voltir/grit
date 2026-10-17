@@ -9,7 +9,7 @@ import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.speech.{Decision, Outcome, SpeechJson}
 import grit.core.stitch.StitchReads
-import grit.core.store.StoreError
+import grit.core.store.{Payload, StoreError}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
 
@@ -28,7 +28,9 @@ import grit.core.visibility.Subject
   *      conversation where the set asks so; a move ([[grit.act.moves.Judging]]): admitted
   *      against the day's cap, so one over it is unanswered; an absent or failing classifier,
   *      or an answer that does not read, is `Unanswered` tags.
-  *      Nothing is asked when the message cannot be read or is gone. `ask:triage:record` —
+  *      Nothing is asked when the message cannot be read or is gone, and a message that says
+  *      nothing ([[grit.core.store.Payload.saysNothing]]) is `Unanswered` ("nothing was said")
+  *      unasked. `ask:triage:record` —
   *      when the classifier replied, its cost in the ledger, charged to the heard message's
   *      turn; a store that fails it fails the triage.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
@@ -223,20 +225,23 @@ object Triage {
           )
           .fold(
             why => Judging.Pose.Made(Left(why)),
-            read => {
-              // A conversation not found is at no place, so no source covers it.
-              val sources = read.place.fold(Corpora.Empty)(env.sources.at)
-              val entry = read.entry
-              Judging.Pose.asking(
-                env.moves.classifier,
-                routed,
-                read.state,
-                env.questions.asked(sources)
-              ) {
-                case (Right(a), _) => Right((entry, Tags.Weighed(a.value, a.model, a.usage)))
-                case (Left(error), _) => Right((entry, Tags.Unanswered(error.said)))
+            read =>
+              if (Payload.saysNothing(read.state.message))
+                Judging.Pose.Made(Right((read.entry, Tags.Unanswered("nothing was said"))))
+              else {
+                // A conversation not found is at no place, so no source covers it.
+                val sources = read.place.fold(Corpora.Empty)(env.sources.at)
+                val entry = read.entry
+                Judging.Pose.asking(
+                  env.moves.classifier,
+                  routed,
+                  read.state,
+                  env.questions.asked(sources)
+                ) {
+                  case (Right(a), _) => Right((entry, Tags.Weighed(a.value, a.model, a.usage)))
+                  case (Left(error), _) => Right((entry, Tags.Unanswered(error.said)))
+                }
               }
-            }
           )
       }
       .fold(e => Judging.Pose.Made(Left(s"thread unread: ${describe(e)}")), identity)

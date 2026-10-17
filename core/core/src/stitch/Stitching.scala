@@ -304,7 +304,9 @@ object Stitching {
 
   /** Where `classifier` places `offer`'s message under `tuning`: [[Placed.Follows]] the top
     * choice when it is an exchange at `tuning.followsAt` or above, else [[Placed.Begins]];
-    * [[Placed.Unread]] when the classifier fails or its answer does not read.
+    * [[Placed.Unread]] when the classifier fails or its answer does not read, and, asking
+    * nothing, "nothing was said" when the message says nothing
+    * ([[grit.core.store.Payload.saysNothing]]).
     */
   def place(classifier: Classifier^, offer: Offer, tuning: Tuning): Placed =
     question(offer, tuning).fold(identity, q => q.placed(classifier.ask(q.state, q.choice)))
@@ -320,7 +322,7 @@ object Stitching {
   )
 
   /** The question [[place]] asks about `offer` under `tuning`; `Left`, the placement made with
-    * none asked, [[Placed.Unread]], when its choice cannot be made.
+    * none asked, [[Placed.Unread]], when its choice cannot be made or the message says nothing.
     */
   def question(offer: Offer, tuning: Tuning): Either[Placed, Question] = {
     val sent = shown(offer)
@@ -382,7 +384,7 @@ object Stitching {
     )
 
   /** What [[question]] asks about `offer`: its state and the choice among its exchanges' keys
-    * and [[NewKey]]; why not, when the choice cannot be made.
+    * and [[NewKey]]; why not, when the choice cannot be made or the message says nothing.
     */
   private def choice(
       offer: Offer
@@ -395,6 +397,7 @@ object Stitching {
         Some("none of them: it starts something new")
       )
     criteria match {
+      case _ if spoken(offer.first).forall(Payload.saysNothing) => Left("nothing was said")
       case a +: b +: rest =>
         Ask
           .choice[State, Option[ConversationId]](Instructions, a, b, rest*)

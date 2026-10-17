@@ -2,14 +2,17 @@ package grit.slack.event
 
 import java.time.Instant
 
+import grit.core.store.Payload
+
 /** What Slack told grit, as grit acts on it. */
 enum Event {
 
   /** A person's message `ts` in `channel` of `team`, the workspace grit's app is installed in,
     * in the thread rooted at `thread` (its own `ts` when it is in none), by `user` of their own
     * team `author` (another workspace's in a channel shared with it), with `text` as Slack
-    * sent it (mrkdwn escapes and `<@U…>` mentions, [[grit.slack.text.Incoming]]); `mentions`
-    * when it mentions grit; said `at`, the time its `ts` names.
+    * sent it (mrkdwn escapes and `<@U…>` mentions, [[grit.slack.text.Incoming]]), then each
+    * file it shares as [[grit.core.store.Payload.attached]] names it, a space between;
+    * `mentions` when it mentions grit; said `at`, the time its `ts` names.
     */
   case Said(
       team: TeamId,
@@ -219,7 +222,15 @@ object Events {
       channel <- field("channel")
       ts <- field("ts")
       at <- time(ts).toRight(s"$article $kind event whose ts names no time: $ts")
-      text <- field("text")
+      typed <- field("text")
+      // Each file shared with it is named after its words, so a file alone is not a blank.
+      text = (typed +: event.objOpt
+        .flatMap(_.get("files"))
+        .flatMap(_.arrOpt)
+        .toVector
+        .flatten
+        .flatMap(f => str(f, "name").orElse(str(f, "title")))
+        .map(Payload.attached)).filter(_.nonEmpty).mkString(" ")
     } yield
       if (UserId(user) == bot || str(event, "bot_id").nonEmpty) Event.Ignored("a bot's message")
       else

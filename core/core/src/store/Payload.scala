@@ -99,3 +99,16 @@ enum Payload {
     case _ => None
   }
 }
+
+object Payload {
+
+  /** How a person's words name a file they shared with them: `[file: {name}]`. */
+  def attached(name: String): String = s"[file: $name]"
+
+  /** Whether `text`, a person's words, says nothing: blank once each file it names
+    * ([[attached]]) is taken out.
+    */
+  def saysNothing(text: String): Boolean = Attached.replaceAllIn(text, "").isBlank
+
+  private val Attached = """\[file: [^\]]*\]""".r
+}

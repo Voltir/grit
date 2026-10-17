@@ -383,6 +383,28 @@ object StitchingTests extends TestSuite {
       }
     }
 
+    test("a message that says nothing, or only shares a file, is not asked about: it is unread") {
+      val engine = heard("engine", "the Engine contract term?", 30)
+      Vector("", "  ", "[file: q3.pdf]").map { text =>
+        val opening = heard("new", text, 0)
+        val es = Stitching.offer(
+          opening,
+          room(),
+          Vector(engine),
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          Scope.Room,
+          Tuning.Default
+        )
+        val jev = new Scripted(None)
+        Stitching.place(jev, Offer(opening, "Nick", es, Speakers.none), Tuning.Default) match {
+          case Placed.Unread(why, _) => (why, jev.states.size)
+          case other => (s"not unread: $other", jev.states.size)
+        }
+      } ==> Vector.fill(3)(("nothing was said", 0))
+    }
+
     test("an excerpt whose opening is grit's post shows it under Assistant") {
       val heardOpening = heard("post", "unused", 60)
       val opening = heardOpening.copy(entry =

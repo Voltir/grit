@@ -294,6 +294,16 @@ object TriageTests extends TestSuite {
       ) ==> (Right(None), Right(None))
     }
 
+    test("a message that says nothing, or only shares a file, is not asked: its tags unanswered") {
+      Vector("", "  ", "[file: q3.pdf]").map { text =>
+        val w = new World
+        val t = w.hear(text, "Ana", 0)
+        val classifier = decided
+        new InMemoryDurable().run(t.workflowId)(w.body(classifier, 5))
+        (classifier.calls, w.tags(t))
+      } ==> Vector.fill(3)((0, Some(Tags.Unanswered("nothing was said"))))
+    }
+
     test("an absent classifier's tags are unanswered, and kept") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)
