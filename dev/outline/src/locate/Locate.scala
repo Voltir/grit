@@ -161,9 +161,9 @@ object Locate {
       found.result()
     }
 
-  /** The files `mentioning` searches whose text holds a match of `word`, sorted. */
-  def holding(root: Root, word: scala.util.matching.Regex): Vector[os.RelPath] =
-    sources(root).filter(p => word.findFirstIn(os.read(p)).isDefined).map(_.relativeTo(root.dir))
+  /** The files `mentioning` searches whose text `holds`, sorted. */
+  def holding(root: Root, holds: String => Boolean): Vector[os.RelPath] =
+    sources(root).filter(p => holds(os.read(p))).map(_.relativeTo(root.dir))
 
   /** The files `mentioning` searches whose path relative to the root is `suffix`, or ends with `/` and `suffix`, sorted. */
   def endingWith(root: Root, suffix: String): Vector[os.RelPath] =

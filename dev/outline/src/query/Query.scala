@@ -2,7 +2,7 @@ package grit.outline.query
 
 import scala.collection.mutable
 
-import grit.outline.locate.{Layout, Locate, Root, TastySource}
+import grit.outline.locate.{Layout, Locate, Root, TastySource, WordGlob}
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, Staleness, TestCase, Use}
 import grit.outline.read.Read
@@ -110,8 +110,8 @@ object Query {
       }
 
       // A definition's name is a word of its source, so only the packages holding one are read.
-      val word = wordPattern(segments.last)
-      val files = Locate.holding(root, word)
+      val word = WordGlob(segments.last)
+      val files = Locate.holding(root, word.foundIn)
       val (inMain, afterMain, mainNotes, mainPrivate) =
         matching(segments.map(segmentGlob), Scope.Main, files, Roots.of(roots, root))
       def privateNote(n: Int): Vector[String] =
@@ -139,9 +139,7 @@ object Query {
               if (segments.size < 2) (Vector.empty, afterTests, Vector.empty, 0)
               else
                 matching(segments.dropRight(1).map(segmentGlob), Scope.WithTests, files, afterTests)
-            val defs = methods.filter(d =>
-              d.kind == Kind.Def && d.body.exists(b => word.findFirstIn(b).isDefined)
-            )
+            val defs = methods.filter(d => d.kind == Kind.Def && d.body.exists(word.foundIn))
             val renamings =
               if (defs.nonEmpty) Vector.empty else renamingImports(root, files, word)
             val (targets, afterTargets, targetNotes) =
@@ -154,7 +152,7 @@ object Query {
                     val (more, next, moreNotes, _) = matching(
                       exact,
                       Scope.WithTests,
-                      Locate.holding(root, wordPattern(target.split('.').last)),
+                      Locate.holding(root, WordGlob(target.split('.').last).foundIn),
                       state
                     )
                     (ds ++ more, next, ns ++ moreNotes)
@@ -186,13 +184,6 @@ object Query {
     }
   }
 
-  /** A word of source text matching `segment`, each `*` any run of identifier characters. */
-  private def wordPattern(segment: String): scala.util.matching.Regex =
-    ("(?<![\\w$])" + segment
-      .split("\\*", -1)
-      .map(java.util.regex.Pattern.quote)
-      .mkString("[\\w$]*") + "(?![\\w$])").r
-
   /** An import that renames `target` (a full name) to `alias`, at `file`'s `line`. */
   private final case class Renaming(alias: String, target: String, file: os.RelPath, line: Int)
 
@@ -203,7 +194,7 @@ object Query {
   private def renamingImports(
       root: Root,
       files: Vector[os.RelPath],
-      word: scala.util.matching.Regex
+      word: WordGlob
   ): Vector[Renaming] = {
     val importStart = raw"^\s*import\s+(.*)$$".r
     val renamed = raw"^\s*([\w$$]+)\s+as\s+([\w$$]+)\s*$$".r
@@ -763,7 +754,7 @@ object Query {
     val pkg = name.split('.').dropRight(1).mkString(".")
     val defines = ("\\b(?:object|class)\\s+" + java.util.regex.Pattern.quote(simple) + "\\b").r
     val files = Locate
-      .holding(root, defines)
+      .holding(root, text => text.contains(simple) && defines.findFirstIn(text).isDefined)
       .filter(f =>
         (pkg.isEmpty || Locate.packageIn(root, f) == pkg) && recording(root, classes, f).isEmpty
       )
@@ -1441,9 +1432,7 @@ object Query {
         else
           elsewhere(name, typeNames)
             .filterNot(tops.contains)
-            .filter(d =>
-              typeNames.exists(t => wordPattern(t).findFirstIn(Render.signatureLine(d)).nonEmpty)
-            )
+            .filter(d => typeNames.exists(t => WordGlob(t).foundIn(Render.signatureLine(d))))
       def showing(d: Defn): String =
         s"show ${d.fullName.split('.').dropRight(1).mkString(".")} --body $name${
             if (d.isPrivate && !withPrivate) " --private" else ""
@@ -1590,13 +1579,13 @@ object Query {
           // Read only for a --body name nothing shown has: the packages of the main sources holding it and a shown
           // type's name as words, since a signature naming that type is written in such a file.
           def elsewhere(name: String, types: Vector[String]): Vector[Defn] = {
-            val holdingType = types.flatMap(t => Locate.holding(root, wordPattern(t))).toSet
+            val holdingType = types.flatMap(t => Locate.holding(root, WordGlob(t).foundIn)).toSet
             val tasty = Resolve.usable(
               root,
               layout,
               Scope.Main,
               Locate
-                .holding(root, wordPattern(name))
+                .holding(root, WordGlob(name).foundIn)
                 .filter(holdingType.contains)
                 .flatMap(Locate.inPackagesIn(root, classes))
                 .distinct

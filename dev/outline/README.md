@@ -201,7 +201,7 @@ opening with any other word, a setting a newer outline may know, is ignored, and
 One-way dependency order: model ← locate ← read; model ← trace ← render; all ← query ← cli, mcp.
 
 - `model`: definitions, line ranges, uses, test cases, staleness.
-- `locate`: a root's build output and sources, what a `.tasty` records of its source, and each checkout's branch and HEAD.
+- `locate`: a root's build output and sources, the word globs sources are searched by, what a `.tasty` records of its source, and each checkout's branch and HEAD.
 - `read`: TASTy files into definitions, each with its source slices.
 - `trace`: the repository types reached from named roots within a number of hops.
 - `render`: the text of a family and of a traced type.
