@@ -1,26 +1,18 @@
 package grit.knowledge.github
 
 import grit.knowledge.card.UnitVersion
+import grit.knowledge.sync.Fetched
 
 /** A file as `get_file_contents` answers it. */
-enum Fetched extends caps.Pure {
-
-  /** Its text, read at `sha`, its blob's SHA: the version of the card written from it. */
-  case Text(text: String, sha: UnitVersion)
-
-  /** No text with its SHA, and `why`, as a run's reply says it. */
-  case Unversioned(why: String)
-}
-
-object Fetched {
+object Contents {
 
   /** What `answer`, the text of a `get_file_contents` call of a file, holds: its first line
     * `successfully downloaded text file (SHA: {sha})` and, after it, the file's text (empty
-    * when nothing follows), as [[Fetched.Text]]. A text over the answer's limit is its head,
-    * followed by the answer's note of what was cut. Anything else is [[Fetched.Unversioned]],
-    * saying `a binary file`, `too large to send`, `read at another ref than the source's` (the
-    * ref missing, so GitHub read its default branch), `its SHA, {sha}, is no git SHA`, or
-    * `not a file's answer`.
+    * when nothing follows), as [[Fetched.Text]] at its blob's SHA. A text over the answer's
+    * limit is its head, followed by the answer's note of what was cut. Anything else is
+    * [[Fetched.Unversioned]], saying `a binary file`, `too large to send`, `read at another ref
+    * than the source's` (the ref missing, so GitHub read its default branch), `its SHA, {sha},
+    * is no git SHA`, or `not a file's answer`.
     */
   def of(answer: String): Fetched = {
     val (first, text) = answer.split("\n", 2).toVector match {

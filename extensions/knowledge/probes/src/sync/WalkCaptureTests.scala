@@ -15,7 +15,7 @@ object WalkCaptureTests extends TestSuite {
     """package probe
       |import grit.core.act.*
       |import grit.core.visibility.Label
-      |import grit.knowledge.github.GitHubCards
+      |import grit.knowledge.github.{GitHubCards, RepositoryWalk}
       |import grit.knowledge.sync.*
       |""".stripMargin
 
@@ -28,8 +28,8 @@ object WalkCaptureTests extends TestSuite {
 
   private val walkIsPure =
     """def pure[A <: caps.Pure](a: A): A = a
-      |def walk(cards: GitHubCards, floor: Label): Walk =
-      |  pure(Walk.start(cards, 1, floor, Vector.empty))
+      |def walk(cards: GitHubCards, floor: Label): RepositoryWalk =
+      |  pure(RepositoryWalk.start(cards, 1, floor, Vector.empty))
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(prelude, List(walkIsPure, walkHoldsMoves))

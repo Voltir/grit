@@ -2,40 +2,50 @@ package grit.knowledge.sync
 
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
-import grit.knowledge.github.Listing
 
 /** One move a walk asks its run to make. */
-enum Step extends caps.Pure {
+sealed trait Step extends caps.Pure
 
-  /** List the directory `path`, `/` for the repository's root. */
-  case List(path: String)
+object Step {
+
+  /** A step its run makes as a call to its source: [[List]] or [[Read]]. */
+  sealed trait Fetching extends Step {
+
+    /** The unit it lists or reads, as its source names it. */
+    def path: String
+  }
+
+  /** List the unit `path`, one holding others (a directory, a folder). */
+  final case class List(path: String) extends Fetching
 
   /** Read the file `path`. */
-  case Read(path: String)
+  final case class Read(path: String) extends Fetching
 
   /** Summarise `head`, the first 8 KB of the file `path` as read at `version`; the card written
     * from it records `version`.
     */
-  case Summarise(path: String, head: String, version: UnitVersion)
+  final case class Summarise(path: String, head: String, version: UnitVersion) extends Step
 
   /** Keep `card` at the run's floor, withdrawing its copy at `replacing`, if any, in that keep. */
-  case Write(card: Card, replacing: Option[Label])
+  final case class Write(card: Card, replacing: Option[Label]) extends Step
 
   /** Copy the card under `key` from `from` up to the run's floor, and withdraw it at `from`. */
-  case Relabel(key: CardKey, from: Label)
+  final case class Relabel(key: CardKey, from: Label) extends Step
 
   /** Withdraw each of `gone`, at its label. */
-  case Drop(gone: Vector[Held])
+  final case class Drop(gone: Vector[Held]) extends Step
 }
 
-/** What the run's last step came to, as a walk reads it: [[Outcome.Listed]] for a
-  * [[Step.List]], [[Outcome.Fetched]] for a [[Step.Read]], [[Outcome.Summarised]] for a
-  * [[Step.Summarise]], [[Outcome.Kept]] for a [[Step.Write]], [[Step.Relabel]] or [[Step.Drop]],
-  * [[Outcome.NotTaken]] for a [[Step.List]] or a [[Step.Read]], and [[Outcome.Stopped]] for any.
+/** What the run's last step came to, as a walk of a source listing as `L` reads it:
+  * [[Outcome.Listed]] for a [[Step.List]], [[Outcome.Fetched]] for a [[Step.Read]],
+  * [[Outcome.Summarised]] for a [[Step.Summarise]], [[Outcome.Kept]] for a [[Step.Write]],
+  * [[Step.Relabel]] or [[Step.Drop]], [[Outcome.NotTaken]] for a [[Step.List]] or a
+  * [[Step.Read]], and [[Outcome.Stopped]] for any. A listing's or a read's `at` is the label its
+  * call's answer holds nothing above ([[grit.core.act.Called.Done]]).
   */
-enum Outcome extends caps.Pure {
-  case Listed(listing: Listing)
-  case Fetched(fetched: grit.knowledge.github.Fetched)
+enum Outcome[+L <: caps.Pure] extends caps.Pure {
+  case Listed(listing: L, at: Label)
+  case Fetched(fetched: grit.knowledge.sync.Fetched, at: Label)
   case Summarised(summary: CardSummary)
   case Kept
 

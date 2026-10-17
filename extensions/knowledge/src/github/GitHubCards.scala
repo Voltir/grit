@@ -7,6 +7,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
 import grit.knowledge.card.Scope
+import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule}
 
 /** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
   * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
@@ -39,7 +40,7 @@ final case class GitHubCards private (
     label: Option[Label],
     at: Place,
     syncs: Vector[SyncSchedule]
-) extends caps.Pure {
+) extends Source[Listing] {
 
   /** What of the repository becomes cards: [[include]] and [[extensions]], as a digest. */
   def scope: Scope =
@@ -48,6 +49,32 @@ final case class GitHubCards private (
   /** The arguments reading the unit at `path` at `ref`: `owner`, `repo`, `path` and `ref`. */
   def reading(path: String): ujson.Obj =
     ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> path, "ref" -> ref)
+
+  /** `readTool` with [[reading]] of the step's path: GitHub lists a directory as it reads a file. */
+  def call(step: Step.Fetching): (ToolName, ujson.Obj) = (readTool, reading(step.path))
+
+  /** [[Listing.of]] `answer`. */
+  def listing(answer: String): Either[String, Listing] = Listing.of(answer)
+
+  /** [[Contents.of]] `answer`. */
+  def fetched(answer: String): Fetched = Contents.of(answer)
+
+  /** Its entries' paths, one a line: each entry's kind and SHA are read by code. */
+  def checked(listing: Listing): String = {
+    val entries = listing match {
+      case Listing.Complete(entries) => entries
+      case Listing.Partial(shown) => shown
+    }
+    entries.map(_.path).mkString("\n")
+  }
+
+  def subject(path: String): String = s"The file `$path` in $owner/$repo"
+
+  /** `perRun` plus [[maxUnits]], at most `Int.MaxValue`. */
+  def calls(perRun: Int): Int = (perRun.toLong + maxUnits).min(Int.MaxValue.toLong).toInt
+
+  def walk(perRun: Int, floor: Label, held: Vector[Held]): RepositoryWalk =
+    RepositoryWalk.start(this, perRun, floor, held)
 
   /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no
     * `ref`, so a read of it at any ref follows; or why not: those over

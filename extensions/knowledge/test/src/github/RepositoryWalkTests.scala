@@ -1,4 +1,4 @@
-package grit.knowledge.sync
+package grit.knowledge.github
 
 import java.time.{LocalTime, ZoneId}
 
@@ -10,7 +10,7 @@ import grit.core.place.Service
 import grit.core.triage.Corpus
 import grit.core.visibility.{Label, Level}
 import grit.knowledge.card.{Card, CardKey, CardSummary, Scope, UnitKind, UnitVersion}
-import grit.knowledge.github.{Entry, Fetched, GitHubCards, Listing, SyncSchedule}
+import grit.knowledge.sync.{Fetched, Held, Outcome, Step, SyncSchedule, Synced, Unwritten}
 
 import utest.*
 
@@ -25,7 +25,7 @@ import utest.*
   * The source includes `docs`, of files those ending `.md`: `src`, `README.md` and `logo.png`
   * are outside it.
   */
-object WalkTests extends TestSuite {
+object RepositoryWalkTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
@@ -120,18 +120,21 @@ object WalkTests extends TestSuite {
   /** A run's moves answering from `listings` and `files`; every summary is [[summary]]. */
   private def moves(listings: Map[String, Listing], files: Map[String, Fetched])(
       step: Step
-  ): Outcome = step match {
+  ): Outcome[Listing] = step match {
     case Step.List(path) =>
-      listings.get(path).fold(Outcome.Stopped(s"no directory $path"))(Outcome.Listed(_))
+      listings.get(path).fold(Outcome.Stopped(s"no directory $path"))(Outcome.Listed(_, floor))
     case Step.Read(path) =>
-      files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_))
+      files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_, floor))
     case Step.Summarise(_, _, _) => Outcome.Summarised(summary)
     case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) => Outcome.Kept
   }
 
   /** Each step of `walk` answered by `answer`, and what its run came to. */
-  private def drive(walk: Walk, answer: Step => Outcome): (Vector[Step], Synced) = {
-    @tailrec def go(w: Walk, steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
+  private def drive(
+      walk: RepositoryWalk,
+      answer: Step => Outcome[Listing]
+  ): (Vector[Step], Synced) = {
+    @tailrec def go(w: RepositoryWalk, steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
       case Left(synced) => (steps, synced)
       case Right(step) =>
         if (steps.size > 100) throw new java.lang.AssertionError(s"no end: ${steps.map(shown)}")
@@ -151,7 +154,7 @@ object WalkTests extends TestSuite {
       extensions: Set[String] = Set("md")
   ): (Vector[String], Synced) = {
     val (steps, synced) = drive(
-      Walk.start(source(maxUnits, include, extensions), perRun, floor, held),
+      RepositoryWalk.start(source(maxUnits, include, extensions), perRun, floor, held),
       moves(listings, files)
     )
     (steps.map(shown), synced)
@@ -163,7 +166,7 @@ object WalkTests extends TestSuite {
       files: Map[String, Fetched],
       perRun: Int = 5
   ): Vector[Step] =
-    drive(Walk.start(source(), perRun, floor, heldAll()), moves(listings, files))._1
+    drive(RepositoryWalk.start(source(), perRun, floor, heldAll()), moves(listings, files))._1
 
   private def synced(
       written: Int = 0,
@@ -539,7 +542,7 @@ object WalkTests extends TestSuite {
     test("a file whose read was withheld is left unwritten, saying why, and so is its directory") {
       val (listings, files) = changedA(read("docs/a.md", 4))
       val (steps, result) = drive(
-        Walk.start(source(), 5, floor, heldAll()),
+        RepositoryWalk.start(source(), 5, floor, heldAll()),
         {
           case Step.Read("docs/a.md") => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
@@ -556,7 +559,7 @@ object WalkTests extends TestSuite {
     ) {
       val (listings, files) = changedA(read("docs/a.md", 4))
       val (steps, result) = drive(
-        Walk.start(source(), 5, floor, heldAll()),
+        RepositoryWalk.start(source(), 5, floor, heldAll()),
         {
           case Step.List("docs") => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
@@ -577,7 +580,8 @@ object WalkTests extends TestSuite {
     }
 
     test("an outcome not of its step's kind stops the walk, saying so") {
-      val (made, result) = drive(Walk.start(source(), 5, floor, heldAll()), _ => Outcome.Kept)
+      val (made, result) =
+        drive(RepositoryWalk.start(source(), 5, floor, heldAll()), _ => Outcome.Kept)
       assert(
         made.map(shown) == Vector("list /"),
         result == synced(stopped = Some("a list came to a keep's outcome"))

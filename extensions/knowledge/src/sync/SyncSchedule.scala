@@ -1,4 +1,4 @@
-package grit.knowledge.github
+package grit.knowledge.sync
 
 import grit.core.id.ScheduleKey
 import grit.core.job.SlotRule

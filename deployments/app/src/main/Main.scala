@@ -47,8 +47,9 @@ import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, Local
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
-import grit.knowledge.github.{GitHubCards, SyncSchedule}
+import grit.knowledge.github.GitHubCards
 import grit.knowledge.plugin.{CardSource, Knowledge}
+import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, KeyFiles, McpServer}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge

@@ -16,7 +16,8 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
-import grit.knowledge.github.{GitHubCards, SyncSchedule}
+import grit.knowledge.github.GitHubCards
+import grit.knowledge.sync.SyncSchedule
 
 import utest.*
 

@@ -8,6 +8,7 @@ import grit.core.place.Service
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.knowledge.card.Scope
+import grit.knowledge.sync.SyncSchedule
 
 import utest.*
 

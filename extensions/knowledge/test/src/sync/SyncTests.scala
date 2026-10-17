@@ -27,7 +27,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.{Compartment, Integrity, Label, Level}
 import grit.knowledge.card.{CardKey, CardMoves, Phase, UnitVersion}
-import grit.knowledge.github.{GitHubCards, SyncSchedule}
+import grit.knowledge.github.GitHubCards
 
 import utest.*
 

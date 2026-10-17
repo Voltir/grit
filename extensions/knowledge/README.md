@@ -10,16 +10,19 @@ Packages, in one-way order (each names only those before it):
 - **`card`**: what a card is, whatever its source: a unit's key (the SHA-256 of its corpus and
   path), its version (a git SHA), its summary, and its document's key, text and data; and the
   names of a sync run's moves (`{phase}/{key}`, `held`, `drop`).
+- **`sync`**: a sync run over any source. A `Source` says how a run reads it: the tool and
+  arguments of each list and read, what an answer holds, what of a listing is checked, and its
+  `Walk`, the run's plan, which is pure: from the cards a run holds and each step's outcome, the
+  next step (list, read, summarise, write, relabel, and a last drop). `Sync`, the keeping job
+  `knowledge-sync`, makes each step as a move: a call, a summary ask, a check, or a keep; a card
+  held at another label is withdrawn in the keep that replaces it. A listing or a file answered
+  below `Outside` is checked by the integrity tree before anything is made from it (ADR 0036),
+  since a card is kept only from `Outside` or above. Imports `card`.
 - **`github`**: a repository as a card source, read through GitHub's MCP server's
-  `get_file_contents`. A unit's pointer is `{server}_get_file_contents` with `owner`, `repo` and
-  `path` and no `ref`. A file's card is written only at its blob SHA; a file answered without
-  one is not carded. Imports `card`.
-- **`sync`**: a sync run. Its plan is pure: from the cards a run holds and each step's outcome,
-  the next step (list, read, summarise, write, relabel, and a last drop). `Sync`, the keeping
-  job `knowledge-sync`, makes each step as a move: a call, a summary ask, a check, or a keep; a
-  card held at another label is withdrawn in the keep that replaces it. A listing or a file
-  answered below `Outside` is checked by the integrity tree before anything is made from it
-  (ADR 0036), since a card is kept only from `Outside` or above. Imports `card` and `github`.
+  `get_file_contents`, and its walk, depth first from the repository's root. A unit's pointer
+  is `{server}_get_file_contents` with `owner`, `repo` and `path` and no `ref`. A file's card is
+  written only at its blob SHA; a file answered without one is not carded. Imports `card` and
+  `sync`; another source is a package beside it, and neither names the other.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
   `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
   `sync`.

@@ -40,8 +40,9 @@ import grit.job.clock.ClockEdge
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
-import grit.knowledge.github.{GitHubCards, SyncSchedule}
+import grit.knowledge.github.GitHubCards
 import grit.knowledge.plugin.{CardSource, Knowledge}
+import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope

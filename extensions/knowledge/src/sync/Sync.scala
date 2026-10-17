@@ -16,13 +16,12 @@ import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
-import grit.knowledge.github.{Fetched, GitHubCards, Listing}
 
-/** The job `knowledge-sync`, version 3, over `cards`. A run, for the source its parameters
-  * name, walks it as [[Walk]] says: lists the directories whose tree changed since the cards it
-  * holds; writes a card at its own floor for each new or changed unit (a directory's from its
-  * listing, at no model cost; a file's from one summary, with search terms, of its first 8 KB,
-  * the model asked for at most 60 words), each pointing at the read of its unit; copies up to
+/** The job `knowledge-sync`, version 3, over `sources`. A run, for the source its parameters
+  * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
+  * writes a card at its own floor for each new or changed unit (a file's from one summary, with
+  * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
+  * makes it, at no model cost), each pointing at the read of its unit; copies up to
   * its floor, with no call or ask, the card of an unchanged unit held at another label; and
   * withdraws the cards of units gone from directories it listed in full. A held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
@@ -39,11 +38,11 @@ import grit.knowledge.github.{Fetched, GitHubCards, Listing}
   * refused or unread, a call failed (naming the service and why), a keep the store refused,
   * such as a key written by another run meanwhile (naming the card's path), a run believed less
   * than `Outside`, or parameters naming no source of its. Its `limits`: asks, the largest
-  * `perRun` among its sources' syncs; calls, that plus the largest `maxUnits`; judgments,
-  * [[Sync.MostWindows]] a call. Parameters asking for more stop at the limit, and the reply says
-  * so.
+  * `perRun` among its sources' syncs; calls, the largest of its sources' [[Source.calls]] of
+  * that; judgments, [[Sync.MostWindows]] a call. Parameters asking for more stop at the limit,
+  * and the reply says so.
   */
-final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
+final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 
   val name: JobName = Sync.Name
 
@@ -70,18 +69,17 @@ final class Sync(cards: Vector[GitHubCards]) extends KeepingJob[SyncParams] {
   }
 
   override val limits: MoveLimits = {
-    val asks = cards.flatMap(_.syncs.map(_.perRun)).maxOption.getOrElse(0)
-    val units = cards.map(_.maxUnits).maxOption.getOrElse(0)
-    // Each at least zero (a source's perRun and maxUnits are at least 1), the sum clipped to
-    // an Int: MoveLimits.of never refuses them.
-    val calls = (asks.toLong + units).min(Int.MaxValue.toLong)
+    val asks = sources.flatMap(_.syncs.map(_.perRun)).maxOption.getOrElse(0)
+    // Each at least zero (a source's perRun and maxUnits are at least 1), each an Int:
+    // MoveLimits.of never refuses them.
+    val calls = sources.map(_.calls(asks)).maxOption.getOrElse(0).toLong
     MoveLimits
       .of(asks, calls.toInt, (calls * Sync.MostWindows).min(Int.MaxValue.toLong).toInt)
       .fold(why => throw new IllegalStateException(why), identity)
   }
 
   def run(run: Trusted[JobRun[SyncParams]], moves: Keeping^): String =
-    cards.find(_.corpus == run.extract.params.source) match {
+    sources.find(_.corpus == run.extract.params.source) match {
       case None => s"${CorpusName.value(run.extract.params.source)}: no source of this sync's"
       case Some(source) => Sync.walk(source, run.extract.params.perRun, run.tainted, moves)
     }
@@ -103,8 +101,8 @@ object Sync {
       "that the summary leaves out."
 
   /** One run of `source`, asking for at most `perRun` summaries, its run `start`: its reply. */
-  private def walk(
-      source: GitHubCards,
+  private def walk[L <: caps.Pure](
+      source: Source[L],
       perRun: Int,
       start: Tainted[JobRun[SyncParams]],
       moves: Keeping^
@@ -121,60 +119,62 @@ object Sync {
           * all, since each unit's path came from a listing read before it) and `labels` (each
           * unit's path, to the label its answers were read at) with what it read added.
           */
-        def make(step: Step, read: Read, labels: Map[String, Label]): (Outcome, Read, Labels) =
+        def make(
+            step: Step,
+            read: Read,
+            labels: Map[String, Label]
+        ): (Outcome[L], Read, Labels) =
           step match {
-            case Step.List(path) =>
-              call(Phase.List, path, read) match {
+            case list @ Step.List(path) =>
+              call(Phase.List, list, read) match {
                 case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
                 case Right((text, at)) =>
-                  Listing.of(Trusted.asIs(text).extract) match {
+                  source.listing(Trusted.asIs(text).extract) match {
                     case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
                     case Right(l) if !text.integrity.belowOutside =>
-                      (Outcome.Listed(l), heard(read, text), labels.updated(path, at))
+                      (Outcome.Listed(l, at), heard(read, text), labels.updated(path, at))
                     case Right(l) =>
                       // What of a listing reaches a card or steers the run past code's checks
-                      // is its paths (each entry's kind and SHA are read by code): those are
-                      // what is checked, and believed as checked.
-                      val paths = text.map(_ => Sync.paths(l))
+                      // is what its source says is checked: that is what is checked, and
+                      // believed as checked.
+                      val paths = text.map(_ => source.checked(l))
                       checked(path, paths, "directory listing") match {
                         case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
                         case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
                         case Right(Right(vetted)) =>
-                          (Outcome.Listed(l), heard(read, vetted), labels.updated(path, at))
+                          (Outcome.Listed(l, at), heard(read, vetted), labels.updated(path, at))
                       }
                   }
               }
-            case Step.Read(path) =>
-              call(Phase.Read, path, read) match {
+            case reading @ Step.Read(path) =>
+              call(Phase.Read, reading, read) match {
                 case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
                 case Right((text, at)) =>
-                  Fetched.of(Trusted.asIs(text).extract) match {
-                    case Fetched.Text(whole, sha) if text.integrity.belowOutside =>
+                  source.fetched(Trusted.asIs(text).extract) match {
+                    case Fetched.Text(whole, version) if text.integrity.belowOutside =>
                       // Of a file, only its head reaches its card, through its summary: the head
                       // is what is checked, and believed as checked.
-                      val head = Walk.head(whole)
+                      val head = Fetched.head(whole)
                       checked(path, text.map(_ => head), "file") match {
                         case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
                         case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
                         case Right(Right(vetted)) =>
                           (
-                            Outcome.Fetched(Fetched.Text(head, sha)),
+                            Outcome.Fetched(Fetched.Text(head, version), at),
                             heard(read, vetted),
                             labels.updated(path, at)
                           )
                       }
                     case fetched if !text.integrity.belowOutside =>
-                      (Outcome.Fetched(fetched), heard(read, text), labels.updated(path, at))
+                      (Outcome.Fetched(fetched, at), heard(read, text), labels.updated(path, at))
                     // A read with no version is left unwritten: none of it reaches a card.
-                    case fetched => (Outcome.Fetched(fetched), read, labels)
+                    case fetched => (Outcome.Fetched(fetched, at), read, labels)
                   }
               }
             case Step.Summarise(path, head, _) =>
               val asked = Posed.Json(
                 System,
-                Vector(
-                  Message.User(s"The file `$path` in ${source.owner}/${source.repo}:\n\n$head")
-                ),
+                Vector(Message.User(s"${source.subject(path)}:\n\n$head")),
                 CardSummary.Reply
               )
               val key = CardMoves.of(Phase.Summary, CardKey.of(corpus, path))
@@ -205,8 +205,8 @@ object Sync {
               val path = paths.getOrElse(key, CardKey.value(key))
               // Withdrawals and copies are decided by the source's listings, so they are kept from
               // what the run has read, as its writes are. Today a listing believed below a keep's
-              // need always stops the run at its directory's card first, since Walk emits the drop
-              // last; keeping from `read` makes that hold whatever the order.
+              // need always stops the run at its directory's card first, since a walk emits the
+              // drop last; keeping from `read` makes that hold whatever the order.
               (
                 kept(
                   moves.keep(CardMoves.of(Phase.Relabel, key), read)((_, keeper, now) =>
@@ -264,15 +264,20 @@ object Sync {
           else go(0, windows.toList, Trusted.literal("").tainted)
         }
 
-        /** The answer of the call reading `path` in `phase`, its arguments made from `read`,
-          * and its label; or why not.
+        /** The answer of the call making `step` in `phase`, its arguments made from `read`, and
+          * its label; or why not.
           */
-        def call(phase: Phase, path: String, read: Read): Either[String, (Tainted[String], Label)] =
+        def call(
+            phase: Phase,
+            step: Step.Fetching,
+            read: Read
+        ): Either[String, (Tainted[String], Label)] = {
+          val (tool, arguments) = source.call(step)
           moves.call(
-            CardMoves.of(phase, CardKey.of(corpus, path)),
+            CardMoves.of(phase, CardKey.of(corpus, step.path)),
             source.service,
-            source.readTool,
-            read.map(_ => source.reading(path))
+            tool,
+            read.map(_ => arguments)
           ) match {
             case Left(e) => Left(reason(e))
             case Right(Called.Done(text, at)) => Right((text, at))
@@ -281,20 +286,21 @@ object Sync {
             case Right(Called.Interrupted) =>
               Left(s"the call to ${source.service.name} went unanswered, and may have partly run")
           }
+        }
 
-        @tailrec def go(w: Walk, read: Read, labels: Labels): String = w.next match {
+        @tailrec def go(w: Walk[L], read: Read, labels: Labels): String = w.next match {
           case Left(synced) => synced.line
           case Right(step) =>
             val (outcome, after, next) = make(step, read, labels)
             go(w.after(outcome), after, next)
         }
 
-        go(Walk.start(source, perRun, h.floor, h.held), start.map(_ => ()), Map.empty)
+        go(source.walk(perRun, h.floor, h.held), start.map(_ => ()), Map.empty)
     }
   }
 
   /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
-  private def kept(result: Either[MoveError, Kept], doing: String): Outcome =
+  private def kept(result: Either[MoveError, Kept], doing: String): Outcome[Nothing] =
     result.fold(e => Outcome.Stopped(s"$doing: ${reason(e)}"), _ => Outcome.Kept)
 
   /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
@@ -406,15 +412,6 @@ object Sync {
 
   /** Why a unit is left unwritten when what it read is over [[MostWindows]] windows. */
   private val TooLong = "it is too long to check"
-
-  /** A listing's paths, one a line. */
-  private def paths(listing: Listing): String = {
-    val entries = listing match {
-      case Listing.Complete(entries) => entries
-      case Listing.Partial(shown) => shown
-    }
-    entries.map(_.path).mkString("\n")
-  }
 
   /** `read`, and `answer` read after it. */
   private def heard(read: Read, answer: Tainted[?]): Read = read.zip(answer).map(_ => ())
