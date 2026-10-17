@@ -602,63 +602,42 @@ private[grit] object Launch {
       case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
     }
 
-  /** Each of `d`'s shadows by name, asking its question of the classifier `d` places topics
-    * with ([[classifier]]): Jev's of the shadow's model when it names one.
+  /** Each of `d`'s shadows by name, asking its question of the model [[shadowModel]] names,
+    * through the classifier `d` places topics with ([[classifier]]) made for that model.
     */
-  private def variants(d: Deployment, s: Secrets): Map[ShadowName, ShadowAsking^] =
-    asked(d.topics, s.jev, d.shadows.toList)
-
-  // Recursive rather than a `map`: each classifier is a capability made per variant, which
-  // a lambda's result cannot carry out into the map.
-  private def asked(
-      topics: Topics,
-      jev: Option[JevConfig],
-      shadows: List[ShadowVariant]
-  ): Map[ShadowName, ShadowAsking^] =
-    shadows match {
+  private def variants(d: Deployment, s: Secrets): Map[ShadowName, ShadowAsking^] = {
+    // Recursive rather than a `map`: each classifier is a capability made per variant, which
+    // a lambda's result cannot carry out into the map.
+    def asked(shadows: List[ShadowVariant]): Map[ShadowName, ShadowAsking^] = shadows match {
       case Nil => Map.empty
       case v :: rest =>
-        val others = asked(topics, jev, rest)
-        (topics, jev) match {
-          case (Topics.Jev, Some(config)) =>
-            val model = v.model.getOrElse(config.model)
-            others.updated(
-              v.name,
-              ShadowAsking(
-                v.questions,
-                model,
-                ClearedClassifier.of(
-                  JevClassifier.Service,
-                  new JevClassifier(config.copy(model = model))
-                )
-              )
-            )
-          case (Topics.Stub, _) =>
-            others.updated(
-              v.name,
-              ShadowAsking(
-                v.questions,
-                v.model.getOrElse(StubClassifier.Model),
-                ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-              )
-            )
-          case (Topics.Jev, None) =>
-            others.updated(
-              v.name,
-              ShadowAsking(
-                v.questions,
-                v.model.getOrElse(JevConfig.DefaultModel),
-                ClearedClassifier.none("JEV_API_KEY is not set")
-              )
-            )
-          // Deployment.of refuses shadows with topics off.
-          case (Topics.Off(reason), _) =>
-            others.updated(
-              v.name,
-              ShadowAsking(v.questions, "none", ClearedClassifier.none(reason))
-            )
-        }
+        val model = shadowModel(d.topics, v)
+        asked(rest).updated(v.name, ShadowAsking(v.questions, model, classifying(model)))
     }
+    def classifying(model: String): ClearedClassifier^ =
+      (d.topics, s.jev) match {
+        case (Topics.Jev, Some(config)) =>
+          ClearedClassifier.of(
+            JevClassifier.Service,
+            new JevClassifier(config.copy(model = model))
+          )
+        case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+        case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+        // Deployment.of refuses shadows with topics off.
+        case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+      }
+    asked(d.shadows.toList)
+  }
+
+  /** The model the shadow `v` asks of, under a deployment whose topics are `topics`: the one it
+    * names, else Jev's [[JevConfig.DefaultModel]] or the stub's [[StubClassifier.Model]];
+    * `"none"` with topics off, which [[Deployment.of]] refuses beside a shadow.
+    */
+  private[grit] def shadowModel(topics: Topics, v: ShadowVariant): String = topics match {
+    case Topics.Jev => v.model.getOrElse(JevConfig.DefaultModel)
+    case Topics.Stub => v.model.getOrElse(StubClassifier.Model)
+    case Topics.Off(_) => "none"
+  }
 
   /** `models`, each call printed with the model it goes to. */
   private def announced(models: Models): Models =
