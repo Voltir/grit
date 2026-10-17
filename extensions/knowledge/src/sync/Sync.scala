@@ -11,10 +11,10 @@ import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{CorpusName, DocumentVersion, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
-import grit.core.place.{Place, Service}
+import grit.core.place.Place
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
 
 /** The job `knowledge-sync`, version 5, over `sources`. A run, for the source its parameters
@@ -27,10 +27,11 @@ import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
   * withdraws the cards of units gone from directories it listed in full. A held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
-  * read at, and believed at no more than the run and what it read on its unit's way
+  * read at, and believed at the meet of the run and what it read on its unit's way
   * ([[Step.Fetching.way]]: everything read before it for [[Way.Run]]; for [[Way.Through]], the
-  * listings it was reached through, whose labels its own joins), its source's results
-  * ([[grit.core.visibility.Visibility.outputOf]]) and the summaries asked of them; its call's
+  * listings it was reached through, whose labels its own joins), its source's results (each as
+  * [[grit.core.visibility.Visibility.believed]] believes it, so a repository's cap counts, not
+  * only its service's) and the summaries asked of them; its call's
   * arguments and its summary's ask are made from the same. A listing or file answered below `Outside` is first checked by the integrity tree
   * ([[grit.core.act.Moves.vet]]), its paths or its head a window at a time: raised, it is
   * believed as raised; otherwise its unit is left unwritten, saying why (it holds hidden or
@@ -211,7 +212,7 @@ object Sync {
               (
                 kept(
                   moves.keep(CardMoves.of(Phase.Write, card.key), from)((_, keeper, now) =>
-                    replace(keeper, card, label, source.service, at, replacing, now)
+                    replace(keeper, card, label, from.integrity, at, replacing, now)
                   ),
                   s"keeping the card of ${card.path}"
                 ),
@@ -367,19 +368,18 @@ object Sync {
         .map(hs => Holding(Tx.floor(tx), hs.sortBy(c => CardKey.value(c.key))))
     }
 
-  /** `card` kept at `label` at `place`, `now`, believed as what `service`, its source, returns
-    * is ([[grit.core.visibility.Visibility.outputOf]]), its copy at `replacing` withdrawn
-    * first, in this one transaction.
+  /** `card` kept at `label` at `place`, `now`, believed at `integrity`, the meet of its unit's
+    * reads, its copy at `replacing` withdrawn first, in this one transaction.
     */
   private def replace(
       keeper: DocumentKeeper,
       card: Card,
       label: Label,
-      service: Service,
+      integrity: Integrity,
       place: Place,
       replacing: Option[Label],
       now: Instant
-  )(using tx: Tx^): Either[StoreError, Kept] =
+  )(using Tx^): Either[StoreError, Kept] =
     for {
       // Withdrawn before the write, so the old copy never counts against the bound beside it.
       old <- replacing.fold[Either[StoreError, Option[DocumentVersion]]](Right(None))(
@@ -388,7 +388,7 @@ object Sync {
       w <- keeper.write(
         card.docKey,
         label,
-        Tx.visibility(tx).outputOf(service),
+        integrity,
         place,
         card.text,
         card.data,

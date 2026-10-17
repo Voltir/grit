@@ -386,6 +386,38 @@ object SyncTests extends TestSuite {
       (walked(Vector("a", "b")), walked(Vector("b", "a"))) ==> (expected, expected)
     }
 
+    test("a card is believed at what its unit's reads were, not at its service's cap") {
+      // The shipped visibility caps no place, so `github`'s results are believed at
+      // `Cap.Undeclared`, untrusted; each read here is answered at member, as a call to a
+      // repository capped at member is.
+      val k = keeping(floor, new InMemoryDocuments)
+      val _ = runOf(k)
+      k.kept.map(d => pathOf(d) -> d.integrity).sortBy(_._1) ==> Vector(
+        "docs" -> Integrity.Member,
+        "docs/a.md" -> Integrity.Member,
+        "docs/b.md" -> Integrity.Member
+      )
+    }
+
+    test("a card is believed at no more than the weakest read on its way") {
+      val folders = right(CorpusName.of("folders"))
+      val source = new Folders(folders, service, service.place, Vector("a", "b"))
+      val k = keeping(
+        floor,
+        new InMemoryDocuments,
+        answers = Map("/" -> "a\nb", "a" -> "a/x", "b" -> "b/y", "a/x" -> "X.", "b/y" -> "Y."),
+        believedAt = Map("a" -> Integrity.Outside, "a/x" -> Integrity.Authority)
+      )
+      val _ = new Sync(Vector(source)).run(
+        TestTainted.trusted(JobRun(SyncParams(folders, 5), Instant.EPOCH, Instant.EPOCH)),
+        k
+      )
+      k.kept.map(d => pathOf(d) -> d.integrity).sortBy(_._1) ==> Vector(
+        "a/x" -> Integrity.Outside,
+        "b/y" -> Integrity.Member
+      )
+    }
+
     test("a Drive run keeps each card at the floor, believed at its own way") {
       import grit.knowledge.drive.{DriveCards, DriveCardsTests}
       val drive: DriveCards = DriveCardsTests.cards(Vector(floor))
