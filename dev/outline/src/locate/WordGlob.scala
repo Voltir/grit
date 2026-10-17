@@ -5,7 +5,8 @@ import java.util.regex.Pattern
 import scala.util.matching.Regex
 
 /** A glob over one word of source text: each `*` any run of identifier characters (`\w` and `$`), the rest literal and
-  * case-sensitive, matched only as a whole word.
+  * case-sensitive, matched only as a whole word. It matches a definition's name, which a `$` may be part of; a mention
+  * of a name is a word of [[SourceWords]], beside which a `$` may stand.
   */
 final class WordGlob private (regex: Regex, piece: String) {
 

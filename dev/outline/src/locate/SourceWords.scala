@@ -3,7 +3,7 @@ package grit.outline.locate
 import java.nio.charset.StandardCharsets
 
 /** The words of each source file as last read, kept from one search to the next: a word is a whole run of word
-  * characters (`\w`: ASCII letters, digits and `_`). A file's words are scanned again whenever its bytes differ from
+  * characters (`isWordChar`). A file's words are scanned again whenever its bytes differ from
   * those last read, so a search over them answers as a scan of the file's text now would.
   */
 final class SourceWords private (byFile: Map[os.Path, SourceWords.Scanned]) {
@@ -35,6 +35,12 @@ object SourceWords {
   /** No file's words known. */
   val empty: SourceWords = new SourceWords(Map.empty)
 
+  /** Whether `c` is a word character of a mention, as `\b` reads one: an ASCII letter, digit or `_`. A `$` is not, so
+    * an interpolated `$Name` mentions `Name`; a glob of a definition's name ([[WordGlob]]) counts `$` as part of it.
+    */
+  private[locate] def isWordChar(c: Char): Boolean =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+
   private final case class Scanned(bytes: Array[Byte], words: Words)
 
   /** The distinct words of one text, sorted. */
@@ -52,14 +58,12 @@ object SourceWords {
 
     /** The words of `text`. */
     def of(text: String): Words = {
-      def isWord(c: Char): Boolean =
-        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
       val found = scala.collection.mutable.HashSet.empty[String]
       var i = 0
       while (i < text.length) {
-        if (isWord(text.charAt(i))) {
+        if (isWordChar(text.charAt(i))) {
           var j = i + 1
-          while (j < text.length && isWord(text.charAt(j))) j += 1
+          while (j < text.length && isWordChar(text.charAt(j))) j += 1
           found += text.substring(i, j)
           i = j
         } else i += 1

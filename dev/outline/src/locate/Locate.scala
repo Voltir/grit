@@ -136,9 +136,10 @@ object Locate {
   ): (Map[String, Vector[os.RelPath]], SourceWords) = {
     val distinct = words.distinct
     def whole(w: String): String = "\\b" + java.util.regex.Pattern.quote(w) + "\\b"
-    // A word of word characters alone is held whole exactly where it is a whole run of them (`\b` and `\w` agree since
-    // JDK 19), so a file's runs find every such word. The rest get a regex each, where the text holds them.
-    val (plain, other) = distinct.partition(_.matches("\\w+"))
+    // A word of word characters alone is held whole exactly where it is a whole run of them (`\b` reads
+    // `SourceWords.isWordChar` since JDK 19), so a file's runs find every such word. The rest get a regex each, where
+    // the text holds them.
+    val (plain, other) = distinct.partition(w => w.nonEmpty && w.forall(SourceWords.isWordChar))
     val separate = other.map(w => w -> whole(w).r)
     val files = sources(root)
     val (held, next) = files.foldLeft((Vector.empty[(os.RelPath, Set[String])], known)) {

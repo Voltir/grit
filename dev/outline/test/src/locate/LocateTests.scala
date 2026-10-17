@@ -156,6 +156,22 @@ object LocateTests extends TestSuite {
     }
 
     test(
+      "mentioning finds a name beside a `$`, as in an interpolation, which a glob of a definition's name does not"
+    ) {
+      val root = tree("core/x/src/A.scala", "core/x/src/B.scala")
+      os.write.over(root.dir / "core/x/src/A.scala", "object A { val s = s\"$Inbox\" }\n")
+      os.write.over(root.dir / "core/x/src/B.scala", "object B { Inbox$1 }\n")
+      assert(
+        Locate.mentioning(root, "Inbox", SourceWords.empty)._1 == Vector(
+          os.RelPath("core/x/src/A.scala"),
+          os.RelPath("core/x/src/B.scala")
+        ),
+        !WordGlob("Inbox").foundIn("s\"$Inbox\""),
+        !WordGlob("Inbox").foundIn("Inbox$1")
+      )
+    }
+
+    test(
       "mentioningEach over the words it last read answers from a file's text now, though its size and mtime are unchanged"
     ) {
       val root = tree("core/x/src/A.scala")
