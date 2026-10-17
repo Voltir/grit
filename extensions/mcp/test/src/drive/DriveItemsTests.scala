@@ -123,6 +123,27 @@ object DriveItemsTests extends TestSuite {
     }
 
     test(
+      "a search's head says files in folders no one has labelled yet aren't searched, and how an administrator opens one, whether it found any hit or none"
+    ) {
+      val head = (files: Vector[DriveFile]) =>
+        right(
+          DriveItems.items(
+            reading,
+            DriveCalled.Searched(Hits(files, incomplete = false), Map.empty)
+          )
+        ).head
+      val opens =
+        "Files in folders that no one has labelled yet aren't searched. An administrator can " +
+          "open such a folder by typing `label internal at <the folder's link or id>`."
+      (head(Vector.empty), head(Vector(doc))) ==> (
+        "Drive files whose text holds those words, one a line, each with its id; read one with " +
+          s"drive_read. $opens",
+        "Drive files whose text holds those words, one a line, each with its id; read one with " +
+          s"drive_read. $opens"
+      )
+    }
+
+    test(
       "a read is believed at the meet over its writers: the deployment's own address skipped, a declared writer at its integrity, the domain's people member"
     ) {
       (

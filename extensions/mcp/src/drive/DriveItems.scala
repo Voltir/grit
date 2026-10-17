@@ -21,8 +21,12 @@ object DriveItems {
     ) &&
       !name.toLowerCase.contains("://") && !name.toLowerCase.contains("www.")
 
+  /** The label command that opens a folder no one has labelled yet, as a person types it. */
+  private[drive] val Opening: String = "`label internal at <the folder's link or id>`"
+
   /** What `reading` makes of `called`:
-    *   - a search: its head, then each hit as a names part, one line (its name, or a note that
+    *   - a search: its head (saying that files in folders no one has labelled yet aren't
+    *     searched, and how an administrator opens one: [[Opening]]), then each hit as a names part, one line (its name, or a note that
     *     it is not shown when [[shown]] refuses it, its type, its id, where it lies, and its
     *     shared drive by the name the search lists, by its id when none is listed or [[shown]]
     *     refuses it), at
@@ -48,7 +52,12 @@ object DriveItems {
             "with drive_read." +
             (if (hits.incomplete)
                " Drive has more than these; search with more words to see others."
-             else "")
+             else "") +
+            // Said of every search, never only of one whose hits were cut for lying in a place
+            // no one has labelled: that would tell the asker their words matched a file no one
+            // may read.
+            " Files in folders that no one has labelled yet aren't searched. An administrator " +
+            s"can open such a folder by typing $Opening."
         val parts = hits.files.flatMap { f =>
           val place = if (f.folder) Some(reading.service.place) else f.within.map(reading.place)
           for {

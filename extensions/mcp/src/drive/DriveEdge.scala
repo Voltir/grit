@@ -21,7 +21,7 @@ object DriveEdge {
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
       "can open it to you with the label command, typing " +
-      "`label internal at <the folder's link or id>`: the link Drive shows for the folder, or " +
+      s"${DriveItems.Opening}: the link Drive shows for the folder, or " +
       "the folder's id from a search."
 
   /** The edge named for `reading`'s service, serving [[DriveTools.Search]] and
