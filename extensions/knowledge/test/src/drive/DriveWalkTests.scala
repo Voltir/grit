@@ -21,6 +21,12 @@ object DriveWalkTests extends TestSuite {
 
   private def day(n: Int): Instant = Instant.parse(f"2026-09-$n%02dT10:00:00Z")
 
+  /** The slot of the sources' nightly schedule on day `n`. */
+  private def nightly(n: Int): Instant = Instant.parse(f"2026-09-$n%02dT03:00:00Z")
+
+  /** The slot a run is due at, where which one does not matter. */
+  private val due: Instant = nightly(1)
+
   private def entry(id: String, kind: Kind, changed: Int, within: String): DriveEntry =
     DriveEntry(id, kind, Some(s"name of $id"), Some(day(changed)), Some(within))
 
@@ -128,15 +134,15 @@ object DriveWalkTests extends TestSuite {
     test(
       "a first run lists the drives, each drive and the folders directly in it, and reads each Doc, Sheet and text file it cards through the listing naming it"
     ) {
-      val (steps, synced) = run(cards(labels).walk(5, internal, Vector.empty))
+      val (steps, synced) = run(cards(labels).walk(5, internal, Vector.empty, due))
       assert(
         fetches(steps) == Vector(
           Step.List(DriveWalk.Drives, Way.Run),
           Step.List("drive-a", Way.Through(DriveWalk.Drives)),
           Step.Read("file-18", Way.Through("drive-a")),
-          Step.List("folder-3", Way.Through("drive-a")),
           Step.List("drive-b", Way.Through(DriveWalk.Drives)),
           Step.Read("file-30", Way.Through("drive-b")),
+          Step.List("folder-3", Way.Through("drive-a")),
           Step.List("folder-31", Way.Through("drive-b")),
           Step.Read("file-32", Way.Through("folder-31"))
         )
@@ -145,7 +151,7 @@ object DriveWalkTests extends TestSuite {
     }
 
     test("a written card is titled with the file's name, at the time it last changed") {
-      val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty))
+      val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty, due))
       val written = steps.collect { case Step.Write(card, _) =>
         (card.path, card.title, card.version)
       }
@@ -159,7 +165,7 @@ object DriveWalkTests extends TestSuite {
     test("only a file whose change time is not its card's at the floor is read") {
       val holding =
         Vector(held("file-18", internal, 5, "drive-a"), held("file-30", internal, 1, "drive-b"))
-      val (steps, synced) = run(cards(labels).walk(5, internal, holding))
+      val (steps, synced) = run(cards(labels).walk(5, internal, holding, due))
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(reads == Vector("file-30", "file-32"))
       assert(synced.unchanged == 1)
@@ -169,14 +175,14 @@ object DriveWalkTests extends TestSuite {
       "a listing carded by another run is not read from, and its files' cards at the floor are withdrawn"
     ) {
       val holding = Vector(held("file-text", internal, 13, "folder-3"))
-      val (steps, _) = run(cards(labels).walk(5, internal, holding))
+      val (steps, _) = run(cards(labels).walk(5, internal, holding, due))
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(!reads.contains("file-text"), !reads.contains("file-1"))
       assert(dropped(steps) == Vector(("file-text", internal)))
     }
 
     test("the run of a listing's label reads from it, and not from the listings below") {
-      val (steps, _) = run(cards(labels).walk(5, confidential, Vector.empty))
+      val (steps, _) = run(cards(labels).walk(5, confidential, Vector.empty, due))
       val reads = fetches(steps).collect { case Step.Read(id, w) => (id, w) }
       assert(
         reads == Vector(
@@ -192,7 +198,7 @@ object DriveWalkTests extends TestSuite {
       val gone = Vector(held("file-gone", internal, 1, "drive-a"))
       val (listing, at) = world("drive-b")
       val cut = world.updated("drive-b", (listing.copy(complete = false), at))
-      val (steps, _) = run(cards(labels).walk(5, internal, gone), cut.removed("folder-31"))
+      val (steps, _) = run(cards(labels).walk(5, internal, gone, due), cut.removed("folder-31"))
       assert(dropped(steps) == Vector(("file-gone", internal)))
     }
 
@@ -203,15 +209,16 @@ object DriveWalkTests extends TestSuite {
       val in31 = Vector(held("file-gone", internal, 1, "folder-31"))
       val (listing, at) = world("drive-b")
       val cut = world.updated("drive-b", (listing.copy(complete = false), at))
-      val (incomplete, _) = run(cards(labels).walk(5, internal, inB), cut)
-      val (withheld, _) = run(cards(labels).walk(5, internal, in31), world.removed("folder-31"))
+      val (incomplete, _) = run(cards(labels).walk(5, internal, inB, due), cut)
+      val (withheld, _) =
+        run(cards(labels).walk(5, internal, in31, due), world.removed("folder-31"))
       assert(dropped(incomplete) == Vector.empty, dropped(withheld) == Vector.empty)
     }
 
     test("past the folders it may list, a card in a folder not listed is not withdrawn") {
       val (steps, _) = run(
         cards(labels, maxUnits = 1)
-          .walk(5, internal, Vector(held("file-gone", internal, 1, "folder-31")))
+          .walk(5, internal, Vector(held("file-gone", internal, 1, "folder-31")), due)
       )
       assert(!fetches(steps).contains(Step.List("folder-31", Way.Through("drive-b"))))
       assert(dropped(steps) == Vector.empty)
@@ -221,7 +228,7 @@ object DriveWalkTests extends TestSuite {
       "a file shown in another listing than its card records is read again, its card recording where"
     ) {
       val holding = Vector(held("file-18", internal, 5, "folder-3"))
-      val (steps, _) = run(cards(labels).walk(5, internal, holding))
+      val (steps, _) = run(cards(labels).walk(5, internal, holding, due))
       val written = steps.collect { case Step.Write(card, _) => (card.path, card.within) }
       assert(written.headOption == Some(("file-18", Some("drive-a"))))
     }
@@ -235,7 +242,7 @@ object DriveWalkTests extends TestSuite {
           held("file-old", internal, 1, "drive-a"),
           held("file-low", Label.Public, 1, "drive-a")
         )
-      val (steps, _) = run(source.walk(5, confidential, holding), world.removed("drive-b"))
+      val (steps, _) = run(source.walk(5, confidential, holding, due), world.removed("drive-b"))
       assert(dropped(steps).contains(("file-old", internal)))
       assert(!dropped(steps).exists(_._1 == "file-low"))
     }
@@ -246,24 +253,42 @@ object DriveWalkTests extends TestSuite {
         held("file-18", internal, 5, "drive-a"),
         held("file-30", internal, 6, "drive-b")
       )
-      val (steps, synced) = run(cards(labels, maxUnits = 2).walk(5, internal, holding))
+      val (steps, synced) = run(cards(labels, maxUnits = 2).walk(5, internal, holding, due))
       assert(dropped(steps) == Vector(("file-32", internal)), synced.withdrawn == 1)
     }
 
     test("a card held only at another label is replaced by the write, not dropped apart") {
       val holding = Vector(held("file-18", Label.Public, 5, "drive-a"))
       val source = cards(Vector(Label.Public, internal))
-      val (steps, _) = run(source.walk(5, internal, holding))
+      val (steps, _) = run(source.walk(5, internal, holding, due))
       val replacing = steps.collect { case Step.Write(card, r) if card.path == "file-18" => r }
       assert(replacing == Vector(Some(Label.Public)))
       assert(!dropped(steps).exists(_._1 == "file-18"))
     }
 
     test("past perRun summaries a changed file is left, and every listing is still made") {
-      val (steps, synced) = run(cards(labels).walk(1, internal, Vector.empty))
+      val (steps, synced) = run(cards(labels).walk(1, internal, Vector.empty, due))
       val lists = fetches(steps).collect { case Step.List(path, _) => path }
-      assert(lists == Vector(DriveWalk.Drives, "drive-a", "folder-3", "drive-b", "folder-31"))
+      assert(lists == Vector(DriveWalk.Drives, "drive-a", "drive-b", "folder-3", "folder-31"))
       assert(synced.written == 1, synced.left == 2)
+    }
+
+    test(
+      "with more folders than it may list, runs on consecutive slots list every folder, maxUnits at a time"
+    ) {
+      val folders = (1 to 5).toVector.map(n => entry(s"folder-$n", Kind.Folder, 1, "drive-a"))
+      val drive = Map(
+        DriveWalk.Drives -> (DriveListing(Vector(this.drive("drive-a")), true), internal),
+        "drive-a" -> (DriveListing(folders, true), internal)
+      ) ++ folders.map(f => f.id -> (DriveListing(Vector.empty, true), internal))
+      val source = cards(labels, maxUnits = 2)
+      // Three nightly runs: five folders, two a run.
+      val listed = (1 to 3).toVector.map { n =>
+        val (steps, _) = run(source.walk(5, internal, Vector.empty, nightly(n)), drive)
+        fetches(steps).collect { case Step.List(path, _) if path.startsWith("folder-") => path }
+      }
+      assert(listed.map(_.size) == Vector(2, 2, 2))
+      assert(listed.flatten.toSet == folders.map(_.id).toSet)
     }
 
     test("a run reads at most perRun files, those its reads leave unwritten among them") {
@@ -274,7 +299,7 @@ object DriveWalkTests extends TestSuite {
         "drive-a" -> (DriveListing(docs, true), internal)
       )
       val source = cards(labels, maxUnits = 1)
-      val (steps, synced) = run(source.walk(1, internal, Vector.empty), drive)
+      val (steps, synced) = run(source.walk(1, internal, Vector.empty, due), drive)
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(reads == Vector("doc-1"), synced.left == 199)
       assert(fetches(steps).size <= source.calls(1))
@@ -284,7 +309,7 @@ object DriveWalkTests extends TestSuite {
       val stop = Step.List("drive-b", Way.Through(DriveWalk.Drives))
       val (steps, synced) =
         run(
-          cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1, "drive-a"))),
+          cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1, "drive-a")), due),
           stop = Some(stop)
         )
       assert(steps.lastOption == Some(stop), synced.stopped == Some("refused"))

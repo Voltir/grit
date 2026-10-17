@@ -116,6 +116,13 @@ object DriveCardsTests extends TestSuite {
       )
     }
 
+    test("a run's turn counts its source's slots from 2026 to its own, that slot included") {
+      val source = cards(Vector(internal))
+      val turns = Vector("2025-12-31T03:00:00Z", "2026-01-01T03:00:00Z", "2026-01-03T03:00:00Z")
+        .map(t => source.turn(Instant.parse(t)))
+      assert(turns == Vector(0L, 1L, 3L))
+    }
+
     test("a read stating no facts is unversioned, saying why") {
       val got = cards(Vector(internal)).fetched(Answer("text", Outcome.Stated.None))
       assert(got == Fetched.Unversioned("a read states one part, not 0"))

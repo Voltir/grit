@@ -1,5 +1,7 @@
 package grit.knowledge.drive
 
+import java.time.Instant
+
 import grit.core.act.Answer
 import grit.core.document.Pointer
 import grit.core.id.{CorpusName, ScheduleKey}
@@ -77,8 +79,21 @@ final case class DriveCards private (
   def calls(perRun: Int): Int =
     (perRun.toLong + maxUnits + 1 + DriveCards.DrivesMost).min(Int.MaxValue.toLong).toInt
 
-  def walk(perRun: Int, floor: Label, held: Vector[Held]): DriveWalk =
-    DriveWalk.start(this, perRun, floor, held)
+  /** [[DriveWalk.start]] at the [[turn]] of `due`. */
+  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): DriveWalk =
+    DriveWalk.start(this, perRun, floor, held, turn(due))
+
+  /** How many slots of its [[syncs]] fall after [[DriveCards.TurnsFrom]] and at or before `due`:
+    * of two runs of its schedules, the later's is one more for each slot between them.
+    */
+  def turn(due: Instant): Long =
+    syncs.map { s =>
+      Iterator
+        .iterate(s.rule.after(DriveCards.TurnsFrom))(_.flatMap(s.rule.after))
+        .takeWhile(_.exists(!_.isAfter(due)))
+        .size
+        .toLong
+    }.sum
 
   /** The pointer of the file `id`: `read` with `file`; or why not: an id over
     * [[grit.core.document.Pointer.of]]'s 1000 characters of JSON.
@@ -90,6 +105,11 @@ object DriveCards {
 
   /** 100: the most shared drives a listing of them gives (Drive's tools list no more). */
   val DrivesMost: Int = 100
+
+  /** 2026-01-01T00:00:00Z: where [[DriveCards.turn]] starts counting; a slot before it is not
+    * counted.
+    */
+  val TurnsFrom: Instant = Instant.parse("2026-01-01T00:00:00Z")
 
   /** These, `labels` least first, or why not: `corpus` supplies no service; `labels` empty,
     * holding one twice or one holding `unmapped`, or not a chain (two of them neither dominating

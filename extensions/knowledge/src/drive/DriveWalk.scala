@@ -9,10 +9,12 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
 
 /** One run's walk of a [[DriveCards]] source at its floor, as data: from the cards it holds,
   * each next step. It lists the shared drives first, [[Way.Run]] (the run's first read, so
-  * nothing is read before it); then each drive [[Way.Through]] that listing, and each folder
-  * directly in a drive through the drive's listing, in the order listed: a drive's files, then
-  * its folders, before the next drive. A folder within a folder is not listed. At most
-  * `maxUnits` folders are listed in a run; one past that is not listed.
+  * nothing is read before it); then each drive [[Way.Through]] that listing, its files read
+  * before the next drive; then the folders directly in the drives, each through its drive's
+  * listing, in the order listed. A folder within a folder is not listed. A run lists at most
+  * `maxUnits` folders: when the drives hold more, it lists the `maxUnits` from index
+  * `turn × maxUnits` of them, counted around the end, so runs at consecutive turns list them
+  * all within ⌈folders / maxUnits⌉ runs while the folders stay the same.
   *
   * A listing is the run's to card when [[DriveCards.carding]] of the label its answer was read
   * at is the floor; another's is that run's, and of it the walk only follows its folders. Of a
@@ -51,10 +53,17 @@ object DriveWalk {
   val Drives: String = "/"
 
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
-    * holding `held`, its source's cards as [[Held.read]] reads them.
+    * holding `held`, its source's cards as [[Held.read]] reads them, at `turn`
+    * ([[DriveCards.turn]] of its slot), which picks the folders it lists.
     */
-  def start(cards: DriveCards, perRun: Int, floor: Label, held: Vector[Held]): DriveWalk = {
-    val env = Env(cards, perRun, floor, held, held.groupBy(_.path))
+  def start(
+      cards: DriveCards,
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      turn: Long
+  ): DriveWalk = {
+    val env = Env(cards, perRun, floor, held, held.groupBy(_.path), turn)
     new DriveWalk(env, advance(env, State.fresh(env)))
   }
 
@@ -68,7 +77,8 @@ object DriveWalk {
       perRun: Int,
       floor: Label,
       held: Vector[Held],
-      byPath: Map[String, Vector[Held]]
+      byPath: Map[String, Vector[Held]],
+      turn: Long
   ) extends caps.Pure {
 
     private def copies(id: String): Vector[Held] = byPath.getOrElse(id, Vector.empty)
@@ -112,10 +122,13 @@ object DriveWalk {
     }
   }
 
-  /** What is still to do, in walk order. */
+  /** What is still to do, in walk order: [[Task.Folders]], once every drive is listed, picks
+    * the folders to list.
+    */
   private enum Task extends caps.Pure {
     case List(of: Container)
     case Read(entry: DriveEntry, within: String)
+    case Folders
   }
 
   /** What the last step's outcome is read as. */
@@ -134,7 +147,7 @@ object DriveWalk {
       next: Either[Synced, Step],
       reads: Int,
       fresh: Int,
-      folders: Int,
+      found: Vector[Container.Folder],
       written: Int,
       withdrawn: Int,
       unchanged: Int,
@@ -160,7 +173,7 @@ object DriveWalk {
         Left(Synced(env.cards.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)),
         0,
         0,
-        0,
+        Vector.empty,
         0,
         0,
         0,
@@ -224,8 +237,8 @@ object DriveWalk {
     case Outcome.Stopped(_) => "a stop"
   }
 
-  /** `s` once `of` was listed, read at `at`: the drives it names, or its files to read and, a
-    * drive's, its folders, pushed in the order listed.
+  /** `s` once `of` was listed, read at `at`: the drives it names, pushed in the order listed
+    * before the pick of folders; or its files to read, and, a drive's, its folders found.
     */
   private def listed(
       env: Env,
@@ -240,47 +253,54 @@ object DriveWalk {
         val drives = listing.entries
           .filter(_.kind == DriveEntry.Kind.Drive)
           .map(e => Task.List(Container.Drive(e.id)))
-        s.copy(stack = drives.toList ++ s.stack, complete = complete)
+        s.copy(stack = drives.toList ++ (Task.Folders :: s.stack), complete = complete)
       case Container.Drive(id) =>
-        val within = listing.entries.filter(_.kind == DriveEntry.Kind.Folder)
-        val room = (env.cards.maxUnits - s.folders).max(0)
-        val folders = within.take(room).map(f => Task.List(Container.Folder(f.id, id)))
-        files(
-          env,
-          s.copy(folders = s.folders + folders.size, complete = complete),
-          id,
-          listing,
-          at,
-          folders
-        )
+        val within = listing.entries
+          .filter(_.kind == DriveEntry.Kind.Folder)
+          .map(f => new Container.Folder(f.id, id))
+        files(env, s.copy(found = s.found ++ within, complete = complete), id, listing, at)
       case Container.Folder(id, _) =>
-        files(env, s.copy(complete = complete), id, listing, at, Vector.empty)
+        files(env, s.copy(complete = complete), id, listing, at)
     }
   }
 
+  /** Of `found`, in the order found, the folders a run at `turn` lists: every one when they are
+    * at most `most`; else the `most` from index `turn × most`, counted around the end.
+    */
+  private def picked(
+      found: Vector[Container.Folder],
+      most: Int,
+      turn: Long
+  ): Vector[Container.Folder] =
+    if (found.size <= most) found
+    else {
+      val n = found.size.toLong
+      val from = (turn % n) * most % n
+      val at = (0 until most).map(i => (from + i) % n).toSet
+      found.zipWithIndex.collect { case (f, i) if at(i.toLong) => f }
+    }
+
   /** `s` with the files `listing` of `within` shows seen, and, when it is this run's to card,
-    * those changed pushed to read, then `then`.
+    * those changed pushed to read.
     */
   private def files(
       env: Env,
       s: State,
       within: String,
       listing: DriveListing,
-      at: Label,
-      `then`: Vector[Task]
+      at: Label
   ): State = {
     val readable = listing.entries.filter(_.kind.readable)
     val seen = s.seen ++ readable.map(_.id)
     if (env.carded(at)) {
       val (current, changed) = readable.partition(env.current(_, within))
       s.copy(
-        stack = (changed.map(Task.Read(_, within)) ++ `then`).toList ++ s.stack,
+        stack = changed.map(Task.Read(_, within)).toList ++ s.stack,
         seen = seen,
         unchanged = s.unchanged + current.size
       )
     } else
       s.copy(
-        stack = `then`.toList ++ s.stack,
         seen = seen,
         foreign = s.foreign ++ readable.map(_.id)
       )
@@ -310,6 +330,9 @@ object DriveWalk {
       val popped = s.copy(stack = rest)
       task match {
         case Task.List(of) => popped.step(Step.List(of.path, of.way), Waiting.Listing(of))
+        case Task.Folders =>
+          val lists = picked(s.found, env.cards.maxUnits, env.turn).map(Task.List(_))
+          advance(env, popped.copy(stack = lists.toList ++ popped.stack))
         case Task.Read(entry, within) =>
           if (env.isNew(entry.id) && env.byPath.size + s.fresh >= env.cards.maxUnits)
             advance(env, popped.copy(refused = popped.refused + 1))
@@ -340,7 +363,7 @@ object DriveWalk {
   private def halt(env: Env, s: State, why: String): State = {
     val reads = s.stack.count {
       case Task.Read(_, _) => true
-      case Task.List(_) => false
+      case Task.List(_) | Task.Folders => false
     }
     done(env, s.copy(stack = Nil, left = s.left + reads, stopped = Some(why)))
   }

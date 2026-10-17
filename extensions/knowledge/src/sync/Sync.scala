@@ -83,7 +83,8 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
   def run(run: Trusted[JobRun[SyncParams]], moves: Keeping^): String =
     sources.find(_.corpus == run.extract.params.source) match {
       case None => s"${CorpusName.value(run.extract.params.source)}: no source of this sync's"
-      case Some(source) => Sync.walk(source, run.extract.params.perRun, run.tainted, moves)
+      case Some(source) =>
+        Sync.walk(source, run.extract.params.perRun, run.extract.nominal, run.tainted, moves)
     }
 }
 
@@ -102,10 +103,13 @@ object Sync {
       s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +
       "that the summary leaves out."
 
-  /** One run of `source`, asking for at most `perRun` summaries, its run `start`: its reply. */
+  /** One run of `source`, asking for at most `perRun` summaries, its slot due at `due`, its run
+    * `start`: its reply.
+    */
   private def walk[L <: caps.Pure](
       source: Source[L],
       perRun: Int,
+      due: Instant,
       start: Tainted[JobRun[SyncParams]],
       moves: Keeping^
   ): String = {
@@ -333,7 +337,7 @@ object Sync {
             go(w.after(outcome), after, next)
         }
 
-        go(source.walk(perRun, h.floor, h.held), start.map(_ => ()), Map.empty)
+        go(source.walk(perRun, h.floor, h.held, due), start.map(_ => ()), Map.empty)
     }
   }
 

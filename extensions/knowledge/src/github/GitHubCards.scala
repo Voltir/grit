@@ -1,5 +1,7 @@
 package grit.knowledge.github
 
+import java.time.Instant
+
 import grit.core.act.Answer
 import grit.core.document.Pointer
 import grit.core.id.{CorpusName, ScheduleKey}
@@ -74,7 +76,8 @@ final case class GitHubCards private (
   /** `perRun` plus [[maxUnits]], at most `Int.MaxValue`. */
   def calls(perRun: Int): Int = (perRun.toLong + maxUnits).min(Int.MaxValue.toLong).toInt
 
-  def walk(perRun: Int, floor: Label, held: Vector[Held]): RepositoryWalk =
+  /** [[RepositoryWalk.start]]'s: a repository's walk goes by what it holds, whenever it is due. */
+  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): RepositoryWalk =
     RepositoryWalk.start(this, perRun, floor, held)
 
   /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no

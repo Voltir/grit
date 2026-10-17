@@ -1,5 +1,7 @@
 package grit.knowledge.sync
 
+import java.time.Instant
+
 import grit.core.act.Answer
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
@@ -45,7 +47,8 @@ trait Source[L <: caps.Pure] extends caps.Pure {
   def calls(perRun: Int): Int
 
   /** This run's walk, keeping at `floor`, holding `held`, its cards as [[Held.read]] reads
-    * them, and asking for at most `perRun` summaries.
+    * them, asking for at most `perRun` summaries, its slot due at `due`
+    * ([[grit.core.job.JobRun.nominal]]).
     */
-  def walk(perRun: Int, floor: Label, held: Vector[Held]): Walk[L]
+  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[L]
 }
