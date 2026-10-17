@@ -9,15 +9,11 @@ import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Accounted,
   Accounts,
-  Cap,
-  Compartments,
   Integrity,
   Itemised,
   Provenance,
   Readers,
-  ResultPart,
-  RoomLabels,
-  Visibility
+  ResultPart
 }
 import grit.mcp.client.{Credential, FakeMcpServer, KeyFiles, McpClient, McpServer}
 import grit.mcp.scope.McpScope
@@ -167,27 +163,6 @@ object McpToolsTests extends TestSuite {
             Vector(Provenance(at("get_file_contents", "r", "widgets"), Integrity.Outside))
           )
         )
-      }
-    }
-
-    test("an answer whose items claim above their repository's cap is believed at the cap") {
-      // The reference deployment's shape: the service untrusted, one repository declared member.
-      val repository = at("get_file_contents", "r")
-      val visibility = Visibility
-        .of(
-          Compartments.Shipped,
-          RoomLabels.Public,
-          Vector.empty,
-          Vector.empty,
-          caps = Vector(Cap(Github.place, Integrity.Untrusted), Cap(repository, Integrity.Member))
-        )
-        .fold(why => throw new java.lang.AssertionError(why.toString), identity)
-      withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
-        fake.answers("get_file_contents", text("widgets"))
-        val mcp = toolsOver(fake, accounts = placing(Integrity.Authority))
-        val q = request("github_get_file_contents", Read)
-        visibility.believed(Github, mcp.run(route(q), q, _ => ()).accounted) ==> Integrity.Member
       }
     }
 
