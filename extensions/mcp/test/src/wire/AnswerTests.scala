@@ -176,6 +176,26 @@ object AnswerTests extends TestSuite {
       )
     }
 
+    test(
+      "a whole text's facts are held to the text's limits: a list over them cut to its " +
+        "leading items that fit, anything else over them none"
+    ) {
+      def page(items: Vector[ujson.Value]): ujson.Obj =
+        ujson.Obj("total_count" -> 30, "items" -> ujson.Arr.from(items))
+      def beside(payload: ujson.Value): ujson.Obj = {
+        val r = result(text("Found 30 results."))
+        r("structuredContent") = payload
+        r
+      }
+      val k = most(thirty, Clipped.MaxBytes - bytes(ujson.write(page(Vector.empty))))
+      val two = ujson.Obj("items" -> ujson.Arr.from(thirty), "more" -> ujson.Arr(1, 2))
+      Vector(beside(page(thirty)), beside(two)).map(Answer.of(_).map(a => (a.text, a.facts))) ==>
+        Vector(
+          Right(("Found 30 results.", Some(Facts.of(page(thirty.take(k)))))),
+          Right(("Found 30 results.", None))
+        )
+    }
+
     test("a cut answer's facts are those its server's extension gave beside the head") {
       val said = Facts.of(ujson.Obj("head" -> "rendered from this"))
       Answer

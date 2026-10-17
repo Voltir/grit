@@ -31,10 +31,12 @@ object Answer {
     * with a hint saying how many of how many items are shown when some are left out.
     * Otherwise it is cut to [[Clipped]]'s limits from the head, with a hint saying how much
     * was kept. Its facts are the result's `structuredContent`, as the result holds it (under a
-    * scope that is open, as the server sent it, unfiltered): whole when the text is not cut;
-    * when the text is cut by items and `structuredContent` is such a list of as many items, that
-    * list cut to the same leading items; otherwise none, as when there is no
-    * `structuredContent`.
+    * scope that is open, as the server sent it, unfiltered), held to [[Clipped]]'s limits as
+    * compact JSON whatever the text's size: when the text is not cut, whole when it fits, and
+    * when it is such a list, cut to the most leading items that fit; when the text is cut by
+    * items and `structuredContent` is such a list of as many items, that list cut to the same
+    * leading items, or fewer when fewer fit; otherwise none, as when there is no
+    * `structuredContent` or not one of its items fits.
     * [[McpError.Unreadable]] when the result has no `content` array, or an `isError` that is
     * not a boolean.
     */
@@ -44,15 +46,14 @@ object Answer {
       val structure = result.obj.get("structuredContent")
       val all = blocks.map(_._1) ++ structure.filter(_ => !blocks.exists(_._2)).map(ujson.write(_))
       val whole = all.mkString("\n")
-      if (Clipped.fits(whole)) new Answer(whole, isError, items, None, structure.map(Facts.of))
+      if (Clipped.fits(whole))
+        new Answer(whole, isError, items, None, structure.flatMap(bounded(_, Int.MaxValue)))
       else
         byItems(all, blocks.map(_._2)) match {
           case Some((clipped, kept, of)) =>
             // The structure's list, when it is one of as many items, cut as the text's was.
-            val facts = structure
-              .flatMap(listedIn)
-              .filter(_.items.size == of)
-              .map(list => Facts.of(list.holding(list.items.take(kept))))
+            val facts =
+              structure.filter(listedIn(_).exists(_.items.size == of)).flatMap(bounded(_, kept))
             new Answer(clipped.show, isError, items, None, facts)
           case None =>
             new Answer(Clipped.head(whole, Clipped.cutHint).show, isError, items, None, None)
@@ -126,6 +127,20 @@ object Answer {
             (clipped, k, n)
           }
         }
+
+  /** `v` as facts within [[Clipped]]'s limits as compact JSON: whole when it fits and is no list
+    * of over `upTo` items; when it is a list ([[listedIn]]), its most leading items, at most
+    * `upTo`, that fit; otherwise, or when not one item fits, `None`.
+    */
+  private def bounded(v: ujson.Value, upTo: Int): Option[Facts] =
+    listedIn(v) match {
+      case Some(list) =>
+        val items = list.items
+        def kept(k: Int): ujson.Value = list.holding(items.take(k))
+        val k = Clipped.most(items.size.min(upTo))(k => ujson.write(kept(k)))
+        Option.when(k > 0 || (items.isEmpty && Clipped.fits(ujson.write(v))))(Facts.of(kept(k)))
+      case None => Option.when(Clipped.fits(ujson.write(v)))(Facts.of(v))
+    }
 
   /** A JSON list as an answer's text block holds it: a bare array, or the one array-valued
     * field `key` of an object whose fields, in order, are `fields`.
