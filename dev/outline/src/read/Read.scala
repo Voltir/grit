@@ -681,7 +681,7 @@ object Read {
               byFile.toMap
             )
           )
-        else Left(complaint(captured, tasty.size))
+        else Left(complaint(captured))
     }
   }
 
@@ -805,14 +805,26 @@ object Read {
     })
   }
 
-  /** What the inspector printed is never shown: its first three non-blank lines, each cut to 200 characters, name the failure. */
-  private def complaint(captured: ByteArrayOutputStream, files: Int): String = {
-    val lines =
-      plain(captured.toString).linesIterator
-        .filter(_.trim.nonEmpty)
-        .take(3)
-        .map(_.take(200))
-        .toVector
-    s"the TASTy inspector could not read $files file(s): ${lines.mkString("\n")}"
+  /** What the inspector printed is never shown whole: its first error as `File.scala:line: message`, the message's
+    * first line cut before the compiler's ` # ` trace, or, when it printed no error in the compiler's shape, its first
+    * three non-blank lines, each cut to 200 characters.
+    */
+  private def complaint(captured: ByteArrayOutputStream): String = {
+    val lines = plain(captured.toString).linesIterator.toVector
+    val first = for {
+      (at, h) <- lines.iterator.zipWithIndex
+        .filter(_._1.startsWith("-- "))
+        .flatMap((l, h) => errorAt.findFirstMatchIn(l).map(_ -> h))
+        .nextOption()
+      said <- lines.drop(h + 1).collectFirst {
+        case messageLine(text) if text.trim.nonEmpty && !text.trim.forall(_ == '^') => text.trim
+      }
+    } yield s"${os.FilePath(at.group(1)).last}:${at.group(2)}: ${said.split(" # ", 2).headOption.getOrElse(said)}"
+    first.getOrElse(lines.filter(_.trim.nonEmpty).take(3).map(_.take(200)).mkString("\n"))
   }
+
+  // A compiler error's header, `-- Error: /path/File.scala:12:5 ---`, or `-- [E006] Not Found Error: …`.
+  private val errorAt = """Error: (\S+\.scala):(\d+):\d+""".r.unanchored
+  // A line of a compiler error's message: a bar with no line number before it.
+  private val messageLine = """^\s+\|(.*)$""".r
 }

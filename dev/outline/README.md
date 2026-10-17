@@ -162,7 +162,10 @@ says on stderr why it ends, then or when stdin closes.
   `-- not file text` line, with its lines as compiled and no doc or body.
 - A `.tasty` the inspector cannot read, such as one left by a test source whose last compile failed, or one a
   build deleted while the query read its package, fails no query: it is left out, the rest are read, and the answer names each such file it needed in one `-- not loaded:`
-  line, with the first line of the inspector's message, colour codes stripped. It is not read again until it changes.
+  line, with the inspector's first error as `File.scala:line: message` (or the first line of its message, colour codes
+  stripped), then the command compiling their modules:
+  `-- not loaded: p/User.tasty (User.scala:2: undefined: new p.World); compile to read them: ./mill m.compile`.
+  It is not read again until it changes.
 - Nothing compiles on its own. With no compiled classes, the answer says how to compile the
   root, and the tool does not run the build.
 

@@ -978,7 +978,7 @@ object Query {
 
   /** The first line the inspector captured, from a read's complaint, cut at 160 characters; empty when it captured none. */
   /** The one line naming `files`, which the inspector could not read, each with the first line of its message in
-    * `loaded`, then `complaint`'s cause when there is one; none for no file.
+    * `loaded`, then `complaint`'s cause when there is one, then the command compiling their modules; none for no file.
     */
   private def notLoaded(
       root: Root,
@@ -995,7 +995,14 @@ object Query {
           s"$name (${Read.plain(message).takeWhile(_ != '\n').take(160)})"
         }
       }
-      s"-- not loaded: ${named.mkString(", ")}$cause"
+      val modules = files
+        .flatMap(p => layout.classesDirs(root).find(p.startsWith))
+        .distinct
+        .map(layout.moduleOf(root, _))
+        .distinct
+      val compile =
+        if (modules.isEmpty) "" else s"; compile to read them: ${layout.compile(modules)}"
+      s"-- not loaded: ${named.mkString(", ")}$cause$compile"
     }
 
   private def captured(complaint: String): String =

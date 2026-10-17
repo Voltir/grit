@@ -246,7 +246,7 @@ object QueryTests extends TestSuite {
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
       assert(
         notes == Vector(
-          "-- not loaded: grit/outline/fixture/Gone.tasty (deleted since it was listed)"
+          "-- not loaded: grit/outline/fixture/Gone.tasty (deleted since it was listed); compile to read them: ./mill grit.outline.fixture.compile"
         )
       )
     }
@@ -272,7 +272,42 @@ object QueryTests extends TestSuite {
       val (defns, _, notes) = Query.loadAll(root, layout, tasty, Loaded.empty)
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
       assert(notes.size == 1)
-      assert(notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+      assert(
+        notes.head == "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file); compile to read them: compile"
+      )
+    }
+
+    test(
+      "a .tasty naming a class its module's failed compile removed is named with the compiler's error and the command compiling it"
+    ) {
+      val dir = os.temp.dir(prefix = "outline-removed-")
+      os.write(dir / "build.mill", "")
+      val world = dir / "m" / "src" / "p" / "World.scala"
+      val user = dir / "m" / "src" / "p" / "User.scala"
+      os.write(world, "package p\nclass World\n", createFolders = true)
+      os.write(user, "package p\nobject User { def w = new World }\n")
+      val classes = dir / "out" / "m" / "compile.dest" / "classes"
+      os.makeDir.all(classes)
+      val compiled = dotty.tools.dotc.Main.process(
+        Array(
+          "-d",
+          classes.toString,
+          "-classpath",
+          System.getProperty("java.class.path"),
+          world.toString,
+          user.toString
+        )
+      )
+      assert(!compiled.hasErrors)
+      // What a failed incremental compile of World.scala leaves: its classes gone, User's kept.
+      os.list(classes / "p").filter(_.last.startsWith("World")).foreach(os.remove)
+      val (_, _, notes) =
+        Query.loadAll(Root(dir), MillLayout, Vector(classes / "p" / "User.tasty"), Loaded.empty)
+      assert(
+        notes == Vector(
+          "-- not loaded: p/User.tasty (User.scala:2: undefined: new p.World); compile to read them: ./mill m.compile"
+        )
+      )
     }
 
     test(
@@ -398,13 +433,17 @@ object QueryTests extends TestSuite {
       val tasty = os.walk(classes).filter(_.ext == "tasty").toVector
       val (_, first, firstNotes) = Query.loadAll(root, layout, tasty, Loaded.empty)
       assert(
-        firstNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+        firstNotes == Vector(
+          "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file); compile to read them: compile"
+        )
       )
       assert(first.failed.keySet == Set(bad))
       val (defns, second, secondNotes) = Query.loadAll(root, layout, tasty, first)
       assert(Loaded.defns(root, layout, tasty, second).map(_._3) == Right(0))
       assert(
-        secondNotes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)")
+        secondNotes == Vector(
+          "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file); compile to read them: compile"
+        )
       )
       assert(defns.exists(_.fullName == "grit.outline.fixture.A"))
     }
@@ -436,7 +475,11 @@ object QueryTests extends TestSuite {
       )
       val (_, next, notes) = Query.loadAll(root, layout, tasty, first)
       assert(next.failed.get(bad) == Some(touched))
-      assert(notes == Vector("-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file)"))
+      assert(
+        notes == Vector(
+          "-- not loaded: grit/outline/fixture/Bad.tasty (not a TASTy file); compile to read them: compile"
+        )
+      )
     }
 
     test("show of a test suite's name shows it from test sources, under a note naming it") {
