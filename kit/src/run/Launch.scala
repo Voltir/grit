@@ -3,12 +3,9 @@ package grit.kit.run
 import java.time.Instant
 
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.act.phase.Placing
 import grit.assembly.estimate.CharEstimate
-import grit.assembly.linear.LinearAssembler
-import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.ClearedClassifier
-import grit.core.clock.{Clock, Fresh}
+import grit.core.clock.Clock
 import grit.core.context.ContextAssembler
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
@@ -19,24 +16,18 @@ import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.stitch.StitchReads
 import grit.core.store.{Askers, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.job.clock.ClockEdge
-import grit.job.run.{RunEnv, RunRecords}
-import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, PluginBinding, Topics}
+import grit.kit.deployment.{Deployment, Desks, Offered, PluginBinding, Topics}
 import grit.kit.environment.Secrets
-import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
-import grit.lifecycle.post.{PostEnv, Posting}
-import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
-import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
-import grit.lifecycle.stitch.{Stitch, StitchEnv}
-import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
+import grit.lifecycle.shadow.{ShadowAsking, ShadowVariant}
+import grit.lifecycle.triage.Mentions
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Cleared, Coding, Probes, Tuning}
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTally, TurnTooling}
+import grit.turn.{Turn, TurnTally, TurnTooling}
 
 /** The engine's workflows, launched on an open engine the same way by every way grit runs:
   * the chat, a run with arguments, `grit serve` and a catch-up.
@@ -127,214 +118,26 @@ private[grit] object Launch {
     reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
       throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
-    val assembler: ContextAssembler = d.assembly match {
-      case Assembly.Retrieval(budget, tail) =>
-        new RetrievalAssembler(
-          engine.entries,
-          engine.conversations,
-          engine.periods,
-          engine.principals,
-          engine.lifecycle,
-          engine.search,
-          engine.documents,
-          engine.stitches,
-          CharEstimate,
-          budget,
-          tail,
-          grit.core.stitch.Tuning.Default
-        )
-      case Assembly.Linear(budget) =>
-        new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
-    }
+    val wiring =
+      new Wiring(d, engine, engine.db, engine.jot, engine.inbox, engine.placements, clock)
+    val assembler: ContextAssembler = wiring.assembler
     // What every move is made with: a job's, the lifecycle's and the turn's asks.
     val moves: MovesEnv^{engine, models, classifier, clock} =
       Launch.moves(engine, models, classifier, clock)
-    // The one wait for an opening's placement, the turn's and triage's.
-    val placing: Placing.Env^{engine} =
-      Placing.Env(engine.entries, engine.conversations, engine.db, engine.placements)
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
-      // One Mentions both weighs a said root before its offer and asks its task questions in route.
-      val mentions =
-        new Mentions(
-          grit.core.stitch.StitchReads(
-            engine.entries,
-            engine.conversations,
-            engine.lifecycle,
-            engine.stitches,
-            engine.search,
-            engine.principals
-          ),
-          engine.rooms,
-          d.knowledge,
-          d.triage,
-          weighing,
-          engine.placements,
-          engine.db,
-          clock,
-          CharEstimate,
-          grit.core.stitch.Tuning.Default
-        )
-      val turnEnv =
-        TurnEnv(
-          TurnRecords(
-            engine.entries,
-            engine.ledger,
-            CharEstimate,
-            engine.profiles,
-            engine.principals,
-            engine.documents
-          ),
-          TurnHosting(
-            engine.conversations,
-            engine.prompts,
-            engine.toolSets,
-            engine.requests,
-            engine.edgeDirectory,
-            engine.voices,
-            engine.askers
-          ),
-          moves.records,
-          assembler,
-          classifier,
-          models,
-          engine.db,
-          clock,
-          Fresh.random(),
-          grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries),
-          grit.turn.TurnStitching(
-            engine.stitches,
-            engine.search,
-            engine.lifecycle,
-            grit.core.stitch.Tuning.Default,
-            placing
-          ),
-          grit.turn.TurnWeighing(engine.triage, mentions),
-          grit.turn.TurnRouting(mentions, d.budget, engine.spending)
-        )
+      val turnEnv = wiring.turnEnv(moves.records, assembler, models, classifier, weighing)
       engine.launch(
         // Told after the body returns, outside any step: the turn's steps are unchanged.
         id => d ?=> told(engine, id, Turn.body(turnEnv, tooling)(id)(using d), finished),
-        Close.body(
-          CloseEnv(
-            CloseRecords(
-              engine.entries,
-              engine.periods,
-              engine.lifecycle,
-              engine.tombstones,
-              engine.principals,
-              engine.triage,
-              engine.conversations
-            ),
-            moves,
-            d.budget,
-            engine.db,
-            clock
-          )
-        ),
-        Settle.body(
-          SettleEnv(
-            SettleRecords(engine.entries, engine.periods, engine.lifecycle, engine.principals),
-            engine.db,
-            clock,
-            moves,
-            d.budget
-          )
-        ),
-        Posting.body(
-          d.plugins,
-          PostEnv(
-            engine.periods,
-            engine.cursors,
-            engine.cache,
-            engine.keeper,
-            engine.tombstones,
-            engine.jot,
-            clock
-          )
-        ),
-        Triage.body(
-          TriageEnv(
-            TriageRecords(
-              engine.entries,
-              engine.triage,
-              engine.principals,
-              engine.conversations,
-              engine.speech,
-              engine.spending,
-              engine.acknowledgements,
-              engine.deliveries,
-              engine.stitches,
-              engine.search,
-              engine.lifecycle,
-              engine.rooms
-            ),
-            moves,
-            d.budget,
-            engine.db,
-            clock,
-            TriageSpeech(
-              d.speaking,
-              d.budget,
-              turn => engine.inbox.startTurn(turn).left.map(_.toString)
-            ),
-            grit.core.stitch.Tuning.Default,
-            placing,
-            d.knowledge,
-            d.triage
-          )
-        ),
-        Stitch.body(
-          StitchEnv(
-            StitchReads(
-              engine.entries,
-              engine.conversations,
-              engine.lifecycle,
-              engine.stitches,
-              engine.search,
-              engine.principals
-            ),
-            moves,
-            d.budget,
-            engine.db,
-            clock,
-            grit.core.stitch.Tuning.Default
-          )
-        ),
+        wiring.close(moves),
+        wiring.settle(moves),
+        wiring.post,
+        wiring.triage(moves),
+        wiring.stitch(moves),
         d.plugins,
-        Shadow.body(
-          ShadowEnv(
-            StitchReads(
-              engine.entries,
-              engine.conversations,
-              engine.lifecycle,
-              engine.stitches,
-              engine.search,
-              engine.principals
-            ),
-            engine.rooms,
-            engine.shadows,
-            variants(d, s),
-            d.knowledge,
-            engine.db,
-            clock,
-            grit.core.stitch.Tuning.Default,
-            moves,
-            d.budget
-          )
-        ),
+        wiring.shadow(moves, variants(d, s)),
         d.shadows.map(_.shadowing),
-        grit.job.run.Run.body(
-          RunEnv(
-            RunRecords(engine.entries, engine.conversations, engine.schedules, engine.deliveries),
-            engine.db,
-            engine.jot,
-            clock,
-            moves,
-            d.budget,
-            engine.keeper
-          ),
-          d.allJobs
-        )
+        wiring.run(moves)
       )
       if (sweeping) {
         engine.sweepEvery(d.sweep)
