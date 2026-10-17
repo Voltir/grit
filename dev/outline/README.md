@@ -188,7 +188,9 @@ The file sits at the repository root. Lines starting with `#` are comments.
   lists.
 - `test-call <name>`: the call `tests` reads test names from, as in `test("name") { … }`.
 
-A bad line is named by its line number in the error.
+A line opening with one of these words but not in its form is refused, named by its line number in the error. A line
+opening with any other word, a setting a newer outline may know, is ignored, and every answer names it after its
+`## root` line: `-- .outline.conf lines this outline does not know, ignored (a newer outline may read them): line 2: …`.
 
 ## Layout
 

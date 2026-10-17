@@ -30,7 +30,7 @@ object Query {
       cap: Int,
       tests: TestsShown = TestsShown.Summary,
       fullDocs: Boolean = false
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     val (answer, loaded) =
       showIn(
         root,
@@ -57,7 +57,7 @@ object Query {
       pattern: String,
       withPrivate: Boolean,
       cap: Int
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     val segments = pattern.split("\\.", -1).toVector
     val classes = layout.classesDirs(root)
     if (segments.exists(_.isEmpty))
@@ -282,7 +282,7 @@ object Query {
       outside: Option[String],
       cap: Int,
       allSites: Boolean = false
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     val bare = syms.filter(sym => !sym.contains('.') && sym.length < shortestBare)
     lazy val classes = layout.classesDirs(root)
     if (bare.nonEmpty)
@@ -496,7 +496,7 @@ object Query {
       names: Vector[String],
       level: Int,
       cap: Int
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     if (level < 0 || level > 1)
       (Answer(s"level must be 0 or 1\n${Help.usage(Help.area)}", Status.Failed), roots)
     else if (names.isEmpty) {
@@ -666,7 +666,7 @@ object Query {
       roots: Roots,
       target: String,
       cap: Int
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     val classes = layout.classesDirs(root)
     if (classes.isEmpty) (Answer(layout.notCompiled(root), Status.Failed), roots)
     else {
@@ -748,7 +748,7 @@ object Query {
       bodies: Set[String],
       cap: Int,
       fixtures: Boolean = false
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     if (layout.classesDirs(root).isEmpty)
       (Answer(layout.notCompiled(root), Status.Failed), roots)
     else
@@ -902,7 +902,7 @@ object Query {
       member: Option[String],
       withBody: Boolean,
       cap: Int
-  ): (Answer, Roots) = staled(root, layout, roots) { roots =>
+  ): (Answer, Roots) = staled(root, layout, config, roots) { roots =>
     val (answer, loaded) =
       familyIn(root, layout, config, Roots.of(roots, root), name, member, withBody, cap)
     (answer, Roots.put(roots, root, loaded))
@@ -1068,10 +1068,10 @@ object Query {
           }
       }
 
-  /** `query`'s answer, run over `roots` with `root`'s consulted files cleared, and with `staleLine`'s line, when it gives
-    * one, after the answer's `## root` line.
+  /** `query`'s answer, run over `roots` with `root`'s consulted files cleared, and after the answer's `## root` line the
+    * line naming `config`'s ignored lines and `staleLine`'s line, each when there is one.
     */
-  private def staled(root: Root, layout: Layout, roots: Roots)(
+  private def staled(root: Root, layout: Layout, config: Config, roots: Roots)(
       query: Roots => (Answer, Roots)
   ): (Answer, Roots) = {
     val (answer, next) =
@@ -1088,7 +1088,10 @@ object Query {
           loaded,
           None
         )
-    val lines = staleLine(root, layout, loaded).toVector ++ unread
+    val ignored = Option.when(config.ignored.nonEmpty)(
+      s"-- .outline.conf lines this outline does not know, ignored (a newer outline may read them): ${config.ignored.mkString(", ")}"
+    )
+    val lines = ignored.toVector ++ staleLine(root, layout, loaded) ++ unread
     if (lines.isEmpty || !answer.text.startsWith("## root")) (answer, next)
     else {
       val (first, rest) = answer.text.span(_ != '\n')

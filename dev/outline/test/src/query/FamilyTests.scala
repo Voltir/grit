@@ -155,6 +155,16 @@ object FamilyTests extends TestSuite {
       assert(answer.status == Status.NoMatch)
     }
 
+    test("the .outline.conf lines this outline ignored are named after an answer's root line") {
+      val config = Config.empty.copy(ignored = Vector("line 2: frobnicate x", "line 5: zap"))
+      val (answer, _) = family("Store", None, false, config)
+      assert(
+        answer.text.linesIterator.drop(1).nextOption() == Some(
+          "-- .outline.conf lines this outline does not know, ignored (a newer outline may read them): line 2: frobnicate x, line 5: zap"
+        )
+      )
+    }
+
     test(
       "an opaque type is NoMatch saying it is one, with the show and the uses that answer for it"
     ) {

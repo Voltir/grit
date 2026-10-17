@@ -10,12 +10,13 @@ final case class Area(
     purpose: Option[String] = None
 )
 
-/** The query settings a repository gives in its own `.outline.conf`: source paths no query shows unless it names them fully, the named areas `area` answers for, the call `tests` reads test names from, and the `secondary` source path prefixes, main sources a short name rarely means: a short name that one definition outside them and outside test sources matches resolves to that one. */
+/** The query settings a repository gives in its own `.outline.conf`: source paths no query shows unless it names them fully, the named areas `area` answers for, the call `tests` reads test names from, and the `secondary` source path prefixes, main sources a short name rarely means: a short name that one definition outside them and outside test sources matches resolves to that one. `ignored` holds each line naming a setting this outline does not know, as `line N: <text>`, which every answer names. */
 final case class Config(
     hidden: Vector[String],
     areas: Vector[Area],
     testCall: String = Config.defaultTestCall,
-    secondary: Vector[String] = Vector.empty
+    secondary: Vector[String] = Vector.empty,
+    ignored: Vector[String] = Vector.empty
 )
 
 object Config {
@@ -31,7 +32,10 @@ object Config {
   private val TestCallLine = raw"test-call\s+(\S+)".r
   private val SecondaryLine = raw"secondary\s+(.+)".r
 
-  /** `root`'s `.outline.conf`, or `empty` when it has none: lines `hide <prefix>` and `secondary <prefix>` (each a repo-relative source path prefix), `area <name> "<purpose>": <item> …` (the quoted purpose optional; an item a symbol name, or `family:<Trait>`) and `test-call <name>` (the call `tests` reads); `#` comments and blank lines are skipped. `Left` names the line that is none of these, an area with no items, an area whose name a line before already declared, and a `test-call` line after the first. */
+  // The settings this outline reads; a line opening with any other word is a newer outline's, and is ignored.
+  private val known = Set("hide", "secondary", "area", "test-call")
+
+  /** `root`'s `.outline.conf`, or `empty` when it has none: lines `hide <prefix>` and `secondary <prefix>` (each a repo-relative source path prefix), `area <name> "<purpose>": <item> …` (the quoted purpose optional; an item a symbol name, or `family:<Trait>`) and `test-call <name>` (the call `tests` reads); `#` comments and blank lines are skipped, and a line opening with any other word is kept in `ignored`. `Left` names a line opening with one of these words that is none of them, an area with no items, an area whose name a line before already declared, and a `test-call` line after the first. */
   def read(root: Root): Either[String, Config] = {
     val file = root.dir / ".outline.conf"
     if (!os.isFile(file)) Right(empty)
@@ -66,6 +70,10 @@ object Config {
               case TestCallLine(name) =>
                 if (namedTestCall) Left(s"$file: line $number repeats test-call: $line")
                 else Right((config.copy(testCall = name), true))
+              case _ if !known.contains(line.takeWhile(!_.isWhitespace)) =>
+                Right(
+                  (config.copy(ignored = config.ignored :+ s"line $number: $line"), namedTestCall)
+                )
               case _ =>
                 Left(
                   s"$file: line $number is none of `hide <prefix>`, `secondary <prefix>`, `area <name> $"<purpose>$": <items>` and `test-call <name>`: $line"

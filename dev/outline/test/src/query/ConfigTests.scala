@@ -16,6 +16,29 @@ object ConfigTests extends TestSuite {
       assert(Config.read(Root(two)).left.toOption.exists(_.contains("line 2")))
     }
 
+    test(
+      "a line naming a setting this outline does not know is ignored and kept, so a newer .outline.conf still reads"
+    ) {
+      val dir = os.temp.dir()
+      os.write(dir / ".outline.conf", "hide a\nfrobnicate x y\nsecondary dev/\n")
+      assert(
+        Config.read(Root(dir)) == Right(
+          Config(
+            Vector("a"),
+            Vector.empty,
+            secondary = Vector("dev/"),
+            ignored = Vector("line 2: frobnicate x y")
+          )
+        )
+      )
+    }
+
+    test("a known setting written wrong is still refused by its line") {
+      val dir = os.temp.dir()
+      os.write(dir / ".outline.conf", "hide a\narea store Store\n")
+      assert(Config.read(Root(dir)).left.toOption.exists(_.contains("line 2")))
+    }
+
     test("with no test-call line the test call is test") {
       assert(Config.empty.testCall == "test")
     }

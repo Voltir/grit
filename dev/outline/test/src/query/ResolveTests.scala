@@ -147,7 +147,7 @@ object ResolveTests extends TestSuite {
       "a .outline.conf's hide lines are read, comments skipped, and a bad line is named by number"
     ) {
       val bad = os.temp.dir()
-      os.write(bad / ".outline.conf", "hide a/b\n# a comment\nbogus\n")
+      os.write(bad / ".outline.conf", "hide a/b\n# a comment\nhide\n")
       assert(Config.read(Root(bad)).left.toOption.exists(_.contains("line 3")))
       val good = os.temp.dir()
       os.write(good / ".outline.conf", "hide a/b\n# a comment\n")
