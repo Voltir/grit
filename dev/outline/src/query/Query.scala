@@ -736,7 +736,8 @@ object Query {
       classes: Vector[os.Path],
       files: Vector[os.RelPath]
   ): String = {
-    val modules = modulesOf(root, layout, classes, files.flatMap(Locate.inPackagesIn(root, classes)))
+    val modules =
+      modulesOf(root, layout, classes, files.flatMap(Locate.inPackagesIn(root, classes)))
     if (modules.isEmpty) layout.notCompiled(root) else layout.compile(modules)
   }
 
@@ -1263,7 +1264,9 @@ object Query {
     val (tasty, unsearched) = packagesOf(root, classes, found.filter(keep))
     (
       tasty,
-      unsearched.filterNot(file => config.hidden.exists(prefix => file.toString.startsWith(prefix))),
+      unsearched.filterNot(file =>
+        config.hidden.exists(prefix => file.toString.startsWith(prefix))
+      ),
       words
     )
   }
@@ -1278,7 +1281,10 @@ object Query {
   ): (Vector[os.Path], Vector[os.RelPath]) = {
     val inPackages = Locate.inPackagesIn(root, classes)
     val inPackage = files.map(file => file -> inPackages(file))
-    (inPackage.flatMap(_._2).distinct, inPackage.collect { case (file, found) if found.isEmpty => file })
+    (
+      inPackage.flatMap(_._2).distinct,
+      inPackage.collect { case (file, found) if found.isEmpty => file }
+    )
   }
 
   /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the files `toRead` gives; with them, the files `toRead` names as not searched, and the cache after. The references are `Left` when their index cannot be read. */

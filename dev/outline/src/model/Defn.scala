@@ -14,7 +14,8 @@ object Kind {
     */
   def declaring(keywords: Vector[String], name: String): scala.util.matching.Regex = {
     import java.util.regex.Pattern
-    val keyword = keywords.map(_.split(' ').map(Pattern.quote).mkString("\\s+")).mkString("(?:", "|", ")")
+    val keyword =
+      keywords.map(_.split(' ').map(Pattern.quote).mkString("\\s+")).mkString("(?:", "|", ")")
     s"(?<![\\w$$])$keyword\\s+${Pattern.quote(name)}(?![\\w$$])".r
   }
 }
