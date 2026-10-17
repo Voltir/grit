@@ -337,12 +337,12 @@ object ServeChoiceTests extends TestSuite {
         Main
           .github(env)
           .map(
-            _.map((edge, link) =>
+            _.map(g =>
               (
-                EdgeName.value(edge.name),
-                edge.needs,
-                link.within.written,
-                link.service.place.written
+                EdgeName.value(g.edge.name),
+                g.edge.needs,
+                g.worksIn.within.written,
+                g.worksIn.service.place.written
               )
             )
           )
@@ -448,7 +448,7 @@ object ServeChoiceTests extends TestSuite {
         github <- Main.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
         drive <- Main.drive(DriveEnv, KeyFiles.Local)
       } yield {
-        val (worksIn, reaches) = Main.links(github.map(_._2), drive)
+        val (worksIn, reaches) = Main.links(github, drive)
         (
           WorksIn.of(worksIn, conversation).map(_.place.written),
           Reaches.of(reaches, conversation).map(_.place.written)

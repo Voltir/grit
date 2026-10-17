@@ -206,13 +206,13 @@ object Main {
              exitOnLeft(replyNote(env))
            )
          )
-       else Vector.empty) ++ githubEdge.map(_._1) ++ driveEdge.map(_.edge)
+       else Vector.empty) ++ githubEdge.map(_.edge) ++ driveEdge.map(_.edge)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
     // people are.
     val slackIn =
       if (slack) Some(exitOnLeft(SlackEdge.installedIn(env).left.map(_.message))) else None
-    val (worksIn, reaches) = links(githubEdge.map(_._2), driveEdge)
+    val (worksIn, reaches) = links(githubEdge, driveEdge)
     val deployment =
       exitOnLeft(
         Main.deployment(
@@ -1000,20 +1000,25 @@ object Main {
     } yield server
   }
 
-  /** The GitHub edge `grit serve` serves when `env` sets [[GithubTokenVar]] ([[McpEdge]], over
-    * [[githubServer]]), and the link that makes every Slack conversation work in its service;
-    * `None` when the token is unset; why not as [[githubServer]] says.
+  /** Where every Slack conversation lies: the place a link from all of them is declared at. */
+  private val SlackRoot: Place = Place.under(Namespace.Slack, Vector.empty)
+
+  /** What `grit serve` serves of GitHub: its edge, and the link that makes every Slack
+    * conversation work in its service.
     */
-  private[main] def github(
-      env: Map[String, String]
-  ): Either[String, Option[(ServedEdge, WorksIn)]] =
+  private[main] final case class Github(edge: ServedEdge, worksIn: WorksIn)
+
+  /** The GitHub edge `grit serve` serves when `env` sets [[GithubTokenVar]] ([[McpEdge]], over
+    * [[githubServer]]); `None` when the token is unset; why not as [[githubServer]] says.
+    */
+  private[main] def github(env: Map[String, String]): Either[String, Option[Github]] =
     if (!env.contains(GithubTokenVar)) Right(None)
     else
       for {
         service <- Service.of("github")
         server <- githubServer(env)
         edge <- McpEdge.serving(service, Vector(server))
-      } yield Some((edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service)))
+      } yield Some(Github(edge, WorksIn(SlackRoot, service)))
 
   /** The variable naming the absolute path of the JSON key file of the service account Drive's
     * files are read as (`~` is not expanded); unset, `grit serve` serves no Drive edge.
@@ -1039,14 +1044,14 @@ object Main {
     */
   private[main] final case class Drive(edge: ServedEdge, reaches: Reaches, names: PlaceNames)
 
-  /** The links `grit serve` declares, from GitHub's link (`github`) and Drive (`drive`): the
+  /** The links `grit serve` declares, from what it serves of GitHub and Drive: the
     * conversations working in a service, and those reaching one beside it.
     */
   private[main] def links(
-      github: Option[WorksIn],
+      github: Option[Github],
       drive: Option[Drive]
   ): (Vector[WorksIn], Vector[Reaches]) =
-    (github.toVector, drive.map(_.reaches).toVector)
+    (github.map(_.worksIn).toVector, drive.map(_.reaches).toVector)
 
   /** The Drive edge `grit serve` serves when `env` sets [[DriveKeyVar]] ([[DriveEdge]], over
     * Drive's read-only scope): the files of every shared drive shared with the key's service
@@ -1095,7 +1100,7 @@ object Main {
           }
         edge <- DriveEdge.serving(credential, reading)
       } yield Some(
-        Drive(edge, Reaches(Place.under(Namespace.Slack, Vector.empty), service), reading.names)
+        Drive(edge, Reaches(SlackRoot, service), reading.names)
       )
     }
 
