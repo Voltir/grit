@@ -84,7 +84,16 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, """look #call:{"path":"notes.txt"}""")
         val _ = engine.awaitTurn(turn)
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
-          Vector("gate:0", "ask:0", "ask:0:record", "call:0:send", "call:0:0", "gate:1", "ask:1")
+          Vector(
+            "ask:query",
+            "gate:0",
+            "ask:0",
+            "ask:0:record",
+            "call:0:send",
+            "call:0:0",
+            "gate:1",
+            "ask:1"
+          )
         val own = engine.db
           .read(Subject.Public)(engine.entries.list(turn.conversationId))
           .getOrElse(Vector.empty)
