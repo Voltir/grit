@@ -5,8 +5,7 @@ import grit.core.tool.Outcome
 /** A Drive file as a read of it answered: its entry, the leading whole lines of its text the
   * answer gave, and whether that is all of it (`complete`).
   */
-final case class DriveOpened(entry: DriveEntry, text: String, complete: Boolean)
-    extends caps.Pure
+final case class DriveOpened(entry: DriveEntry, text: String, complete: Boolean) extends caps.Pure
 
 object DriveOpened {
 

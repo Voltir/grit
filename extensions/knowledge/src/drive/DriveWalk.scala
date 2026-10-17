@@ -249,7 +249,8 @@ object DriveWalk {
           at,
           folders
         )
-      case Container.Folder(id, _) => files(env, s.copy(whole = whole), id, listing, at, Vector.empty)
+      case Container.Folder(id, _) =>
+        files(env, s.copy(whole = whole), id, listing, at, Vector.empty)
     }
   }
 

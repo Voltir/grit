@@ -117,7 +117,9 @@ object DriveCards {
       _ <- labels
         .find(_.dominates(Label.Unmapped))
         .fold(Right(()))(l =>
-          Left(s"a Drive source's label is never one holding what no one labelled: ${Label.written(l)}")
+          Left(
+            s"a Drive source's label is never one holding what no one labelled: ${Label.written(l)}"
+          )
         )
       _ <- labels
         .combinations(2)

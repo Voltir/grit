@@ -78,7 +78,9 @@ object DriveCardsTests extends TestSuite {
       )
     }
 
-    test("the shared drives are listed with no arguments, a drive or folder by its id, a file read by its id") {
+    test(
+      "the shared drives are listed with no arguments, a drive or folder by its id, a file read by its id"
+    ) {
       val source = cards(Vector(internal))
       assert(source.call(Step.List(DriveWalk.Drives, Way.Run)) == (list, ujson.Obj()))
       assert(

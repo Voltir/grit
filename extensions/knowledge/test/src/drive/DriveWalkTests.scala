@@ -29,39 +29,53 @@ object DriveWalkTests extends TestSuite {
   /** Each listing's path, to its listing and the label it was read at. */
   private val world: Map[String, (DriveListing, Label)] = Map(
     DriveWalk.Drives -> (DriveListing(Vector(drive("drive-a"), drive("drive-b")), true), internal),
-    "drive-a" -> (DriveListing(
-      Vector(
-        entry("folder-3", Kind.Folder, 1, "drive-a"),
-        entry("file-18", Kind.Document, 5, "drive-a"),
-        entry("file-4", Kind.Other("pdf"), 2, "drive-a")
+    "drive-a" -> (
+      DriveListing(
+        Vector(
+          entry("folder-3", Kind.Folder, 1, "drive-a"),
+          entry("file-18", Kind.Document, 5, "drive-a"),
+          entry("file-4", Kind.Other("pdf"), 2, "drive-a")
+        ),
+        true
       ),
-      true
-    ), internal),
-    "folder-3" -> (DriveListing(
-      Vector(
-        entry("file-text", Kind.Text, 13, "folder-3"),
-        entry("file-1", Kind.Document, 8, "folder-3")
+      internal
+    ),
+    "folder-3" -> (
+      DriveListing(
+        Vector(
+          entry("file-text", Kind.Text, 13, "folder-3"),
+          entry("file-1", Kind.Document, 8, "folder-3")
+        ),
+        true
       ),
-      true
-    ), confidential),
-    "drive-b" -> (DriveListing(
-      Vector(
-        entry("file-30", Kind.Spreadsheet, 6, "drive-b"),
-        entry("folder-31", Kind.Folder, 3, "drive-b")
+      confidential
+    ),
+    "drive-b" -> (
+      DriveListing(
+        Vector(
+          entry("file-30", Kind.Spreadsheet, 6, "drive-b"),
+          entry("folder-31", Kind.Folder, 3, "drive-b")
+        ),
+        true
       ),
-      true
-    ), internal),
-    "folder-31" -> (DriveListing(
-      Vector(
-        entry("file-32", Kind.Text, 7, "folder-31"),
-        entry("folder-33", Kind.Folder, 4, "folder-31")
+      internal
+    ),
+    "folder-31" -> (
+      DriveListing(
+        Vector(
+          entry("file-32", Kind.Text, 7, "folder-31"),
+          entry("folder-33", Kind.Folder, 4, "folder-31")
+        ),
+        true
       ),
-      true
-    ), internal)
+      internal
+    )
   )
 
   private val summary =
-    CardSummary.of("A file.", Vector.empty).fold(why => throw new java.lang.AssertionError(why), identity)
+    CardSummary
+      .of("A file.", Vector.empty)
+      .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Every step the walk makes, each answered from `drive`: a listing it holds, else withheld; a
     * read as `file {id}` at the listed change time; every keep made. `stop` stops the step it
@@ -85,7 +99,8 @@ object DriveWalkTests extends TestSuite {
                 drive.get(path).fold(Outcome.NotTaken("withheld"))((l, at) => Outcome.Listed(l, at))
               case Step.Read(id, _) =>
                 changed.get(id).flatten match {
-                  case Some(t) => Outcome.Fetched(Fetched.Text(s"file $id", UnitVersion.Changed(t)), internal)
+                  case Some(t) =>
+                    Outcome.Fetched(Fetched.Text(s"file $id", UnitVersion.Changed(t)), internal)
                   case None => Outcome.NotTaken("no such file")
                 }
               case Step.Summarise(_, _, _) => Outcome.Summarised(summary)
@@ -96,8 +111,8 @@ object DriveWalkTests extends TestSuite {
     go(walk, Vector.empty)
   }
 
-  private def fetches(steps: Vector[Step]): Vector[Step] = steps.collect {
-    case s: Step.Fetching => s
+  private def fetches(steps: Vector[Step]): Vector[Step] = steps.collect { case s: Step.Fetching =>
+    s
   }
 
   private def dropped(steps: Vector[Step]): Vector[(String, Label)] =
@@ -109,7 +124,9 @@ object DriveWalkTests extends TestSuite {
   private val labels: Vector[Label] = Vector(internal, confidential)
 
   val tests = Tests {
-    test("a first run lists the drives, each drive and the folders directly in it, and reads each Doc, Sheet and text file it cards through the listing naming it") {
+    test(
+      "a first run lists the drives, each drive and the folders directly in it, and reads each Doc, Sheet and text file it cards through the listing naming it"
+    ) {
       val (steps, synced) = run(cards(labels).walk(5, internal, Vector.empty))
       assert(
         fetches(steps) == Vector(
@@ -128,8 +145,14 @@ object DriveWalkTests extends TestSuite {
 
     test("a written card is titled with the file's name, at the time it last changed") {
       val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty))
-      val written = steps.collect { case Step.Write(card, _) => (card.path, card.title, card.version) }
-      assert(written.headOption == Some(("file-18", Some("name of file-18"), UnitVersion.Changed(day(5)))))
+      val written = steps.collect { case Step.Write(card, _) =>
+        (card.path, card.title, card.version)
+      }
+      assert(
+        written.headOption == Some(
+          ("file-18", Some("name of file-18"), UnitVersion.Changed(day(5)))
+        )
+      )
     }
 
     test("only a file whose change time is not its card's at the floor is read") {
@@ -140,7 +163,9 @@ object DriveWalkTests extends TestSuite {
       assert(synced.unchanged == 1)
     }
 
-    test("a listing carded by another run is not read from, and its files' cards at the floor are withdrawn") {
+    test(
+      "a listing carded by another run is not read from, and its files' cards at the floor are withdrawn"
+    ) {
       val holding = Vector(held("file-text", internal, 13))
       val (steps, _) = run(cards(labels).walk(5, internal, holding))
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
@@ -180,7 +205,9 @@ object DriveWalkTests extends TestSuite {
       assert(dropped(steps) == Vector.empty)
     }
 
-    test("a card at a label no longer declared, whose carding is the floor, is withdrawn; one at a declared label is not") {
+    test(
+      "a card at a label no longer declared, whose carding is the floor, is withdrawn; one at a declared label is not"
+    ) {
       val source = cards(Vector(Label.Public, confidential))
       val holding = Vector(held("file-old", internal, 1), held("file-low", Label.Public, 1))
       val (steps, _) = run(source.walk(5, confidential, holding), world.removed("drive-b"))
@@ -207,7 +234,10 @@ object DriveWalkTests extends TestSuite {
     test("a stopped step ends the walk at once, withdrawing nothing") {
       val stop = Step.List("drive-b", Way.Through(DriveWalk.Drives))
       val (steps, synced) =
-        run(cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1))), stop = Some(stop))
+        run(
+          cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1))),
+          stop = Some(stop)
+        )
       assert(steps.lastOption == Some(stop), synced.stopped == Some("refused"))
     }
   }
