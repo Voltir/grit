@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{AssemblyError, AssemblyRequest, Window}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
   ConversationId,
@@ -303,8 +303,8 @@ object TurnGateTurnTests extends TestSuite {
         Nearby.Open(api, at("fs:/home/nick/api"), Vector(EntrySeq(0))),
         Nearby.Closed(ops, at("slack:T1/C1/2.0"), EntrySeq(5))
       )
-      val opening = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      val opening = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
           Right(Window(Vector.empty, Vector.empty, nearby))
       }
       val posting = Toolbox
@@ -346,8 +346,8 @@ object TurnGateTurnTests extends TestSuite {
         )
       )
       val turn = say(entries, "two")
-      val opening = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      val opening = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
           Right(Window(Vector(EntrySeq(0)), Vector.empty))
       }
       val posting = Toolbox
@@ -399,8 +399,8 @@ object TurnGateTurnTests extends TestSuite {
       val at = (p: String) => Place.read(p).fold(e => sys.error(e), identity)
       val nearby =
         Vector(Nearby.Open(api, at("fs:/home/nick/api"), Vector(EntrySeq(0), EntrySeq(1))))
-      val opening = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      val opening = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
           Right(Window(Vector(EntrySeq(0), EntrySeq(1)), Vector.empty, nearby))
       }
       val posting = Toolbox

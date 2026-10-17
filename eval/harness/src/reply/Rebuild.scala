@@ -5,11 +5,19 @@ import java.time.Instant
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.core.context.{AssemblyError, AssemblyRequest, Width, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyRequest,
+  ContextAssembler,
+  Prepared,
+  Results,
+  Width,
+  Window
+}
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Catalog, Pinned}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.model.Pinned
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Routed
 import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
@@ -70,22 +78,28 @@ object Rebuild {
       width: Width,
       query: Option[Pinned]
   )(using Db^): Either[String, Window] =
-    new RetrievalAssembler(
-      view.entries,
-      view.conversations,
-      view.periods,
-      view.principals,
-      view.lifecycle,
-      view.search,
-      view.documents,
-      view.stitches,
-      new Writing(writer),
-      CharEstimate,
-      assembled.window,
-      assembled.tail,
-      assembled.tuning,
-      assembled.hits
-    ).assemble(AssemblyRequest(turn, query, width))
+    ContextAssembler
+      .draw(
+        new RetrievalAssembler(
+          view.entries,
+          view.conversations,
+          view.periods,
+          view.principals,
+          view.lifecycle,
+          view.search,
+          view.documents,
+          view.stitches,
+          CharEstimate,
+          assembled.window,
+          assembled.tail,
+          assembled.tuning,
+          assembled.hits
+        ),
+        AssemblyRequest(turn, width)
+      )(
+        asked => query.fold(Left(Prepared.NoPin))(_ => writer.complete(asked).left.map(_.cause)),
+        found => Results(found.ranked, found.beyond)
+      )
       .left
       .map { case AssemblyError.Store(e) =>
         s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
@@ -101,14 +115,6 @@ object Rebuild {
       .map(e =>
         s"the routing of ${WorkflowId.value(turn.workflowId)} was not read: ${Capture.kind(e)}"
       )
-
-  /** Models whose every pin's calls `writer` answers: a rebuilt window's query is the one its
-    * writer replays, whatever pin it is asked under.
-    */
-  private final class Writing(writer: Provider^) extends Models {
-    def catalog(): Either[String, Catalog] = Seed.catalog
-    def provider(pinned: Pinned): Provider^ = writer
-  }
 
   /** The window of the turn `workflow` recorded, rebuilt [[window]] over `reader`'s database as
     * it stood when the turn's `assemble` step started, its query the one the turn recorded:

@@ -4,7 +4,15 @@ import java.time.Instant
 
 import grit.act.phase.{Asking, Hearing, Placing}
 import grit.core.allot.Router
-import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyNote,
+  AssemblyRequest,
+  ContextAssembler,
+  Prepared,
+  Results,
+  Window
+}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
@@ -436,10 +444,14 @@ private[turn] object TurnSteps {
         at.routed
           .picked(env)
           .flatMap(pins =>
-            env.assembler
-              .assemble(AssemblyRequest(in.turn, pins.query, at.offer.width))(using
-                pins.reads(env.db)
-              )
+            ContextAssembler
+              .draw(env.assembler, AssemblyRequest(in.turn, at.offer.width))(
+                asked =>
+                  pins.query.fold(Left(Prepared.NoPin))(
+                    env.models.provider(_).complete(asked).left.map(_.cause)
+                  ),
+                found => Results(found.ranked, found.beyond)
+              )(using pins.reads(env.db))
               .left
               .map { case AssemblyError.Store(error) =>
                 TurnFailure.Assembly(TurnFailure.describe(error))

@@ -87,10 +87,20 @@ object RebuildTests extends TestSuite {
     "test/query"
   )
 
-  /** The stub's models, every query written by a [[Writer]] of its own. */
+  /** The stub's models, but every query written by a [[Writer]] of its own: the query its own
+    * pair's, so the turn's query call is told from its summary's.
+    */
   private object Writing extends Models {
-    def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
-    def provider(pinned: Pinned): Provider^ = new Writer
+    private val query =
+      grit.core.model.Assignment(StubModels.Ref, 1000, None)
+    private val inForce: Catalog = Catalog.of(
+      StubModels.Catalog.policy.copy(query = grit.core.model.Ladder.one(query)),
+      Vector.empty
+    )
+    private val stub = new StubModels()
+    def catalog(): Either[String, Catalog] = Right(inForce)
+    def provider(pinned: Pinned): Provider^ =
+      if (pinned.assignment == query) new Writer else stub.provider(pinned)
   }
 
   /** A query writer answering "Falcon budget", counting what it is asked. */
@@ -166,14 +176,13 @@ object RebuildTests extends TestSuite {
             engine.search,
             engine.documents,
             engine.stitches,
-            Writing,
             CharEstimate,
             Assembled.Shipped.window,
             Assembled.Shipped.tail,
             Tuning.Default
           ),
           grit.core.classify.ClearedClassifier.none("no classifier"),
-          new StubModels(),
+          Writing,
           engine.db,
           Clock.system(),
           Fresh.random(),

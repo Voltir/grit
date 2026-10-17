@@ -3,14 +3,22 @@ package grit.eval
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.core.context.{AssemblyNote, AssemblyRequest, ContextAssembler, Shown, Window}
+import grit.core.context.{
+  AssemblyNote,
+  AssemblyRequest,
+  ContextAssembler,
+  Prepared,
+  Results,
+  Shown,
+  Window
+}
 import grit.core.document.DocWeight
 import grit.core.id.{DocumentVersion, EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Routed
 import grit.core.store.Nearby
 import grit.core.visibility.Subject
@@ -225,12 +233,17 @@ object Eval {
         )
       )
       .fold(e => sys.error(s"eval: $e"), identity)
-    def assemble(assembler: ContextAssembler^): Either[String, Score] =
+    def assemble(
+        assembler: ContextAssembler,
+        write: ModelRequest => Either[String, Message.Assistant]
+    ): Either[String, Score] =
       routed.flatMap { r =>
-        val request =
-          AssemblyRequest(loaded.turn, r.cleared(Writing.Catalog.pin.query).map(_.first))
-        assembler
-          .assemble(request)(using r.bound(engine.db))
+        ContextAssembler
+          .draw(assembler, AssemblyRequest(loaded.turn))(
+            asked =>
+              r.cleared(Writing.Catalog.pin.query).fold(Left(Prepared.NoPin))(_ => write(asked)),
+            found => Results(found.ranked, found.beyond)
+          )(using r.bound(engine.db))
           .left
           .map(e => s"${strategy.label}: $e")
           .flatMap(w => held(engine, loaded, w).map(score(loaded, _, w.notes, w.documents)))
@@ -244,13 +257,16 @@ object Eval {
             engine.principals,
             CharEstimate,
             budget
-          )
+          ),
+          _ => Left("never asked")
         )
       case Strategy.Retrieval(budget, false, _, _) =>
         loaded.c.query.toRight(s"${loaded.c.name} has no query:").flatMap { q =>
-          assemble(retrieval(engine, new Handwritten(q), budget))
+          val writer = new Handwritten(q)
+          assemble(retrieval(engine, budget), writer.complete(_).left.map(_.cause))
         }
-      case Strategy.Retrieval(budget, true, _, _) => assemble(retrieval(engine, live, budget))
+      case Strategy.Retrieval(budget, true, _, _) =>
+        assemble(retrieval(engine, budget), live.complete(_).left.map(_.cause))
       case Strategy.Oracle =>
         Right(score(loaded, loaded.must, documents = loaded.mustDocuments))
     }
@@ -258,9 +274,8 @@ object Eval {
 
   private def retrieval(
       engine: Engine^,
-      writer: Provider^,
       budget: Tokens
-  ): ContextAssembler^ =
+  ): ContextAssembler =
     new RetrievalAssembler(
       engine.entries,
       engine.conversations,
@@ -270,7 +285,6 @@ object Eval {
       engine.search,
       engine.documents,
       engine.stitches,
-      new Writing(writer),
       CharEstimate,
       budget,
       Tokens(Tokens.value(budget) / 3),
@@ -446,12 +460,9 @@ object Eval {
       case Message.ToolResult(_, content, _) => s"\"${content.take(40)}\""
     }
 
-  /** Models whose every pin's calls `writer` answers. */
-  private final class Writing(writer: Provider^) extends Models {
-    def catalog(): Either[String, Catalog] = Right(Writing.Catalog)
-    def provider(pinned: Pinned): Provider^ = writer
-  }
-
+  /** The pins a query is written under: the first of them cleared for what a case's turn
+    * knows is the one asked (ADR 0031).
+    */
   private object Writing {
     val Catalog: Catalog = {
       val a = Assignment(

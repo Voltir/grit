@@ -61,7 +61,7 @@ object RecordTurnHistories {
           entries,
           new RecordingProvider,
           new RecordingProvider,
-          new Querying(entries),
+          new QueryWriting(entries),
           LabelledDb(Clearance.of(label), clearing(label, pairs*)),
           RoutedCatalog,
           TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries)
@@ -239,8 +239,8 @@ object RecordTurnHistories {
       val turn = say(entries, "which fix did I settle on?")
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       val section = grit.core.store.Nearby.Open(api, place, Vector(EntrySeq(0)))
-      val near = new grit.core.context.ContextAssembler {
-        def assemble(request: grit.core.context.AssemblyRequest)(using
+      val near = new Drawing {
+        def window(request: grit.core.context.AssemblyRequest)(using
             grit.core.store.Db^
         ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
           Right(
@@ -291,8 +291,8 @@ object RecordTurnHistories {
       val gone = write("old", "Deploys open.")
       val _ = documents.forget(gone)
       val turn = say(entries, "when does the freeze end?")
-      val held = new grit.core.context.ContextAssembler {
-        def assemble(request: grit.core.context.AssemblyRequest)(using
+      val held = new Drawing {
+        def window(request: grit.core.context.AssemblyRequest)(using
             grit.core.store.Db^
         ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
           Right(
@@ -343,8 +343,8 @@ object RecordTurnHistories {
           EntrySeq(0)
         )
       )
-      val near = new grit.core.context.ContextAssembler {
-        def assemble(request: grit.core.context.AssemblyRequest)(using
+      val near = new Drawing {
+        def window(request: grit.core.context.AssemblyRequest)(using
             grit.core.store.Db^
         ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
           Right(grit.core.context.Window(Vector.empty, Vector(TurnFixtures.queried), sections))
@@ -735,7 +735,7 @@ object RecordTurnHistories {
             entries,
             new RecordingProvider,
             new RecordingProvider,
-            new Querying(entries),
+            new QueryWriting(entries),
             LabelledDb(
               Clearance.of(internal),
               clearing(internal, RoutedFlash, RoutedSummary, RoutedQuery)
@@ -758,7 +758,7 @@ object RecordTurnHistories {
             entries,
             new RecordingProvider,
             new RecordingProvider,
-            new Querying(entries),
+            new QueryWriting(entries),
             LabelledDb(
               Clearance.inRoom(room, internal, internal),
               clearing(internal, RoutedFlash, RoutedSummary, RoutedQuery),

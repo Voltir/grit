@@ -51,7 +51,7 @@ import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
 final case class TurnEnv(
     records: TurnRecords,
     hosting: TurnHosting,
-    assembler: ContextAssembler^,
+    assembler: ContextAssembler,
     classifier: ClearedClassifier^,
     models: Models^,
     db: Db^,

@@ -2,7 +2,15 @@ package grit.turn
 
 import grit.core.act.MovesFixtures.FakeDb as LabelledDb
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyNote,
+  AssemblyRequest,
+  Prepared,
+  Querying,
+  Results,
+  Window
+}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -65,15 +73,35 @@ object TurnRouteTests extends TestSuite {
       Vector(Cleared(Party.of(flash).getOrElse(throw new java.lang.AssertionError()), internal))
     )
 
-  /** Records each request it is asked to assemble, reading once through the db it is given;
-    * `before` runs first, as a change landing while the turn assembles.
+  /** Records each request it is asked to assemble, reading once through the db it is given,
+    * and what its query writer came to (why none was written, when none was); `before` runs
+    * first, as a change landing while the turn assembles.
     */
-  private final class Asking(before: () => Unit = () => ()) extends ContextAssembler {
+  private final class Asking(before: () -> Unit = () => ()) extends Drawing {
     // Replaced whole by `assemble`, which the turn under test calls on the test's one thread;
     // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[AssemblyRequest]
-    def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
+    // As `asked`.
+    @caps.unsafe.untrackedCaptures
+    var queried = Vector.empty[grit.core.context.Querying]
+    override def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+      Right(
+        Prepared.Asking(
+          grit.core.provider.ModelRequest("Write a search query.", Vector.empty),
+          {
+            case Left(why) => Querying.Drawn(Vector(AssemblyNote.FellBack(why)))
+            case Right(_) => Querying.Drawn(Vector.empty)
+          }
+        )
+      )
+    override def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+        Db^
+    ): Either[AssemblyError, Window] = {
+      queried = queried :+ querying
+      window(request)
+    }
+    def window(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
       asked = asked :+ request
       before()
       db.read(Subject.Turn(request.turn))(Right(Window(Vector.empty)))
@@ -419,8 +447,12 @@ object TurnRouteTests extends TestSuite {
       route.map(r =>
         (r.summary, r.query).toList.flatten.map(p => p.assignment.ref -> p.assignment.effort)
       ) ==> Some(List(bare -> Some(Effort.Minimal), bare -> Some(Effort.Low)))
-      // The summary is made under its own pin, its effort its own.
-      pins ==> Vector(mighty -> Some(Effort.High), bare -> Some(Effort.Minimal))
+      // The query, the reply, then the summary, each made under its own pin, its effort its own.
+      pins ==> Vector(
+        bare -> Some(Effort.Low),
+        mighty -> Some(Effort.High),
+        bare -> Some(Effort.Minimal)
+      )
     }
 
     test(
@@ -444,7 +476,7 @@ object TurnRouteTests extends TestSuite {
       val flashPin = pinOf(flash, _.pin.turn)
       (
         routeOf(durable, turn, catalog),
-        assembler.asked.map(_.query),
+        assembler.queried,
         provider.requests.size,
         summarizer.requests.size
       ) ==> (
@@ -464,7 +496,7 @@ object TurnRouteTests extends TestSuite {
             )
           )
         ),
-        Vector(None),
+        Vector(Querying.Drawn(Vector(AssemblyNote.FellBack(Prepared.NoPin)))),
         1,
         0
       )
@@ -526,7 +558,10 @@ object TurnRouteTests extends TestSuite {
           entries,
           provider,
           new RecordingProvider,
-          new Asking(() => db.rise()),
+          // An assembler is pure; this one stands in for a change landing while the turn
+          // assembles. `db` is this test's own, risen on its one thread by the one assembly
+          // the turn makes, and read by nothing after the turn returns.
+          new Asking(caps.unsafe.unsafeAssumePure(() => db.rise())),
           db,
           catalog
         )

@@ -97,10 +97,10 @@ object TurnDocumentsTests extends TestSuite {
       case Written.Unchanged(v, _) => v
     }
 
-  /** An assembler whose every window is `window`. */
-  private def windowing(window: Window): ContextAssembler = new ContextAssembler {
-    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      Right(window)
+  /** An assembler whose every window is `drawn`. */
+  private def windowing(drawn: Window): ContextAssembler = new Drawing {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      Right(drawn)
   }
 
   /** A pointer at `path` read with `tool`. */

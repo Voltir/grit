@@ -127,7 +127,7 @@ private[grit] object Launch {
     reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
       throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
-    val assembler: ContextAssembler^ = d.assembly match {
+    val assembler: ContextAssembler = d.assembly match {
       case Assembly.Retrieval(budget, tail) =>
         new RetrievalAssembler(
           engine.entries,
@@ -138,7 +138,6 @@ private[grit] object Launch {
           engine.search,
           engine.documents,
           engine.stitches,
-          models,
           CharEstimate,
           budget,
           tail,

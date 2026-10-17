@@ -1,6 +1,18 @@
 package grit.assembly.linear
 
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Width, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyRequest,
+  Briefs,
+  ContextAssembler,
+  Prepared,
+  Querying,
+  Results,
+  Retrieved,
+  Shown,
+  Width,
+  Window
+}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
@@ -29,11 +41,41 @@ final class LinearAssembler(
     budget: Tokens
 ) extends ContextAssembler {
 
-  /** Within `budget`, or the budget `request.width` names. */
-  def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
+  /** Always drawn: it never searches. */
+  def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+    Right(Prepared.Drawn(Querying.Drawn(Vector.empty)))
+
+  /** Nothing: it never searches. */
+  def search(request: AssemblyRequest, written: Querying.Written)(using
+      Db^
+  ): Either[AssemblyError, Results] = Right(Results.empty)
+
+  /** The turn's own messages, and nothing found: it never searches. */
+  def briefs(
+      request: AssemblyRequest,
+      retrieved: Vector[Retrieved],
+      chars: Int
+  )(using db: Db^): Either[AssemblyError, Briefs] =
+    db.read(Subject.Turn(request.turn)) {
+      for {
+        all <- entries.list(request.turn.conversationId)
+        own = all.filter(_.turnSeq == request.turn.turnSeq)
+        speakers <- principals.speakers(own.map(_.id))
+      } yield Briefs(Briefs.text(Shown.turn(own, speakers), chars), Vector.empty)
+    }.left
+      .map(AssemblyError.Store(_))
+
+  /** Within `budget`, or the budget `request.width` names; `querying`'s notes on it. */
+  def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+      db: Db^
+  ): Either[AssemblyError, Window] = {
     val budget = request.width match {
       case Width.Deployed => this.budget
       case Width.Within(b, _) => b
+    }
+    val notes = querying match {
+      case Querying.Drawn(notes) => notes
+      case Querying.Written(_, queried) => Vector(queried)
     }
     db.read(Subject.Turn(request.turn)) {
       for {
@@ -45,7 +87,7 @@ final class LinearAssembler(
           LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
         val kept = LinearAssembler.tail(turns, speakers, estimator, left)
-        Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq))
+        Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes)
       }
     }.left
       .map(AssemblyError.Store(_))

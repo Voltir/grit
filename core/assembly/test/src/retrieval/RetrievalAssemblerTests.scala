@@ -15,7 +15,19 @@ import grit.assembly.linear.AssemblyFixtures.{
   store
 }
 import grit.assembly.linear.LinearAssembler
-import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Width, Window}
+import grit.core.context.{
+  AssemblyNote,
+  AssemblyRequest,
+  Briefs,
+  ContextAssembler,
+  Prepared,
+  Querying,
+  Results,
+  Retrieved,
+  Shown,
+  Width,
+  Window
+}
 import grit.core.document.{
   DocLabel,
   DocText,
@@ -343,9 +355,57 @@ object RetrievalAssemblerTests extends TestSuite {
       posted: Option[CallSlot] = None,
       width: Width = Width.Deployed,
       documents: DocumentSearch = new InMemoryDocuments,
-      query: Option[Pinned] = Some(QueryPin)
+      query: Option[Pinned] = Some(QueryPin),
+      admit: Results -> Results = r => Results(r.ranked, r.beyond)
   ): Window = {
-    val turn = TurnRef(c1, TurnSeq(at))
+    val models = new Writing(writer, QueryPin)
+    ContextAssembler
+      .draw(
+        retrieval(
+          world,
+          budget,
+          search,
+          locality,
+          origin,
+          stitches,
+          tuning,
+          others,
+          posted,
+          documents
+        ),
+        AssemblyRequest(TurnRef(c1, TurnSeq(at)), width)
+      )(
+        asked =>
+          query.fold(Left(Prepared.NoPin))(models.provider(_).complete(asked).left.map(_.cause)),
+        admit
+      )(using new FakeDb)
+      .getOrElse(sys.error("in-memory store"))
+  }
+
+  /** A query written for the stages a test runs one by one. */
+  private val WrittenQuery: Querying.Written = Querying.Written(
+    "database for probes",
+    AssemblyNote.Queried(
+      "database for probes",
+      "writer",
+      Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
+      Tokens.Zero
+    )
+  )
+
+  /** The assembler [[assemble]] draws with. */
+  private def retrieval(
+      world: World,
+      budget: Long,
+      search: EntrySearch,
+      locality: Locality = Locality.Default,
+      origin: Origin = Origin.Task("conversation", "c1"),
+      stitches: Option[StitchStore] = None,
+      tuning: Tuning = Tuning.Default,
+      others: Vector[Conversation] = Vector.empty,
+      posted: Option[CallSlot] = None,
+      documents: DocumentSearch = new InMemoryDocuments
+  ): RetrievalAssembler = {
     val conversations = new InMemoryConversationStore
     conversations.all =
       Conversation(c1, origin, Account.Local, Instant.EPOCH, Label.Public) +: others
@@ -379,15 +439,12 @@ object RetrievalAssemblerTests extends TestSuite {
           c => Origin.Task("conversation", ConversationId.value(c))
         )
       ),
-      new Writing(writer, QueryPin),
       CharEstimate,
       Tokens(budget),
       Tokens(25),
       tuning,
       Hits
     )
-      .assemble(AssemblyRequest(turn, query, width))(using new FakeDb)
-      .getOrElse(sys.error("in-memory store"))
   }
 
   /** The ids of the entries `world`'s conversation `c` has at `seqs`, in their order. */
@@ -424,7 +481,13 @@ object RetrievalAssemblerTests extends TestSuite {
       CharEstimate,
       Tokens(budget)
     )
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6)), None))(using new FakeDb)
+      .assemble(
+        AssemblyRequest(TurnRef(c1, TurnSeq(6))),
+        Querying.Drawn(Vector.empty),
+        Results.empty
+      )(using
+        new FakeDb
+      )
       .getOrElse(sys.error("in-memory store"))
 
   private def placeOf(name: String): Place = Origin.Task("conversation", name).place
@@ -924,6 +987,60 @@ object RetrievalAssemblerTests extends TestSuite {
           writer.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
         ),
         AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(2)))
+      )
+    }
+
+    test("a candidate not admitted is not in the window, and the next that fits takes its place") {
+      val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
+      // Turn 2 (11 tokens and its gap line) leaves no room for turn 0 (22 and its gap line).
+      def drawn(admit: Results -> Results): Vector[String] = turnsOf(
+        entries,
+        assemble(
+          entries,
+          new Writer(Some("database for probes: grit_agent")),
+          budget = 80,
+          new Scripted("t2:5", "t0:1"),
+          at = 10,
+          admit = admit
+        )
+      )
+      (
+        drawn(r => r),
+        drawn(r => Results(r.ranked.filterNot(_._1 == Retrieved.Own(TurnSeq(2)))))
+      ) ==>
+        (Vector("t2", "t8", "t9"), Vector("t0", "t8", "t9"))
+    }
+
+    test(
+      "the results of a search are ranked as the window packs them, each with its weighted score"
+    ) {
+      val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
+      val search = new Scripted("t2:5", "t0:1")
+      search.scores = Vector(3.0, 1.5)
+      val w = Weight.value(Locality.Default.weight)
+      retrieval(entries, 80, search).search(
+        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        WrittenQuery
+      )(using
+        new FakeDb
+      ) ==> Right(
+        Results(Vector(Retrieved.Own(TurnSeq(2)) -> 3.0 * w, Retrieved.Own(TurnSeq(0)) -> 1.5 * w))
+      )
+    }
+
+    test(
+      "briefs show the turn's message and each found candidate cut to the characters asked, and leave out one gone"
+    ) {
+      val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
+      retrieval(entries, 80, new Scripted("t2:5", "t0:1")).briefs(
+        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        Vector(Retrieved.Own(TurnSeq(0)), Retrieved.Own(TurnSeq(42))),
+        chars = 24
+      )(using new FakeDb) ==> Right(
+        Briefs(
+          "Where should my probe po",
+          Vector(Retrieved.Own(TurnSeq(0)) -> "Which database do probes")
+        )
       )
     }
 

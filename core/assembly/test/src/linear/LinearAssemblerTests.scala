@@ -2,7 +2,7 @@ package grit.assembly.linear
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
-import grit.core.context.{AssemblyError, AssemblyRequest, Shown, Width}
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Width}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
@@ -38,14 +38,17 @@ object LinearAssemblerTests extends TestSuite {
       budget: Long,
       width: Width = Width.Deployed
   ): Vector[String] = {
-    val seqs = new LinearAssembler(
-      world.entries,
-      world.periods,
-      world.principals,
-      CharEstimate,
-      Tokens(budget)
-    )
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn)), None, width))(using new FakeDb)
+    val seqs = ContextAssembler
+      .draw(
+        new LinearAssembler(
+          world.entries,
+          world.periods,
+          world.principals,
+          CharEstimate,
+          Tokens(budget)
+        ),
+        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width)
+      )(_ => Left("no writer"), r => r)(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries)
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
@@ -215,8 +218,10 @@ object LinearAssemblerTests extends TestSuite {
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       val w = store()
-      new LinearAssembler(Down, w.periods, w.principals, CharEstimate, Tokens(1000))
-        .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1)), None))(using new FakeDb) ==>
+      ContextAssembler.draw(
+        new LinearAssembler(Down, w.periods, w.principals, CharEstimate, Tokens(1000)),
+        AssemblyRequest(TurnRef(c1, TurnSeq(1)))
+      )(_ => Left("no writer"), r => r)(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }
   }

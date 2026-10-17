@@ -10,7 +10,7 @@ In dependency order:
   the period that fit. The baseline every other assembler is measured against.
   ← `estimate`
 - **`retrieval`**: `RetrievalAssembler`, the same closing entry, the recent tail, plus
-  what a query `QueryWriter` has a model write finds: the period's earlier turns, and the
+  what a query finds, which the turn has a model write from `QueryWriter`'s request: the period's earlier turns, and the
   turns of other conversations' open periods its scope holds and their kept closings
   (ADR 0013), and the enabled plugins' documents at places it holds, current at the turn's
   root (ADR 0028), ranked by an `EntrySearch` and a `DocumentSearch` in one pool, its own
@@ -18,6 +18,8 @@ In dependency order:
   own sections, one per conversation; and a thread that begins with grit's post, the turn that
   asked for it, whatever the scope. ← `linear`
 
+Neither makes a call: a `ContextAssembler` is pure, its window drawn in reads a turn records
+apart (`prepare`, `search`, `briefs`, `assemble`), the query written between them.
 Each draws its window as wide as it was built to, or within the budget (and, for retrieval,
 the hits per search) a request's `Width` names. Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
 entry. Only retrieval draws on other conversations.

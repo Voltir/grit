@@ -7,7 +7,18 @@ import scala.concurrent.duration.*
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Width, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyRequest,
+  Briefs,
+  ContextAssembler,
+  Prepared,
+  Querying,
+  Results,
+  Retrieved,
+  Width,
+  Window
+}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Pointer, Written}
 import grit.core.durable.Durable
 import grit.core.id.{
@@ -146,8 +157,18 @@ object TurnCaptureTests extends TestSuite {
   /** `under`'s windows, each holding `held` too, as a retrieval assembler's would. */
   private final class Holding(under: LinearAssembler, held: Vector[DocumentVersion])
       extends ContextAssembler {
-    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      under.assemble(request).map(_.copy(documents = held))
+    def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+      under.prepare(request)
+    def search(request: AssemblyRequest, written: Querying.Written)(using
+        Db^
+    ): Either[AssemblyError, Results] = under.search(request, written)
+    def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+        Db^
+    ): Either[AssemblyError, Briefs] = under.briefs(request, retrieved, chars)
+    def assemble(request: AssemblyRequest, querying: Querying, admitted: Results)(using
+        Db^
+    ): Either[AssemblyError, Window] =
+      under.assemble(request, querying, admitted).map(_.copy(documents = held))
   }
 
   /** The plugin every document here is kept by. */

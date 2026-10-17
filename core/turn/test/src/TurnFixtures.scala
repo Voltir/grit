@@ -9,7 +9,17 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.classify.{Answer, Answers, ClassifierError, Question}
 import grit.core.clock.{Clock, Fresh}
-import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyNote,
+  AssemblyRequest,
+  Briefs,
+  ContextAssembler,
+  Prepared,
+  Results,
+  Retrieved,
+  Window
+}
 import grit.core.document.{DocumentStore, InMemoryDocuments}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.InMemoryDeliveries
@@ -1057,18 +1067,45 @@ object TurnFixtures {
   private def all(entries: EntryStore): Vector[Entry] =
     entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
 
-  /** The linear window, with `note` added: an assembler that says it wrote a query. */
-  final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {
-    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+  /** An assembler that never searches: each turn's window is [[window]]'s. */
+  abstract class Drawing extends ContextAssembler {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
+    def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+      Right(Prepared.Drawn(grit.core.context.Querying.Drawn(Vector.empty)))
+    def search(request: AssemblyRequest, written: grit.core.context.Querying.Written)(using
+        Db^
+    ): Either[AssemblyError, Results] = Right(Results.empty)
+    def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+        Db^
+    ): Either[AssemblyError, Briefs] = Right(Briefs("", Vector.empty))
+    def assemble(
+        request: AssemblyRequest,
+        querying: grit.core.context.Querying,
+        admitted: Results
+    )(using
+        Db^
+    ): Either[AssemblyError, Window] = window(request)
+  }
+
+  /** The linear window [[LinearAssembler]] draws over `entries` for `request`. */
+  private def linearOver(entries: EntryStore, request: AssemblyRequest)(using
+      Db^
+  ): Either[AssemblyError, Window] =
+    ContextAssembler.draw(
       new LinearAssembler(
         entries,
         NoPeriods,
         new InMemoryPrincipals,
         CharEstimate,
         LinearAssembler.DefaultBudget
-      )
-        .assemble(request)
-        .map(_.copy(notes = Vector(note)))
+      ),
+      request
+    )(_ => Left("never asked"), found => Results(found.ranked, found.beyond))
+
+  /** The linear window, with `note` added: an assembler that says it wrote a query. */
+  final class Noting(entries: EntryStore, note: AssemblyNote) extends Drawing {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      linearOver(entries, request).map(_.copy(notes = Vector(note)))
   }
 
   /** A conversation that has never closed a period: an empty period store, over entries of
@@ -1203,28 +1240,35 @@ object TurnFixtures {
       pairs.toVector.flatMap(r => grit.core.visibility.Party.of(r).map(Cleared(_, label)))
     )
 
-  /** The window [[LinearAssembler]] draws, noted as a query writer would note it: the query
-    * written under the request's pin, served at fireworks; with no pin, none written.
+  /** The window [[LinearAssembler]] draws, noted as a query writer would note it: a query
+    * asked for each turn, noted as [[queried]], served at fireworks, when the writer answers;
+    * when it does not (no pin, or a failed call), why not, and none written.
     */
-  final class Querying(entries: EntryStore) extends ContextAssembler {
-    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      new LinearAssembler(
-        entries,
-        NoPeriods,
-        new InMemoryPrincipals,
-        CharEstimate,
-        LinearAssembler.DefaultBudget
-      )
-        .assemble(request)
-        .map(
-          _.copy(notes =
-            Vector(
-              request.query.fold[AssemblyNote](
-                AssemblyNote.FellBack(grit.assembly.retrieval.RetrievalAssembler.NoPin)
-              )(_ => queried.copy(upstream = Some("Fireworks")))
-            )
-          )
+  final class QueryWriting(entries: EntryStore) extends Drawing {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      linearOver(entries, request)
+    override def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+      Right(
+        Prepared.Asking(
+          ModelRequest("Write a search query.", Vector.empty),
+          {
+            case Left(why) =>
+              grit.core.context.Querying.Drawn(Vector(AssemblyNote.FellBack(s"no query: $why")))
+            case Right(_) =>
+              grit.core.context.Querying.Drawn(Vector(queried.copy(upstream = Some("Fireworks"))))
+          }
         )
+      )
+    override def assemble(
+        request: AssemblyRequest,
+        querying: grit.core.context.Querying,
+        admitted: Results
+    )(using Db^): Either[AssemblyError, Window] =
+      querying match {
+        case grit.core.context.Querying.Drawn(notes) => window(request).map(_.copy(notes = notes))
+        case grit.core.context.Querying.Written(_, q) =>
+          window(request).map(_.copy(notes = Vector(q)))
+      }
   }
 
   /** Models for a test: `inForce` is the catalog, and the calls under a pin of its summary's
@@ -1271,7 +1315,7 @@ object TurnFixtures {
       entries: EntryStore,
       provider: Provider^,
       summarizer: Provider^,
-      assembler: ContextAssembler^,
+      assembler: ContextAssembler,
       db: Db^,
       catalog: Catalog,
       speech: TurnSpeech = quiet(),
@@ -1319,7 +1363,7 @@ object TurnFixtures {
   def turnBodyWith(
       entries: EntryStore,
       provider: Provider^,
-      assembler: ContextAssembler^,
+      assembler: ContextAssembler,
       ledger: UsageLedger,
       classifier: Classifier^ = NoClassifier,
       speech: TurnSpeech = quiet(),
@@ -1563,8 +1607,8 @@ object TurnFixtures {
   }
 
   /** A window of the conversation's entries before the turn, the closing among them. */
-  final class Before(entries: InMemoryEntryStore) extends ContextAssembler {
-    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+  final class Before(entries: InMemoryEntryStore) extends Drawing {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
       Right(
         Window(
           entries

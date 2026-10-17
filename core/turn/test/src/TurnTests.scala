@@ -6,15 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.act.Extraction
-import grit.core.context.{
-  AssemblyError,
-  AssemblyNote,
-  AssemblyRequest,
-  ContextAssembler,
-  SectionTag,
-  Shown,
-  Window
-}
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, SectionTag, Shown, Window}
 import grit.core.durable.{FlowFixtures, Flows, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
@@ -96,13 +88,17 @@ object TurnTests extends TestSuite {
       val narrow = grit.core.context.Width.Within(Tokens(9000), 4)
       val recipe = grit.core.recipe.TurnRecipe.Shipped
         .copy(addressed = grit.core.recipe.Shaping(narrow, grit.core.recipe.Offering.All))
-      var asked = Vector.empty[AssemblyRequest]
-      val asking = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] = {
+      final class Asking extends Drawing {
+        // Replaced whole by `window`, which the turn under test calls on the test's one
+        // thread; read by the assertion after.
+        @caps.unsafe.untrackedCaptures
+        var asked = Vector.empty[AssemblyRequest]
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] = {
           asked = asked :+ request
           Right(Window(Vector.empty))
         }
       }
+      val asking = new Asking
       new InMemoryDurable().run(turn.workflowId)(
         turnBodyWith(
           entries,
@@ -112,7 +108,7 @@ object TurnTests extends TestSuite {
           recipe = recipe
         )
       )
-      asked ==> Vector(AssemblyRequest(turn, Some(TestCatalog.pin.query.first), narrow))
+      asking.asked ==> Vector(AssemblyRequest(turn, narrow))
     }
 
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
@@ -619,8 +615,8 @@ object TurnTests extends TestSuite {
         Nearby.Closed(ops, at("slack:T1/C1/2.0"), EntrySeq(5)),
         Nearby.Closed(ConversationId("old"), at("slack:T1/C1/1.0"), EntrySeq(0))
       )
-      val opening = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      val opening = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
           Right(Window(Vector(EntrySeq(1)), Vector.empty, nearby))
       }
       new InMemoryDurable().run(turn.workflowId)(
@@ -759,8 +755,8 @@ object TurnTests extends TestSuite {
         turnBodyWith(
           entries,
           provider,
-          new ContextAssembler {
-            def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          new Drawing {
+            def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
               Right(Window(Vector.empty))
           },
           new InMemoryUsageLedger
@@ -783,8 +779,8 @@ object TurnTests extends TestSuite {
       say(entries, "two")
       say(entries, "three")
       val turn = say(entries, "four")
-      val recalled = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      val recalled = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
           Right(Window(Vector(EntrySeq(0), EntrySeq(2))))
       }
       new InMemoryDurable().run(turn.workflowId)(
