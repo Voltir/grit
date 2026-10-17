@@ -265,11 +265,20 @@ object Calling {
     */
   def answer[F](requests: ToolRequests, cs: CallSlot, bound: Option[Label])(using
       Tx^
-  )(using faults: Faults[F]): Either[F, Outcome] =
+  )(using Faults[F]): Either[F, Outcome] =
+    answerRead[F](requests, cs, bound).map(_.outcome)
+
+  /** [[answer]], with the label of what it kept ([[Outcome.Read]]): [[Label.Public]] for an
+    * answer not cut, and for every `Failed` [[answer]] gives.
+    */
+  def answerRead[F](requests: ToolRequests, cs: CallSlot, bound: Option[Label])(using
+      Tx^
+  )(using faults: Faults[F]): Either[F, Outcome.Read] =
     requests.answered(cs) match {
       case Right(Some(o)) => readable(o, bound).left.map(e => faults.store(e.toString))
-      case Right(None) => Right(Outcome.Failed(RungUnanswered))
-      case Left(StoreError.Invalid(_)) => Right(Outcome.Failed(RungGone))
+      case Right(None) => Right(Outcome.Read(Outcome.Failed(RungUnanswered), Label.Public))
+      case Left(StoreError.Invalid(_)) =>
+        Right(Outcome.Read(Outcome.Failed(RungGone), Label.Public))
       case Left(e) => Left(faults.store(e.toString))
     }
 
@@ -279,16 +288,17 @@ object Calling {
   /** `o` as this transaction reads it, or why not: what it kept is above `bound` or the floor. */
   private def readable(o: Outcome, bound: Option[Label])(using
       tx: Tx^
-  ): Either[StoreError, Outcome] = {
+  ): Either[StoreError, Outcome.Read] = {
     val read = o.readable
-    Tx.holds(read.label, bound.getOrElse(Tx.floor(tx))).map(_ => read.outcome)
+    Tx.holds(read.label, bound.getOrElse(Tx.floor(tx))).map(_ => read)
   }
 
   /** A settled request's state, any answer on it read as [[readable]] reads it. */
   private def settled(state: RequestState, bound: Option[Label])(using
       Tx^
   ): Either[StoreError, RequestState] = state match {
-    case RequestState.Answered(o) => readable(o, bound).map(RequestState.Answered(_))
+    case RequestState.Answered(o) =>
+      readable(o, bound).map(r => RequestState.Answered(r.outcome))
     case other => Right(other)
   }
 

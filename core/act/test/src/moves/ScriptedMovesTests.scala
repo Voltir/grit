@@ -52,7 +52,7 @@ object ScriptedMovesTests extends MovesContract {
         else Right(Asked(TestTainted.authority(answer), Floor)),
       (service, tool, _) =>
         if (service == Probe && tool == Tool)
-          Right(Called.Done(TestTainted.at(Read, ProbeOutput), Floor))
+          Right(Called.Done(TestTainted.at(Read, ProbeOutput), ProbeAt))
         else Right(Called.Failed("unadvertised")),
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))

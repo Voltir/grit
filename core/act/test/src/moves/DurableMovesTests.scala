@@ -89,14 +89,15 @@ object DurableMovesTests extends MovesContract {
   * its classifier are cleared for `floor`; what is said at its places is capped by `capped`
   * ([[MovesContract.Probe]]'s at [[MovesContract.ProbeOutput]]). When `broken`, the day's spend
   * cannot be read, and the acting's allowance is daily, so every ask's admission fails. Its run
-  * starts believed at `integrity`.
+  * starts believed at `integrity`, and its places are labelled by `rooms`.
   */
 final class MovesWorld(
     broken: Boolean,
     floor: Label = Label.Public,
     integrity: Integrity = Integrity.Authority,
     capped: Vector[Cap] = Vector(Cap(MovesContract.Probe.place, MovesContract.ProbeOutput)),
-    answer: Outcome = Outcome.Done(MovesContract.Read)
+    answer: Outcome = Outcome.Done(MovesContract.Read),
+    rooms: RoomLabels = RoomLabels.Public
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -105,7 +106,7 @@ final class MovesWorld(
     Visibility
       .of(
         Compartments.Shipped,
-        RoomLabels.Public,
+        rooms,
         Vector.empty,
         Vector.empty,
         Vector(

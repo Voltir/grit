@@ -5,11 +5,24 @@ import grit.core.act.MovesFixtures.{Judging, shown}
 import grit.core.flow.TestTainted
 import grit.core.place.Place
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Cap, Integrity, Provenance}
+import grit.core.visibility.{
+  Accounted,
+  Cap,
+  DeclaredLabel,
+  Integrity,
+  Label,
+  Labelled,
+  Level,
+  Provenance,
+  Readers,
+  ResultPart,
+  RoomLabels
+}
 
 import utest.*
 
-/** [[DurableMoves]]' calls, as an edge's answer accounts for its items: what no scripted world
+/** [[DurableMoves]]' calls, as an edge's answer accounts for its items and the places they were
+  * kept at: what no scripted world
   * can show, since a scripted call's answer is the world's to give.
   */
 object DurableCallTests extends TestSuite {
@@ -46,6 +59,38 @@ object DurableCallTests extends TestSuite {
         )
       }
       got ==> Seen(Vector(Right("outside"), Right("untrusted")))
+    }
+
+    test(
+      "a call's answer holds nothing above its service's place's label joined with its kept parts' places"
+    ) {
+      val staff = under("staff")
+      val internal = Label.at(Level.Internal)
+      def at(labelled: Vector[(Place, DeclaredLabel)], answer: Outcome): Seen = {
+        val rooms = RoomLabels
+          .of(labelled, Labelled.Mapped(Label.Public))
+          .fold(p => throw new java.lang.AssertionError(p.written), identity)
+        val world = new MovesWorld(
+          broken = false,
+          Label.at(Level.Confidential),
+          answer = answer,
+          rooms = rooms
+        )
+        world.run(limits(0, 1), Vector(), new Judging())(m => Seen(Vector(called(m, "c"))))
+      }
+      val cut = Outcome.Done(
+        "Found:",
+        None,
+        Accounted.of(Vector.empty),
+        Some(Vector(ResultPart(Provenance(staff, Integrity.Member), Readers.AtPlace, "rota.md")))
+      )
+      Vector(
+        at(Vector(Probe.place -> internal), Outcome.Done(Read)),
+        at(Vector(staff -> internal), cut)
+      ) ==> Vector(
+        Seen(Vector(Right(s"Done($Read,$internal)"))),
+        Seen(Vector(Right(s"Done(Found:\nrota.md,$internal)")))
+      )
     }
   }
 }

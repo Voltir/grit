@@ -322,7 +322,8 @@ private[moves] object Act {
   /** A call: its request written for its edge (`call:{n}`); when sent, waited on (the call's
     * `expire` and `abandon`, as [[Calling.await]] takes them, waited on even
     * when its input diverged, so the run's later steps keep their places), and its answer read
-    * once its edge rang or answered done (`answer`), believed at what its service declares of
+    * once its edge rang or answered done (`answer`), held at its service's place's label joined
+    * with what it kept ([[Calling.answerRead]]), believed at what its service declares of
     * its answer's items ([[grit.core.visibility.Visibility.believed]]) met with its arguments'
     * integrity; one recorded with no integrity is read at `start`, what its run starts believed
     * at.
@@ -340,12 +341,12 @@ private[moves] object Act {
             (tx: Tx^) ?=> {
               val c = s.call
               Calling
-                .answer[String](env.records.requests, c.cs, None)
-                .map(o =>
+                .answerRead[String](env.records.requests, c.cs, None)
+                .map(r =>
                   called(
-                    o,
-                    Tx.floor(tx),
-                    Tx.visibility(tx).believed(c.service, o.accounted).meet(c.believed)
+                    r.outcome,
+                    r.label.join(Tx.roomLabel(c.service.place)),
+                    Tx.visibility(tx).believed(c.service, r.outcome.accounted).meet(c.believed)
                   )
                 )
             }

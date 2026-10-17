@@ -75,7 +75,9 @@ final case class Asked[R](reply: Tainted[R], at: Label)
 enum Called {
 
   /** The edge ran it: `text` is its answer, as the model would read it, holding nothing above
-    * `at`, and believed at most as what its service returns is
+    * `at`, the label in force at its service's place joined with those at the places of the
+    * parts it kept, and believed at most as what its
+    * service returns is
     * ([[grit.core.visibility.Visibility.outputOf]]) and as its arguments are.
     */
   case Done(text: Tainted[String], at: Label)

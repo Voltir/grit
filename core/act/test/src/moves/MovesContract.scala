@@ -47,7 +47,7 @@ abstract class MovesContract extends TestSuite {
     * [[Answer]]; a JSON ask's model replies each of `shapes` in turn, across the run, the last
     * again once they run out (`{"answer": Answer}`, [[Shaped]], when there are none); a
     * judgment's classifier answers `judgment` to each of its questions; and a call of [[Tool]] at [[Probe]] is done with
-    * [[Read]] at [[Floor]]; when `broken`, every ask's store fails instead. The run starts
+    * [[Read]] at [[ProbeAt]]; when `broken`, every ask's store fails instead. The run starts
     * believed at `integrity`.
     */
   def within[A <: caps.Pure](
@@ -66,7 +66,7 @@ abstract class MovesContract extends TestSuite {
 
   val tests = Tests {
     test(
-      "an ask is answered as its world answers, and a call done with its edge's answer, each at the world's floor"
+      "an ask is answered as its world answers at the world's floor, and a call done with its edge's answer at its service's place's label"
     ) {
       val got = within(limits(1, 1)) { m =>
         Seen(
@@ -76,7 +76,7 @@ abstract class MovesContract extends TestSuite {
           )
         )
       }
-      got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(s"Done($Read,$Floor)")))
+      got ==> Seen(Vector(Right(s"$Answer at $Floor"), Right(s"Done($Read,$ProbeAt)")))
     }
 
     test("a name made once, by either kind, is Repeated after, and the move is not made") {
@@ -88,7 +88,7 @@ abstract class MovesContract extends TestSuite {
           Right(Answer),
           Left(MoveError.Repeated(name("a"))),
           Left(MoveError.Repeated(name("a"))),
-          Right(s"Done($Read,$Floor)"),
+          Right(s"Done($Read,$ProbeAt)"),
           Left(MoveError.Repeated(name("b")))
         )
       )
@@ -120,7 +120,7 @@ abstract class MovesContract extends TestSuite {
           Left(MoveError.Repeated(name("a"))),
           Right(Answer),
           Left(MoveError.OverLimit(MoveKind.Ask, 2)),
-          Right(s"Done($Read,$Floor)"),
+          Right(s"Done($Read,$ProbeAt)"),
           Left(MoveError.OverLimit(MoveKind.Call, 1))
         )
       )
@@ -625,6 +625,11 @@ object MovesContract {
 
   val Probe: Service =
     Service.of("probe").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The label in force at [[Probe]]'s place: public, below [[Floor]], so a call read at the
+    * floor is seen.
+    */
+  val ProbeAt: Label = Label.Public
 
   val Tool: ToolName = ToolName("probe_read")
 
