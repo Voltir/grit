@@ -908,27 +908,61 @@ object Query {
       name: String
   ): Either[String, (Vector[Render.Listed], Vector[String], Loaded)] =
     Resolve.resolve(root, layout, config, Scope.WithTests, name, in).flatMap { resolved =>
-      val exact = resolved.defns.exists(_.fullName == name)
-      val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
-      val (mentioning, words) =
-        Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
-      val files = mentioning
-        .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
-      val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
-      val inPackage = files.map(file => file -> inPackages(file))
-      val tasty = inPackage.flatMap(_._2).distinct
-      val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
-      val (defns, next, missing) =
-        loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
-      val notes = resolved.notes ++ missing ++ notSearched(unsearched)
-      familyOf(defns, traitName, None, false).map { f =>
+      val read = familyRead(root, layout, config, name, resolved, None, false)
+      read.family.map { f =>
         val members =
           Vector(Render.Listed(f.trait0, "")) ++
             f.impls.map(d => Render.Listed(d, "impl ")) ++
             f.contracts.map { case (c, _) => Render.Listed(c, "contract ") }
-        (members, notes, next)
+        (members, read.notes, read.loaded)
       }
     }
+
+  /** A family `familyRead` read: `familyOf`'s answer, `resolved`'s notes then those naming what was not loaded or not
+    * searched, every file searched, the top-level definitions read from them, and the cache after.
+    */
+  private final case class FamilyRead(
+      family: Either[String, Family],
+      notes: Vector[String],
+      files: Vector[os.RelPath],
+      defns: Vector[Defn],
+      loaded: Loaded
+  )
+
+  /** The family of `resolved`'s first full name (sorted; `name` when it resolved none), narrowed to `member` with its body
+    * under `withBody` as `familyOf` narrows it, read from the packages of every source mentioning `name`'s last segment:
+    * `config.hidden` sources among them only when `resolved` holds `name` exactly.
+    */
+  private def familyRead(
+      root: Root,
+      layout: Layout,
+      config: Config,
+      name: String,
+      resolved: Resolved,
+      member: Option[String],
+      withBody: Boolean
+  ): FamilyRead = {
+    // A name matched exactly keeps its hidden candidate files; a short name does not reach them.
+    val exact = resolved.defns.exists(_.fullName == name)
+    val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
+    val (mentioning, words) =
+      Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
+    val files = mentioning
+      .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
+    val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
+    val inPackage = files.map(file => file -> inPackages(file))
+    val tasty = inPackage.flatMap(_._2).distinct
+    val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
+    val (defns, next, missing) =
+      loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
+    FamilyRead(
+      familyOf(defns, traitName, member, withBody),
+      resolved.notes ++ missing ++ notSearched(unsearched),
+      files,
+      defns,
+      next
+    )
+  }
 
   /** The `family` answer for `name` (a trait, or an abstract class), read through `root`'s own cache in `roots`, which then holds `root` as most recently used. `member` narrows the trait's and each implementation's text to that member, with its body under `withBody`. A `name` `Resolve.resolve` leaves naming several definitions is `Status.NoMatch`, its notes listing them and no family picked. Every answer starts with `root`'s `## root` line. */
   def family(
@@ -1083,28 +1117,16 @@ object Query {
           // A family is one trait's: an ambiguous name answers its candidates, as resolve lists them.
           (Answer((header(root) +: resolved.notes).mkString("\n"), Status.NoMatch), resolved.loaded)
         case Right(resolved) =>
-          // A name matched exactly keeps its hidden candidate files; a short name does not reach them.
-          val exact = resolved.defns.exists(_.fullName == name)
-          val traitName = resolved.defns.map(_.fullName).headOption.getOrElse(name)
-          val (mentioning, words) =
-            Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
-          val files = mentioning.filter(file =>
-            exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
-          )
-          val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
-          val inPackage = files.map(file => file -> inPackages(file))
-          val tasty = inPackage.flatMap(_._2).distinct
-          val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
-          val (defns, next, missing) =
-            loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
-          val head =
-            (Vector(header(root)) ++ resolved.notes ++ missing ++ notSearched(unsearched))
-              .mkString("\n")
-          familyOf(defns, traitName, member, withBody) match {
-            case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), next)
+          val read = familyRead(root, layout, config, name, resolved, member, withBody)
+          val head = (header(root) +: read.notes).mkString("\n")
+          read.family match {
+            case Left(message) => (Answer(s"$head\n$message", Status.NoMatch), read.loaded)
             case Right(f) =>
-              val stale = staleFiles(root, next, files.map(_.toString))
-              (Answer(Render.family(f, everyDefnOf(defns), head, stale, cap), Status.Found), next)
+              val stale = staleFiles(root, read.loaded, read.files.map(_.toString))
+              (
+                Answer(Render.family(f, everyDefnOf(read.defns), head, stale, cap), Status.Found),
+                read.loaded
+              )
           }
       }
 
