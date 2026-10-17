@@ -45,6 +45,14 @@ object ClassifyingTests extends TestSuite {
       (got, classifier.calls, clock.at) ==> (Right(yes), 2, start.plusSeconds(2))
     }
 
+    test("a refused request is not asked again, sleeps no time, and names no tries") {
+      val refused = Left(ClassifierError.Refused("HTTP 401: bad key"))
+      val classifier = new Judging(Vector(refused, Right(yes)))
+      val clock = new SetClock(start)
+      val got = Classifying.replied(classifier, request, clock).flatMap(_.answers)
+      (got, classifier.calls, clock.at) ==> (refused, 1, start)
+    }
+
     test("an unreadable reply is not asked again, and names no tries") {
       val classifier = new Judging(Vector(Left(ClassifierError.Unreadable("garbled")), Right(yes)))
       val clock = new SetClock(start)

@@ -532,6 +532,7 @@ private[moves] object Act {
   /** Why a classifier gave no answer that reads. */
   def unanswered(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"
+    case ClassifierError.Refused(cause) => s"the classifier refused the request: $cause"
     case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
   }
 

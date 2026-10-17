@@ -84,7 +84,7 @@ object LossWindow {
       roots.map((turn, said) => turn -> jev.ask(WriteOut.Said(said), WriteOut.question))
     val asked = answered.map((turn, a) =>
       turn -> a.map(_.value).left.map {
-        case ClassifierError.Unavailable(_) => "unavailable"
+        case ClassifierError.Unavailable(_) | ClassifierError.Refused(_) => "unavailable"
         case ClassifierError.Unreadable(_) => "unreadable"
       }
     )

@@ -41,6 +41,11 @@ object LiveTests extends TestSuite {
       )
     }
 
+    test("tags unanswered as refused are kept as Unavailable, as an outage's are") {
+      Live.of(Tags.Unanswered("refused: HTTP 401: bad key")) ==>
+        Live.Unanswered(Failure.Unavailable)
+    }
+
     test("v1's names with a kind choice of no kind are kept under their names") {
       val odd = v1.updated(
         Tags.V1.kind,

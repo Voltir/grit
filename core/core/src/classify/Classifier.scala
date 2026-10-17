@@ -76,30 +76,38 @@ final case class Answered[T](value: T, usage: Usage, model: String)
 /** A classifier call that produced no usable answer. */
 enum ClassifierError {
 
-  /** The classifier could not be reached or refused the request. */
+  /** The classifier could not be reached, or was too busy to answer: asking again later may
+    * succeed.
+    */
   case Unavailable(cause: String)
+
+  /** The classifier was reached and turned the request down: asking it again would not help. */
+  case Refused(cause: String)
 
   /** It replied, but not with an answer the questions allow. */
   case Unreadable(why: String)
 
-  /** Which of these it is, without its words. */
+  /** Which of these it is, without its words; a refusal is of kind `Unavailable`. */
   def kind: ClassifierError.Kind = this match {
-    case Unavailable(_) => ClassifierError.Kind.Unavailable
+    case Unavailable(_) | Refused(_) => ClassifierError.Kind.Unavailable
     case Unreadable(_) => ClassifierError.Kind.Unreadable
   }
 
   /** Its kind and its words, as a record of an unanswered question keeps them:
-    * `unavailable: <cause>` or `unreadable: <why>`.
+    * `unavailable: <cause>`, `refused: <cause>` or `unreadable: <why>`.
     */
   def said: String = this match {
     case Unavailable(cause) => s"unavailable: $cause"
+    case Refused(cause) => s"refused: $cause"
     case Unreadable(why) => s"unreadable: $why"
   }
 }
 
 object ClassifierError {
 
-  /** What kind of failure a [[ClassifierError]] is, kept where its words may not be. */
+  /** What kind of failure a [[ClassifierError]] is, kept where its words may not be: a stored
+    * triage shadow allows these two alone.
+    */
   enum Kind {
     case Unavailable, Unreadable
   }

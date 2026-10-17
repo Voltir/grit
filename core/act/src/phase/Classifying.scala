@@ -9,9 +9,9 @@ import grit.core.clock.Clock
 object Classifying {
 
   /** `request`'s reply from `classifier`, asked again after each of [[Asking.Retries]] while
-    * it is `Unavailable`, waiting on `clock`. The last failure, or an `Unreadable` one, the
-    * reply's answers' included, has its cause followed by " (after n tries)" when there was
-    * more than one.
+    * it is `Unavailable`, waiting on `clock`. The last failure, or a `Refused` or `Unreadable`
+    * one, the reply's answers' included, has its cause followed by " (after n tries)" when
+    * there was more than one.
     */
   def replied(
       classifier: Classifier^,
@@ -33,6 +33,7 @@ object Classifying {
     val told = if (tries == 1) "" else s" (after $tries tries)"
     error match {
       case ClassifierError.Unavailable(cause) => ClassifierError.Unavailable(cause + told)
+      case ClassifierError.Refused(cause) => ClassifierError.Refused(cause + told)
       case ClassifierError.Unreadable(why) => ClassifierError.Unreadable(why + told)
     }
   }

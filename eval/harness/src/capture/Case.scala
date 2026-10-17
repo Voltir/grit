@@ -139,15 +139,16 @@ object Failure {
 
   /** The kind of `e`, never its words: they can quote the request. */
   def of(e: ClassifierError): Failure = e match {
-    case ClassifierError.Unavailable(_) => Unavailable
+    case ClassifierError.Unavailable(_) | ClassifierError.Refused(_) => Unavailable
     case ClassifierError.Unreadable(_) => Unreadable
   }
 
   /** The kind of failure `why` states, in the words triage and stitching keep: `unavailable:
-    * …`, `unreadable: …`, `the question repeats …` or `fewer than two options`.
+    * …` or `refused: …` (both `Unavailable`), `unreadable: …`, `the question repeats …` or
+    * `fewer than two options`.
     */
   def of(why: String): Failure =
-    if (why.startsWith("unavailable:")) Unavailable
+    if (why.startsWith("unavailable:") || why.startsWith("refused:")) Unavailable
     else if (why.startsWith("unreadable:")) Unreadable
     else if (why.startsWith("the question repeats") || why == "fewer than two options") Unasked
     else Other

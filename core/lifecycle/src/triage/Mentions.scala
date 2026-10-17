@@ -93,7 +93,8 @@ final class Mentions(
 
   /** Why a classifier's failure leaves a message unweighed. */
   private def unweighed(e: ClassifierError): Weighing.Unweighed = e match {
-    case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
+    case ClassifierError.Unavailable(_) | ClassifierError.Refused(_) =>
+      Weighing.Unweighed.Unavailable
     case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
   }
 

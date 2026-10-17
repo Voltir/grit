@@ -118,6 +118,7 @@ class ScriptedMoves(
   /** Why a classifier's answers did not read, in the durable moves' words. */
   private def unanswered(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"
+    case ClassifierError.Refused(cause) => s"the classifier refused the request: $cause"
     case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
   }
 
