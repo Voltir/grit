@@ -96,10 +96,16 @@ object Sync {
     // A literal of the job name's grammar: every test of the job throws here if not.
     JobName.of("knowledge-sync").fold(why => throw new IllegalStateException(why), identity)
 
+  /** The ask summarising `head`, told first that it is `subject` ([[Step.Summarise]]). */
+  private[sync] def summarising(subject: String, head: String): Posed.Json[CardSummary] =
+    Posed.Json(System, Vector(Message.User(s"$subject:\n\n$head")), CardSummary.Reply)
+
   /** What the summary model is told, before the file. */
   private val System: String =
-    "You summarise one file of a repository for a catalog that tells an assistant what each " +
-      "file holds, so it can choose which to read. Reply by calling `reply` with `summary`, " +
+    "You summarise one file for a catalog that tells an assistant what each file holds, so it " +
+      "can choose which to read. The line before the file says what it is and where it is " +
+      "kept: call it what that line calls it, whatever its text looks like. Reply by calling " +
+      "`reply` with `summary`, " +
       s"at most ${CardSummary.Words} words on what the file is and what it holds, and `terms`, " +
       s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +
       "that the summary leaves out."
@@ -185,12 +191,8 @@ object Sync {
                     case fetched => (Outcome.Fetched(fetched, at), read, seen)
                   }
               }
-            case Step.Summarise(path, head, _) =>
-              val asked = Posed.Json(
-                System,
-                Vector(Message.User(s"${source.subject(path)}:\n\n$head")),
-                CardSummary.Reply
-              )
+            case Step.Summarise(path, subject, head, _) =>
+              val asked = summarising(subject, head)
               val key = CardMoves.of(Phase.Summary, CardKey.of(corpus, path))
               val on = seen.getOrElse(path, Seen(h.floor, read, Way.Run))
               val from = believed(path, read, seen)

@@ -33,10 +33,12 @@ object Step {
   /** Read the file `path`, reached `way`. */
   final case class Read(path: String, way: Way) extends Fetching
 
-  /** Summarise `head`, the first 8 KB of the file `path` as read at `version`; the card written
-    * from it records `version`.
+  /** Summarise `head`, the first 8 KB of the file `path` as read at `version`, the summary model
+    * told before it that it is `subject` (`A Google Sheet named …`: what kind of thing it is, in
+    * its source's own words); the card written from it records `version`.
     */
-  final case class Summarise(path: String, head: String, version: UnitVersion) extends Step
+  final case class Summarise(path: String, subject: String, head: String, version: UnitVersion)
+      extends Step
 
   /** Keep `card` at the run's floor, withdrawing its copy at `replacing`, if any, in that keep. */
   final case class Write(card: Card, replacing: Option[Label]) extends Step

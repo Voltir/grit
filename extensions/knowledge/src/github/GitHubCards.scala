@@ -71,7 +71,8 @@ final case class GitHubCards private (
     entries.map(_.path).mkString("\n")
   }
 
-  def subject(path: String): String = s"The file `$path` in $owner/$repo"
+  /** What the summary model is told the file at `path` is ([[Step.Summarise]]). */
+  def subject(path: String): String = s"A file in the GitHub repository $owner/$repo, at `$path`"
 
   /** `perRun` (the most files a run reads), plus [[maxUnits]] (the most directories in scope it
     * lists), plus the root and each directory on the way to an included path, at most

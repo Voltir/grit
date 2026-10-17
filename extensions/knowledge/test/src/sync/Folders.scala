@@ -38,8 +38,6 @@ final class Folders(
 
   def checked(listing: Folders.Names): String = listing.paths.mkString("\n")
 
-  def subject(path: String): String = s"The file `$path`"
-
   def calls(perRun: Int): Int = 10
 
   def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Folders.Names] =
@@ -81,8 +79,8 @@ object Folders {
     def after(outcome: Outcome[Names]): Walking = (todo, outcome) match {
       case (Step.List(_, _) :: rest, Outcome.Listed(_, _)) => copy(todo = rest)
       case (Step.Read(path, _) :: rest, Outcome.Fetched(Fetched.Text(text, version), _)) =>
-        copy(todo = Step.Summarise(path, text, version) :: rest)
-      case (Step.Summarise(path, _, version) :: rest, Outcome.Summarised(summary)) =>
+        copy(todo = Step.Summarise(path, s"The file `$path`", text, version) :: rest)
+      case (Step.Summarise(path, _, _, version) :: rest, Outcome.Summarised(summary)) =>
         val pointer = Pointer.of(Read, "path" -> ujson.Str(path))
         pointer.fold(
           why => copy(stop = Some(why)),

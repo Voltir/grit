@@ -109,7 +109,7 @@ object DriveWalkTests extends TestSuite {
                     Outcome.Fetched(Fetched.Text(s"file $id", UnitVersion.Changed(t)), internal)
                   case None => Outcome.NotTaken("no such file")
                 }
-              case Step.Summarise(_, _, _) => Outcome.Summarised(summary)
+              case Step.Summarise(_, _, _, _) => Outcome.Summarised(summary)
               case _ => Outcome.Kept
             }
         go(w.after(outcome), steps :+ step)
@@ -170,6 +170,23 @@ object DriveWalkTests extends TestSuite {
       )
     }
 
+    test(
+      "a file is summarised as what Drive calls it, a Doc, a Sheet or a text file, by its name"
+    ) {
+      val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty, due))
+      val subjects = steps.collect { case Step.Summarise(id, subject, _, _) => (id, subject) }
+      val unnamed = DriveEntry("file-9", Kind.Text, None, None, None)
+      assert(
+        subjects == Vector(
+          "file-18" -> "A Doc named `name of file-18` in Google Drive",
+          "file-30" -> ("A Sheet (a spreadsheet) named `name of file-30` in Google Drive; " +
+            "its first tab is given below as comma-separated rows"),
+          "file-32" -> "A text file named `name of file-32` in Google Drive"
+        ),
+        DriveCards.subject(unnamed) == "A text file in Google Drive"
+      )
+    }
+
     test("only a file whose change time is not its card's at the floor is read") {
       val holding =
         Vector(held("file-18", internal, 5, "drive-a"), held("file-30", internal, 1, "drive-b"))
@@ -186,7 +203,7 @@ object DriveWalkTests extends TestSuite {
       val (steps, synced) = run(cards(labels).walk(5, internal, holding, due))
       val moved = steps.collect { case Step.Relabel(key, from) => (key, from) }
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
-      val summarised = steps.collect { case Step.Summarise(id, _, _) => id }
+      val summarised = steps.collect { case Step.Summarise(id, _, _, _) => id }
       assert(
         moved == Vector((CardKey.of(corpus.name, "file-18"), internal)),
         !reads.contains("file-18"),

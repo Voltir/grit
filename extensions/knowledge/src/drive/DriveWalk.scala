@@ -223,7 +223,7 @@ object DriveWalk {
             write(env, s, card(env, entry, within, version, Empty, pointer))
           case Fetched.Text(text, version) =>
             s.step(
-              Step.Summarise(entry.id, Fetched.head(text), version),
+              Step.Summarise(entry.id, DriveCards.subject(entry), Fetched.head(text), version),
               Waiting.Summary(entry, within, version, pointer)
             )
           case Fetched.Unversioned(why) => advance(env, unwritten(s, entry.id, why))

@@ -230,7 +230,7 @@ object RepositoryWalk {
             write(env, s, Card.file(env.cards.corpus, path, sha, Empty, pointer))
           case Fetched.Text(text, sha) =>
             s.step(
-              Step.Summarise(path, Fetched.head(text), sha),
+              Step.Summarise(path, env.cards.subject(path), Fetched.head(text), sha),
               Waiting.Summary(path, sha, pointer)
             )
           case Fetched.Unversioned(why) => advance(env, unwritten(s, path, why))

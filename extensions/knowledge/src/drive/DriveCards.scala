@@ -71,8 +71,6 @@ final case class DriveCards private (
     */
   def checked(listing: DriveListing): String = listing.entries.flatMap(_.name).mkString("\n")
 
-  def subject(path: String): String = s"The Drive file with the id `$path`"
-
   /** `perRun` (the most files a run reads), plus [[maxUnits]] (the most folders it lists), plus the shared drives' listing
     * and its most drives, at most `Int.MaxValue`.
     */
@@ -105,6 +103,25 @@ object DriveCards {
 
   /** 100: the most shared drives a listing of them gives (Drive's tools list no more). */
   val DrivesMost: Int = 100
+
+  /** What the summary model is told `entry`, a file, is ([[Step.Summarise]]): a Doc, a Sheet
+    * (whose first tab its read gives as comma-separated rows, as Drive exports it) or a text
+    * file, named as its listing names it, in Google Drive.
+    */
+  def subject(entry: DriveEntry): String = {
+    val kind = entry.kind match {
+      case DriveEntry.Kind.Document => "A Doc"
+      case DriveEntry.Kind.Spreadsheet => "A Sheet (a spreadsheet)"
+      case DriveEntry.Kind.Text => "A text file"
+      case DriveEntry.Kind.Folder | DriveEntry.Kind.Drive | DriveEntry.Kind.Other(_) => "A file"
+    }
+    val named = entry.name.fold("")(n => s" named `$n`")
+    val rows = entry.kind match {
+      case DriveEntry.Kind.Spreadsheet => "; its first tab is given below as comma-separated rows"
+      case _ => ""
+    }
+    s"$kind$named in Google Drive$rows"
+  }
 
   /** 2026-01-01T00:00:00Z: where [[DriveCards.turn]] starts counting; a slot before it is not
     * counted.

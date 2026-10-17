@@ -672,6 +672,26 @@ object SyncTests extends TestSuite {
         Vector("8192 tildes and 0 carets")
     }
 
+    test(
+      "the summary model is told what the file is in the line before it, and to call it that"
+    ) {
+      val asked = Sync.summarising("A text file named `notes` in Google Drive", "Plans.")
+      (asked.system, asked.messages) ==> (
+        "You summarise one file for a catalog that tells an assistant what each file holds, so " +
+          "it can choose which to read. The line before the file says what it is and where it " +
+          "is kept: call it what that line calls it, whatever its text looks like. Reply by " +
+          "calling `reply` with `summary`, at most 60 words on what the file is and what it " +
+          "holds, and `terms`, at most 8 search terms, each one to three words, for what it " +
+          "holds that the summary leaves out.",
+        Vector(Message.User("A text file named `notes` in Google Drive:\n\nPlans."))
+      )
+    }
+
+    test("a GitHub file is summarised as a file in its repository, at its path") {
+      source().subject("docs/a.md") ==>
+        "A file in the GitHub repository octocat/Hello-World, at `docs/a.md`"
+    }
+
     test("a summary that does not read ends the run as the model's failure, saying why") {
       val k = keeping(floor, new InMemoryDocuments, summaries = Summaries.Blank)
       (runOf(k), held(k)) ==> (

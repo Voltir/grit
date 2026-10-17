@@ -40,9 +40,6 @@ trait Source[L <: caps.Pure] extends caps.Pure {
     */
   def checked(listing: L): String
 
-  /** The line telling the summary model what the unit at `path` is. */
-  def subject(path: String): String
-
   /** The most calls a run asking for `perRun` summaries makes. */
   def calls(perRun: Int): Int
 

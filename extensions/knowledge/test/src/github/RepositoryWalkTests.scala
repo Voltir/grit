@@ -110,7 +110,7 @@ object RepositoryWalkTests extends TestSuite {
   private def shown(step: Step): String = step match {
     case Step.List(path, way) => s"list $path${through(way)}"
     case Step.Read(path, way) => s"read $path${through(way)}"
-    case Step.Summarise(path, _, v) => s"summarise $path ${at(v)}"
+    case Step.Summarise(path, _, _, v) => s"summarise $path ${at(v)}"
     case Step.Write(card, replacing) =>
       s"write ${card.path} ${at(card.version)}" +
         replacing.fold("")(l => s" replacing ${Label.written(l)}")
@@ -133,7 +133,7 @@ object RepositoryWalkTests extends TestSuite {
       listings.get(path).fold(Outcome.Stopped(s"no directory $path"))(Outcome.Listed(_, floor))
     case Step.Read(path, _) =>
       files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_, floor))
-    case Step.Summarise(_, _, _) => Outcome.Summarised(summary)
+    case Step.Summarise(_, _, _, _) => Outcome.Summarised(summary)
     case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) => Outcome.Kept
   }
 
@@ -224,7 +224,14 @@ object RepositoryWalkTests extends TestSuite {
         right(source().pointer("docs/a.md"))
       )
       assert(
-        made.contains(Step.Summarise("docs/a.md", text("docs/a.md"), sha(4))),
+        made.contains(
+          Step.Summarise(
+            "docs/a.md",
+            source().subject("docs/a.md"),
+            text("docs/a.md"),
+            sha(4)
+          )
+        ),
         made.contains(Step.Write(card, None))
       )
     }
@@ -246,7 +253,7 @@ object RepositoryWalkTests extends TestSuite {
     test("the head summarised is the text's first 8 KB, never splitting a character") {
       val long = "é" * 5000 // two bytes each
       val (listings, files) = changedA(Fetched.Text("a" + long, sha(4)))
-      val heads = steps(listings, files).collect { case Step.Summarise(_, head, _) => head }
+      val heads = steps(listings, files).collect { case Step.Summarise(_, _, head, _) => head }
       assert(heads == Vector("a" + "é" * 4095))
     }
 
