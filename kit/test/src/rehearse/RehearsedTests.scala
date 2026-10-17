@@ -133,5 +133,24 @@ object RehearsedTests extends TestSuite {
         shown.written.contains("lunch places")
       ) ==> (true, false, false, true, true, true, true, true)
     }
+
+    test(
+      "a rehearsal with no classifier call has no stub-judge line in its header, and one that asked a classifier names the stub judge"
+    ) {
+      val elsewhere = Rehearsed.of(
+        Vector(
+          Entry.Told(Event.Running(WorkflowId("t"))),
+          Entry.Told(Event.Began("ask:triage")),
+          Entry.Called(Call.Model(Some("ask:triage"), pinned, request, None)),
+          Entry.Told(Event.Ended(StepRecord("ask:triage", None, None)))
+        ),
+        Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
+      )
+      val (_, judged) = rehearsed(Answers.Stubbed)
+      (
+        elsewhere.written.contains("stub classifier"),
+        judged.written.contains("stub classifier")
+      ) ==> (false, true)
+    }
   }
 }

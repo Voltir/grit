@@ -29,9 +29,22 @@ final case class Rehearsed(workflows: Vector[Rehearsed.Ran]) extends caps.Pure {
     */
   def counted: String = shown(whole = false)
 
+  /** Whether a classifier call was answered by the stub judge. */
+  private def stubJudged: Boolean = calls.exists { c =>
+    (c.input, c.answered) match {
+      case (
+            Rehearsed.Input.Classifier(_, _),
+            Rehearsed.Answered.StandIn(Answers.StandIn.Stub, _)
+          ) =>
+        true
+      case _ => false
+    }
+  }
+
   private def shown(whole: Boolean): String = {
     val lines = Vector.newBuilder[String]
     lines += Rehearsed.Header
+    if (stubJudged) lines += Rehearsed.StubJudge
     workflows.foreach { w =>
       lines += ""
       lines += s"workflow ${WorkflowId.value(w.workflow)}: ${Rehearsed.ended(w.came)}"
@@ -55,14 +68,17 @@ final case class Rehearsed(workflows: Vector[Rehearsed.Ran]) extends caps.Pure {
 
 object Rehearsed {
 
-  /** What a dry rehearsal's text opens with: that no call was sent, and what the stub judge
-    * does to the chain after it.
-    */
+  /** What a dry rehearsal's text opens with: that no call was sent. */
   val Header: String =
-    "A dry rehearsal: every call is answered by a stand-in, and none is sent. The stub " +
-      "classifier answers every yes/no question yes at 0.9, so Jev always speaks and every " +
-      "candidate a search finds is admitted; supply a step's answer (ask:relevance-0=…) to see " +
-      "one dropped."
+    "A dry rehearsal: every call is answered by a stand-in, and none is sent."
+
+  /** The stub judge's line, present only when a classifier call was answered by the stub: what
+    * it does to the chain after it.
+    */
+  val StubJudge: String =
+    "The stub classifier answers every yes/no question yes at 0.9, so Jev always speaks and " +
+      "every candidate a search finds is admitted; supply a step's answer (ask:relevance-0=…) " +
+      "to see one dropped."
 
   /** The workflow `workflow`, whose body ended as `came`, having run `steps`, in which the calls
     * `calls` were made.
