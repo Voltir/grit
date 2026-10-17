@@ -220,7 +220,7 @@ object McpEdgeTests extends TestSuite {
         (result, edges.live) ==> (
           Left(
             EdgeRefusal.Refused(
-              "MCP server github refused grit's token (HTTP 401; it asks: Bearer); check FAKE_MCP_TOKEN"
+              "MCP server github refused the token it was given (HTTP 401; it asks: Bearer); check FAKE_MCP_TOKEN"
             )
           ),
           Map.empty
@@ -228,11 +228,11 @@ object McpEdgeTests extends TestSuite {
       }
     }
 
-    test("open is refused when the server lists no tool grit may offer") {
+    test("open is refused when the server lists no tool that may be offered") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.issueWrite))
         opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token))._1 ==>
-          Left(EdgeRefusal.Refused("MCP server github lists no tool grit may offer"))
+          Left(EdgeRefusal.Refused("MCP server github lists no tool that may be offered"))
       }
     }
 

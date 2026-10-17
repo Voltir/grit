@@ -566,7 +566,7 @@ object McpClientTests extends TestSuite {
         sent(listed) ==> Vector(Some("meta") -> f1, Some("perms") -> f1, Some("read") -> f1)
         val lacking = fake.received.size
         c.call(read, ujson.Obj("other" -> "x")) ==>
-          Left(McpError.NotLooked("the call names no fileId, which grit looks up with meta first"))
+          Left(McpError.NotLooked("the call names no fileId, which is looked up with meta first"))
         fake.received.size ==> lacking
         // The server stops listing perms, so refuses a call of it.
         fake.lists(Vector(tool("read"), tool("meta")))

@@ -62,11 +62,12 @@ enum McpError {
     */
   case NotLooked(why: String)
 
-  /** A line a person or the model reads, of the server unnamed ("refused grit's token"). */
+  /** A line a person or the model reads, of the server unnamed ("refused the token it was given"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
-    case Unauthorized(challenge) => s"refused grit's token (HTTP 401${asks(challenge)})"
-    case Forbidden(challenge) => s"grit's token lacks a permission (HTTP 403${asks(challenge)})"
+    case Unauthorized(challenge) => s"refused the token it was given (HTTP 401${asks(challenge)})"
+    case Forbidden(challenge) =>
+      s"refused the call, since its token lacks a permission (HTTP 403${asks(challenge)})"
     case Unsupported(supported) if supported.isEmpty =>
       "does not speak MCP 2026-07-28, and names no version it does"
     case Unsupported(supported) =>
@@ -74,19 +75,19 @@ enum McpError {
     case Rejected(status, body) if body.isEmpty => s"answered HTTP $status with no MCP error"
     case Rejected(status, body) => s"answered HTTP $status with no MCP error: $body"
     case Rpc(code, text) => s"answered error $code: $text"
-    case InputRequired => "wanted input that grit does not give"
-    case Unreadable(why) => s"answered something grit cannot read: $why"
+    case InputRequired => "asked for input partway through the call, which cannot be given"
+    case Unreadable(why) => s"answered something that could not be read: $why"
     case Status(code) => s"answered HTTP $code"
     case OutOfScope(why) =>
       s"was not asked, so nothing of it was read: $why. Tell the person this is out of " +
         "reach; do not answer with something else in its place."
     case Unattributed(why) =>
-      s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
+      s"answered, but its answer could not be checked as within what this server may read, so none of it is shown: $why"
     case Unplaced(why) =>
-      s"answered, but grit could not tell who may see the answer, so none of it is shown: $why"
-    case NoToken(why) => s"was not asked: grit could not get a token for it: $why"
+      s"answered, but who may see the answer could not be told, so none of it is shown: $why"
+    case NoToken(why) => s"was not asked: no token could be got for it: $why"
     case NotLooked(why) =>
-      s"was not asked, since grit could not first look up what it would read: $why"
+      s"was not asked, since what it would read could not be looked up first: $why"
   }
 
   /** What the operator's log is told of it: its [[message]], the server's own words in a

@@ -217,7 +217,7 @@ object DriveEdgeTests extends TestSuite {
         (opened(fake, Env)._1, opened(fake, Map.empty)._1, fake.requests.size) ==> (
           Left(
             EdgeRefusal.Refused(
-              "Drive gave grit no access (Drive refused grit's token); check FAKE_DRIVE_TOKEN"
+              "Drive gave no access (Drive refused the token it was given); check FAKE_DRIVE_TOKEN"
             )
           ),
           Left(EdgeRefusal.Missing(Token)),

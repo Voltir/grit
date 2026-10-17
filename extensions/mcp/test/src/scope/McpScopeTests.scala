@@ -306,7 +306,7 @@ object McpScopeTests extends TestSuite {
         answer(ujson.Obj("results" -> ujson.Arr(ujson.Obj("title" -> "nowhere")))),
         answer(ujson.Obj("results" -> ujson.Arr(result("example-org", "one segment"))))
       ).map(Searched.shown(tool("search_issues"), _)) ==> Vector(
-        Left("its answer has links, which grit cannot hold to its scope"),
+        Left("its answer has links, which cannot be checked as within what this server may read"),
         Left("its answer's structuredContent is not a JSON object"),
         Left("its answer's structuredContent has no results array"),
         // never read from the text instead, which would pass the structure through whole

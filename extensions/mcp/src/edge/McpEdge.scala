@@ -151,7 +151,7 @@ object McpEdge {
           Either.cond(
             listed.tools.nonEmpty,
             (),
-            EdgeRefusal.Refused(s"MCP server ${server.name} lists no tool grit may offer")
+            EdgeRefusal.Refused(s"MCP server ${server.name} lists no tool that may be offered")
           )
       }
     }

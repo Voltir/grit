@@ -79,7 +79,7 @@ object DriveEdge {
         val rest: DriveRest^{clock} = new DriveRest(api, authorizer, clock)
         rest.reachable() match {
           case Left(DriveError.NoToken(why)) =>
-            Left(EdgeRefusal.Refused(s"Drive gave grit no access ($why); $check"))
+            Left(EdgeRefusal.Refused(s"Drive gave no access ($why); $check"))
           // The operator reads a refusal: its cause, and the model's words only where it has none.
           case Left(other) =>
             Left(

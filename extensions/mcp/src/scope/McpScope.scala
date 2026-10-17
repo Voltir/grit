@@ -120,7 +120,9 @@ object McpScope {
           for {
             _ <- result.value.keys
               .find(k => !Shown(k))
-              .map(k => s"its answer has $k, which grit cannot hold to its scope")
+              .map(k =>
+                s"its answer has $k, which cannot be checked as within what this server may read"
+              )
               .toLeft(())
             read <- payloadOf(result)
             (whose, payload) = read

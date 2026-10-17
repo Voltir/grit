@@ -239,7 +239,7 @@ object DriveRest {
     def reasons = scala.util.Try(ujson.read(body)).toOption.toVector.flatMap(DriveJson.reasons)
     status match {
       case 200 => Right(body)
-      case 401 => Left(DriveError.NoToken("Drive refused grit's token"))
+      case 401 => Left(DriveError.NoToken("Drive refused the token it was given"))
       case 403 if reasons.exists(Limits) => Left(DriveError.Busy(status))
       case 403 if reasons.contains("fileNotExportable") => Left(DriveError.Unreadable("this file"))
       case 403 | 404 => Left(DriveError.Hidden)

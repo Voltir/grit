@@ -196,7 +196,7 @@ object McpToolsTests extends TestSuite {
         ) ==> Vector(
           Outcome.Done("found:", parts = Some(parts), facts = Some(said)),
           Outcome.Failed(
-            "github answered, but grit could not tell who may see the answer, so none of it " +
+            "github answered, but who may see the answer could not be told, so none of it " +
               "is shown: the file's folder could not be looked up"
           )
         )
@@ -253,7 +253,7 @@ object McpToolsTests extends TestSuite {
         )
         val q = request("github_get_file_contents", Read)
         mcp.run(route(q), q, _ => ()) ==>
-          Outcome.Failed("github refused grit's token (HTTP 401; it asks: Bearer)")
+          Outcome.Failed("github refused the token it was given (HTTP 401; it asks: Bearer)")
       }
     }
 

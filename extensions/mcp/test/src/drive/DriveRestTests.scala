@@ -140,7 +140,7 @@ object DriveRestTests extends TestSuite {
         fake.answering("files/file-1", 401, error(401, "authError"))
         rest.file(file1).left.map(e => (e, e.message)) ==> Left(
           (
-            DriveError.NoToken("Drive refused grit's token"),
+            DriveError.NoToken("Drive refused the token it was given"),
             "Drive access isn't working just now; tell an administrator."
           )
         )

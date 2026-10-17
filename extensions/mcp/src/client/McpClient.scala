@@ -133,7 +133,7 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
           .map(v => vs :+ (lookup -> v))
           .toRight(
             McpError.NotLooked(
-              s"the call names no ${lookup.argument}, which grit looks up with ${lookup.tool} first"
+              s"the call names no ${lookup.argument}, which is looked up with ${lookup.tool} first"
             )
           )
       )
