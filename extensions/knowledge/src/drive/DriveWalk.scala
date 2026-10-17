@@ -29,8 +29,9 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop, of the cards held at the
   * floor whose files another run's listing showed; of those no listing showed, only when the
-  * listing each records was made and complete; and of those held at a label not among the source's whose
-  * [[DriveCards.carding]] is the floor. A step that came to [[Outcome.Stopped]], or to an
+  * listing each records was made and complete; of those held at a label not among the source's
+  * whose [[DriveCards.carding]] is the floor; and, past `maxUnits` (when it was lowered), of the
+  * files last by id, so the source holds no more. A step that came to [[Outcome.Stopped]], or to an
   * outcome not of its kind, ends the walk at once, with no drop.
   */
 final class DriveWalk private (
@@ -347,16 +348,24 @@ object DriveWalk {
     s.copy(next = Left(s.synced(env)), waiting = Waiting.Done)
 
   /** The cards held at the floor of files another run's listing showed, or that no listing
-    * showed though the one each records it was shown in was made and complete; and those at a
-    * label not among the source's that the floor's run cards, but each copy a write replaced.
+    * showed though the one each records it was shown in was made and complete; those at a label
+    * not among the source's that the floor's run cards; and every copy of the files past
+    * `maxUnits`, last by id; but each copy a write replaced.
     */
-  private def drops(env: Env, s: State): Vector[Held] =
-    env.held.filter { h =>
+  private def drops(env: Env, s: State): Vector[Held] = {
+    def replaced(h: Held) = s.wrote(h.path) && env.replacing(h.path).contains(h.label)
+    val gone = env.held.filter { h =>
       if (h.label == env.floor)
         s.foreign(h.path) || (h.within.exists(s.complete) && !s.seen(h.path))
       else
         !env.cards.labels.contains(h.label) &&
         env.cards.carding(h.label).contains(env.floor) &&
-        !(s.wrote(h.path) && env.replacing(h.path).contains(h.label))
+        !replaced(h)
     }
+    // Past maxUnits (it was lowered): the files last by id go, so the source holds no more.
+    val dropped = gone.toSet
+    val kept = env.held.filterNot(dropped).map(_.path).distinct.sorted
+    val over = kept.drop(math.max(env.cards.maxUnits - s.fresh, 0)).toSet
+    env.held.filter(h => dropped(h) || (over(h.path) && !replaced(h)))
+  }
 }

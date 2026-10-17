@@ -240,6 +240,16 @@ object DriveWalkTests extends TestSuite {
       assert(!dropped(steps).exists(_._1 == "file-low"))
     }
 
+    test("past a lowered maxUnits, the cards last by their files' ids are withdrawn") {
+      val holding = Vector(
+        held("file-32", internal, 7, "folder-31"),
+        held("file-18", internal, 5, "drive-a"),
+        held("file-30", internal, 6, "drive-b")
+      )
+      val (steps, synced) = run(cards(labels, maxUnits = 2).walk(5, internal, holding))
+      assert(dropped(steps) == Vector(("file-32", internal)), synced.withdrawn == 1)
+    }
+
     test("a card held only at another label is replaced by the write, not dropped apart") {
       val holding = Vector(held("file-18", Label.Public, 5, "drive-a"))
       val source = cards(Vector(Label.Public, internal))
