@@ -20,11 +20,11 @@ Decision:
   is never an account; services are never principals (ADR 0031). What a person wrote is kept by
   the account it came through, never rewritten, and who that person is is read whenever needed.
 - **Every account is first a person of its own, its home**, holding no other account.
-- **A trusted realm is attested by the one attester the deployment names for it**, which may
-  or may not be where people talk (a chat workspace, a company directory, a login's identity
-  provider). It says of each account whether it is a full member (`Standing.Full`, not a guest,
-  a member of another organisation, a bot, invited, suspended or deactivated) and the email its
-  source verified. The attester reports; core decides what it means.
+- **A trusted realm is attested by the one attester the deployment names for it**, which need
+  not be where people talk (a chat workspace, a directory, an identity provider). It says of
+  each account whether it is a full member (`Standing.Full`, not a guest, a member of another
+  organisation, a bot, invited, suspended or deactivated) and the email its source verified. The
+  attester reports; core decides what it means.
 - **Core alone decides when a source is asked**: before each message an account writes, when
   the source reports a change, and once its last answer is a day old. Nothing ends an
   attestation by its age. A source that cannot be asked keeps its last word, with an alarm

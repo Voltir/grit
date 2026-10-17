@@ -22,7 +22,7 @@ Decision:
 - **A deployment declares a `TurnRecipe`** (`grit.core.recipe`), data only: for a turn rooted
   on a heard message, by the focus it was said at, and for one rooted on a message said to
   grit, a `Shaping`: the window's `Width` and its `Offering`, every tool or a service's only
-  when one of the knowledge sources supplying it (`KnowledgeSource.supplies`) reads at least
+  when one of the knowledge sources supplying it (`Corpus.supplies`) reads at least
   a threshold. `TurnRecipe.Shipped`, every tool at the deployed width, is the default.
 - **The turn's `weigh` step records what it was weighed with**: the tags triage kept, for a
   heard root; for a message said to grit, only when the recipe's addressed offering gates a
