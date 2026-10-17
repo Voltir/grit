@@ -190,8 +190,12 @@ commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
   each new trait or type parameter may capture, where a step body or a transaction must
   not reach (the `Durable`, a `Tx` escaping), any `caps.unsafe` with its proof (rule 11),
   and for each claim the compiler is meant to enforce, the probe that shows it rejects the
-  breach ([`docs/capture-checking.md`](docs/capture-checking.md)). Mechanical edits, doc
-  corrections and small fixes inside an agreed plan need neither.
+  breach ([`docs/capture-checking.md`](docs/capture-checking.md)). It has a **Sharing
+  section**: for each new type, trait or function, the existing one it reuses or the second
+  caller it serves, and each near-copy of existing code the change would add, folded into one
+  place instead. Of two designs that pass the elision test, the one that shares more code wins:
+  one implementation that a turn, a job and a rehearsal all run beats two kept alike by hand.
+  Mechanical edits, doc corrections and small fixes inside an agreed plan need none of these.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a
   group's root; the packages in a one-way dependency order, written down where the module
