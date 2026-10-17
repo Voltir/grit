@@ -9,7 +9,6 @@ import grit.core.context.{
   Packing,
   Prepared,
   Querying,
-  Results,
   Window
 }
 import grit.core.durable.InMemoryDurable
