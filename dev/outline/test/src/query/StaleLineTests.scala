@@ -147,5 +147,39 @@ object StaleLineTests extends TestSuite {
         )
       )
     }
+
+    test("a family of a trait on one line prints that line once") {
+      touch(stale = false)
+      val (answer, _) = Query.family(
+        Root(dir),
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        "r.T",
+        member = None,
+        withBody = false,
+        cap = 80000
+      )
+      val printed = answer.text.linesIterator.toVector
+      assert(printed.count(_ == "trait T { def g: Int }") == 1)
+    }
+
+    test("a show of a trait on one line prints that line once") {
+      touch(stale = false)
+      val (answer, _) = Query.show(
+        Root(dir),
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("r.T"),
+        depth = 0,
+        bodies = Set.empty,
+        withPrivate = false,
+        cap = 80000,
+        tests = TestsShown.Dropped
+      )
+      val printed = answer.text.linesIterator.toVector
+      assert(printed.count(_ == "trait T { def g: Int }") == 1)
+    }
   }
 }

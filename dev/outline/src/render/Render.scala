@@ -50,7 +50,7 @@ object Render {
   private def staleTag(stale: Boolean): String =
     if (stale) "  [stale: source newer than .tasty]" else ""
 
-  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals, which its head holds), `bodies` (members whose `name` is in it get their body, and the nested members `nestedBodies` picks for it print whole, under their owner-qualified names), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut; a type's members named in `bodies` follow its head, before its other members, and they, that head and a named definition in `bodies` print whatever `cap`. */
+  /** The `show` answer: `named` (verbatim; a named type with its public members, or all with `withPrivate`, but not its constructor vals or other members its head's lines hold, unless in `bodies`), `bodies` (members whose `name` is in it get their body, and the nested members `nestedBodies` picks for it print whole, under their owner-qualified names), the traced types as one-liners, grouped by file; each named definition's header line ends with its size tag; a type printed without its body ends with its closing lines, after its members; `stale` files' headers flagged; cut at `cap` bytes between whole entries, a type of two members or more between its members, a type's closing lines printed only when none of its members was cut; a type's members named in `bodies` follow its head, before its other members, and they, that head and a named definition in `bodies` print whatever `cap`. */
   def show(
       named: Vector[Defn],
       traced: Traced,
@@ -88,9 +88,11 @@ object Render {
     def namedEntry(d: Defn): Vector[Piece] = {
       val topLevel = !ownerRelative(d).contains('.')
       if (isType(d)) {
-        // A constructor val's lines are the type's own head, already shown.
+        // A constructor val's lines are the type's own head, already shown, and so are a member's on the head's lines
+        // unless --body names it.
         val (askedOwn, others) = d.members
           .filter(m => (withPrivate || !m.isPrivate) && m.kind != Kind.Param)
+          .filter(m => bodies.contains(m.name) || !inHead(d)(m))
           .partition(m => bodies.contains(m.name))
         // A nested member --body names is printed whole under its owner-qualified name.
         val (deeper, _) = nestedBodies(d, bodies, withPrivate)
@@ -225,7 +227,7 @@ object Render {
     )
   }
 
-  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. The trait ends with its closing lines, and so does each member it shows without its body that is itself a type. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
+  /** The `family` answer: `f`'s trait, then each implementation as one line, then each contract with its non-private members and the suites that run it, each definition's line ending with its size tag, grouped by file under the `header` line; cut at `cap` bytes. A member wholly on the trait head's lines has no entry but the head. The trait ends with its closing lines, and so does each member it shows without its body that is itself a type. With `f.member`, the trait shows that member (its body with `f.withBody`) and each implementation its overloads of it (or their bodies). */
   def family(f: Family, all: Vector[Defn], header: String, stale: Set[String], cap: Int): String = {
     def headerOf(d: Defn): String =
       s"${d.lines.start}-${d.lines.end} ${kindWord(d.kind)} ${ownerRelative(d)}"
@@ -243,7 +245,10 @@ object Render {
         headerLine(f.trait0, inContext = !ownerRelative(f.trait0).contains('.')),
         f.trait0.head
       ) ++ (f.member match {
-        case None => f.trait0.members.filter(!_.isPrivate).flatMap(block(_, false))
+        case None =>
+          f.trait0.members
+            .filter(m => !m.isPrivate && !inHead(f.trait0)(m))
+            .flatMap(block(_, false))
         case Some(m) => f.trait0.members.filter(_.name == m).flatMap(block(_, f.withBody))
       }) ++ closingLines(f.trait0)
 
@@ -735,6 +740,12 @@ object Render {
   private def isType(d: Defn): Boolean =
     d.kind == Kind.Class || d.kind == Kind.CaseClass || d.kind == Kind.Trait ||
       d.kind == Kind.Object || d.kind == Kind.Enum
+
+  /** Whether `m`, a member of `owner`, lies wholly on the lines `owner`'s head prints as file text, as `g` does in
+    * `trait T { def g: Int }`: an entry of its own would print those lines again.
+    */
+  private def inHead(owner: Defn)(m: Defn): Boolean =
+    owner.size.nonEmpty && m.lines.end < owner.lines.start + owner.head.linesIterator.size
 
   private def collapse(s: String): String =
     s.trim.split("\\s+").mkString(" ").replaceAll("([(\\[]) ", "$1").replaceAll(" ([)\\]])", "$1")

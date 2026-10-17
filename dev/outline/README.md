@@ -29,7 +29,9 @@ name a shown type lacks that another type's member has, with the shown type in i
 for `Tx.readsFrom(source: Place)`), is named as `find` lists it, with the `show` printing it; with none, the note names
 the `find` listing every definition of the name. A member of a shown type not
 named in `--body` prints its doc's first sentence only, its size tag saying how much more there is;
-`--docs` prints every doc whole (File text, below, says which of those lines are file text). After the definitions, one
+`--docs` prints every doc whole (File text, below, says which of those lines are file text). A member wholly on the lines
+its type's head prints, as `g` in `trait T { def g: Int }`, has no entry of its own in show or family unless `--body` or
+`--member` names it. After the definitions, one
 line per named symbol counts the tests in test sources that exercise it:
 `-- tests of Label: 41 in 12 suites (nearest: LabelTests, TxTests, InboxContract); --tests to list`.
 The nearest suites are those under the symbol's own module directory first, then those holding the
