@@ -315,6 +315,20 @@ object DriveEdgeTests extends TestSuite {
       }
     }
 
+    test(
+      "a text file is read end to end, its byte-order mark dropped, believed by its own grants"
+    ) {
+      withFake { fake =>
+        run(fake, "drive_read", ujson.Obj("file" -> "file-text")) match {
+          case Outcome.Done(_, _, _, Some(Vector(part))) =>
+            // Its own grants name a writer outside the domain; its drive's name none.
+            (part.item.vouched, part.text) ==>
+              (Integrity.Outside, "name-30 (a text file):\ntext text.\ntext text, text.")
+          case other => throw new java.lang.AssertionError(other.toString)
+        }
+      }
+    }
+
     test("an id that is not one, or blank words, are refused before Drive is asked") {
       withFake { fake =>
         val failed = Vector(
