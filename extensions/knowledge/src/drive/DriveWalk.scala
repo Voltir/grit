@@ -41,7 +41,12 @@ object DriveWalk {
   ): Walk[DriveListing] =
     Walking.start(
       Walking
-        .Agenda[DriveListing, Task, Own](cards, take(cards, turn, _, _), left, drops(cards, _)),
+        .Agenda[DriveListing, Task, Own](
+          cards,
+          take(cards, turn, _, _),
+          (t, _) => left(t),
+          drops(cards, _)
+        ),
       perRun,
       Holding(floor, held),
       List(Task.Shared),
@@ -139,7 +144,7 @@ object DriveWalk {
   }
 
   /** Whether `task`, never taken, is a file to read or relabel. */
-  private def left(task: Task, w: W): Boolean = task match {
+  private def left(task: Task): Boolean = task match {
     case Task.Read(_, _) | Task.Relabel(_, _) => true
     case Task.Shared | Task.Drive(_) | Task.Folder(_, _) | Task.Folders => false
   }
