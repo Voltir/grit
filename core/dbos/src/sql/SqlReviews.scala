@@ -31,7 +31,7 @@ import grit.core.visibility.Label as VisibilityLabel
   * `grit.triage_shadows`.
   */
 final class SqlReviews extends ReviewStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
   import SqlReviews.*
 
   def unposted(to: Place)(using tx: Tx^): Either[StoreError, Vector[Prompt]] =

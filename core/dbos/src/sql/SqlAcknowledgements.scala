@@ -1,6 +1,5 @@
 package grit.dbos.sql
 
-import java.sql.PreparedStatement
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
@@ -13,7 +12,7 @@ import grit.core.store.{StoreError, Tx}
   * (`wanted`, `shown`, `cleared`) and when each was reached.
   */
 final class SqlAcknowledgements extends Acknowledgements {
-  import SqlEntryStore.attempt
+  import SqlStatements.{attempt, update}
 
   def want(turn: TurnRef, to: String, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     update(
@@ -26,7 +25,7 @@ final class SqlAcknowledgements extends Acknowledgements {
       ps.setLong(3, TurnSeq.value(turn.turnSeq))
       ps.setString(4, to)
       ps.setObject(5, at.atOffset(ZoneOffset.UTC))
-    }
+    }.map(_ => ())
 
   def standing()(using tx: Tx^): Either[StoreError, Vector[Acknowledgement]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -63,7 +62,7 @@ final class SqlAcknowledgements extends Acknowledgements {
     ) { ps =>
       ps.setObject(1, at.atOffset(ZoneOffset.UTC))
       ps.setString(2, WorkflowId.value(turn.workflowId))
-    }
+    }.map(_ => ())
 
   def cleared(turn: TurnRef, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     update(
@@ -72,17 +71,6 @@ final class SqlAcknowledgements extends Acknowledgements {
     ) { ps =>
       ps.setObject(1, at.atOffset(ZoneOffset.UTC))
       ps.setString(2, WorkflowId.value(turn.workflowId))
-    }
+    }.map(_ => ())
 
-  private def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        val _ = ps.executeUpdate()
-      }
-    }
-  }
 }

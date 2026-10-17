@@ -10,7 +10,7 @@ import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.{Tx, Voucher}
 import grit.core.visibility.{RoomAccess, Visibility}
-import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPlaces, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlPlaces, SqlStatements, TestPostgres}
 
 /** The joins contract, kept by the engine's joins against a real Postgres. */
 object SqlJoinsTests extends JoinsContract {
@@ -78,7 +78,7 @@ object SqlJoinsTests extends JoinsContract {
   private def rooms(room: Place, sql: String, rest: Vector[String]): Unit =
     under { (tx: Tx^) ?=>
       SqlPlaces.id(room).flatMap { place =>
-        SqlEntryStore.attempt {
+        SqlStatements.attempt {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(conn.prepareStatement(sql)) { ps =>
             ps.setString(1, place)

@@ -10,7 +10,7 @@ import grit.core.store.{StoreError, Tx}
   * home; who each is now is `grit.links`'s to say.
   */
 private[dbos] object SqlIdentities {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   /** `account` as every column that names one holds it. */
   def written(account: Account): String = Account.written(account)

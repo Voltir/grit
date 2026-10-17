@@ -15,7 +15,7 @@ import grit.core.triage.{Shadowed, ShadowedJson, TriageShadows}
   * `grit.triage`, whose tagged messages it offers.
   */
 final class SqlTriageShadows extends TriageShadows {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def record(entry: EntryId, name: ShadowName, row: Shadowed, at: Instant)(using
       tx: Tx^

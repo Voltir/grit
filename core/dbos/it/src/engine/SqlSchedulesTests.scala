@@ -14,10 +14,10 @@ import grit.dbos.sql.{
   DbConfig,
   LiveDb,
   Opener,
-  SqlEntryStore,
   SqlIdentities,
   SqlJot,
   SqlSchedules,
+  SqlStatements,
   SqlTombstones,
   TestPostgres
 }
@@ -74,7 +74,7 @@ private[engine] object SqlSchedulesUnder {
       def added(account: Account, group: GroupName): Unit =
         ok("adding")(LiveDb.transaction(config) { (tx: Tx^) ?=>
           SqlIdentities.enroll(Set(account)).flatMap { _ =>
-            SqlEntryStore.attempt {
+            SqlStatements.attempt {
               val conn: java.sql.Connection^{tx} = Tx.connection(tx)
               Using.resource(
                 conn.prepareStatement(

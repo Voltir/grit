@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.PreparedStatement
 import java.time.{Instant, ZoneOffset}
 
-import scala.util.Using
-
 import grit.core.admin.{Administration, Answer, Change, ChangeJson, Command}
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
@@ -19,7 +17,7 @@ import grit.core.visibility.{GroupName, Subject}
   * again on the same transaction through `opener`.
   */
 private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Administration {
-  import SqlEntryStore.attempt
+  import SqlStatements.update
 
   def run(by: Account, room: Place, command: Command, at: Instant): Either[StoreError, Answer] =
     jot.write(Subject.Public) { (tx: Tx^) ?=>
@@ -141,15 +139,4 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
   }
 
   /** `sql` run with `bind`'s parameters; the rows it changed. */
-  private def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }

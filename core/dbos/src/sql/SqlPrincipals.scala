@@ -10,7 +10,7 @@ import grit.core.store.{Principals, Speakers, StoreError, Tx}
   * `grit.authors` (who wrote each inbound entry).
   */
 final class SqlPrincipals extends Principals {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def name(account: Account, name: String)(using tx: Tx^): Either[StoreError, Unit] =
     Principals.refusal(account, name) match {

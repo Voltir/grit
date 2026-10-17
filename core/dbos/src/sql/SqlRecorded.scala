@@ -13,7 +13,7 @@ import grit.core.visibility.{GroupName, Label, Recorded, RoomAccess}
   * `grit.group_members`, read whole when a transaction opens.
   */
 private[dbos] object SqlRecorded {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   /** Every `grit.rooms` row and every `grit.group_members` row, read on `conn` in one round
     * trip. `DatabaseError` when the read fails; `Invalid` when a row names a place, account or

@@ -10,7 +10,7 @@ import grit.core.store.{StoreError, Tx, VoiceStore}
   * changed by hand.
   */
 final class SqlVoiceStore extends VoiceStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def current()(using tx: Tx^): Either[StoreError, Voice] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)

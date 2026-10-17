@@ -1,9 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.PreparedStatement
-
 import scala.concurrent.duration.*
-import scala.util.Using
 
 import grit.core.id.PrincipalIds
 import grit.core.identity.{
@@ -30,7 +27,7 @@ private[dbos] final class SqlVoucher(
     val realms: Set[Realm],
     domains: Set[Domain]
 ) extends Voucher {
-  import SqlEntryStore.{attempt, many}
+  import SqlStatements.{many, update}
   import SqlVoucher.*
 
   def vouch(vouched: Vouched)(using tx: Tx^): Either[StoreError, Vector[Linking]] = {
@@ -134,7 +131,7 @@ private[dbos] final class SqlVoucher(
       ) { ps =>
         ps.setString(1, Email.value(e))
         ps.setString(2, Email.value(e))
-      }
+      }.map(_ => ())
     } yield ()
 
   /** `account`'s attestation made `kept` and `member`, answered now; what it held before, if
@@ -254,17 +251,6 @@ private[dbos] final class SqlVoucher(
           .flatMap((id, held) => SqlIdentities.principal(id, "person", held))
       )
 
-  private def update(sql: String)(set: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        set(ps)
-        val _ = ps.executeUpdate()
-      }
-    }
-  }
 }
 
 private object SqlVoucher {

@@ -12,7 +12,7 @@ import grit.core.visibility.Label
 
 /** [[ConversationStore]] over the `grit.conversations` table, and `grit.places`. */
 final class SqlConversationStore extends ConversationStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def findOrCreate(
       origin: Origin,

@@ -10,7 +10,7 @@ import grit.core.store.{PromptStore, StoreError, Tx}
   * JSON arrays, so no Java array does.
   */
 final class SqlPromptStore extends PromptStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def keep(fragments: Vector[Fragment])(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)

@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
-import scala.util.Using
-
 import grit.core.clock.Clock
 import grit.core.id.{
   CallSlot,
@@ -52,7 +50,7 @@ import grit.core.visibility.{Integrity, Label, Subject}
   * them; instants are kept to the microsecond.
   */
 final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.{many, update}
   import SqlSchedules.*
 
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using
@@ -565,33 +563,6 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       ps.setString(3, ScheduleId.value(id))
     }.flatMap(_ => tombstones.write(Target.Schedule(id), at)).map(_ => ())
 
-  private def many[A](sql: String)(set: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        set(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[A]
-          while (rs.next()) rows += read(rs)
-          rows.result()
-        }
-      }
-    }
-  }
-
-  private def update(sql: String)(set: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        set(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }
 
 private[dbos] object SqlSchedules {

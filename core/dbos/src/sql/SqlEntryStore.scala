@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.ResultSet
 import java.time.{OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
@@ -15,6 +15,7 @@ import org.postgresql.util.PSQLException
 /** [[EntryStore]] over the `grit.entries` table. */
 final class SqlEntryStore extends EntryStore {
   import SqlEntryStore.*
+  import SqlStatements.attempt
 
   def insert(entry: Entry)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -194,27 +195,6 @@ private[dbos] object SqlEntryStore {
 
   private def violated(e: PSQLException): Option[String] =
     Option(e.getServerErrorMessage).flatMap(m => Option(m.getConstraint))
-
-  private[dbos] def attempt[A](body: => A): Either[StoreError, A] =
-    try Right(body)
-    catch { case NonFatal(e) => Left(databaseError(e)) }
-
-  /** Every row `sql`, bound by `bind`, answers, each read by `read`; or the database's error. */
-  private[dbos] def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(
-      using tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[A]
-          while (rs.next()) rows += read(rs)
-          rows.result()
-        }
-      }
-    }
-  }
 
   /** `getMessage` is `null` for some driver exceptions; rule 6 stops here. */
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =

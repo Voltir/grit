@@ -92,7 +92,7 @@ final class SqlPluginCursors(tombstones: Tombstones) extends PluginCursors {
       tx: Tx^
   ): Either[StoreError, CloseOrdinal] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    val stored = SqlEntryStore.attempt {
+    val stored = SqlStatements.attempt {
       Using.resource(
         conn.prepareStatement(
           "SELECT version, ordinal FROM grit.plugin_cursors WHERE plugin = ? FOR UPDATE"
@@ -146,7 +146,7 @@ final class SqlPluginCursors(tombstones: Tombstones) extends PluginCursors {
 
   def stored()(using tx: Tx^): Either[StoreError, Vector[(PluginName, Int)]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore
+    SqlStatements
       .attempt {
         Using.resource(
           conn.prepareStatement(
@@ -201,7 +201,7 @@ private object SqlPlugins {
       sql: String
   )(bind: PreparedStatement => Unit)(using tx: Tx^): Either[StoreError, Int] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
+    SqlStatements.attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         bind(ps)
         ps.executeUpdate()
@@ -226,7 +226,7 @@ private object SqlPlugins {
       tx: Tx^
   ): Either[StoreError, Vector[(String, ujson.Value)]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
+    SqlStatements.attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         bind(ps)
         Using.resource(ps.executeQuery()) { rs =>

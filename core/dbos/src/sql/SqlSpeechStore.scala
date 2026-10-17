@@ -17,7 +17,7 @@ import grit.core.store.{StoreError, Tx}
   * `grit.speech`, the ledger of decisions.
   */
 final class SqlSpeechStore extends SpeechStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def heard(turn: TurnRef, reach: Reach)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)

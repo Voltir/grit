@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.PreparedStatement
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds}
@@ -11,7 +11,7 @@ import grit.core.store.{StoreError, Tx}
 
 /** [[RoomReads]] over `grit.entries`, each conversation's place, and `grit.authors`. */
 final class SqlRoomReads extends RoomReads {
-  import SqlEntryStore.many
+  import SqlStatements.{cleared, many}
   import SqlStitchStore.{SaidColumns, Spoken, ids, readSaid}
 
   def said(room: Place, from: Instant, until: Instant, outside: Set[ConversationId], most: Int)(
@@ -80,18 +80,5 @@ final class SqlRoomReads extends RoomReads {
         ps.setInt(first + 5, most)
       }(readSaid)
     }
-
-  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
-    * parameters are set first, to the transaction's, then `bind`'s.
-    */
-  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val clearance = Tx.clearance(tx)
-    many(sql) { ps =>
-      SqlClearance.bind(ps, 1, clearance)
-      bind(ps)
-    }(read)
-  }
 
 }

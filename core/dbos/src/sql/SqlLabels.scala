@@ -12,7 +12,7 @@ import grit.core.visibility.{Compartment, Compartments, Label, LabelParts}
   * its stored form; every statement that writes or reads a label goes through here.
   */
 private[dbos] object SqlLabels {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   /** A label as a statement's argument, of type `grit.classification`: two parameters, which [[bind]]
     * sets.

@@ -38,7 +38,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.visibility.{Integrity, Label, Visibility}
-import grit.dbos.sql.{SqlEntryStore, SqlIdentities, SqlRooms, SqlSchedules}
+import grit.dbos.sql.{SqlIdentities, SqlRooms, SqlSchedules, SqlStatements}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -645,7 +645,7 @@ private[dbos] object SqlInbox {
   private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     SqlIdentities.enroll(Set(by)).flatMap { _ =>
-      SqlEntryStore.attempt {
+      SqlStatements.attempt {
         Using.resource(
           conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")
         ) { ps =>
@@ -665,7 +665,7 @@ private[dbos] object SqlInbox {
       tx: Tx^
   ): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
+    SqlStatements.attempt {
       Using.resource(
         conn.prepareStatement(
           "INSERT INTO grit.posted (entry_id, conversation_id, request) VALUES (?, ?::uuid, ?)"

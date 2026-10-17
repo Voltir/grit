@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.ResultSet
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
@@ -17,7 +17,7 @@ import grit.core.visibility.{RoomAccess, Subject}
   * for [[Subject.Public]].
   */
 private[dbos] final class SqlJoins(jot: Jot) extends Joins {
-  import SqlEntryStore.attempt
+  import SqlStatements.{attempt, update}
 
   def joined(
       room: Place,
@@ -210,15 +210,4 @@ private[dbos] final class SqlJoins(jot: Jot) extends Joins {
   }
 
   /** `sql` run with `bind`'s parameters; the rows it changed. */
-  private def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }

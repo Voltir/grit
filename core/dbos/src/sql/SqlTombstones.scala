@@ -13,7 +13,7 @@ import grit.core.store.{StoreError, Tombstones, Tx}
   * in-memory fake orders them.
   */
 final class SqlTombstones extends Tombstones {
-  import SqlEntryStore.attempt
+  import SqlStatements.{attempt, update}
 
   def write(target: Target, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] =
     update(
@@ -123,15 +123,4 @@ final class SqlTombstones extends Tombstones {
     ps.setString(2, Target.key(target))
   }
 
-  private def update(sql: String)(set: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        set(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }

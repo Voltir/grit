@@ -46,7 +46,7 @@ private[dbos] object Opener {
   * resolved against the rows it names and the deployment's `visibility`, or [[maintenance]].
   */
 private[dbos] final class Opener(visibility: Visibility) {
-  import SqlEntryStore.{attempt, many}
+  import SqlStatements.{attempt, many}
 
   /** What this module's own transactions read and write at (an edge's inbox and desk, the
     * sweeps, the collector, a reader's `all`): every label the database can hold. An engine

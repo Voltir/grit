@@ -7,7 +7,7 @@ import grit.core.tool.{ToolSet, ToolSetId, ToolSets}
 
 /** [[ToolSets]] over `grit.tool_sets`. */
 final class SqlToolSets extends ToolSets {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def keep(set: ToolSet)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)

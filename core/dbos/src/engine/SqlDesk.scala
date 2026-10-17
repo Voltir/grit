@@ -157,7 +157,7 @@ final class SqlDesk private (
       for {
         _ <- new SqlToolSets().keep(tools)
         _ <- new SqlPromptStore().keep(instructions)
-        _ <- grit.dbos.sql.SqlEntryStore.attempt {
+        _ <- grit.dbos.sql.SqlStatements.attempt {
           val c: java.sql.Connection^{tx} = grit.core.store.Tx.connection(tx)
           Using.resource(
             c.prepareStatement(

@@ -7,7 +7,7 @@ import grit.core.store.{StoreError, Tx}
 
 /** `grit.places`: each place grit has recorded anything at, by its segments. */
 private[dbos] object SqlPlaces {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   /** `place`'s id, its row inserted first when there is none. The insert is `ON CONFLICT DO
     * NOTHING`, never `DO UPDATE`, so it never locks an existing row: a concurrent insert of the

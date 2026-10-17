@@ -88,7 +88,7 @@ object LabelsInForceLiveTests extends TestSuite {
       for {
         place <- grit.dbos.sql.SqlPlaces.id(room)
         id <- grit.dbos.sql.SqlLabels.intern(label)
-        _ <- grit.dbos.sql.SqlEntryStore.attempt {
+        _ <- grit.dbos.sql.SqlStatements.attempt {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(
             conn.prepareStatement(

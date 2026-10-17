@@ -23,7 +23,7 @@ import grit.core.visibility.Classification
 
 /** [[ToolRequests]] over `grit.tool_requests`. */
 final class SqlToolRequests extends ToolRequests {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def dispatch(requests: Vector[ToolRequest], at: Classification)(using
       tx: Tx^
@@ -104,7 +104,7 @@ final class SqlToolRequests extends ToolRequests {
 
 /** [[EdgeDirectory]] over `grit.edges` and `grit.edge_places`, live by `pg_locks`. */
 final class SqlEdgeDirectory extends EdgeDirectory {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def serving(place: Place)(using tx: Tx^): Either[StoreError, Option[Advert]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -149,7 +149,7 @@ final class SqlEdgeDirectory extends EdgeDirectory {
 }
 
 private[dbos] object SqlToolRequests {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   /** The channel a dispatch notifies and every desk listens on. */
   val Channel = "grit_tool_requests"

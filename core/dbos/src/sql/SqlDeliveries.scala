@@ -1,7 +1,5 @@
 package grit.dbos.sql
 
-import java.sql.PreparedStatement
-
 import scala.util.Using
 
 import grit.core.edge.{Deliveries, Part, Pending}
@@ -12,7 +10,7 @@ import grit.core.store.{StoreError, Tx}
   * and `grit.delivery_parts` (each part begun, and what it was posted as).
   */
 final class SqlDeliveries extends Deliveries {
-  import SqlEntryStore.attempt
+  import SqlStatements.{attempt, update}
 
   def await(turn: TurnRef, to: String)(using tx: Tx^): Either[StoreError, Unit] =
     update(
@@ -107,15 +105,4 @@ final class SqlDeliveries extends Deliveries {
     }.flatMap(found => if (found) Right(()) else missing(turn))
   }
 
-  private def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }

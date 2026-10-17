@@ -4,7 +4,7 @@ import scala.util.Using
 
 import grit.core.store.{StoreError, Tx}
 import grit.dbos.engine.Build
-import grit.dbos.sql.SqlEntryStore
+import grit.dbos.sql.SqlStatements
 
 /** `grit.engine_starts`, read back: [[grit.dbos.engine.EngineLock]] writes it. */
 private[dbos] object EngineStarts {
@@ -12,7 +12,7 @@ private[dbos] object EngineStarts {
   /** Every engine start recorded, oldest first. */
   def all()(using tx: Tx^): Either[StoreError, Vector[Build.Started]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
+    SqlStatements.attempt {
       Using.resource(
         conn.prepareStatement(
           """SELECT started_at, machine, pid, epoch, commit, dirty FROM grit.engine_starts

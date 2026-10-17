@@ -8,7 +8,7 @@ import scala.util.Using
 import grit.core.identity.Account
 import grit.core.store.{Tx, Voucher, VoucherContract}
 import grit.core.visibility.GroupName
-import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlIdentities, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlIdentities, SqlStatements, TestPostgres}
 
 /** The voucher contract, kept by the engine's voucher against a real Postgres. */
 object SqlVoucherTests extends VoucherContract {
@@ -47,7 +47,7 @@ object SqlVoucherTests extends VoucherContract {
     LiveDb
       .transaction(config) { (tx: Tx^) ?=>
         SqlIdentities.enroll(Set(account)).flatMap { _ =>
-          SqlEntryStore.attempt {
+          SqlStatements.attempt {
             val conn: java.sql.Connection^{tx} = Tx.connection(tx)
             Using.resource(
               conn.prepareStatement(

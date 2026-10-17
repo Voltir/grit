@@ -277,7 +277,7 @@ private[sql] object SqlDocuments {
       tx: Tx^
   ): Either[StoreError, Int] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
+    SqlStatements.attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         bind(ps)
         ps.executeUpdate()
@@ -307,7 +307,7 @@ private[sql] object SqlDocuments {
       using tx: Tx^
   ): Either[StoreError, Vector[A]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore
+    SqlStatements
       .attempt {
         Using.resource(conn.prepareStatement(sql)) { ps =>
           bind(ps)

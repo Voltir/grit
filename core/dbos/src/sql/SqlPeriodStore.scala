@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
-import scala.util.Using
-
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.period.{
   Activity,
@@ -36,7 +34,7 @@ import grit.core.visibility.Integrity
 
 /** [[PeriodStore]] over the `grit.periods` table and `entries`' own. */
 final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
-  import SqlEntryStore.{attempt, many}
+  import SqlStatements.{cleared, many, one, update}
   import SqlPeriodStore.*
 
   def openFor(conversation: ConversationId, turn: TurnSeq, at: Instant)(using
@@ -440,35 +438,6 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       }
     } yield ()
 
-  private def one[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Option[A]] =
-    many(sql)(bind)(read).map(_.headOption)
-
-  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
-    * parameters are set first, to the transaction's, then `bind`'s.
-    */
-  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val clearance = Tx.clearance(tx)
-    many(sql) { ps =>
-      SqlClearance.bind(ps, 1, clearance)
-      bind(ps)
-    }(read)
-  }
-
-  private def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
 }
 
 private object SqlPeriodStore {

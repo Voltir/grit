@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.{PreparedStatement, ResultSet}
+import java.sql.ResultSet
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
@@ -14,7 +14,7 @@ import grit.core.store.{StoreError, Tx}
   * entries of each room's conversations.
   */
 final class SqlStitchStore extends StitchStore {
-  import SqlEntryStore.{attempt, many}
+  import SqlStatements.{attempt, cleared, many}
   import SqlStitchStore.*
 
   def record(root: EntryId, placed: Placed, at: Instant)(using
@@ -144,19 +144,6 @@ final class SqlStitchStore extends StitchStore {
         ps.setString(1, ids(conversations))
         ps.setString(2, ids(conversations))
       }(rs => Link(ConversationId(rs.getString(1)), ConversationId(rs.getString(2))))
-
-  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
-    * parameters are set first, to the transaction's, then `bind`'s.
-    */
-  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val clearance = Tx.clearance(tx)
-    many(sql) { ps =>
-      SqlClearance.bind(ps, 1, clearance)
-      bind(ps)
-    }(read)
-  }
 
 }
 

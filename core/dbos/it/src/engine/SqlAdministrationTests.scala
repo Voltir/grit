@@ -10,7 +10,7 @@ import grit.core.identity.{Account, Standing, Vouched}
 import grit.core.place.Place
 import grit.core.store.{Tx, Voucher}
 import grit.core.visibility.RoomAccess
-import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPlaces, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlPlaces, SqlStatements, TestPostgres}
 
 /** The administration contract, kept by the engine's administration against a real Postgres. */
 object SqlAdministrationTests extends AdministrationContract {
@@ -54,7 +54,7 @@ object SqlAdministrationTests extends AdministrationContract {
   protected def reported(a: Administration, room: Place, access: RoomAccess): Unit =
     under { (tx: Tx^) ?=>
       SqlPlaces.id(room).flatMap { place =>
-        SqlEntryStore.attempt {
+        SqlStatements.attempt {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(
             conn.prepareStatement(

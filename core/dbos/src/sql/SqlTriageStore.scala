@@ -13,7 +13,7 @@ import grit.core.triage.{Tags, TriageStore}
 
 /** [[TriageStore]] over `grit.triage`, whose rows cascade from `grit.entries`. */
 final class SqlTriageStore extends TriageStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def record(
       entry: EntryId,

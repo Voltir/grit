@@ -23,7 +23,7 @@ final class SqlEntrySearch extends EntrySearch {
     if (query.isBlank || limit <= 0) Right(Vector.empty)
     else {
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      SqlEntryStore.attempt {
+      SqlStatements.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Ranked)) { ps =>
           SqlClearance.bind(ps, 1, Tx.clearance(tx))
           ps.setString(SqlClearance.Params + 1, query)
@@ -59,7 +59,7 @@ final class SqlEntrySearch extends EntrySearch {
           "f" -> ujson.Num(TurnSeq.value(o.first).toDouble)
         )
       })
-      SqlEntryStore.attempt {
+      SqlStatements.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Nearby)) { ps =>
           SqlClearance.bind(ps, 1, Tx.clearance(tx))
           ps.setString(SqlClearance.Params + 1, query)
@@ -91,7 +91,7 @@ final class SqlEntrySearch extends EntrySearch {
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       // The ids go as JSON, so no Java array crosses JDBC.
       val ids = ujson.Arr.from(conversations.map(c => ujson.Str(ConversationId.value(c))))
-      SqlEntryStore.attempt {
+      SqlStatements.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Closings)) { ps =>
           SqlClearance.bind(ps, 1, Tx.clearance(tx))
           ps.setString(SqlClearance.Params + 1, query)
@@ -123,7 +123,7 @@ final class SqlEntrySearch extends EntrySearch {
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       // The room's path goes as JSON, so no Java array crosses JDBC.
       val path = ujson.Arr.from(room.segments.map(ujson.Str(_))).render()
-      SqlEntryStore.attempt {
+      SqlStatements.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Room)) { ps =>
           SqlClearance.bind(ps, 1, Tx.clearance(tx))
           ps.setString(SqlClearance.Params + 1, query)

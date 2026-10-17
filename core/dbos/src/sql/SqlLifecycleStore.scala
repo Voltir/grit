@@ -12,7 +12,7 @@ import grit.core.store.{LifecycleStore, StoreError, Tx}
   * the millisecond; the scope is its places as written (`SET scope = '{fs:/home/you}'`).
   */
 final class SqlLifecycleStore extends LifecycleStore {
-  import SqlEntryStore.attempt
+  import SqlStatements.attempt
 
   def current()(using tx: Tx^): Either[StoreError, LifecycleSettings] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
