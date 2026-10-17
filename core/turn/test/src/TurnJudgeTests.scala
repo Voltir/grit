@@ -3,7 +3,7 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.classify.StateJson
-import grit.core.context.Window
+import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
 import grit.core.id.{
   ConversationId,
@@ -293,6 +293,35 @@ object TurnJudgeTests extends TestSuite {
           result(6, "no such file", true, "read docs/old.md")
         )
       ).recalled ==> "read docs/release.md:\nReleases are cut on Tuesdays."
+    }
+
+    test(
+      "the conversation's own record is recalled only when the thread cuts a message said before it"
+    ) {
+      def closing(n: Long) = entry(
+        n,
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("The freeze moved."))
+      )
+      def recalled(before: String) = {
+        val all =
+          Vector(entry(0, Payload.Heard(before)), closing(1), entry(2, Payload.Heard("ok?")))
+        judging(
+          all,
+          Window(all.map(_.seq)),
+          Vector.empty,
+          Strand.Read.empty,
+          800,
+          names,
+          "d"
+        ).recalled
+      }
+      (recalled("when is the freeze?"), recalled("freeze " * TurnJudge.ThreadChars)) ==> (
+        "",
+        Shown
+          .of(closing(1), names)
+          .collect { case Message.User(text) => text }
+          .getOrElse("")
+      )
     }
 
     test("a window with no record recalls nothing") {

@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.classify.{Ask, Classifier, StateJson}
 import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, Document}
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.provider.TokenEstimator
@@ -113,7 +113,8 @@ object TurnJudge {
     * [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name
     * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
-    * then of each record among the window's entries, then each of the turn's own tool
+    * then of each record among the window's entries whose earlier messages the thread does
+    * not show whole (some cut, or none in it), then each of the turn's own tool
     * results but a failed one, under its call as a person is shown it: a strand is context,
     * not recall.
     */
@@ -126,15 +127,28 @@ object TurnJudge {
       speakers: Speakers,
       draft: String
   ): State = {
-    val thread = all.flatMap { e =>
-      e.payload match {
+    val lines = all.flatMap { e =>
+      (e.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
           Option.when(said.nonEmpty)(Stitching.Line("Assistant", said))
         case Payload.Posted(text) => Option.when(text.nonEmpty)(Stitching.Line("Assistant", text))
         case p => p.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _))
-      }
+      }).map(e.seq -> _)
     }
+    val thread = Stitching.fit(
+      Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
+      lines.map(_._2),
+      "\n",
+      ThreadChars
+    )
+    // A record stands for what was said before it, so it is recall only when the thread does
+    // not show that whole: the thread holds none of it, or its cut, which always takes the
+    // first message, does.
+    def unshown(record: Entry): Boolean =
+      thread.cut.nonEmpty || !lines.headOption.exists((seq, _) =>
+        EntrySeq.value(seq) < EntrySeq.value(record.seq)
+      )
     val sections = window.nearby
       .filter {
         case Nearby.Along(_, _, _) => false
@@ -144,7 +158,7 @@ object TurnJudge {
     val records = showing.window
       .filter(e =>
         e.payload match {
-          case Payload.Closed(_, _, _) => true
+          case Payload.Closed(_, _, _) => unshown(e)
           case _ => false
         }
       )
@@ -161,12 +175,7 @@ object TurnJudge {
     val recalled =
       (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
     State(
-      Stitching.thread(
-        Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
-        thread,
-        "\n",
-        ThreadChars
-      ),
+      thread.text,
       draft,
       recalled.mkString("\n\n")
     )
