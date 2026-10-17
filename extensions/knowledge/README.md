@@ -26,7 +26,11 @@ Packages, in one-way order (each names only those before it):
   `sync`; another source is a package beside it, and neither names the other.
 - **`drive`**: Drive's shared drives as a card source, read through grit's own Drive tools
   (`drive_list`, `drive_read`) by the facts their answers carry, which it decodes itself since
-  it may not name grit.mcp. Imports `card` and `sync`, never `github`.
+  it may not name grit.mcp; and its walk, the drives, each drive and the folders directly in
+  it. A source declares a chain of labels, one run per label, and a file is carded by the run
+  of the least label dominating what its listing was read at. A file's pointer is `drive_read`
+  with its id; its card is written at when it last changed, titled with its name. Imports
+  `card` and `sync`, never `github`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
   `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
   `sync`.
