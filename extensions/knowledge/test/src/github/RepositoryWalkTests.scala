@@ -40,7 +40,8 @@ object RepositoryWalkTests extends TestSuite {
   private def source(
       maxUnits: Int = 100,
       include: Vector[String] = Vector("docs"),
-      extensions: Set[String] = Set("md")
+      extensions: Set[String] = Set("md"),
+      keeps: String = "documentation"
   ): GitHubCards = right(
     GitHubCards.of(
       corpus,
@@ -50,6 +51,7 @@ object RepositoryWalkTests extends TestSuite {
       "main",
       include,
       extensions,
+      keeps,
       maxUnits,
       None,
       service.place,
@@ -259,7 +261,7 @@ object RepositoryWalkTests extends TestSuite {
 
     test("a directory's card says what of it the source holds, at its tree's SHA, with no ask") {
       val (listings, files) = changedA(read("docs/a.md", 4))
-      val words = "The directory docs holds 2 files and 1 directory: a.md, b.md, guide/."
+      val words = "The directory docs holds documentation: a.md and b.md, and more in guide/."
       val card = Card.directory(
         name,
         "docs",
@@ -299,7 +301,7 @@ object RepositoryWalkTests extends TestSuite {
           "write docs @10"
         ),
         said(walked, "docs") ==
-          Vector("The directory docs holds 2 files and 1 directory: a.md, b.md, guide/."),
+          Vector("The directory docs holds documentation: a.md and b.md, and more in guide/."),
         result == synced(written = 5)
       )
     }
@@ -350,8 +352,37 @@ object RepositoryWalkTests extends TestSuite {
           "drop docs/guide at confidential, docs/guide/c.md at confidential"
         ),
         said(walked, "docs") ==
-          Vector("The directory docs holds 2 files and 0 directories: a.md, b.md."),
+          Vector("The directory docs holds documentation: a.md and b.md."),
         result == synced(written = 1, withdrawn = 2, unchanged = 2)
+      )
+    }
+
+    test(
+      "a directory holding no file in scope itself names the directories that do, in its source's words"
+    ) {
+      val (walked, _) = drive(
+        RepositoryWalk.start(source(keeps = "notes or data"), 5, floor, Vector.empty),
+        moves(
+          Map(
+            "/" -> root(),
+            "docs" -> Listing.Complete(
+              Vector(dir("docs/api", 21), dir("docs/guide", 20), dir("docs/ref", 22)) :+
+                file("docs/logo.png", 92)
+            ),
+            "docs/api" -> Listing.Complete(Vector(file("docs/api/d.md", 4))),
+            "docs/guide" -> guide,
+            "docs/ref" -> Listing.Complete(Vector(file("docs/ref/e.md", 5)))
+          ),
+          Map(
+            "docs/api/d.md" -> read("docs/api/d.md", 4),
+            "docs/guide/c.md" -> read("docs/guide/c.md", 3),
+            "docs/ref/e.md" -> read("docs/ref/e.md", 5)
+          )
+        )
+      )
+      assert(
+        said(walked, "docs") ==
+          Vector("The directory docs holds notes or data in api/, guide/ and ref/.")
       )
     }
 

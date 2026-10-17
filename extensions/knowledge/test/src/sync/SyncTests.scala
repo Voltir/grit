@@ -67,6 +67,7 @@ object SyncTests extends TestSuite {
       "main",
       Vector("docs"),
       Set("md"),
+      "documentation",
       maxUnits,
       None,
       at,

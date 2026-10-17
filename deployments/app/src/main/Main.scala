@@ -101,8 +101,8 @@ import grit.turn.TurnLoop
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
   * Digest on, each turn's model is offered `recent_activity`; with the reminders on,
-  * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each file and
-  * directory of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
+  * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each Markdown
+  * file, and of each directory holding one, of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
   * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
   * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
@@ -665,6 +665,7 @@ object Main {
         ref,
         Vector(""),
         Set("md"),
+        "Markdown documents",
         600,
         Some(Label.Public),
         service.place,

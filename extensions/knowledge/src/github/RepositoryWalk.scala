@@ -18,7 +18,8 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its
   * card is written at the SHA it was read at: from a summary of its first 8 KB, or, when its
   * text is blank, as `An empty file.` with no ask. A directory's card is written from its
-  * listing, with no ask, after its children, and only when each was brought up to date; a
+  * listing, with no ask, naming the files in scope in it and the directories holding more, of
+  * what [[GitHubCards.keeps]] says the source keeps, after its children, and only when each was brought up to date; a
   * directory with no file in scope beneath it, as its children then show, gets no card and is
   * not named in its parent's. A unit's
   * card held only at another label than the floor is relabelled when unchanged, and otherwise
@@ -392,7 +393,8 @@ object RepositoryWalk {
             env.cards.pointer(path) match {
               case Left(why) => advance(env, unwritten(popped, path, why))
               case Right(pointer) =>
-                val summary = CardSummary.of(described(path, children), Vector.empty)
+                val summary =
+                  CardSummary.of(described(path, env.cards.keeps, children), Vector.empty)
                 summary match {
                   case Left(why) => advance(env, unwritten(popped, path, why))
                   case Right(summary) =>
@@ -508,21 +510,23 @@ object RepositoryWalk {
     if (dir == Root) first else s"$dir/$first"
   }
 
-  /** What a directory holds, as its card's summary says it. */
-  private def described(path: String, children: Vector[Entry]): String = {
-    val files = children.count(_.kind == UnitKind.File)
-    val dirs = children.size - files
-    val names = children.map { e =>
-      val name = e.path.substring(e.path.lastIndexOf('/') + 1)
-      if (e.kind == UnitKind.Directory) s"$name/" else name
-    }
-    val holds = s"The directory $path holds ${count(files, "file", "files")} and " +
-      count(dirs, "directory", "directories")
-    if (names.isEmpty) s"$holds." else s"$holds: ${names.mkString(", ")}."
+  /** What a directory holds, as its card's summary says it: of what its source keeps, its files
+    * by name, and the directories holding more; `children` is never empty.
+    */
+  private def described(path: String, keeps: String, children: Vector[Entry]): String = {
+    def name(e: Entry) = e.path.substring(e.path.lastIndexOf('/') + 1)
+    val (files, dirs) = children.partition(_.kind == UnitKind.File)
+    val inDirs = inWords(dirs.map(d => s"${name(d)}/"))
+    val holds = s"The directory $path holds $keeps"
+    if (files.isEmpty) s"$holds in $inDirs."
+    else if (dirs.isEmpty) s"$holds: ${inWords(files.map(name))}."
+    else s"$holds: ${inWords(files.map(name))}, and more in $inDirs."
   }
 
-  private def count(n: Int, one: String, many: String): String =
-    s"$n ${if (n == 1) one else many}"
+  /** `names` as a list in words: `a`, `a and b`, `a, b and c`. */
+  private def inWords(names: Vector[String]): String =
+    if (names.size < 2) names.mkString
+    else s"${names.init.mkString(", ")} and ${names.last}"
 
   // "An empty file." is three words and not blank: CardSummary.of never refuses it.
   private def sure[A](e: Either[String, A]): A =

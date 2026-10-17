@@ -83,6 +83,7 @@ object KnowledgeTests extends TestSuite {
           "main",
           Vector(""),
           Set.empty,
+          "files",
           10,
           label,
           Place.under(Namespace.Task, Vector.empty),

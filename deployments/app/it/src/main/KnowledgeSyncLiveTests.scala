@@ -125,6 +125,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
         "main",
         Vector(""),
         Set.empty,
+        "files",
         100,
         label,
         at,

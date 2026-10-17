@@ -31,6 +31,7 @@ object GitHubCardsTests extends TestSuite {
       owner: String = "octocat",
       repo: String = "Hello-World",
       ref: String = "main",
+      keeps: String = "documentation",
       maxUnits: Int = 100,
       syncs: Vector[SyncSchedule] = Vector(sync("nightly"))
   ): Either[String, GitHubCards] =
@@ -42,6 +43,7 @@ object GitHubCardsTests extends TestSuite {
       ref,
       Vector("docs"),
       Set("md"),
+      keeps,
       maxUnits,
       None,
       service.place,
@@ -93,10 +95,11 @@ object GitHubCardsTests extends TestSuite {
       )
     }
 
-    test("of refuses a blank owner, repo or ref") {
+    test("of refuses a blank owner, repo, ref or keeps") {
       assert(cards(owner = " ") == Left("a repository's owner is not blank"))
       assert(cards(repo = "") == Left("a repository's name is not blank"))
       assert(cards(ref = "\t") == Left("a repository's ref is not blank"))
+      assert(cards(keeps = " ") == Left("what a repository's cards keep is not blank"))
     }
 
     test("of refuses maxUnits under 1, no syncs, and two syncs of one key") {
@@ -110,30 +113,38 @@ object GitHubCardsTests extends TestSuite {
     }
 
     test(
-      "of trims include's slashes and extensions' dots, and its scope digests the two and the form"
+      "of trims include's slashes, extensions' dots and keeps, and its scope digests them and the form"
     ) {
-      def of(include: Vector[String], extensions: Set[String]) = right(
-        GitHubCards.of(
-          corpus,
-          "github",
-          "octocat",
-          "Hello-World",
-          "main",
-          include,
-          extensions,
-          100,
-          None,
-          service.place,
-          Vector(sync("nightly"))
+      def of(include: Vector[String], extensions: Set[String], keeps: String = "documentation") =
+        right(
+          GitHubCards.of(
+            corpus,
+            "github",
+            "octocat",
+            "Hello-World",
+            "main",
+            include,
+            extensions,
+            keeps,
+            100,
+            None,
+            service.place,
+            Vector(sync("nightly"))
+          )
         )
-      )
-      val trimmed = of(Vector("/docs/"), Set(".md"))
+      val trimmed = of(Vector("/docs/"), Set(".md"), " documentation ")
+      val form = "directory form 3"
       assert(
         trimmed.include == Vector("docs"),
         trimmed.extensions == Set("md"),
-        trimmed.scope == Scope.of(Set("include docs", "extension md", "directory form 2")),
+        trimmed.keeps == "documentation",
+        trimmed.scope == Scope.of(Set("include docs", "extension md", "keeps documentation", form)),
         of(Vector("docs"), Set("md", "txt")).scope ==
-          Scope.of(Set("include docs", "extension md", "extension txt", "directory form 2"))
+          Scope.of(
+            Set("include docs", "extension md", "extension txt", "keeps documentation", form)
+          ),
+        of(Vector("docs"), Set("md"), "notes").scope ==
+          Scope.of(Set("include docs", "extension md", "keeps notes", form))
       )
     }
 

@@ -39,7 +39,8 @@ Packages, in one-way order (each names only those before it):
 
 A deployment builds each source with `GitHubCards.of` (its corpus, which names it and supplies
 its service; the name the deployment gave GitHub's MCP server; the repository, ref and what of
-it becomes cards; at most how many cards; its label; the place its cards are kept at, drawn on
+it becomes cards, and those files in a few plain words, which its directories' cards say they
+hold; at most how many cards; its label; the place its cards are kept at, drawn on
 where a conversation's scope holds it; and its `SyncSchedule`s), or with `DriveCards.of` (the
 same, but Drive's two tools, and a chain of labels in place of the repository and one label),
 and the plugin with

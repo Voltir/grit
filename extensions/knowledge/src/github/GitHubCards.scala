@@ -18,7 +18,9 @@ import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule}
   * MCP server. Of the repository, the paths under `include` (each a path prefix, or a file's
   * path, with no leading or trailing `/`; `""` for every path) and, of files, those whose
   * extension is in `extensions` (each with no dot; every one when empty), which [[scope]]
-  * digests; at most `maxUnits` cards.
+  * digests; at most `maxUnits` cards. `keeps` says in a few plain words what those files are
+  * (`documentation or data`): a directory's card says it holds that, so it reaches the model and
+  * the people a window's cards are shown to, and [[scope]] digests it too.
   *
   * `label` is what the repository contains, `None` for its service place's label: its sync
   * schedules run at that clearance, and every card is kept at no less. It may be above the
@@ -39,6 +41,7 @@ final case class GitHubCards private (
     ref: String,
     include: Vector[String],
     extensions: Set[String],
+    keeps: String,
     maxUnits: Int,
     label: Option[Label],
     at: Place,
@@ -46,12 +49,12 @@ final case class GitHubCards private (
 ) extends Source[Listing] {
 
   /** What of the repository becomes cards, and what a directory's card says of it: [[include]],
-    * [[extensions]] and the form directories' cards are written in, as a digest.
+    * [[extensions]], [[keeps]] and the form directories' cards are written in, as a digest.
     */
   def scope: Scope =
     Scope.of(
       include.map(i => s"include $i").toSet ++ extensions.map(e => s"extension $e") +
-        s"directory form ${GitHubCards.DirectoryForm}"
+        s"keeps $keeps" + s"directory form ${GitHubCards.DirectoryForm}"
     )
 
   /** The arguments reading the unit at `path` at `ref`: `owner`, `repo`, `path` and `ref`. */
@@ -109,13 +112,14 @@ object GitHubCards {
 
   // Raised whenever which directories get a card, or what one says, changes: a card held under
   // another form is made under another scope, so the next run lists its directory again and
-  // writes it anew (2: a directory with nothing in scope beneath it gets none).
-  private val DirectoryForm = 2
+  // writes it anew (2: a directory with nothing in scope beneath it gets none; 3: it says what
+  // it holds as `keeps` names it, by name alone).
+  private val DirectoryForm = 3
 
-  /** These, `include`'s paths without a leading or trailing `/` and `extensions` without a
-    * leading dot, or why not: `corpus` supplies no service; `server` makes no tool name
-    * (`grit.core.tool.ToolName.of` of `{server}_get_file_contents`); `owner`, `repo` or `ref`
-    * blank; `maxUnits` under 1; no `syncs`, or two of one key.
+  /** These, `include`'s paths without a leading or trailing `/`, `extensions` without a leading
+    * dot and `keeps` trimmed, or why not: `corpus` supplies no service; `server` makes no tool
+    * name (`grit.core.tool.ToolName.of` of `{server}_get_file_contents`); `owner`, `repo`, `ref`
+    * or `keeps` blank; `maxUnits` under 1; no `syncs`, or two of one key.
     */
   def of(
       corpus: Corpus,
@@ -125,6 +129,7 @@ object GitHubCards {
       ref: String,
       include: Vector[String],
       extensions: Set[String],
+      keeps: String,
       maxUnits: Int,
       label: Option[Label],
       at: Place,
@@ -138,6 +143,7 @@ object GitHubCards {
       _ <- Either.cond(!owner.isBlank, (), "a repository's owner is not blank")
       _ <- Either.cond(!repo.isBlank, (), "a repository's name is not blank")
       _ <- Either.cond(!ref.isBlank, (), "a repository's ref is not blank")
+      _ <- Either.cond(!keeps.isBlank, (), "what a repository's cards keep is not blank")
       _ <- Either.cond(maxUnits >= 1, (), s"maxUnits is at least 1, not $maxUnits")
       _ <- Either.cond(syncs.nonEmpty, (), "a source has at least one sync schedule")
       _ <- syncs
@@ -156,6 +162,7 @@ object GitHubCards {
       ref,
       include.map(_.stripPrefix("/").stripSuffix("/")),
       extensions.map(_.stripPrefix(".")),
+      keeps.trim,
       maxUnits,
       label,
       at,
