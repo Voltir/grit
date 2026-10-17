@@ -58,7 +58,7 @@ object DriveReading {
   private val OpenLink = "(?:https?://)?drive\\.google\\.com/open\\?id=([A-Za-z0-9_-]+)(?:&.*)?".r
 
   /** Why a Drive's declaration was refused; [[message]] says so in words. */
-  enum Refused {
+  enum Misdeclared {
 
     /** The deployment claims no `domain`. */
     case Unclaimed(domain: Domain)
@@ -88,12 +88,12 @@ object DriveReading {
       identities: Identities,
       self: Email,
       writers: Map[Email, Integrity]
-  ): Either[Refused, DriveReading] = {
+  ): Either[Misdeclared, DriveReading] = {
     val inDomain = writers.keys.filter(Email.domain(_) == domain).toVector.sortBy(Email.value)
-    if (!identities.domains.contains(domain)) Left(Refused.Unclaimed(domain))
-    else if (inDomain.nonEmpty) Left(Refused.PeopleWriters(inDomain))
+    if (!identities.domains.contains(domain)) Left(Misdeclared.Unclaimed(domain))
+    else if (inDomain.nonEmpty) Left(Misdeclared.PeopleWriters(inDomain))
     else if (writers.keys.exists(Email.value(_) == Email.value(self)))
-      Left(Refused.OwnWriter(self))
+      Left(Misdeclared.OwnWriter(self))
     else Right(DriveReading(service, domain, self, writers))
   }
 }

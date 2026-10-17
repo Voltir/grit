@@ -1090,7 +1090,7 @@ object Main {
           .of(service, domain, identities, self, writers.map(_ -> Integrity.Member).toMap)
           .left
           .map {
-            case r: DriveReading.Refused.Unclaimed => s"$DriveDomainVar: ${r.message}"
+            case r: DriveReading.Misdeclared.Unclaimed => s"$DriveDomainVar: ${r.message}"
             case r => s"$DriveWritersVar: ${r.message}"
           }
         edge <- DriveEdge.serving(credential, reading)
