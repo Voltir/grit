@@ -463,8 +463,8 @@ object RepositoryWalk {
 
   /** The copies held of units gone from directories listed in full or listed as on the way to
     * an included path, or of directories found empty and the units beneath them; the copies at
-    * other labels of units this walk kept current at the floor, but the one each write or
-    * relabel replaced; and the units past `maxUnits`.
+    * other labels of units this walk kept current at the floor; and the units past `maxUnits`;
+    * but never the copy a write or relabel of this walk replaced.
     */
   private def drops(env: Env, s: State): Vector[Held] = {
     val settled = s.settled.toSet
@@ -485,7 +485,9 @@ object RepositoryWalk {
       .sortBy(_.split('/').toVector)(using Ordering.Implicits.seqOrdering[Vector, String])
     val past = kept.drop(math.max(env.cards.maxUnits - s.fresh, 0))
     val over = (past ++ past.flatMap(ancestors)).toSet
-    env.held.filter(h => dropped(h) || over(h.path))
+    env.held.filter(h =>
+      dropped(h) || (over(h.path) && !(settled.contains(h.key) && replacedBy(env, h)))
+    )
   }
 
   /** The paths of the directories above `path`. */

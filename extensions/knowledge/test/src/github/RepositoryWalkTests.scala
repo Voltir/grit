@@ -669,6 +669,28 @@ object RepositoryWalkTests extends TestSuite {
       )
     }
 
+    test("past a lowered maxUnits, a copy a write already withdrew is not dropped again") {
+      val (steps, result) = run(
+        heldAll().filterNot(_.path == "docs/guide/c.md") :+ held("docs/guide/c.md", 3, lower),
+        Map(
+          "/" -> root(docs = 11),
+          "docs" -> Listing.Complete(docs(guide = 21)),
+          "docs/guide" -> Listing.Complete(Vector(file("docs/guide/c.md", 4)))
+        ),
+        Map("docs/guide/c.md" -> read("docs/guide/c.md", 4)),
+        maxUnits = 4
+      )
+      assert(
+        steps.filter(_.startsWith("write")) == Vector(
+          "write docs/guide/c.md @4 replacing internal",
+          "write docs/guide @21",
+          "write docs @11"
+        ),
+        steps.lastOption == Some("drop docs at confidential, docs/guide at confidential"),
+        result == synced(written = 3, withdrawn = 2, unchanged = 2)
+      )
+    }
+
     test("a file whose read's SHA differs from its listing's is written at the read's") {
       val (listings, files) = changedA(read("docs/a.md", 5))
       val (steps, _) = run(heldAll(), listings, files)
