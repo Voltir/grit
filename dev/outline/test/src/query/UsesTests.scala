@@ -527,5 +527,44 @@ object UsesTests extends TestSuite {
       assert(all.linesIterator.count(_.startsWith("    ")) == 21)
       assert(all.contains("\n  in B.h\n    10  T.t()\n    11  T.t()\n"))
     }
+
+    test("an object's definition is not a use of it: uses of O lists P.b's site alone") {
+      val d = os.temp.dir(prefix = "outline-uses-self-")
+      os.write(d / "build.mill", "")
+      val sources = Vector(
+        "O" -> "object O {\n\n  /** A. */\n  val a: Vector[Int] = Vector(1)\n}",
+        "P" -> "object P { def b: Vector[Int] = O.a }"
+      ).map { case (file, text) =>
+        val src = d / "m" / "src" / "p" / s"$file.scala"
+        os.write(src, s"package p\n$text\n", createFolders = true)
+        src
+      }
+      val classes = d / "out" / "m" / "compile.dest" / "classes"
+      os.makeDir.all(classes)
+      val reporter = dotty.tools.dotc.Main.process(
+        Array("-d", classes.toString, "-classpath", System.getProperty("java.class.path")) ++
+          sources.map(_.toString)
+      )
+      assert(!reporter.hasErrors)
+      val (answer, _) =
+        Query.uses(
+          Root(d),
+          MillLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("p.O"),
+          None,
+          None,
+          80000
+        )
+      val lines = answer.text.linesIterator.toVector.drop(1).dropRight(2)
+      assert(
+        lines == Vector(
+          "== m/src/p/P.scala",
+          "  in P.b  [0.2 KB]",
+          "    2  object P { def b: Vector[Int] = O.a }"
+        )
+      )
+    }
   }
 }

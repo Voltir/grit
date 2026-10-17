@@ -624,6 +624,14 @@ object Read {
               case d @ (_: DefDef | _: ValDef)
                   if d.symbol.flags.is(Flags.Synthetic) && d.symbol.maybeOwner.isClassDef =>
                 ()
+              // An object's self, `_: O.type`, is the compiler's: its type names the object where no source does.
+              case c @ ClassDef(_, constructor, parents, _, body)
+                  if named(c.symbol) && c.symbol.flags.is(Flags.Module) =>
+                enclosing = one(cleanFullName(c.symbol.fullName)) :: enclosing
+                traverseTree(constructor)(owner)
+                parents.foreach(traverseTree(_)(owner))
+                body.foreach(traverseTree(_)(owner))
+                enclosing = enclosing.tail
               case d @ (_: DefDef | _: ValDef | _: ClassDef) if named(d.symbol) =>
                 enclosing = one(cleanFullName(d.symbol.fullName)) :: enclosing
                 super.traverseTree(tree)(owner)
