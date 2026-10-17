@@ -33,10 +33,31 @@ object ConfigTests extends TestSuite {
       )
     }
 
-    test("a known setting written wrong is still refused by its line") {
+    test(
+      "a line opening with each known word but written wrong is refused, named by its line in the file, comments counted"
+    ) {
+      val refusals = Vector("hide", "secondary   ", "area store Store", "test-call").map { bad =>
+        val dir = os.temp.dir()
+        os.write(dir / ".outline.conf", s"hide a/b\n# a comment\n$bad\n")
+        Config.read(Root(dir)).left.map(_.stripPrefix(s"${dir / ".outline.conf"}: "))
+      }
+      def refused(line: String): Either[String, Config] = Left(
+        s"line 3 is none of `hide <prefix>`, `secondary <prefix>`, `area <name> \"<purpose>\": <items>` and `test-call <name>`: $line"
+      )
+      assert(
+        refusals == Vector(
+          refused("hide"),
+          refused("secondary"),
+          refused("area store Store"),
+          refused("test-call")
+        )
+      )
+    }
+
+    test("a comment line is skipped, not kept as a line this outline does not know") {
       val dir = os.temp.dir()
-      os.write(dir / ".outline.conf", "hide a\narea store Store\n")
-      assert(Config.read(Root(dir)).left.toOption.exists(_.contains("line 2")))
+      os.write(dir / ".outline.conf", "hide a/b\n# a comment\n")
+      assert(Config.read(Root(dir)) == Right(Config(Vector("a/b"), Vector.empty)))
     }
 
     test("with no test-call line the test call is test") {
