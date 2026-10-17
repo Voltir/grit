@@ -81,23 +81,24 @@ object Locate {
     * the file is missing or has no package line.
     */
   def inPackageIn(root: Root, classes: Vector[os.Path], file: os.RelPath): Vector[os.Path] =
-    inPackage(classes, packageIn(root, file))
+    inPackage(classes, packageSegments(root, file))
 
   /** `inPackageIn` for each file asked of it, each package's dirs listed once, however many files share it: for a query
     * that asks it of many files, and does not outlive that query, since a build after its first call is not seen.
     */
   def inPackagesIn(root: Root, classes: Vector[os.Path]): os.RelPath => Vector[os.Path] = {
     // Local to the function returned, and grows by one entry per package it is asked about.
-    val listed = scala.collection.mutable.Map.empty[String, Vector[os.Path]]
+    val listed = scala.collection.mutable.Map.empty[Vector[String], Vector[os.Path]]
     file => {
-      val pkg = packageIn(root, file)
-      listed.getOrElseUpdate(pkg, inPackage(classes, pkg))
+      val segments = packageSegments(root, file)
+      listed.getOrElseUpdate(segments, inPackage(classes, segments))
     }
   }
 
-  /** The `.tasty` files directly in package `pkg`'s dir across `classes`, sorted; none for the empty package. */
-  private def inPackage(classes: Vector[os.Path], pkg: String): Vector[os.Path] = {
-    val segments = pkg.split('.').toVector.filter(_.nonEmpty)
+  /** The `.tasty` files directly in the dir of the package of `segments` across `classes`, sorted; none for the empty
+    * package.
+    */
+  private def inPackage(classes: Vector[os.Path], segments: Vector[String]): Vector[os.Path] = {
     if (segments.isEmpty) Vector.empty
     else {
       val rel = os.RelPath(segments.mkString("/"))
@@ -211,9 +212,13 @@ object Locate {
   }
 
   /** The package the source `file` declares, its leading package clauses dot-joined; empty when it has none or is missing. */
-  def packageIn(root: Root, file: os.RelPath): String = {
+  def packageIn(root: Root, file: os.RelPath): String = packageSegments(root, file).mkString(".")
+
+  /** The segments of the package `packageIn` gives, in order. */
+  private def packageSegments(root: Root, file: os.RelPath): Vector[String] = {
     val source = root.dir / file
-    if (!os.isFile(source)) "" else packageOf(os.read.lines(source)).mkString(".")
+    if (!os.isFile(source)) Vector.empty
+    else packageOf(os.read.lines(source)).flatMap(_.split('.')).filter(_.nonEmpty)
   }
 
   /** The package clause segments that lead a source file, in order; stops at the first line that is not a package clause, blank or a line comment. */
