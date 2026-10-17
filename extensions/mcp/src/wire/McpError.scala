@@ -15,14 +15,14 @@ enum McpError {
   /** It does not take revision 2026-07-28; `supported`, the versions it named. */
   case Unsupported(supported: Vector[String])
 
-  /** HTTP `status`, a 4xx, with no JSON-RPC error in the body; `said`, the body's start as
+  /** HTTP `status`, a 4xx, with no JSON-RPC error in the body; `body`, the body's start as
     * one line ([[Rpc.failure]]), empty when it had none. A server of an earlier revision
     * answers so, and so may any server refusing a request or a token it cannot read.
     */
-  case Rejected(status: Int, said: String)
+  case Rejected(status: Int, body: String)
 
-  /** Any other JSON-RPC error: its `code`, and `said`, its message. */
-  case Rpc(code: Int, said: String)
+  /** Any other JSON-RPC error: its `code`, and `text`, its message. */
+  case Rpc(code: Int, text: String)
 
   /** The result wanted input from grit (`resultType: input_required`); grit gives none. */
   case InputRequired
@@ -71,9 +71,9 @@ enum McpError {
       "does not speak MCP 2026-07-28, and names no version it does"
     case Unsupported(supported) =>
       s"does not speak MCP 2026-07-28; it speaks ${supported.mkString(", ")}"
-    case Rejected(status, said) if said.isEmpty => s"answered HTTP $status with no MCP error"
-    case Rejected(status, said) => s"answered HTTP $status with no MCP error: $said"
-    case Rpc(code, said) => s"answered error $code: $said"
+    case Rejected(status, body) if body.isEmpty => s"answered HTTP $status with no MCP error"
+    case Rejected(status, body) => s"answered HTTP $status with no MCP error: $body"
+    case Rpc(code, text) => s"answered error $code: $text"
     case InputRequired => "wanted input that grit does not give"
     case Unreadable(why) => s"answered something grit cannot read: $why"
     case Status(code) => s"answered HTTP $code"

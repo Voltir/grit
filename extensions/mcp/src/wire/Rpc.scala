@@ -117,7 +117,7 @@ object Rpc {
             .flatMap(_.arrOpt)
             .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
         )
-      case (Some(code), Some(said)) => McpError.Rpc(code, said)
+      case (Some(code), Some(text)) => McpError.Rpc(code, text)
       case _ => McpError.Unreadable("an error with no code and message")
     }
   }
