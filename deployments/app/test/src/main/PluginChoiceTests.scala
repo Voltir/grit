@@ -43,9 +43,27 @@ object PluginChoiceTests extends TestSuite {
     "GRIT_GITHUB_REF" -> "main"
   )
 
+  /** Every room public, Drive's service cleared for confidential. */
+  private val driveCleared = Visibility
+    .of(
+      Compartments.Shipped,
+      RoomLabels
+        .of(Vector.empty, Labelled.Mapped(Label.Public))
+        .fold(p => sys.error(p.written), identity),
+      Vector.empty,
+      Vector.empty,
+      Vector(
+        Cleared(
+          Party.Service(Service.of("drive").fold(sys.error, identity)),
+          Label.at(Level.Confidential)
+        )
+      )
+    )
+    .fold(r => sys.error(r.toString), identity)
+
   /** Each schedule of `env`'s plugins: its key, rule, parameters and clearance. */
-  private def scheduled(env: Map[String, String]) =
-    choice(env).map(
+  private def scheduled(env: Map[String, String], visibility: Visibility = Visibility.Shipped) =
+    choice(env, visibility).map(
       _.flatMap(_.schedules).map((d: Declared[?]) =>
         (ScheduleKey.value(d.key), d.rule, d.written, d.clearance)
       )
@@ -130,7 +148,10 @@ object PluginChoiceTests extends TestSuite {
       val blank = choice(github + ("GRIT_GITHUB_REPO" -> " ") + ("GRIT_PLUGINS" -> "knowledge"))
       (refused, blank) ==> (
         Vector(
-          Left("GRIT_PLUGINS: knowledge reads GitHub, and GITHUB_MCP_TOKEN is unset"),
+          Left(
+            "GRIT_PLUGINS: knowledge reads GitHub or Drive, and neither GITHUB_MCP_TOKEN nor " +
+              "GRIT_DRIVE_SA_KEY is set"
+          ),
           Left(
             "GRIT_PLUGINS: knowledge reads the repository GRIT_GITHUB_OWNER names, and it is unset or blank"
           ),
@@ -143,6 +164,64 @@ object PluginChoiceTests extends TestSuite {
         ),
         Left(
           "GRIT_PLUGINS: knowledge reads the repository GRIT_GITHUB_REPO names, and it is unset or blank"
+        )
+      )
+    }
+
+    test(
+      "knowledge, with Drive's key and card labels set, syncs the shared drives daily at 03:00 at each label"
+    ) {
+      val env = Map(
+        "GRIT_PLUGINS" -> "knowledge",
+        "GRIT_DRIVE_SA_KEY" -> "/nowhere/key.json",
+        "GRIT_DRIVE_CARD_LABELS" -> "confidential, internal"
+      )
+      def daily(key: String, label: Label) = (
+        key,
+        SlotRule.Daily(LocalTime.of(3, 0), zone),
+        ujson.Obj("source" -> "drive", "perRun" -> 30),
+        label
+      )
+      (scheduled(env, driveCleared), scheduled(env ++ github, driveCleared)) ==> (
+        Right(
+          Vector(
+            daily("drive-daily-internal", Label.at(Level.Internal)),
+            daily("drive-daily-confidential", Label.at(Level.Confidential))
+          )
+        ),
+        Right(
+          Vector(
+            daily("github-daily", Label.Public)
+              .copy(_3 = ujson.Obj("source" -> "github", "perRun" -> 30)),
+            daily("drive-daily-internal", Label.at(Level.Internal)),
+            daily("drive-daily-confidential", Label.at(Level.Confidential))
+          )
+        )
+      )
+    }
+
+    test(
+      "knowledge reading Drive at card labels unset, blank or unreadable, or with no source, is refused"
+    ) {
+      val drive = Map("GRIT_PLUGINS" -> "knowledge", "GRIT_DRIVE_SA_KEY" -> "/nowhere/key.json")
+      (
+        choice(drive, driveCleared),
+        choice(drive + ("GRIT_DRIVE_CARD_LABELS" -> " , "), driveCleared),
+        choice(drive + ("GRIT_DRIVE_CARD_LABELS" -> "internal,secret"), driveCleared),
+        choice(Map("GRIT_PLUGINS" -> "knowledge"))
+      ) ==> (
+        Left(
+          "GRIT_PLUGINS: knowledge reads Drive at the labels GRIT_DRIVE_CARD_LABELS names, " +
+            "and it is unset or blank"
+        ),
+        Left(
+          "GRIT_PLUGINS: knowledge reads Drive at the labels GRIT_DRIVE_CARD_LABELS names, " +
+            "and it is unset or blank"
+        ),
+        Left("GRIT_PLUGINS: GRIT_DRIVE_CARD_LABELS: secret names no level first: secret"),
+        Left(
+          "GRIT_PLUGINS: knowledge reads GitHub or Drive, and neither GITHUB_MCP_TOKEN nor " +
+            "GRIT_DRIVE_SA_KEY is set"
         )
       )
     }

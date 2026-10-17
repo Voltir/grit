@@ -47,11 +47,12 @@ import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, Local
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
+import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
 import grit.knowledge.plugin.{CardSource, Knowledge}
 import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, KeyFiles, McpServer}
-import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
+import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest, DriveTools}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
@@ -102,7 +103,8 @@ import grit.turn.TurnLoop
   * Digest on, each turn's model is offered `recent_activity`; with the reminders on,
   * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each file and
   * directory of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
-  * `GRIT_GITHUB_REF`, synced daily, [[knowledge]]). When a period is asked about
+  * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
+  * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
@@ -594,14 +596,20 @@ object Main {
   /** The variable naming the ref (a branch, tag or commit) the knowledge plugin reads at. */
   private val GithubRefVar = "GRIT_GITHUB_REF"
 
-  /** The knowledge plugin `name` as `env` declares it ([[Knowledge]]): one source, the
+  /** The knowledge plugin `name` as `env` declares it ([[Knowledge]]), each source synced daily
+    * at 03:00 in `zone`, at most 30 summaries a run. With [[GithubTokenVar]] set, the
     * repository [[GithubOwnerVar]]/[[GithubRepoVar]] at [[GithubRefVar]], its markdown files
-    * (`md`), at most 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit serve` with
-    * [[GithubTokenVar]] set; a run while none serves them stops at its first call, and its
-    * reply says so). Kept at public, the corpus `github`, and drawn on where a conversation's
-    * scope holds `service:github` (`GRIT_SCOPE`); synced daily at 03:00 in `zone`, at most 30
-    * summaries a run. Why not: [[GithubTokenVar]] unset, or a part of the repository unset or
-    * blank, naming its variable; or [[Knowledge.of]]'s refusal under `visibility`.
+    * (`md`), at most 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit
+    * serve` with [[GithubTokenVar]] set; a run while none serves them stops at its first call,
+    * and its reply says so), kept at public, the corpus `github`, and drawn on where a
+    * conversation's scope holds `service:github` (`GRIT_SCOPE`). With [[DriveKeyVar]] set,
+    * the shared drives grit is a member of, as [[DriveCards]] reads them through the Drive
+    * tools [[drive]]'s edge serves, at most 600 cards at each label [[DriveCardLabelsVar]]
+    * names, the corpus `drive`, drawn on where a scope holds `service:drive`; Drive's place is
+    * internal, so no label below it is accepted. Why not: neither variable set; a part of the
+    * repository unset or blank, or [[DriveCardLabelsVar]] unset, blank or naming no label,
+    * naming its variable; or [[DriveCards.of]]'s or [[Knowledge.of]]'s refusal under
+    * `visibility`.
     */
   private[main] def knowledge(
       name: PluginName,
@@ -609,6 +617,34 @@ object Main {
       visibility: Visibility,
       zone: java.time.ZoneId
   ): Either[String, Knowledge] = {
+    for {
+      _ <- Either.cond(
+        env.contains(GithubTokenVar) || env.contains(DriveKeyVar),
+        (),
+        s"knowledge reads GitHub or Drive, and neither $GithubTokenVar nor $DriveKeyVar is set"
+      )
+      key <- ScheduleKey.of("daily")
+      daily <- SyncSchedule.of(key, SlotRule.Daily(java.time.LocalTime.of(3, 0), zone), 30)
+      github <-
+        if (env.contains(GithubTokenVar)) githubCards(env, daily).map(Vector(_))
+        else Right(Vector.empty)
+      drive <-
+        if (env.contains(DriveKeyVar)) driveCards(env, daily).map(Vector(_))
+        else Right(Vector.empty)
+      plugin <- Knowledge
+        .of(name, github ++ drive, visibility)
+        .left
+        .map(why => s"knowledge: $why")
+    } yield plugin
+  }
+
+  /** The repository [[GithubOwnerVar]]/[[GithubRepoVar]] at [[GithubRefVar]] as
+    * [[knowledge]] says, synced on `daily`; or why not, as it says.
+    */
+  private def githubCards(
+      env: Map[String, String],
+      daily: SyncSchedule
+  ): Either[String, CardSource] = {
     def named(variable: String): Either[String, String] =
       env
         .get(variable)
@@ -616,18 +652,11 @@ object Main {
         .filter(_.nonEmpty)
         .toRight(s"knowledge reads the repository $variable names, and it is unset or blank")
     for {
-      _ <- Either.cond(
-        env.contains(GithubTokenVar),
-        (),
-        s"knowledge reads GitHub, and $GithubTokenVar is unset"
-      )
       owner <- named(GithubOwnerVar)
       repo <- named(GithubRepoVar)
       ref <- named(GithubRefVar)
       service <- Service.of("github")
       corpus <- CorpusName.of("github")
-      key <- ScheduleKey.of("daily")
-      daily <- SyncSchedule.of(key, SlotRule.Daily(java.time.LocalTime.of(3, 0), zone), 30)
       cards <- GitHubCards.of(
         Corpus(corpus, s"the GitHub repository $owner/$repo", Place.Everywhere, Some(service)),
         "github",
@@ -641,12 +670,41 @@ object Main {
         service.place,
         Vector(daily)
       )
-      plugin <- Knowledge
-        .of(name, Vector(CardSource.GitHub(cards)), visibility)
-        .left
-        .map(why => s"knowledge: $why")
-    } yield plugin
+    } yield CardSource.GitHub(cards)
   }
+
+  /** The shared drives grit is a member of, as [[knowledge]] says, synced on `daily` at each
+    * label [[DriveCardLabelsVar]] names; or why not, as it says.
+    */
+  private def driveCards(
+      env: Map[String, String],
+      daily: SyncSchedule
+  ): Either[String, CardSource] =
+    for {
+      written <- env
+        .get(DriveCardLabelsVar)
+        .map(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+        .filter(_.nonEmpty)
+        .toRight(
+          s"knowledge reads Drive at the labels $DriveCardLabelsVar names, and it is unset or blank"
+        )
+      labels <- written.foldLeft[Either[String, Vector[Label]]](Right(Vector.empty))((acc, w) =>
+        acc.flatMap(done =>
+          Label.read(w).map(done :+ _).left.map(why => s"$DriveCardLabelsVar: $why")
+        )
+      )
+      service <- DriveAt
+      corpus <- CorpusName.of("drive")
+      cards <- DriveCards.of(
+        Corpus(corpus, "the shared drives grit is a member of", Place.Everywhere, Some(service)),
+        DriveTools.List.spec.name,
+        DriveTools.Read.spec.name,
+        labels,
+        600,
+        service.place,
+        Vector(daily)
+      )
+    } yield CardSource.Drive(cards)
 
   private val StubTopicsVar = "GRIT_STUB_TOPICS"
 
@@ -1025,6 +1083,12 @@ object Main {
     * files are read as (`~` is not expanded); unset, `grit serve` serves no Drive edge.
     */
   private val DriveKeyVar = "GRIT_DRIVE_SA_KEY"
+
+  /** The variable listing the labels the knowledge plugin cards Drive's files at: their
+    * written forms ([[Label.written]], e.g. `internal` or `confidential+finance`),
+    * comma-separated.
+    */
+  private val DriveCardLabelsVar = "GRIT_DRIVE_CARD_LABELS"
 
   /** The variable naming the domain whose addresses are Drive's people: one
     * `GRIT_CLAIMED_DOMAINS` lists.

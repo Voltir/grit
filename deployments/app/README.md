@@ -57,9 +57,12 @@ In dependency order:
     tools `GRIT_TOOLS` names, over the checkout it runs in, the edits and shell built only when
     offered; sweeping every `GRIT_SWEEP`; posting to the plugins `GRIT_PLUGINS` turns on
     (`digest`; `remind`; `knowledge`, over the repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO`
-    at `GRIT_GITHUB_REF`, synced through the GitHub edge `grit serve` serves, refused at start
-    without `GITHUB_MCP_TOKEN` or one of those); then the chat TUI, or with arguments each
-    answered as a message.
+    at `GRIT_GITHUB_REF` when `GITHUB_MCP_TOKEN` is set, synced through the GitHub edge `grit
+    serve` serves, and over Drive's shared drives when `GRIT_DRIVE_SA_KEY` is set, carded at
+    each label `GRIT_DRIVE_CARD_LABELS` lists (written forms, comma-separated, none below
+    internal), synced through the Drive edge; refused at start with neither, or with a part
+    of either unset; `Main.knowledge`); then the chat TUI, or with arguments each answered as
+    a message.
 
   `PromoteModelSettings` prints the seed catalog with every approved setting laid over it, for a
   reviewed commit. ← `config`, `look`, `chat`
