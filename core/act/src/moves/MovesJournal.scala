@@ -14,8 +14,15 @@ import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.{Facts, Integrity, Label}
 
+/** What an `ask:{n}` step recorded, a job's ask or a workflow's judgment alike. */
+private[moves] trait Asked {
+
+  /** What its request held nothing above; `None` when it records none. */
+  def label: Option[Label]
+}
+
 /** What an ask's `ask:{n}` step came to. */
-private[moves] enum AskMade {
+private[moves] enum AskMade extends Asked {
 
   /** The model answered `message`; its request, estimated at `estimate`, held nothing above
     * `at`.
@@ -64,6 +71,15 @@ private[moves] enum AskMade {
     case Unshaped(_, _, calls) => calls
     case Judged(_, _, _, call) => Vector(call)
     case Unjudged(_, _, call) => Vector(call)
+  }
+
+  def label: Option[Label] = this match {
+    case Made(_, _, at, _) => Some(at)
+    case Refused(_, _, _, at) => at
+    case Shaped(_, _, at, _, _) => Some(at)
+    case Unshaped(_, _, _) => None
+    case Judged(_, _, at, _) => Some(at)
+    case Unjudged(_, _, _) => None
   }
 }
 
@@ -137,6 +153,9 @@ private[moves] object CallMade {
   *     an answer as [[grit.core.classify.AnswersJson]] writes it, or
   *     `{"unjudged":{"digest":d,"why":w,"model":m,"usage":u,"estimate":e}}`, or refused as
   *     above;
+  *   - a workflow's judgment's `ask:{n}` ([[posed]]): `{"made":b,"calls":[c…],"at":l}`, `b`
+  *     what it made in its own journaled form, `at` only when its pose was asked of a
+  *     classifier or model (a record without it reads with no label);
   *   - `ask:{n}:record`, whatever the ask's shape: `{"recorded":true}` or `{"store":w}`;
   *   - a call's `call:{n}`: `{"sent":{"digest":d}}`, or
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
@@ -326,7 +345,12 @@ object MovesJournal {
     * answered calls' costs.
     */
   def posed[B](using b: Journaled[B]): Journaled[Judging.Posed[B]] = Journaled.json(
-    p => ujson.Obj("made" -> b.encode(p.made), "calls" -> ujson.Arr.from(p.calls.map(writeCost))),
+    p => {
+      val o =
+        ujson.Obj("made" -> b.encode(p.made), "calls" -> ujson.Arr.from(p.calls.map(writeCost)))
+      p.label.foreach(l => o("at") = Label.written(l))
+      o
+    },
     v =>
       fields(v, "judgment").flatMap { o =>
         for {
@@ -336,9 +360,26 @@ object MovesJournal {
             .toRight("judgment: no made")
             .flatMap(b.decode)
           calls <- costs(o)
-        } yield Judging.Posed(made, calls)
+          // Absent in a record made before judgments kept it.
+          label <- o.get("at") match {
+            case None => Right(None)
+            case Some(l) =>
+              l.strOpt.toRight("judgment: at is not text").flatMap(Label.read).map(Some(_))
+          }
+        } yield Judging.Posed(made, calls, label)
       }
   )
+
+  /** The label an `ask:{n}` step's recorded `output` says its request held nothing above, a
+    * job's ask and a workflow's judgment read alike; `None` when it records none (a judgment
+    * made with no call asked or recorded before it kept one, a reply that did not read, a
+    * refusal before its request was read) or `output` is no ask's record.
+    */
+  def askedAt(output: String): Option[Label] = {
+    val asked: Either[String, Asked] =
+      askMade.decode(output).left.flatMap(_ => posed[String].decode(output))
+    asked.toOption.flatMap(_.label)
+  }
 
   /** A keep's step: what its body returned, in `A`'s own journaled form, or why nothing was
     * kept. Carries no digest: a keep's input is its code.

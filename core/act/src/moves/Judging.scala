@@ -117,7 +117,7 @@ object Judging {
       Step[R, Posing[I], Posed[B]](Act.Asks.move)(r =>
         p =>
           pose(r)(p.in) match {
-            case Pose.Made(b) => Posed(b, Vector.empty)
+            case Pose.Made(b) => Posed(b, Vector.empty, None)
             case Pose.Asking(cleared, routed, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val asked: (Either[ClassifierError, Reply], FiniteDuration) =
@@ -132,7 +132,11 @@ object Judging {
               val calls = reply.toOption.toVector.map(a =>
                 Act.classified(env.records, request, a, cleared.upstream)
               )
-              Posed(read(reply.flatMap(_.answers), took), calls)
+              Posed(
+                read(reply.flatMap(_.answers), took),
+                calls,
+                Some(routed.classification.label)
+              )
             case Pose.Writing(models, routed, pins, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val reply: Either[String, Message.Assistant] = for {
@@ -145,7 +149,7 @@ object Judging {
               val calls = reply.toOption.toVector.map(m =>
                 AskMade.Call(m.model, m.usage, env.records.estimator.request(request), m.upstream)
               )
-              Posed(read(reply), calls)
+              Posed(read(reply), calls, Some(routed.classification.label))
           }
       )
     Flow
@@ -188,7 +192,12 @@ object Judging {
   private final case class Posing[+I](name: MoveName, charged: Charged, in: I) extends Act.Move
 
   /** What a judgment's `ask:{n}` recorded: what its workflow `made` of it, and the cost of each
-    * call its classifiers or models answered, in order.
+    * call its classifiers or models answered, in order; `label`, the label of what its pose was
+    * routed under, `None` for one made with no classifier or model asked.
     */
-  private[moves] final case class Posed[+B](made: B, calls: Vector[AskMade.Call])
+  private[moves] final case class Posed[+B](
+      made: B,
+      calls: Vector[AskMade.Call],
+      label: Option[Label]
+  ) extends Asked
 }

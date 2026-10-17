@@ -223,6 +223,38 @@ object MovesJournalTests extends TestSuite {
       )
     }
 
+    test(
+      "a workflow's judgment step is written with what it made, its calls and the label it was asked under, and one recorded before it held a label reads with none"
+    ) {
+      given Journaled[Judging.Posed[String]] = MovesJournal.posed[String]
+      val call = AskMade.Call("jev", Usage(Tokens(300), Tokens(0), Tokens.Zero, None), Tokens(250))
+      val cost =
+        """{"model":"jev","usage":{"input":300,"output":0,"cachedInput":0},"estimate":250}"""
+      pinned(
+        Judging.Posed("kept", Vector(call), Some(Label.at(Level.Internal))),
+        s"""{"made":"kept","calls":[$cost],"at":"internal"}"""
+      )
+      // A record made before the label was kept, as every history of the epoch before holds.
+      pinned(Judging.Posed("kept", Vector(), None), """{"made":"kept","calls":[]}""")
+    }
+
+    test(
+      "an ask step's label reads alike from a workflow's judgment and a job's ask, and is none where it records none"
+    ) {
+      val internal = Label.at(Level.Internal)
+      val judgment =
+        MovesJournal.posed[String].encode(Judging.Posed("kept", Vector(), Some(internal)))
+      val made = summon[Journaled[AskMade]].encode(
+        AskMade.Made("v1:ab", message, Label.at(Level.Public), Tokens(10))
+      )
+      val unshaped =
+        summon[Journaled[AskMade]].encode(AskMade.Unshaped("v1:ab", "no JSON", Vector()))
+      val unasked = MovesJournal.posed[String].encode(Judging.Posed("kept", Vector(), None))
+      Vector(judgment, made, unshaped, unasked, """{"recorded":true}""").map(
+        MovesJournal.askedAt
+      ) ==> Vector(Some(internal), Some(Label.at(Level.Public)), None, None, None)
+    }
+
     test("an ask's record step is written recorded, or with its store's failure") {
       pinned[Either[String, Unit]](Right(()), """{"recorded":true}""")
       pinned[Either[String, Unit]](Left("gone"), """{"store":"gone"}""")
