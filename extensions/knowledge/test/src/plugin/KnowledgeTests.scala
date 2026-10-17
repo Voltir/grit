@@ -1,8 +1,9 @@
 package grit.knowledge.plugin
 
-import java.time.{LocalTime, ZoneId}
+import java.time.{Instant, LocalTime, ZoneId}
 
-import grit.core.id.{CorpusName, PluginName, ScheduleKey}
+import grit.core.document.{Document, Placement, Pointer}
+import grit.core.id.{CorpusName, DocumentVersion, PluginName, ScheduleKey}
 import grit.core.job.{Declared, SlotRule}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.tool.ToolName
@@ -10,6 +11,7 @@ import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cleared,
   Compartments,
+  Integrity,
   Label,
   Labelled,
   Level,
@@ -17,6 +19,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
+import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
 import grit.knowledge.sync.SyncSchedule
@@ -219,6 +222,44 @@ object KnowledgeTests extends TestSuite {
         "the source shared is labelled [level: restricted], above what its service drive is " +
           "cleared for, [level: confidential]: its runs' calls could not send"
       )
+    }
+
+    test("a Drive card at a label its source no longer declares is undeclared, and no other is") {
+      val plugin = right(
+        Knowledge.of(
+          name,
+          Vector(drive(Vector(confidential, internal)), source(None)),
+          driveUnder(internal)
+        )
+      )
+      val restricted = Label.at(Level.Restricted)
+      val pointer = right(Pointer.of(right(ToolName.of("drive_read")), "file" -> ujson.Str("f1")))
+      val summary = right(CardSummary.of("What the file holds.", Vector.empty))
+      def at(corpus: String, label: Label): Document = {
+        val card = Card.file(
+          right(CorpusName.of(corpus)),
+          "f1",
+          right(UnitVersion.of("2026-01-01T00:00:00Z")),
+          summary,
+          pointer
+        )
+        Document(
+          right(DocumentVersion.of(1).toRight("no version")),
+          name,
+          card.docKey,
+          label,
+          Integrity.Member,
+          driveService.place,
+          card.text,
+          card.data,
+          Some(pointer),
+          Instant.EPOCH,
+          Placement(0, Instant.EPOCH),
+          None
+        )
+      }
+      Vector(at("shared", internal), at("shared", restricted), at("repo", restricted))
+        .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false)
     }
 
     test("a Drive schedule's key another source's schedule has is refused") {

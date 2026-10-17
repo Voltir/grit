@@ -2,12 +2,13 @@ package grit.knowledge.plugin
 
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
+import grit.core.document.{DocLabel, DocWeight, Document, DocumentTerms}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{Declared, Job}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.visibility.{Label, Party, Room, Visibility}
-import grit.knowledge.sync.{Source, Sync, SyncParams, SyncSchedule}
+import grit.knowledge.drive.DriveCards
+import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
 
 /** The knowledge plugin: one card per unit of each of its sources, by its job [[Sync]] on each
   * source's sync schedules, the source's `_` written `-` in each key. A GitHub source's are
@@ -16,12 +17,14 @@ import grit.knowledge.sync.{Source, Sync, SyncParams, SyncSchedule}
   * with `+` written `-`, and declared at that label. Its documents: label "knowledge: what a
   * source holds, and how to read it", weight 1, kept 30 days after a version stops being
   * current, bounded at the sum of each GitHub source's `maxUnits` and each Drive source's
-  * `maxUnits` times its labels; it posts nothing.
+  * `maxUnits` times its labels; at each start, a Drive source's card at a label it no longer
+  * declares is withdrawn ([[Documents.sweep]]); it posts nothing.
   */
 final class Knowledge private (
     val name: PluginName,
     sources: Vector[Source[?]],
     declaring: Vector[Knowledge.Declaring],
+    drives: Vector[DriveCards],
     terms: DocumentTerms
 ) extends Plugin {
 
@@ -34,6 +37,14 @@ final class Knowledge private (
     Some(new Documents {
       val terms: DocumentTerms = kept
       val posting: Option[DocumentPosting] = None
+
+      /** A Drive source's card at a label not among its `labels`: no run of it reads that
+        * label, so no run would withdraw it.
+        */
+      override def undeclared(document: Document): Boolean =
+        drives.exists(d =>
+          Held.read(d.corpus, document).exists(_.exists(h => !d.labels.contains(h.label)))
+        )
     })
   }
 
@@ -91,7 +102,13 @@ object Knowledge {
         case CardSource.GitHub(c) => c.maxUnits.toLong
         case CardSource.Drive(c) => c.maxUnits.toLong * c.labels.size
       })
-    } yield new Knowledge(name, sources, declaring, kept)
+    } yield new Knowledge(
+      name,
+      sources,
+      declaring,
+      cards.collect { case CardSource.Drive(c) => c },
+      kept
+    )
   }
 
   /** The schedules `card` declares under `visibility`, as [[Knowledge]] says; or why not, as
