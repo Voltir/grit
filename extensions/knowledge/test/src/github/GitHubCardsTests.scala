@@ -109,7 +109,9 @@ object GitHubCardsTests extends TestSuite {
       assert(cards(syncs = Vector(sync("nightly"), sync("hourly"))).isRight)
     }
 
-    test("of trims include's slashes and extensions' dots, and its scope digests the two") {
+    test(
+      "of trims include's slashes and extensions' dots, and its scope digests the two and the form"
+    ) {
       def of(include: Vector[String], extensions: Set[String]) = right(
         GitHubCards.of(
           corpus,
@@ -129,9 +131,9 @@ object GitHubCardsTests extends TestSuite {
       assert(
         trimmed.include == Vector("docs"),
         trimmed.extensions == Set("md"),
-        trimmed.scope == Scope.of(Set("include docs", "extension md")),
+        trimmed.scope == Scope.of(Set("include docs", "extension md", "directory form 2")),
         of(Vector("docs"), Set("md", "txt")).scope ==
-          Scope.of(Set("include docs", "extension md", "extension txt"))
+          Scope.of(Set("include docs", "extension md", "extension txt", "directory form 2"))
       )
     }
 

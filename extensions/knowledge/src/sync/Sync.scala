@@ -17,7 +17,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
 
-/** The job `knowledge-sync`, version 3, over `sources`. A run, for the source its parameters
+/** The job `knowledge-sync`, version 4, over `sources`. A run, for the source its parameters
   * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
   * writes a card at its own floor for each new or changed unit (a file's from one summary, with
   * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
@@ -49,7 +49,7 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 
   val name: JobName = Sync.Name
 
-  val version: Int = 3
+  val version: Int = 4
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)

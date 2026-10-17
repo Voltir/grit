@@ -18,7 +18,9 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its
   * card is written at the SHA it was read at: from a summary of its first 8 KB, or, when its
   * text is blank, as `An empty file.` with no ask. A directory's card is written from its
-  * listing, with no ask, after its children, and only when each was brought up to date. A unit's
+  * listing, with no ask, after its children, and only when each was brought up to date; a
+  * directory with no file in scope beneath it, as its children then show, gets no card and is
+  * not named in its parent's. A unit's
   * card held only at another label than the floor is relabelled when unchanged, and otherwise
   * written; either way its copy there is withdrawn in that keep, never before. A unit held at
   * the floor goes by that copy, whatever another label's records. An unchanged unit whose card
@@ -39,7 +41,8 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop: of the cards of units gone
   * from directories it listed in full (or outside the source now, a directory it lists only as
-  * on the way to an included path among them); of the copies at other labels of units it kept
+  * on the way to an included path among them), and of directories it found with no file in
+  * scope beneath them, with every card beneath each; of the copies at other labels of units it kept
   * current at the floor; and, past `maxUnits` (when it was lowered), of the units last in walk
   * order and the directories above them. A `Partial` listing, or a directory a stopped walk
   * never reached, drops nothing beneath it. A step that came to [[Outcome.Stopped]], or to an
@@ -172,6 +175,7 @@ object RepositoryWalk {
       undone: Set[String],
       listed: Map[String, Set[String]],
       passed: Set[String],
+      empty: Set[String],
       settled: Vector[CardKey],
       stopped: Option[String]
   ) extends caps.Pure {
@@ -208,6 +212,7 @@ object RepositoryWalk {
         Vector.empty,
         Set.empty,
         Map.empty,
+        Set.empty,
         Set.empty,
         Vector.empty,
         None
@@ -374,9 +379,14 @@ object RepositoryWalk {
                         )
                   }
             }
-        case Task.Finish(path, version, children) =>
+        case Task.Finish(path, version, all) =>
+          // Each child is brought up to date by now, so whether one keeps anything is known: a
+          // file in scope does, a directory does unless found empty here, and a directory held
+          // current at this form does (none is written empty).
+          val children = all.filterNot(c => s.empty.contains(c.path))
           if (s.undone.exists(u => u == path || u.startsWith(path + "/")))
             advance(env, popped.copy(undone = popped.undone + path))
+          else if (children.isEmpty) advance(env, popped.copy(empty = popped.empty + path))
           else if (env.isNew(env.keyOf(path)) && !room(env, s)) advance(env, refuse(popped, path))
           else
             env.cards.pointer(path) match {
@@ -450,8 +460,9 @@ object RepositoryWalk {
   }
 
   /** The copies held of units gone from directories listed in full or listed as on the way to
-    * an included path; the copies at other labels of units this walk kept current at the floor,
-    * but the one each write or relabel replaced; and the units past `maxUnits`.
+    * an included path, or of directories found empty and the units beneath them; the copies at
+    * other labels of units this walk kept current at the floor, but the one each write or
+    * relabel replaced; and the units past `maxUnits`.
     */
   private def drops(env: Env, s: State): Vector[Held] = {
     val settled = s.settled.toSet
@@ -460,7 +471,7 @@ object RepositoryWalk {
       else
         s.passed.contains(h.path) || s.listed.exists { (dir, children) =>
           beneath(h.path, dir) && !children.contains(toward(dir, h.path))
-        }
+        } || s.empty.exists(e => h.path == e || beneath(h.path, e))
     }
     // Past maxUnits (it was lowered): the units last in walk order go, and the directories
     // above them, so the next run lists those again and takes the units back when there is room.

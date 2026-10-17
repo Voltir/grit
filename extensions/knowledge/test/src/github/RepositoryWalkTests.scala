@@ -191,6 +191,27 @@ object RepositoryWalkTests extends TestSuite {
   private def changedA(a: Fetched): (Map[String, Listing], Map[String, Fetched]) =
     (Map("/" -> root(docs = 11), "docs" -> Listing.Complete(docs(a = 4))), Map("docs/a.md" -> a))
 
+  /** What the card each step writes of the directory at `path` says. */
+  private def said(steps: Vector[Step], path: String): Vector[String] = steps.collect {
+    case Step.Write(card, _) if card.path == path => card.summary.summary
+  }
+
+  /** `docs`, as first written, with `docs/assets` beside it, holding a logo and `raw`, holding
+    * an image: nothing beneath it ends `.md`.
+    */
+  private val withAssets: Map[String, Listing] = Map(
+    "/" -> root(),
+    "docs" -> Listing.Complete(docs() :+ dir("docs/assets", 93)),
+    "docs/assets" -> Listing.Complete(
+      Vector(file("docs/assets/logo.png", 95), dir("docs/assets/raw", 94))
+    ),
+    "docs/assets/raw" -> Listing.Complete(Vector(file("docs/assets/raw/x.png", 96))),
+    "docs/guide" -> guide
+  )
+
+  /** The scope a directory's card was made under before its form was part of it. */
+  private val formless: Scope = Scope.of(Set("include docs", "extension md"))
+
   val tests = Tests {
     test("an unchanged tree SHA lists nothing under it") {
       val (steps, result) = run(heldAll(), Map("/" -> root()))
@@ -248,6 +269,90 @@ object RepositoryWalkTests extends TestSuite {
         right(source().pointer("docs"))
       )
       assert(steps(listings, files).lastOption == Some(Step.Write(card, None)))
+    }
+
+    test(
+      "a directory with nothing in scope beneath it gets no card, and its parent's names it not"
+    ) {
+      val (walked, result) = drive(
+        RepositoryWalk.start(source(), 5, floor, Vector.empty),
+        moves(
+          withAssets,
+          Map(
+            "docs/a.md" -> read("docs/a.md", 1),
+            "docs/b.md" -> read("docs/b.md", 2),
+            "docs/guide/c.md" -> read("docs/guide/c.md", 3)
+          )
+        )
+      )
+      assert(
+        walked.map(shown).filter(s => s.startsWith("list") || s.startsWith("write")) == Vector(
+          "list /",
+          "list docs",
+          "write docs/a.md @1",
+          "list docs/assets",
+          "list docs/assets/raw",
+          "write docs/b.md @2",
+          "list docs/guide",
+          "write docs/guide/c.md @3",
+          "write docs/guide @20",
+          "write docs @10"
+        ),
+        said(walked, "docs") ==
+          Vector("The directory docs holds 2 files and 1 directory: a.md, b.md, guide/."),
+        result == synced(written = 5)
+      )
+    }
+
+    test(
+      "a held card of a directory with nothing in scope beneath it is dropped, with those beneath it"
+    ) {
+      val (steps, result) = run(
+        heldAll(scope = formless) ++ Vector(
+          heldDir("docs/assets", 93, floor, formless),
+          heldDir("docs/assets/raw", 94, floor, formless)
+        ),
+        withAssets
+      )
+      assert(
+        steps == Vector(
+          "list /",
+          "list docs",
+          "list docs/assets",
+          "list docs/assets/raw",
+          "list docs/guide",
+          "write docs/guide @20",
+          "write docs @10",
+          "drop docs/assets at confidential, docs/assets/raw at confidential"
+        ),
+        result == synced(written = 2, withdrawn = 2, unchanged = 3)
+      )
+    }
+
+    test("a directory whose last file in scope goes is dropped, and its parent's names it not") {
+      val (walked, result) = drive(
+        RepositoryWalk.start(source(), 5, floor, heldAll()),
+        moves(
+          Map(
+            "/" -> root(docs = 11),
+            "docs" -> Listing.Complete(docs(guide = 21)),
+            "docs/guide" -> Listing.Complete(Vector(file("docs/guide/c.png", 4)))
+          ),
+          Map.empty
+        )
+      )
+      assert(
+        walked.map(shown) == Vector(
+          "list /",
+          "list docs",
+          "list docs/guide",
+          "write docs @11",
+          "drop docs/guide at confidential, docs/guide/c.md at confidential"
+        ),
+        said(walked, "docs") ==
+          Vector("The directory docs holds 2 files and 0 directories: a.md, b.md."),
+        result == synced(written = 1, withdrawn = 2, unchanged = 2)
+      )
     }
 
     test("the head summarised is the text's first 8 KB, never splitting a character") {

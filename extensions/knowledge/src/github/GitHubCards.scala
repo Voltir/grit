@@ -45,9 +45,14 @@ final case class GitHubCards private (
     syncs: Vector[SyncSchedule]
 ) extends Source[Listing] {
 
-  /** What of the repository becomes cards: [[include]] and [[extensions]], as a digest. */
+  /** What of the repository becomes cards, and what a directory's card says of it: [[include]],
+    * [[extensions]] and the form directories' cards are written in, as a digest.
+    */
   def scope: Scope =
-    Scope.of(include.map(i => s"include $i").toSet ++ extensions.map(e => s"extension $e"))
+    Scope.of(
+      include.map(i => s"include $i").toSet ++ extensions.map(e => s"extension $e") +
+        s"directory form ${GitHubCards.DirectoryForm}"
+    )
 
   /** The arguments reading the unit at `path` at `ref`: `owner`, `repo`, `path` and `ref`. */
   def reading(path: String): ujson.Obj =
@@ -101,6 +106,11 @@ final case class GitHubCards private (
 }
 
 object GitHubCards {
+
+  // Raised whenever which directories get a card, or what one says, changes: a card held under
+  // another form is made under another scope, so the next run lists its directory again and
+  // writes it anew (2: a directory with nothing in scope beneath it gets none).
+  private val DirectoryForm = 2
 
   /** These, `include`'s paths without a leading or trailing `/` and `extensions` without a
     * leading dot, or why not: `corpus` supplies no service; `server` makes no tool name
