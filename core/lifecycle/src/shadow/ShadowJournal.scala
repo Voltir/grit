@@ -27,8 +27,7 @@ private[shadow] object ShadowJournal {
     )
 
   /** A `record` step's output: whether the row was kept. */
-  given recorded: Journaled[Either[String, Boolean]] =
-    outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
+  given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 
   /** `error` in the words the journal keeps. */
   def describe(error: StoreError): String = error match {

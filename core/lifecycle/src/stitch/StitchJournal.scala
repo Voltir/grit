@@ -18,6 +18,5 @@ private[stitch] object StitchJournal {
     outcome(StitchJson.writeKept, StitchJson.readKept)
 
   /** A `record-stitch` step's output: whether the placement was kept now. */
-  given recorded: Journaled[Either[String, Boolean]] =
-    outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
+  given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 }

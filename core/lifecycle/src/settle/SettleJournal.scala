@@ -59,6 +59,5 @@ private[settle] object SettleJournal {
         }
     )
 
-  given recorded: Journaled[Either[String, Boolean]] =
-    outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
+  given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 }

@@ -54,6 +54,5 @@ private[triage] object TriageJournal {
       v => v.strOpt.map(WorkflowId(_)).toRight("started: expected a workflow id")
     )
 
-  given recorded: Journaled[Either[String, Boolean]] =
-    outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
+  given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 }

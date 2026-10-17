@@ -59,6 +59,10 @@ object Journaled {
             }
         }
     )
+
+  /** A step that only records whether it did: `{"ok": true}` or `{"ok": false}`, or a failure. */
+  val flag: Journaled[Either[String, Boolean]] =
+    outcome(ujson.Bool(_), _.boolOpt.toRight("recorded: expected a boolean"))
 }
 
 /** A recorded step output that the current code cannot decode: the workflow was started

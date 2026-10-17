@@ -26,5 +26,14 @@ object JournaledTests extends TestSuite {
           Left("expected an object")
         )
     }
+
+    test("a recorded flag is written as ok with its boolean, and a non-boolean refuses to read") {
+      // A pin of the recorded form: the lifecycle journals hold `{"ok":true}` in their histories.
+      val written = Vector(true, false).map(b => Journaled.flag.encode(Right(b)))
+      (written, Journaled.flag.decode("""{"ok":3}""")) ==> (
+        Vector("""{"ok":true}""", """{"ok":false}"""),
+        Left("recorded: expected a boolean")
+      )
+    }
   }
 }
