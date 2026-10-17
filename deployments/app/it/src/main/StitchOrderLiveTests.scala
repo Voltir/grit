@@ -189,6 +189,7 @@ object StitchOrderLiveTests extends TestSuite {
           ),
           grit.kit.run.Launch.moves(
             engine,
+            engine.db,
             new grit.models.StubModels,
             grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
             Clock.system()
@@ -216,6 +217,7 @@ object StitchOrderLiveTests extends TestSuite {
           ),
           grit.kit.run.Launch.moves(
             engine,
+            engine.db,
             new grit.models.StubModels,
             grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
             Clock.system()

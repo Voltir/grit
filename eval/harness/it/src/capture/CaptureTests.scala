@@ -84,6 +84,7 @@ object CaptureTests extends TestSuite {
               ),
               grit.kit.run.Launch.moves(
                 engine,
+                engine.db,
                 new grit.models.StubModels,
                 grit.core.classify.ClearedClassifier
                   .of(grit.models.StubClassifier.Service, new StubClassifier),
@@ -112,6 +113,7 @@ object CaptureTests extends TestSuite {
               ),
               grit.kit.run.Launch.moves(
                 engine,
+                engine.db,
                 new grit.models.StubModels,
                 grit.core.classify.ClearedClassifier
                   .of(grit.models.StubClassifier.Service, new StubClassifier),

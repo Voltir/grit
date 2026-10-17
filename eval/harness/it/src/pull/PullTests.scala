@@ -90,6 +90,7 @@ object PullTests extends TestSuite {
         // through these.
         val moves = grit.kit.run.Launch.moves(
           engine,
+          engine.db,
           new grit.models.StubModels,
           grit.core.classify.ClearedClassifier
             .of(grit.models.StubClassifier.Service, new StubClassifier),

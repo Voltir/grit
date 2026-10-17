@@ -16,10 +16,10 @@ import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.store.{Askers, Jot, LifecycleStore, StoreError}
+import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, Stores}
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.{Deployment, Desks, Offered, PluginBinding, Topics}
 import grit.kit.environment.Secrets
@@ -123,7 +123,7 @@ private[grit] object Launch {
     val assembler: ContextAssembler = wiring.assembler
     // What every move is made with: a job's, the lifecycle's and the turn's asks.
     val moves: MovesEnv^{engine, models, classifier, clock} =
-      Launch.moves(engine, models, classifier, clock)
+      Launch.moves(engine, engine.db, models, classifier, clock)
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
       val turnEnv = wiring.turnEnv(moves.records, assembler, models, classifier, weighing)
       engine.launch(
@@ -232,32 +232,34 @@ private[grit] object Launch {
     engine
   }
 
-  /** What `engine`'s moves are made with: a job's, the lifecycle's and the turn's asks, their costs kept
-    * in its ledger and admitted against its spending, `models` answering their asks and
-    * `classifier` their judgments, at `clock`.
+  /** What moves over `stores` are made with: a job's, the lifecycle's and the turn's asks, their
+    * costs kept in its ledger and admitted against its spending, read through `db`, `models`
+    * answering their asks and `classifier` their judgments, at `clock`. An engine and a
+    * rehearsal each pass their own stores and `db`.
     */
   def moves(
-      engine: Engine^,
+      stores: (Stores & caps.SharedCapability)^,
+      db: Db^,
       models: Models^,
       classifier: ClearedClassifier^,
       clock: Clock^
-  ): MovesEnv^{engine, models, classifier, clock} =
-    MovesEnv(moveRecords(engine), models, classifier, engine.db, clock)
+  ): MovesEnv^{stores, db, models, classifier, clock} =
+    MovesEnv(moveRecords(stores), models, classifier, db, clock)
 
-  /** Where `engine`'s moves keep what they did: its ledger and spending, its edges' requests,
+  /** Where moves over `stores` keep what they did: its ledger and spending, its edges' requests,
     * its schedules and savepoints.
     */
-  def moveRecords(engine: Engine^): MoveRecords =
+  def moveRecords(stores: (Stores & caps.SharedCapability)^): MoveRecords =
     MoveRecords(
-      engine.ledger,
-      engine.spending,
-      engine.requests,
-      engine.edgeDirectory,
-      engine.toolSets,
-      engine.schedules,
-      engine.askers,
+      stores.ledger,
+      stores.spending,
+      stores.requests,
+      stores.edgeDirectory,
+      stores.toolSets,
+      stores.schedules,
+      stores.askers,
       CharEstimate,
-      engine.savepoints
+      stores.savepoints
     )
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it

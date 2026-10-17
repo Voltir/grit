@@ -159,7 +159,7 @@ object LiveTurn {
     val unasked: grit.core.classify.ClearedClassifier^ =
       grit.core.classify.ClearedClassifier.none("no classifier")
     val moves: grit.act.moves.MovesEnv^{engine, models, unasked, clock} =
-      grit.kit.run.Launch.moves(engine, models, unasked, clock)
+      grit.kit.run.Launch.moves(engine, engine.db, models, unasked, clock)
     val uncapped = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None)
     def launch[C^](tooling: TurnTooling[C]^): Unit =
       engine.launch(
