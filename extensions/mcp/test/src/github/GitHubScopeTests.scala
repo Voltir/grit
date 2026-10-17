@@ -1,5 +1,7 @@
 package grit.mcp.github
 
+import scala.util.chaining.*
+
 import grit.mcp.client.FakeMcpServer
 import grit.mcp.scope.{Bound, McpScope}
 import grit.mcp.wire.McpTool
@@ -131,6 +133,33 @@ object GitHubScopeTests extends TestSuite {
             Some(s"$withheld: 1 of the 2 results in this answer.")
           )
         )
+      )
+    }
+
+    test(
+      "a search answer as GitHub now sends it, its text block's JSON also its structured " +
+        "content, keeps the same results in both; one whose structure does not name a result's " +
+        "repository is not shown"
+    ) {
+      val captured = FakeMcpServer.githubSearch("search_code")
+      def structured(change: ujson.Obj => Unit): ujson.Obj = {
+        val structure = payload(captured)
+        change(structure)
+        ujson.Obj.from(captured.obj).tap(_("structuredContent") = structure)
+      }
+      // the captured answer's one kept result, as the text-only path keeps it
+      val kept = payload(right(HelloWorld.shown(tool("search_code"), captured)))
+      (
+        HelloWorld
+          .shown(tool("search_code"), structured(_ => ()))
+          .map(r => (payload(r), r("structuredContent"), r("content").arr.size)),
+        HelloWorld.shown(
+          tool("search_code"),
+          structured(_("items").arr.foreach(_.obj.remove("repository")))
+        )
+      ) ==> (
+        Right((kept, kept, 2)),
+        Left("a result's place cannot be read: it has no repository string")
       )
     }
 

@@ -63,15 +63,18 @@ sealed trait McpScope {
 
   /** `result`, a `tools/call` result of `tool`, as it may be shown: as it is under
     * [[McpScope.Open]], when `tool`'s answers are not attributed, or when its `isError` is
-    * true. Otherwise its one text block's results outside every bound are removed, the
-    * attribution's count, when the answer has one, is set to the number kept, and when any were
-    * removed a second text block says how many, of how many, and the bounds. A result is within
-    * a bound when its place has each of the bound's values. Each answer is filtered on its own,
-    * so a paged search's count is of that page's kept results. `Left` saying why, with nothing
-    * shown, when the result has a key other than `content`, `isError`, `_meta` and
-    * `resultType`, its content is not one text block holding a JSON object with an array at the
-    * attribution's `items`, or any result's place cannot be read or has other than one value per
-    * key.
+    * true. Otherwise its results outside every bound are removed: read from its
+    * `structuredContent`, when it has one, which keeps only those within, and then its content
+    * is one text block rendering that kept `structuredContent` as compact JSON, the server's own
+    * blocks dropped; else from its one text block, as compact JSON again. The attribution's
+    * count, when the answer has one, is set to the number kept, and when any were removed a
+    * second text block says how many, of how many, and the bounds. A result is within a bound
+    * when its place has each of the bound's values. Each answer is filtered on its own, so a
+    * paged search's count is of that page's kept results. `Left` saying why, with nothing
+    * shown, when the result has a key other than `content`, `isError`, `_meta`, `resultType`
+    * and `structuredContent`, the results are not an array at the attribution's `items` of a
+    * JSON object (its `structuredContent`, or else its one text block's), or any result's place
+    * cannot be read or has other than one value per key.
     */
   def shown(tool: McpTool, result: ujson.Obj): Either[String, ujson.Obj]
 }
@@ -119,27 +122,13 @@ object McpScope {
               .find(k => !Shown(k))
               .map(k => s"its answer has $k, which grit cannot hold to its scope")
               .toLeft(())
-            text <- result.value
-              .get("content")
-              .flatMap(_.arrOpt)
-              .map(_.toVector)
-              .collect { case Vector(block) => block }
-              .flatMap(_.objOpt)
-              .filter(_.get("type").contains(ujson.Str("text")))
-              .flatMap(_.get("text"))
-              .flatMap(_.strOpt)
-              .toRight("its answer is not one text block")
-            payload <- scala.util
-              .Try(ujson.read(text))
-              .toOption
-              .flatMap(_.objOpt)
-              .map(ujson.Obj.from(_))
-              .toRight("its answer's text is not a JSON object")
+            read <- payloadOf(result)
+            (whose, payload) = read
             items <- payload.value
               .get(attribution.items)
               .flatMap(_.arrOpt)
               .map(_.toVector)
-              .toRight(s"its answer's text has no ${attribution.items} array")
+              .toRight(s"$whose has no ${attribution.items} array")
             placed <- items.foldLeft[Either[String, Vector[(ujson.Value, ujson.Obj)]]](
               Right(Vector.empty)
             ) { (done, item) =>
@@ -162,8 +151,40 @@ object McpScope {
             shown("content") = ujson.Arr.from(
               ujson.Obj("type" -> "text", "text" -> ujson.write(payload)) +: said.toVector
             )
+            if (shown.value.contains("structuredContent")) shown("structuredContent") = payload
             shown
           }
+      }
+
+    /** The JSON object an attributed answer holds its results in, a copy, and what to call it
+      * when it is not as an attribution reads it: its `structuredContent` when it has one, else
+      * its one text block's; or why it holds none.
+      */
+    private def payloadOf(result: ujson.Obj): Either[String, (String, ujson.Obj)] =
+      result.value.get("structuredContent") match {
+        case Some(structure) =>
+          ujson.copy(structure) match {
+            case o: ujson.Obj => Right("its answer's structuredContent" -> o)
+            case _ => Left("its answer's structuredContent is not a JSON object")
+          }
+        case None =>
+          for {
+            text <- result.value
+              .get("content")
+              .flatMap(_.arrOpt)
+              .map(_.toVector)
+              .collect { case Vector(block) => block }
+              .flatMap(_.objOpt)
+              .filter(_.get("type").contains(ujson.Str("text")))
+              .flatMap(_.get("text"))
+              .flatMap(_.strOpt)
+              .toRight("its answer is not one text block")
+            payload <- scala.util
+              .Try(ujson.read(text))
+              .toOption
+              .collect { case o: ujson.Obj => o }
+              .toRight("its answer's text is not a JSON object")
+          } yield "its answer's text" -> payload
       }
 
     /** `arguments` when some of `held` admits them; otherwise why not, naming `held` and the
@@ -219,7 +240,8 @@ object McpScope {
   }
 
   /** The result keys a filtered answer may carry beside the content it filters. */
-  private val Shown: Set[String] = Set("content", "isError", "_meta", "resultType")
+  private val Shown: Set[String] =
+    Set("content", "isError", "_meta", "resultType", "structuredContent")
 
   /** The scope held to `first` and `rest`, attributing no tool's answers: a call is within it
     * when it is within any of them.

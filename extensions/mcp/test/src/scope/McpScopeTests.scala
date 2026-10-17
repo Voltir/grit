@@ -229,6 +229,41 @@ object McpScopeTests extends TestSuite {
       )
     }
 
+    test(
+      "an attributed answer with structured content is held by the structure's results, its " +
+        "one text block that kept structure rendered, the server's own text dropped"
+    ) {
+      val structure = ujson.Obj(
+        "count" -> 2,
+        "results" -> ujson.Arr(
+          result("elsewhere/widgets", "out"),
+          result("example-org/widgets", "in")
+        )
+      )
+      def sent: ujson.Obj = answer(ujson.Str("the server's rendering"))
+        .tap(_("structuredContent") = structure)
+      val handed = sent
+      val kept =
+        ujson.Obj("count" -> 1, "results" -> ujson.Arr(result("example-org/widgets", "in")))
+      (Searched.shown(tool("search_code"), handed), handed) ==> (
+        Right(
+          ujson.Obj(
+            "content" -> ujson.Arr(
+              ujson.Obj("type" -> "text", "text" -> ujson.write(kept)),
+              ujson.Obj(
+                "type" -> "text",
+                "text" -> ("Withheld as outside this server's scope (owner example-org with " +
+                  "repo widgets): 1 of the 2 results in this answer.")
+              )
+            ),
+            "resultType" -> "complete",
+            "structuredContent" -> kept
+          )
+        ),
+        sent
+      )
+    }
+
     test("an attributed answer with every result within a bound is shown as sent, recounted") {
       val sent = answer(
         ujson.Obj("count" -> 9, "results" -> ujson.Arr(result("example-org/widgets", "a")))
@@ -257,7 +292,12 @@ object McpScopeTests extends TestSuite {
       val text = ujson.Obj("type" -> "text", "text" -> ujson.write(one))
       def content(blocks: ujson.Value*): ujson.Obj = ujson.Obj("content" -> ujson.Arr(blocks*))
       Vector(
-        answer(one).tap(_("structuredContent") = one),
+        answer(one).tap(_("links") = one),
+        answer(one).tap(_("structuredContent") = ujson.Arr(one)),
+        answer(one).tap(_("structuredContent") = ujson.Obj("results" -> one)),
+        answer(one).tap(
+          _("structuredContent") = ujson.Obj("results" -> ujson.Arr(ujson.Obj("title" -> "x")))
+        ),
         content(text, text),
         content(ujson.Obj("type" -> "image", "data" -> "", "mimeType" -> "image/png")),
         content(ujson.Obj("type" -> "text", "text" -> "no results")),
@@ -266,7 +306,11 @@ object McpScopeTests extends TestSuite {
         answer(ujson.Obj("results" -> ujson.Arr(ujson.Obj("title" -> "nowhere")))),
         answer(ujson.Obj("results" -> ujson.Arr(result("example-org", "one segment"))))
       ).map(Searched.shown(tool("search_issues"), _)) ==> Vector(
-        Left("its answer has structuredContent, which grit cannot hold to its scope"),
+        Left("its answer has links, which grit cannot hold to its scope"),
+        Left("its answer's structuredContent is not a JSON object"),
+        Left("its answer's structuredContent has no results array"),
+        // never read from the text instead, which would pass the structure through whole
+        Left("a result's place cannot be read: it has no where"),
         Left("its answer is not one text block"),
         Left("its answer is not one text block"),
         Left("its answer's text is not a JSON object"),

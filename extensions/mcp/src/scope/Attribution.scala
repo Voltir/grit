@@ -1,8 +1,9 @@
 package grit.mcp.scope
 
 /** How a tool's answers name each result's place, so a scope can show only the results within
-  * its bounds. An answer is one text block holding a JSON object whose array at `items` holds
-  * the results, and whose number at `count`, when the attribution names one, counts them;
+  * its bounds. An answer holds a JSON object ([[McpScope.shown]] says where) whose array at
+  * `items` holds the results, and whose number at `count`, when the attribution names one,
+  * counts them;
   * `place` reads a result's place as the values of `keys`, the arguments a call for that place
   * alone would carry, in their order, or says why it cannot. `unsent` are arguments a call of
   * the tool never carries, since they could leave the place out of its results.
