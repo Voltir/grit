@@ -97,7 +97,8 @@ object UnpromptedLiveTests extends TestSuite {
 
   /** In `thread`'s conversation: a remark heard (its period then closed with a record), and a
     * question heard live after it, the stub classifier reading it as a question, put to grit by
-    * name when `named`; the question's turn.
+    * name when `named`; the question's turn. The remark is longer than the judge's thread
+    * shows, so the record stands for what the thread cut and is recalled.
     */
   private def converse(engine: Engine^, thread: String, named: Boolean = false): TurnRef = {
     val origin = Origin.Slack("T1", "C1", thread)
@@ -105,7 +106,7 @@ object UnpromptedLiveTests extends TestSuite {
     engine.inbox.hear(
       origin,
       SourceId(s"$thread:0"),
-      "morning",
+      "morning " * (grit.turn.TurnJudge.ThreadChars / 8 + 1),
       Account.Local,
       now,
       Reach.Nowhere
