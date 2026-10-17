@@ -55,12 +55,14 @@ object PoolTests extends TestSuite {
       )
     }
 
-    test("a line shows at most LineChars of a message's words") {
-      val long = "y" * 300
+    test("a line shows at most LineChars of a message's words, cut at a word's end with …") {
+      val long = Vector.fill(75)("yes").mkString(" ")
       shown(
         Pool(Vector(Source.Author(1.hour, 1)), 1_000),
         none.copy(byAuthor = Vector(said("a", "Ana", 2, long)))
-      ) ==> Vector("nearby_in_channel" -> s"Ana, 2 minutes before: ${"y" * Pool.LineChars}")
+      ) ==> Vector(
+        "nearby_in_channel" -> s"Ana, 2 minutes before: ${Vector.fill(40)("yes").mkString(" ")}…"
+      )
     }
 
     test("a unit that does not fit is skipped, and a later smaller one still kept") {

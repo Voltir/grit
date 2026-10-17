@@ -328,6 +328,29 @@ object StitchingTests extends TestSuite {
         s"$openLine\nDavid: first reply here\nDavid: second reply\nDavid: lol"
     }
 
+    test(
+      "a message over MessageChars is cut at a word's end with …, for the classifier and a reader"
+    ) {
+      val long = Vector.fill(100)("word").mkString(" ")
+      val cut = Vector.fill(60)("word").mkString(" ") + "…"
+      val opening = heard("new", long, 0)
+      val engine = heard("engine", long, 30)
+      val es = Stitching.offer(
+        opening,
+        room(),
+        Vector(engine),
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Scope.Room,
+        Tuning.Default
+      )
+      val state = Stitching.shown(Offer(opening, "Nick", es, Speakers.none))
+      (state("new_message").str, state("exchanges")(0)("opening")("text").str) ==> (cut, cut)
+      Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 1_000) ==> s"Someone: $cut"
+      Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 20) ==> "Someone: word word…"
+    }
+
     test("an excerpt whose opening is grit's post shows it under Assistant") {
       val heardOpening = heard("post", "unused", 60)
       val opening = heardOpening.copy(entry =

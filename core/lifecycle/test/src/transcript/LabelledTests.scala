@@ -39,9 +39,9 @@ object LabelledTests extends TestSuite {
           "[u6] User: We decided the api stays on 3000.",
           "[a7] Assistant: The api uses port 3000."
         ).mkString("\n\n")
-      val long = TestTranscripts.labelled(result(0, "read big.txt", "x" * 500)).text
+      val long = TestTranscripts.labelled(result(0, "read big.txt", "x " * 250)).text
       long.length ==> PeriodTranscript.ToolChars
-      long ==> ("[t1] read big.txt → " + "x" * (PeriodTranscript.ToolChars - 21) + "…")
+      long ==> ("[t1] read big.txt → " + Vector.fill(50)("x").mkString(" ") + "…")
     }
 
     test(

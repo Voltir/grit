@@ -1,7 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.id.{PeriodRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Section
 import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
 import grit.core.visibility.Integrity
@@ -127,8 +127,7 @@ object PeriodTranscript {
       val label = s"$letter${i + 1}"
       val rendered = s"[$label] $text"
       val clipped = source match {
-        case Labelled.Source.Tool(_) if rendered.length > ToolChars =>
-          rendered.take(ToolChars - 1) + "…"
+        case Labelled.Source.Tool(_) => Cut.head(rendered, ToolChars)
         case _ => rendered
       }
       Labelled.Line(label, source, clipped, integrity)

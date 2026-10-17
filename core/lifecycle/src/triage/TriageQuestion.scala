@@ -3,6 +3,7 @@ package grit.lifecycle.triage
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.StateJson
+import grit.core.message.Cut
 import grit.core.recipe.Section
 
 /** A heard message as triage's questions are asked about it ([[TriageQuestions]]), and v1's
@@ -30,7 +31,7 @@ object TriageQuestion {
       Vector[(String, ujson.Value)](
         "new_message" -> s.message,
         "author" -> s.author,
-        "thread" -> s.thread.takeRight(ThreadChars)
+        "thread" -> Cut.tail(s.thread, ThreadChars)
       ) ++ s.sections.collect {
         case (section, text) if text.nonEmpty => section.key -> ujson.Str(text)
       }

@@ -23,9 +23,9 @@ object FitTests extends TestSuite {
     test("a fitted thread's text is the thread, byte for byte") {
       cases.map((s, o, c) => Stitching.fit(s, o, c).text) ==>
         Vector(
-          "Ben: three",
+          "…three",
           own,
-          "Cy: before\nBen: three",
+          "Cy: before\n…three",
           "Cy: before",
           "Cy: before",
           ""
@@ -38,8 +38,8 @@ object FitTests extends TestSuite {
       "what is cut, then what is shown, are all the own messages, the cut at the shown's start"
     ) {
       cases.map((s, o, c) => Stitching.fit(s, o, c)).map(f => (f.cut + f.own, f.at)) ==>
-        Vector((own, 0), (own, 0), (own, 11), (own, 10), ("", 10), ("", 0))
-      Stitching.fit("Cy: before", own, 21).cut ==> "Ben: one\nAna: two\n"
+        Vector((own, 1), (own, 0), (own, 12), (own, 10), ("", 10), ("", 0))
+      Stitching.fit("Cy: before", own, 21).cut ==> "Ben: one\nAna: two\nBen: "
     }
   }
 }

@@ -199,7 +199,7 @@ object TriageTests extends TestSuite {
           TriageRecipe.Shipped
         )
       read.map(r => (r.state.thread.length, r.state.thread == r.thread.text, r.thread.at)) ==>
-        Right((TriageQuestion.ThreadChars, true, 0))
+        Right((1959, true, 1))
       read.map(r => (r.thread.cut + r.thread.own).take(17)) ==> Right("Ben: message 00 x")
       // Forty lines of "Ben: message nn " and 80 x's, a blank line between each two.
       read.map(r => (r.thread.cut + r.thread.own).length) ==> Right(40 * 96 + 39 * 2)

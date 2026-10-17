@@ -80,13 +80,13 @@ object TriageInputTests extends TestSuite {
       )
     }
 
-    test("with no strand, a thread over ThreadChars keeps its end") {
+    test("with no strand, a thread over ThreadChars keeps its end, from a word's start after …") {
       val w = new World
       // Two lines of 1,000 characters and the blank line between: 2,002, two over.
       w.hear("a" * 995, "Ben", 0)
       w.hear("b" * 995, "Ben", 1)
       val t = w.hear("the last", "Ana", 2)
-      sent(w, t) ==> Right(json("the last", "Ana", "n: " + "a" * 995 + "\n\nBen: " + "b" * 995))
+      sent(w, t) ==> Right(json("the last", "Ana", "…" + "a" * 995 + "\n\nBen: " + "b" * 995))
     }
 
     test("with a strand, the thread is its excerpt, then its conversation's messages") {
@@ -103,17 +103,19 @@ object TriageInputTests extends TestSuite {
       )
     }
 
-    test("a strand over ThreadChars is shown alone, its start") {
+    test("a strand over ThreadChars is cut at a word's end, then as much of the thread as fits") {
       val w = new World
       // Ten lines of "Nick: mN " and 291 x's, each 300 characters, the most a strand line shows.
       (0 until 10).foreach(i => w.hear(s"m$i " + "x" * 291, "Nick", i.toLong))
       val b = stitched(w, "Is this a real question", 11)
       val t = w.hear("and another", "David", 13, in = b)
-      // Within 3,000 characters the strand shows its opening, a `…` line, then the last eight.
+      // Within 3,000 characters the strand shows its opening, a `…` line, then the last eight;
+      // within 2,000 it ends at the word before the eighth's x's, the opening said after it.
       val line = (i: Int) => s"Nick: m$i " + "x" * 291
-      val excerpt = (Vector(line(0), "…") ++ (2 until 10).map(line)).mkString("\n")
+      val shown = (Vector(line(0), "…") ++ (2 until 7).map(line) :+ "Nick: m7…" :+
+        "David: Is this a real question").mkString("\n")
       sent(w, t, Tuning.Default.copy(strandChars = 3_000)) ==>
-        Right(json("and another", "David", excerpt.take(TriageQuestion.ThreadChars)))
+        Right(json("and another", "David", shown))
     }
 
     test("a recipe whose sources find nothing outside the thread gives the shipped JSON") {

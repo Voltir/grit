@@ -6,6 +6,7 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.{ConversationId, EntryId}
+import grit.core.message.Cut
 import grit.core.place.Scope
 import grit.core.stitch.{Placed, Said, StitchStore, Stitching, Strand}
 import grit.core.store.{Conversation, Entry, Principals, StoreError, Tx}
@@ -204,7 +205,7 @@ object Pool {
           Piece(
             Section.Nearby,
             Some(s.entry),
-            s"${s.speaker}, ${ago(s.at)} before: ${s.text.take(LineChars)}",
+            s"${s.speaker}, ${ago(s.at)} before: ${Cut.head(s.text, LineChars)}",
             (s.at, EntryId.value(s.entry), 0)
           )
         )
@@ -215,20 +216,23 @@ object Pool {
           Piece(
             Section.Exchanges,
             None,
-            s"Record of the exchange this thread continues: ${h.take(LineChars)}",
+            s"Record of the exchange this thread continues: ${Cut.head(h, LineChars)}",
             rank
           )
         )
       else {
         val age = ago(o.opening.at)
         val opened =
-          s"Exchange opened $age before by ${o.opening.speaker}: " + o.opening.text.take(LineChars)
-        val record = o.record.fold("")(h => s"\n  Record: ${h.take(LineChars)}")
+          s"Exchange opened $age before by ${o.opening.speaker}: " + Cut.head(
+            o.opening.text,
+            LineChars
+          )
+        val record = o.record.fold("")(h => s"\n  Record: ${Cut.head(h, LineChars)}")
         val recordAlone = o.record.map(h =>
           Piece(
             Section.Exchanges,
             None,
-            s"Record of the exchange ${o.opening.speaker} opened $age before: ${h.take(LineChars)}",
+            s"Record of the exchange ${o.opening.speaker} opened $age before: ${Cut.head(h, LineChars)}",
             rank
           )
         )

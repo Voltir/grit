@@ -14,7 +14,7 @@ import grit.core.classify.{
 }
 import grit.core.id.ConversationId
 import grit.core.id.{EntryId, TurnRef}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Probability
 import grit.core.place.{Place, Scope}
 import grit.core.store.{
@@ -206,11 +206,14 @@ object Stitching {
 
   /** A reader's thread of at most `chars`, by part: what it shows of the strand and of the
     * conversation's own messages, and `cut`, the start of its own messages it leaves out
-    * (`cut` then `own` are all of them). [[text]] is the thread.
+    * (`cut` then `own` are all of them). [[text]] is the thread, `…` before `own` when `cut` is
+    * not empty.
     */
   final case class Fitted private[stitch] (strand: String, cut: String, own: String) {
-    def text: String =
-      if (strand.isEmpty) own else if (own.isEmpty) strand else s"$strand\n$own"
+    def text: String = {
+      val shown = if (cut.isEmpty || own.isEmpty) own else s"…$own"
+      if (strand.isEmpty) shown else if (shown.isEmpty) strand else s"$strand\n$shown"
+    }
 
     /** Where in [[text]] the shown own messages begin, so where `cut` was taken from. */
     def at: Int = text.length - own.length
@@ -219,17 +222,18 @@ object Stitching {
   /** [[thread]] by part ([[Fitted]]). A strand longer than `chars` loses its end, which `cut`
     * does not hold.
     */
-  def fit(strand: String, own: String, chars: Int): Fitted =
-    if (strand.isEmpty) Fitted("", own.dropRight(chars), own.takeRight(chars))
-    else {
-      val room = math.max(0, chars - strand.length - 1)
-      if (own.isEmpty || room == 0) Fitted(strand.take(chars), own, "")
-      else Fitted(strand, own.dropRight(room), own.takeRight(room))
+  def fit(strand: String, own: String, chars: Int): Fitted = {
+    val shown = Cut.head(strand, chars)
+    val kept = Cut.tail(own, if (shown.isEmpty) chars else chars - shown.length - 1) match {
+      case all if all == own => own
+      case cut => cut.drop(1)
     }
+    Fitted(shown, own.dropRight(kept.length), kept)
+  }
 
   /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as
-    * much of `own` (the conversation's own messages) as fits, cut from its start. `own` alone
-    * when there is no strand.
+    * much of `own` (the conversation's own messages) as fits, cut from its start; each cut at
+    * a word, `…` where text was left. `own` alone when there is no strand.
     */
   def thread(strand: String, own: String, chars: Int): String = fit(strand, own, chars).text
 
@@ -404,8 +408,8 @@ object Stitching {
   /** `strand` as a reader shows it within `chars`: `opening`, then the messages nearest the
     * end, newest first while they fit, in the order said, a `…` line where any were left out;
     * each message one line under its speaker's name (`speakers`; "Assistant" for grit's
-    * replies, "Someone" for a name not known), at most [[MessageChars]] of it. Empty when there
-    * is nothing to show.
+    * replies, "Someone" for a name not known), at most [[MessageChars]] of it, cut at a word
+    * with `…`. Empty when there is nothing to show.
     */
   def excerpt(
       opening: Option[Said],
@@ -423,7 +427,7 @@ object Stitching {
     (rest.size to 0 by -1).iterator
       .map(shown)
       .find(_.length <= chars)
-      .getOrElse(shown(0).take(chars))
+      .getOrElse(Cut.head(shown(0), chars))
   }
 
   /** `s`'s words, when it is a message: a person's, grit's reply, or grit's post. */
@@ -443,7 +447,7 @@ object Stitching {
   }
 
   private def line(s: Said, speakers: Speakers): Option[String] =
-    spoken(s).map(t => s"${speaker(s, speakers)}: ${t.take(MessageChars)}")
+    spoken(s).map(t => s"${speaker(s, speakers)}: ${Cut.head(t, MessageChars)}")
 
   private val Instructions =
     "Read new_message, said by author at the top level of a team's channel, not in any " +
@@ -466,11 +470,11 @@ object Stitching {
       val at = s.first.entry.createdAt
       def said(m: Said): ujson.Value = ujson.Obj(
         "from" -> speaker(m, s.speakers),
-        "text" -> spoken(m).getOrElse("").take(MessageChars),
+        "text" -> Cut.head(spoken(m).getOrElse(""), MessageChars),
         "ago" -> ago(m.entry.createdAt, at)
       )
       ujson.Obj(
-        "new_message" -> spoken(s.first).getOrElse("").take(MessageChars),
+        "new_message" -> Cut.head(spoken(s.first).getOrElse(""), MessageChars),
         "author" -> s.author,
         "exchanges" -> ujson.Arr.from(s.exchanges.map { (key, e) =>
           ujson.Obj(
