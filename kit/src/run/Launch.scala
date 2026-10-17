@@ -101,7 +101,7 @@ private[grit] object Launch {
     asking(
       engine,
       d,
-      s,
+      variants(d, s),
       if (run.announced) announced(reached) else reached,
       classifier(d, s),
       weighing(d, s),
@@ -121,13 +121,14 @@ private[grit] object Launch {
     * nothing, every model call made through `models`, and every question the topics and a job's
     * judgments ask going to `classifier`, and the turn's weighing's to `weighing`, each as its
     * clearance allows: a launch whose calls a test counts, or a rehearsal's. `d`'s lifecycle
-    * settings and schedules are written through `runtime.jot` first. A shadow still asks the
-    * classifier `s` and `d` name. Throws as [[apply]] does.
+    * settings and schedules are written through `runtime.jot` first. Each shadow asks the
+    * variant of its name in `variants`, and one it lacks asks nothing. Throws as [[apply]]
+    * does.
     */
   private[grit] def asking(
       runtime: Runtime^,
       d: Deployment,
-      s: Secrets,
+      variants: Map[ShadowName, ShadowAsking^],
       models: Models,
       classifier: ClearedClassifier^,
       weighing: ClearedClassifier^,
@@ -320,7 +321,7 @@ private[grit] object Launch {
           reads,
           runtime.rooms,
           runtime.shadows,
-          variants(d, s),
+          variants,
           d.knowledge,
           db,
           clock,

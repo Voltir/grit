@@ -25,7 +25,6 @@ import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
-import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.models.{StubClassifier, StubModels}
 import grit.prose.markdown.Markdown
@@ -129,18 +128,6 @@ object ReminderLiveTests extends TestSuite {
       )
       .fold(r => sys.error(r.message), identity)
 
-  private def secrets(c: DbConfig): Secrets =
-    Secrets
-      .of(
-        Map(
-          DbConfig.UrlVar -> c.jdbcUrl,
-          DbConfig.UserVar -> c.user,
-          DbConfig.PasswordVar -> c.password
-        ),
-        deployment
-      )
-      .fold(r => sys.error(r.message), identity)
-
   /** `body` over an engine on `config` launched for the deployment with `model`, `classifier`
     * and the jobs' `clock`, sweeping nothing and ticking no clock edge of its own, and the
     * Slack edge over it and `slack`; closed after.
@@ -157,7 +144,8 @@ object ReminderLiveTests extends TestSuite {
       Launch.asking(
         engine,
         deployment,
-        secrets(config),
+        // Its deployment declares no shadow.
+        Map.empty,
         new Through(model),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
