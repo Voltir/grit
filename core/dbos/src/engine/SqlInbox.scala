@@ -387,16 +387,18 @@ final class SqlInbox(
       version: Int,
       at: Instant
   )(using Tx^): Either[StoreError, TurnRef] =
-    recorder.recorded(
-      slot.origin(job),
-      Slot.source(version),
-      Payload.Message(slot.opening(job)),
-      Account.Grit,
-      label,
-      Some(integrity),
-      at,
-      capped = false
-    ).flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))
+    recorder
+      .recorded(
+        slot.origin(job),
+        Slot.source(version),
+        Payload.Message(slot.opening(job)),
+        Account.Grit,
+        label,
+        Some(integrity),
+        at,
+        capped = false
+      )
+      .flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))
 
   /** Enqueues the workflow `options` names, with no arguments. */
   private def enqueue(options: EnqueueOptions): Either[InboxError, Unit] =

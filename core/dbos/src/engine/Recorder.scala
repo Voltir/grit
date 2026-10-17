@@ -11,7 +11,16 @@ import grit.core.message.Message
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.Opening
-import grit.core.store.{ConversationStore, Entry, EntryStore, Origin, Payload, PeriodStore, StoreError, Tx}
+import grit.core.store.{
+  ConversationStore,
+  Entry,
+  EntryStore,
+  Origin,
+  Payload,
+  PeriodStore,
+  StoreError,
+  Tx
+}
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.{SqlIdentities, SqlRooms, SqlStatements}
 

@@ -66,7 +66,8 @@ final class Engine private (
       * by.
       */
     val clock: Clock^
-) extends Stores(visibility), Link {
+) extends Stores(visibility),
+      Link {
 
   /** The voucher for `realms` ([[Voucher]]), keeping an attested email only in one of
     * `domains`: what a deployment records its trusted attesters' answers with, for the realms it
