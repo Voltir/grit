@@ -4,6 +4,7 @@ import grit.core.durable.{History, InMemoryDurable, StepRecord}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.speech.Outcome
 import grit.core.tool.ToolSetId
+import grit.core.visibility.{Label, Level}
 
 import utest.*
 
@@ -229,6 +230,22 @@ object TurnRecordTests extends TestSuite {
         Some(TurnRecord.Role.Relevance(2)),
         None,
         None
+      )
+    }
+
+    test(
+      "a recorded route step reads back as the label the turn's reads were routed for, and no route step reads as none"
+    ) {
+      val routed = Vector(
+        StepRecord(
+          Turn.Step.Route,
+          Some("""{"ok":{"classification":"internal","turn":1}}"""),
+          None
+        )
+      )
+      (TurnRecord.routedAt(routed), TurnRecord.routedAt(Vector.empty)) ==> (
+        Right(Some(Label.at(Level.Internal))),
+        Right(None)
       )
     }
   }
