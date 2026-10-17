@@ -2,7 +2,8 @@ package grit.mcp.drive
 
 import grit.core.host.{Clipped, Kept}
 import grit.core.identity.Email
-import grit.core.visibility.{Integrity, Itemised, Provenance, Readers, ResultPart}
+import grit.core.tool.{Outcome, Trimmed}
+import grit.core.visibility.{Facts, Integrity, Itemised, Provenance, Readers, ResultPart}
 
 /** How Drive's exchanges are believed (ADR 0036): each hit and each read a part of its own, at
   * the place it lies within, so a label on that place decides who reads it.
@@ -50,6 +51,10 @@ object DriveItems {
     *     outside; anyone at untrusted; untrusted when the grants were not read whole or no
     *     writer is left.
     *
+    * Facts ([[DriveFacts]]), each part's text rendered from its own: a listed file's or a
+    * folder's an entry, a drive's its drive, a read's what it opened, and a listing's head its
+    * listing's, as Drive gave it; a search and its hits have none.
+    *
     * Readers: a file with no owner (a shared drive's) whoever reads its place; one owned by
     * one address in the domain, only that person; any other is left out. `Left`, in words the
     * model reads, for a read of a file lying nowhere.
@@ -67,7 +72,7 @@ object DriveItems {
             // no one has labelled: that would tell the asker their words matched a file no one
             // may read.
             unlabelled("searched")
-        Right(Itemised.Parts(head, names(reading, hits.files, line(_, drives))))
+        Right(Itemised.Parts(head, names(reading, hits.files, f => (line(f, drives), None))))
       case DriveCalled.Drives(drives) =>
         val head = "The shared drives here, one a line, each with its id; list one's files and " +
           "folders by its id." +
@@ -76,18 +81,17 @@ object DriveItems {
            else "") +
           unlabelled("listed")
         val parts = drives.names.toVector
-          .sortBy((id, name) => (Some(name).filter(shown).getOrElse(""), FileId.value(id)))
-          .map { (id, name) =>
-            val title =
-              if (shown(name)) s"$name (a shared drive)"
-              else "A shared drive whose name is not shown, since it is not a plain title"
+          .map((id, name) => new DriveFacts.Drive(id, Some(name).filter(shown)))
+          .sortBy(d => (d.name.getOrElse(""), FileId.value(d.id)))
+          .map { d =>
             ResultPart(
               Provenance(reading.service.place, Integrity.Member),
               Readers.AtPlace,
-              s"- $title, id ${FileId.value(id)}"
+              driveLine(d),
+              Some(stated(d))
             )
           }
-        Right(Itemised.Parts(head, parts))
+        Right(Itemised.Parts(head, parts, listing(called).map(stated)))
       case DriveCalled.Listed(files) =>
         val head = "The files and folders directly in that folder, one a line, each with its id " +
           "and when it last changed; read a file, or list a folder, by its id." +
@@ -99,22 +103,59 @@ object DriveItems {
         Right(
           Itemised.Parts(
             head,
-            names(reading, files.files, f => s"- ${title(f)}, id ${FileId.value(f.id)}${since(f)}")
+            names(
+              reading,
+              files.files,
+              f => {
+                val e = DriveFacts.entry(f)
+                (entryLine(e), Some(stated(e)))
+              }
+            ),
+            listing(called).map(stated)
           )
         )
       case DriveCalled.Read(file, grants, text) =>
         file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
           val head = "The Drive file asked for:"
           val part = readers(reading, file).map { r =>
+            val (shown, opened) = fitted(head, DriveFacts.entry(file), text)
             ResultPart(
               Provenance(reading.place(at), believed(reading, grants)),
               r,
-              fitted(head, s"${title(file)}${since(file)}:", text)
+              shown,
+              Some(stated(opened))
             )
           }
           Itemised.Parts(head, part.toVector)
         }
     }
+
+  /** `called` as the model reads it: [[items]]' head and parts, trimmed as [[Trimmed.of]] trims
+    * them, with their facts ([[DriveFacts]]); a listing's own facts say it is incomplete when
+    * Drive had more or a part was trimmed. `Left` as [[items]] says.
+    */
+  def answer(reading: DriveReading, called: DriveCalled): Either[String, Outcome.Done] =
+    items(reading, called).map { items =>
+      val trimmed = Trimmed.of(items.head, items.parts)
+      val whole = trimmed.parts.exists(_.size == items.parts.size)
+      Outcome.Done(
+        trimmed.head,
+        parts = trimmed.parts,
+        // Written after trimming, so a listing cut here never says it is whole.
+        facts = listing(called).map(l => stated(DriveFacts.Listing(l.complete && whole)))
+      )
+    }
+
+  /** A listing's own facts, before any trimming: complete when Drive had no more; `None` for a
+    * search or a read.
+    */
+  private def listing(called: DriveCalled): Option[DriveFacts.Listing] = called match {
+    case DriveCalled.Drives(drives) => Some(DriveFacts.Listing(!drives.incomplete))
+    case DriveCalled.Listed(files) => Some(DriveFacts.Listing(!files.incomplete))
+    case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) => None
+  }
+
+  private def stated(facts: DriveFacts): Facts = Facts.of(DriveFacts.written(facts))
 
   /** Who may read `file`'s part, or `None` when no one may. */
   private def readers(reading: DriveReading, file: DriveFile): Option[Readers] =
@@ -145,18 +186,23 @@ object DriveItems {
       .reduceOption(_.meet(_))
       .getOrElse(Integrity.Untrusted)
 
-  /** Each of `files` a names part, one line `line` writes, as [[items]] says of a search's. */
+  /** Each of `files` a names part, its line and facts as `part` writes them, as [[items]] says
+    * of a search's.
+    */
   private def names(
       reading: DriveReading,
       files: Vector[DriveFile],
-      line: DriveFile => String
+      part: DriveFile => (String, Option[Facts])
   ): Vector[ResultPart] =
     files.flatMap { f =>
       val place = if (f.folder) Some(reading.service.place) else f.within.map(reading.place)
       for {
         p <- place
         r <- readers(reading, f)
-      } yield ResultPart(Provenance(p, Integrity.Member), r, line(f))
+      } yield {
+        val (line, facts) = part(f)
+        ResultPart(Provenance(p, Integrity.Member), r, line, facts)
+      }
     }
 
   /** The sentence every search's and listing's head ends with: files in folders no one has
@@ -166,13 +212,27 @@ object DriveItems {
     s" Files in folders that no one has labelled yet aren't $done. An administrator can open " +
       s"such a folder by typing $Opening."
 
-  /** When `file` last changed, after a comma, as Drive gives it; nothing when Drive does not. */
-  private def since(file: DriveFile): String = file.changed.fold("")(t => s", last changed $t")
+  /** When `e` last changed, after a comma, as Drive gives it; nothing when Drive does not. */
+  private def since(e: DriveFacts.Entry): String = e.changed.fold("")(t => s", last changed $t")
 
-  /** `file`'s name as shown, and its type. */
-  private def title(file: DriveFile): String =
-    if (shown(file.name)) s"${file.name} (${file.kind})"
-    else s"A file whose name is not shown, since it is not a plain title (${file.kind})"
+  /** `e`'s name as shown, and its type. */
+  private def title(e: DriveFacts.Entry): String = e.name match {
+    case Some(name) => s"$name (${e.kind.words})"
+    case None => s"A file whose name is not shown, since it is not a plain title (${e.kind.words})"
+  }
+
+  /** A listed file's line. */
+  private def entryLine(e: DriveFacts.Entry): String =
+    s"- ${title(e)}, id ${FileId.value(e.id)}${since(e)}"
+
+  /** A shared drive's line. */
+  private def driveLine(d: DriveFacts.Drive): String = {
+    val title =
+      d.name.fold("A shared drive whose name is not shown, since it is not a plain title")(name =>
+        s"$name (a shared drive)"
+      )
+    s"- $title, id ${FileId.value(d.id)}"
+  }
 
   /** A hit's line, its shared drive named as `drives` names it when that is shown as it is. */
   private def line(file: DriveFile, drives: Map[FileId, String]): String = {
@@ -184,24 +244,33 @@ object DriveItems {
       case (Some(w), None) => s", in ${FileId.value(w)}"
       case (None, _) => ""
     }
-    s"- ${title(file)}, id ${FileId.value(file.id)}$where${since(file)}"
+    val e = DriveFacts.entry(file)
+    s"- ${title(e)}, id ${FileId.value(e.id)}$where${since(e)}"
   }
 
-  /** `title` and then `text`'s leading whole lines, as many as fit after `head` within
-    * [[Clipped]]'s limits, with [[Clipped.cutHint]]'s hint when some were not.
+  /** A read's part: `entry`'s title, when it last changed, and then `text`'s leading whole
+    * lines, as many as fit after `head` within [[Clipped]]'s limits, with [[Clipped.cutHint]]'s
+    * hint when some were not; beside it, the facts of what it kept.
     */
-  private def fitted(head: String, title: String, text: String): String = {
+  private def fitted(
+      head: String,
+      entry: DriveFacts.Entry,
+      text: String
+  ): (String, DriveFacts.Opened) = {
+    val named = s"${title(entry)}${since(entry)}:"
     val lines = Clipped.lines(text)
-    // `title` and `k` lines fit whole by the search below, so `head` keeps them, and its hint
+    // `named` and `k` lines fit whole by the search below, so `head` keeps them, and its hint
     // is said of the text's lines, never of the cut it did not make.
     def kept(k: Int): String =
       Clipped
         .head(
-          (title +: lines.take(k)).mkString("\n"),
+          (named +: lines.take(k)).mkString("\n"),
           _ => Clipped.cutHint(Option.when(k < lines.size)(Kept(k, lines.size, partial = false)))
         )
         .show
-    if (Clipped.fits(s"$head\n${kept(lines.size)}")) kept(lines.size)
-    else kept(Clipped.most(lines.size - 1)(k => s"$head\n${kept(k)}"))
+    val k =
+      if (Clipped.fits(s"$head\n${kept(lines.size)}")) lines.size
+      else Clipped.most(lines.size - 1)(k => s"$head\n${kept(k)}")
+    (kept(k), DriveFacts.Opened(entry, lines.take(k).mkString("\n"), k == lines.size))
   }
 }

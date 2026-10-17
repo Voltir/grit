@@ -2,7 +2,7 @@ package grit.mcp.drive
 
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Place, Service}
-import grit.core.tool.Trimmed
+import grit.core.tool.{Outcome, Trimmed}
 import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart}
 
 import utest.*
@@ -159,7 +159,7 @@ object DriveItemsTests extends TestSuite {
       val listed = right(DriveJson.hits(Recorded.json("made-children-drive-a")))
       val nowhere = doc.copy(parent = None, drive = None)
       val got = parts(DriveCalled.Listed(listed.copy(files = listed.files :+ nowhere)))
-      (got.size, got.take(2)) ==> (
+      (got.size, got.take(2).map(_.copy(facts = None))) ==> (
         7,
         Vector(
           ResultPart(
@@ -229,7 +229,8 @@ object DriveItemsTests extends TestSuite {
           )
         )
       )
-      (listed.head, listed.parts) ==> (
+      // Their facts are pinned apart, below.
+      (listed.head, listed.parts.map(_.copy(facts = None))) ==> (
         "The shared drives here, one a line, each with its id; list one's files and folders " +
           "by its id. Files in folders that no one has labelled yet aren't listed. An " +
           "administrator can open such a folder by typing " +
@@ -345,6 +346,124 @@ object DriveItemsTests extends TestSuite {
         shown.slice(1, shown.size - 2).forall(_ == line),
         shown.lift(shown.size - 2)
       ) ==> (Some(1), Some(shown.size), true, Some(""))
+    }
+
+    test(
+      "each listed part's facts name its id, kind and change time, and its name only when its line shows it"
+    ) {
+      val listed = right(DriveJson.hits(Recorded.json("made-children-folder-3")))
+      val odd = doc.copy(name = "<b>x</b>", changed = None)
+      val files =
+        parts(DriveCalled.Listed(listed.copy(files = listed.files.take(2) :+ odd))).map(p =>
+          (p.text, p.facts.map(_.json))
+        )
+      val drives = parts(
+        DriveCalled.Drives(
+          SharedDrives(
+            Map(Recorded.id("drive-a") -> "Engineering", Recorded.id("drive-c") -> "<b>x</b>"),
+            incomplete = false
+          )
+        )
+      ).map(_.facts.map(_.json))
+      (files, drives) ==> (
+        Vector(
+          (
+            "- name-10 (a Doc), id file-1, last changed 2026-09-08T10:00:00Z",
+            Some(
+              ujson.Obj(
+                "id" -> "file-1",
+                "kind" -> "document",
+                "name" -> "name-10",
+                "changed" -> "2026-09-08T10:00:00Z",
+                "within" -> "folder-3"
+              )
+            )
+          ),
+          (
+            "- name-12 (a file of type application/vnd.openxmlformats-officedocument.wordprocessingml.document), id file-3, last changed 2026-09-09T10:00:00Z",
+            Some(
+              ujson.Obj(
+                "id" -> "file-3",
+                "kind" -> "other",
+                "type" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "name" -> "name-12",
+                "changed" -> "2026-09-09T10:00:00Z",
+                "within" -> "folder-3"
+              )
+            )
+          ),
+          (
+            "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1",
+            Some(ujson.Obj("id" -> "file-1", "kind" -> "document", "within" -> "folder-3"))
+          )
+        ),
+        Vector(
+          Some(ujson.Obj("id" -> "drive-c", "kind" -> "drive")),
+          Some(ujson.Obj("id" -> "drive-a", "kind" -> "drive", "name" -> "Engineering"))
+        )
+      )
+    }
+
+    test("a listing's own facts say whether Drive had more; a search's and a read's have none") {
+      val facts =
+        (called: DriveCalled) => right(DriveItems.items(reading, called)).facts.map(_.json)
+      (
+        facts(DriveCalled.Listed(Hits(Vector(doc), incomplete = false))),
+        facts(DriveCalled.Listed(Hits(Vector(doc), incomplete = true))),
+        facts(DriveCalled.Drives(SharedDrives(Map.empty, incomplete = true))),
+        facts(DriveCalled.Searched(Hits(Vector(doc), incomplete = false), Map.empty)),
+        facts(DriveCalled.Read(doc, None, "text"))
+      ) ==> (
+        Some(ujson.Obj("complete" -> true)),
+        Some(ujson.Obj("complete" -> false)),
+        Some(ujson.Obj("complete" -> false)),
+        None,
+        None
+      )
+    }
+
+    test("a read's facts hold its text as its part shows it, and whether that is all of it") {
+      val line = "text text text text text text text text"
+      val read = (text: String) =>
+        parts(DriveCalled.Read(doc, None, text)).flatMap(p => p.facts.map(f => (p.text, f.json)))
+      val short = read("line one\nline two")
+      val long = read(Vector.fill(5000)(line).mkString("\n"))
+      val kept = long.headOption.toVector.flatMap((text, _) => text.linesIterator.toVector)
+      (
+        short.map(_._2),
+        long.map((_, f) => (f("text").str, f("complete").bool)),
+        long.map((_, f) => f.obj.keySet.toSet -- Set("text", "complete"))
+      ) ==> (
+        Vector(
+          ujson.Obj(
+            "id" -> "file-1",
+            "kind" -> "document",
+            "name" -> "name-10",
+            "within" -> "folder-3",
+            "text" -> "line one\nline two",
+            "complete" -> true
+          )
+        ),
+        // Its name's line, then the kept lines, a blank line and the cut's note.
+        Vector((kept.slice(1, kept.size - 2).mkString("\n"), false)),
+        Vector(Set("id", "kind", "name", "within"))
+      )
+    }
+
+    test("a listing cut for size says in its facts that it is incomplete") {
+      val many = Vector.tabulate(3000)(i => doc.copy(id = Recorded.id(s"file-$i")))
+      val answered = (files: Vector[DriveFile]) =>
+        right(
+          DriveItems.answer(reading, DriveCalled.Listed(Hits(files, incomplete = false)))
+        ) match {
+          case Outcome.Done(_, _, _, parts, facts) => (parts.map(_.size), facts.map(_.json))
+        }
+      val (kept, cut) = answered(many)
+      (kept.exists(k => k > 0 && k < many.size), cut, answered(Vector(doc))) ==> (
+        true,
+        Some(ujson.Obj("complete" -> false)),
+        (Some(1), Some(ujson.Obj("complete" -> true)))
+      )
     }
   }
 }

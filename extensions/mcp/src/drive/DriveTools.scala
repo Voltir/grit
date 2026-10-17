@@ -14,17 +14,14 @@ import grit.core.tool.{
   ToolName,
   ToolSet,
   ToolSpec,
-  Toolbox,
-  Trimmed
+  Toolbox
 }
 import grit.edge.{Run, Tools}
 
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
   * [[Run.request]] runs a tool: [[DriveTools.List]], [[DriveTools.Search]] and
-  * [[DriveTools.Read]], each answered
-  * [[Outcome.Done]] with the parts [[DriveItems.items]] cuts, trimmed as [[Trimmed.of]] trims
-  * them, or [[Outcome.Failed]] with a [[DriveError]]'s words or why it was not placed. The
-  * run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
+  * [[DriveTools.Read]], each answered as [[DriveItems.answer]] answers, or [[Outcome.Failed]]
+  * with a [[DriveError]]'s words or why it was not placed. The run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
   * search's drives could not be listed (its hits then name them by id) or a read's grants
   * could not be read (it is then believed untrusted).
   */
@@ -104,13 +101,7 @@ object DriveTools {
   ): Outcome =
     called match {
       case Left(error) => Outcome.Failed(error.message)
-      case Right(c) =>
-        DriveItems.items(reading, c) match {
-          case Left(why) => Outcome.Failed(why)
-          case Right(items) =>
-            val trimmed = Trimmed.of(items.head, items.parts)
-            Outcome.Done(trimmed.head, parts = trimmed.parts)
-        }
+      case Right(c) => DriveItems.answer(reading, c).fold(Outcome.Failed(_), identity)
     }
 
   /** `why`, a clause [[FileId.of]] gives, as the sentence a refused argument says. */

@@ -24,18 +24,16 @@ final case class DriveFile(
 
   def folder: Boolean = mimeType == DriveFile.Folder
 
-  /** Its type in words a person reads: "a Doc", "a PDF", "a folder"; "a file of type …" for
-    * one with no plainer name.
-    */
-  def kind: String = mimeType match {
-    case DriveFile.Document => "a Doc"
-    case DriveFile.Spreadsheet => "a Sheet"
-    case DriveFile.Folder => "a folder"
-    case "application/pdf" => "a PDF"
-    case "application/vnd.google-apps.presentation" => "Slides"
-    case other if other.startsWith("image/") => "an image"
-    case other if other.startsWith("text/") => "a text file"
-    case other => s"a file of type $other"
+  /** Its type, from its MIME type. */
+  def kindOf: DriveKind = mimeType match {
+    case DriveFile.Document => DriveKind.Document
+    case DriveFile.Spreadsheet => DriveKind.Spreadsheet
+    case DriveFile.Folder => DriveKind.Folder
+    case "application/pdf" => DriveKind.Pdf
+    case "application/vnd.google-apps.presentation" => DriveKind.Slides
+    case other if other.startsWith("image/") => DriveKind.Image
+    case other if other.startsWith("text/") => DriveKind.Text
+    case other => DriveKind.Other(other)
   }
 }
 

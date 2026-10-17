@@ -15,6 +15,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryJoins,
+  OutcomeJson,
   Permit,
   Registration,
   Route,
@@ -316,6 +317,24 @@ object DriveEdgeTests extends TestSuite {
             )
           ),
           Some("'drive-a' in parents and trashed = false")
+        )
+      }
+    }
+
+    test("an answer's facts reach the request's row") {
+      withFake { fake =>
+        val row = OutcomeJson.answer(run(fake, "drive_list", ujson.Obj("folder" -> "drive-a")))
+        (row.obj.get("facts"), row("parts").arr.headOption.flatMap(_.obj.get("facts"))) ==> (
+          Some(ujson.Obj("complete" -> true)),
+          Some(
+            ujson.Obj(
+              "id" -> "folder-3",
+              "kind" -> "folder",
+              "name" -> "name-5",
+              "changed" -> "2026-09-01T10:00:00Z",
+              "within" -> "drive-a"
+            )
+          )
         )
       }
     }

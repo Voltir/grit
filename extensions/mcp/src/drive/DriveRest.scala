@@ -132,13 +132,12 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     */
   def text(file: DriveFile): Either[DriveError, String] = {
     val id = FileId.value(file.id)
-    val read =
-      if (file.mimeType == DriveFile.Document)
-        get(s"files/$id/export", Vector("mimeType" -> "text/markdown"))
-      else if (file.mimeType == DriveFile.Spreadsheet)
-        get(s"files/$id/export", Vector("mimeType" -> "text/csv"))
-      else if (file.mimeType.startsWith("text/")) get(s"files/$id", Vector("alt" -> "media"))
-      else Left(DriveError.Unreadable(file.kind))
+    val read = file.kindOf match {
+      case DriveKind.Document => get(s"files/$id/export", Vector("mimeType" -> "text/markdown"))
+      case DriveKind.Spreadsheet => get(s"files/$id/export", Vector("mimeType" -> "text/csv"))
+      case DriveKind.Text => get(s"files/$id", Vector("alt" -> "media"))
+      case other => Left(DriveError.Unreadable(other.words))
+    }
     read.map(_.stripPrefix("\uFEFF"))
   }
 
