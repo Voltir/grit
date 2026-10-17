@@ -87,7 +87,8 @@ object TriageInput {
       val text = heard.payload.said.getOrElse("")
       val thread = Stitching.fit(
         Stitching.excerpt(strand.opening, strand.said, names, tuning.strandChars),
-        PeriodTranscript.of(before, names),
+        PeriodTranscript.lines(before, names),
+        "\n\n",
         TriageQuestion.ThreadChars
       )
       Read(

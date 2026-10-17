@@ -126,9 +126,9 @@ object TurnJudge {
       e.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-          Option.when(said.nonEmpty)(s"Assistant: $said")
-        case Payload.Posted(text) => Option.when(text.nonEmpty)(s"Assistant: $text")
-        case p => p.said.map(t => s"${speakers.of(e.id).getOrElse("Someone")}: $t")
+          Option.when(said.nonEmpty)(Stitching.Line("Assistant", said))
+        case Payload.Posted(text) => Option.when(text.nonEmpty)(Stitching.Line("Assistant", text))
+        case p => p.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _))
       }
     }
     val bySeq = all.map(e => e.seq -> e).toMap
@@ -150,7 +150,8 @@ object TurnJudge {
     State(
       Stitching.thread(
         Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
-        thread.mkString("\n"),
+        thread,
+        "\n",
         ThreadChars
       ),
       draft,

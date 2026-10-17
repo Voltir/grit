@@ -82,11 +82,12 @@ object TriageInputTests extends TestSuite {
 
     test("with no strand, a thread over ThreadChars keeps its end, from a word's start after …") {
       val w = new World
-      // Two lines of 1,000 characters and the blank line between: 2,002, two over.
+      // Two lines of 1,000 characters and the blank line between: 2,002, two over. The first
+      // line's one word fits only without its speaker's name, which a cut keeps: it is left out.
       w.hear("a" * 995, "Ben", 0)
       w.hear("b" * 995, "Ben", 1)
       val t = w.hear("the last", "Ana", 2)
-      sent(w, t) ==> Right(json("the last", "Ana", "…" + "a" * 995 + "\n\nBen: " + "b" * 995))
+      sent(w, t) ==> Right(json("the last", "Ana", "…Ben: " + "b" * 995))
     }
 
     test("with a strand, the thread is its excerpt, then its conversation's messages") {

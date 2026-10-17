@@ -3,6 +3,7 @@ package grit.lifecycle.transcript
 import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Section
+import grit.core.stitch.Stitching
 import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
 import grit.core.visibility.Integrity
 
@@ -39,7 +40,11 @@ object PeriodTranscript {
     * text, and every other kind of entry, left out.
     */
   def of(entries: Vector[Entry], speakers: Speakers): String =
-    entries.flatMap(line(_, speakers)).mkString("\n\n")
+    lines(entries, speakers).map(_.shown).mkString("\n\n")
+
+  /** [[of]] by message, each one [[Stitching.Line]]. */
+  def lines(entries: Vector[Entry], speakers: Speakers): Vector[Stitching.Line] =
+    entries.flatMap(line(_, speakers))
 
   /** What the recorded windows among `entries` showed from other conversations
     * ([[Payload.Window]]'s nearby sections), read from `store` through `db`: each entry
@@ -78,7 +83,7 @@ object PeriodTranscript {
     case Payload.Closed(_, _, closing) =>
       s"Record: ${closing.flows.prose}" +:
         closing.balance.in(Section.Standing).map(l => s"Standing: ${l.text}")
-    case _ => line(entry, Speakers.none).toVector
+    case _ => line(entry, Speakers.none).map(_.shown).toVector
   }
 
   /** Whether grit only heard the period whose entries are `entries`: some message was heard
@@ -111,10 +116,10 @@ object PeriodTranscript {
           val failed = if (result.isError) "failed: " else ""
           Some((Labelled.Source.Tool(!result.isError), e.integrity, s"$shown → $failed$content"))
         case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(text => (Labelled.Source.Person, e.integrity, text))
+          line(e, speakers).map(l => (Labelled.Source.Person, e.integrity, l.shown))
         case Payload.Heard(_) =>
-          line(e, speakers).map(text => (Labelled.Source.Heard, e.integrity, text))
-        case _ => line(e, speakers).map(text => (Labelled.Source.Assistant, e.integrity, text))
+          line(e, speakers).map(l => (Labelled.Source.Heard, e.integrity, l.shown))
+        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e.integrity, l.shown))
       }
     )
     Labelled.of(written.zipWithIndex.map { case ((source, integrity, text), i) =>
@@ -138,14 +143,16 @@ object PeriodTranscript {
     * unnamed, speaking to grit; `Someone` for one unnamed and heard), a reply's or a post's
     * text under `Assistant`; `None` for a reply with no text and every other kind of entry.
     */
-  private def line(entry: Entry, speakers: Speakers): Option[String] = entry.payload match {
+  private def line(entry: Entry, speakers: Speakers): Option[Stitching.Line] = entry.payload match {
     case Payload.Message(Message.User(text)) =>
-      Some(s"${speakers.of(entry.id).getOrElse("User")}: $text")
-    case Payload.Heard(text) => Some(s"${speakers.of(entry.id).getOrElse("Someone")}: $text")
+      Some(Stitching.Line(speakers.of(entry.id).getOrElse("User"), text))
+    case Payload.Heard(text) =>
+      Some(Stitching.Line(speakers.of(entry.id).getOrElse("Someone"), text))
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
-      Option.when(said.nonEmpty)(s"Assistant: $said")
-    case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(s"Assistant: ${text.trim}")
+      Option.when(said.nonEmpty)(Stitching.Line("Assistant", said))
+    case Payload.Posted(text) =>
+      Option.when(text.trim.nonEmpty)(Stitching.Line("Assistant", text.trim))
     case _ => None
   }
 }

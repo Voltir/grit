@@ -2,6 +2,8 @@ package grit.core.stitch
 
 import java.time.{Duration as JDuration, Instant}
 
+import scala.annotation.tailrec
+
 import grit.core.classify.{
   Answered,
   Ask,
@@ -206,12 +208,18 @@ object Stitching {
 
   /** A reader's thread of at most `chars`, by part: what it shows of the strand and of the
     * conversation's own messages, and `cut`, the start of its own messages it leaves out
-    * (`cut` then `own` are all of them). [[text]] is the thread, `…` before `own` when `cut` is
-    * not empty.
+    * (`cut` then `own` are all of them), and `named`, the `speaker: ` of the message `own`
+    * begins inside, empty when it begins a message. [[text]] is the thread, `named` then `…`
+    * before `own` when `cut` is not empty.
     */
-  final case class Fitted private[stitch] (strand: String, cut: String, own: String) {
+  final case class Fitted private[stitch] (
+      strand: String,
+      cut: String,
+      named: String,
+      own: String
+  ) {
     def text: String = {
-      val shown = if (cut.isEmpty || own.isEmpty) own else s"…$own"
+      val shown = if (cut.isEmpty || own.isEmpty) own else s"$named…$own"
       if (strand.isEmpty) shown else if (shown.isEmpty) strand else s"$strand\n$shown"
     }
 
@@ -222,20 +230,46 @@ object Stitching {
   /** [[thread]] by part ([[Fitted]]). A strand longer than `chars` loses its end, which `cut`
     * does not hold.
     */
-  def fit(strand: String, own: String, chars: Int): Fitted = {
+  def fit(strand: String, own: Vector[Line], between: String, chars: Int): Fitted = {
     val shown = Cut.head(strand, chars)
-    val kept = Cut.tail(own, if (shown.isEmpty) chars else chars - shown.length - 1) match {
-      case all if all == own => own
-      case cut => cut.drop(1)
+    val all = own.map(_.shown).mkString(between)
+    val room = if (shown.isEmpty) chars else chars - shown.length - 1
+    // Where each message begins in `all`, with the name it is read under.
+    val begins = own.scanLeft(0)(_ + _.shown.length + between.length).zip(own.map(_.speaker + ": "))
+    // The name to show before the `…`, and what is kept, cutting `all` within `budget`: shorter
+    // until a cut inside a message leaves its name whole and room for it.
+    @tailrec def kept(budget: Int): (String, String) = {
+      val tail = Cut.tail(all, budget).drop(1)
+      val from = all.length - tail.length
+      begins.findLast(_._1 <= from) match {
+        case Some((at, name)) if from > at && tail.nonEmpty =>
+          if (from - at < name.length) kept(math.min(budget - 1, all.length - at - name.length + 1))
+          else if (name.length + 1 + tail.length > room)
+            kept(math.min(budget - 1, room - name.length))
+          else if (from - at == name.length) ("", all.drop(at))
+          else (name, tail)
+        case _ => ("", tail)
+      }
     }
-    Fitted(shown, own.dropRight(kept.length), kept)
+    if (all.length <= room) Fitted(shown, "", "", all)
+    else {
+      val (named, tail) = kept(room)
+      Fitted(shown, all.dropRight(tail.length), named, tail)
+    }
   }
 
   /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as
-    * much of `own` (the conversation's own messages) as fits, cut from its start; each cut at
-    * a word, `…` where text was left. `own` alone when there is no strand.
+    * much of `own` (the conversation's own messages, `between` each two) as fits, cut from its
+    * start; each cut at a word, `…` where text was left, a message cut inside keeping its
+    * speaker's name before the `…`. `own` alone when there is no strand.
     */
-  def thread(strand: String, own: String, chars: Int): String = fit(strand, own, chars).text
+  def thread(strand: String, own: Vector[Line], between: String, chars: Int): String =
+    fit(strand, own, between, chars).text
+
+  /** One message of a thread: `text` under its `speaker`'s name, read as [[shown]]. */
+  final case class Line(speaker: String, text: String) {
+    def shown: String = s"$speaker: $text"
+  }
 
   /** The exchanges `first`, a stitchable conversation's first message in `room`, may continue,
     * from `said` (what `room` said within `tuning.horizon` before it,
@@ -450,7 +484,7 @@ object Stitching {
   }
 
   private def line(s: Said, speakers: Speakers): Option[String] =
-    spoken(s).map(t => s"${speaker(s, speakers)}: ${Cut.head(t, MessageChars)}")
+    spoken(s).map(t => Line(speaker(s, speakers), Cut.head(t, MessageChars)).shown)
 
   private val Instructions =
     "Read new_message, said by author at the top level of a team's channel, not in any " +
