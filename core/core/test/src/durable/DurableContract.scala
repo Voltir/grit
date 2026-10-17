@@ -87,6 +87,16 @@ enum Divergence {
 
   /** A stream write outside a step, which DBOS records as an operation of its own. */
   case WriteOutsideStep
+
+  /** A second run of a workflow, which returns or replays what the first recorded. A runtime
+    * that keeps nothing between runs runs every body again.
+    */
+  case Replay
+
+  /** A message sent to a workflow, which its `recv` receives. A runtime that delivers none
+    * answers every `recv` with none at once.
+    */
+  case Mail
 }
 
 /** The semantics grit relies on from every [[Durable]] runtime, run against each: DBOS's,
@@ -156,43 +166,47 @@ abstract class DurableContract extends TestSuite {
   }
 
   val tests = Tests {
-    test("a workflow that returned is not run again") {
+    test("a workflow that returned is not run again")(scenario(Divergence.Replay) {
       val rt = runtime
       val id = rt.freshId()
       val counts = new Counts
       rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Returned("ab")
       rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Returned("ab")
       (counts.body, counts.a, counts.b) ==> (1, 1, 1)
-    }
+    })
 
-    test("after a crash, completed steps replay and the crashed step runs again") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      counts.crashInB = true
-      rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Crashed
-      rt.recordedSteps(id) ==> Vector("a")
-      counts.crashInB = false
-      rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Returned("ab")
-      (counts.body, counts.a, counts.b) ==> (2, 1, 2)
-    }
-
-    test("a step that threw fails the workflow, and a later run runs neither it nor the body") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      def wf(using d: Durable^): String = {
-        counts.body += 1
-        d.step("boom") { () => counts.a += 1; throw new IllegalStateException("boom") }
+    test("after a crash, completed steps replay and the crashed step runs again")(
+      scenario(Divergence.Replay) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        counts.crashInB = true
+        rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Crashed
+        rt.recordedSteps(id) ==> Vector("a")
+        counts.crashInB = false
+        rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Returned("ab")
+        (counts.body, counts.a, counts.b) ==> (2, 1, 2)
       }
-      val first = threw(rt.run(id)(_ => wf))
-      val second = threw(rt.run(id)(_ => wf))
-      (first.getClass, first.getMessage) ==> (classOf[IllegalStateException], "boom")
-      (second.getClass, second.getMessage) ==> (classOf[IllegalStateException], "boom")
-      (counts.body, counts.a) ==> (1, 1)
-    }
+    )
 
-    test("a step renamed between runs is rejected") {
+    test("a step that threw fails the workflow, and a later run runs neither it nor the body")(
+      scenario(Divergence.Replay) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        def wf(using d: Durable^): String = {
+          counts.body += 1
+          d.step("boom") { () => counts.a += 1; throw new IllegalStateException("boom") }
+        }
+        val first = threw(rt.run(id)(_ => wf))
+        val second = threw(rt.run(id)(_ => wf))
+        (first.getClass, first.getMessage) ==> (classOf[IllegalStateException], "boom")
+        (second.getClass, second.getMessage) ==> (classOf[IllegalStateException], "boom")
+        (counts.body, counts.a) ==> (1, 1)
+      }
+    )
+
+    test("a step renamed between runs is rejected")(scenario(Divergence.Replay) {
       val rt = runtime
       val id = rt.freshId()
       val counts = new Counts
@@ -200,7 +214,7 @@ abstract class DurableContract extends TestSuite {
       rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Crashed
       val e = threw(rt.run(id) { _ => d ?=> d.step("renamed") { () => "x" } })
       rt.unexpectedStep(e) ==> Some(("renamed", "a"))
-    }
+    })
 
     test("workflows journal independently") {
       val rt = runtime
@@ -218,7 +232,7 @@ abstract class DurableContract extends TestSuite {
       rt.run(id)(wf) ==> Settled.Returned(WorkflowId.value(id))
     }
 
-    test("a transaction step is journaled like any other") {
+    test("a transaction step is journaled like any other")(scenario(Divergence.Replay) {
       val rt = runtime
       val id = rt.freshId()
       val counts = new Counts
@@ -233,7 +247,7 @@ abstract class DurableContract extends TestSuite {
       rt.run(id)(_ => wf) ==> Settled.Returned("written!")
       rt.recordedSteps(id) ==> Vector("write", "after")
       counts.a ==> 1
-    }
+    })
 
     test("a JSON-journaled output round-trips") {
       val rt = runtime
@@ -262,39 +276,43 @@ abstract class DurableContract extends TestSuite {
       rt.recordedSteps(id) ==> Vector("DBOS.patch-p1", "new", "b")
     }
 
-    test("patch: a workflow that passed the change replays its old branch") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      counts.crashInB = true
-      rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Crashed
-      def patched(using d: Durable^): String =
-        (if (d.patch("p1")) d.step("new") { () => "new" }
-         else d.step("a") { () => counts.a += 1; "a" }) +
-          d.step("b") { () => "b" }
-      rt.run(id)(_ => patched) ==> Settled.Returned("ab")
-      counts.a ==> 1
-      rt.recordedSteps(id) ==> Vector("a", "b")
-    }
+    test("patch: a workflow that passed the change replays its old branch")(
+      scenario(Divergence.Replay) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        counts.crashInB = true
+        rt.run(id)(_ => twoSteps(rt, counts)) ==> Settled.Crashed
+        def patched(using d: Durable^): String =
+          (if (d.patch("p1")) d.step("new") { () => "new" }
+           else d.step("a") { () => counts.a += 1; "a" }) +
+            d.step("b") { () => "b" }
+        rt.run(id)(_ => patched) ==> Settled.Returned("ab")
+        counts.a ==> 1
+        rt.recordedSteps(id) ==> Vector("a", "b")
+      }
+    )
 
-    test("deprecatePatch replays a marked history and marks nothing new") {
-      val rt = runtime
-      val id = rt.freshId()
-      def patched(using d: Durable^): String = {
-        val branch = if (d.patch("p1")) "new" else "old"
-        d.step(branch) { () => branch } + d.step("b") { () => rt.crash() }
+    test("deprecatePatch replays a marked history and marks nothing new")(
+      scenario(Divergence.Replay) {
+        val rt = runtime
+        val id = rt.freshId()
+        def patched(using d: Durable^): String = {
+          val branch = if (d.patch("p1")) "new" else "old"
+          d.step(branch) { () => branch } + d.step("b") { () => rt.crash() }
+        }
+        def deprecated(using d: Durable^): String = {
+          d.deprecatePatch("p1")
+          d.step("new") { () => "new" } + d.step("b") { () => "b" }
+        }
+        rt.run(id)(_ => patched) ==> Settled.Crashed
+        rt.run(id)(_ => deprecated) ==> Settled.Returned("newb")
+        rt.recordedSteps(id) ==> Vector("DBOS.patch-p1", "new", "b")
+        val fresh = rt.freshId()
+        rt.run(fresh)(_ => deprecated) ==> Settled.Returned("newb")
+        rt.recordedSteps(fresh) ==> Vector("new", "b")
       }
-      def deprecated(using d: Durable^): String = {
-        d.deprecatePatch("p1")
-        d.step("new") { () => "new" } + d.step("b") { () => "b" }
-      }
-      rt.run(id)(_ => patched) ==> Settled.Crashed
-      rt.run(id)(_ => deprecated) ==> Settled.Returned("newb")
-      rt.recordedSteps(id) ==> Vector("DBOS.patch-p1", "new", "b")
-      val fresh = rt.freshId()
-      rt.run(fresh)(_ => deprecated) ==> Settled.Returned("newb")
-      rt.recordedSteps(fresh) ==> Vector("new", "b")
-    }
+    )
 
     test("a stream write inside a step is kept, and is not a step") {
       val rt = runtime
@@ -332,86 +350,94 @@ abstract class DurableContract extends TestSuite {
       scenario(Divergence.WriteOutsideStep)(writeOutsideStep())
     }
 
-    test("send: a message to a workflow that has not started is refused") {
-      val rt = runtime
-      val id = rt.freshId()
-      val refused =
-        try { rt.send(id, "t", "early", None); None }
-        catch { case e: Exception => rt.noSuchWorkflow(e) }
-      refused ==> Some(id)
-    }
+    test("send: a message to a workflow that has not started is refused")(
+      scenario(Divergence.Mail) {
+        val rt = runtime
+        val id = rt.freshId()
+        val refused =
+          try { rt.send(id, "t", "early", None); None }
+          catch { case e: Exception => rt.noSuchWorkflow(e) }
+        refused ==> Some(id)
+      }
+    )
 
-    test("a recorded error rethrows on replay without running, with a message or without") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      counts.crashInB = true
-      def wf(using d: Durable^): String = {
-        def attempt(name: String, message: Option[String]): String =
-          try
-            d.step(name) { () =>
-              counts.a += 1
-              throw message.fold(new IllegalStateException())(new IllegalStateException(_))
-            }
-          catch { case e: IllegalStateException => s"caught ${Option(e.getMessage)}" }
-        val said = attempt("said", Some("boom"))
-        val silent = attempt("silent", None)
-        val last = d.step("last") { () =>
-          counts.b += 1
-          if (counts.crashInB) rt.crash()
-          "last"
+    test("a recorded error rethrows on replay without running, with a message or without")(
+      scenario(Divergence.Replay) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        counts.crashInB = true
+        def wf(using d: Durable^): String = {
+          def attempt(name: String, message: Option[String]): String =
+            try
+              d.step(name) { () =>
+                counts.a += 1
+                throw message.fold(new IllegalStateException())(new IllegalStateException(_))
+              }
+            catch { case e: IllegalStateException => s"caught ${Option(e.getMessage)}" }
+          val said = attempt("said", Some("boom"))
+          val silent = attempt("silent", None)
+          val last = d.step("last") { () =>
+            counts.b += 1
+            if (counts.crashInB) rt.crash()
+            "last"
+          }
+          s"$said; $silent; $last"
         }
-        s"$said; $silent; $last"
+        rt.run(id)(_ => wf) ==> Settled.Crashed
+        counts.crashInB = false
+        rt.run(id)(_ => wf) ==> Settled.Returned("caught Some(boom); caught None; last")
+        (counts.a, counts.b) ==> (2, 2)
       }
-      rt.run(id)(_ => wf) ==> Settled.Crashed
-      counts.crashInB = false
-      rt.run(id)(_ => wf) ==> Settled.Returned("caught Some(boom); caught None; last")
-      (counts.a, counts.b) ==> (2, 2)
-    }
+    )
 
-    test("recv: the oldest message on its topic, once; none when none was sent") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      counts.crashInB = true
-      def body(using d: Durable^): String = {
-        d.step("ready") { () => if (counts.crashInB) rt.crash(); "ready" }
-        val waits = scala.concurrent.duration.FiniteDuration(100, "ms")
-        Vector(d.recv("t", waits), d.recv("t", waits), d.recv("t", waits)).mkString(",")
+    test("recv: the oldest message on its topic, once; none when none was sent")(
+      scenario(Divergence.Mail) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        counts.crashInB = true
+        def body(using d: Durable^): String = {
+          d.step("ready") { () => if (counts.crashInB) rt.crash(); "ready" }
+          val waits = scala.concurrent.duration.FiniteDuration(100, "ms")
+          Vector(d.recv("t", waits), d.recv("t", waits), d.recv("t", waits)).mkString(",")
+        }
+        // Started, and so known to the runtime, before anything is sent to it.
+        rt.run(id)(_ => body) ==> Settled.Crashed
+        rt.send(id, "t", "first", None)
+        rt.send(id, "t", "second", None)
+        rt.send(id, "other", "elsewhere", None)
+        counts.crashInB = false
+        rt.run(id)(_ => body) ==> Settled.Returned("Some(first),Some(second),None")
+        rt.unreceived(id, "other") ==> Vector("elsewhere")
+        rt.recordedSteps(id) ==>
+          ("ready" +: Vector.fill(3)(Vector("DBOS.recv", "DBOS.sleep")).flatten)
       }
-      // Started, and so known to the runtime, before anything is sent to it.
-      rt.run(id)(_ => body) ==> Settled.Crashed
-      rt.send(id, "t", "first", None)
-      rt.send(id, "t", "second", None)
-      rt.send(id, "other", "elsewhere", None)
-      counts.crashInB = false
-      rt.run(id)(_ => body) ==> Settled.Returned("Some(first),Some(second),None")
-      rt.unreceived(id, "other") ==> Vector("elsewhere")
-      rt.recordedSteps(id) ==>
-        ("ready" +: Vector.fill(3)(Vector("DBOS.recv", "DBOS.sleep")).flatten)
-    }
+    )
 
-    test("recv: a replay returns what was received, and receives nothing more") {
-      val rt = runtime
-      val id = rt.freshId()
-      val counts = new Counts
-      counts.crashInB = true
-      def body(using d: Durable^): String = {
-        d.step("ready") { () => counts.a += 1; if (counts.a == 1) rt.crash(); "ready" }
-        val got = d.recv("t", scala.concurrent.duration.FiniteDuration(100, "ms"))
-        d.step("after") { () => if (counts.crashInB) rt.crash(); "after" }
-        got.getOrElse("none")
+    test("recv: a replay returns what was received, and receives nothing more")(
+      scenario(Divergence.Mail) {
+        val rt = runtime
+        val id = rt.freshId()
+        val counts = new Counts
+        counts.crashInB = true
+        def body(using d: Durable^): String = {
+          d.step("ready") { () => counts.a += 1; if (counts.a == 1) rt.crash(); "ready" }
+          val got = d.recv("t", scala.concurrent.duration.FiniteDuration(100, "ms"))
+          d.step("after") { () => if (counts.crashInB) rt.crash(); "after" }
+          got.getOrElse("none")
+        }
+        rt.run(id)(_ => body) ==> Settled.Crashed
+        rt.send(id, "t", "yes", None)
+        rt.run(id)(_ => body) ==> Settled.Crashed
+        rt.send(id, "t", "later", None)
+        counts.crashInB = false
+        rt.run(id)(_ => body) ==> Settled.Returned("yes")
+        rt.unreceived(id, "t") ==> Vector("later")
       }
-      rt.run(id)(_ => body) ==> Settled.Crashed
-      rt.send(id, "t", "yes", None)
-      rt.run(id)(_ => body) ==> Settled.Crashed
-      rt.send(id, "t", "later", None)
-      counts.crashInB = false
-      rt.run(id)(_ => body) ==> Settled.Returned("yes")
-      rt.unreceived(id, "t") ==> Vector("later")
-    }
+    )
 
-    test("send: a second message under the same key is ignored") {
+    test("send: a second message under the same key is ignored")(scenario(Divergence.Mail) {
       val rt = runtime
       val id = rt.freshId()
       def body(using d: Durable^): String = d.step("ready") { () => rt.crash() }
@@ -419,11 +445,11 @@ abstract class DurableContract extends TestSuite {
       rt.send(id, "t", "approved", Some("k"))
       rt.send(id, "t", "declined", Some("k"))
       rt.unreceived(id, "t") ==> Vector("approved")
-    }
+    })
 
     test(
       "a flow records what its read expects at every prefix: a taken patch, then a labelled wait"
-    ) {
+    )(scenario(Divergence.Mail) {
       import FlowFixtures.{Env, tagged}
       val rt = runtime
       val id = rt.freshId()
@@ -466,6 +492,6 @@ abstract class DurableContract extends TestSuite {
             "ended 5: Right(eSome(hello))"
           )
         )
-    }
+    })
   }
 }

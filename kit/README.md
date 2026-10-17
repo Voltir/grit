@@ -42,5 +42,8 @@ In dependency order:
   workflows, telling the time by the engine's clock, with declared schedules reconciled at
   start and grit's own tools (`about`, and `clearance` over the engine's askers, which the kit
   alone holds) offered beside every plugin's. ← `deployment`, `environment`
+- **`rehearse`**: seeing what a shipped workflow body would do, without running it on the engine.
+  `Rehearsal` runs a body once and tells each step as it goes; nothing replays, and it is never
+  handed to a workflow that must survive a crash.
 
 No source file sits at the module's root, and the test tree mirrors it.
