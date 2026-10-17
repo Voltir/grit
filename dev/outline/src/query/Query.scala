@@ -756,7 +756,7 @@ object Query {
     val classes = layout.classesDirs(root)
     val simple = name.split('.').last
     val pkg = name.split('.').dropRight(1).mkString(".")
-    val defines = ("\\b(?:object|class)\\s+" + java.util.regex.Pattern.quote(simple) + "\\b").r
+    val defines = Kind.declaring(Vector("object", "class"), simple)
     val files = Locate
       .holding(root, text => text.contains(simple) && defines.findFirstIn(text).isDefined)
       .filter(f =>

@@ -364,7 +364,7 @@ object TestsTests extends TestSuite {
     }
 
     test(
-      "a suite whose source no .tasty records is named by its file and the command compiling its module"
+      "a suite whose source no .tasty records is named by its file and the command compiling its module, and not a file declaring a longer name through `$`"
     ) {
       // A temp Mill root: module m's test sources p/OtherTests.scala, compiled, and p/GoneTests.scala, never compiled.
       val d = os.temp.dir(prefix = "outline-tests-gone-")
@@ -387,6 +387,7 @@ object TestsTests extends TestSuite {
         d / "m" / "test" / "src" / "p" / "GoneTests.scala",
         "package p\nobject GoneTests {\n}\n"
       )
+      os.write(d / "m" / "test" / "src" / "p" / "Kept.scala", "package p\nobject GoneTests$Kept\n")
       val (gone, _) =
         Query.tests(
           Root(d),

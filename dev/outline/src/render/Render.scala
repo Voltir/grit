@@ -1,7 +1,6 @@
 package grit.outline.render
 
 import java.nio.charset.StandardCharsets
-import java.util.regex.Pattern
 
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, TestCase, Use}
@@ -783,9 +782,8 @@ object Render {
     * `case class Lines` or `case Hearts, Spades` for `Hearts` (not for `Spades`).
     */
   private def namesItself(d: Defn): Boolean = d.size.nonEmpty && {
-    val kind = kindWord(d.kind).split(' ').map(Pattern.quote).mkString("\\s+")
     val code = d.head.linesIterator.drop(d.doc.fold(0)(_.linesIterator.size)).mkString("\n")
-    s"(?<![\\w$$])$kind\\s+${Pattern.quote(d.name)}(?![\\w$$])".r.findFirstIn(code).nonEmpty
+    Kind.declaring(Vector(kindWord(d.kind)), d.name).findFirstIn(code).nonEmpty
   }
 
   /** `d`'s head with its doc cut to its first sentence: when that sentence is the whole of the doc's first line, that line
