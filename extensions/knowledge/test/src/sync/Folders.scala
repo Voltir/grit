@@ -38,6 +38,9 @@ final class Folders(
 
   def checked(listing: Folders.Names): String = listing.paths.mkString("\n")
 
+  def pointer(path: String): Either[String, Pointer] =
+    Pointer.of(Folders.Read, "path" -> ujson.Str(path))
+
   def calls(perRun: Int): Int = 10
 
   def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Folders.Names] =

@@ -97,9 +97,32 @@ object Held {
 /** What a run's `held` keep read: the floor its run keeps cards at, and the cards it holds,
   * by key.
   */
-private[sync] final case class Holding(floor: Label, held: Vector[Held]) extends caps.Pure
+private[knowledge] final case class Holding(floor: Label, held: Vector[Held]) extends caps.Pure {
+  private val byKey: Map[CardKey, Vector[Held]] = held.groupBy(_.key)
 
-private[sync] object Holding {
+  /** The copy of `key` a walk goes by: the one at the floor, else the first held. */
+  def best(key: CardKey): Option[Held] = {
+    val copies = byKey.getOrElse(key, Vector.empty)
+    copies.find(_.label == floor).orElse(copies.headOption)
+  }
+
+  /** The label of the copy a write or relabel of `key` replaces: none when the floor holds one. */
+  def replacing(key: CardKey): Option[Label] = best(key).map(_.label).filter(_ != floor)
+
+  /** The label a relabel of `key`, unchanged, copies from: its [[best]] copy's, when that is held
+    * only at another label or kept elsewhere than its source's place.
+    */
+  def copying(key: CardKey): Option[Label] =
+    best(key).filter(h => h.label != floor || h.elsewhere).map(_.label)
+
+  /** Whether no copy of `key` is held. */
+  def isNew(key: CardKey): Boolean = !byKey.contains(key)
+
+  /** How many units it holds a card of. */
+  def units: Int = byKey.size
+}
+
+private[knowledge] object Holding {
 
   /** Its record: `{"floor", "held"}`, each held card `{"key", "path", "label", "version"}`, a
     * directory's `"scope"` and a file's `"within"` where it has them, and `"elsewhere": true`

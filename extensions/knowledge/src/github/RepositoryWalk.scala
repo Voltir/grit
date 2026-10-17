@@ -1,136 +1,53 @@
 package grit.knowledge.github
 
-import scala.annotation.tailrec
-
-import grit.core.document.Pointer
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardSummary, UnitKind, UnitVersion}
-import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Walk, Way}
+import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
 
-/** One run's walk of a repository, as data: from the cards it holds, depth first by path from
-  * the repository's root, `/`, each next step. Of the repository it walks the paths `include` names and,
-  * of files, those whose extension is one of `extensions`; the directories on the way to an
-  * included path are listed and carry no card.
+/** One run's walk of a repository ([[Walking]]): depth first by path from the repository's root,
+  * `/`. Of the repository it walks the paths `include` names and, of files, those whose extension
+  * is one of `extensions`; the directories on the way to an included path are listed and carry
+  * no card.
   *
   * A directory whose held card records its tree SHA, made under the source's
-  * [[grit.knowledge.github.GitHubCards.scope]], is not listed: each card held beneath it is
-  * unchanged. One made under another scope is listed, so a changed `include` or `extensions`
-  * reaches beneath it. A file is read only when its listed SHA is not its held card's, and its
-  * card is written at the SHA it was read at: from a summary of its first 8 KB, or, when its
-  * text is blank, as `An empty file.` with no ask. A directory's card is written from its
+  * [[GitHubCards.scope]], is not listed: each card held beneath it is unchanged. One made under
+  * another scope is listed, so a changed `include` or `extensions` reaches beneath it. A file is
+  * read only when its listed SHA is not its held card's. A directory's card is written from its
   * listing, with no ask, naming the files in scope in it and the directories holding more, of
-  * what [[GitHubCards.keeps]] says the source keeps, after its children, and only when each was brought up to date; a
-  * directory with no file in scope beneath it, as its children then show, gets no card and is
-  * not named in its parent's. A unit's
-  * card held only at another label than the floor is relabelled when unchanged, and otherwise
-  * written; either way its copy there is withdrawn in that keep, never before. A unit held at
-  * the floor goes by that copy, whatever another label's records. An unchanged unit whose card
-  * is kept elsewhere than its source's place ([[Held.elsewhere]]) is relabelled from the label
-  * it is held at, the floor's included, so it is kept again at that place with no read and no
-  * ask.
+  * what [[GitHubCards.keeps]] says the source keeps, after its children, and only when each was
+  * brought up to date; a directory with no file in scope beneath it, as its children then show,
+  * gets no card and is not named in its parent's. An unchanged unit held only at another label,
+  * or kept elsewhere than its source's place, is relabelled from the label it is held at.
   *
-  * It reads at most `perRun` files, so asks for at most as many summaries, and lists at most
-  * `maxUnits` directories in scope (those on the way to an included path besides): at the next
-  * read or listing past either, it stops, counting what it left. The
-  * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
-  * the units held and those written new reach it, and the walk goes on bringing the held up to
-  * date. A file read with no version, a directory listed only in part (`listed only in part`),
-  * a unit whose list or read came to [[Outcome.NotTaken]] (nothing beneath a withheld directory
-  * is listed, read or dropped) and a unit whose path makes no pointer are [[Unwritten]]; they,
-  * and a unit not taken, leave
-  * the cards of the directories above them unwritten, so the next run lists those again.
+  * It lists at most `maxUnits` directories in scope (those on the way to an included path
+  * besides): at the next read past `perRun` or listing past `maxUnits`, it ends, counting what it
+  * left. A directory listed only in part is unwritten (`listed only in part`), and nothing beneath
+  * a withheld directory is listed, read or dropped. A unit unwritten or not taken leaves the cards
+  * of the directories above it unwritten, so the next run lists those again.
   *
-  * Its last step is a [[Step.Drop]], when there is anything to drop: of the cards of units gone
-  * from directories it listed in full (or outside the source now, a directory it lists only as
-  * on the way to an included path among them), and of directories it found with no file in
-  * scope beneath them, with every card beneath each; of the copies at other labels of units it kept
-  * current at the floor; and, past `maxUnits` (when it was lowered), of the units last in walk
-  * order and the directories above them. A `Partial` listing, or a directory a stopped walk
-  * never reached, drops nothing beneath it. A step that came to [[Outcome.Stopped]], or to an
-  * outcome not of its kind, ends the walk at once, with no drop.
+  * It drops the cards of units gone from directories it listed in full (or outside the source
+  * now, a directory it lists only as on the way to an included path among them), and of
+  * directories it found with no file in scope beneath them, with every card beneath each; the
+  * copies at other labels of units it kept current at the floor; and, past `maxUnits` (when it
+  * was lowered), the units last in walk order and the directories above them. A `Partial`
+  * listing, or a directory an ended walk never reached, drops nothing beneath it.
   */
-final class RepositoryWalk private (
-    private val env: RepositoryWalk.Env,
-    private val state: RepositoryWalk.State
-) extends Walk[Listing] {
-
-  def next: Either[Synced, Step] = state.next
-
-  def after(outcome: Outcome[Listing]): RepositoryWalk =
-    new RepositoryWalk(env, RepositoryWalk.after(env, state, outcome))
-}
-
 object RepositoryWalk {
 
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
     * holding `held`, its source's cards as [[Held.read]] reads them. Its first step lists the
     * repository's root, `/`; when `cards` includes nothing, it has none and holds nothing gone.
     */
-  def start(cards: GitHubCards, perRun: Int, floor: Label, held: Vector[Held]): RepositoryWalk = {
-    val env = Env(cards, perRun, floor, held, held.groupBy(_.key))
-    val stack = if (cards.include.isEmpty) Nil else List(Task.Pass(Root))
-    new RepositoryWalk(env, advance(env, State.fresh(env, stack)))
-  }
+  def start(cards: GitHubCards, perRun: Int, floor: Label, held: Vector[Held]): Walk[Listing] =
+    Walking.start(
+      Walking.Agenda[Listing, Task, Own](cards, take(cards, _, _), left(cards, _, _), drops),
+      perRun,
+      Holding(floor, held),
+      if (cards.include.isEmpty) Nil else List(Task.Pass(Root)),
+      Own(0, Map.empty, Set.empty, Set.empty, Set.empty)
+    )
 
   private val Root = "/"
-
-  private val Empty: CardSummary = sure(CardSummary.of("An empty file.", Vector.empty))
-
-  private final case class Env(
-      cards: GitHubCards,
-      perRun: Int,
-      floor: Label,
-      held: Vector[Held],
-      byKey: Map[CardKey, Vector[Held]]
-  ) extends caps.Pure {
-    def keyOf(path: String): CardKey = CardKey.of(cards.corpus, path)
-
-    /** The copy of `key` the walk goes by: the one at the floor, else the first held. */
-    private def best(key: CardKey): Option[Held] = {
-      val copies = byKey.getOrElse(key, Vector.empty)
-      copies.find(_.label == floor).orElse(copies.headOption)
-    }
-
-    /** The label of the copy a write or relabel of `key` replaces: none when the floor holds it. */
-    def replacing(key: CardKey): Option[Label] = best(key).map(_.label).filter(_ != floor)
-
-    /** The label of the copy a relabel of `key`, unchanged, copies from: the one the walk goes
-      * by, when it is held only at another label or kept elsewhere than its source's place;
-      * none when the floor's copy is at that place.
-      */
-    def copying(key: CardKey): Option[Label] =
-      best(key).filter(h => h.label != floor || h.elsewhere).map(_.label)
-
-    /** Whether the copy of `key` the walk goes by records `version`. */
-    def holds(key: CardKey, version: UnitVersion): Boolean = best(key).exists(_.version == version)
-
-    /** Whether no card of `key` is held. */
-    def isNew(key: CardKey): Boolean = !byKey.contains(key)
-
-    /** Whether `entry`'s held card is up to date: at its version and, a directory's, made under
-      * the source's scope.
-      */
-    def current(entry: Entry): Boolean = {
-      val key = keyOf(entry.path)
-      holds(key, entry.version) &&
-      (entry.kind == UnitKind.File || best(key).exists(_.scope.contains(cards.scope)))
-    }
-
-    private val include: Vector[String] = cards.include
-    private val extensions: Set[String] = cards.extensions
-
-    def inScope(entry: Entry): Boolean =
-      include.exists(i => i.isEmpty || entry.path == i || entry.path.startsWith(i + "/")) &&
-        (entry.kind == UnitKind.Directory || extensions.isEmpty || {
-          val name = entry.path.substring(entry.path.lastIndexOf('/') + 1)
-          val dot = name.lastIndexOf('.')
-          dot > 0 && extensions.contains(name.substring(dot + 1))
-        })
-
-    /** Whether `entry` is a directory on the way to an included path. */
-    def passage(entry: Entry): Boolean =
-      entry.kind == UnitKind.Directory && include.exists(_.startsWith(entry.path + "/"))
-  }
 
   /** What is still to do, in walk order. */
   private enum Task extends caps.Pure {
@@ -148,147 +65,79 @@ object RepositoryWalk {
     case Finish(path: String, version: UnitVersion, children: Vector[Entry])
   }
 
-  /** What the last step's outcome is read as. */
-  private enum Waiting extends caps.Pure {
-    case Done
-    case Listing(path: String, version: Option[UnitVersion])
-    case Reading(path: String, pointer: Pointer)
-    case Summary(path: String, version: UnitVersion, pointer: Pointer)
-    case Wrote(key: CardKey)
-    case Relabelled(key: CardKey)
-    case Dropped(count: Int)
-  }
-
-  private final case class State(
-      stack: List[Task],
-      waiting: Waiting,
-      next: Either[Synced, Step],
-      reads: Int,
+  /** Its record: directories listed in scope, each full listing's children, those passed, those
+    * found empty, and the paths neither up to date nor unwritten.
+    */
+  private final case class Own(
       lists: Int,
-      fresh: Int,
-      refused: Int,
-      written: Int,
-      relabelled: Int,
-      withdrawn: Int,
-      unchanged: Int,
-      left: Int,
-      unwritten: Vector[Unwritten],
-      undone: Set[String],
       listed: Map[String, Set[String]],
       passed: Set[String],
       empty: Set[String],
-      settled: Vector[CardKey],
-      stopped: Option[String]
-  ) extends caps.Pure {
-    def synced(env: Env): Synced =
-      Synced(
-        env.cards.corpus,
-        written,
-        relabelled,
-        withdrawn,
-        unchanged,
-        left,
-        refused,
-        unwritten,
-        stopped
-      )
-    def step(s: Step, w: Waiting): State = copy(next = Right(s), waiting = w)
-  }
+      undone: Set[String]
+  ) extends caps.Pure
 
-  private object State {
-    def fresh(env: Env, stack: List[Task]): State =
-      State(
-        stack,
-        Waiting.Done,
-        Left(Synced(env.cards.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)),
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        Vector.empty,
-        Set.empty,
-        Map.empty,
-        Set.empty,
-        Set.empty,
-        Vector.empty,
-        None
-      )
-  }
+  private type W = Walking[Listing, Task, Own]
 
-  private def after(env: Env, s: State, outcome: Outcome[Listing]): State =
-    (s.waiting, outcome) match {
-      case (Waiting.Done, _) => s
-      case (_, Outcome.Stopped(why)) => halt(env, s, why)
-      case (Waiting.Listing(path, version), Outcome.Listed(listing, _)) =>
-        advance(env, listed(env, s, path, version, listing))
-      case (Waiting.Listing(path, _), Outcome.NotTaken(why)) =>
-        advance(env, unwritten(s, path, why))
-      case (Waiting.Reading(path, _), Outcome.NotTaken(why)) =>
-        advance(env, unwritten(s, path, why))
-      case (Waiting.Reading(path, pointer), Outcome.Fetched(fetched, _)) =>
-        fetched match {
-          case Fetched.Text(text, sha) if text.isBlank =>
-            write(env, s, Card.file(env.cards.corpus, path, sha, Empty, pointer))
-          case Fetched.Text(text, sha) =>
-            s.step(
-              Step.Summarise(path, env.cards.subject(path), Fetched.head(text), sha),
-              Waiting.Summary(path, sha, pointer)
-            )
-          case Fetched.Unversioned(why) => advance(env, unwritten(s, path, why))
+  private def take(cards: GitHubCards, task: Task, w: W): W = task match {
+    case Task.Pass(path) => w.list(path, Way.Run)(listed(cards, path, None))
+    case Task.Known(key) => known(w, key)
+    case Task.Visit(entry) =>
+      val key = CardKey.of(cards.corpus, entry.path)
+      if (current(cards, w.holding, entry)) {
+        entry.kind match {
+          case UnitKind.File => known(w, key)
+          case UnitKind.Directory =>
+            val beneath = w.holding.held
+              .filter(h => h.path.startsWith(entry.path + "/"))
+              .sortBy(_.path)
+              .map(_.key)
+              .distinct
+            w.push((key +: beneath).map(Task.Known(_)))
         }
-      case (Waiting.Summary(path, sha, pointer), Outcome.Summarised(summary)) =>
-        write(env, s, Card.file(env.cards.corpus, path, sha, summary, pointer))
-      case (Waiting.Wrote(key), Outcome.Kept) =>
-        advance(
-          env,
-          s.copy(
-            written = s.written + 1,
-            fresh = if (env.isNew(key)) s.fresh + 1 else s.fresh,
-            settled = s.settled :+ key
+      } else if (w.full(key)) refuse(w, entry.path)
+      else
+        entry.kind match {
+          case UnitKind.Directory =>
+            if (w.own.lists >= cards.maxUnits) w.leave.end
+            else
+              w.recording(w.own.copy(lists = w.own.lists + 1))
+                .list(entry.path, Way.Run)(listed(cards, entry.path, Some(entry.version)))
+          case UnitKind.File =>
+            if (w.spent) w.leave.end
+            else
+              w.read(entry.path, Way.Run, cards.subject(entry.path))(
+                Card.file(cards.corpus, entry.path, _, _, _)
+              )
+        }
+    case Task.Finish(path, version, all) =>
+      // Each child is brought up to date by now, so whether one keeps anything is known: a
+      // file in scope does, a directory does unless found empty here, and a directory held
+      // current at this form does (none is written empty).
+      val children = all.filterNot(c => w.own.empty.contains(c.path))
+      val undone = w.own.undone ++ w.tally.unwritten.map(_.path)
+      if (undone.exists(u => u == path || u.startsWith(path + "/")))
+        w.recording(w.own.copy(undone = w.own.undone + path))
+      else if (children.isEmpty) w.recording(w.own.copy(empty = w.own.empty + path))
+      else if (w.full(CardKey.of(cards.corpus, path))) refuse(w, path)
+      else
+        cards
+          .pointer(path)
+          .flatMap(pointer =>
+            CardSummary
+              .of(described(path, cards.keeps, children), Vector.empty)
+              .map(Card.directory(cards.corpus, path, version, cards.scope, _, pointer))
           )
-        )
-      case (Waiting.Relabelled(key), Outcome.Kept) =>
-        advance(
-          env,
-          s.copy(relabelled = s.relabelled + 1, settled = s.settled :+ key)
-        )
-      case (Waiting.Dropped(count), Outcome.Kept) => done(env, s.copy(withdrawn = count))
-      case (waiting, other) => halt(env, s, s"${expected(waiting)} came to ${kind(other)}")
-    }
-
-  private def expected(waiting: Waiting): String = waiting match {
-    case Waiting.Listing(_, _) => "a list"
-    case Waiting.Reading(_, _) => "a read"
-    case Waiting.Summary(_, _, _) => "a summary"
-    case Waiting.Wrote(_) => "a write"
-    case Waiting.Relabelled(_) => "a relabel"
-    case Waiting.Dropped(_) | Waiting.Done => "a drop"
+          .fold(w.unwritten(path, _), w.write)
   }
 
-  private def kind(outcome: Outcome[Listing]): String = outcome match {
-    case Outcome.Listed(_, _) => "a listing"
-    case Outcome.Fetched(_, _) => "a read's outcome"
-    case Outcome.Summarised(_) => "a summary"
-    case Outcome.Kept => "a keep's outcome"
-    case Outcome.NotTaken(_) => "a withholding"
-    case Outcome.Stopped(_) => "a stop"
-  }
-
-  /** `s` once the directory `path` was listed: its children in scope, and those on the way to
+  /** `w` once the directory `path` was listed: its children in scope, and those on the way to
     * one, pushed in path order, then its own card when it has one (`version`).
     */
-  private def listed(
-      env: Env,
-      s: State,
-      path: String,
-      version: Option[UnitVersion],
-      listing: Listing
-  ): State = {
+  private def listed(cards: GitHubCards, path: String, version: Option[UnitVersion])(
+      w: W,
+      listing: Listing,
+      at: Label
+  ): W = {
     val entries = listing match {
       case Listing.Complete(entries) => entries
       case Listing.Partial(shown) => shown
@@ -296,206 +145,86 @@ object RepositoryWalk {
     // Only the directory's own children: a listing naming anything else cannot loop the walk.
     val children = entries
       .filter(e => parent(e.path) == path)
-      .filter(e => env.inScope(e) || env.passage(e))
+      .filter(e => inScope(cards, e) || passage(cards, e))
       .sortBy(_.path)
-    val carded = children.filter(env.inScope)
     val tasks =
-      children.map(e => if (env.inScope(e)) Task.Visit(e) else Task.Pass(e.path)) ++
-        version.map(Task.Finish(path, _, carded))
-    val s1 = s.copy(
-      stack = tasks.toList ++ s.stack,
-      passed = if (version.isEmpty) s.passed + path else s.passed
-    )
+      children.map(e => if (inScope(cards, e)) Task.Visit(e) else Task.Pass(e.path)) ++
+        version.map(Task.Finish(path, _, children.filter(inScope(cards, _))))
+    val own = w.own.copy(passed = if (version.isEmpty) w.own.passed + path else w.own.passed)
+    val pushed = w.push(tasks)
     listing match {
       case Listing.Complete(_) =>
-        s1.copy(listed = s1.listed.updated(path, children.map(_.path).toSet))
+        pushed.recording(own.copy(listed = own.listed.updated(path, children.map(_.path).toSet)))
       case Listing.Partial(_) =>
-        if (version.isEmpty) s1.copy(undone = s1.undone + path)
-        else unwritten(s1, path, "listed only in part")
+        if (version.isEmpty) pushed.recording(own.copy(undone = own.undone + path))
+        else pushed.recording(own).unwritten(path, "listed only in part")
     }
   }
 
-  private def unwritten(s: State, path: String, why: String): State =
-    s.copy(unwritten = s.unwritten :+ Unwritten(path, why), undone = s.undone + path)
+  /** `w` relabelling the current held unit `key` when it is to be copied, else unchanged. */
+  private def known(w: W, key: CardKey): W =
+    w.holding.copying(key).fold(w.unchanged(key))(w.relabel(key, _))
 
-  private def write(env: Env, s: State, card: Card): State =
-    s.step(Step.Write(card, env.replacing(card.key)), Waiting.Wrote(card.key))
+  /** `w` with the new unit at `path` not taken, so the directories above it are not written. */
+  private def refuse(w: W, path: String): W =
+    w.refuse.recording(w.own.copy(undone = w.own.undone + path))
 
-  /** Pops tasks until one makes a step, or none is left. */
-  @tailrec private def advance(env: Env, s: State): State = s.stack match {
-    case Nil => end(env, s)
-    case task :: rest =>
-      val popped = s.copy(stack = rest)
-      task match {
-        case Task.Pass(path) =>
-          popped.step(Step.List(path, Way.Run), Waiting.Listing(path, None))
-        case Task.Known(key) =>
-          known(popped, env, key) match {
-            case Some(next) => next
-            case None => advance(env, unchanged(popped, key))
-          }
-        case Task.Visit(entry) =>
-          val key = env.keyOf(entry.path)
-          if (env.current(entry)) {
-            entry.kind match {
-              case UnitKind.File =>
-                known(popped, env, key) match {
-                  case Some(next) => next
-                  case None => advance(env, unchanged(popped, key))
-                }
-              case UnitKind.Directory =>
-                val beneath = env.held
-                  .filter(h => h.path.startsWith(entry.path + "/"))
-                  .sortBy(_.path)
-                  .map(_.key)
-                  .distinct
-                advance(
-                  env,
-                  popped.copy(stack = (key +: beneath).map(Task.Known(_)).toList ++ rest)
-                )
-            }
-          } else if (env.isNew(key) && !room(env, s)) advance(env, refuse(popped, entry.path))
-          else
-            entry.kind match {
-              case UnitKind.Directory =>
-                if (s.lists >= env.cards.maxUnits) end(env, s)
-                else
-                  popped
-                    .copy(lists = popped.lists + 1)
-                    .step(
-                      Step.List(entry.path, Way.Run),
-                      Waiting.Listing(entry.path, Some(entry.version))
-                    )
-              case UnitKind.File =>
-                if (s.reads >= env.perRun) end(env, s)
-                else
-                  env.cards.pointer(entry.path) match {
-                    case Left(why) => advance(env, unwritten(popped, entry.path, why))
-                    case Right(pointer) =>
-                      popped
-                        .copy(reads = popped.reads + 1)
-                        .step(
-                          Step.Read(entry.path, Way.Run),
-                          Waiting.Reading(entry.path, pointer)
-                        )
-                  }
-            }
-        case Task.Finish(path, version, all) =>
-          // Each child is brought up to date by now, so whether one keeps anything is known: a
-          // file in scope does, a directory does unless found empty here, and a directory held
-          // current at this form does (none is written empty).
-          val children = all.filterNot(c => s.empty.contains(c.path))
-          if (s.undone.exists(u => u == path || u.startsWith(path + "/")))
-            advance(env, popped.copy(undone = popped.undone + path))
-          else if (children.isEmpty) advance(env, popped.copy(empty = popped.empty + path))
-          else if (env.isNew(env.keyOf(path)) && !room(env, s)) advance(env, refuse(popped, path))
-          else
-            env.cards.pointer(path) match {
-              case Left(why) => advance(env, unwritten(popped, path, why))
-              case Right(pointer) =>
-                val summary =
-                  CardSummary.of(described(path, env.cards.keeps, children), Vector.empty)
-                summary match {
-                  case Left(why) => advance(env, unwritten(popped, path, why))
-                  case Right(summary) =>
-                    write(
-                      env,
-                      popped,
-                      Card.directory(
-                        env.cards.corpus,
-                        path,
-                        version,
-                        env.cards.scope,
-                        summary,
-                        pointer
-                      )
-                    )
-                }
-            }
-      }
+  /** Whether `entry`'s held card is up to date: at its version and, a directory's, made under
+    * the source's scope.
+    */
+  private def current(cards: GitHubCards, holding: Holding, entry: Entry): Boolean = {
+    val best = holding.best(CardKey.of(cards.corpus, entry.path))
+    best.exists(_.version == entry.version) &&
+    (entry.kind == UnitKind.File || best.exists(_.scope.contains(cards.scope)))
   }
 
-  /** The relabel step of a held unit whose version is current, when it is held only at another
-    * label or kept elsewhere than its source's place; `None` when the floor holds it there.
-    */
-  private def known(s: State, env: Env, key: CardKey): Option[State] =
-    env.copying(key).map(from => s.step(Step.Relabel(key, from), Waiting.Relabelled(key)))
+  private def inScope(cards: GitHubCards, entry: Entry): Boolean =
+    cards.include.exists(i => i.isEmpty || entry.path == i || entry.path.startsWith(i + "/")) &&
+      (entry.kind == UnitKind.Directory || cards.extensions.isEmpty || {
+        val name = entry.path.substring(entry.path.lastIndexOf('/') + 1)
+        val dot = name.lastIndexOf('.')
+        dot > 0 && cards.extensions.contains(name.substring(dot + 1))
+      })
 
-  private def unchanged(s: State, key: CardKey): State =
-    s.copy(unchanged = s.unchanged + 1, settled = s.settled :+ key)
+  /** Whether `entry` is a directory on the way to an included path. */
+  private def passage(cards: GitHubCards, entry: Entry): Boolean =
+    entry.kind == UnitKind.Directory && cards.include.exists(_.startsWith(entry.path + "/"))
 
-  /** Whether a new unit's card would leave the source within `maxUnits`: the units it holds and
-    * those this walk has written new.
-    */
-  private def room(env: Env, s: State): Boolean = env.byKey.size + s.fresh < env.cards.maxUnits
-
-  /** `s` with the new unit at `path` not taken, so the directories above it are not written. */
-  private def refuse(s: State, path: String): State =
-    s.copy(refused = s.refused + 1, undone = s.undone + path)
-
-  /** `s` come to its end: its drop, when anything is gone, and then its result. */
-  private def end(env: Env, s: State): State = {
-    val ended = unstacked(env, s)
-    val gone = drops(env, ended)
-    if (gone.isEmpty) done(env, ended)
-    else ended.step(Step.Drop(gone), Waiting.Dropped(gone.size))
+  /** Whether `task`, never taken, is a unit seen changed or new, or one to relabel. */
+  private def left(cards: GitHubCards, task: Task, w: W): Boolean = task match {
+    case Task.Visit(entry) => !current(cards, w.holding, entry)
+    case Task.Known(key) => w.holding.copying(key).nonEmpty
+    case Task.Finish(_, _, _) => true
+    case Task.Pass(_) => false
   }
 
-  /** `s` stopped by a step's outcome, saying `why`: its result at once, dropping nothing. */
-  private def halt(env: Env, s: State, why: String): State =
-    done(env, unstacked(env, s).copy(stopped = Some(why)))
-
-  private def done(env: Env, s: State): State =
-    s.copy(next = Left(s.synced(env)), waiting = Waiting.Done)
-
-  /** `s` with its tasks left counted: each unit seen changed or new, or held only at another
-    * label or elsewhere, and not reached.
-    */
-  private def unstacked(env: Env, s: State): State = {
-    val left = s.stack.count {
-      case Task.Visit(entry) => !env.current(entry)
-      case Task.Known(key) => env.copying(key).nonEmpty
-      case Task.Finish(_, _, _) => true
-      case Task.Pass(_) => false
-    }
-    s.copy(stack = Nil, left = s.left + left)
-  }
-
-  /** The copies held of units gone from directories listed in full or listed as on the way to
-    * an included path, or of directories found empty and the units beneath them; the copies at
-    * other labels of units this walk kept current at the floor; and the units past `maxUnits`;
-    * but never the copy a write or relabel of this walk replaced.
-    */
-  private def drops(env: Env, s: State): Vector[Held] = {
-    val settled = s.settled.toSet
-    val gone = env.held.filter { h =>
-      if (settled.contains(h.key)) h.label != env.floor && !replacedBy(env, h)
+  /** What it drops, as [[RepositoryWalk]] says. */
+  private def drops(w: W): Vector[Held] = {
+    val (holding, own) = (w.holding, w.own)
+    val gone = holding.held.filter { h =>
+      if (w.settled(h.key)) h.label != holding.floor && !w.replaced(h)
       else
-        s.passed.contains(h.path) || s.listed.exists { (dir, children) =>
+        own.passed.contains(h.path) || own.listed.exists { (dir, children) =>
           beneath(h.path, dir) && !children.contains(toward(dir, h.path))
-        } || s.empty.exists(e => h.path == e || beneath(h.path, e))
+        } || own.empty.exists(e => h.path == e || beneath(h.path, e))
     }
     // Past maxUnits (it was lowered): the units last in walk order go, and the directories
     // above them, so the next run lists those again and takes the units back when there is room.
     val dropped = gone.toSet
-    val kept = env.held
-      .filterNot(dropped)
-      .map(_.path)
-      .distinct
-      .sortBy(_.split('/').toVector)(using Ordering.Implicits.seqOrdering[Vector, String])
-    val past = kept.drop(math.max(env.cards.maxUnits - s.fresh, 0))
-    val over = (past ++ past.flatMap(ancestors)).toSet
-    env.held.filter(h =>
-      dropped(h) || (over(h.path) && !(settled.contains(h.key) && replacedBy(env, h)))
+    val past = w.past(
+      holding.held
+        .filterNot(dropped)
+        .map(_.path)
+        .distinct
+        .sortBy(_.split('/').toVector)(using Ordering.Implicits.seqOrdering[Vector, String])
     )
+    val over = (past ++ past.flatMap(ancestors)).toSet
+    holding.held.filter(h => dropped(h) || over(h.path))
   }
 
   /** The paths of the directories above `path`. */
   private def ancestors(path: String): Vector[String] =
     path.split('/').toVector.inits.toVector.drop(1).filter(_.nonEmpty).map(_.mkString("/"))
-
-  /** Whether `h` is the copy a write or relabel of its unit replaced. */
-  private def replacedBy(env: Env, h: Held): Boolean = env.replacing(h.key).contains(h.label)
 
   private def parent(path: String): String = path.lastIndexOf('/') match {
     case -1 => Root
@@ -529,8 +258,4 @@ object RepositoryWalk {
   private def inWords(names: Vector[String]): String =
     if (names.size < 2) names.mkString
     else s"${names.init.mkString(", ")} and ${names.last}"
-
-  // "An empty file." is three words and not blank: CardSummary.of never refuses it.
-  private def sure[A](e: Either[String, A]): A =
-    e.fold(why => throw new IllegalStateException(why), identity)
 }

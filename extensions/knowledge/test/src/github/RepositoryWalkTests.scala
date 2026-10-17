@@ -10,7 +10,17 @@ import grit.core.place.Service
 import grit.core.triage.Corpus
 import grit.core.visibility.{Label, Level}
 import grit.knowledge.card.{Card, CardKey, CardSummary, Scope, UnitKind, UnitVersion}
-import grit.knowledge.sync.{Fetched, Held, Outcome, Step, SyncSchedule, Synced, Unwritten, Way}
+import grit.knowledge.sync.{
+  Fetched,
+  Held,
+  Outcome,
+  Step,
+  SyncSchedule,
+  Synced,
+  Unwritten,
+  Walk,
+  Way
+}
 
 import utest.*
 
@@ -141,10 +151,10 @@ object RepositoryWalkTests extends TestSuite {
 
   /** Each step of `walk` answered by `answer`, and what its run came to. */
   private def drive(
-      walk: RepositoryWalk,
+      walk: Walk[Listing],
       answer: Step => Outcome[Listing]
   ): (Vector[Step], Synced) = {
-    @tailrec def go(w: RepositoryWalk, steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
+    @tailrec def go(w: Walk[Listing], steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
       case Left(synced) => (steps, synced)
       case Right(step) =>
         if (steps.size > 100) throw new java.lang.AssertionError(s"no end: ${steps.map(shown)}")

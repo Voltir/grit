@@ -10,7 +10,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
 import grit.knowledge.card.Scope
-import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule}
+import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
 
 /** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
   * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
@@ -92,7 +92,7 @@ final case class GitHubCards private (
   }
 
   /** [[RepositoryWalk.start]]'s: a repository's walk goes by what it holds, whenever it is due. */
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): RepositoryWalk =
+  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Listing] =
     RepositoryWalk.start(this, perRun, floor, held)
 
   /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no

@@ -3,6 +3,7 @@ package grit.knowledge.sync
 import java.time.Instant
 
 import grit.core.act.Answer
+import grit.core.document.Pointer
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
@@ -39,6 +40,9 @@ trait Source[L <: caps.Pure] extends caps.Pure {
     * reaches a card or steers the run.
     */
   def checked(listing: L): String
+
+  /** The pointer of its unit at `path`, the one that unit's card records, or why there is none. */
+  def pointer(path: String): Either[String, Pointer]
 
   /** The most calls a run asking for `perRun` summaries makes. */
   def calls(perRun: Int): Int
