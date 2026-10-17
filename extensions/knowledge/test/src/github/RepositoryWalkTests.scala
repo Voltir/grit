@@ -575,6 +575,48 @@ object RepositoryWalkTests extends TestSuite {
     }
 
     test(
+      "a walk lists at most maxUnits directories in scope, however many listings are withheld, within calls"
+    ) {
+      val subdirs = (0 until 6).map(i => dir(s"docs/d$i", 30 + i)).toVector
+      val listings = Map(
+        "/" -> Listing.Complete(Vector(dir("docs", 10))),
+        "docs" -> Listing.Complete(subdirs)
+      )
+      val cards = source(maxUnits = 2)
+      val (steps, result) = drive(
+        RepositoryWalk.start(cards, 5, floor, Vector.empty),
+        {
+          case Step.List(path, _) if path.startsWith("docs/") => Outcome.NotTaken("withheld")
+          case other => moves(listings, Map.empty)(other)
+        }
+      )
+      (steps.map(shown), result, steps.size <= cards.calls(5)) ==> (
+        Vector("list /", "list docs", "list docs/d0"),
+        synced(left = 6, unwritten = Vector(Unwritten("docs/d0", "withheld"))),
+        true
+      )
+    }
+
+    test("the directories on the way to an included path are listed past maxUnits, within calls") {
+      val listings = Map(
+        "/" -> Listing.Complete(Vector(dir("a", 10))),
+        "a" -> Listing.Complete(Vector(dir("a/b", 11))),
+        "a/b" -> Listing.Complete(Vector(dir("a/b/c", 12))),
+        "a/b/c" -> Listing.Complete(Vector(file("a/b/c/d.md", 13)))
+      )
+      val cards = source(maxUnits = 1, include = Vector("a/b/c/d.md"))
+      val (steps, _) = drive(
+        RepositoryWalk.start(cards, 1, floor, Vector.empty),
+        moves(listings, Map("a/b/c/d.md" -> read("a/b/c/d.md", 13)))
+      )
+      val calls = steps.collect { case s @ (Step.List(_, _) | Step.Read(_, _)) => shown(s) }
+      (calls, calls.size <= cards.calls(1)) ==> (
+        Vector("list /", "list a", "list a/b", "list a/b/c", "read a/b/c/d.md"),
+        true
+      )
+    }
+
+    test(
       "a directory whose listing was withheld is left unwritten, saying why, and nothing beneath it is read or dropped"
     ) {
       val (listings, files) = changedA(read("docs/a.md", 4))

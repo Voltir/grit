@@ -23,8 +23,9 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * written; either way its copy there is withdrawn in that keep, never before. A unit held at
   * the floor goes by that copy, whatever another label's records.
   *
-  * It reads at most `perRun` files, so asks for at most as many summaries: at the next read it
-  * stops, counting what it left. The
+  * It reads at most `perRun` files, so asks for at most as many summaries, and lists at most
+  * `maxUnits` directories in scope (those on the way to an included path besides): at the next
+  * read or listing past either, it stops, counting what it left. The
   * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
   * the units held and those written new reach it, and the walk goes on bringing the held up to
   * date. A file read with no version, a directory listed only in part (`listed only in part`),
@@ -149,6 +150,7 @@ object RepositoryWalk {
       waiting: Waiting,
       next: Either[Synced, Step],
       reads: Int,
+      lists: Int,
       fresh: Int,
       refused: Int,
       written: Int,
@@ -184,6 +186,7 @@ object RepositoryWalk {
         stack,
         Waiting.Done,
         Left(Synced(env.cards.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)),
+        0,
         0,
         0,
         0,
@@ -339,10 +342,14 @@ object RepositoryWalk {
           else
             entry.kind match {
               case UnitKind.Directory =>
-                popped.step(
-                  Step.List(entry.path, Way.Run),
-                  Waiting.Listing(entry.path, Some(entry.version))
-                )
+                if (s.lists >= env.cards.maxUnits) end(env, s)
+                else
+                  popped
+                    .copy(lists = popped.lists + 1)
+                    .step(
+                      Step.List(entry.path, Way.Run),
+                      Waiting.Listing(entry.path, Some(entry.version))
+                    )
               case UnitKind.File =>
                 if (s.reads >= env.perRun) end(env, s)
                 else

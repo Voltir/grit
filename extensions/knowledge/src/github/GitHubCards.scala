@@ -73,8 +73,14 @@ final case class GitHubCards private (
 
   def subject(path: String): String = s"The file `$path` in $owner/$repo"
 
-  /** `perRun` (the most files a run reads) plus [[maxUnits]], at most `Int.MaxValue`. */
-  def calls(perRun: Int): Int = (perRun.toLong + maxUnits).min(Int.MaxValue.toLong).toInt
+  /** `perRun` (the most files a run reads), plus [[maxUnits]] (the most directories in scope it
+    * lists), plus the root and each directory on the way to an included path, at most
+    * `Int.MaxValue`.
+    */
+  def calls(perRun: Int): Int = {
+    val passages = include.flatMap(i => i.indices.filter(i(_) == '/').map(i.take)).distinct
+    (perRun.toLong + maxUnits + 1 + passages.size).min(Int.MaxValue.toLong).toInt
+  }
 
   /** [[RepositoryWalk.start]]'s: a repository's walk goes by what it holds, whenever it is due. */
   def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): RepositoryWalk =

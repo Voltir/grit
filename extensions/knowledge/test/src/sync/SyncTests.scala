@@ -744,12 +744,13 @@ object SyncTests extends TestSuite {
     }
 
     test(
-      "its limits: asks, the largest perRun; calls, that plus the largest maxUnits; judgments, 10 a call"
+      "its limits: asks, the largest perRun; calls, the most any source's run makes at it; judgments, 10 a call"
     ) {
       val two =
         new Sync(Vector(source(perRun = 5, maxUnits = 40), source(perRun = 30, maxUnits = 20)))
       val l = two.limits
-      (l.asks, l.calls, l.judgments) ==> (30, 70, 700)
+      // 30 reads, 40 directories in scope and the root's listing.
+      (l.asks, l.calls, l.judgments) ==> (30, 71, 710)
     }
 
     test("parameters naming no source of its are refused by the reply, making no move") {
