@@ -218,13 +218,15 @@ object DriveItemsTests extends TestSuite {
         )
       )
       val fitted = Fitted.of(items.head, items.parts)
+      val shown = items.parts.headOption.toVector.flatMap(_.text.linesIterator.toVector)
+      val note = "\\[Only the first (\\d+) of its 5000 lines are shown.\\]".r
+      // Its name's line, then the lines the note counts, then the note.
+      val counted = shown.lastOption.collect { case note(k) => k.toInt }
       (
         fitted.parts.map(_.size),
-        items.parts
-          .map(_.text.linesIterator.toVector.last)
-          .headOption
-          .map(_.matches("\\[Only the first \\d+ of its 5000 lines are shown.\\]"))
-      ) ==> (Some(1), Some(true))
+        counted.map(_ + 2),
+        shown.slice(1, shown.size - 1).forall(_ == line)
+      ) ==> (Some(1), Some(shown.size), true)
     }
   }
 }
