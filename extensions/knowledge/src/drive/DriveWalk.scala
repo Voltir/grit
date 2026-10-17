@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import grit.core.document.Pointer
 import grit.core.visibility.Label
-import grit.knowledge.card.{Card, CardSummary, UnitVersion}
+import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
 import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Walk, Way}
 
 /** One run's walk of a [[DriveCards]] source at its floor, as data: from the cards it holds,
@@ -24,7 +24,9 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * shows one: from a summary of its first 8 KB, or, when its text is blank, as `An empty file.`
   * with no ask. A
   * card held only at another label is replaced by that write, its copy there withdrawn in the
-  * same keep. It reads at most `perRun` files, so asks for at most as many summaries: past them
+  * same keep. A current card held at the floor but kept elsewhere than its source's place
+  * ([[Held.elsewhere]]) is relabelled from the floor, so it is kept again at that place with no
+  * read and no ask. It reads at most `perRun` files, so asks for at most as many summaries: past them
   * a changed file is left, and the listings go on. A new file (none of its cards held) is not taken once the units held and
   * those written new reach `maxUnits`. A file read with no change time, or whose list or read
   * came to [[Outcome.NotTaken]], is [[Unwritten]].
@@ -97,6 +99,9 @@ object DriveWalk {
         )
       )
 
+    /** Whether the copy of `id` held at the floor is kept elsewhere than its source's place. */
+    def elsewhere(id: String): Boolean = copies(id).exists(h => h.label == floor && h.elsewhere)
+
     def isNew(id: String): Boolean = !byPath.contains(id)
 
     /** Whether a listing read at `at` is this run's to card. */
@@ -128,6 +133,7 @@ object DriveWalk {
   private enum Task extends caps.Pure {
     case List(of: Container)
     case Read(entry: DriveEntry, within: String)
+    case Relabel(id: String)
     case Folders
   }
 
@@ -138,6 +144,7 @@ object DriveWalk {
     case Reading(entry: DriveEntry, within: String, pointer: Pointer)
     case Summary(entry: DriveEntry, within: String, version: UnitVersion, pointer: Pointer)
     case Wrote(id: String)
+    case Relabelled(id: String)
     case Dropped(count: Int)
   }
 
@@ -149,6 +156,7 @@ object DriveWalk {
       fresh: Int,
       found: Vector[Container.Folder],
       written: Int,
+      relabelled: Int,
       withdrawn: Int,
       unchanged: Int,
       left: Int,
@@ -161,7 +169,17 @@ object DriveWalk {
       stopped: Option[String]
   ) extends caps.Pure {
     def synced(env: Env): Synced =
-      Synced(env.cards.corpus, written, 0, withdrawn, unchanged, left, refused, unwritten, stopped)
+      Synced(
+        env.cards.corpus,
+        written,
+        relabelled,
+        withdrawn,
+        unchanged,
+        left,
+        refused,
+        unwritten,
+        stopped
+      )
     def step(s: Step, w: Waiting): State = copy(next = Right(s), waiting = w)
   }
 
@@ -174,6 +192,7 @@ object DriveWalk {
         0,
         0,
         Vector.empty,
+        0,
         0,
         0,
         0,
@@ -216,6 +235,8 @@ object DriveWalk {
           env,
           s.copy(written = s.written + 1, fresh = if (env.isNew(id)) s.fresh + 1 else s.fresh)
         )
+      case (Waiting.Relabelled(_), Outcome.Kept) =>
+        advance(env, s.copy(relabelled = s.relabelled + 1))
       case (Waiting.Dropped(count), Outcome.Kept) => done(env, s.copy(withdrawn = count))
       case (waiting, other) => halt(env, s, s"${expected(waiting)} came to ${kind(other)}")
     }
@@ -225,6 +246,7 @@ object DriveWalk {
     case Waiting.Reading(_, _, _) => "a read"
     case Waiting.Summary(_, _, _, _) => "a summary"
     case Waiting.Wrote(_) => "a write"
+    case Waiting.Relabelled(_) => "a relabel"
     case Waiting.Dropped(_) | Waiting.Done => "a drop"
   }
 
@@ -281,7 +303,7 @@ object DriveWalk {
     }
 
   /** `s` with the files `listing` of `within` shows seen, and, when it is this run's to card,
-    * those changed pushed to read.
+    * those changed pushed to read and those current but kept elsewhere to relabel.
     */
   private def files(
       env: Env,
@@ -294,10 +316,12 @@ object DriveWalk {
     val seen = s.seen ++ readable.map(_.id)
     if (env.carded(at)) {
       val (current, changed) = readable.partition(env.current(_, within))
+      val (moved, unchanged) = current.partition(e => env.elsewhere(e.id))
       s.copy(
-        stack = changed.map(Task.Read(_, within)).toList ++ s.stack,
+        stack = (moved.map(e => Task.Relabel(e.id)) ++ changed.map(Task.Read(_, within))).toList ++
+          s.stack,
         seen = seen,
-        unchanged = s.unchanged + current.size
+        unchanged = s.unchanged + unchanged.size
       )
     } else
       s.copy(
@@ -348,6 +372,11 @@ object DriveWalk {
                     Waiting.Reading(entry, within, pointer)
                   )
             }
+        case Task.Relabel(id) =>
+          popped.step(
+            Step.Relabel(CardKey.of(env.cards.corpus, id), env.floor),
+            Waiting.Relabelled(id)
+          )
       }
   }
 
@@ -358,11 +387,11 @@ object DriveWalk {
   }
 
   /** `s` stopped by a step's outcome, saying `why`: its result at once, dropping nothing, each
-    * changed file still to read counted as left.
+    * file still to read or relabel counted as left.
     */
   private def halt(env: Env, s: State, why: String): State = {
     val reads = s.stack.count {
-      case Task.Read(_, _) => true
+      case Task.Read(_, _) | Task.Relabel(_) => true
       case Task.List(_) | Task.Folders => false
     }
     done(env, s.copy(stack = Nil, left = s.left + reads, stopped = Some(why)))

@@ -5,7 +5,8 @@ import grit.core.id.CorpusName
 /** A unit whose card a run could not write, at `path`, and `why`. */
 final case class Unwritten(path: String, why: String) extends caps.Pure
 
-/** What a run came to: how many cards it `written`, `relabelled` (copied up to its floor),
+/** What a run came to: how many cards it `written`, `relabelled` (copied up to its floor, or to
+  * its source's place),
   * `withdrawn` and found `unchanged`; how many units it saw changed, new or held only at
   * another label, and `left` unreached; how many new units it `refused`, the source holding its
   * most cards; the units it reached and could not write (`unwritten`), each tried again by the

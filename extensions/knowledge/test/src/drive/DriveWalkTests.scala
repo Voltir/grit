@@ -3,7 +3,7 @@ package grit.knowledge.drive
 import java.time.Instant
 
 import grit.core.visibility.Label
-import grit.knowledge.card.{CardSummary, UnitVersion}
+import grit.knowledge.card.{CardKey, CardSummary, UnitVersion}
 import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Way}
 
 import utest.*
@@ -124,9 +124,17 @@ object DriveWalkTests extends TestSuite {
   private def dropped(steps: Vector[Step]): Vector[(String, Label)] =
     steps.collect { case Step.Drop(gone) => gone.map(h => (h.path, h.label)) }.flatten
 
-  /** The card of `id`, held at `at`, changed on day `changed`, shown in the listing `within`. */
-  private def held(id: String, at: Label, changed: Int, within: String): Held =
-    Held.of(corpus.name, id, at, UnitVersion.Changed(day(changed)), None, Some(within))
+  /** The card of `id`, held at `at`, changed on day `changed`, shown in the listing `within`,
+    * kept `elsewhere` than its source's place or not.
+    */
+  private def held(
+      id: String,
+      at: Label,
+      changed: Int,
+      within: String,
+      elsewhere: Boolean = false
+  ): Held =
+    Held.of(corpus.name, id, at, UnitVersion.Changed(day(changed)), None, Some(within), elsewhere)
 
   private val labels: Vector[Label] = Vector(internal, confidential)
 
@@ -169,6 +177,23 @@ object DriveWalkTests extends TestSuite {
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(reads == Vector("file-30", "file-32"))
       assert(synced.unchanged == 1)
+    }
+
+    test(
+      "a current card kept elsewhere than its source's place is moved there, with no read and no ask"
+    ) {
+      val holding = Vector(held("file-18", internal, 5, "drive-a", elsewhere = true))
+      val (steps, synced) = run(cards(labels).walk(5, internal, holding, due))
+      val moved = steps.collect { case Step.Relabel(key, from) => (key, from) }
+      val reads = fetches(steps).collect { case Step.Read(id, _) => id }
+      val summarised = steps.collect { case Step.Summarise(id, _, _) => id }
+      assert(
+        moved == Vector((CardKey.of(corpus.name, "file-18"), internal)),
+        !reads.contains("file-18"),
+        !summarised.contains("file-18"),
+        synced.relabelled == 1,
+        synced.unchanged == 0
+      )
     }
 
     test(

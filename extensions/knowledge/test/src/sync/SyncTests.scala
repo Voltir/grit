@@ -20,7 +20,7 @@ import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.sanitise.IntegrityTree
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -54,7 +54,11 @@ object SyncTests extends TestSuite {
   private val corpus = Corpus(name, "the team's repository", service.place, Some(service))
   private val rule = SlotRule.Daily(LocalTime.of(3, 0), ZoneId.of("UTC"))
 
-  private def source(perRun: Int = 5, maxUnits: Int = 100): GitHubCards = right(
+  private def source(
+      perRun: Int = 5,
+      maxUnits: Int = 100,
+      at: Place = service.place
+  ): GitHubCards = right(
     GitHubCards.of(
       corpus,
       "github",
@@ -65,7 +69,7 @@ object SyncTests extends TestSuite {
       Set("md"),
       maxUnits,
       None,
-      service.place,
+      at,
       Vector(right(SyncSchedule.of(right(ScheduleKey.of("nightly")), rule, perRun)))
     )
   )
@@ -227,9 +231,10 @@ object SyncTests extends TestSuite {
   private def runOf(
       moves: Keeping^,
       perRun: Int = 5,
-      believed: Integrity = Integrity.Authority
+      believed: Integrity = Integrity.Authority,
+      job: Sync = sync
   ): String =
-    sync.run(
+    job.run(
       TestTainted.trusted(JobRun(SyncParams(name, perRun), Instant.EPOCH, Instant.EPOCH), believed),
       moves
     )
@@ -696,6 +701,24 @@ object SyncTests extends TestSuite {
       )
     }
 
+    test(
+      "a card kept at another place than its source's is kept again at its source's, in place of the old"
+    ) {
+      val channel = right(Place.read("slack:acme/#docs"))
+      val documents = new InMemoryDocuments
+      val _ = runOf(keeping(floor, documents), job = new Sync(Vector(source(at = channel))))
+      val k = keeping(floor, documents)
+      val reply = runOf(k)
+      (reply, k.kept.map(d => (pathOf(d), d.label, d.place)).sortBy(_._1)) ==> (
+        line(relabelled = 3),
+        Vector(
+          ("docs", floor, service.place),
+          ("docs/a.md", floor, service.place),
+          ("docs/b.md", floor, service.place)
+        )
+      )
+    }
+
     test("a run stopped before the keep replacing a card leaves its copy at another label") {
       val documents = firstAt(lower)
       val k = keeping(floor, documents, repo(a = 4), Summaries.Capped("docs/a.md"))
@@ -704,7 +727,7 @@ object SyncTests extends TestSuite {
     }
 
     test(
-      "the held keep's record reads back as written, each label in its written form, a listing only where recorded"
+      "the held keep's record reads back as written, each label in its written form, a listing and a card kept elsewhere only where recorded"
     ) {
       val compound = Label.at(
         Level.Confidential,
@@ -715,7 +738,7 @@ object SyncTests extends TestSuite {
       val held = Vector(
         Held.of(name, "docs", Label.Public, right(UnitVersion.of(hex(13))), Some(source().scope)),
         Held.of(name, "docs/a.md", compound, right(UnitVersion.of(hex(1))), None),
-        Held.of(name, "file-1", Label.Public, changed, None, Some("folder-3"))
+        Held.of(name, "file-1", Label.Public, changed, None, Some("folder-3"), elsewhere = true)
       )
       val holding = Holding(compound, held)
       val journaled = summon[Journaled[Holding]]
@@ -723,11 +746,13 @@ object SyncTests extends TestSuite {
       (
         journaled.decode(journaled.encode(holding)),
         encoded("floor").str +: encoded("held").arr.map(_("label").str).toVector,
-        encoded("held").arr.map(_.obj.get("within").map(_.str)).toVector
+        encoded("held").arr.map(_.obj.get("within").map(_.str)).toVector,
+        encoded("held").arr.map(_.obj.get("elsewhere").map(_.bool)).toVector
       ) ==> (
         Right(holding),
         Vector("confidential+acme+trial", "public", "confidential+acme+trial", "public"),
-        Vector(None, None, Some("folder-3"))
+        Vector(None, None, Some("folder-3")),
+        Vector(None, None, Some(true))
       )
     }
 

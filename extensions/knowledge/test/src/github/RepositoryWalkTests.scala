@@ -359,6 +359,26 @@ object RepositoryWalkTests extends TestSuite {
     }
 
     test(
+      "held at the floor elsewhere than its source's place, an unchanged unit is moved there with no read and no ask"
+    ) {
+      val elsewhere =
+        heldAll().map(h => Held.of(name, h.path, h.label, h.version, h.scope, h.within, true))
+      val (steps, result) = run(elsewhere, Map("/" -> root()))
+      val from = Label.written(floor)
+      assert(
+        steps == Vector(
+          "list /",
+          s"relabel docs from $from",
+          s"relabel docs/a.md from $from",
+          s"relabel docs/b.md from $from",
+          s"relabel docs/guide from $from",
+          s"relabel docs/guide/c.md from $from"
+        ),
+        result == synced(relabelled = 5)
+      )
+    }
+
+    test(
       "held at another label, a changed unit's old copy is withdrawn in the write replacing it"
     ) {
       val (listings, files) = changedA(read("docs/a.md", 4))

@@ -21,7 +21,10 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * listing, with no ask, after its children, and only when each was brought up to date. A unit's
   * card held only at another label than the floor is relabelled when unchanged, and otherwise
   * written; either way its copy there is withdrawn in that keep, never before. A unit held at
-  * the floor goes by that copy, whatever another label's records.
+  * the floor goes by that copy, whatever another label's records. An unchanged unit whose card
+  * is kept elsewhere than its source's place ([[Held.elsewhere]]) is relabelled from the label
+  * it is held at, the floor's included, so it is kept again at that place with no read and no
+  * ask.
   *
   * It reads at most `perRun` files, so asks for at most as many summaries, and lists at most
   * `maxUnits` directories in scope (those on the way to an included path besides): at the next
@@ -86,6 +89,13 @@ object RepositoryWalk {
 
     /** The label of the copy a write or relabel of `key` replaces: none when the floor holds it. */
     def replacing(key: CardKey): Option[Label] = best(key).map(_.label).filter(_ != floor)
+
+    /** The label of the copy a relabel of `key`, unchanged, copies from: the one the walk goes
+      * by, when it is held only at another label or kept elsewhere than its source's place;
+      * none when the floor's copy is at that place.
+      */
+    def copying(key: CardKey): Option[Label] =
+      best(key).filter(h => h.label != floor || h.elsewhere).map(_.label)
 
     /** Whether the copy of `key` the walk goes by records `version`. */
     def holds(key: CardKey, version: UnitVersion): Boolean = best(key).exists(_.version == version)
@@ -394,10 +404,10 @@ object RepositoryWalk {
   }
 
   /** The relabel step of a held unit whose version is current, when it is held only at another
-    * label; `None` when the floor holds it.
+    * label or kept elsewhere than its source's place; `None` when the floor holds it there.
     */
   private def known(s: State, env: Env, key: CardKey): Option[State] =
-    env.replacing(key).map(from => s.step(Step.Relabel(key, from), Waiting.Relabelled(key)))
+    env.copying(key).map(from => s.step(Step.Relabel(key, from), Waiting.Relabelled(key)))
 
   private def unchanged(s: State, key: CardKey): State =
     s.copy(unchanged = s.unchanged + 1, settled = s.settled :+ key)
@@ -427,12 +437,12 @@ object RepositoryWalk {
     s.copy(next = Left(s.synced(env)), waiting = Waiting.Done)
 
   /** `s` with its tasks left counted: each unit seen changed or new, or held only at another
-    * label, and not reached.
+    * label or elsewhere, and not reached.
     */
   private def unstacked(env: Env, s: State): State = {
     val left = s.stack.count {
       case Task.Visit(entry) => !env.current(entry)
-      case Task.Known(key) => env.replacing(key).nonEmpty
+      case Task.Known(key) => env.copying(key).nonEmpty
       case Task.Finish(_, _, _) => true
       case Task.Pass(_) => false
     }

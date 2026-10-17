@@ -22,7 +22,8 @@ import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
   * writes a card at its own floor for each new or changed unit (a file's from one summary, with
   * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
   * makes it, at no model cost), each pointing at the read of its unit; copies up to
-  * its floor, with no call or ask, the card of an unchanged unit held at another label; and
+  * its floor, with no call or ask, the card of an unchanged unit held at another label, and to
+  * its source's place ([[Source.at]]) the card of one kept elsewhere; and
   * withdraws the cards of units gone from directories it listed in full. A held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
@@ -114,7 +115,7 @@ object Sync {
       moves: Keeping^
   ): String = {
     val corpus = source.corpus
-    moves.keep(CardMoves.Held, start)((_, keeper, _) => holding(corpus, keeper)) match {
+    moves.keep(CardMoves.Held, start)((_, keeper, _) => holding(corpus, source.at, keeper)) match {
       case Left(e) =>
         val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
         none.copy(stopped = Some(s"reading the cards held: ${reason(e)}")).line
@@ -346,9 +347,10 @@ object Sync {
     result.fold(e => Outcome.Stopped(s"$doing: ${reason(e)}"), _ => Outcome.Kept)
 
   /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
-    * key; or the first document that is no card, as the store's refusal.
+    * key, each kept elsewhere when not at `at`; or the first document that is no card, as the
+    * store's refusal.
     */
-  private def holding(corpus: CorpusName, keeper: DocumentKeeper)(using
+  private def holding(corpus: CorpusName, at: Place, keeper: DocumentKeeper)(using
       tx: Tx^
   ): Either[StoreError, Holding] =
     // Every current document: the plugin's bound, counted over every label, holds them to the
@@ -356,7 +358,7 @@ object Sync {
     keeper.newest(Int.MaxValue).flatMap { documents =>
       documents
         .foldLeft[Either[String, Vector[Held]]](Right(Vector.empty)) { (acc, d) =>
-          acc.flatMap(hs => Held.read(corpus, d).map(hs ++ _))
+          acc.flatMap(hs => Held.read(corpus, at, d).map(hs ++ _))
         }
         .left
         .map(StoreError.Invalid(_))
@@ -393,8 +395,9 @@ object Sync {
       )
     } yield Kept(old.size, Some(w.kept))
 
-  /** The card under `key` at `from` copied, believed as it was, to `floor` at `place`, `now`, and withdrawn at
-    * `from`, in this one transaction. Refused when no card is kept there.
+  /** The card under `key` at `from` copied, believed as it was, to `floor` at `place`, `now`,
+    * and withdrawn at `from` when that is not `floor` (a write at a label replaces its version
+    * there), in this one transaction. Refused when no card is kept at `from`.
     */
   private def relabel(
       keeper: DocumentKeeper,
@@ -410,7 +413,9 @@ object Sync {
         Left(StoreError.Invalid(s"no card is kept at ${Label.shown(from)} to relabel"))
       case Some(d) =>
         for {
-          old <- keeper.withdraw(doc, from, now)
+          old <-
+            if (from == floor) Right(None)
+            else keeper.withdraw(doc, from, now)
           w <- keeper.write(doc, floor, d.integrity, place, d.text, d.data, d.pointer, now)
         } yield Kept(old.size, Some(w.kept))
     }

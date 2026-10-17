@@ -3,12 +3,14 @@ package grit.knowledge.sync
 import grit.core.document.Document
 import grit.core.durable.Journaled
 import grit.core.id.{CorpusName, DocKey}
+import grit.core.place.Place
 import grit.core.visibility.Label
 import grit.knowledge.card.{CardKey, Scope, UnitVersion}
 
 /** A card a run holds, as its `held` keep reads it: its key, its unit's path, the label it is
-  * kept at, its unit's version, the scope a directory's card was made under, and the path of
-  * the listing a file's card records it was shown in ([[grit.knowledge.card.Card.within]]).
+  * kept at, its unit's version, the scope a directory's card was made under, the path of the
+  * listing a file's card records it was shown in ([[grit.knowledge.card.Card.within]]), and
+  * whether it is kept `elsewhere` than the place its source declares ([[Source.at]]).
   */
 final case class Held private (
     key: CardKey,
@@ -16,14 +18,15 @@ final case class Held private (
     label: Label,
     version: UnitVersion,
     scope: Option[Scope],
-    within: Option[String]
+    within: Option[String],
+    elsewhere: Boolean
 ) extends caps.Pure
 
 object Held {
 
   /** The card of `corpus`'s unit at `path`, kept at `label` at `version`, made under `scope` if
-    * a directory's, shown `within` the listing at that path if recorded, keyed
-    * [[grit.knowledge.card.CardKey.of]] of `corpus` and `path`.
+    * a directory's, shown `within` the listing at that path if recorded, kept `elsewhere` than
+    * its source's place or not, keyed [[grit.knowledge.card.CardKey.of]] of `corpus` and `path`.
     */
   def of(
       corpus: CorpusName,
@@ -31,8 +34,9 @@ object Held {
       label: Label,
       version: UnitVersion,
       scope: Option[Scope],
-      within: Option[String] = None
-  ): Held = new Held(CardKey.of(corpus, path), path, label, version, scope, within)
+      within: Option[String] = None,
+      elsewhere: Boolean = false
+  ): Held = new Held(CardKey.of(corpus, path), path, label, version, scope, within, elsewhere)
 
   /** The card as its run's record holds it: `key` is read back as it was written. */
   private[sync] def recorded(
@@ -41,16 +45,17 @@ object Held {
       label: Label,
       version: UnitVersion,
       scope: Option[Scope],
-      within: Option[String]
-  ): Held = new Held(key, path, label, version, scope, within)
+      within: Option[String],
+      elsewhere: Boolean
+  ): Held = new Held(key, path, label, version, scope, within, elsewhere)
 
-  /** `document`, one of the knowledge plugin's, as a card of `corpus` that a run holds; `None`
-    * when it is another source's card (its key is not that of `corpus` and its data's path). Or
-    * why not, naming its key: the key is no card's key, or its data holds no string `path`, or
-    * no string `version` that is a version ([[UnitVersion.of]]), or a `scope` that is no scope,
-    * or a `within` that is no string.
+  /** `document`, one of the knowledge plugin's, as a card of `corpus` that a run holds, kept
+    * elsewhere when its place is not `at`; `None` when it is another source's card (its key is
+    * not that of `corpus` and its data's path). Or why not, naming its key: the key is no card's
+    * key, or its data holds no string `path`, or no string `version` that is a version
+    * ([[UnitVersion.of]]), or a `scope` that is no scope, or a `within` that is no string.
     */
-  def read(corpus: CorpusName, document: Document): Either[String, Option[Held]] = {
+  def read(corpus: CorpusName, at: Place, document: Document): Either[String, Option[Held]] = {
     val k = DocKey.value(document.key)
     def no(why: String) = s"the document $k is no card: $why"
     def str(field: String): Either[String, String] =
@@ -84,7 +89,7 @@ object Held {
             .toRight(no(s"its data's within, ${ujson.write(value)}, is no string"))
       }
     } yield Option.when(CardKey.of(corpus, path) == key)(
-      new Held(key, path, document.label, version, scope, within)
+      new Held(key, path, document.label, version, scope, within, document.place != at)
     )
   }
 }
@@ -97,8 +102,10 @@ private[sync] final case class Holding(floor: Label, held: Vector[Held]) extends
 private[sync] object Holding {
 
   /** Its record: `{"floor", "held"}`, each held card `{"key", "path", "label", "version"}`, a
-    * directory's `"scope"` and a file's `"within"` where it has them, each label in its written
-    * form ([[Label.written]]), never taken apart.
+    * directory's `"scope"` and a file's `"within"` where it has them, and `"elsewhere": true`
+    * only for a card kept elsewhere, so a record written before cards were held by place reads
+    * back as every card at its source's; each label in its written form ([[Label.written]]),
+    * never taken apart.
     */
   given Journaled[Holding] = Journaled.json(
     h =>
@@ -113,6 +120,7 @@ private[sync] object Holding {
           )
           c.scope.foreach(s => card("scope") = Scope.value(s))
           c.within.foreach(w => card("within") = w)
+          if (c.elsewhere) card("elsewhere") = true
           card
         })
       ),
@@ -147,6 +155,13 @@ private[sync] object Holding {
         case None => Right(None)
         case Some(_) => str("within").map(Some(_))
       }
-    } yield Held.recorded(key, path, label, version, scope, within)
+      elsewhere <- json.objOpt.flatMap(_.get("elsewhere")) match {
+        case None => Right(false)
+        case Some(value) =>
+          value.boolOpt.toRight(
+            s"a held card's record holds no boolean elsewhere: ${ujson.write(json)}"
+          )
+      }
+    } yield Held.recorded(key, path, label, version, scope, within, elsewhere)
   }
 }

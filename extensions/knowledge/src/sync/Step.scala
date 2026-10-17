@@ -41,7 +41,9 @@ object Step {
   /** Keep `card` at the run's floor, withdrawing its copy at `replacing`, if any, in that keep. */
   final case class Write(card: Card, replacing: Option[Label]) extends Step
 
-  /** Copy the card under `key` from `from` up to the run's floor, and withdraw it at `from`. */
+  /** Copy the card under `key` from `from` to the run's floor at its source's place, and
+    * withdraw it at `from` when that is another label.
+    */
   final case class Relabel(key: CardKey, from: Label) extends Step
 
   /** Withdraw each of `gone`, at its label. */

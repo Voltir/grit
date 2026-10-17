@@ -41,7 +41,7 @@ final class Knowledge private (
         * declared at: no run reads it, so no run would withdraw it.
         */
       override def undeclared(document: Document): Boolean = {
-        val read = declaring.map(_.corpus).distinct.map(c => (c, Held.read(c, document)))
+        val read = sources.map(s => (s.corpus, Held.read(s.corpus, s.at, document)))
         read.forall(_._2 == Right(None)) || read.exists {
           case (c, Right(Some(h))) => !declaring.exists(d => d.corpus == c && d.label == h.label)
           case _ => false
