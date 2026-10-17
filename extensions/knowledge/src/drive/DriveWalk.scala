@@ -161,8 +161,6 @@ object DriveWalk {
         !w.replaced(h)
     }
     // Past maxUnits (it was lowered): the files last by id go, so the source holds no more.
-    val dropped = gone.toSet
-    val over = w.past(holding.held.filterNot(dropped).map(_.path).distinct.sorted).toSet
-    holding.held.filter(h => dropped(h) || over(h.path))
+    w.past(gone, Vector(_), _ => Vector.empty)
   }
 }

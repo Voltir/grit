@@ -107,11 +107,22 @@ private[knowledge] final case class Walking[
   def replaced(held: Held): Boolean =
     settled(held.key) && holding.replacing(held.key).contains(held.label)
 
-  /** The last of `paths`, the held units' paths in the order they keep their places: those past
-    * `maxUnits` once the units this walk wrote new have theirs.
+  /** The held copies in `gone`, and every copy of the held units past `maxUnits` once those this
+    * walk wrote new have their places: of the units not in `gone`, the last by their paths'
+    * `parts`, compared in turn, with the paths `above` gives each.
     */
-  def past(paths: Vector[String]): Vector[String] =
-    paths.drop(math.max(agenda.source.maxUnits - fresh, 0))
+  def past(
+      gone: Vector[Held],
+      parts: String -> Vector[String],
+      above: String -> Vector[String]
+  ): Vector[Held] = {
+    val dropped = gone.toSet
+    val kept = holding.held.filterNot(dropped).map(_.path).distinct
+    val room = math.max(agenda.source.maxUnits - fresh, 0)
+    val last = kept.sortBy(parts)(using Ordering.Implicits.seqOrdering).drop(room)
+    val over = (last ++ last.flatMap(above)).toSet
+    holding.held.filter(h => dropped(h) || over(h.path))
+  }
 
   /** This walk listing `path`, reached `way`; the listing, read at a label, then given to `listed`. */
   def list(path: String, way: Way)(
@@ -220,7 +231,10 @@ private[knowledge] object Walking {
     case Dropped(count: Int)
   }
 
-  private val Empty: CardSummary = sure(CardSummary.of("An empty file.", Vector.empty))
+  // "An empty file." is three words and not blank: CardSummary.of never refuses it.
+  private val Empty: CardSummary = CardSummary
+    .of("An empty file.", Vector.empty)
+    .fold(why => throw new IllegalStateException(why), identity)
 
   /** Pops tasks until one makes a step or ends the walk, or none is left. */
   @tailrec private def advance[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
@@ -252,8 +266,4 @@ private[knowledge] object Walking {
     case Outcome.NotTaken(_) => "a withholding"
     case Outcome.Stopped(_) => "a stop"
   }
-
-  // "An empty file." is three words and not blank: CardSummary.of never refuses it.
-  private def sure[A](e: Either[String, A]): A =
-    e.fold(why => throw new IllegalStateException(why), identity)
 }

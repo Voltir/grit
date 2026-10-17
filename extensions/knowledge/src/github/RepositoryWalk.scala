@@ -211,16 +211,7 @@ object RepositoryWalk {
     }
     // Past maxUnits (it was lowered): the units last in walk order go, and the directories
     // above them, so the next run lists those again and takes the units back when there is room.
-    val dropped = gone.toSet
-    val past = w.past(
-      holding.held
-        .filterNot(dropped)
-        .map(_.path)
-        .distinct
-        .sortBy(_.split('/').toVector)(using Ordering.Implicits.seqOrdering[Vector, String])
-    )
-    val over = (past ++ past.flatMap(ancestors)).toSet
-    holding.held.filter(h => dropped(h) || over(h.path))
+    w.past(gone, _.split('/').toVector, ancestors)
   }
 
   /** The paths of the directories above `path`. */
