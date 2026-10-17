@@ -1,14 +1,11 @@
 package grit.dbos.workflow
 
-import grit.core.durable.Durable
 import grit.core.id.WorkflowId
 import grit.core.stitch.Opening
-import grit.dbos.sql.Opener
 
-import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
-import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
+import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
 /** How an opening's placement is known to DBOS (ADR 0023): the workflow it runs as, and its
   * own queue, partitioned by room, so a room's openings are placed one at a time, in the order
@@ -16,21 +13,9 @@ import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
   */
 object Stitches {
 
-  private val WorkflowName = "stitch"
+  private[dbos] val WorkflowName = "stitch"
 
   private val Queue: QueueName = QueueName.of("stitches")
-
-  /** Registers `body` as the placement workflow. Must run before `dbos.launch()`. */
-  private[dbos] def register(
-      dbos: DBOS,
-      steps: JdbcStepFactory,
-      opener: Opener,
-      body: WorkflowId => Durable^ ?=> String,
-      running: Running
-  ): Unit = {
-    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
-    ()
-  }
 
   /** Writes the `stitches` queue to DBOS's database as application
     * [[DurableWorkflow.ApplicationName]]'s, replacing the configuration stored there: within

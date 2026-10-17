@@ -1,35 +1,20 @@
 package grit.dbos.workflow
 
-import grit.core.durable.Durable
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.plugin.PostRef
-import grit.dbos.sql.Opener
 
-import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
-import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
+import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
 /** How a plugin's posting run is known to DBOS: the workflow it runs as, and its own queue,
   * partitioned by plugin, so a plugin's runs go one at a time and never hold up a turn.
   */
 object Posts {
 
-  private val WorkflowName = "post"
+  private[dbos] val WorkflowName = "post"
 
   private val Queue: QueueName = QueueName.of("posts")
-
-  /** Registers `body` as the posting workflow. Must run before `dbos.launch()`. */
-  private[dbos] def register(
-      dbos: DBOS,
-      steps: JdbcStepFactory,
-      opener: Opener,
-      body: WorkflowId => Durable^ ?=> String,
-      running: Running
-  ): Unit = {
-    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
-    ()
-  }
 
   /** Writes the `posts` queue to DBOS's database as application
     * [[DurableWorkflow.ApplicationName]]'s, replacing the configuration stored there: within

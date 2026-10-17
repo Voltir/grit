@@ -1,11 +1,8 @@
 package grit.dbos.workflow
 
-import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
-import grit.dbos.sql.Opener
 
-import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.{DBOS, EnqueueOptions}
+import dev.dbos.transact.EnqueueOptions
 
 /** How a job's run is known to DBOS (ADR 0029): a turn of its slot's conversation, run as its
   * own workflow, on the turns' queue under its conversation's partition, so it never runs
@@ -17,18 +14,6 @@ import dev.dbos.transact.{DBOS, EnqueueOptions}
 object Runs {
 
   private[dbos] val WorkflowName = "run"
-
-  /** Registers `body` as the run workflow. Must run before `dbos.launch()`. */
-  private[dbos] def register(
-      dbos: DBOS,
-      steps: JdbcStepFactory,
-      opener: Opener,
-      body: WorkflowId => Durable^ ?=> String,
-      running: Running
-  ): Unit = {
-    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
-    ()
-  }
 
   /** How `turn`, a run, is enqueued: under its workflow id, on the turns' queue, partitioned by
     * its conversation.

@@ -1,13 +1,10 @@
 package grit.dbos.workflow
 
-import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
-import grit.dbos.sql.Opener
 
-import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
-import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
+import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
 /** How a turn is known to DBOS: the workflow it runs as, and the queue that runs one turn
   * per conversation at a time, oldest first. DBOS counts running workflows and dequeues
@@ -25,18 +22,6 @@ object Turns {
     * beside a turn of its conversation ([[Closes]]).
     */
   private[workflow] val Queue: QueueName = QueueName.of("turns")
-
-  /** Registers `body` as the turn workflow. Must run before `dbos.launch()`. */
-  private[dbos] def register(
-      dbos: DBOS,
-      steps: JdbcStepFactory,
-      opener: Opener,
-      body: WorkflowId => Durable^ ?=> String,
-      running: Running
-  ): Unit = {
-    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
-    ()
-  }
 
   /** Writes the `turns` queue to DBOS's database as application
     * [[DurableWorkflow.ApplicationName]]'s, replacing the configuration stored there: within

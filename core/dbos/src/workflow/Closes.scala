@@ -1,11 +1,8 @@
 package grit.dbos.workflow
 
-import grit.core.durable.Durable
 import grit.core.id.{CloseRef, ConversationId, WorkflowId}
-import grit.dbos.sql.Opener
 
-import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.{DBOS, EnqueueOptions}
+import dev.dbos.transact.EnqueueOptions
 
 /** How a close is known to DBOS: the workflow it runs as, on the turns' queue under its
   * conversation's partition, so DBOS never runs it beside a turn of the same conversation:
@@ -13,19 +10,7 @@ import dev.dbos.transact.{DBOS, EnqueueOptions}
   */
 object Closes {
 
-  private val WorkflowName = "close"
-
-  /** Registers `body` as the close workflow. Must run before `dbos.launch()`. */
-  private[dbos] def register(
-      dbos: DBOS,
-      steps: JdbcStepFactory,
-      opener: Opener,
-      body: WorkflowId => Durable^ ?=> String,
-      running: Running
-  ): Unit = {
-    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
-    ()
-  }
+  private[dbos] val WorkflowName = "close"
 
   /** How `attempt` is enqueued: under its workflow id, on the turns' queue, partitioned by its
     * conversation.
