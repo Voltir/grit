@@ -7,28 +7,32 @@ import grit.core.visibility.Label
 import grit.knowledge.card.{CardKey, Scope, UnitVersion}
 
 /** A card a run holds, as its `held` keep reads it: its key, its unit's path, the label it is
-  * kept at, its unit's version, and the scope a directory's card was made under.
+  * kept at, its unit's version, the scope a directory's card was made under, and the path of
+  * the listing a file's card records it was shown in ([[grit.knowledge.card.Card.within]]).
   */
 final case class Held private (
     key: CardKey,
     path: String,
     label: Label,
     version: UnitVersion,
-    scope: Option[Scope]
+    scope: Option[Scope],
+    within: Option[String]
 ) extends caps.Pure
 
 object Held {
 
   /** The card of `corpus`'s unit at `path`, kept at `label` at `version`, made under `scope` if
-    * a directory's, keyed [[grit.knowledge.card.CardKey.of]] of `corpus` and `path`.
+    * a directory's, shown `within` the listing at that path if recorded, keyed
+    * [[grit.knowledge.card.CardKey.of]] of `corpus` and `path`.
     */
   def of(
       corpus: CorpusName,
       path: String,
       label: Label,
       version: UnitVersion,
-      scope: Option[Scope]
-  ): Held = new Held(CardKey.of(corpus, path), path, label, version, scope)
+      scope: Option[Scope],
+      within: Option[String] = None
+  ): Held = new Held(CardKey.of(corpus, path), path, label, version, scope, within)
 
   /** The card as its run's record holds it: `key` is read back as it was written. */
   private[sync] def recorded(
@@ -36,13 +40,15 @@ object Held {
       path: String,
       label: Label,
       version: UnitVersion,
-      scope: Option[Scope]
-  ): Held = new Held(key, path, label, version, scope)
+      scope: Option[Scope],
+      within: Option[String]
+  ): Held = new Held(key, path, label, version, scope, within)
 
   /** `document`, one of the knowledge plugin's, as a card of `corpus` that a run holds; `None`
     * when it is another source's card (its key is not that of `corpus` and its data's path). Or
     * why not, naming its key: the key is no card's key, or its data holds no string `path`, or
-    * no string `version` that is a version ([[UnitVersion.of]]), or a `scope` that is no scope.
+    * no string `version` that is a version ([[UnitVersion.of]]), or a `scope` that is no scope,
+    * or a `within` that is no string.
     */
   def read(corpus: CorpusName, document: Document): Either[String, Option[Held]] = {
     val k = DocKey.value(document.key)
@@ -70,8 +76,15 @@ object Held {
             .left
             .map(_ => no(s"its data's scope, ${ujson.write(value)}, is no scope"))
       }
+      within <- document.data.objOpt.flatMap(_.get("within")) match {
+        case None => Right(None)
+        case Some(value) =>
+          value.strOpt
+            .map(Some(_))
+            .toRight(no(s"its data's within, ${ujson.write(value)}, is no string"))
+      }
     } yield Option.when(CardKey.of(corpus, path) == key)(
-      new Held(key, path, document.label, version, scope)
+      new Held(key, path, document.label, version, scope, within)
     )
   }
 }
@@ -83,9 +96,9 @@ private[sync] final case class Holding(floor: Label, held: Vector[Held]) extends
 
 private[sync] object Holding {
 
-  /** Its record: `{"floor", "held"}`, each held card `{"key", "path", "label", "version"}` and a
-    * directory's `"scope"`, each label in its written form ([[Label.written]]), never taken
-    * apart.
+  /** Its record: `{"floor", "held"}`, each held card `{"key", "path", "label", "version"}`, a
+    * directory's `"scope"` and a file's `"within"` where it has them, each label in its written
+    * form ([[Label.written]]), never taken apart.
     */
   given Journaled[Holding] = Journaled.json(
     h =>
@@ -99,6 +112,7 @@ private[sync] object Holding {
             "version" -> UnitVersion.value(c.version)
           )
           c.scope.foreach(s => card("scope") = Scope.value(s))
+          c.within.foreach(w => card("within") = w)
           card
         })
       ),
@@ -129,6 +143,10 @@ private[sync] object Holding {
         case None => Right(None)
         case Some(_) => str("scope").flatMap(Scope.parse).map(Some(_))
       }
-    } yield Held.recorded(key, path, label, version, scope)
+      within <- json.objOpt.flatMap(_.get("within")) match {
+        case None => Right(None)
+        case Some(_) => str("within").map(Some(_))
+      }
+    } yield Held.recorded(key, path, label, version, scope, within)
   }
 }

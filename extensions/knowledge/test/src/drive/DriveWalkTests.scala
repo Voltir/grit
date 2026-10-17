@@ -118,8 +118,9 @@ object DriveWalkTests extends TestSuite {
   private def dropped(steps: Vector[Step]): Vector[(String, Label)] =
     steps.collect { case Step.Drop(gone) => gone.map(h => (h.path, h.label)) }.flatten
 
-  private def held(id: String, at: Label, changed: Int): Held =
-    Held.of(corpus.name, id, at, UnitVersion.Changed(day(changed)), None)
+  /** The card of `id`, held at `at`, changed on day `changed`, shown in the listing `within`. */
+  private def held(id: String, at: Label, changed: Int, within: String): Held =
+    Held.of(corpus.name, id, at, UnitVersion.Changed(day(changed)), None, Some(within))
 
   private val labels: Vector[Label] = Vector(internal, confidential)
 
@@ -156,7 +157,8 @@ object DriveWalkTests extends TestSuite {
     }
 
     test("only a file whose change time is not its card's at the floor is read") {
-      val holding = Vector(held("file-18", internal, 5), held("file-30", internal, 1))
+      val holding =
+        Vector(held("file-18", internal, 5, "drive-a"), held("file-30", internal, 1, "drive-b"))
       val (steps, synced) = run(cards(labels).walk(5, internal, holding))
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(reads == Vector("file-30", "file-32"))
@@ -166,7 +168,7 @@ object DriveWalkTests extends TestSuite {
     test(
       "a listing carded by another run is not read from, and its files' cards at the floor are withdrawn"
     ) {
-      val holding = Vector(held("file-text", internal, 13))
+      val holding = Vector(held("file-text", internal, 13, "folder-3"))
       val (steps, _) = run(cards(labels).walk(5, internal, holding))
       val reads = fetches(steps).collect { case Step.Read(id, _) => id }
       assert(!reads.contains("file-text"), !reads.contains("file-1"))
@@ -184,39 +186,62 @@ object DriveWalkTests extends TestSuite {
       )
     }
 
-    test("a card no listing shows is withdrawn once every listing was made and complete") {
-      val (steps, _) = run(cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1))))
+    test(
+      "a card its own listing, made and complete, does not show is withdrawn, whatever the other listings came to"
+    ) {
+      val gone = Vector(held("file-gone", internal, 1, "drive-a"))
+      val (listing, at) = world("drive-b")
+      val cut = world.updated("drive-b", (listing.copy(complete = false), at))
+      val (steps, _) = run(cards(labels).walk(5, internal, gone), cut.removed("folder-31"))
       assert(dropped(steps) == Vector(("file-gone", internal)))
     }
 
-    test("after an incomplete or a withheld listing, no card is withdrawn for not being shown") {
-      val gone = Vector(held("file-gone", internal, 1))
+    test(
+      "after its own listing came incomplete or withheld, a card is not withdrawn for not being shown"
+    ) {
+      val inB = Vector(held("file-gone", internal, 1, "drive-b"))
+      val in31 = Vector(held("file-gone", internal, 1, "folder-31"))
       val (listing, at) = world("drive-b")
       val cut = world.updated("drive-b", (listing.copy(complete = false), at))
-      val (incomplete, _) = run(cards(labels).walk(5, internal, gone), cut)
-      val (withheld, _) = run(cards(labels).walk(5, internal, gone), world.removed("folder-31"))
+      val (incomplete, _) = run(cards(labels).walk(5, internal, inB), cut)
+      val (withheld, _) = run(cards(labels).walk(5, internal, in31), world.removed("folder-31"))
       assert(dropped(incomplete) == Vector.empty, dropped(withheld) == Vector.empty)
     }
 
-    test("past the folders it may list, no card is withdrawn for not being shown") {
-      val (steps, _) =
-        run(cards(labels, maxUnits = 1).walk(5, internal, Vector(held("file-gone", internal, 1))))
+    test("past the folders it may list, a card in a folder not listed is not withdrawn") {
+      val (steps, _) = run(
+        cards(labels, maxUnits = 1)
+          .walk(5, internal, Vector(held("file-gone", internal, 1, "folder-31")))
+      )
       assert(!fetches(steps).contains(Step.List("folder-31", Way.Through("drive-b"))))
       assert(dropped(steps) == Vector.empty)
+    }
+
+    test(
+      "a file shown in another listing than its card records is read again, its card recording where"
+    ) {
+      val holding = Vector(held("file-18", internal, 5, "folder-3"))
+      val (steps, _) = run(cards(labels).walk(5, internal, holding))
+      val written = steps.collect { case Step.Write(card, _) => (card.path, card.within) }
+      assert(written.headOption == Some(("file-18", Some("drive-a"))))
     }
 
     test(
       "a card at a label no longer declared, whose carding is the floor, is withdrawn; one at a declared label is not"
     ) {
       val source = cards(Vector(Label.Public, confidential))
-      val holding = Vector(held("file-old", internal, 1), held("file-low", Label.Public, 1))
+      val holding =
+        Vector(
+          held("file-old", internal, 1, "drive-a"),
+          held("file-low", Label.Public, 1, "drive-a")
+        )
       val (steps, _) = run(source.walk(5, confidential, holding), world.removed("drive-b"))
       assert(dropped(steps).contains(("file-old", internal)))
       assert(!dropped(steps).exists(_._1 == "file-low"))
     }
 
     test("a card held only at another label is replaced by the write, not dropped apart") {
-      val holding = Vector(held("file-18", Label.Public, 5))
+      val holding = Vector(held("file-18", Label.Public, 5, "drive-a"))
       val source = cards(Vector(Label.Public, internal))
       val (steps, _) = run(source.walk(5, internal, holding))
       val replacing = steps.collect { case Step.Write(card, r) if card.path == "file-18" => r }
@@ -235,7 +260,7 @@ object DriveWalkTests extends TestSuite {
       val stop = Step.List("drive-b", Way.Through(DriveWalk.Drives))
       val (steps, synced) =
         run(
-          cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1))),
+          cards(labels).walk(5, internal, Vector(held("file-gone", internal, 1, "drive-a"))),
           stop = Some(stop)
         )
       assert(steps.lastOption == Some(stop), synced.stopped == Some("refused"))

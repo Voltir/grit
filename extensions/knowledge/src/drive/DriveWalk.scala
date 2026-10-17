@@ -12,15 +12,15 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * nothing is read before it); then each drive [[Way.Through]] that listing, and each folder
   * directly in a drive through the drive's listing, in the order listed: a drive's files, then
   * its folders, before the next drive. A folder within a folder is not listed. At most
-  * `maxUnits` folders are listed in a run; one past that is left, as if its listing were
-  * incomplete.
+  * `maxUnits` folders are listed in a run; one past that is not listed.
   *
   * A listing is the run's to card when [[DriveCards.carding]] of the label its answer was read
   * at is the floor; another's is that run's, and of it the walk only follows its folders. Of a
-  * listing it cards, a Doc, a Sheet or a text file is read, through that listing, only when its
-  * change time is not the one its card held at the floor records, and its card is written at
-  * the change time it was read at, titled with its name when the listing shows one: from a
-  * summary of its first 8 KB, or, when its text is blank, as `An empty file.` with no ask. A
+  * listing it cards, a Doc, a Sheet or a text file is read, through that listing, unless its card
+  * held at the floor records its change time and that listing; its card is written at the
+  * change time it was read at, recording the listing, titled with its name when the listing
+  * shows one: from a summary of its first 8 KB, or, when its text is blank, as `An empty file.`
+  * with no ask. A
   * card held only at another label is replaced by that write, its copy there withdrawn in the
   * same keep. It asks for at most `perRun` summaries: past them a changed file is left, and the
   * listings go on. A new file (none of its cards held) is not taken once the units held and
@@ -28,8 +28,8 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * came to [[Outcome.NotTaken]], is [[Unwritten]].
   *
   * Its last step is a [[Step.Drop]], when there is anything to drop, of the cards held at the
-  * floor whose files another run's listing showed; of those no listing showed, only when every
-  * listing was made and complete; and of those held at a label not among the source's whose
+  * floor whose files another run's listing showed; of those no listing showed, only when the
+  * listing each records was made and complete; and of those held at a label not among the source's whose
   * [[DriveCards.carding]] is the floor. A step that came to [[Outcome.Stopped]], or to an
   * outcome not of its kind, ends the walk at once, with no drop.
   */
@@ -76,10 +76,14 @@ object DriveWalk {
     def replacing(id: String): Option[Label] =
       if (copies(id).exists(_.label == floor)) None else copies(id).headOption.map(_.label)
 
-    /** Whether the copy of `entry` held at the floor records its change time. */
-    def current(entry: DriveEntry): Boolean =
+    /** Whether the copy of `entry` held at the floor records its change time and `within`, the
+      * listing that shows it.
+      */
+    def current(entry: DriveEntry, within: String): Boolean =
       entry.changed.exists(t =>
-        copies(entry.id).exists(h => h.label == floor && h.version == UnitVersion.Changed(t))
+        copies(entry.id).exists(h =>
+          h.label == floor && h.version == UnitVersion.Changed(t) && h.within.contains(within)
+        )
       )
 
     def isNew(id: String): Boolean = !byPath.contains(id)
@@ -117,8 +121,8 @@ object DriveWalk {
   private enum Waiting extends caps.Pure {
     case Done
     case Listing(of: Container)
-    case Reading(entry: DriveEntry, pointer: Pointer)
-    case Summary(entry: DriveEntry, version: UnitVersion, pointer: Pointer)
+    case Reading(entry: DriveEntry, within: String, pointer: Pointer)
+    case Summary(entry: DriveEntry, within: String, version: UnitVersion, pointer: Pointer)
     case Wrote(id: String)
     case Dropped(count: Int)
   }
@@ -139,7 +143,7 @@ object DriveWalk {
       seen: Set[String],
       foreign: Set[String],
       wrote: Set[String],
-      whole: Boolean,
+      complete: Set[String],
       stopped: Option[String]
   ) extends caps.Pure {
     def synced(env: Env): Synced =
@@ -165,7 +169,7 @@ object DriveWalk {
         Set.empty,
         Set.empty,
         Set.empty,
-        true,
+        Set.empty,
         None
       )
   }
@@ -177,23 +181,23 @@ object DriveWalk {
       case (Waiting.Listing(of), Outcome.Listed(listing, at)) =>
         advance(env, listed(env, s, of, listing, at))
       case (Waiting.Listing(of), Outcome.NotTaken(why)) =>
-        advance(env, unwritten(s.copy(whole = false), of.path, why))
-      case (Waiting.Reading(entry, _), Outcome.NotTaken(why)) =>
+        advance(env, unwritten(s, of.path, why))
+      case (Waiting.Reading(entry, _, _), Outcome.NotTaken(why)) =>
         advance(env, unwritten(s, entry.id, why))
-      case (Waiting.Reading(entry, pointer), Outcome.Fetched(fetched, _)) =>
+      case (Waiting.Reading(entry, within, pointer), Outcome.Fetched(fetched, _)) =>
         fetched match {
           case Fetched.Text(text, version) if text.isBlank =>
-            write(env, s, card(env, entry, version, Empty, pointer))
+            write(env, s, card(env, entry, within, version, Empty, pointer))
           case Fetched.Text(text, version) =>
             s.copy(asked = s.asked + 1)
               .step(
                 Step.Summarise(entry.id, Fetched.head(text), version),
-                Waiting.Summary(entry, version, pointer)
+                Waiting.Summary(entry, within, version, pointer)
               )
           case Fetched.Unversioned(why) => advance(env, unwritten(s, entry.id, why))
         }
-      case (Waiting.Summary(entry, version, pointer), Outcome.Summarised(summary)) =>
-        write(env, s, card(env, entry, version, summary, pointer))
+      case (Waiting.Summary(entry, within, version, pointer), Outcome.Summarised(summary)) =>
+        write(env, s, card(env, entry, within, version, summary, pointer))
       case (Waiting.Wrote(id), Outcome.Kept) =>
         advance(
           env,
@@ -205,8 +209,8 @@ object DriveWalk {
 
   private def expected(waiting: Waiting): String = waiting match {
     case Waiting.Listing(_) => "a list"
-    case Waiting.Reading(_, _) => "a read"
-    case Waiting.Summary(_, _, _) => "a summary"
+    case Waiting.Reading(_, _, _) => "a read"
+    case Waiting.Summary(_, _, _, _) => "a summary"
     case Waiting.Wrote(_) => "a write"
     case Waiting.Dropped(_) | Waiting.Done => "a drop"
   }
@@ -230,27 +234,27 @@ object DriveWalk {
       listing: DriveListing,
       at: Label
   ): State = {
-    val whole = s.whole && listing.complete
+    val complete = if (listing.complete) s.complete + of.path else s.complete
     of match {
       case Container.Shared =>
         val drives = listing.entries
           .filter(_.kind == DriveEntry.Kind.Drive)
           .map(e => Task.List(Container.Drive(e.id)))
-        s.copy(stack = drives.toList ++ s.stack, whole = whole)
+        s.copy(stack = drives.toList ++ s.stack, complete = complete)
       case Container.Drive(id) =>
         val within = listing.entries.filter(_.kind == DriveEntry.Kind.Folder)
         val room = (env.cards.maxUnits - s.folders).max(0)
         val folders = within.take(room).map(f => Task.List(Container.Folder(f.id, id)))
         files(
           env,
-          s.copy(folders = s.folders + folders.size, whole = whole && within.size <= room),
+          s.copy(folders = s.folders + folders.size, complete = complete),
           id,
           listing,
           at,
           folders
         )
       case Container.Folder(id, _) =>
-        files(env, s.copy(whole = whole), id, listing, at, Vector.empty)
+        files(env, s.copy(complete = complete), id, listing, at, Vector.empty)
     }
   }
 
@@ -268,7 +272,7 @@ object DriveWalk {
     val readable = listing.entries.filter(_.kind.readable)
     val seen = s.seen ++ readable.map(_.id)
     if (env.carded(at)) {
-      val (current, changed) = readable.partition(env.current)
+      val (current, changed) = readable.partition(env.current(_, within))
       s.copy(
         stack = (changed.map(Task.Read(_, within)) ++ `then`).toList ++ s.stack,
         seen = seen,
@@ -285,10 +289,12 @@ object DriveWalk {
   private def card(
       env: Env,
       entry: DriveEntry,
+      within: String,
       version: UnitVersion,
       summary: CardSummary,
       pointer: Pointer
-  ): Card = Card.file(env.cards.corpus, entry.id, version, summary, pointer, entry.name)
+  ): Card =
+    Card.file(env.cards.corpus, entry.id, version, summary, pointer, entry.name, Some(within))
 
   private def unwritten(s: State, id: String, why: String): State =
     s.copy(unwritten = s.unwritten :+ Unwritten(id, why))
@@ -314,7 +320,7 @@ object DriveWalk {
               case Right(pointer) =>
                 popped.step(
                   Step.Read(entry.id, Way.Through(within)),
-                  Waiting.Reading(entry, pointer)
+                  Waiting.Reading(entry, within, pointer)
                 )
             }
       }
@@ -340,13 +346,14 @@ object DriveWalk {
   private def done(env: Env, s: State): State =
     s.copy(next = Left(s.synced(env)), waiting = Waiting.Done)
 
-  /** The cards held at the floor of files another run's listing showed, or, when every listing
-    * was made and complete, that no listing showed; and those at a label not among the source's
-    * that the floor's run cards, but each copy a write replaced.
+  /** The cards held at the floor of files another run's listing showed, or that no listing
+    * showed though the one each records it was shown in was made and complete; and those at a
+    * label not among the source's that the floor's run cards, but each copy a write replaced.
     */
   private def drops(env: Env, s: State): Vector[Held] =
     env.held.filter { h =>
-      if (h.label == env.floor) s.foreign(h.path) || (s.whole && !s.seen(h.path))
+      if (h.label == env.floor)
+        s.foreign(h.path) || (h.within.exists(s.complete) && !s.seen(h.path))
       else
         !env.cards.labels.contains(h.label) &&
         env.cards.carding(h.label).contains(env.floor) &&

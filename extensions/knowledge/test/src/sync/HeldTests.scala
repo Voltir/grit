@@ -57,6 +57,14 @@ object HeldTests extends TestSuite {
           Right(Some(Held.of(name, "docs/b.md", label, changed, None)))
       )
     }
+
+    test("a file's card reads back with the listing it was shown in") {
+      val file = Card.file(name, "file-1", version, summary, pointer, within = Some("folder-3"))
+      assert(
+        Held.read(name, document(file.docKey, file.data)) ==
+          Right(Some(Held.of(name, "file-1", label, version, None, Some("folder-3"))))
+      )
+    }
     test("a directory's card reads back with the scope it was made under") {
       val scope = Scope.of(Set("include docs"))
       val dir = Card.directory(name, "docs", version, scope, summary, pointer)

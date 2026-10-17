@@ -703,23 +703,32 @@ object SyncTests extends TestSuite {
       held(k) ==> Vector(("docs", lower), ("docs/a.md", lower), ("docs/b.md", lower))
     }
 
-    test("the held keep's record reads back as written, each label in its written form") {
+    test(
+      "the held keep's record reads back as written, each label in its written form, a listing only where recorded"
+    ) {
       val compound = Label.at(
         Level.Confidential,
         right(Compartment.of("acme")),
         right(Compartment.of("trial"))
       )
+      val changed = UnitVersion.Changed(Instant.parse("2026-09-01T10:00:00Z"))
       val held = Vector(
         Held.of(name, "docs", Label.Public, right(UnitVersion.of(hex(13))), Some(source().scope)),
-        Held.of(name, "docs/a.md", compound, right(UnitVersion.of(hex(1))), None)
+        Held.of(name, "docs/a.md", compound, right(UnitVersion.of(hex(1))), None),
+        Held.of(name, "file-1", Label.Public, changed, None, Some("folder-3"))
       )
       val holding = Holding(compound, held)
       val journaled = summon[Journaled[Holding]]
       val encoded = ujson.read(journaled.encode(holding))
       (
         journaled.decode(journaled.encode(holding)),
-        encoded("floor").str +: encoded("held").arr.map(_("label").str).toVector
-      ) ==> (Right(holding), Vector("confidential+acme+trial", "public", "confidential+acme+trial"))
+        encoded("floor").str +: encoded("held").arr.map(_("label").str).toVector,
+        encoded("held").arr.map(_.obj.get("within").map(_.str)).toVector
+      ) ==> (
+        Right(holding),
+        Vector("confidential+acme+trial", "public", "confidential+acme+trial", "public"),
+        Vector(None, None, Some("folder-3"))
+      )
     }
 
     test("a keep's record reads back as written, its label in its written form") {

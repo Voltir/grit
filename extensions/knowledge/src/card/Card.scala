@@ -13,8 +13,8 @@ enum UnitKind(val word: String) {
 
 /** A unit's card: its key, its path in its source, its kind and version, the scope a
   * directory's card was made under (none for a file's), its summary, the call that reads it, and
-  * its title, the unit's name as its source shows it, when it gave one; its document's key, text
-  * and data.
+  * its title, the unit's name as its source shows it, when it gave one; the path of the listing
+  * that showed a file, when its source records it (`within`); its document's key, text and data.
   */
 final case class Card private (
     key: CardKey,
@@ -24,7 +24,8 @@ final case class Card private (
     scope: Option[Scope],
     summary: CardSummary,
     pointer: Pointer,
-    title: Option[String]
+    title: Option[String],
+    within: Option[String]
 ) extends caps.Pure {
 
   /** Its document's key: [[key]]'s hex digits. */
@@ -47,8 +48,8 @@ final case class Card private (
   }
 
   /** Its document's data: `{"kind": "file" or "directory", "path", "terms", "version"}`, a
-    * directory's `"scope"`, its `"title"` when it has one, and when its version is
-    * [[UnitVersion.Changed]], `"changed"`, the day (`yyyy-MM-dd`, UTC).
+    * directory's `"scope"`, its `"title"` and `"within"` when it has them, and when its version
+    * is [[UnitVersion.Changed]], `"changed"`, the day (`yyyy-MM-dd`, UTC).
     */
   def data: ujson.Obj =
     ujson.Obj.from(
@@ -60,6 +61,7 @@ final case class Card private (
       ) ++ scope.map(s => "scope" -> ujson.Str(Scope.value(s)))
         ++ changedDay.map(d => "changed" -> ujson.Str(d))
         ++ title.map(t => "title" -> ujson.Str(t))
+        ++ within.map(w => "within" -> ujson.Str(w))
     )
 
   private def changedDay: Option[String] = version match {
@@ -70,8 +72,9 @@ final case class Card private (
 
 object Card {
 
-  /** The card of `corpus`'s file at `path`, keyed [[CardKey.of]] of the two. `title` is kept as
-    * at most its first 80 characters, its line breaks made spaces; a blank one is none.
+  /** The card of `corpus`'s file at `path`, listed `within` the listing at that path when given,
+    * keyed [[CardKey.of]] of the two. `title` is kept as at most its first 80 characters, its
+    * line breaks made spaces; a blank one is none.
     */
   def file(
       corpus: CorpusName,
@@ -79,7 +82,8 @@ object Card {
       version: UnitVersion,
       summary: CardSummary,
       pointer: Pointer,
-      title: Option[String] = None
+      title: Option[String] = None,
+      within: Option[String] = None
   ): Card =
     new Card(
       CardKey.of(corpus, path),
@@ -89,7 +93,8 @@ object Card {
       None,
       summary,
       pointer,
-      title.map(_.replaceAll("\\R", " ").strip).filter(_.nonEmpty).map(cut)
+      title.map(_.replaceAll("\\R", " ").strip).filter(_.nonEmpty).map(cut),
+      within
     )
 
   /** The card of `corpus`'s directory at `path`, made under `scope`, keyed [[CardKey.of]] of
@@ -110,6 +115,7 @@ object Card {
     Some(scope),
     summary,
     pointer,
+    None,
     None
   )
 
