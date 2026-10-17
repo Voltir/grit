@@ -73,7 +73,7 @@ final case class GitHubCards private (
 
   def subject(path: String): String = s"The file `$path` in $owner/$repo"
 
-  /** `perRun` plus [[maxUnits]], at most `Int.MaxValue`. */
+  /** `perRun` (the most files a run reads) plus [[maxUnits]], at most `Int.MaxValue`. */
   def calls(perRun: Int): Int = (perRun.toLong + maxUnits).min(Int.MaxValue.toLong).toInt
 
   /** [[RepositoryWalk.start]]'s: a repository's walk goes by what it holds, whenever it is due. */

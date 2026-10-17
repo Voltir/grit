@@ -23,7 +23,8 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * written; either way its copy there is withdrawn in that keep, never before. A unit held at
   * the floor goes by that copy, whatever another label's records.
   *
-  * It asks for at most `perRun` summaries: at the next it stops, counting what it left. The
+  * It reads at most `perRun` files, so asks for at most as many summaries: at the next read it
+  * stops, counting what it left. The
   * source holds at most `maxUnits` cards: a new unit (one with no card held) is not taken once
   * the units held and those written new reach it, and the walk goes on bringing the held up to
   * date. A file read with no version, a directory listed only in part (`listed only in part`),
@@ -53,7 +54,7 @@ final class RepositoryWalk private (
 
 object RepositoryWalk {
 
-  /** The walk of `cards` for a run asking for at most `perRun` summaries and keeping at `floor`,
+  /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
     * holding `held`, its source's cards as [[Held.read]] reads them. Its first step lists the
     * repository's root, `/`; when `cards` includes nothing, it has none and holds nothing gone.
     */
@@ -147,7 +148,7 @@ object RepositoryWalk {
       stack: List[Task],
       waiting: Waiting,
       next: Either[Synced, Step],
-      asked: Int,
+      reads: Int,
       fresh: Int,
       refused: Int,
       written: Int,
@@ -215,11 +216,10 @@ object RepositoryWalk {
           case Fetched.Text(text, sha) if text.isBlank =>
             write(env, s, Card.file(env.cards.corpus, path, sha, Empty, pointer))
           case Fetched.Text(text, sha) =>
-            s.copy(asked = s.asked + 1)
-              .step(
-                Step.Summarise(path, Fetched.head(text), sha),
-                Waiting.Summary(path, sha, pointer)
-              )
+            s.step(
+              Step.Summarise(path, Fetched.head(text), sha),
+              Waiting.Summary(path, sha, pointer)
+            )
           case Fetched.Unversioned(why) => advance(env, unwritten(s, path, why))
         }
       case (Waiting.Summary(path, sha, pointer), Outcome.Summarised(summary)) =>
@@ -344,15 +344,17 @@ object RepositoryWalk {
                   Waiting.Listing(entry.path, Some(entry.version))
                 )
               case UnitKind.File =>
-                if (s.asked >= env.perRun) end(env, s)
+                if (s.reads >= env.perRun) end(env, s)
                 else
                   env.cards.pointer(entry.path) match {
                     case Left(why) => advance(env, unwritten(popped, entry.path, why))
                     case Right(pointer) =>
-                      popped.step(
-                        Step.Read(entry.path, Way.Run),
-                        Waiting.Reading(entry.path, pointer)
-                      )
+                      popped
+                        .copy(reads = popped.reads + 1)
+                        .step(
+                          Step.Read(entry.path, Way.Run),
+                          Waiting.Reading(entry.path, pointer)
+                        )
                   }
             }
         case Task.Finish(path, version, children) =>

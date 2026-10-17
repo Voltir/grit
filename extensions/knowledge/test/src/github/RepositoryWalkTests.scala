@@ -512,14 +512,26 @@ object RepositoryWalkTests extends TestSuite {
       assert(steps.slice(3, 5) == Vector("summarise docs/a.md @5", "write docs/a.md @5"))
     }
 
+    test("a run reads at most perRun files, those its reads leave unwritten among them") {
+      val (steps, result) = run(
+        Vector.empty,
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+        Map(
+          "docs/a.md" -> Fetched.Unversioned("no version"),
+          "docs/b.md" -> Fetched.Unversioned("no version")
+        ),
+        perRun = 1
+      )
+      (steps.filter(_.startsWith("read")), result.left) ==> (Vector("read docs/a.md"), 3)
+    }
+
     test("an empty file's card is written with no ask, saying it is empty") {
       val made = steps(
         Map("/" -> root(docs = 11), "docs" -> Listing.Complete(docs(a = 4, b = 6))),
         Map("docs/a.md" -> Fetched.Text(" \n", sha(4)), "docs/b.md" -> read("docs/b.md", 6)),
-        perRun = 1
+        perRun = 2
       )
       val empty = right(CardSummary.of("An empty file.", Vector.empty))
-      // perRun is 1, and b.md is still summarised: the empty file asked nothing.
       assert(
         made.map(shown) == Vector(
           "list /",
