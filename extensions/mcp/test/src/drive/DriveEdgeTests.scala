@@ -23,7 +23,6 @@ import grit.core.edge.{
   Variable
 }
 import grit.core.id.{CallSlot, ConversationId, EdgeId, EdgeName, PrincipalId, TurnRef, TurnSeq}
-import grit.core.identity.{Domain, Email, Identities}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Service
 import grit.core.review.InMemoryReviews
@@ -53,22 +52,8 @@ object DriveEdgeTests extends TestSuite {
   private val Token = Variable("FAKE_DRIVE_TOKEN")
   private val Env = Map(Variable.value(Token) -> FakeDriveServer.Token)
   private val Drive: Service = right(Service.of("drive"))
-  private val Example: Domain = right(Domain.of("example.com"))
 
-  private val reading: DriveReading = right(
-    DriveReading
-      .of(
-        Drive,
-        Example,
-        Identities
-          .of(Vector.empty, Set(Example))
-          .fold(e => throw new java.lang.AssertionError(e), identity),
-        right(Email.of("self@project.iam.example")),
-        Map(right(Email.of("writer-bot-1@project.iam.example")) -> Integrity.Member)
-      )
-      .left
-      .map(_.message)
-  )
+  private val reading: DriveReading = Recorded.reading
 
   private def withFake[A](body: FakeDriveServer => A): A = {
     val fake = FakeDriveServer.start()

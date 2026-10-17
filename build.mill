@@ -666,9 +666,10 @@ object grit extends Module {
     def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
     /* knowledge's tests for their recorded GitHub answers (`Answers`), read here through
-     * grit.mcp's own `Answer.of`, which knowledge may not name. */
+     * grit.mcp's own `Answer.of`, which knowledge may not name; and mcp's, for Drive's recorded
+     * answers (`Recorded`, `FakeDriveServer`), pinned to the facts knowledge's goldens hold. */
     object test extends GritTests {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.knowledge.test)
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.knowledge.test, grit.mcp.test)
     }
 
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this

@@ -70,3 +70,10 @@ Each has its server's icons removed, the repository set to `octocat/Hello-World`
 to a placeholder in every URL and URI; the file's text is replaced by a short neutral text, the
 SHA in its text block by that text's git blob SHA, and its `structuredContent` (a copy of the
 text) removed. Keys, their order and every other value are as sent.
+
+`test/resources/drive/facts/` holds the facts Drive's tools answer, as a reader keeping every
+part states them (`{"answer"?:…,"parts":[…]}`, the keys `grit.mcp.drive.DriveFacts`'): the shared
+drives (`drives.json`), a drive's and a folder's listing (`listing-drive-a.json`,
+`listing-folder-3.json`) and a text file's read (`read-file-text.json`). Knowledge may not name
+grit.mcp, so `grit.app`'s `DriveFactsPinTests` holds them equal to what grit.mcp answers over
+its recordings.

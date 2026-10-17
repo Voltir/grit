@@ -1,6 +1,6 @@
 package grit.mcp.drive
 
-import grit.core.identity.{Domain, Email, Identities}
+import grit.core.identity.{Domain, Email}
 import grit.core.place.{Place, Service}
 import grit.core.tool.{Outcome, Trimmed}
 import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart}
@@ -18,24 +18,9 @@ object DriveItemsTests extends TestSuite {
   private def email(e: String): Email = right(Email.of(e))
 
   private val Drive: Service = right(Service.of("drive"))
-  private val Example: Domain = right(Domain.of("example.com"))
   private val Self = email("self@project.iam.example")
-  private val Bot = email("writer-bot-1@project.iam.example")
 
-  private val reading: DriveReading = right(
-    DriveReading
-      .of(
-        Drive,
-        Example,
-        Identities
-          .of(Vector.empty, Set(Example))
-          .fold(e => throw new java.lang.AssertionError(e), identity),
-        Self,
-        Map(Bot -> Integrity.Member)
-      )
-      .left
-      .map(_.message)
-  )
+  private val reading: DriveReading = Recorded.reading
 
   private def place(id: String): Place = reading.place(Recorded.id(id))
 

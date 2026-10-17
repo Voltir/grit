@@ -1,0 +1,52 @@
+{
+  "answer": {
+    "complete": true
+  },
+  "parts": [
+    {
+      "id": "file-1",
+      "kind": "document",
+      "name": "name-10",
+      "changed": "2026-09-08T10:00:00Z",
+      "within": "folder-3"
+    },
+    {
+      "id": "file-3",
+      "kind": "other",
+      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "name": "name-12",
+      "changed": "2026-09-09T10:00:00Z",
+      "within": "folder-3"
+    },
+    {
+      "id": "file-8",
+      "kind": "other",
+      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "name": "name-17",
+      "changed": "2026-09-10T10:00:00Z",
+      "within": "folder-3"
+    },
+    {
+      "id": "file-9",
+      "kind": "other",
+      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "name": "name-18",
+      "changed": "2026-09-11T10:00:00Z",
+      "within": "folder-3"
+    },
+    {
+      "id": "file-10",
+      "kind": "pdf",
+      "name": "name-19",
+      "changed": "2026-09-12T10:00:00Z",
+      "within": "folder-3"
+    },
+    {
+      "id": "file-text",
+      "kind": "text",
+      "name": "name-30",
+      "changed": "2026-09-13T10:00:00Z",
+      "within": "folder-3"
+    }
+  ]
+}

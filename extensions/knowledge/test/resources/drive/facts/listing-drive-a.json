@@ -1,0 +1,57 @@
+{
+  "answer": {
+    "complete": true
+  },
+  "parts": [
+    {
+      "id": "folder-3",
+      "kind": "folder",
+      "name": "name-5",
+      "changed": "2026-09-01T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-4",
+      "kind": "pdf",
+      "name": "name-13",
+      "changed": "2026-09-02T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-5",
+      "kind": "pdf",
+      "name": "name-14",
+      "changed": "2026-09-03T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-6",
+      "kind": "pdf",
+      "name": "name-15",
+      "changed": "2026-09-04T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-18",
+      "kind": "document",
+      "name": "name-26",
+      "changed": "2026-09-05T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-21",
+      "kind": "spreadsheet",
+      "name": "name-28",
+      "changed": "2026-09-06T10:00:00Z",
+      "within": "drive-a"
+    },
+    {
+      "id": "file-22",
+      "kind": "other",
+      "type": "application/vnd.google-apps.shortcut",
+      "name": "name-29",
+      "changed": "2026-09-07T10:00:00Z",
+      "within": "drive-a"
+    }
+  ]
+}

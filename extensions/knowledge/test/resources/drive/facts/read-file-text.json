@@ -1,0 +1,13 @@
+{
+  "parts": [
+    {
+      "id": "file-text",
+      "kind": "text",
+      "name": "name-30",
+      "changed": "2026-09-13T10:00:00Z",
+      "within": "folder-3",
+      "text": "text text.\ntext text, text.",
+      "complete": true
+    }
+  ]
+}

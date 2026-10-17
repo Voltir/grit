@@ -48,12 +48,17 @@ Decision:
   service account itself is skipped. Grants not read whole, or no editor left, are untrusted.
 - **Drive is cleared to be sent queries** at the deployment's top label, since it holds the
   files already.
+- **Each answer carries facts** beside its text, the text rendered from them
+  (docs/extending.md), their keys in one home (`DriveFacts`): a listed file's, a drive's and a
+  read's, its id, kind, name when shown, and change time (a read's with the text it kept); a
+  listing's own, whether it is complete, false when Drive had more or its parts were cut to
+  fit. A search carries none. Code acts on them, never on the text.
 
 Consequences: labelling is a person's act at human rate, and a new folder shows nothing until
 someone labels it; the model is told so, and what to type, in plain words. A read costs three
 requests (the file, its grants, its text), a search two (the hits, the drives' names) and a
 listing one.
-Nothing Drive answers is recorded in a workflow's steps beyond what a tool result already
-holds. Enforced by the transaction's reads (`Tx.access`, `Tx.roomLabel`), ADR 0033's rule,
+A workflow's steps record nothing of Drive beyond a tool result and the facts a call's answer
+kept, a read's text a second time at most. Enforced by the transaction's reads (`Tx.access`, `Tx.roomLabel`), ADR 0033's rule,
 and the law (`mcp-generic-names-no-github`, which keeps Drive out of the generic MCP client);
-`DriveItemsTests` and `AdministrationContract`.
+`DriveItemsTests`, `DriveFactsPinTests` and `AdministrationContract`.

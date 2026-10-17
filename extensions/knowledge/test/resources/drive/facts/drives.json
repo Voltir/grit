@@ -1,0 +1,17 @@
+{
+  "answer": {
+    "complete": true
+  },
+  "parts": [
+    {
+      "id": "drive-a",
+      "kind": "drive",
+      "name": "name-1"
+    },
+    {
+      "id": "drive-b",
+      "kind": "drive",
+      "name": "name-2"
+    }
+  ]
+}
