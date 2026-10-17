@@ -9,11 +9,22 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Try, Using}
 
 import grit.core.clock.Clock
-import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, SourceId, TriageRef, TurnSeq}
+import grit.core.durable.Durable
+import grit.core.id.{
+  ConversationId,
+  PeriodRef,
+  PeriodSeq,
+  SourceId,
+  TriageRef,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.speech.Reach
+import grit.core.stitch.{Opening, Placements}
 import grit.core.store.{Origin, Payload}
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
@@ -39,6 +50,51 @@ object RehearsingLiveTests extends TestSuite {
     engine.inbox.hear(room, SourceId("1.0"), "lunch?", Account.Local, at, Reach.Nowhere) ==>
       Right(())
     (config, engine, LiveDb.conversation(config, room).id)
+  }
+
+  /** One body per workflow, each a value of its own, so a runner can tell which it was handed. */
+  private val bodies: Vector[WorkflowId -> Durable^ ?-> String] =
+    Vector.tabulate(8)(i => id => (_: Durable^) ?=> s"body $i: ${WorkflowId.value(id)}")
+
+  /** A runner that runs nothing: it notes, for each body it is handed, whether it is the one of
+    * [[bodies]] in its place, and each turn handed to it, which it takes; it placed nothing.
+    */
+  private final class Handed extends Rehearsing.Runner {
+    val handed = scala.collection.mutable.ArrayBuffer.empty[Boolean]
+    val turns = scala.collection.mutable.ArrayBuffer.empty[TurnRef]
+    def launched(
+        session: Rehearsing^,
+        turn: WorkflowId => Durable^ ?=> String,
+        close: WorkflowId => Durable^ ?=> String,
+        settle: WorkflowId => Durable^ ?=> String,
+        post: WorkflowId => Durable^ ?=> String,
+        triage: WorkflowId => Durable^ ?=> String,
+        stitch: WorkflowId => Durable^ ?=> String,
+        shadow: WorkflowId => Durable^ ?=> String,
+        run: WorkflowId => Durable^ ?=> String
+    ): Unit =
+      handed ++= Vector(
+        turn eq bodies(0),
+        close eq bodies(1),
+        settle eq bodies(2),
+        post eq bodies(3),
+        triage eq bodies(4),
+        stitch eq bodies(5),
+        shadow eq bodies(6),
+        run eq bodies(7)
+      )
+    def started(turn: TurnRef): Either[InboxError, Unit] = {
+      turns += turn
+      Right(())
+    }
+    val placements: Placements = new Placements {
+      def awaited(opening: Opening): Either[String, String] = Left("not placed")
+      def awaitedWithin(
+          opening: Opening,
+          within: FiniteDuration,
+          clock: Clock^
+      ): Either[Placements.Unplaced, String] = Left(Placements.Unplaced.Failed("not placed"))
+    }
   }
 
   private def connect(config: DbConfig): Connection =
@@ -108,21 +164,22 @@ object RehearsingLiveTests extends TestSuite {
       try {
         val before = counts(config)
         val said = Origin.Slack("T1", "C1", "2.0")
-        val shown = Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system()) {
-          r =>
-            val reply =
-              r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
-            val asked =
-              r.ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), Account.Local)
-            val read = asked.toOption.map(s =>
-              r.db
-                .read(Subject.Conversation(s.turn.conversationId))(
-                  r.entries.list(s.turn.conversationId)
-                )
-                .map(_.map(_.payload))
-            )
-            (reply, asked.map(_.opening.isDefined), read)
-        }
+        val shown =
+          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), new Handed) {
+            r =>
+              val reply =
+                r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
+              val asked =
+                r.ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), Account.Local)
+              val read = asked.toOption.map(s =>
+                r.db
+                  .read(Subject.Conversation(s.turn.conversationId))(
+                    r.entries.list(s.turn.conversationId)
+                  )
+                  .map(_.map(_.payload))
+              )
+              (reply, asked.map(_.opening.isDefined), read)
+          }
         shown ==> Right(
           (
             Right(
@@ -131,6 +188,39 @@ object RehearsingLiveTests extends TestSuite {
             Right(true),
             Some(Right(Vector(Payload.Message(Message.User("@grit lunch?")))))
           )
+        )
+        counts(config) ==> before
+      } finally engine.close()
+    }
+
+    test(
+      "a session launched hands every body to its runner and leaves every table as it was; a turn started on it reaches the runner"
+    ) {
+      val (config, engine, thread) = seeded("rehearsing_runner")
+      try {
+        val before = counts(config)
+        val runner = new Handed
+        val turn = TurnRef(thread, TurnSeq(2))
+        val shown =
+          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), runner) { r =>
+            r.launch(
+              bodies(0),
+              bodies(1),
+              bodies(2),
+              bodies(3),
+              bodies(4),
+              bodies(5),
+              Vector.empty,
+              bodies(6),
+              Vector.empty,
+              bodies(7)
+            )
+            r.startTurn(turn)
+          }
+        (shown, runner.handed.toVector, runner.turns.toVector) ==> (
+          Right(Right(())),
+          Vector.fill(8)(true),
+          Vector(turn)
         )
         counts(config) ==> before
       } finally engine.close()
@@ -155,9 +245,10 @@ object RehearsingLiveTests extends TestSuite {
           holder.rollback()
         }(using ExecutionContext.global)
         val started = System.nanoTime()
-        val heard = Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system()) {
-          r => r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
-        }
+        val heard =
+          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), new Handed) {
+            r => r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
+          }
         val waited = (System.nanoTime() - started).nanos
         done.countDown()
         Await.result(release, 10.seconds)
@@ -174,25 +265,26 @@ object RehearsingLiveTests extends TestSuite {
     ) {
       val (config, engine, _) = seeded("rehearsing_beside")
       try {
-        val shown = Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system()) {
-          r =>
-            val reply = r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
-            val elsewhere = Future(
-              engine.inbox.hear(
-                Origin.Slack("T1", "C2", "5.0"),
-                SourceId("5.0"),
-                "hello",
-                Account.Local,
-                at,
-                Reach.Nowhere
+        val shown =
+          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), new Handed) {
+            r =>
+              val reply = r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
+              val elsewhere = Future(
+                engine.inbox.hear(
+                  Origin.Slack("T1", "C2", "5.0"),
+                  SourceId("5.0"),
+                  "hello",
+                  Account.Local,
+                  at,
+                  Reach.Nowhere
+                )
+              )(using ExecutionContext.global)
+              (
+                reply.isRight,
+                relationLocks(config),
+                Try(Await.result(elsewhere, 5.seconds)).toOption
               )
-            )(using ExecutionContext.global)
-            (
-              reply.isRight,
-              relationLocks(config),
-              Try(Await.result(elsewhere, 5.seconds)).toOption
-            )
-        }
+          }
         val (heard, modes, elsewhere) = shown.fold(e => sys.error(s"$e"), identity)
         heard ==> true
         assert(
@@ -209,7 +301,14 @@ object RehearsingLiveTests extends TestSuite {
         val within = 500.millis
         var freed = false
         val shown =
-          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), within) { r =>
+          Rehearsing(
+            config,
+            LiveEngine.Uncapped,
+            Visibility.Shipped,
+            Clock.system(),
+            new Handed,
+            within
+          ) { r =>
             val heard = r.hear(room, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere)
             Thread.sleep(1000)
             freed = lockable(config, thread)

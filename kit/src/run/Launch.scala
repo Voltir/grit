@@ -3,10 +3,14 @@ package grit.kit.run
 import java.time.Instant
 
 import grit.act.moves.{MoveRecords, MovesEnv}
+import grit.act.phase.Placing
 import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.LinearAssembler
+import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.ClearedClassifier
-import grit.core.clock.Clock
+import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
+import grit.core.durable.Durable
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
@@ -16,18 +20,35 @@ import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.stitch.{StitchReads, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Engine, Stores}
+import grit.dbos.engine.{Engine, Runtime, Stores}
 import grit.job.clock.ClockEdge
-import grit.kit.deployment.{Deployment, Desks, Offered, PluginBinding, Topics}
+import grit.job.run.{Run as JobRun, RunEnv, RunRecords}
+import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, PluginBinding, Topics}
 import grit.kit.environment.Secrets
-import grit.lifecycle.shadow.{ShadowAsking, ShadowVariant}
-import grit.lifecycle.triage.Mentions
+import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
+import grit.lifecycle.post.{PostEnv, Posting}
+import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
+import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
+import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Cleared, Coding, Probes, Tuning}
-import grit.turn.{Turn, TurnTally, TurnTooling}
+import grit.turn.{
+  Turn,
+  TurnEnv,
+  TurnHosting,
+  TurnRecords,
+  TurnRouting,
+  TurnSpeech,
+  TurnStitching,
+  TurnTally,
+  TurnTooling,
+  TurnWeighing
+}
 
 /** The engine's workflows, launched on an open engine the same way by every way grit runs:
   * the chat, a run with arguments, `grit serve` and a catch-up.
@@ -84,29 +105,36 @@ private[grit] object Launch {
       if (run.announced) announced(reached) else reached,
       classifier(d, s),
       weighing(d, s),
-      sweeping,
       finished
     )
+    if (sweeping) {
+      engine.sweepEvery(d.sweep)
+      ticking(
+        engine,
+        new ClockEdge(engine.inbox, engine.schedules, engine.db, engine.clock, d.allJobs)
+      )
+    }
+    engine
   }
 
-  /** As [[apply]], but every model call is made through `models`, and every question the
-    * topics and a job's judgments ask goes to `classifier`, and the turn's weighing's to
-    * `weighing`, each as its clearance allows: a launch whose calls a test counts, and whose
-    * time it sets through the clock it opened `engine` with. A shadow still asks the classifier
-    * `s` and `d` name.
+  /** `d`'s workflows launched on `runtime` as [[apply]] launches them on an engine, but sweeping
+    * nothing, every model call made through `models`, and every question the topics and a job's
+    * judgments ask going to `classifier`, and the turn's weighing's to `weighing`, each as its
+    * clearance allows: a launch whose calls a test counts, or a rehearsal's. `d`'s lifecycle
+    * settings and schedules are written through `runtime.jot` first. A shadow still asks the
+    * classifier `s` and `d` name. Throws as [[apply]] does.
     */
   private[grit] def asking(
-      engine: Engine^,
+      runtime: Runtime^,
       d: Deployment,
       s: Secrets,
       models: Models,
       classifier: ClearedClassifier^,
       weighing: ClearedClassifier^,
-      sweeping: Boolean,
       finished: String => Unit
-  ): Engine^{engine} = {
-    val clock: Clock^{engine} = engine.clock
-    declare(engine.lifecycle, engine.jot, d.lifecycle) match {
+  ): Unit = {
+    val clock: Clock^{runtime} = runtime.clock
+    declare(runtime.lifecycle, runtime.jot, d.lifecycle) match {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
       case Right(inForce) =>
@@ -115,44 +143,233 @@ private[grit] object Launch {
           .info(s"lifecycle settings: ${written(inForce)}")
     }
     // Before anything runs, so the clock edge's first pass sees the schedules as declared.
-    reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
+    reconcile(runtime.schedules, runtime.jot, d, clock.now()).left.foreach { error =>
       throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
-    val wiring =
-      new Wiring(d, engine, engine.db, engine.jot, engine.inbox, engine.placements, clock)
-    val assembler: ContextAssembler = wiring.assembler
-    // What every move is made with: a job's, the lifecycle's and the turn's asks.
-    val moves: MovesEnv^{engine, models, classifier, clock} =
-      Launch.moves(engine, engine.db, models, classifier, clock)
-    def launch[C^](tooling: TurnTooling[C]^): Unit = {
-      val turnEnv = wiring.turnEnv(moves.records, assembler, models, classifier, weighing)
-      engine.launch(
-        // Told after the body returns, outside any step: the turn's steps are unchanged.
-        id => d ?=> told(engine, id, Turn.body(turnEnv, tooling)(id)(using d), finished),
-        wiring.close(moves),
-        wiring.settle(moves),
-        wiring.post,
-        wiring.triage(moves),
-        wiring.stitch(moves),
-        d.plugins,
-        wiring.shadow(moves, variants(d, s)),
-        d.shadows.map(_.shadowing),
-        wiring.run(moves)
-      )
-      if (sweeping) {
-        engine.sweepEvery(d.sweep)
-        ticking(engine, new ClockEdge(engine.inbox, engine.schedules, engine.db, clock, d.allJobs))
-      }
+    val db = runtime.db
+    val jot = runtime.jot
+    val assembler: ContextAssembler = d.assembly match {
+      case Assembly.Retrieval(budget, tail) =>
+        new RetrievalAssembler(
+          runtime.entries,
+          runtime.conversations,
+          runtime.periods,
+          runtime.principals,
+          runtime.lifecycle,
+          runtime.search,
+          runtime.documents,
+          runtime.stitches,
+          CharEstimate,
+          budget,
+          tail,
+          StitchTuning.Default
+        )
+      case Assembly.Linear(budget) =>
+        new LinearAssembler(
+          runtime.entries,
+          runtime.periods,
+          runtime.principals,
+          CharEstimate,
+          budget
+        )
     }
+    // What stitching reads, the placement's and a mention's.
+    val reads =
+      StitchReads(
+        runtime.entries,
+        runtime.conversations,
+        runtime.lifecycle,
+        runtime.stitches,
+        runtime.search,
+        runtime.principals
+      )
+    // The one wait for an opening's placement, the turn's and triage's.
+    val placing = Placing.Env(runtime.entries, runtime.conversations, db, runtime.placements)
+    // What every move is made with: a job's, the lifecycle's and the turn's asks.
+    val moves: MovesEnv^{runtime, models, classifier, clock} =
+      Launch.moves(runtime, db, models, classifier, clock)
+    // One Mentions both weighs a said root before its offer and asks its task questions in route.
+    val mentions =
+      new Mentions(
+        reads,
+        runtime.rooms,
+        d.knowledge,
+        d.triage,
+        weighing,
+        runtime.placements,
+        db,
+        clock,
+        CharEstimate,
+        StitchTuning.Default
+      )
+    val turnEnv =
+      TurnEnv(
+        TurnRecords(
+          runtime.entries,
+          runtime.ledger,
+          CharEstimate,
+          runtime.profiles,
+          runtime.principals,
+          runtime.documents
+        ),
+        TurnHosting(
+          runtime.conversations,
+          runtime.prompts,
+          runtime.toolSets,
+          runtime.requests,
+          runtime.edgeDirectory,
+          runtime.voices,
+          runtime.askers
+        ),
+        moves.records,
+        assembler,
+        classifier,
+        models,
+        db,
+        clock,
+        Fresh.random(),
+        TurnSpeech(d.speaking, runtime.speech, runtime.deliveries),
+        TurnStitching(
+          runtime.stitches,
+          runtime.search,
+          runtime.lifecycle,
+          StitchTuning.Default,
+          placing
+        ),
+        TurnWeighing(runtime.triage, mentions),
+        TurnRouting(mentions, d.budget, runtime.spending)
+      )
+    val close: WorkflowId => Durable^ ?=> String =
+      Close.body(
+        CloseEnv(
+          CloseRecords(
+            runtime.entries,
+            runtime.periods,
+            runtime.lifecycle,
+            runtime.tombstones,
+            runtime.principals,
+            runtime.triage,
+            runtime.conversations
+          ),
+          moves,
+          d.budget,
+          db,
+          clock
+        )
+      )
+    val settle: WorkflowId => Durable^ ?=> String =
+      Settle.body(
+        SettleEnv(
+          SettleRecords(runtime.entries, runtime.periods, runtime.lifecycle, runtime.principals),
+          db,
+          clock,
+          moves,
+          d.budget
+        )
+      )
+    val post: WorkflowId => Durable^ ?=> String =
+      Posting.body(
+        d.plugins,
+        PostEnv(
+          runtime.periods,
+          runtime.cursors,
+          runtime.cache,
+          runtime.keeper,
+          runtime.tombstones,
+          jot,
+          clock
+        )
+      )
+    val triage: WorkflowId => Durable^ ?=> String =
+      Triage.body(
+        TriageEnv(
+          TriageRecords(
+            runtime.entries,
+            runtime.triage,
+            runtime.principals,
+            runtime.conversations,
+            runtime.speech,
+            runtime.spending,
+            runtime.acknowledgements,
+            runtime.deliveries,
+            runtime.stitches,
+            runtime.search,
+            runtime.lifecycle,
+            runtime.rooms
+          ),
+          moves,
+          d.budget,
+          db,
+          clock,
+          TriageSpeech(
+            d.speaking,
+            d.budget,
+            turn => runtime.startTurn(turn).left.map(_.toString)
+          ),
+          StitchTuning.Default,
+          placing,
+          d.knowledge,
+          d.triage
+        )
+      )
+    val stitch: WorkflowId => Durable^ ?=> String =
+      Stitch.body(StitchEnv(reads, moves, d.budget, db, clock, StitchTuning.Default))
+    val shadow: WorkflowId => Durable^ ?=> String =
+      Shadow.body(
+        ShadowEnv(
+          reads,
+          runtime.rooms,
+          runtime.shadows,
+          variants(d, s),
+          d.knowledge,
+          db,
+          clock,
+          StitchTuning.Default,
+          moves,
+          d.budget
+        )
+      )
+    val runs: WorkflowId => Durable^ ?=> String =
+      JobRun.body(
+        RunEnv(
+          RunRecords(
+            runtime.entries,
+            runtime.conversations,
+            runtime.schedules,
+            runtime.deliveries
+          ),
+          db,
+          jot,
+          clock,
+          moves,
+          d.budget,
+          runtime.keeper
+        ),
+        d.allJobs
+      )
+    def launch[C^](tooling: TurnTooling[C]^): Unit =
+      runtime.launch(
+        // Told after the body returns, outside any step: the turn's steps are unchanged.
+        id => d ?=> told(runtime, id, Turn.body(turnEnv, tooling)(id)(using d), finished),
+        close,
+        settle,
+        post,
+        triage,
+        stitch,
+        d.plugins,
+        shadow,
+        d.shadows.map(_.shadowing),
+        runs
+      )
     // Each plugin's desk, of its own jobs: built per call, since it keeps nothing but the
-    // engine's transactions and its clock.
-    val desks: Desks^{engine} = new Desks {
+    // runtime's transactions and its clock.
+    val desks: Desks^{runtime} = new Desks {
       def of(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
-        engine.desk(plugin, jobs)
+        runtime.desk(plugin, jobs)
     }
     // Every plugin's tools, each bound over its own documents and its needs' services.
     val plugged = PluginBinding
-      .bound(d.plugins, engine.reads)
+      .bound(d.plugins, runtime.reads)
       .fold(
         {
           // Deployment.of refuses a tool asking for a plugin its own does not list, or booking
@@ -174,7 +391,7 @@ private[grit] object Launch {
     // Offered everywhere: grit's own, and every plugin's tools.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks}]] =
       Toolbox.of[caps.CapSet^{desks}](
-        (Vector[Tool.Offered^{desks}](own(d.persona, engine.askers)*) ++
+        (Vector[Tool.Offered^{desks}](own(d.persona, runtime.askers)*) ++
           plugged.map(_.over(desks)))*
       )
     val launching = d.offer.tools match {
@@ -185,7 +402,7 @@ private[grit] object Launch {
               tools,
               Toolbox.Empty,
               Coding.readOnlyHosted,
-              engine.jot,
+              runtime.jot,
               d.offer.rounds,
               worksIn = d.worksIn,
               reaches = d.reaches,
@@ -197,7 +414,7 @@ private[grit] object Launch {
         )
       case Offered.All =>
         // Offered only to the operator (Audience.operator): they tune grit, and ask first.
-        val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, clock)
+        val tuned = new KeptModelSettings(runtime.jot, runtime.modelSettings, clock)
         (
           everyone,
           Toolbox.of[caps.CapSet^{tuned, models}](operator(tuned, models)*)
@@ -210,7 +427,7 @@ private[grit] object Launch {
                   tools,
                   operator,
                   Coding.hosted,
-                  engine.jot,
+                  runtime.jot,
                   d.offer.rounds,
                   worksIn = d.worksIn,
                   reaches = d.reaches,
@@ -229,7 +446,6 @@ private[grit] object Launch {
     launching.left.foreach { case DuplicateName(name) =>
       throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
     }
-    engine
   }
 
   /** What moves over `stores` are made with: a job's, the lifecycle's and the turn's asks, their
@@ -292,7 +508,7 @@ private[grit] object Launch {
     * [[TurnTally.line]], or `said` and why the tally could not be read.
     */
   private def told(
-      engine: Engine^,
+      runtime: Runtime^,
       id: WorkflowId,
       said: String,
       finished: String => Unit
@@ -300,9 +516,9 @@ private[grit] object Launch {
     finished(TurnRef.fromWorkflowId(id) match {
       case None => said
       case Some(turn) =>
-        engine.db
+        runtime.db
           .read(Subject.Turn(turn))(
-            TurnTally.read(engine.conversations, engine.entries, engine.ledger, turn, said)
+            TurnTally.read(runtime.conversations, runtime.entries, runtime.ledger, turn, said)
           )
           .fold(why => s"turn ${WorkflowId.value(id)}: $said; not tallied: $why", _.line)
     })

@@ -161,7 +161,6 @@ object ReminderLiveTests extends TestSuite {
         new Through(model),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
-        sweeping = false,
         _ => ()
       )
       body(engine, edge(engine, slack))

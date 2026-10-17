@@ -10,13 +10,17 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.id.SourceId
+import grit.core.durable.Durable
+import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.message.Message
+import grit.core.plugin.Plugin
 import grit.core.speech.Reach
 import grit.core.spend.Budget
+import grit.core.stitch.Placements
 import grit.core.store.{Db, Jot, Origin, StoreError, Tx}
+import grit.core.triage.Shadowing
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{DbConfig, SqlEntryStore, SqlStatements}
 
@@ -26,15 +30,17 @@ import org.postgresql.ds.PGSimpleDataSource
   * are all undone when the session ends ([[Rehearsing.apply]]): every transaction it runs is a
   * savepoint of one transaction that is rolled back, so nothing it writes is seen by another
   * session or outlives it but the identity and sequence values its inserts drew. A row it
-  * locks is held until the session ends.
+  * locks is held until the session ends. What it is launched with goes to its runner
+  * ([[Rehearsing.Runner]]).
   */
 final class Rehearsing private (
     conn: Connection,
     budget: Budget,
     visibility: Visibility,
-    clock: Clock^
+    val clock: Clock^,
+    runner: Rehearsing.Runner^
 ) extends Stores(visibility),
-      caps.SharedCapability {
+      Runtime {
 
   private val recorder = new Recorder(conversations, entries, periods, speech, spending, budget)
 
@@ -58,6 +64,33 @@ final class Rehearsing private (
     ): Either[StoreError, A] =
       savepoint(keep = true)(opener.open(subject, conn).flatMap(tx => body(using tx)))
   }
+
+  /** Where each opening is placed: its runner's ([[Rehearsing.Runner.placements]]). */
+  val placements: Placements^{this} = runner.placements
+
+  /** Hands `turn` to its runner ([[Rehearsing.Runner.started]]), which runs it after the body
+    * that started it; the runner's refusal, an [[InboxError.Invalid]], otherwise.
+    */
+  def startTurn(turn: TurnRef): Either[InboxError, Unit] = runner.started(turn)
+
+  /** Hands every body to its runner ([[Rehearsing.Runner.launched]]), which runs the
+    * situation's workflows through them, in this session, before this returns; `plugins` and
+    * `shadowing` are unused, as nothing sweeps. Declares no document terms and registers no
+    * workflow. Throws only what the runner lets escape, which is a fault of the runner.
+    */
+  override def launch(
+      turn: WorkflowId => Durable^ ?=> String,
+      close: WorkflowId => Durable^ ?=> String,
+      settle: WorkflowId => Durable^ ?=> String,
+      post: WorkflowId => Durable^ ?=> String,
+      triage: WorkflowId => Durable^ ?=> String,
+      stitch: WorkflowId => Durable^ ?=> String,
+      plugins: Vector[Plugin],
+      shadow: WorkflowId => Durable^ ?=> String,
+      shadowing: Vector[Shadowing],
+      run: WorkflowId => Durable^ ?=> String
+  ): Unit =
+    runner.launched(this, turn, close, settle, post, triage, stitch, shadow, run)
 
   /** `text` recorded as [[grit.core.inbox.Inbox.hear]] records it, and what that starts; the
     * inbox's refusals, and `Unavailable` when a statement fails.
@@ -138,6 +171,39 @@ object Rehearsing {
   /** The name a session gives the server, as `pg_stat_activity` shows it. */
   val ApplicationName: String = "grit rehearsal"
 
+  /** What a session hands on to the rehearsal that opened it: the bodies it is launched with,
+    * each turn they start, and where each opening is placed.
+    */
+  trait Runner extends caps.SharedCapability {
+
+    /** Runs the workflows the rehearsal is of through these bodies, in `session`, before the
+      * launch that hands them over returns. Every body is the shipped one the launch built. A
+      * rehearsal's stop, at the turn's own model call, is caught here: nothing escapes for it.
+      */
+    def launched(
+        session: Rehearsing^,
+        turn: WorkflowId => Durable^ ?=> String,
+        close: WorkflowId => Durable^ ?=> String,
+        settle: WorkflowId => Durable^ ?=> String,
+        post: WorkflowId => Durable^ ?=> String,
+        triage: WorkflowId => Durable^ ?=> String,
+        stitch: WorkflowId => Durable^ ?=> String,
+        shadow: WorkflowId => Durable^ ?=> String,
+        run: WorkflowId => Durable^ ?=> String
+    ): Unit
+
+    /** Takes `turn`, started by a body it is running, to run after that body;
+      * [[InboxError.Invalid]] saying why when it will not.
+      */
+    def started(turn: TurnRef): Either[InboxError, Unit]
+
+    /** What each opening's placement, as this runner ran it, returned; for one it did not
+      * place, a `Left` saying so (a bounded wait's [[Placements.Unplaced.Failed]]), never a
+      * wait.
+      */
+    val placements: Placements
+  }
+
   /** Why a session showed nothing. */
   enum Unrehearsed {
 
@@ -151,7 +217,8 @@ object Rehearsing {
   }
 
   /** `body` run over a session on the database `config` names, recording as an inbox under
-    * `budget` and `visibility` records, dating by `clock`; when `body` returns or throws, or
+    * `budget` and `visibility` records, dating by `clock`, handing what it is launched with to
+    * `runner`; when `body` returns or throws, or
     * once `within` has passed, the session's transaction is rolled back and the session
     * closed. Opens no DBOS executor or client and takes no engine lock. Each statement reads
     * what is committed as it runs (READ COMMITTED), waits at most [[LockWait]] for a row lock,
@@ -162,6 +229,7 @@ object Rehearsing {
       budget: Budget,
       visibility: Visibility,
       clock: Clock^,
+      runner: Runner^,
       within: FiniteDuration = Within
   )(body: (r: Rehearsing^) => A): Either[Unrehearsed, A] =
     opened(config) match {
@@ -185,7 +253,7 @@ object Rehearsing {
           TimeUnit.MILLISECONDS
         )
         try {
-          val result = body(new Rehearsing(conn, budget, visibility, clock))
+          val result = body(new Rehearsing(conn, budget, visibility, clock, runner))
           timer.shutdownNow()
           timer.awaitTermination(1, TimeUnit.SECONDS)
           if (overran.get()) Left(Unrehearsed.Overran(within)) else Right(result)

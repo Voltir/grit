@@ -13,10 +13,9 @@ import grit.core.clock.Clock
 import grit.core.durable.{Durable, StepRecord}
 import grit.core.edge.{Desk, DeskError}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Domain, Identities, Realm}
-import grit.core.inbox.Inbox
-import grit.core.job.ScheduleDesk
+import grit.core.inbox.{Inbox, InboxError}
 import grit.core.place.Place
 import grit.core.plugin.Plugin
 import grit.core.spend.Budget
@@ -67,7 +66,8 @@ final class Engine private (
       */
     val clock: Clock^
 ) extends Stores(visibility),
-      Link {
+      Link,
+      Runtime {
 
   /** The voucher for `realms` ([[Voucher]]), keeping an attested email only in one of
     * `domains`: what a deployment records its trusted attesters' answers with, for the realms it
@@ -125,11 +125,8 @@ final class Engine private (
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)
 
-  /** `plugin`'s desk (ADR 0029): the schedules its tools write, of the jobs named `jobs`, each
-    * in a transaction of its own, dated by the clock the engine was opened with.
-    */
-  def desk(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
-    sqlSchedules.desk(plugin, jobs, jot, clock)
+  /** [[Inbox.startTurn]], through this engine's [[inbox]]. */
+  def startTurn(turn: TurnRef): Either[InboxError, Unit] = inbox.startTurn(turn)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
@@ -146,7 +143,7 @@ final class Engine private (
     * enqueue) runs here whatever epochs the database has seen. Once. Throws when the terms
     * cannot be recorded or a sweep fails, as DBOS's own launch throws when it cannot start.
     */
-  def launch(
+  override def launch(
       turn: WorkflowId => Durable^ ?=> String,
       close: WorkflowId => Durable^ ?=> String,
       settle: WorkflowId => Durable^ ?=> String,
@@ -154,9 +151,9 @@ final class Engine private (
       triage: WorkflowId => Durable^ ?=> String,
       stitch: WorkflowId => Durable^ ?=> String,
       plugins: Vector[Plugin],
-      shadow: WorkflowId => Durable^ ?=> String = Engine.Unshadowed,
-      shadowing: Vector[Shadowing] = Vector.empty,
-      run: WorkflowId => Durable^ ?=> String = Engine.Unrun
+      shadow: WorkflowId => Durable^ ?=> String,
+      shadowing: Vector[Shadowing],
+      run: WorkflowId => Durable^ ?=> String
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
     Turns.register(dbos, steps, opener, turn, running)
@@ -419,18 +416,6 @@ final class Engine private (
 }
 
 object Engine {
-
-  /** The shadow body of an engine that declares no shadows: it asks nothing and keeps
-    * nothing.
-    */
-  val Unshadowed: WorkflowId -> Durable^ ?-> String =
-    id => (_: Durable^) ?=> s"no shadows are declared: ${WorkflowId.value(id)}"
-
-  /** The run body of an engine given none: it runs no job and writes nothing, so its run ends
-    * without a reply ([[grit.core.job.InFlight.Ended]]).
-    */
-  val Unrun: WorkflowId -> Durable^ ?-> String =
-    id => (_: Durable^) ?=> s"no job runs here: ${WorkflowId.value(id)}"
 
   /** How long [[Engine.close]] waits for running workflow bodies: 30 seconds. */
   val BodiesWithin: FiniteDuration = 30.seconds
