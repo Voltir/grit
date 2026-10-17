@@ -17,6 +17,8 @@ object DriveRestRecordedTests extends DriveRestContract {
   protected def folderFile: (FileId, FileId) = (Recorded.id("file-1"), Recorded.id("folder-3"))
   protected def doc: FileId = Recorded.id("file-1")
   protected def sheet: FileId = Recorded.id("file-11")
+  // Hand-made: the recordings hold no text file, so its BOM is the fixture's own.
+  protected def textFile: FileId = Recorded.id("file-text")
   protected def folder: FileId = Recorded.id("folder-2")
   protected def missing: FileId = Recorded.id("file-404")
   protected def self: Email =

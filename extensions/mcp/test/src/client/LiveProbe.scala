@@ -7,20 +7,27 @@ import grit.core.edge.Variable
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.{Headers, McpError, McpTool, Rpc, Sse}
 
-/** [[McpServerContract]] and [[grit.mcp.github.GitHubItemsContract]] against GitHub's MCP
-  * server, read-only (no model call, no spend):
+/** The contracts against the services themselves, read-only (no model call, no spend), each arm
+  * run when its credential's variable is set and skipped, saying so, when it is not:
   *
   * {{{
-  * GITHUB_MCP_TOKEN=… ./mill grit.mcp.test.runMain grit.mcp.client.LiveProbe \
-  *   <owner> <repo> <issue> <pull> [dir]
+  * GITHUB_MCP_TOKEN=… GRIT_DRIVE_SA_KEY=<the key file's absolute path> \
+  *   ./mill grit.mcp.test.runMain grit.mcp.client.LiveProbe [<owner> <repo> <issue> <pull> [dir]]
   * }}}
   *
-  * The token comes from `GITHUB_MCP_TOKEN` alone and is never printed. `<owner>/<repo>` is the
-  * repository whose `README.md` the read call fetches, `<issue>` an issue of it with a comment
-  * and `<pull>` a pull request with a review. With `dir`, the answers to the first
-  * `tools/list` page and to that call are written there as they came, each body under a name
-  * saying its type, to be kept as fixtures; neither holds the token. Exits 1 when a contract
-  * test fails or the token is not set.
+  * GitHub's arm runs [[McpServerContract]] and [[grit.mcp.github.GitHubItemsContract]] against
+  * GitHub's MCP server. Its token comes from `GITHUB_MCP_TOKEN` alone and is never printed.
+  * `<owner>/<repo>` is the repository whose `README.md` the read call fetches, `<issue>` an issue
+  * of it with a comment and `<pull>` a pull request with a review. With `dir`, the answers to
+  * the first `tools/list` page and to that call are written there as they came, each body under
+  * a name saying its type, to be kept as fixtures; neither holds the token.
+  *
+  * Drive's arm runs [[grit.mcp.drive.DriveRestContract]] against Drive's REST API, as
+  * [[grit.mcp.drive.DriveLive]] finds its files; the key is never printed, and a failure prints
+  * an id at most, never a name, an address or a file's text.
+  *
+  * Exits 1 when a contract test fails, an arm cannot run, or neither variable is set; 2 when
+  * the token is set without GitHub's arguments.
   */
 object LiveProbe {
 
@@ -30,37 +37,53 @@ object LiveProbe {
   val Token: Variable = Variable("GITHUB_MCP_TOKEN")
 
   def main(args: Array[String]): Unit = {
-    val ((owner, repo, issue, pull), dir) = args.toVector match {
+    val github
+        : Option[Either[String, Vector[utest.framework.HTree[String, utest.framework.Result]]]] =
+      Option.when(sys.env.contains(Variable.value(Token)))(githubArm(args.toVector))
+    val drive
+        : Option[Either[String, Vector[utest.framework.HTree[String, utest.framework.Result]]]] =
+      grit.mcp.drive.DriveLive
+        .contract(sys.env)
+        .map(_.map(c => Vector(utest.TestRunner.runAndPrint(c.tests, "LiveProbe drive"))))
+    val arms = Vector("GitHub" -> github, "Drive" -> drive)
+    arms.foreach {
+      case (name, None) => println(s"LiveProbe: $name skipped, its variable unset")
+      case (name, Some(Left(why))) => System.err.println(s"LiveProbe: $name could not run: $why")
+      case (_, Some(Right(_))) => ()
+    }
+    val leaves = arms.flatMap(_._2).flatMap(_.toOption).flatten.flatMap(_.leaves.toVector)
+    val failed = leaves.count(_.value.isFailure)
+    println(s"LiveProbe: ${leaves.size - failed} passed, $failed failed")
+    if (failed > 0 || arms.forall(_._2.isEmpty) || arms.exists(_._2.exists(_.isLeft))) sys.exit(1)
+  }
+
+  /** GitHub's arm over `args`, as [[LiveProbe]] says. */
+  private def githubArm(
+      args: Vector[String]
+  ): Either[String, Vector[utest.framework.HTree[String, utest.framework.Result]]] = {
+    val ((owner, repo, issue, pull), dir) = args match {
       case Vector(o, r, IsNumber(i), IsNumber(p)) => ((o, r, i, p), None)
       case Vector(o, r, IsNumber(i), IsNumber(p), d) => ((o, r, i, p), Some(Path.of(d)))
       case _ =>
-        System.err.println("usage: LiveProbe <owner> <repo> <issue> <pull> [dir]")
+        System.err.println("usage: LiveProbe [<owner> <repo> <issue> <pull> [dir]]")
         sys.exit(2)
     }
-    val probe = for {
+    for {
       server <- McpServer.of("github", Endpoint, Credential.static(Token), McpScope.Open)
       bearer <- Bearer.of(sys.env, Token).left.map(_.message)
       authorizer <- Credential
         .open(server.credential, sys.env, KeyFiles.Local)
         .left
         .map(_.message)
-    } yield (server, bearer, authorizer)
-    probe match {
-      case Left(why) =>
-        System.err.println(why)
-        sys.exit(1)
-      case Right((server, bearer, authorizer)) =>
-        val arguments = ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> "README.md")
-        dir.foreach(capture(server, bearer, arguments, _))
-        val items = new GitHubItems(server, bearer, s"$owner/$repo", issue, pull)
-        val leaves = Vector(
-          utest.TestRunner
-            .runAndPrint(new GitHubContract(server, authorizer, arguments).tests, "LiveProbe"),
-          utest.TestRunner.runAndPrint(items.tests, "LiveProbe items")
-        ).flatMap(_.leaves.toVector)
-        val failed = leaves.count(_.value.isFailure)
-        println(s"LiveProbe: ${leaves.size - failed} passed, $failed failed")
-        if (failed > 0) sys.exit(1)
+    } yield {
+      val arguments = ujson.Obj("owner" -> owner, "repo" -> repo, "path" -> "README.md")
+      dir.foreach(capture(server, bearer, arguments, _))
+      val items = new GitHubItems(server, bearer, s"$owner/$repo", issue, pull)
+      Vector(
+        utest.TestRunner
+          .runAndPrint(new GitHubContract(server, authorizer, arguments).tests, "LiveProbe"),
+        utest.TestRunner.runAndPrint(items.tests, "LiveProbe items")
+      )
     }
   }
 

@@ -1,5 +1,7 @@
 package grit.mcp.drive
 
+import grit.core.identity.Email
+
 import utest.*
 
 /** [[DriveRest]] against [[FakeDriveServer]]: what it sends, and how it reads Drive's failures. */
@@ -60,12 +62,16 @@ object DriveRestTests extends TestSuite {
         }
         Vector(
           answered(403, "userRateLimitExceeded"),
+          answered(403, "rateLimitExceeded"),
           answered(403, "dailyLimitExceeded"),
+          answered(403, "quotaExceeded"),
           answered(429, "rateLimitExceeded"),
           answered(503, "backendError"),
           answered(403, "insufficientFilePermissions"),
           answered(404, "notFound")
         ) ==> Vector(
+          Left(DriveError.Busy(403)),
+          Left(DriveError.Busy(403)),
           Left(DriveError.Busy(403)),
           Left(DriveError.Busy(403)),
           Left(DriveError.Busy(429)),
@@ -128,15 +134,58 @@ object DriveRestTests extends TestSuite {
       }
     }
 
+    test("a text file's content is read as it is, its byte-order mark dropped") {
+      withFake { (fake, rest) =>
+        val content = Recorded.text("made-file-text.txt")
+        (
+          content.startsWith("\uFEFF"),
+          rest.file(Recorded.id("file-text")).flatMap(rest.text),
+          fake.requests.lastOption.map((path, q) => (path, q.get("alt")))
+        ) ==> (true, Right(content.drop(1)), Some(("files/file-text", Some("media"))))
+      }
+    }
+
     test("an answer longer than MaxRead keeps only its first whole lines within it") {
       withFake { (fake, rest) =>
         val line = "text text text text text text text\n"
         fake.answering("files/file-1/export", 200, line * (DriveRest.MaxRead / line.length + 10))
-        rest
-          .file(file1)
-          .flatMap(rest.text)
-          .map(t => (t.length <= DriveRest.MaxRead, t.endsWith("\n"), t.length % line.length)) ==>
-          Right((true, true, 0))
+        // One byte a character: the most whole lines within MaxRead bytes.
+        rest.file(file1).flatMap(rest.text).map(t => (t.length, t.endsWith("\n"))) ==>
+          Right(((DriveRest.MaxRead / line.length) * line.length, true))
+      }
+    }
+
+    test(
+      "over the recordings, a search's hits, the shared drives and a file's grants are what Drive answered"
+    ) {
+      withFake { (_, rest) =>
+        def email(e: String) =
+          Email.of(e).fold(w => throw new java.lang.AssertionError(w), identity)
+        (
+          rest.search("text", None).map(h => (h.files.map(f => FileId.value(f.id)), h.incomplete)),
+          rest.drives().map(_.map((id, name) => (FileId.value(id), name))),
+          rest.grants(file1)
+        ) ==> (
+          Right(
+            (
+              Vector(13, 4, 2, 14, 18, 7, 6, 10, 15, 16, 12, 9, 8, 3, 5, 11, 1).map(n =>
+                s"file-$n"
+              ),
+              false
+            )
+          ),
+          Right(Map("drive-a" -> "name-1", "drive-b" -> "name-2")),
+          Right(
+            Some(
+              Vector(
+                Grant.Person(email("person-1@example.com"), Role.Organizer),
+                Grant.Person(email("person-2@example.com"), Role.Organizer),
+                Grant.Person(email("person-3@example.com"), Role.Organizer),
+                Grant.Person(email("self@project.iam.example"), Role.Writer)
+              )
+            )
+          )
+        )
       }
     }
   }

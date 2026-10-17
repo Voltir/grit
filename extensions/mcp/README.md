@@ -71,7 +71,8 @@ run, and between runs to the spec and go-sdk's source. `GitHubItemsContract` is 
 (`GitHubItemsRecordedTests`), and `LiveProbe` runs it too; it passed whole there on 2026-10-16.
 `DriveRestContract` is what `DriveRest` needs of Drive's answers; `FakeDriveServer`, Drive's
 API in the test JVM answering from the recordings below, keeps it in the unit tier
-(`DriveRestRecordedTests`). `DriveCapture`, a main beside it that needs a service account's key, records Drive's v3 REST
+(`DriveRestRecordedTests`), and `LiveProbe` runs it against Drive when a service account's key
+is given (`DriveLive` finds the files it reads); it has not yet been run there. `DriveCapture`, a main beside it that needs a service account's key, records Drive's v3 REST
 answers under `test/resources/drive/`, each written with `Neutral`'s stand-ins for its ids,
 addresses, names and text, never as it came (its doc says how to run it). Drive's MCP server
 answers a service account's `tools/list` but refuses each of its `tools/call`s ("The caller does
@@ -134,3 +135,8 @@ reason, a role, a type) and every key and its order as sent. They show that ever
 its drive, that a shared drive's top files have the drive's id as their only parent, that
 folders carry `inheritedPermissionsDisabled` and grants `permissionDetails.inherited`, and that
 the account's own address is among a file's grants.
+
+Beside them, the `made-*` files are written by hand, since the recordings hold no text file:
+`made-file-text.json`, a text/plain file in `folder-3`; `made-file-text.txt`, its content,
+starting with a byte-order mark; and `made-permissions-file-text.json`, grants of its own, a
+writer outside the domain among them.

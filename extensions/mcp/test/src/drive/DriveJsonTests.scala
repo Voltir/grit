@@ -110,6 +110,12 @@ object DriveJsonTests extends TestSuite {
       ) ==> (Right(true), Right(true))
     }
 
+    test("a search with one file not in Drive's form is refused whole, not read without it") {
+      DriveJson.hits(
+        ujson.Obj("files" -> ujson.Arr(file(), file("id" -> "file-2", "name" -> ujson.Num(2))))
+      ) ==> Left("a file names no name")
+    }
+
     test("a file naming two parents, or an id holding a slash, is refused") {
       (
         DriveJson.file(file("parents" -> ujson.Arr("folder-1", "folder-2"))),

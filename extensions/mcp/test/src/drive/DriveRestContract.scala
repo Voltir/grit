@@ -22,9 +22,10 @@ trait DriveRestContract extends TestSuite {
   /** A file in a folder, and that folder. */
   protected def folderFile: (FileId, FileId)
 
-  /** A Doc, a Sheet and a folder. */
+  /** A Doc, a Sheet, a text file whose content starts with a byte-order mark, and a folder. */
   protected def doc: FileId
   protected def sheet: FileId
+  protected def textFile: FileId
   protected def folder: FileId
 
   /** An id that names nothing shared with the account. */
@@ -71,14 +72,16 @@ trait DriveRestContract extends TestSuite {
     }
 
     test(
-      "a Doc and a Sheet are read as text with no byte-order mark; a folder is not read, in words"
+      "a Doc, a Sheet and a text file are read as text with no byte-order mark; a folder is not read, in words"
     ) {
       def text(id: FileId) = rest.file(id).flatMap(rest.text)
       (
         text(doc).map(t => t.nonEmpty && !t.startsWith("\uFEFF")),
         text(sheet).map(t => t.contains(",") && !t.startsWith("\uFEFF")),
+        text(textFile).map(t => t.nonEmpty && !t.startsWith("\uFEFF")),
         text(folder).left.map(_.message)
       ) ==> (
+        Right(true),
         Right(true),
         Right(true),
         Left("Only Docs, Sheets and text files in Drive can be read here, not a folder.")
