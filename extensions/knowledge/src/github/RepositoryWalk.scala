@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import grit.core.document.Pointer
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardSummary, UnitKind, UnitVersion}
-import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Walk}
+import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Walk, Way}
 
 /** One run's walk of a repository, as data: from the cards it holds, depth first by path from
   * the repository's root, `/`, each next step. Of the repository it walks the paths `include` names and,
@@ -309,7 +309,7 @@ object RepositoryWalk {
       val popped = s.copy(stack = rest)
       task match {
         case Task.Pass(path) =>
-          popped.step(Step.List(path), Waiting.Listing(path, None))
+          popped.step(Step.List(path, Way.Run), Waiting.Listing(path, None))
         case Task.Known(key) =>
           known(popped, env, key) match {
             case Some(next) => next
@@ -339,14 +339,20 @@ object RepositoryWalk {
           else
             entry.kind match {
               case UnitKind.Directory =>
-                popped.step(Step.List(entry.path), Waiting.Listing(entry.path, Some(entry.version)))
+                popped.step(
+                  Step.List(entry.path, Way.Run),
+                  Waiting.Listing(entry.path, Some(entry.version))
+                )
               case UnitKind.File =>
                 if (s.asked >= env.perRun) end(env, s)
                 else
                   env.cards.pointer(entry.path) match {
                     case Left(why) => advance(env, unwritten(popped, entry.path, why))
                     case Right(pointer) =>
-                      popped.step(Step.Read(entry.path), Waiting.Reading(entry.path, pointer))
+                      popped.step(
+                        Step.Read(entry.path, Way.Run),
+                        Waiting.Reading(entry.path, pointer)
+                      )
                   }
             }
         case Task.Finish(path, version, children) =>

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.annotation.tailrec
 
-import grit.core.act.{Called, Keeping, MoveError, MoveKind, MoveLimits, MoveName, Posed}
+import grit.core.act.{Answer, Called, Keeping, MoveError, MoveKind, MoveLimits, MoveName, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}
@@ -26,9 +26,11 @@ import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
   * withdraws the cards of units gone from directories it listed in full. A held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
-  * read at, and believed at no more than the run and what it read before writing it: its
-  * source's results ([[grit.core.visibility.Visibility.outputOf]]) and the summaries asked of
-  * them. A listing or file answered below `Outside` is first checked by the integrity tree
+  * read at, and believed at no more than the run and what it read on its unit's way
+  * ([[Step.Fetching.way]]: everything read before it for [[Way.Run]]; for [[Way.Through]], the
+  * listings it was reached through, whose labels its own joins), its source's results
+  * ([[grit.core.visibility.Visibility.outputOf]]) and the summaries asked of them; its call's
+  * arguments and its summary's ask are made from the same. A listing or file answered below `Outside` is first checked by the integrity tree
   * ([[grit.core.act.Moves.vet]]), its paths or its head a window at a time: raised, it is
   * believed as raised; otherwise its unit is left unwritten, saying why (it holds hidden or
   * encoded text, it looks written to steer its reader, part of it looks out of place, it could
@@ -115,60 +117,67 @@ object Sync {
       case Right(h) =>
         val paths = h.held.map(c => c.key -> c.path).toMap
 
-        /** What `step` came to, with `read` (what the run read so far: a card is made from it
-          * all, since each unit's path came from a listing read before it) and `labels` (each
-          * unit's path, to the label its answers were read at) with what it read added.
+        /** What `step` came to, with `read` (what the run read so far) and `seen` (each unit's
+          * path, to what the run saw of it) with what it read added.
           */
-        def make(
-            step: Step,
-            read: Read,
-            labels: Map[String, Label]
-        ): (Outcome[L], Read, Labels) =
+        def make(step: Step, read: Read, seen: Seens): (Outcome[L], Read, Seens) =
           step match {
-            case list @ Step.List(path) =>
-              call(Phase.List, list, read) match {
-                case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                case Right((text, at)) =>
-                  source.listing(Trusted.asIs(text).extract) match {
-                    case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                    case Right(l) if !text.integrity.belowOutside =>
-                      (Outcome.Listed(l, at), heard(read, text), labels.updated(path, at))
+            case list @ Step.List(path, _) =>
+              reached(Phase.List, list, read, seen) match {
+                case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, seen)
+                case Right((answer, at, on)) =>
+                  source.listing(Trusted.asIs(answer).extract) match {
+                    case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, seen)
+                    case Right(l) if !answer.integrity.belowOutside =>
+                      (
+                        Outcome.Listed(l, at),
+                        heard(read, answer),
+                        seen.updated(path, on.hearing(answer))
+                      )
                     case Right(l) =>
                       // What of a listing reaches a card or steers the run past code's checks
                       // is what its source says is checked: that is what is checked, and
                       // believed as checked.
-                      val paths = text.map(_ => source.checked(l))
+                      val paths = answer.map(_ => source.checked(l))
                       checked(path, paths, "directory listing") match {
-                        case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, labels)
-                        case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
+                        case Left(why) => (Outcome.Stopped(s"listing $path: $why"), read, seen)
+                        case Right(Left(why)) => (Outcome.NotTaken(why), read, seen)
                         case Right(Right(vetted)) =>
-                          (Outcome.Listed(l, at), heard(read, vetted), labels.updated(path, at))
+                          (
+                            Outcome.Listed(l, at),
+                            heard(read, vetted),
+                            seen.updated(path, on.hearing(vetted))
+                          )
                       }
                   }
               }
-            case reading @ Step.Read(path) =>
-              call(Phase.Read, reading, read) match {
-                case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
-                case Right((text, at)) =>
-                  source.fetched(Trusted.asIs(text).extract) match {
-                    case Fetched.Text(whole, version) if text.integrity.belowOutside =>
+            case reading @ Step.Read(path, _) =>
+              reached(Phase.Read, reading, read, seen) match {
+                case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, seen)
+                case Right((answer, at, on)) =>
+                  source.fetched(Trusted.asIs(answer).extract) match {
+                    case Fetched.Text(whole, version) if answer.integrity.belowOutside =>
                       // Of a file, only its head reaches its card, through its summary: the head
                       // is what is checked, and believed as checked.
                       val head = Fetched.head(whole)
-                      checked(path, text.map(_ => head), "file") match {
-                        case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, labels)
-                        case Right(Left(why)) => (Outcome.NotTaken(why), read, labels)
+                      checked(path, answer.map(_ => head), "file") match {
+                        case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, seen)
+                        case Right(Left(why)) => (Outcome.NotTaken(why), read, seen)
                         case Right(Right(vetted)) =>
                           (
                             Outcome.Fetched(Fetched.Text(head, version), at),
                             heard(read, vetted),
-                            labels.updated(path, at)
+                            seen.updated(path, on.hearing(vetted))
                           )
                       }
-                    case fetched if !text.integrity.belowOutside =>
-                      (Outcome.Fetched(fetched, at), heard(read, text), labels.updated(path, at))
+                    case fetched if !answer.integrity.belowOutside =>
+                      (
+                        Outcome.Fetched(fetched, at),
+                        heard(read, answer),
+                        seen.updated(path, on.hearing(answer))
+                      )
                     // A read with no version is left unwritten: none of it reaches a card.
-                    case fetched => (Outcome.Fetched(fetched, at), read, labels)
+                    case fetched => (Outcome.Fetched(fetched, at), read, seen)
                   }
               }
             case Step.Summarise(path, head, _) =>
@@ -178,27 +187,29 @@ object Sync {
                 CardSummary.Reply
               )
               val key = CardMoves.of(Phase.Summary, CardKey.of(corpus, path))
-              moves.ask(key, read.map(_ => asked)) match {
-                case Left(e) => (Outcome.Stopped(s"summarising $path: ${reason(e)}"), read, labels)
+              val on = seen.getOrElse(path, Seen(h.floor, read, Way.Run))
+              val from = believed(path, read, seen)
+              moves.ask(key, from.map(_ => asked)) match {
+                case Left(e) => (Outcome.Stopped(s"summarising $path: ${reason(e)}"), read, seen)
                 case Right(a) =>
                   (
                     Outcome.Summarised(Trusted.asIs(a.reply).extract),
                     heard(read, a.reply),
-                    labels.updated(path, labels.getOrElse(path, h.floor).join(a.at))
+                    seen.updated(path, Seen(on.at.join(a.at), heard(from, a.reply), on.way))
                   )
               }
             case Step.Write(card, replacing) =>
-              val label = labels.getOrElse(card.path, h.floor)
-              val at = source.at
+              val label = seen.get(card.path).fold(h.floor)(_.at)
+              val (at, from) = (source.at, believed(card.path, read, seen))
               (
                 kept(
-                  moves.keep(CardMoves.of(Phase.Write, card.key), read)((_, keeper, now) =>
+                  moves.keep(CardMoves.of(Phase.Write, card.key), from)((_, keeper, now) =>
                     replace(keeper, card, label, source.service, at, replacing, now)
                   ),
                   s"keeping the card of ${card.path}"
                 ),
                 read,
-                labels
+                seen
               )
             case Step.Relabel(key, from) =>
               val (floor, at) = (h.floor, source.at)
@@ -215,7 +226,7 @@ object Sync {
                   s"relabelling the card of $path"
                 ),
                 read,
-                labels
+                seen
               )
             case Step.Drop(gone) =>
               (
@@ -224,7 +235,7 @@ object Sync {
                   "withdrawing the cards gone"
                 ),
                 read,
-                labels
+                seen
               )
           }
 
@@ -264,23 +275,50 @@ object Sync {
           else go(0, windows.toList, Trusted.literal("").tainted)
         }
 
-        /** The answer of the call making `step` in `phase`, its arguments made from `read`, and
+        /** The answer of the call making `step` in `phase`, its label, and what the run saw of
+          * its unit before it: that label joined with its listing's ([[Way.Through]]), believed
+          * as what its arguments were made from (`read` for [[Way.Run]], its listing's record
+          * for [[Way.Through]]); or why not, such as a listing it was reached through that `seen`
+          * lacks.
+          */
+        def reached(
+            phase: Phase,
+            step: Step.Fetching,
+            read: Read,
+            seen: Seens
+        ): Either[String, (Tainted[Answer], Label, Seen)] = {
+          val before: Either[String, (Read, Option[Label])] = step.way match {
+            case Way.Run => Right((read, None))
+            case Way.Through(listing) =>
+              seen
+                .get(listing)
+                .map(s => (s.believed, Some(s.at)))
+                .toRight(s"it was reached through $listing, which the run has not listed")
+          }
+          before.flatMap { (from, above) =>
+            call(phase, step, from).map { (answer, at) =>
+              (answer, at, Seen(above.fold(at)(_.join(at)), from, step.way))
+            }
+          }
+        }
+
+        /** The answer of the call making `step` in `phase`, its arguments made from `from`, and
           * its label; or why not.
           */
         def call(
             phase: Phase,
             step: Step.Fetching,
-            read: Read
-        ): Either[String, (Tainted[String], Label)] = {
+            from: Read
+        ): Either[String, (Tainted[Answer], Label)] = {
           val (tool, arguments) = source.call(step)
           moves.call(
             CardMoves.of(phase, CardKey.of(corpus, step.path)),
             source.service,
             tool,
-            read.map(_ => arguments)
+            from.map(_ => arguments)
           ) match {
             case Left(e) => Left(reason(e))
-            case Right(Called.Done(answer, at)) => Right((answer.map(_.text), at))
+            case Right(Called.Done(answer, at)) => Right((answer, at))
             case Right(Called.Failed(why)) =>
               Left(s"the call to ${source.service.name} failed: $why")
             case Right(Called.Interrupted) =>
@@ -288,10 +326,10 @@ object Sync {
           }
         }
 
-        @tailrec def go(w: Walk[L], read: Read, labels: Labels): String = w.next match {
+        @tailrec def go(w: Walk[L], read: Read, seen: Seens): String = w.next match {
           case Left(synced) => synced.line
           case Right(step) =>
-            val (outcome, after, next) = make(step, read, labels)
+            val (outcome, after, next) = make(step, read, seen)
             go(w.after(outcome), after, next)
         }
 
@@ -387,8 +425,28 @@ object Sync {
   /** What a run read so far, believed at the meet of its parts. */
   private type Read = Tainted[Unit]
 
-  /** Each unit's path, to the label its answers were read at. */
-  private type Labels = Map[String, Label]
+  /** What a run saw of one unit: the label its answers hold nothing above, what they are
+    * believed at, and the way it was reached. Through [[Way.Run]], it is believed as everything
+    * the run read before it was; through [[Way.Through]], as its listing's record was, and its
+    * label joins that record's.
+    */
+  private final case class Seen(at: Label, believed: Read, way: Way) {
+
+    /** This, `answer` heard after it. */
+    def hearing(answer: Tainted[?]): Seen = copy(believed = heard(believed, answer))
+  }
+
+  /** Each unit's path, to what the run saw of it. */
+  private type Seens = Map[String, Seen]
+
+  /** What a step about the unit at `path` is made from: its own record, when it was reached
+    * [[Way.Through]] a listing; otherwise `read`, everything the run read so far.
+    */
+  private def believed(path: String, read: Read, seen: Seens): Read =
+    seen.get(path) match {
+      case Some(Seen(_, from, Way.Through(_))) => from
+      case Some(Seen(_, _, Way.Run)) | None => read
+    }
 
   /** 10: the most windows of one listing's paths or one file's head a run checks
     * ([[IntegrityTree.windows]]); a longer one is left unwritten. A file's head, 8 KB, always

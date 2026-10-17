@@ -1,5 +1,6 @@
 package grit.knowledge.github
 
+import grit.core.act.Answer
 import grit.core.document.Pointer
 import grit.core.id.{CorpusName, ScheduleKey}
 import grit.core.place.{Place, Service}
@@ -53,11 +54,11 @@ final case class GitHubCards private (
   /** `readTool` with [[reading]] of the step's path: GitHub lists a directory as it reads a file. */
   def call(step: Step.Fetching): (ToolName, ujson.Obj) = (readTool, reading(step.path))
 
-  /** [[Listing.of]] `answer`. */
-  def listing(answer: String): Either[String, Listing] = Listing.of(answer)
+  /** [[Listing.of]] `answer`'s text: GitHub's text is its data (its answers carry no facts). */
+  def listing(answer: Answer): Either[String, Listing] = Listing.of(answer.text)
 
-  /** [[Contents.of]] `answer`. */
-  def fetched(answer: String): Fetched = Contents.of(answer)
+  /** [[Contents.of]] `answer`'s text. */
+  def fetched(answer: Answer): Fetched = Contents.of(answer.text)
 
   /** Its entries' paths, one a line: each entry's kind and SHA are read by code. */
   def checked(listing: Listing): String = {

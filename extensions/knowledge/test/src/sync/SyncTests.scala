@@ -261,14 +261,19 @@ object SyncTests extends TestSuite {
 
   private val clash = "duplicate key value violates unique constraint"
 
-  /** `inner`, and after each keep the documents `inner` reads, as [[held]] shows them; a keep
-    * named `failing` is refused as a store's failure, [[clash]], and not made.
+  /** `inner`, and after each keep the documents `inner` reads, as [[held]] shows them, and each
+    * keep's name with what it kept from was believed at; a keep named `failing` is refused as a
+    * store's failure, [[clash]], and not made.
     */
   private final class Watched(inner: ScriptedKeeping, failing: Option[MoveName] = None)
       extends Keeping {
     // Holds immutable values; the fake is one test's, read on its one thread.
     @caps.unsafe.untrackedCaptures
     var seen: Vector[Vector[(String, Label)]] = Vector.empty
+
+    // Holds immutable values; the fake is one test's, read on its one thread.
+    @caps.unsafe.untrackedCaptures
+    var believed: Vector[(MoveName, Integrity)] = Vector.empty
 
     def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]] =
       inner.ask(name, posed)
@@ -296,6 +301,7 @@ object SyncTests extends TestSuite {
       else {
         val kept = inner.keep(name, from)(body)
         seen = seen :+ held(inner)
+        believed = believed :+ (name -> from.integrity)
         kept
       }
   }
@@ -327,6 +333,51 @@ object SyncTests extends TestSuite {
         line(written = 3),
         Vector(("docs", floor), ("docs/a.md", both), ("docs/b.md", floor))
       )
+    }
+
+    test(
+      "a unit reached through a listing is believed at the listings on its way, whatever the run read before it"
+    ) {
+      val acme = Label.at(Level.Confidential, right(Compartment.of("acme")))
+      val folders = right(CorpusName.of("folders"))
+
+      def written(path: String) = CardMoves.of(Phase.Write, CardKey.of(folders, path))
+
+      /** A run of [[Folders]] in `order`, `a` answered at `acme` and `a/x` believed `Untrusted`:
+        * its reply, each card's path and label, what each card's write was believed at, and the
+        * vets it made.
+        */
+      def walked(order: Vector[String]) = {
+        val source = new Folders(folders, service, service.place, order)
+        val documents = new InMemoryDocuments
+        val k = keeping(
+          floor,
+          documents,
+          answers = Map("/" -> "a\nb", "a" -> "a/x", "b" -> "b/y", "a/x" -> "X.", "b/y" -> "Y."),
+          readAt = Map("a" -> acme),
+          believedAt = Map("a/x" -> Integrity.Untrusted),
+          judged = Some(0.1)
+        )
+        val watched = new Watched(k)
+        val reply = new Sync(Vector(source)).run(
+          TestTainted.trusted(JobRun(SyncParams(folders, 5), Instant.EPOCH, Instant.EPOCH)),
+          watched
+        )
+        (
+          reply,
+          held(keeping(acme, documents)),
+          watched.believed.filter(_._1 != CardMoves.Held).sortBy(b => MoveName.value(b._1)),
+          k.made.filter(MoveName.value(_).startsWith("vet/"))
+        )
+      }
+      val expected = (
+        "folders: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
+        Vector(("a/x", acme), ("b/y", floor)),
+        Vector(written("a/x") -> Integrity.Outside, written("b/y") -> Integrity.Member)
+          .sortBy(b => MoveName.value(b._1)),
+        Vector(CardMoves.vet(CardKey.of(folders, "a/x"), 0))
+      )
+      (walked(Vector("a", "b")), walked(Vector("b", "a"))) ==> (expected, expected)
     }
 
     test("a file whose SHA changed is rewritten, with its directory; the rest are untouched") {

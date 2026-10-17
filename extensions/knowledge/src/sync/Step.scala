@@ -3,6 +3,15 @@ package grit.knowledge.sync
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
 
+/** What a fetch's arguments are made from, and what its unit is believed at: [[Way.Run]],
+  * everything the run read before it; [[Way.Through]], the listing at `listing` it was named in,
+  * and what that listing was reached through.
+  */
+enum Way extends caps.Pure {
+  case Run
+  case Through(listing: String)
+}
+
 /** One move a walk asks its run to make. */
 sealed trait Step extends caps.Pure
 
@@ -13,13 +22,16 @@ object Step {
 
     /** The unit it lists or reads, as its source names it. */
     def path: String
+
+    /** How its run reached `path`. */
+    def way: Way
   }
 
-  /** List the unit `path`, one holding others (a directory, a folder). */
-  final case class List(path: String) extends Fetching
+  /** List the unit `path`, one holding others (a directory, a folder), reached `way`. */
+  final case class List(path: String, way: Way) extends Fetching
 
-  /** Read the file `path`. */
-  final case class Read(path: String) extends Fetching
+  /** Read the file `path`, reached `way`. */
+  final case class Read(path: String, way: Way) extends Fetching
 
   /** Summarise `head`, the first 8 KB of the file `path` as read at `version`; the card written
     * from it records `version`.

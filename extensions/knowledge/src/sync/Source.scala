@@ -1,5 +1,6 @@
 package grit.knowledge.sync
 
+import grit.core.act.Answer
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
@@ -27,10 +28,10 @@ trait Source[L <: caps.Pure] extends caps.Pure {
   def call(step: Step.Fetching): (ToolName, ujson.Obj)
 
   /** What `answer`, a listing, holds, or why it is none. */
-  def listing(answer: String): Either[String, L]
+  def listing(answer: Answer): Either[String, L]
 
   /** What `answer`, a read, holds. */
-  def fetched(answer: String): Fetched
+  def fetched(answer: Answer): Fetched
 
   /** What of `listing` the integrity tree checks when it is believed below `Outside`: what
     * reaches a card or steers the run.

@@ -10,7 +10,7 @@ import grit.core.place.Service
 import grit.core.triage.Corpus
 import grit.core.visibility.{Label, Level}
 import grit.knowledge.card.{Card, CardKey, CardSummary, Scope, UnitKind, UnitVersion}
-import grit.knowledge.sync.{Fetched, Held, Outcome, Step, SyncSchedule, Synced, Unwritten}
+import grit.knowledge.sync.{Fetched, Held, Outcome, Step, SyncSchedule, Synced, Unwritten, Way}
 
 import utest.*
 
@@ -104,10 +104,12 @@ object RepositoryWalkTests extends TestSuite {
 
   private def at(v: UnitVersion): String = s"@${BigInt(UnitVersion.value(v), 16)}"
 
-  /** A step as a line: its kind, its unit's path, its version and labels. */
+  /** A step as a line: its kind, its unit's path and way, its version and labels. A walk of a
+    * repository reaches each unit [[Way.Run]], shown as nothing.
+    */
   private def shown(step: Step): String = step match {
-    case Step.List(path) => s"list $path"
-    case Step.Read(path) => s"read $path"
+    case Step.List(path, way) => s"list $path${through(way)}"
+    case Step.Read(path, way) => s"read $path${through(way)}"
     case Step.Summarise(path, _, v) => s"summarise $path ${at(v)}"
     case Step.Write(card, replacing) =>
       s"write ${card.path} ${at(card.version)}" +
@@ -117,13 +119,19 @@ object RepositoryWalkTests extends TestSuite {
       "drop " + gone.map(h => s"${h.path} at ${Label.written(h.label)}").mkString(", ")
   }
 
+  /** `way` as [[shown]] ends a fetch's line: nothing for [[Way.Run]]. */
+  private def through(way: Way): String = way match {
+    case Way.Run => ""
+    case Way.Through(listing) => s" through $listing"
+  }
+
   /** A run's moves answering from `listings` and `files`; every summary is [[summary]]. */
   private def moves(listings: Map[String, Listing], files: Map[String, Fetched])(
       step: Step
   ): Outcome[Listing] = step match {
-    case Step.List(path) =>
+    case Step.List(path, _) =>
       listings.get(path).fold(Outcome.Stopped(s"no directory $path"))(Outcome.Listed(_, floor))
-    case Step.Read(path) =>
+    case Step.Read(path, _) =>
       files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_, floor))
     case Step.Summarise(_, _, _) => Outcome.Summarised(summary)
     case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) => Outcome.Kept
@@ -544,7 +552,7 @@ object RepositoryWalkTests extends TestSuite {
       val (steps, result) = drive(
         RepositoryWalk.start(source(), 5, floor, heldAll()),
         {
-          case Step.Read("docs/a.md") => Outcome.NotTaken("it could not be checked")
+          case Step.Read("docs/a.md", Way.Run) => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
         }
       )
@@ -561,7 +569,7 @@ object RepositoryWalkTests extends TestSuite {
       val (steps, result) = drive(
         RepositoryWalk.start(source(), 5, floor, heldAll()),
         {
-          case Step.List("docs") => Outcome.NotTaken("it could not be checked")
+          case Step.List("docs", Way.Run) => Outcome.NotTaken("it could not be checked")
           case other => moves(listings, files)(other)
         }
       )
