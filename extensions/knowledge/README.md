@@ -32,15 +32,17 @@ Packages, in one-way order (each names only those before it):
   with its id; its card is written at when it last changed, titled with its name. Imports
   `card` and `sync`, never `github`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
-  `Sync` job, and each source's sync schedules, keyed `{source}-{key}`. Imports `github` and
-  `sync`.
+  `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc). Imports
+  `github`, `drive` and `sync`.
 
 ## What a deployment declares
 
 A deployment builds each source with `GitHubCards.of` (its corpus, which names it and supplies
 its service; the name the deployment gave GitHub's MCP server; the repository, ref and what of
 it becomes cards; at most how many cards; its label; the place its cards are kept at, drawn on
-where a conversation's scope holds it; and its `SyncSchedule`s), and the plugin with
+where a conversation's scope holds it; and its `SyncSchedule`s), or with `DriveCards.of` (the
+same, but Drive's two tools, and a chain of labels in place of the repository and one label),
+and the plugin with
 `Knowledge.of(name, sources, visibility)`, under the visibility it declares. It also serves an
 edge hosting the MCP server's `get_file_contents` at the source's service, or every run's first
 call fails and its reply says so. The reference deployment's `GRIT_PLUGINS=knowledge` is one
@@ -56,6 +58,10 @@ a call. Its schedules run at that label, so a run reads and keeps at it, and eve
 run's calls and asks bring back is at it: no card is kept where the next run cannot read it
 back. Whether a turn reads a card is its label's business alone: a turn in a room below the
 source's label holds none of its cards.
+
+A Drive source is kept at each of its labels, and every one of them is held to that rule: each
+declares its own schedules, whose runs card what was read at most at that label and above the
+one below it.
 
 ## Data handling
 

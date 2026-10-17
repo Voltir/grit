@@ -5,6 +5,7 @@ import java.time.{LocalTime, ZoneId}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{Declared, SlotRule}
 import grit.core.place.{Namespace, Place, Service}
+import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cleared,
@@ -16,6 +17,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
+import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
 import grit.knowledge.sync.SyncSchedule
 
@@ -73,6 +75,46 @@ object KnowledgeTests extends TestSuite {
       .fold(r => sys.error(r.toString), identity)
 
   private val internalService = visibility(Labelled.Mapped(internal), internal)
+
+  private val driveService = right(Service.of("drive"))
+
+  /** The Drive source `shared` at `labels`, at most 10 cards, its one schedule `nightly`. */
+  private def drive(labels: Vector[Label]): CardSource =
+    CardSource.Drive(
+      right(
+        DriveCards.of(
+          Corpus(
+            right(CorpusName.of("shared")),
+            "shared drives",
+            driveService.place,
+            Some(driveService)
+          ),
+          right(ToolName.of("drive_list")),
+          right(ToolName.of("drive_read")),
+          labels,
+          10,
+          Place.under(Namespace.Task, Vector.empty),
+          Vector(right(SyncSchedule.of(right(ScheduleKey.of("nightly")), rule, 5)))
+        )
+      )
+    )
+
+  /** Every room labelled `otherwise`; Drive's and GitHub's services cleared for confidential. */
+  private def driveUnder(otherwise: Label): Visibility =
+    Visibility
+      .of(
+        Compartments.Shipped,
+        RoomLabels
+          .of(Vector.empty, Labelled.Mapped(otherwise))
+          .fold(p => sys.error(p.written), identity),
+        Vector.empty,
+        Vector.empty,
+        Vector(
+          Cleared(Party.Service(driveService), confidential),
+          Cleared(Party.Service(service), confidential)
+        )
+      )
+      .fold(r => sys.error(r.toString), identity)
 
   /** Each schedule `of` declared, as its key and clearance. */
   private def declared(
@@ -137,6 +179,56 @@ object KnowledgeTests extends TestSuite {
         Left("a knowledge plugin has at least one source"),
         Left("two sources are the corpus repo"),
         Left("the sources a_b and a both declare the sync schedule a-b-c")
+      )
+    }
+
+    test("a Drive source declares one schedule per label, keyed by its label's written form") {
+      val plugin = right(
+        Knowledge.of(name, Vector(drive(Vector(confidential, internal))), driveUnder(internal))
+      )
+      (
+        plugin.schedules.map((d: Declared[?]) => (ScheduleKey.value(d.key), d.clearance)),
+        plugin.documents.map(_.terms.bound)
+      ) ==> (
+        Vector(
+          ("shared-nightly-internal", internal),
+          ("shared-nightly-confidential", confidential)
+        ),
+        Some(20)
+      )
+    }
+
+    test("a Drive source with a label below its service's place is refused, naming the label") {
+      Knowledge.of(
+        name,
+        Vector(drive(Vector(internal, confidential))),
+        driveUnder(confidential)
+      ) ==>
+        Left(
+          "the source shared is labelled [level: internal], below its service drive's place, " +
+            "[level: confidential]: its runs could not read the service"
+        )
+    }
+
+    test("a Drive source with a label its service is not cleared for is refused, naming it") {
+      Knowledge.of(
+        name,
+        Vector(drive(Vector(internal, Label.at(Level.Restricted)))),
+        driveUnder(internal)
+      ) ==> Left(
+        "the source shared is labelled [level: restricted], above what its service drive is " +
+          "cleared for, [level: confidential]: its runs' calls could not send"
+      )
+    }
+
+    test("a Drive schedule's key another source's schedule has is refused") {
+      Knowledge.of(
+        name,
+        Vector(drive(Vector(internal)), source(None, "shared_nightly", "internal")),
+        driveUnder(internal)
+      ) ==> Left(
+        "the sources shared and shared_nightly both declare the sync schedule " +
+          "shared-nightly-internal"
       )
     }
   }
