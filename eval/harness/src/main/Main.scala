@@ -16,6 +16,7 @@ import grit.core.context.Width
 import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.{Cost, Tokens}
+import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.Service
 import grit.core.provider.Provider
@@ -75,6 +76,7 @@ import grit.eval.harness.log.{
 import grit.eval.harness.loss.{LossWindow, Measure}
 import grit.eval.harness.pull.{Pull, ShadowLog}
 import grit.eval.harness.reply.{
+  Admission,
   Assembled,
   Expect,
   Queries,
@@ -356,9 +358,11 @@ object Main {
     } yield ()
 
   /** `rebuild --capture <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]
-    * [--tail <tokens>]`: every turn the restored database recorded before its dump, its window
-    * rebuilt as of its assembly by the shipped assembler ([[Rebuild.recorded]], its query
-    * replayed) and set against the one it recorded ([[Rebuild.report]]); then every window-only
+    * [--tail <tokens>] [--judged <n>] [--pass <p>]`: every turn the restored database recorded
+    * before its dump, its window rebuilt as of its assembly by the shipped assembler
+    * ([[Rebuild.recorded]], its query replayed, its recorded verdicts admitting as
+    * [[Admission.of]] `--judged` and `--pass` say, the turn's own [[Admission.Shipped]] when
+    * neither is given) and set against the one it recorded ([[Rebuild.report]]); then every window-only
     * case ([[WindowOnly]]), its query written by the seed catalog's query model through
     * OpenRouter, each answer kept under `<cache>` so it is paid for once, under the `--spend`
     * cap in USD: refused before any call when the writes not kept are estimated over it
@@ -381,6 +385,17 @@ object Main {
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
+      judged <- f
+        .get("judged")
+        .fold(Right(Admission.Shipped.judged))(v =>
+          v.toIntOption.toRight(s"--judged $v: not a whole number")
+        )
+      pass <- f
+        .get("pass")
+        .fold(Right(Admission.Shipped.pass))(v =>
+          v.toDoubleOption.flatMap(Probability.of).toRight(s"--pass $v: not between 0 and 1")
+        )
+      admission <- Admission.of(judged, pass).left.map(why => s"--judged: $why")
       manifest <- read(dir.resolve("capture.json")).flatMap(t =>
         Try(ujson.read(t)).toOption
           .toRight("capture.json: not JSON")
@@ -393,7 +408,7 @@ object Main {
         for {
           workflows <- reader.turns(until).left.map(_ => "turn workflows unread")
           rebuilt = workflows.map((w, _) =>
-            w -> Rebuild.recorded(reader, w, assembled, Width.Deployed)
+            w -> Rebuild.recorded(reader, w, assembled, admission, Width.Deployed)
           )
           only <- WindowOnly.all(reader, until)
           asked <- Fields.each(only)(w =>
@@ -613,7 +628,7 @@ object Main {
           windows = widths
             .map((w, width) =>
               (w, width) -> Rebuild
-                .recorded(reader, w, assembled, width)
+                .recorded(reader, w, assembled, Admission.Shipped, width)
                 .flatMap(r =>
                   TurnRef
                     .fromWorkflowId(w)

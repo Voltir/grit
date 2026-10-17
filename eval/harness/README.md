@@ -63,7 +63,8 @@ Packages, each importing only those above it:
   reasoning or the query. A rebuild draws a recorded turn's window again through the shipped
   retrieval assembler over the database as it stood when the turn's `assemble` step started,
   its query replayed, and of a turn that recorded its search, only what its recorded verdicts
-  admitted packed, no classifier asked. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
+  admit packed, at the turn's pass mark and count judged or lower ones a run names, no
+  classifier asked. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
   variant past the reply model's context is refused. The reference judges builds by ids alone,
   from reply labels, a hand-written file and `grit.eval`'s synthetic cases. ← `capture`,
   `label`, `log`, `jev`

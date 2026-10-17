@@ -25,7 +25,7 @@ import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 import grit.models.Seed
-import grit.turn.{Turn, TurnRecord, TurnRelevance}
+import grit.turn.{Turn, TurnRecord}
 
 /** How the shipped [[RetrievalAssembler]] is built to rebuild a window: the deployment's
   * `window` and `tail` budgets, its `hits` per search and the stitch `tuning`. A deployment
@@ -131,8 +131,8 @@ object Rebuild {
     * it stood when the turn's `assemble` step started, its query the one the turn recorded:
     * asked for one, the writer answers with it, so nothing is spent; a turn that recorded none
     * is rebuilt with a writer that fails, as live's did or was never asked. A turn that
-    * recorded its search ([[TurnRecord.retrieval]]) packs what that search recorded and its
-    * verdicts admitted ([[TurnRelevance.admitted]]), no classifier asked; one that recorded
+    * recorded its search ([[TurnRecord.retrieval]]) packs what `admission` admits of the
+    * results it recorded by the verdicts it recorded, no classifier asked; one that recorded
     * none packs all its search finds. `Left` when the turn recorded no `assemble` step or no
     * start for it, or what it needs cannot be read.
     */
@@ -140,6 +140,7 @@ object Rebuild {
       reader: Reader^,
       workflow: WorkflowId,
       assembled: Assembled,
+      admission: Admission,
       width: Width
   ): Either[String, RebuiltWindow] = {
     val name = WorkflowId.value(workflow)
@@ -194,9 +195,7 @@ object Rebuild {
         width,
         Some(seed.pin.query.first)
       )(
-        searched.fold[Results -> Results](found => found)(r =>
-          _ => TurnRelevance.admitted(r.results, r.verdicts)
-        )
+        searched.fold[Results -> Results](found => found)(r => _ => admission.admitted(r))
       )(using reader.db)
     } yield RebuiltWindow(at, recorded, rebuilt, lost)
   }

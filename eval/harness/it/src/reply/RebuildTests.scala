@@ -406,9 +406,13 @@ object RebuildTests extends TestSuite {
       }
       val d = ask(engine, "d", "what is the Falcon budget?")
       val reader = Reader.open(config)
-      val kept = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
+      val kept = right(
+        Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Admission.Shipped, Width.Deployed)
+      )
       right(engine.jot.write(Subject.Public)(engine.documents.forget(version)))
-      val gone = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
+      val gone = right(
+        Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Admission.Shipped, Width.Deployed)
+      )
       (reader, kept, gone, version)
     } finally engine.close()
   }
@@ -430,7 +434,15 @@ object RebuildTests extends TestSuite {
       val g = ask(engine, "g", "what is the Falcon budget?")
       val reader = Reader.open(config)
       val rebuilt =
-        right(Rebuild.recorded(reader, g.workflowId, Assembled.Shipped, Width.Deployed))
+        right(
+          Rebuild.recorded(
+            reader,
+            g.workflowId,
+            Assembled.Shipped,
+            Admission.Shipped,
+            Width.Deployed
+          )
+        )
       val retrieval = right(right(reader.steps(g.workflowId).map(TurnRecord.retrieval)))
       (reader, told, rumoured, rebuilt, right(retrieval.toRight("no search recorded")))
     } finally engine.close()
@@ -456,7 +468,9 @@ object RebuildTests extends TestSuite {
 
     test("a turn rebuilt as of its assembly is the window it recorded, its query replayed") {
       val (reader, Vector(a, b, _)) = world: @unchecked
-      val r = right(Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Width.Deployed))
+      val r = right(
+        Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Admission.Shipped, Width.Deployed)
+      )
       // What b's turn recorded: a's turn, found by its query, from elsewhere, open then.
       r.recorded.map(w => conversations(w.nearby)) ==> Some(Vector(a.conversationId))
       r.drift ==> Some(Drift.Same)
@@ -479,7 +493,9 @@ object RebuildTests extends TestSuite {
 
     test("a message said elsewhere after a turn's assembly is absent from its rebuild") {
       val (reader, Vector(a, b, c)) = world: @unchecked
-      val r = right(Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Width.Deployed))
+      val r = right(
+        Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Admission.Shipped, Width.Deployed)
+      )
       conversations(r.rebuilt.nearby).filter(Set(a, c).map(_.conversationId)) ==>
         Vector(a.conversationId)
     }
