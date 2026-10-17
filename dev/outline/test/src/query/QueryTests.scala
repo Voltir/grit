@@ -1,7 +1,7 @@
 package grit.outline.query
 
 import grit.outline.cli.Main
-import grit.outline.locate.{Layout, Locate, MillLayout, Root}
+import grit.outline.locate.{Layout, Locate, MillLayout, Root, SourceWords}
 import grit.outline.render.TestsShown
 import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout, OutlineLayout}
 
@@ -547,12 +547,13 @@ object QueryTests extends TestSuite {
       val classes = dir / "out" / "m" / "test" / "compile.dest" / "classes"
       os.write(classes / "a" / "ATests.tasty", "", createFolders = true)
       os.write(classes / "b" / "BTests.tasty", "", createFolders = true)
-      val (tasty, unsearched) = Query.toRead(
+      val (tasty, unsearched, _) = Query.toRead(
         Root(dir),
         Config.empty,
         Vector(classes),
         Vector(Query.Search("ask", None)),
-        MillLayout.isTestSource
+        MillLayout.isTestSource,
+        SourceWords.empty
       )
       assert(tasty == Vector(classes / "a" / "ATests.tasty"))
       assert(unsearched.isEmpty)

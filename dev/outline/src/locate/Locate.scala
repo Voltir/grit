@@ -113,53 +113,47 @@ object Locate {
     }
   }
 
-  /** Repo `.scala` files under a `src` directory whose text holds `simpleName` as a whole word, outside the root's build and tool dirs. */
-  def mentioning(root: Root, simpleName: String): Vector[os.RelPath] =
-    mentioningEach(root, Vector(simpleName)).getOrElse(simpleName, Vector.empty)
+  /** Repo `.scala` files under a `src` directory whose text holds `simpleName` as a whole word, outside the root's build
+    * and tool dirs, and the words of every file searched, as `mentioningEach` gives them.
+    */
+  def mentioning(
+      root: Root,
+      simpleName: String,
+      known: SourceWords
+  ): (Vector[os.RelPath], SourceWords) = {
+    val (each, next) = mentioningEach(root, Vector(simpleName), known)
+    (each.getOrElse(simpleName, Vector.empty), next)
+  }
 
-  /** For each of `words`, the files `mentioning` gives for it, each file read once; a word no file holds maps to an empty vector. */
-  def mentioningEach(root: Root, words: Vector[String]): Map[String, Vector[os.RelPath]] = {
+  /** For each of `words`, the files `mentioning` gives for it, each file read once, its words taken from `known` when
+    * its bytes are those `known` last read; a word no file holds maps to an empty vector. With it, the words of every
+    * file searched, for the next search.
+    */
+  def mentioningEach(
+      root: Root,
+      words: Vector[String],
+      known: SourceWords
+  ): (Map[String, Vector[os.RelPath]], SourceWords) = {
     val distinct = words.distinct
     def whole(w: String): String = "\\b" + java.util.regex.Pattern.quote(w) + "\\b"
     // A word of word characters alone is held whole exactly where it is a whole run of them (`\b` and `\w` agree since
-    // JDK 19), so one scan of a file's runs finds every such word. The rest get a regex each, where the text holds them.
+    // JDK 19), so a file's runs find every such word. The rest get a regex each, where the text holds them.
     val (plain, other) = distinct.partition(_.matches("\\w+"))
-    val plainSet = plain.toSet
     val separate = other.map(w => w -> whole(w).r)
-    val held = sources(root)
-      .map { p =>
-        val text = os.read(p)
-        p.relativeTo(root.dir) -> (runsIn(text, plainSet) ++ separate.collect {
-          case (w, word) if text.contains(w) && word.findFirstIn(text).isDefined => w
-        })
-      }
-    distinct.map { w =>
+    val files = sources(root)
+    val (held, next) = files.foldLeft((Vector.empty[(os.RelPath, Set[String])], known)) {
+      case ((acc, state), p) =>
+        val (runs, text, after) = state.read(p)
+        val here = plain.filter(runs.contains).toSet ++ separate.collect {
+          case (w, word) if text().contains(w) && word.findFirstIn(text()).isDefined => w
+        }
+        (acc :+ (p.relativeTo(root.dir) -> here), after)
+    }
+    val result = distinct.map { w =>
       w -> held.collect { case (rel, ws) if ws.contains(w) => rel }
     }.toMap
+    (result, next.only(files.toSet))
   }
-
-  /** The members of `words` that are a whole run of word characters (`\w`: ASCII letters, digits and `_`) in `text`. */
-  private def runsIn(text: String, words: Set[String]): Set[String] =
-    if (words.isEmpty) Set.empty
-    else {
-      def isWord(c: Char): Boolean =
-        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
-      val longest = words.map(_.length).max
-      val found = Set.newBuilder[String]
-      var i = 0
-      while (i < text.length) {
-        if (isWord(text.charAt(i))) {
-          var j = i + 1
-          while (j < text.length && isWord(text.charAt(j))) j += 1
-          if (j - i <= longest) {
-            val run = text.substring(i, j)
-            if (words.contains(run)) found += run
-          }
-          i = j
-        } else i += 1
-      }
-      found.result()
-    }
 
   /** The files `mentioning` searches whose text `holds`, sorted. */
   def holding(root: Root, holds: String => Boolean): Vector[os.RelPath] =

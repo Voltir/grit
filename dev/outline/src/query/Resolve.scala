@@ -146,16 +146,14 @@ object Resolve {
         } else {
           val last = simple(sym)
           val classes = layout.classesDirs(root)
+          val (mentioning, words) = Locate.mentioning(root, last, loaded.words)
           val tasty = usable(
             root,
             layout,
             scope,
-            Locate
-              .mentioning(root, last)
-              .flatMap(Locate.inPackagesIn(root, classes))
-              .distinct
+            mentioning.flatMap(Locate.inPackagesIn(root, classes)).distinct
           )
-          load(tasty, loaded).map { case (more, after) =>
+          load(tasty, loaded.copy(words = words)).map { case (more, after) =>
             val byLast = everyDefn(more).filter(d => simple(d.fullName) == last && !hidden(d))
             val qualifier = sym.split('.').toVector.dropRight(1).lastOption
             val owned = qualifier.fold(byLast)(q => byLast.filter(d => simple(owner(d)) == q))

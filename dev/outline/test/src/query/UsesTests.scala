@@ -3,7 +3,7 @@ package grit.outline.query
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 
-import grit.outline.locate.{Layout, Locate, MillLayout, Root}
+import grit.outline.locate.{Layout, Locate, MillLayout, Root, SourceWords}
 import grit.outline.model.Use
 import grit.outline.read.Read
 import grit.outline.render.Render
@@ -368,10 +368,14 @@ object UsesTests extends TestSuite {
         .map(r => Query.searchesFor(r.defns, r.seen))
       assert(searches == Right(Vector(Query.Search("of", Some("Limits")))))
       val inFixture = Query
-        .candidates(root, Vector(Query.Search("of", Some("Limits"))))
+        .candidates(root, Vector(Query.Search("of", Some("Limits"))), SourceWords.empty)
+        ._1
         .filter(_.startsWith(os.RelPath("dev/outline/fixture/src")))
       val mentioningOf =
-        Locate.mentioning(root, "of").filter(_.startsWith(os.RelPath("dev/outline/fixture/src")))
+        Locate
+          .mentioning(root, "of", SourceWords.empty)
+          ._1
+          .filter(_.startsWith(os.RelPath("dev/outline/fixture/src")))
       assert(inFixture == Vector(os.RelPath("dev/outline/fixture/src/Sample.scala")))
       assert(mentioningOf.size > inFixture.size)
     }
@@ -480,7 +484,7 @@ object UsesTests extends TestSuite {
         def compile(modules: Vector[String]): String = "compile"
         def isTest(classesDir: os.Path): Boolean = FixtureLayout.isTest(classesDir)
       }
-      val candidates = Locate.mentioning(root, "get").size
+      val candidates = Locate.mentioning(root, "get", SourceWords.empty)._1.size
       val (answer, _) =
         Query.uses(
           root,

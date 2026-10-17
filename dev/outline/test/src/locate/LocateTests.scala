@@ -148,7 +148,27 @@ object LocateTests extends TestSuite {
       os.write.over(root.dir / "core/x/src/A.scala", "object A { Inbox.hear }\n")
       os.write.over(root.dir / "core/x/src/B.scala", "object B { InboxError }\n")
       os.write.over(root.dir / "out/x/src/C.scala", "object C { Inbox }\n")
-      assert(Locate.mentioning(root, "Inbox") == Vector(os.RelPath("core/x/src/A.scala")))
+      assert(
+        Locate.mentioning(root, "Inbox", SourceWords.empty)._1 == Vector(
+          os.RelPath("core/x/src/A.scala")
+        )
+      )
+    }
+
+    test(
+      "mentioningEach over the words it last read answers from a file's text now, though its size and mtime are unchanged"
+    ) {
+      val root = tree("core/x/src/A.scala")
+      val a = root.dir / "core/x/src/A.scala"
+      os.write.over(a, "object A { Alpha }\n")
+      val (first, words) = Locate.mentioningEach(root, Vector("Alpha", "Bravo"), SourceWords.empty)
+      val stamp = os.mtime(a)
+      os.write.over(a, "object A { Bravo }\n")
+      os.mtime.set(a, stamp)
+      val (again, _) = Locate.mentioningEach(root, Vector("Alpha", "Bravo"), words)
+      val rel = os.RelPath("core/x/src/A.scala")
+      assert(first == Map("Alpha" -> Vector(rel), "Bravo" -> Vector.empty))
+      assert(again == Map("Alpha" -> Vector.empty, "Bravo" -> Vector(rel)))
     }
 
     test(
@@ -162,10 +182,13 @@ object LocateTests extends TestSuite {
       val b = os.RelPath("core/x/src/B.scala")
       val c = os.RelPath("core/x/src/C.scala")
       assert(
-        Locate.mentioningEach(
-          root,
-          Vector("Inbox", "InboxError", "Error", "Inbox.hear", "hear", "Outbox", "Spare")
-        ) == Map(
+        Locate
+          .mentioningEach(
+            root,
+            Vector("Inbox", "InboxError", "Error", "Inbox.hear", "hear", "Outbox", "Spare"),
+            SourceWords.empty
+          )
+          ._1 == Map(
           "Inbox" -> Vector(a, b),
           "InboxError" -> Vector(b),
           "Error" -> Vector(a),

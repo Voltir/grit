@@ -2,7 +2,7 @@ package grit.outline.query
 
 import scala.collection.mutable
 
-import grit.outline.locate.{Layout, Locate, Root, TastySource, WordGlob}
+import grit.outline.locate.{Layout, Locate, Root, SourceWords, TastySource, WordGlob}
 import grit.outline.model.Lines
 import grit.outline.model.{Defn, Kind, Staleness, TestCase, Use}
 import grit.outline.read.Read
@@ -910,14 +910,16 @@ object Query {
     Resolve.resolve(root, layout, config, Scope.WithTests, name, in).flatMap { resolved =>
       val exact = resolved.defns.exists(_.fullName == name)
       val traitName = resolved.defns.map(_.fullName).distinct.sorted.headOption.getOrElse(name)
-      val files = Locate
-        .mentioning(root, name.split('.').last)
+      val (mentioning, words) =
+        Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
+      val files = mentioning
         .filter(file => exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix)))
       val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
       val inPackage = files.map(file => file -> inPackages(file))
       val tasty = inPackage.flatMap(_._2).distinct
       val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
-      val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
+      val (defns, next, missing) =
+        loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
       val notes = resolved.notes ++ missing ++ notSearched(unsearched)
       familyOf(defns, traitName, None, false).map { f =>
         val members =
@@ -1084,16 +1086,17 @@ object Query {
           // A name matched exactly keeps its hidden candidate files; a short name does not reach them.
           val exact = resolved.defns.exists(_.fullName == name)
           val traitName = resolved.defns.map(_.fullName).headOption.getOrElse(name)
-          val files = Locate
-            .mentioning(root, name.split('.').last)
-            .filter(file =>
-              exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
-            )
+          val (mentioning, words) =
+            Locate.mentioning(root, name.split('.').last, resolved.loaded.words)
+          val files = mentioning.filter(file =>
+            exact || !config.hidden.exists(prefix => file.toString.startsWith(prefix))
+          )
           val inPackages = Locate.inPackagesIn(root, layout.classesDirs(root))
           val inPackage = files.map(file => file -> inPackages(file))
           val tasty = inPackage.flatMap(_._2).distinct
           val unsearched = inPackage.collect { case (file, found) if found.isEmpty => file }
-          val (defns, next, missing) = loadAll(root, layout, tasty, resolved.loaded)
+          val (defns, next, missing) =
+            loadAll(root, layout, tasty, resolved.loaded.copy(words = words))
           val head =
             (Vector(header(root)) ++ resolved.notes ++ missing ++ notSearched(unsearched))
               .mkString("\n")
@@ -1202,11 +1205,16 @@ object Query {
     }.distinct
   }
 
-  /** The source files under `root` that hold a search's name as a word and, when it has an owner, the owner's too; sorted, each once. */
-  private[query] def candidates(root: Root, searches: Vector[Search]): Vector[os.RelPath] = {
-    val holding = Locate.mentioningEach(root, searches.flatMap(s => s.name +: s.owner.toVector))
+  /** The source files under `root` that hold a search's name as a word and, when it has an owner, the owner's too; sorted, each once. With them, the source words read, as `Locate.mentioningEach` gives them from `known`. */
+  private[query] def candidates(
+      root: Root,
+      searches: Vector[Search],
+      known: SourceWords
+  ): (Vector[os.RelPath], SourceWords) = {
+    val (holding, words) =
+      Locate.mentioningEach(root, searches.flatMap(s => s.name +: s.owner.toVector), known)
     def files(word: String): Vector[os.RelPath] = holding.getOrElse(word, Vector.empty)
-    searches
+    val found = searches
       .flatMap { s =>
         s.owner.fold(files(s.name)) { owner =>
           val naming = files(owner).toSet
@@ -1215,17 +1223,20 @@ object Query {
       }
       .distinct
       .sortBy(_.toString)
+    (found, words)
   }
 
-  /** The `.tasty` files in `classes` a search for `searches` reads: those in the package dirs of the files `candidates` gives that satisfy `keep`; with them, those files whose package has no `.tasty` in `classes` and that `config` does not hide. */
+  /** The `.tasty` files in `classes` a search for `searches` reads: those in the package dirs of the files `candidates` gives that satisfy `keep`; with them, those files whose package has no `.tasty` in `classes` and that `config` does not hide; and the source words `candidates` read from `known`. */
   private[query] def toRead(
       root: Root,
       config: Config,
       classes: Vector[os.Path],
       searches: Vector[Search],
-      keep: os.RelPath => Boolean
-  ): (Vector[os.Path], Vector[os.RelPath]) = {
-    val kept = candidates(root, searches).filter(keep)
+      keep: os.RelPath => Boolean,
+      known: SourceWords
+  ): (Vector[os.Path], Vector[os.RelPath], SourceWords) = {
+    val (found, words) = candidates(root, searches, known)
+    val kept = found.filter(keep)
     val inPackages = Locate.inPackagesIn(root, classes)
     val inPackage = kept.map(file => file -> inPackages(file))
     val unsearched = inPackage.collect {
@@ -1233,7 +1244,7 @@ object Query {
           if found.isEmpty && !config.hidden.exists(prefix => file.toString.startsWith(prefix)) =>
         file
     }
-    (inPackage.flatMap(_._2).distinct, unsearched)
+    (inPackage.flatMap(_._2).distinct, unsearched, words)
   }
 
   /** The references in `classes`' `.tasty` to `names` (full names), read through the root's cache from the files `toRead` gives; with them, the files `toRead` names as not searched, and the cache after. The references are `Left` when their index cannot be read. */
@@ -1247,11 +1258,12 @@ object Query {
       keep: os.RelPath => Boolean,
       in: Loaded
   ): (Either[String, Vector[Use]], Vector[os.RelPath], Loaded) = {
-    val (tasty, unsearched) = toRead(root, config, classes, searches, keep)
-    if (names.isEmpty || tasty.isEmpty) (Right(Vector.empty), unsearched, in)
+    val (tasty, unsearched, words) = toRead(root, config, classes, searches, keep, in.words)
+    val read = in.copy(words = words)
+    if (names.isEmpty || tasty.isEmpty) (Right(Vector.empty), unsearched, read)
     else
-      Loaded.uses(root, layout, tasty, in) match {
-        case Left(message) => (Left(message), unsearched, in)
+      Loaded.uses(root, layout, tasty, read) match {
+        case Left(message) => (Left(message), unsearched, read)
         case Right((refs, next, _)) => (Right(Read.targeting(refs, names)), unsearched, next)
       }
   }
