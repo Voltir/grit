@@ -181,5 +181,31 @@ object StaleLineTests extends TestSuite {
       val printed = answer.text.linesIterator.toVector
       assert(printed.count(_ == "trait T { def g: Int }") == 1)
     }
+
+    test("a show of a trait on one line with --body naming its member prints the member's entry") {
+      touch(stale = false)
+      val (answer, _) = Query.show(
+        Root(dir),
+        MillLayout,
+        Config.empty,
+        Roots.empty(6000),
+        Vector("r.T"),
+        depth = 0,
+        bodies = Set("g"),
+        withPrivate = false,
+        cap = 80000,
+        tests = TestsShown.Dropped
+      )
+      assert(
+        answer.text.linesIterator.drop(1).toVector == Vector(
+          "== k/src/r/T.scala  r",
+          "2-2  [0.2 KB]",
+          "trait T { def g: Int }",
+          "2-2  [0.2 KB]",
+          "trait T { def g: Int }",
+          "[0.1 KB]"
+        )
+      )
+    }
   }
 }
