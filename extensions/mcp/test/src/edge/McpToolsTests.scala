@@ -280,6 +280,19 @@ object McpToolsTests extends TestSuite {
       }
     }
 
+    test("an exchange that fails tells the operator's log why, its tool named") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
+        val mcp = toolsOver(fake)
+        val _ = mcp.offered()
+        fake.refuses(Some(FakeMcpServer.Refusal(503, Vector.empty, "")))
+        val heard = Vector.newBuilder[String]
+        val q = request("github_get_file_contents", Read)
+        val _ = mcp.run(route(q), q, heard += _)
+        heard.result() ==> Vector("github_get_file_contents: github answered HTTP 503")
+      }
+    }
+
     test("a tool no list offers is Failed naming those that are, and no call is sent") {
       withFake { fake =>
         fake.lists(

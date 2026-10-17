@@ -36,9 +36,6 @@ enum DriveError derives CanEqual {
   /** The file is of a type grit does not read, `kind` in words ("a PDF"). */
   case Unreadable(kind: String)
 
-  /** What the model reads, and may say: what happened and what a person can do, in plain
-    * words naming no setting and no name of the deployment's own.
-    */
   /** What the operator's log is told of it beside [[message]]: its cause; `None` for an answer
     * a person's own ask explains (a file not shared, or of a type not read).
     */
@@ -50,6 +47,9 @@ enum DriveError derives CanEqual {
     case Malformed(why) => Some(s"Drive's answer could not be read: $why")
   }
 
+  /** What the model reads, and may say: what happened and what a person can do, in plain
+    * words naming no setting and no name of the deployment's own.
+    */
   def message: String = this match {
     case NoToken(_) => "Drive access isn't working just now; tell an administrator."
     case Hidden => "That file isn't shared here, or doesn't exist."

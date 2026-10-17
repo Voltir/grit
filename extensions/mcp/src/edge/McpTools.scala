@@ -27,7 +27,8 @@ import grit.mcp.wire.McpTool
   * object sent. Its answer is [[Outcome.Done]], its items as its server's `accounts` read them
   * ([[McpClient.call]]), or [[Outcome.Failed]] with the tool's text
   * when it marks it `isError`, or naming the server and the [[grit.mcp.wire.McpError]] when
-  * the exchange fails. Before each run, the tools are told to `advertise` when they differ
+  * the exchange fails; the run's `said` then hears the cause ([[grit.mcp.wire.McpError.logged]]),
+  * its tool named. Before each run, the tools are told to `advertise` when they differ
   * from those it last took (the first time included); one it refused is told again next run.
   * `clients` read `clock` for their lists' freshness.
   */
@@ -69,13 +70,13 @@ final class McpTools(
     */
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
     val _ = offered()
-    val tools: Vector[Tool.Offered^{clock}] =
+    val tools: Vector[Tool.Offered^{clock, said}] =
       McpTools.current(clock, clients).flatMap { (at, tool) =>
         clients.lift(at).toVector.flatMap { client =>
-          Vector(McpTools.hosted(tool).over(args => McpTools.call(client, tool, args)))
+          Vector(McpTools.hosted(tool).over(args => McpTools.call(client, tool, args, said)))
         }
       }
-    Toolbox.of[caps.CapSet^{clock}](tools*) match {
+    Toolbox.of[caps.CapSet^{clock, said}](tools*) match {
       case Right(box) => Run.request(request, box)
       // current offers each name once.
       case Left(repeated) =>
@@ -110,13 +111,23 @@ object McpTools {
   /** `tool` as an edge advertises it. */
   private def entry(tool: McpTool): ToolSet.Entry = hosted(tool).entry
 
-  /** `tool` called on `client`'s server with `args`, as the model reads it. */
-  private def call(client: McpClient^, tool: McpTool, args: ujson.Value): Outcome =
+  /** `tool` called on `client`'s server with `args`, as the model reads it, `said` told why
+    * when the exchange failed.
+    */
+  private def call(
+      client: McpClient^,
+      tool: McpTool,
+      args: ujson.Value,
+      said: String => Unit
+  ): Outcome =
     args.objOpt match {
       case None => Outcome.Failed(s"${tool.name}'s arguments are not a JSON object; nothing ran.")
       case Some(obj) =>
         client.call(tool, ujson.Obj.from(obj)) match {
-          case Left(error) => Outcome.Failed(s"${client.server.name} ${error.message}")
+          case Left(error) =>
+            val named = s"${ToolName.value(tool.offered)}: ${client.server.name}"
+            error.logged.foreach(why => said(s"$named $why"))
+            Outcome.Failed(s"${client.server.name} ${error.message}")
           case Right(answer) =>
             if (answer.isError) Outcome.Failed(answer.text)
             else Outcome.Done(answer.text, items = answer.items, parts = answer.parts)

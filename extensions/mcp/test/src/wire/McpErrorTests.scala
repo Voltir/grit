@@ -52,5 +52,12 @@ object McpErrorTests extends TestSuite {
           "the call names no fileId, which grit looks up with meta first"
       )
     }
+
+    test("the operator's log is told an error's line, but nothing of a call out of scope") {
+      (
+        McpError.OutOfScope("its calls are limited to repo r, and this one has repo secret").logged,
+        McpError.Status(502).logged
+      ) ==> (None, Some("answered HTTP 502"))
+    }
   }
 }

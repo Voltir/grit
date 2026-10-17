@@ -89,5 +89,13 @@ enum McpError {
       s"was not asked, since grit could not first look up what it would read: $why"
   }
 
+  /** What the operator's log is told of it: its [[message]]; `None` for [[OutOfScope]], whose
+    * words name the call's arguments, and which the model's own call explains.
+    */
+  def logged: Option[String] = this match {
+    case OutOfScope(_) => None
+    case other => Some(other.message)
+  }
+
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")
 }
