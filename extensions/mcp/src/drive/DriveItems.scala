@@ -1,6 +1,6 @@
 package grit.mcp.drive
 
-import grit.core.host.Clipped
+import grit.core.host.{Clipped, Kept}
 import grit.core.identity.Email
 import grit.core.visibility.{Integrity, Itemised, Part, Provenance, Readers}
 
@@ -128,15 +128,19 @@ object DriveItems {
   }
 
   /** `title` and then `text`'s leading whole lines, as many as fit after `head` within
-    * [[Clipped]]'s limits, with a line saying how many were kept when some were not.
+    * [[Clipped]]'s limits, with [[Clipped.cutHint]]'s hint when some were not.
     */
   private def fitted(head: String, title: String, text: String): String = {
     val lines = Clipped.lines(text)
-    def kept(k: Int): String = {
-      val shown = (title +: lines.take(k)).mkString("\n")
-      if (k == lines.size) shown
-      else s"$shown\n[Only the first $k of its ${lines.size} lines are shown.]"
-    }
+    // `title` and `k` lines fit whole by the search below, so `head` keeps them, and its hint
+    // is said of the text's lines, never of the cut it did not make.
+    def kept(k: Int): String =
+      Clipped
+        .head(
+          (title +: lines.take(k)).mkString("\n"),
+          _ => Clipped.cutHint(Option.when(k < lines.size)(Kept(k, lines.size, partial = false)))
+        )
+        .show
     if (Clipped.fits(s"$head\n${kept(lines.size)}")) kept(lines.size)
     else kept(Clipped.most(lines.size - 1)(k => s"$head\n${kept(k)}"))
   }
