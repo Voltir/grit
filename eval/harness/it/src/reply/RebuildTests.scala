@@ -8,7 +8,7 @@ import scala.concurrent.duration.*
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.clock.{Clock, Fresh}
-import grit.core.context.{AssemblyNote, Width}
+import grit.core.context.{AssemblyNote, Retrieved, Width}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.durable.Durable
 import grit.core.id.{
@@ -49,13 +49,16 @@ import grit.turn.{
   TurnEnv,
   TurnHosting,
   TurnLoop,
+  TurnRecord,
   TurnRecords,
+  TurnRelevance,
   TurnSpeech,
   TurnStitching,
   TurnTooling
 }
 
 import Queries.given
+import TurnRelevance.Verdict
 import utest.*
 
 /** Windows rebuilt over a database a live engine ran turns on, each turn's window drawn by
@@ -117,7 +120,38 @@ object RebuildTests extends TestSuite {
     }
   }
 
-  private def launch(engine: Engine^): Unit = {
+  /** A turn's judge that rejects, at 0.1, each candidate whose text names a rumour, and passes
+    * the rest at 0.9.
+    */
+  private final class Sceptic extends grit.core.classify.Classifier {
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[grit.core.classify.Question]
+    ): Either[grit.core.classify.ClassifierError, grit.core.classify.Answers] = {
+      val candidates = state.objOpt
+        .flatMap(_.get("candidates"))
+        .flatMap(_.arrOpt)
+        .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
+      Right(
+        grit.core.classify.Answers(
+          questions.indices.toVector.map(i =>
+            grit.core.classify.Answer
+              .YesNo(if (candidates.lift(i).exists(_.contains("rumour"))) 0.1 else 0.9)
+          ),
+          Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
+          "test/sceptic"
+        )
+      )
+    }
+  }
+
+  private def launch(engine: Engine^): Unit =
+    launch(engine, grit.core.classify.ClearedClassifier.none("no classifier"))
+
+  /** The turn, triage and stitch workflows launched on `engine`, each turn judging what its
+    * search found by `judge`.
+    */
+  private def launch(engine: Engine^, judge: grit.core.classify.ClearedClassifier^): Unit = {
     val classifier = new StubClassifier
     val tooling = TurnTooling[{}](
       Toolbox.Empty,
@@ -182,7 +216,7 @@ object RebuildTests extends TestSuite {
             Assembled.Shipped.tail,
             Tuning.Default
           ),
-          grit.core.classify.ClearedClassifier.none("no classifier"),
+          judge,
           Writing,
           engine.db,
           Clock.system(),
@@ -379,11 +413,35 @@ object RebuildTests extends TestSuite {
     } finally engine.close()
   }
 
+  /** Two task conversations told the Falcon budget, the second as a rumour, then a third asking
+    * it, its turn judged by a [[Sceptic]]; the two told, that turn's window rebuilt, and what its
+    * search recorded.
+    */
+  private lazy val judged: (Reader, TurnRef, TurnRef, RebuiltWindow, TurnRecord.Retrieval) = {
+    val config = TestPostgres.freshDatabase("harness_rebuild_judged")
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      launch(
+        engine,
+        grit.core.classify.ClearedClassifier.of(StubClassifier.Service, new Sceptic)
+      )
+      val told = ask(engine, "e", "the Falcon budget is 4200")
+      val rumoured = ask(engine, "f", "a rumour says the Falcon budget is 1")
+      val g = ask(engine, "g", "what is the Falcon budget?")
+      val reader = Reader.open(config)
+      val rebuilt =
+        right(Rebuild.recorded(reader, g.workflowId, Assembled.Shipped, Width.Deployed))
+      val retrieval = right(right(reader.steps(g.workflowId).map(TurnRecord.retrieval)))
+      (reader, told, rumoured, rebuilt, right(retrieval.toRight("no search recorded")))
+    } finally engine.close()
+  }
+
   private def conversations(n: Vector[Nearby]): Vector[ConversationId] = n.map(_.conversation)
 
   override def utestAfterAll(): Unit = {
     world._1.close()
     documented._1.close()
+    judged._1.close()
   }
 
   val tests = Tests {
@@ -405,6 +463,18 @@ object RebuildTests extends TestSuite {
       r.rebuilt.notes.collect { case q: AssemblyNote.Queried => q.query } ==> Vector(
         "Falcon budget"
       )
+    }
+
+    test("a turn rebuilt from its recorded verdicts shows none it rejected") {
+      val (_, told, rumoured, r, retrieval) = judged
+      // The rumour was found, and its judge rejected it; the budget it passed.
+      retrieval.verdicts.collect {
+        case (Retrieved.Near(c, _), Verdict.Passed(_)) => c -> "passed"
+        case (Retrieved.Near(c, _), Verdict.Rejected(_)) => c -> "rejected"
+      }.toMap ==> Map(told.conversationId -> "passed", rumoured.conversationId -> "rejected")
+      r.recorded.map(w => conversations(w.nearby)) ==> Some(Vector(told.conversationId))
+      (conversations(r.rebuilt.nearby), r.drift) ==>
+        (Vector(told.conversationId), Some(Drift.Same))
     }
 
     test("a message said elsewhere after a turn's assembly is absent from its rebuild") {

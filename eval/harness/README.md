@@ -62,7 +62,8 @@ Packages, each importing only those above it:
   three window parts, cut at 800 characters, never the turn's own thread, a tool result,
   reasoning or the query. A rebuild draws a recorded turn's window again through the shipped
   retrieval assembler over the database as it stood when the turn's `assemble` step started,
-  its query replayed. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
+  its query replayed, and of a turn that recorded its search, only what its recorded verdicts
+  admitted packed, no classifier asked. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
   variant past the reply model's context is refused. The reference judges builds by ids alone,
   from reply labels, a hand-written file and `grit.eval`'s synthetic cases. ← `capture`,
   `label`, `log`, `jev`

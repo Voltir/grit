@@ -25,7 +25,7 @@ import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 import grit.models.Seed
-import grit.turn.Turn
+import grit.turn.{Turn, TurnRecord, TurnRelevance}
 
 /** How the shipped [[RetrievalAssembler]] is built to rebuild a window: the deployment's
   * `window` and `tail` budgets, its `hits` per search and the stitch `tuning`. A deployment
@@ -78,6 +78,17 @@ object Rebuild {
       width: Width,
       query: Option[Pinned]
   )(using Db^): Either[String, Window] =
+    drawn(view, turn, assembled, writer, width, query)(found => found)
+
+  /** [[window]], its search's results first handed to `admit`, which says which are packed. */
+  private def drawn(
+      view: AsOf,
+      turn: TurnRef,
+      assembled: Assembled,
+      writer: Provider^,
+      width: Width,
+      query: Option[Pinned]
+  )(admit: Results -> Results)(using Db^): Either[String, Window] =
     ContextAssembler
       .draw(
         new RetrievalAssembler(
@@ -98,7 +109,7 @@ object Rebuild {
         AssemblyRequest(turn, width)
       )(
         asked => query.fold(Left(Prepared.NoPin))(_ => writer.complete(asked).left.map(_.cause)),
-        found => Results(found.ranked, found.beyond)
+        admit
       )
       .left
       .map { case AssemblyError.Store(e) =>
@@ -119,8 +130,11 @@ object Rebuild {
   /** The window of the turn `workflow` recorded, rebuilt [[window]] over `reader`'s database as
     * it stood when the turn's `assemble` step started, its query the one the turn recorded:
     * asked for one, the writer answers with it, so nothing is spent; a turn that recorded none
-    * is rebuilt with a writer that fails, as live's did or was never asked. `Left` when the
-    * turn recorded no `assemble` step or no start for it, or what it needs cannot be read.
+    * is rebuilt with a writer that fails, as live's did or was never asked. A turn that
+    * recorded its search ([[TurnRecord.retrieval]]) packs what that search recorded and its
+    * verdicts admitted ([[TurnRelevance.admitted]]), no classifier asked; one that recorded
+    * none packs all its search finds. `Left` when the turn recorded no `assemble` step or no
+    * start for it, or what it needs cannot be read.
     */
   def recorded(
       reader: Reader^,
@@ -166,15 +180,23 @@ object Rebuild {
             .sum || kept.size < w.documents.distinct.size
         )
       )
+      searched <- TurnRecord
+        .retrieval(steps)
+        .left
+        .map(why => s"the search of $name does not read: $why")
       seed <- Seed.catalog
       // The writer replays the query the turn recorded, and sends nothing.
-      rebuilt <- window(
+      rebuilt <- drawn(
         AsOf(reader, at),
         turn,
         assembled,
         new Replayed(query),
         width,
         Some(seed.pin.query.first)
+      )(
+        searched.fold[Results -> Results](found => found)(r =>
+          _ => TurnRelevance.admitted(r.results, r.verdicts)
+        )
       )(using reader.db)
     } yield RebuiltWindow(at, recorded, rebuilt, lost)
   }
