@@ -297,6 +297,21 @@ object MovesJournalTests extends TestSuite {
         Right(Right(("Done(read,public)", Some(Integrity.Outside))))
     }
 
+    // A pin of the recorded form: every run recorded so far holds this form, and replays with
+    // no patch only while it reads back as it did and encodes to the bytes it was recorded with.
+    test(
+      "an old-form done answer reads back with no facts, its text byte-identical, and writes back the same bytes"
+    ) {
+      val journaled = MovesJournal.answered(Integrity.Authority)
+      val written =
+        """{"done":{"text":"a \"quoted\" line\nand é","at":"public","integrity":"member"}}"""
+      val read = journaled.decode(written)
+      (read.map(_.map(shown)), read.map(journaled.encode)) ==> (
+        Right(Right("Done(a \"quoted\" line\nand é,public)")),
+        Right(written)
+      )
+    }
+
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside
     // grit (`printf '%s' '<form>' | sha256sum`).
     test("an ask's v1 digest is of its system text, messages, tools' names and tool use") {

@@ -82,5 +82,22 @@ object OutcomeJsonTests extends TestSuite {
         Right(cut)
       )
     }
+
+    // A pin of both forms as rows and recorded steps hold them today: each reads back to what
+    // writes the same bytes again, so nothing added to an outcome changes a form it had.
+    test("an old-form row reads back unchanged in either form") {
+      val recorded =
+        """{"kind":"done","text":"2 files","integrity":"member","items":[""" +
+          """{"place":"service:files/confidential","author":"member"}]}"""
+      val answered =
+        """{"kind":"done","text":"2 files","items":[],"parts":[""" +
+          """{"place":"service:files/confidential","author":"member","readers":"place","text":"plan.md"},""" +
+          """{"place":"service:files/confidential","author":"untrusted",""" +
+          """"readers":{"originator":"ana@example.com"},"text":"notes.md"}]}"""
+      (
+        OutcomeJson.read(ujson.read(recorded)).map(OutcomeJson.write(_).render()),
+        OutcomeJson.read(ujson.read(answered)).map(OutcomeJson.answer(_).render())
+      ) ==> (Right(recorded), Right(answered))
+    }
   }
 }
