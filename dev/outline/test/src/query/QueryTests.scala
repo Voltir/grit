@@ -711,7 +711,9 @@ object QueryTests extends TestSuite {
       assert(wrong.isEmpty)
     }
 
-    test("a read refused as built in another checkout says so under the root line") {
+    test(
+      "a read refused as built in another checkout says so on the line under the root line, naming the .tasty and the source it records"
+    ) {
       val elsewhere = Root(os.temp.dir(prefix = "outline-elsewhere-"))
       val sym = "grit.outline.fixture.A"
       val config = Config(Vector.empty, Vector(Area("a", Vector(sym), Vector.empty)))
@@ -743,11 +745,21 @@ object QueryTests extends TestSuite {
           .family(elsewhere, FixtureLayout, config, Roots.empty(6000), sym, None, false, 80000)
           ._1
       )
+      // find is left out: it reads only the .tasty of packages whose sources under the root hold the name, and this
+      // root has no sources, so it reads none and has nothing to refuse.
+      val refusal = Vector(
+        FixtureLayout
+          .classesDirs(elsewhere)
+          .map(_ / os.RelPath("grit/outline/fixture/A.tasty"))
+          .mkString +
+          s" records its source at ${root.dir / "dev/outline/fixture/src/Sample.scala"}, outside ${elsewhere.dir}: " +
+          Read.builtElsewhere
+      )
       val wrong = answers.collect {
         case (query, answer)
             if answer.status != Status.Failed ||
               !answer.text.startsWith(s"## root ${elsewhere.dir} (") ||
-              !answer.text.contains(Read.builtElsewhere) =>
+              answer.text.linesIterator.drop(1).toVector != refusal =>
           s"$query: $answer"
       }
       assert(wrong.isEmpty)
