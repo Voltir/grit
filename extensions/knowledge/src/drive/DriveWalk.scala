@@ -22,8 +22,8 @@ import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Unwritten, Wal
   * shows one: from a summary of its first 8 KB, or, when its text is blank, as `An empty file.`
   * with no ask. A
   * card held only at another label is replaced by that write, its copy there withdrawn in the
-  * same keep. It asks for at most `perRun` summaries: past them a changed file is left, and the
-  * listings go on. A new file (none of its cards held) is not taken once the units held and
+  * same keep. It reads at most `perRun` files, so asks for at most as many summaries: past them
+  * a changed file is left, and the listings go on. A new file (none of its cards held) is not taken once the units held and
   * those written new reach `maxUnits`. A file read with no change time, or whose list or read
   * came to [[Outcome.NotTaken]], is [[Unwritten]].
   *
@@ -50,7 +50,7 @@ object DriveWalk {
   /** `/`: the path of the shared drives' listing, which no Drive id is. */
   val Drives: String = "/"
 
-  /** The walk of `cards` for a run asking for at most `perRun` summaries and keeping at `floor`,
+  /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
     * holding `held`, its source's cards as [[Held.read]] reads them.
     */
   def start(cards: DriveCards, perRun: Int, floor: Label, held: Vector[Held]): DriveWalk = {
@@ -132,7 +132,7 @@ object DriveWalk {
       stack: List[Task],
       waiting: Waiting,
       next: Either[Synced, Step],
-      asked: Int,
+      reads: Int,
       fresh: Int,
       folders: Int,
       written: Int,
@@ -190,11 +190,10 @@ object DriveWalk {
           case Fetched.Text(text, version) if text.isBlank =>
             write(env, s, card(env, entry, within, version, Empty, pointer))
           case Fetched.Text(text, version) =>
-            s.copy(asked = s.asked + 1)
-              .step(
-                Step.Summarise(entry.id, Fetched.head(text), version),
-                Waiting.Summary(entry, within, version, pointer)
-              )
+            s.step(
+              Step.Summarise(entry.id, Fetched.head(text), version),
+              Waiting.Summary(entry, within, version, pointer)
+            )
           case Fetched.Unversioned(why) => advance(env, unwritten(s, entry.id, why))
         }
       case (Waiting.Summary(entry, within, version, pointer), Outcome.Summarised(summary)) =>
@@ -314,15 +313,17 @@ object DriveWalk {
         case Task.Read(entry, within) =>
           if (env.isNew(entry.id) && env.byPath.size + s.fresh >= env.cards.maxUnits)
             advance(env, popped.copy(refused = popped.refused + 1))
-          else if (s.asked >= env.perRun) advance(env, popped.copy(left = popped.left + 1))
+          else if (s.reads >= env.perRun) advance(env, popped.copy(left = popped.left + 1))
           else
             env.cards.pointer(entry.id) match {
               case Left(why) => advance(env, unwritten(popped, entry.id, why))
               case Right(pointer) =>
-                popped.step(
-                  Step.Read(entry.id, Way.Through(within)),
-                  Waiting.Reading(entry, within, pointer)
-                )
+                popped
+                  .copy(reads = popped.reads + 1)
+                  .step(
+                    Step.Read(entry.id, Way.Through(within)),
+                    Waiting.Reading(entry, within, pointer)
+                  )
             }
       }
   }

@@ -71,7 +71,7 @@ final case class DriveCards private (
 
   def subject(path: String): String = s"The Drive file with the id `$path`"
 
-  /** `perRun`, plus [[maxUnits]] (the most folders a run lists), plus the shared drives' listing
+  /** `perRun` (the most files a run reads), plus [[maxUnits]] (the most folders it lists), plus the shared drives' listing
     * and its most drives, at most `Int.MaxValue`.
     */
   def calls(perRun: Int): Int =

@@ -266,6 +266,20 @@ object DriveWalkTests extends TestSuite {
       assert(synced.written == 1, synced.left == 2)
     }
 
+    test("a run reads at most perRun files, those its reads leave unwritten among them") {
+      val docs =
+        (1 to 200).toVector.map(n => DriveEntry(s"doc-$n", Kind.Document, None, None, None))
+      val drive = Map(
+        DriveWalk.Drives -> (DriveListing(Vector(this.drive("drive-a")), true), internal),
+        "drive-a" -> (DriveListing(docs, true), internal)
+      )
+      val source = cards(labels, maxUnits = 1)
+      val (steps, synced) = run(source.walk(1, internal, Vector.empty), drive)
+      val reads = fetches(steps).collect { case Step.Read(id, _) => id }
+      assert(reads == Vector("doc-1"), synced.left == 199)
+      assert(fetches(steps).size <= source.calls(1))
+    }
+
     test("a stopped step ends the walk at once, withdrawing nothing") {
       val stop = Step.List("drive-b", Way.Through(DriveWalk.Drives))
       val (steps, synced) =
