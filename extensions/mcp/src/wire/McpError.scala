@@ -89,13 +89,37 @@ enum McpError {
       s"was not asked, since grit could not first look up what it would read: $why"
   }
 
-  /** What the operator's log is told of it: its [[message]]; `None` for [[OutOfScope]], whose
-    * words name the call's arguments, and which the model's own call explains.
+  /** What the operator's log is told of it: its [[message]], the server's own words in a
+    * [[Rejected]] or an [[Rpc]] as one line of at most [[McpError.LoggedMost]] characters, cut
+    * at a word and ending " [cut]" when longer, since a server may echo a long argument or
+    * answer; `None` for [[OutOfScope]], whose words name the call's arguments, and which the
+    * model's own call explains.
     */
   def logged: Option[String] = this match {
     case OutOfScope(_) => None
+    case Rejected(status, body) => Some(Rejected(status, McpError.capped(body)).message)
+    case Rpc(code, text) => Some(Rpc(code, McpError.capped(text)).message)
     case other => Some(other.message)
   }
 
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")
+}
+
+object McpError {
+
+  /** The most characters of a server's own words the operator's log is told: 200. */
+  val LoggedMost: Int = 200
+
+  /** `said` as one line, cut to [[LoggedMost]] characters at a word, as [[McpError.logged]]
+    * says.
+    */
+  private def capped(said: String): String = {
+    val line = said.trim.split("\\s+").mkString(" ")
+    if (line.length <= LoggedMost) line
+    else {
+      val cut = line.take(LoggedMost)
+      val word = cut.lastIndexOf(' ')
+      s"${if (word > 0) cut.take(word) else cut} [cut]"
+    }
+  }
 }

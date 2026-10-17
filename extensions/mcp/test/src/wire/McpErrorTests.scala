@@ -59,5 +59,22 @@ object McpErrorTests extends TestSuite {
         McpError.Status(502).logged
       ) ==> (None, Some("answered HTTP 502"))
     }
+
+    test(
+      "a server's own words reach the operator's log as one line of at most LoggedMost characters, cut at a word and marked"
+    ) {
+      // 300 characters over three lines; the first 40 words are the most that fit in 200.
+      val said = Vector.fill(3)(Vector.fill(20)("word").mkString(" ")).mkString("\n")
+      val kept = Vector.fill(40)("word").mkString(" ") + " [cut]"
+      (
+        McpError.Rejected(400, said).logged,
+        McpError.Rpc(-32602, said).logged,
+        McpError.Rpc(-32602, "Unknown tool").logged
+      ) ==> (
+        Some(s"answered HTTP 400 with no MCP error: $kept"),
+        Some(s"answered error -32602: $kept"),
+        Some("answered error -32602: Unknown tool")
+      )
+    }
   }
 }
