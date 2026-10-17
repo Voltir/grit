@@ -96,7 +96,8 @@ object ResolveTests extends TestSuite {
       val r = resolve("Tx", secondary)
       assert(r.defns.map(_.fullName).distinct.size == 2)
       assert(
-        r.notes.drop(1) == Vector(
+        r.notes == Vector(
+          "-- ambiguous Tx, name one fully:",
           "--   grit.outline.fixture.Tx  dev/outline/fixture/src/Sample.scala:3-4  trait Tx extends caps.SharedCapability  [0.2 KB]  (secondary: dev/outline/fixture/src)",
           "--   grit.outline.fixture.store.Tx  dev/outline/fixture/src/store/Store.scala:53-54  trait Tx  [0.2 KB]  (secondary: dev/outline/fixture/src)"
         )
@@ -118,7 +119,11 @@ object ResolveTests extends TestSuite {
     test("a wrong qualifier naming one candidate's owner resolves to that candidate alone") {
       val r = resolve("Wrong.store.Quiver")
       assert(r.defns.map(_.fullName) == Vector("grit.outline.fixture.store.Quiver"))
-      assert(r.notes.exists(_.startsWith("-- no Wrong.store.Quiver as written; by last segment:")))
+      assert(
+        r.notes == Vector(
+          "-- no Wrong.store.Quiver as written; by last segment: grit.outline.fixture.store.Quiver"
+        )
+      )
     }
 
     test(
