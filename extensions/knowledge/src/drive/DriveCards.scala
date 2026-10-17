@@ -10,7 +10,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
 import grit.knowledge.card.UnitVersion
-import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule}
+import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
 
 /** The Docs, Sheets and text files of every shared drive its service reads, top level and one
   * folder deep, listed with `list` and read with `read` (`drive_list` and `drive_read`, as the
@@ -78,7 +78,7 @@ final case class DriveCards private (
     (perRun.toLong + maxUnits + 1 + DriveCards.DrivesMost).min(Int.MaxValue.toLong).toInt
 
   /** [[DriveWalk.start]] at the [[turn]] of `due`. */
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): DriveWalk =
+  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[DriveListing] =
     DriveWalk.start(this, perRun, floor, held, turn(due))
 
   /** How many slots of its [[syncs]] fall after [[DriveCards.TurnsFrom]] and at or before `due`:

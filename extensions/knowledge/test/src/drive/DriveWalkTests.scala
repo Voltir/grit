@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.visibility.Label
 import grit.knowledge.card.{CardKey, CardSummary, UnitVersion}
-import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Way}
+import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Walk, Way}
 
 import utest.*
 
@@ -88,13 +88,13 @@ object DriveWalkTests extends TestSuite {
     * names.
     */
   private def run(
-      walk: DriveWalk,
+      walk: Walk[DriveListing],
       drive: Map[String, (DriveListing, Label)] = world,
       stop: Option[Step] = None
   ): (Vector[Step], Synced) = {
     val changed = drive.values.flatMap(_._1.entries).map(e => e.id -> e.changed).toMap
     @annotation.tailrec
-    def go(w: DriveWalk, steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
+    def go(w: Walk[DriveListing], steps: Vector[Step]): (Vector[Step], Synced) = w.next match {
       case Left(synced) => (steps, synced)
       case Right(step) =>
         val outcome: Outcome[DriveListing] =
