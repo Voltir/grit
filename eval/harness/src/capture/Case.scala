@@ -114,8 +114,11 @@ object Live {
 /** Why a classifier gave no answer, as a kind: never the words of why. */
 enum Failure {
 
-  /** It could not be reached, or refused the request. */
+  /** It could not be reached, or was too busy to answer. */
   case Unavailable
+
+  /** It was reached and turned the request down. */
+  case Refused
 
   /** It replied with no answer the question allows. */
   case Unreadable
@@ -129,8 +132,8 @@ enum Failure {
 
 object Failure {
 
-  /** `f`'s written name, as a capture and a run log keep it: `unavailable`, `unreadable`,
-    * `unasked` or `other`.
+  /** `f`'s written name, as a capture and a run log keep it: `unavailable`, `refused`,
+    * `unreadable`, `unasked` or `other`.
     */
   def written(f: Failure): String = f.toString.toLowerCase
 
@@ -139,16 +142,17 @@ object Failure {
 
   /** The kind of `e`, never its words: they can quote the request. */
   def of(e: ClassifierError): Failure = e match {
-    case ClassifierError.Unavailable(_) | ClassifierError.Refused(_) => Unavailable
+    case ClassifierError.Unavailable(_) => Unavailable
+    case ClassifierError.Refused(_) => Refused
     case ClassifierError.Unreadable(_) => Unreadable
   }
 
   /** The kind of failure `why` states, in the words triage and stitching keep: `unavailable:
-    * …` or `refused: …` (both `Unavailable`), `unreadable: …`, `the question repeats …` or
-    * `fewer than two options`.
+    * …`, `refused: …`, `unreadable: …`, `the question repeats …` or `fewer than two options`.
     */
   def of(why: String): Failure =
-    if (why.startsWith("unavailable:") || why.startsWith("refused:")) Unavailable
+    if (why.startsWith("unavailable:")) Unavailable
+    else if (why.startsWith("refused:")) Refused
     else if (why.startsWith("unreadable:")) Unreadable
     else if (why.startsWith("the question repeats") || why == "fewer than two options") Unasked
     else Other

@@ -433,10 +433,10 @@ object ClassifyTests extends TestSuite {
       })
     }
 
-    test("a refusal is said `refused: <cause>` and kept as of kind Unavailable") {
+    test("a refusal is said `refused: <cause>` and is of its own kind, Refused") {
       val refused = ClassifierError.Refused("HTTP 422: field required")
       (refused.said, refused.kind) ==>
-        ("refused: HTTP 422: field required", ClassifierError.Kind.Unavailable)
+        ("refused: HTTP 422: field required", ClassifierError.Kind.Refused)
     }
   }
 }

@@ -131,6 +131,20 @@ abstract class TriageShadowsContract extends TestSuite {
       }) ==> Right(Some(asked))
     }
 
+    test("a failed row of every kind is kept, and reads back as that kind") {
+      val c = conversation("shadows-kinds")
+      val variant = named("kinds")
+      val kept = ClassifierError.Kind.values.toVector.map(kind =>
+        hear(c, s"failed as $kind").id -> Shadowed.Failed("f41l3d", kind, 30.seconds)
+      )
+      transaction {
+        kept.foldLeft[Either[StoreError, Vector[Boolean]]](Right(Vector.empty)) {
+          case (so, (id, row)) => so.flatMap(s => shadows.record(id, variant, row, At).map(s :+ _))
+        }
+      } ==> Right(Vector.fill(kept.size)(true))
+      transaction(shadows.of(variant, kept.map(_._1))) ==> Right(kept.toMap)
+    }
+
     test("a row is kept once per variant; a second is false and keeps the first") {
       val c = conversation("shadows-once")
       val (words, replica) = (named("once-words"), named("once-replica"))

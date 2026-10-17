@@ -94,14 +94,16 @@ object ShadowedJson {
       }
     }
 
-  /** `kind` as stored: `unavailable` or `unreadable`. */
+  /** `kind` as stored: `unavailable`, `refused` or `unreadable`. */
   def kindWritten(kind: ClassifierError.Kind): String = kind match {
     case ClassifierError.Kind.Unavailable => "unavailable"
+    case ClassifierError.Kind.Refused => "refused"
     case ClassifierError.Kind.Unreadable => "unreadable"
   }
 
   def kindRead(s: String): Either[String, ClassifierError.Kind] = s match {
     case "unavailable" => Right(ClassifierError.Kind.Unavailable)
+    case "refused" => Right(ClassifierError.Kind.Refused)
     case "unreadable" => Right(ClassifierError.Kind.Unreadable)
     case other => Left(s"shadowed: unknown failure kind $other")
   }

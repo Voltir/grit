@@ -301,6 +301,7 @@ object Pull {
       case Shadowed.Failed(request, failure, latency) =>
         val kind = failure match {
           case ClassifierError.Kind.Unavailable => Failure.Unavailable
+          case ClassifierError.Kind.Refused => Failure.Refused
           case ClassifierError.Kind.Unreadable => Failure.Unreadable
         }
         Held(id, digest(request), "unknown", None, Form.Failed(kind), Usage.Zero, latency, focus)

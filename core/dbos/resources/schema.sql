@@ -806,7 +806,7 @@ CREATE TABLE IF NOT EXISTS grit.triage_shadows (
     at              TIMESTAMPTZ NOT NULL,
     request         TEXT NOT NULL,
     latency_ms      BIGINT NOT NULL CHECK (latency_ms >= 0),
-    failure         TEXT CHECK (failure IN ('unavailable', 'unreadable')),
+    failure         TEXT CHECK (failure IN ('unavailable', 'unreadable', 'refused')),
     answers         JSONB,
     requested       TEXT,
     answered        TEXT,

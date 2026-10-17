@@ -41,9 +41,9 @@ object LiveTests extends TestSuite {
       )
     }
 
-    test("tags unanswered as refused are kept as Unavailable, as an outage's are") {
+    test("tags unanswered as refused are kept as Refused, apart from an outage's") {
       Live.of(Tags.Unanswered("refused: HTTP 401: bad key")) ==>
-        Live.Unanswered(Failure.Unavailable)
+        Live.Unanswered(Failure.Refused)
     }
 
     test("v1's names with a kind choice of no kind are kept under their names") {

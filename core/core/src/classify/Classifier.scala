@@ -87,9 +87,10 @@ enum ClassifierError {
   /** It replied, but not with an answer the questions allow. */
   case Unreadable(why: String)
 
-  /** Which of these it is, without its words; a refusal is of kind `Unavailable`. */
+  /** Which of these it is, without its words. */
   def kind: ClassifierError.Kind = this match {
-    case Unavailable(_) | Refused(_) => ClassifierError.Kind.Unavailable
+    case Unavailable(_) => ClassifierError.Kind.Unavailable
+    case Refused(_) => ClassifierError.Kind.Refused
     case Unreadable(_) => ClassifierError.Kind.Unreadable
   }
 
@@ -105,11 +106,9 @@ enum ClassifierError {
 
 object ClassifierError {
 
-  /** What kind of failure a [[ClassifierError]] is, kept where its words may not be: a stored
-    * triage shadow allows these two alone.
-    */
+  /** What kind of failure a [[ClassifierError]] is, kept where its words may not be. */
   enum Kind {
-    case Unavailable, Unreadable
+    case Unavailable, Refused, Unreadable
   }
 }
 

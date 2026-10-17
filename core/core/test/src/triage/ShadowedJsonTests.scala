@@ -67,6 +67,16 @@ object ShadowedJsonTests extends TestSuite {
       ) ==> Right(Shadowed.Failed("f41l3d", ClassifierError.Kind.Unavailable, 2.millis))
     }
 
+    test("a refused shadow is stored with kind `refused`, as the table allows, and reads back") {
+      // A pin of the stored form: grit.triage_shadows.failure's CHECK names these words.
+      val refused = Shadowed.Failed("f41l3d", ClassifierError.Kind.Refused, 5.millis)
+      (ShadowedJson.write(refused), ShadowedJson.read(ShadowedJson.write(refused))) ==>
+        (
+          ujson.read("""{"failed":{"request":"f41l3d","kind":"refused","ms":5}}"""),
+          Right(refused)
+        )
+    }
+
     test(
       "a question set's answers are stored as a wording's, each with its name, and read back in the order asked"
     ) {

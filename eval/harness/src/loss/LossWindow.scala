@@ -73,7 +73,7 @@ object LossWindow {
 
   /** Each of `roots` asked of `jev` ([[WriteOut.question]]), one request a root, in order: the
     * probability it asks for a write out, or the kind of error Jev gave (`unavailable`,
-    * `unreadable`), and what Jev reported every answered request cost, in USD.
+    * `refused`, `unreadable`), and what Jev reported every answered request cost, in USD.
     */
   def ask(
       jev: Classifier^,
@@ -84,7 +84,8 @@ object LossWindow {
       roots.map((turn, said) => turn -> jev.ask(WriteOut.Said(said), WriteOut.question))
     val asked = answered.map((turn, a) =>
       turn -> a.map(_.value).left.map {
-        case ClassifierError.Unavailable(_) | ClassifierError.Refused(_) => "unavailable"
+        case ClassifierError.Unavailable(_) => "unavailable"
+        case ClassifierError.Refused(_) => "refused"
         case ClassifierError.Unreadable(_) => "unreadable"
       }
     )
