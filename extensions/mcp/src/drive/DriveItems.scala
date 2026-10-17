@@ -29,7 +29,7 @@ object DriveItems {
     *     searched, and how an administrator opens one: [[Opening]]), then each hit as a names part, one line (its name, or a note that
     *     it is not shown when [[shown]] refuses it, its type, its id, where it lies, and its
     *     shared drive by the name the search lists, by its id when none is listed or [[shown]]
-    *     refuses it), at
+    *     refuses it, and when it last changed, when Drive says), at
     *     member, at the place it lies within ([[DriveReading.place]]), a folder's at the
     *     service's own place; a hit lying nowhere is left out;
     *   - the shared drives: a head (saying, when Drive had more, that only the first
@@ -58,8 +58,8 @@ object DriveItems {
     called match {
       case DriveCalled.Searched(hits, drives) =>
         val head =
-          "Drive files whose text holds those words, one a line, each with its id; read one " +
-            "with drive_read." +
+          "Drive files whose text holds those words, one a line, each with its id and when it " +
+            "last changed; read one with drive_read." +
             (if (hits.incomplete)
                " Drive has more than these; search with more words to see others."
              else "") +
@@ -184,7 +184,7 @@ object DriveItems {
       case (Some(w), None) => s", in ${FileId.value(w)}"
       case (None, _) => ""
     }
-    s"- ${title(file)}, id ${FileId.value(file.id)}$where"
+    s"- ${title(file)}, id ${FileId.value(file.id)}$where${since(file)}"
   }
 
   /** `title` and then `text`'s leading whole lines, as many as fit after `head` within

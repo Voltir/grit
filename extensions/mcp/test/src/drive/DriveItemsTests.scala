@@ -136,10 +136,20 @@ object DriveItemsTests extends TestSuite {
         "Files in folders that no one has labelled yet aren't searched. An administrator can " +
           "open such a folder by typing `label internal at <the folder's link or id>`."
       (head(Vector.empty), head(Vector(doc))) ==> (
-        "Drive files whose text holds those words, one a line, each with its id; read one with " +
-          s"drive_read. $opens",
-        "Drive files whose text holds those words, one a line, each with its id; read one with " +
-          s"drive_read. $opens"
+        "Drive files whose text holds those words, one a line, each with its id and when it " +
+          s"last changed; read one with drive_read. $opens",
+        "Drive files whose text holds those words, one a line, each with its id and when it " +
+          s"last changed; read one with drive_read. $opens"
+      )
+    }
+
+    test("a search hit names when its file last changed, as a listing's does, when Drive says") {
+      val changed = doc.copy(changed = Some(java.time.Instant.parse("2026-09-05T10:00:00Z")))
+      parts(DriveCalled.Searched(Hits(Vector(changed, doc), incomplete = false), Map.empty))
+        .map(_.text) ==> Vector(
+        "- name-10 (a Doc), id file-1, in folder-3, in the shared drive drive-a, last changed " +
+          "2026-09-05T10:00:00Z",
+        "- name-10 (a Doc), id file-1, in folder-3, in the shared drive drive-a"
       )
     }
 
