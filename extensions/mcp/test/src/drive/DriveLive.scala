@@ -37,15 +37,18 @@ object DriveLive {
         folders <- listed(authorizer, s"mimeType = '${DriveFile.Folder}' and trashed = false")
         files <- listed(authorizer, s"mimeType != '${DriveFile.Folder}' and trashed = false")
         folderIds = folders.map(_.id).toSet
-        doc <- found(files.find(_.mimeType == DriveFile.Document), "a Doc")
-        sheet <- found(files.find(_.mimeType == DriveFile.Spreadsheet), "a Sheet")
-        text <- found(files.find(_.mimeType.startsWith("text/")), "a text file")
-        folder <- found(folders.headOption, "a folder")
+        docs <- listed(authorizer, s"mimeType = '${DriveFile.Document}' and trashed = false")
+        sheets <- listed(authorizer, s"mimeType = '${DriveFile.Spreadsheet}' and trashed = false")
+        texts <- listed(authorizer, "mimeType contains 'text/' and trashed = false")
+        doc <- found(docs.headOption, "Doc")
+        sheet <- found(sheets.headOption, "Sheet")
+        text <- found(texts.find(_.mimeType.startsWith("text/")), "text file")
+        folder <- found(folders.headOption, "folder")
         top <- found(
           files.find(f => f.within.isDefined && f.within == f.drive),
-          "a drive's top file"
+          "drive's top file"
         )
-        inFolder <- found(files.find(_.within.exists(folderIds)), "a folder's file")
+        inFolder <- found(files.find(_.within.exists(folderIds)), "folder's file")
       } yield new Live(authorizer, self, doc, sheet, text, folder, top, inFolder)
     }
 
