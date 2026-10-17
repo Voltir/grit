@@ -130,14 +130,15 @@ object RepositoryWalk {
           .fold(w.unwritten(path, _), w.write)
   }
 
-  /** `w` once the directory `path` was listed: its children in scope, and those on the way to
-    * one, pushed in path order, then its own card when it has one (`version`).
+  /** A walk once the directory `path` was listed, whatever label it was read at: its children in
+    * scope, and those on the way to one, pushed in path order, then its own card when it has one
+    * (`version`).
     */
-  private def listed(cards: GitHubCards, path: String, version: Option[UnitVersion])(
-      w: W,
-      listing: Listing,
-      at: Label
-  ): W = {
+  private def listed(
+      cards: GitHubCards,
+      path: String,
+      version: Option[UnitVersion]
+  ): (W, Listing, Label) -> W = (w, listing, _) => {
     val entries = listing match {
       case Listing.Complete(entries) => entries
       case Listing.Partial(shown) => shown
