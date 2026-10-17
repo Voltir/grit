@@ -105,19 +105,47 @@ object Locate {
 
   /** For each of `words`, the files `mentioning` gives for it, each file read once; a word no file holds maps to an empty vector. */
   def mentioningEach(root: Root, words: Vector[String]): Map[String, Vector[os.RelPath]] = {
-    val patterns =
-      words.distinct.map(w => w -> ("\\b" + java.util.regex.Pattern.quote(w) + "\\b").r)
+    val distinct = words.distinct
+    def whole(w: String): String = "\\b" + java.util.regex.Pattern.quote(w) + "\\b"
+    // A word of word characters alone is held whole exactly where it is a whole run of them (`\b` and `\w` agree since
+    // JDK 19), so one scan of a file's runs finds every such word. The rest get a regex each, where the text holds them.
+    val (plain, other) = distinct.partition(_.matches("\\w+"))
+    val plainSet = plain.toSet
+    val separate = other.map(w => w -> whole(w).r)
     val held = sources(root)
       .map { p =>
         val text = os.read(p)
-        p.relativeTo(root.dir) -> patterns.collect {
-          case (w, word) if word.findFirstIn(text).isDefined => w
-        }.toSet
+        p.relativeTo(root.dir) -> (runsIn(text, plainSet) ++ separate.collect {
+          case (w, word) if text.contains(w) && word.findFirstIn(text).isDefined => w
+        })
       }
-    patterns.map { case (w, _) =>
+    distinct.map { w =>
       w -> held.collect { case (rel, ws) if ws.contains(w) => rel }
     }.toMap
   }
+
+  /** The members of `words` that are a whole run of word characters (`\w`: ASCII letters, digits and `_`) in `text`. */
+  private def runsIn(text: String, words: Set[String]): Set[String] =
+    if (words.isEmpty) Set.empty
+    else {
+      def isWord(c: Char): Boolean =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+      val longest = words.map(_.length).max
+      val found = Set.newBuilder[String]
+      var i = 0
+      while (i < text.length) {
+        if (isWord(text.charAt(i))) {
+          var j = i + 1
+          while (j < text.length && isWord(text.charAt(j))) j += 1
+          if (j - i <= longest) {
+            val run = text.substring(i, j)
+            if (words.contains(run)) found += run
+          }
+          i = j
+        } else i += 1
+      }
+      found.result()
+    }
 
   /** The files `mentioning` searches whose text holds a match of `word`, sorted. */
   def holding(root: Root, word: scala.util.matching.Regex): Vector[os.RelPath] =

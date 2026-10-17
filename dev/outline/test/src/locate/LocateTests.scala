@@ -114,6 +114,32 @@ object LocateTests extends TestSuite {
     }
 
     test(
+      "mentioningEach gives each word the files holding it whole as \\b reads it: not inside a longer name, beside a letter \\w lacks, or with a dot"
+    ) {
+      val root = tree("core/x/src/A.scala", "core/x/src/B.scala", "core/x/src/C.scala")
+      os.write.over(root.dir / "core/x/src/A.scala", "object A { Inbox.hear; Error }\n")
+      os.write.over(root.dir / "core/x/src/B.scala", "object B { InboxError; Inbox.hear }\n")
+      os.write.over(root.dir / "core/x/src/C.scala", "object C { Inboxes; Outboxé }\n")
+      val a = os.RelPath("core/x/src/A.scala")
+      val b = os.RelPath("core/x/src/B.scala")
+      val c = os.RelPath("core/x/src/C.scala")
+      assert(
+        Locate.mentioningEach(
+          root,
+          Vector("Inbox", "InboxError", "Error", "Inbox.hear", "hear", "Outbox", "Spare")
+        ) == Map(
+          "Inbox" -> Vector(a, b),
+          "InboxError" -> Vector(b),
+          "Error" -> Vector(a),
+          "Inbox.hear" -> Vector(a, b),
+          "hear" -> Vector(a, b),
+          "Outbox" -> Vector(c),
+          "Spare" -> Vector.empty
+        )
+      )
+    }
+
+    test(
       "a source no tasty records as its own is Fresh while the newest tasty is newer, Stale once the source is later, and NoTasty with none"
     ) {
       val t0 = 1700000000000L
