@@ -79,6 +79,12 @@ enum Called {
     * parts it kept, and believed at most as what its
     * service returns is
     * ([[grit.core.visibility.Visibility.outputOf]]) and as its arguments are.
+    *
+    * `at` labels what the service gave, which may sit below the caller's floor, and nothing
+    * checks it against the floor, so it may sit above it too. It does not cover the request:
+    * an answer whose text echoes its arguments back holds them, and they were written at the
+    * caller's floor. A reader that keeps `text`, or anything made from it, keeps it at `at`
+    * joined with its own floor.
     */
   case Done(text: Tainted[String], at: Label)
 
