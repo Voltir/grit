@@ -1,5 +1,8 @@
 package grit.mcp.drive
 
+import java.time.Instant
+import java.time.format.DateTimeParseException
+
 import grit.core.identity.{Domain, Email}
 
 /** Drive's v3 REST answers as grit reads them, asked for with [[DriveJson]]'s fields; each `Left`
@@ -8,7 +11,7 @@ import grit.core.identity.{Domain, Email}
 object DriveJson {
 
   /** The fields a file is asked for with. */
-  val FileFields: String = "id,name,mimeType,parents,driveId,owners(emailAddress)"
+  val FileFields: String = "id,name,mimeType,parents,driveId,owners(emailAddress),modifiedTime"
 
   /** The fields a search is asked for with. */
   val SearchFields: String = s"nextPageToken,incompleteSearch,files($FileFields)"
@@ -97,7 +100,14 @@ object DriveJson {
           }
         case Some(_) => Left("a file's owners are not a list")
       }
-    } yield DriveFile(id, name, mimeType, parent, drive, owners)
+      changed <- o.get("modifiedTime") match {
+        case None => Right(None)
+        case Some(ujson.Str(t)) =>
+          try Right(Some(Instant.parse(t)))
+          catch { case _: DateTimeParseException => Left("a file's modifiedTime is not a time") }
+        case Some(_) => Left("a file's modifiedTime is not a time")
+      }
+    } yield DriveFile(id, name, mimeType, parent, drive, owners, changed)
 
   /** A `permissions.list` answer's grants; `None` when it names a next page, so it was not read
     * whole.

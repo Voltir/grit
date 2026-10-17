@@ -1,10 +1,13 @@
 package grit.mcp.drive
 
+import java.time.Instant
+
 import grit.core.identity.{Domain, Email}
 
 /** What Drive says of one file or folder: `parent`, the folder or shared drive it lies in, when
   * Drive names one it shares with grit; `drive`, the shared drive holding it (`None` in a
-  * person's My Drive); `owners`, empty in a shared drive.
+  * person's My Drive); `owners`, empty in a shared drive; `changed`, when it last changed
+  * (`modifiedTime`), when Drive says.
   */
 final case class DriveFile(
     id: FileId,
@@ -12,7 +15,8 @@ final case class DriveFile(
     mimeType: String,
     parent: Option[FileId],
     drive: Option[FileId],
-    owners: Vector[Email]
+    owners: Vector[Email],
+    changed: Option[Instant]
 ) {
 
   /** Where it lies: its parent, else its shared drive; `None` for a file with neither. */

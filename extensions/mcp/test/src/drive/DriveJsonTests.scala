@@ -145,6 +145,22 @@ object DriveJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "a file says when it last changed, as Drive gives it; none when Drive does not, and a time in another form is refused"
+    ) {
+      (
+        DriveJson.file(file("modifiedTime" -> "2026-10-01T09:30:15.123Z")).map(_.changed),
+        DriveJson.file(file()).map(_.changed),
+        DriveJson.file(file("modifiedTime" -> "yesterday")).map(_.changed),
+        DriveJson.file(file("modifiedTime" -> 3)).map(_.changed)
+      ) ==> (
+        Right(Some(java.time.Instant.parse("2026-10-01T09:30:15.123Z"))),
+        Right(None),
+        Left("a file's modifiedTime is not a time"),
+        Left("a file's modifiedTime is not a time")
+      )
+    }
+
     test("a file in My Drive reads its owners' addresses") {
       DriveJson
         .file(file("owners" -> ujson.Arr(ujson.Obj("emailAddress" -> "Person-1@Example.com"))))
