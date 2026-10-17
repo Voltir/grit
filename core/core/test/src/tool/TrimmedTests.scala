@@ -5,7 +5,7 @@ import grit.core.visibility.{Integrity, Part, Provenance, Readers, TestLabels}
 
 import utest.*
 
-object FittedTests extends TestSuite {
+object TrimmedTests extends TestSuite {
 
   private def part(text: String): Part =
     Part(
@@ -21,7 +21,7 @@ object FittedTests extends TestSuite {
       // The head and its one part fit by three bytes; the head and NoneShown would not.
       val head = "h" * (Clipped.MaxBytes - 6)
       assert(Clipped.fits(s"$head\nab"), !Clipped.fits(s"$head\n${Outcome.NoneShown}"))
-      (Fitted.of("found:", Vector(part("ab"))).parts, Fitted.of(head, Vector(part("ab"))).parts) ==>
+      (Trimmed.of("found:", Vector(part("ab"))).parts, Trimmed.of(head, Vector(part("ab"))).parts) ==>
         (Some(Vector(part("ab"))), None)
     }
   }

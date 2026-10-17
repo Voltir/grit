@@ -2,7 +2,7 @@ package grit.mcp.drive
 
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Place, Service}
-import grit.core.tool.Fitted
+import grit.core.tool.Trimmed
 import grit.core.visibility.{Integrity, Part, Provenance, Readers}
 
 import utest.*
@@ -217,7 +217,7 @@ object DriveItemsTests extends TestSuite {
           DriveCalled.Read(doc, None, Vector.fill(5000)(line).mkString("\n"))
         )
       )
-      val fitted = Fitted.of(items.head, items.parts)
+      val fitted = Trimmed.of(items.head, items.parts)
       val shown = items.parts.headOption.toVector.flatMap(_.text.linesIterator.toVector)
       val note = "\\[The answer was cut to its first (\\d+) of 5000 lines.\\]".r
       // Its name's line, then the lines the note counts, a blank line, then the note.

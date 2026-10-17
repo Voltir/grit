@@ -6,7 +6,7 @@ import grit.core.tool.{
   Args,
   ArgsError,
   Field,
-  Fitted,
+  Trimmed,
   Gate,
   Hosted,
   Outcome,
@@ -21,7 +21,7 @@ import grit.edge.{Run, Tools}
 
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
   * [[Run.request]] runs a tool: [[DriveTools.Search]] and [[DriveTools.Read]], each answered
-  * [[Outcome.Done]] with the parts [[DriveItems.items]] cuts, fitted as [[Fitted.of]] fits
+  * [[Outcome.Done]] with the parts [[DriveItems.items]] cuts, trimmed as [[Trimmed.of]] trims
   * them, or [[Outcome.Failed]] with a [[DriveError]]'s words or why it was not placed. The
   * run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
   * search's drives could not be listed (its hits then name them by id) or a read's grants
@@ -98,8 +98,8 @@ object DriveTools {
         DriveItems.items(reading, c) match {
           case Left(why) => Outcome.Failed(why)
           case Right(items) =>
-            val fitted = Fitted.of(items.head, items.parts)
-            Outcome.Done(fitted.head, parts = fitted.parts)
+            val trimmed = Trimmed.of(items.head, items.parts)
+            Outcome.Done(trimmed.head, parts = trimmed.parts)
         }
     }
 

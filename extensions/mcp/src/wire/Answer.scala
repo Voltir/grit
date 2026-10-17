@@ -1,7 +1,7 @@
 package grit.mcp.wire
 
 import grit.core.host.Clipped
-import grit.core.tool.Fitted
+import grit.core.tool.Trimmed
 import grit.core.visibility.{Accounted, Part}
 
 /** What a call answered: `text`, what the model reads, whether the tool reported an error
@@ -49,13 +49,13 @@ object Answer {
 
   /** The answer a complete `tools/call` result is as its server's extension cut it: its text
     * `head`, its items unread, its parts `parts`, the two fitted to [[Clipped]]'s limits as
-    * [[Fitted.of]] fits them, `isError` read as [[of]] reads it. [[McpError.Unreadable]] as for
+    * [[Trimmed.of]] trims them, `isError` read as [[of]] reads it. [[McpError.Unreadable]] as for
     * [[of]].
     */
   def cut(result: ujson.Obj, head: String, parts: Vector[Part]): Either[McpError, Answer] =
     read(result).map { (_: Vector[ujson.Value], isError: Boolean) =>
-      val fitted = Fitted.of(head, parts)
-      new Answer(fitted.head, isError, Accounted.Unread, fitted.parts)
+      val trimmed = Trimmed.of(head, parts)
+      new Answer(trimmed.head, isError, Accounted.Unread, trimmed.parts)
     }
 
   /** `result`'s content blocks and whether it is an error; [[McpError.Unreadable]] when it has
