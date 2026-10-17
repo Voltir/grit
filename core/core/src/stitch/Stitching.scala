@@ -452,11 +452,13 @@ object Stitching {
   private val Instructions =
     "Read new_message, said by author at the top level of a team's channel, not in any " +
       "thread. Each exchange is a recent conversation in that channel: how it opened, its " +
-      "latest messages, and a line of its record once it closed. Does new_message continue, " +
-      "answer or react to one of them? If it starts something new, choose " + NewKey + "."
+      "latest messages, and, if it has gone quiet, a one-line summary of it. Is new_message a " +
+      "reply or a reaction to something said in one of them? Being about the same subject is " +
+      "not enough."
 
   /** The stitch question's state: `{new_message, author, exchanges: [{key, opening, latest,
-    * record}]}`, each message `{from, text, ago}`.
+    * record}]}`, each message `{from, text, ago}`; `latest` only when the exchange has later
+    * messages, `record` only when it has one.
     */
   final case class State private[stitch] (
       first: Said,
@@ -477,11 +479,10 @@ object Stitching {
         "new_message" -> Cut.head(spoken(s.first).getOrElse(""), MessageChars),
         "author" -> s.author,
         "exchanges" -> ujson.Arr.from(s.exchanges.map { (key, e) =>
-          ujson.Obj(
-            "key" -> key,
-            "opening" -> said(e.opening),
-            "latest" -> ujson.Arr.from(e.latest.map(said)),
-            "record" -> e.record.fold[ujson.Value](ujson.Null)(ujson.Str(_))
+          ujson.Obj.from(
+            Vector[(String, ujson.Value)]("key" -> key, "opening" -> said(e.opening)) ++
+              Option.when(e.latest.nonEmpty)("latest" -> ujson.Arr.from(e.latest.map(said))) ++
+              e.record.map(r => "record" -> ujson.Str(r))
           )
         })
       )

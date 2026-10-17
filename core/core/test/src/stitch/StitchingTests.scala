@@ -351,6 +351,38 @@ object StitchingTests extends TestSuite {
       Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 20) ==> "Someone: word word…"
     }
 
+    test("stitch asks whether the message replies to an exchange, each shown with what it has") {
+      val engine = heard("engine", "the Engine contract term?", 30)
+      val es = Stitching.offer(
+        first,
+        room(),
+        Vector(engine),
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Scope.Room,
+        Tuning.Default
+      )
+      val offer = Offer(first, "Nick", es, Speakers.none)
+      val sent = Stitching.request(offer).map(grit.core.classify.Request.json)
+      // A topic match beside a summary was taken for a reply: the question says it is not one.
+      sent.map(_("questions")(0)("instructions").str) ==> Some(
+        "Read new_message, said by author at the top level of a team's channel, not in any " +
+          "thread. Each exchange is a recent conversation in that channel: how it opened, its " +
+          "latest messages, and, if it has gone quiet, a one-line summary of it. Is " +
+          "new_message a reply or a reaction to something said in one of them? Being about " +
+          "the same subject is not enough."
+      )
+      // An exchange with no later messages and no summary shows neither, and still reads back.
+      sent.map(_("state")("exchanges")(0).obj.keys.toVector) ==> Some(Vector("key", "opening"))
+      Stitching.place(new Scripted(None), offer, Tuning.Default) match {
+        case Placed.Unread(_, seen) =>
+          seen.exchanges.map(e => (e.opening.text, e.latest, e.record)) ==>
+            Vector(("the Engine contract term?", Vector.empty, None))
+        case other => throw new java.lang.AssertionError(s"not unread: $other")
+      }
+    }
+
     test("an excerpt whose opening is grit's post shows it under Assistant") {
       val heardOpening = heard("post", "unused", 60)
       val opening = heardOpening.copy(entry =

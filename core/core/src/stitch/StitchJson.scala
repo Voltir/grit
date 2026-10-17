@@ -95,7 +95,8 @@ object StitchJson {
   }
 
   /** [[Seen.exchanges]]: the state's `exchanges`, each `{key, opening, latest, record}` and
-    * each message `{from, text, ago}`, as [[Stitching.shown]] writes them.
+    * each message `{from, text, ago}`, as [[Stitching.shown]] writes them; a missing `latest`
+    * is none, a missing or null `record` none.
     */
   private[stitch] def exchanges(seen: Seen): Vector[Seen.Exchange] = {
     def line(v: ujson.Value): Either[String, Seen.Line] =
@@ -106,7 +107,7 @@ object StitchJson {
         ago <- str(o, "ago")
       } yield Seen.Line(from, text, ago)
     def lines(v: Option[ujson.Value]): Either[String, Vector[Seen.Line]] =
-      v.flatMap(_.arrOpt)
+      v.fold(Some(Vector.empty[ujson.Value]))(_.arrOpt.map(_.toVector))
         .toRight("latest: expected an array")
         .flatMap(_.toVector.foldLeft[Either[String, Vector[Seen.Line]]](Right(Vector.empty)) {
           (acc, x) => acc.flatMap(done => line(x).map(done :+ _))
