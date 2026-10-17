@@ -31,20 +31,19 @@ final case class Card private (
   /** Its document's key: [[key]]'s hex digits. */
   def docKey: DocKey = CardKey.docKey(key)
 
-  /** Its document's text: the summary, then, after a blank line, `Terms: ` and its terms
-    * separated by `, `; the summary alone when it has no terms. A card whose version is
-    * [[UnitVersion.Changed]] begins with a line `{title, or its kind}, last changed {yyyy-MM-dd}.`
-    * (the day in UTC) and a blank line.
+  /** Its document's text: a line naming it, `{path}`, or `{title} ({path})` when it has a title,
+    * followed by `, last changed {yyyy-MM-dd}` (the day in UTC) when its version is
+    * [[UnitVersion.Changed]]; a blank line; the summary; then, after a blank line, `Terms: ` and
+    * its terms separated by `, `, when it has any.
     */
   def text: DocText = {
     val body =
       if (summary.terms.isEmpty) summary.summary
       else s"${summary.summary}\n\nTerms: ${summary.terms.mkString(", ")}"
-    val s = changedDay.fold(body) { day =>
-      s"${title.getOrElse(kind.word.capitalize)}, last changed $day.\n\n$body"
-    }
+    val named = title.fold(path)(t => s"$t ($path)")
+    val head = changedDay.fold(named)(day => s"$named, last changed $day")
     // The summary is never blank (CardSummary.of), so neither is the text.
-    DocText.of(s).fold(why => throw new IllegalStateException(why), identity)
+    DocText.of(s"$head\n\n$body").fold(why => throw new IllegalStateException(why), identity)
   }
 
   /** Its document's data: `{"kind": "file" or "directory", "path", "terms", "version"}`, a

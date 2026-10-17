@@ -215,7 +215,7 @@ object TurnDocumentsTests extends TestSuite {
               "User: the login page is blank"
           ),
           Message.User(
-            "[doc] Weekly digest, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+            "[doc] Weekly digest, at slack:T1/C1, 2026-09-30:\n" +
               "Deploys frozen until Friday."
           ),
           Message.User("one"),
@@ -256,7 +256,7 @@ object TurnDocumentsTests extends TestSuite {
           tools = peeking
         )
       )
-      val shown = "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n"
+      val shown = "[doc] Cards, at slack:T1/C1, 2026-09-30:\n"
       provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
         Vector("peek") -> Vector(
           Message.User(
@@ -285,7 +285,7 @@ object TurnDocumentsTests extends TestSuite {
       provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
         Vector("read_hidden", "extract", "post") -> Vector(
           Message.User(
-            "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+            "[doc] Cards, at slack:T1/C1, 2026-09-30:\n" +
               "Hidden here as h1: something from Cards, which people outside the team can " +
               "write in. If your answer needs what it says, read it: call read_hidden with name " +
               "h1. After that you can't use post until you've answered. To ask it a short " +

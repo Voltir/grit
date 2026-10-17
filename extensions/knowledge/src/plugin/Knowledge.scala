@@ -195,7 +195,7 @@ object Knowledge {
   /** The documents' terms, bounded at the sum of `units`, clipped to an `Int`. */
   private def terms(units: Vector[Long]): Either[String, DocumentTerms] =
     DocLabel
-      .of("knowledge: what a source holds, and how to read it")
+      .of("knowledge card")
       .flatMap(
         DocumentTerms
           .of(_, DocWeight.Unscaled, 30.days, units.sum.min(Int.MaxValue).toInt)

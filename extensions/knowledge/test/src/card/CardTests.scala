@@ -55,13 +55,19 @@ object CardTests extends TestSuite {
       assert(CardKey.of(corpus, long) != CardKey.of(corpus, long + "x"))
     }
 
-    test("a card's text is its summary, then a line of its terms") {
+    // The path leads so a reader of the window, or the relevance judge, knows which file a card
+    // is of without reading its pointer.
+    test("a card's text is its path, its summary, then a line of its terms") {
       val text = DocText.value(card(Vector("unit tests", "end-to-end")).text)
-      assert(text == "How the project is tested.\n\nTerms: unit tests, end-to-end")
+      assert(
+        text == "docs/testing.md\n\nHow the project is tested.\n\nTerms: unit tests, end-to-end"
+      )
     }
 
-    test("a card with no terms is its summary alone") {
-      assert(DocText.value(card(Vector.empty).text) == "How the project is tested.")
+    test("a card with no terms is its path and its summary alone") {
+      assert(
+        DocText.value(card(Vector.empty).text) == "docs/testing.md\n\nHow the project is tested."
+      )
     }
 
     test("a card's data holds its kind, path, terms and version") {
@@ -127,20 +133,25 @@ object CardTests extends TestSuite {
         UnitVersion.of("2026-10-14").isLeft
       )
     }
-    test("a Changed card's text begins with its title and the day it changed") {
+    // Its path follows its title: a Drive card's path is its file's id, which a title alone
+    // would not name.
+    test("a Changed card's text begins with its title, its path and the day it changed") {
       val text = DocText.value(drive(Some("Budget 2027")).text)
       assert(
-        text == "Budget 2027, last changed 2026-10-14.\n\n" +
+        text == "Budget 2027 (docs/testing.md), last changed 2026-10-14\n\n" +
           "How the project is tested.\n\nTerms: unit tests"
       )
     }
-    test("a Changed card with no title begins with its kind") {
+    // Its path, not its kind, now that every card's first line names its path.
+    test("a Changed card with no title begins with its path") {
       val text = DocText.value(drive(None).text)
-      assert(text.startsWith("File, last changed 2026-10-14.\n\nHow the project is tested."))
+      assert(
+        text.startsWith("docs/testing.md, last changed 2026-10-14\n\nHow the project is tested.")
+      )
     }
     test("a title is its first 80 characters, its line breaks made spaces") {
       val text = DocText.value(drive(Some("a\nb" + "c" * 100)).text)
-      assert(text.startsWith("a b" + "c" * 77 + ", last changed 2026-10-14."))
+      assert(text.startsWith("a b" + "c" * 77 + " (docs/testing.md), last changed 2026-10-14\n"))
     }
     test("a Changed card's data holds its title and the day it changed too") {
       assert(
@@ -154,7 +165,8 @@ object CardTests extends TestSuite {
         )
       )
     }
-    test("a Sha card's text and data are as before, a title in its data alone") {
+    // A title now shows in every card's first line, not in a Changed card's alone.
+    test("a Sha card's text begins with its title and path, with no day") {
       val titled = Card.file(
         corpus,
         "docs/testing.md",
@@ -164,7 +176,7 @@ object CardTests extends TestSuite {
         Some("Testing")
       )
       assert(
-        DocText.value(titled.text) == "How the project is tested.",
+        DocText.value(titled.text) == "Testing (docs/testing.md)\n\nHow the project is tested.",
         titled.data == ujson.Obj(
           "kind" -> "file",
           "path" -> "docs/testing.md",

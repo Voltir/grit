@@ -647,7 +647,7 @@ object ShownTests extends TestSuite {
         None
       )
       Shown.document(document, got(DocLabel.of("Weekly digest"))) ==> Message.User(
-        "[doc] Weekly digest, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+        "[doc] Weekly digest, at slack:T1/C1, 2026-09-30:\n" +
           "Deploys frozen until Friday.\n" +
           s"${Shown.lead(SectionTag.Record)}\n> record — Standing: none"
       )
@@ -678,7 +678,7 @@ object ShownTests extends TestSuite {
         None
       )
       Shown.document(document, got(DocLabel.of("Cards"))) ==> Message.User(
-        "[doc] Cards, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+        "[doc] Cards, at slack:T1/C1, 2026-09-30:\n" +
           "How releases are cut.\n" +
           """Read it with github_get_file_contents {"path":"docs/a b.md","ref":"main"}"""
       )

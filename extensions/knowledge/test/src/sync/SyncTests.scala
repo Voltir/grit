@@ -80,7 +80,7 @@ object SyncTests extends TestSuite {
   private val plugin = right(PluginName.of("knowledge"))
   private val terms = right(
     DocLabel
-      .of("knowledge: what a source holds, and how to read it")
+      .of("knowledge card")
       .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, 100))
   )
 
@@ -538,7 +538,8 @@ object SyncTests extends TestSuite {
           left = 1,
           stopped = Some("summarising docs/b.md: the day's recorded spend reached its cap")
         ),
-        Vector(("docs/a.md", "What the file holds.\n\nTerms: a term", true))
+        // A card's text begins with its path (Card.text).
+        Vector(("docs/a.md", "docs/a.md\n\nWhat the file holds.\n\nTerms: a term", true))
       )
     }
 
@@ -702,7 +703,8 @@ object SyncTests extends TestSuite {
       )
       val _ = runOf(k)
       k.kept.filter(pathOf(_) == "docs/a.md").map(d => DocText.value(d.text)) ==>
-        Vector("8192 tildes and 0 carets")
+        // The path is the card's own first line (Card.text), not what the model was sent.
+        Vector("docs/a.md\n\n8192 tildes and 0 carets")
     }
 
     test(

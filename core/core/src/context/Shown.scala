@@ -132,15 +132,15 @@ object Shown {
     }
   }
 
-  /** A document as one user message: "[doc] {label}, kept by grit, at {place.written}, written
-    * {its UTC date}:", then its text as [[pasted]] shows it, then its pointer's line
+  /** A document as one user message: "[doc] {label}, at {place.written}, {the UTC date it was
+    * written}:", then its text as [[pasted]] shows it, then its pointer's line
     * ([[grit.core.document.Pointer.shown]]) when it has one.
     */
   def document(document: Document, label: DocLabel): Message = {
     val day = document.written.atOffset(ZoneOffset.UTC).toLocalDate
     Message.User(
-      s"${SectionTag.Document.tag} ${DocLabel.value(label)}, kept by grit, at ${document.place.written}, " +
-        s"written $day:\n${pasted(DocText.value(document.text))}" +
+      s"${SectionTag.Document.tag} ${DocLabel.value(label)}, at ${document.place.written}, " +
+        s"$day:\n${pasted(DocText.value(document.text))}" +
         document.pointer.fold("")(p => s"\n${p.shown}")
     )
   }

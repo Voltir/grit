@@ -2,7 +2,7 @@ package grit.knowledge.plugin
 
 import java.time.{Instant, LocalTime, ZoneId}
 
-import grit.core.document.{Document, Placement, Pointer}
+import grit.core.document.{DocLabel, Document, Placement, Pointer}
 import grit.core.id.{CorpusName, DocumentVersion, PluginName, ScheduleKey}
 import grit.core.job.{Declared, SlotRule}
 import grit.core.place.{Namespace, Place, Service}
@@ -266,6 +266,12 @@ object KnowledgeTests extends TestSuite {
         card("repo", internal),
         card("repo", confidential)
       ).map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false, true)
+    }
+
+    test("its documents are labelled as knowledge cards, as each one's header names it") {
+      Knowledge
+        .of(name, Vector(source(None)), internalService)
+        .map(_.documents.map(d => DocLabel.value(d.terms.label))) ==> Right(Some("knowledge card"))
     }
 
     test("a card of a corpus no source declares is undeclared, and a document no card is not") {
