@@ -8,7 +8,6 @@ import grit.core.place.{Namespace, Place, Reaches, Scope as PlaceScope, Service,
 import grit.core.spend.DailyCap
 import grit.core.visibility.{
   Accounted,
-  Compartments,
   Group,
   Integrity,
   Itemised,
@@ -475,7 +474,8 @@ object ServeChoiceTests extends TestSuite {
             )
           }
       (declared(DriveEnv), declared(Map.empty)) ==> (
-        Right((true, "internal", "member", Label.written(Compartments.Shipped.top))),
+        // The shipped compartments' top: every level, and what no one has labelled yet.
+        Right((true, "internal", "member", "restricted+unmapped")),
         Right((false, "public", "untrusted", "public"))
       )
     }
