@@ -9,8 +9,10 @@ object Incoming {
     * `names` gives (the label Slack sent, else the id, when it gives none), grit's own mention
     * (`bot`) removed; `<#C…|name>` as `#name`, and `<#C…|>` or `<#C…>` as `#` and the name
     * `channels` gives, else the id; `<!here>`, `<!channel>`, `<!everyone>` as `@here`,
-    * `@channel`, `@everyone`, and another `<!…|label>` as its label; `<url|label>` as `label
-    * (url)` and `<url>` as `url`; then `&lt;`, `&gt;` and `&amp;` undone; trimmed.
+    * `@channel`, `@everyone`, and another `<!…|label>` as its label; `<url|label>` as `label`
+    * when it is `url` with or without its scheme, as `url` when it is a shorter start of that,
+    * else as `label (url)`, and `<url>` as `url`; then `&lt;`, `&gt;` and `&amp;` undone;
+    * trimmed.
     */
   def text(
       raw: String,
@@ -48,6 +50,9 @@ object Incoming {
       case i => (inside.take(i), Some(inside.drop(i + 1)))
     }
 
+  /** A link's scheme, `https://` or `mailto:`. */
+  private val Scheme = "^[a-z][a-z0-9+.-]*:(//)?".r
+
   /** Slack's `<…>` markup: a mention, a channel, a broadcast or a link. */
   private val Tag = "<([^<>]+)>".r
 
@@ -70,6 +75,12 @@ object Incoming {
         case b @ ("here" | "channel" | "everyone") => s"@$b"
         case other => label.getOrElse(other)
       }
-    else label.fold(target)(l => s"$l ($target)")
+    else
+      label.fold(target) { l =>
+        val bare = Scheme.replaceFirstIn(target, "")
+        if (l == target || l == bare) l
+        else if (bare.startsWith(l) || target.startsWith(l)) target
+        else s"$l ($target)"
+      }
   }
 }

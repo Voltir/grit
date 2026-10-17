@@ -38,6 +38,17 @@ object IncomingTests extends TestSuite {
       Incoming.text("&amp;lt;", bot, names, channels) ==> "&lt;"
     }
 
+    test("a link whose label is its address is written once: the label, or the address it cuts") {
+      Incoming.text(
+        "<https://example.com/a|example.com/a> <mailto:ana@x.io|ana@x.io> <https://x.io|https://x.io>",
+        bot,
+        names,
+        channels
+      ) ==> "example.com/a ana@x.io https://x.io"
+      Incoming.text("<https://github.com/o/r/pull/12|github.com/o/r>", bot, names, channels) ==>
+        "https://github.com/o/r/pull/12"
+    }
+
     test("a channel link is its own name, else the name it is known by, else its id") {
       Incoming.text("in <#C2|general>, <#C2|>, <#C2> or <#C3|>", bot, names, channels) ==>
         "in #general, #ops, #ops or #C3"
