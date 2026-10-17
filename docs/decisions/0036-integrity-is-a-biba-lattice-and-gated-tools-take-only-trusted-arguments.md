@@ -52,7 +52,9 @@ Decision:
   the `Raise` handed where it sits. There are two: the extraction, which endorses an answer of
   at most `Bounded.K` bits (`extract`: a typed question to a quarantined model) to `Trusted`
   at the turn's level met with member; and the sanitiser, which raises free text from below
-  outside to outside, still `Tainted`. A classifier labels features and code decides.
+  outside to outside, still `Tainted`. A classifier labels features and code decides. Vetting
+  reads the text the model reads, rendered from an answer's facts, never the facts themselves
+  (`docs/extending.md`, "A tool's answer is data").
 - **In SQL**, each labelled row has an `integrity_id` (`grit.integrity_labels`).
 - **In the types.** `Tainted[T]` has a pure `map` and no exit. `Trusted[T]` has a free `extract`
   and a pure `coflatMap`, and is made only by a check against a required level

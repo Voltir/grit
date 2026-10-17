@@ -128,7 +128,7 @@ object JobMovesLiveTests extends TestSuite {
         .fold(
           e => start.map(_ => e.toString),
           {
-            case Called.Done(text, at) => text.map(t => s"Done($t,$at)")
+            case Called.Done(answer, at) => answer.map(a => s"Done(${a.text},$at)")
             case other => start.map(_ => other.toString)
           }
         )

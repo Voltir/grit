@@ -7,6 +7,7 @@ import grit.core.classify.Answer as Judged
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.flow.TestTainted
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.tool.Outcome
 import grit.core.visibility.Integrity
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
@@ -52,7 +53,12 @@ object ScriptedMovesTests extends MovesContract {
         else Right(Asked(TestTainted.authority(answer), Floor)),
       (service, tool, _) =>
         if (service == Probe && tool == Tool)
-          Right(Called.Done(TestTainted.at(Read, ProbeOutput), ProbeAt))
+          Right(
+            Called.Done(
+              TestTainted.at(grit.core.act.Answer(Read, Outcome.Stated.None), ProbeOutput),
+              ProbeAt
+            )
+          )
         else Right(Called.Failed("unadvertised")),
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))

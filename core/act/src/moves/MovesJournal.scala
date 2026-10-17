@@ -1,7 +1,7 @@
 package grit.act.moves
 
 import grit.act.phase.Faults
-import grit.core.act.Called
+import grit.core.act.{Answer, Called}
 import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
@@ -11,8 +11,8 @@ import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
-import grit.core.tool.ToolName
-import grit.core.visibility.{Integrity, Label}
+import grit.core.tool.{Outcome, ToolName}
+import grit.core.visibility.{Facts, Integrity, Label}
 
 /** What an ask's `ask:{n}` step came to. */
 private[moves] enum AskMade {
@@ -142,10 +142,12 @@ private[moves] object CallMade {
   *     `{"unsent":"unserved"|"unadvertised"|"refused"|"store","why":w,"digest":d}`;
   *   - `call:{n}:expire` and `call:{n}:abandon`: `{"state":"expired"|"claimed"}`,
   *     `{"answered":o}` (an [[grit.core.edge.OutcomeJson]]), or `{"store":w}`;
-  *   - `call:{n}:answer`: `{"done":{"text":t,"at":l,"integrity":i}}` (`i` an
+  *   - `call:{n}:answer`: `{"done":{"text":t,"at":l,"integrity":i,"stated":s}}` (`i` an
   *     [[grit.core.visibility.Integrity.written]]; read at the run's own when it has none, as
-  *     a record made before it held one), `{"failed":w}`, `{"interrupted":true}` or
-  *     `{"store":w}` ([[answered]]);
+  *     a record made before it held one; `s`, `{"answer":f,"parts":[f…]}`, the facts it kept,
+  *     `answer` only when it had its own, and `s` only when it kept some: none when absent, so
+  *     a record made before it held them reads, and writes back, as it was),
+  *     `{"failed":w}`, `{"interrupted":true}` or `{"store":w}` ([[answered]]);
   *   - a keep's `keep:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
   *     form as a string, or `{"store":w}` ([[kept]]).
   *
@@ -385,13 +387,19 @@ object MovesJournal {
   def answered(start: Integrity): Journaled[Either[String, Called]] = Journaled.json(
     {
       case Right(Called.Done(t, at)) =>
-        ujson.Obj(
-          "done" -> ujson.Obj(
-            "text" -> Trusted.asIs(t).extract,
-            "at" -> Label.written(at),
-            "integrity" -> Integrity.written(t.integrity)
-          )
+        val answer = Trusted.asIs(t).extract
+        val done = ujson.Obj(
+          "text" -> answer.text,
+          "at" -> Label.written(at),
+          "integrity" -> Integrity.written(t.integrity)
         )
+        if (answer.stated != Outcome.Stated.None) {
+          val stated = ujson.Obj()
+          answer.stated.answer.foreach(f => stated("answer") = f.json)
+          stated("parts") = ujson.Arr.from(answer.stated.parts.map(_.json))
+          done("stated") = stated
+        }
+        ujson.Obj("done" -> done)
       case Right(Called.Failed(why)) => ujson.Obj("failed" -> why)
       case Right(Called.Interrupted) => ujson.Obj("interrupted" -> true)
       case Left(why) => ujson.Obj("store" -> why)
@@ -416,7 +424,8 @@ object MovesJournal {
                     .toRight("answer.done's integrity is not a string")
                     .flatMap(Integrity.read)
                 )
-            } yield Right(Called.Done(Mint.tainted(t, i), l))
+              s <- d.get("stated").fold(Right(Outcome.Stated.None))(stated)
+            } yield Right(Called.Done(Mint.tainted(Answer(t, s), i), l))
           case (_, Some(why), _, _) => Right(Right(Called.Failed(why)))
           case (_, _, Some(ujson.True), _) => Right(Right(Called.Interrupted))
           case (_, _, _, Some(ujson.Str(why))) => Right(Left(why))
@@ -613,6 +622,16 @@ object MovesJournal {
       step: String
   ): Either[String, collection.Map[String, ujson.Value]] =
     v.objOpt.toRight(s"$step: expected an object")
+
+  /** A done answer's `stated`: `{"answer"?:f,"parts":[f…]}`. */
+  private def stated(v: ujson.Value): Either[String, Outcome.Stated] =
+    for {
+      o <- fields(v, "answer.done.stated")
+      parts <- o
+        .get("parts")
+        .flatMap(_.arrOpt)
+        .toRight("answer.done.stated has no parts array")
+    } yield Outcome.Stated(o.get("answer").map(Facts.of), parts.toVector.map(Facts.of))
 
   private def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
     o.get(key).flatMap(_.strOpt).toRight(s"expected a string '$key'")

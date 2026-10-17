@@ -942,7 +942,7 @@ object TurnHostedTests extends TestSuite {
           )
       }
       val answered = cutting.items("open notes\nsecret plans") match {
-        case Itemised.Parts(head, parts) => Outcome.Done(head, parts = Some(parts))
+        case Itemised.Parts(head, parts, _) => Outcome.Done(head, parts = Some(parts))
         case other => throw new java.lang.AssertionError(other.toString)
       }
       val visibility = labelling(

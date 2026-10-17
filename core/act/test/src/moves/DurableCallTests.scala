@@ -2,13 +2,14 @@ package grit.act.moves
 
 import grit.core.act.Called
 import grit.core.act.MovesFixtures.{Judging, shown}
-import grit.core.flow.TestTainted
+import grit.core.flow.{TestTainted, Trusted}
 import grit.core.place.Place
 import grit.core.tool.Outcome
 import grit.core.visibility.{
   Accounted,
   Cap,
   DeclaredLabel,
+  Facts,
   Integrity,
   Label,
   Labelled,
@@ -90,6 +91,43 @@ object DurableCallTests extends TestSuite {
       ) ==> Vector(
         Seen(Vector(Right(s"Done($Read,$internal)"))),
         Seen(Vector(Right(s"Done(Found:\nrota.md,$internal)")))
+      )
+    }
+
+    test("a call's answer hands over its kept parts' facts, and its own") {
+      val staff = under("staff")
+      def facts(name: String) = Facts.of(ujson.Obj("name" -> name))
+      def part(text: String, facts: Option[Facts]) =
+        ResultPart(Provenance(staff, Integrity.Member), Readers.AtPlace, text, facts)
+      val world = new MovesWorld(
+        broken = false,
+        Floor,
+        answer = Outcome.Done(
+          "Found:",
+          None,
+          Accounted.of(Vector.empty),
+          Some(
+            Vector(
+              part("rota.md", Some(facts("rota"))),
+              part("notes.md", None),
+              part("plan.md", Some(facts("plan")))
+            )
+          ),
+          Some(facts("listing"))
+        )
+      )
+      val got = world.run(limits(0, 1), Vector(), new Judging()) { m =>
+        Seen(
+          Vector(m.call(name("c"), Probe, Tool, TestTainted.at(Args, Integrity.Authority)).map {
+            case Called.Done(answer, _) =>
+              val stated = Trusted.asIs(answer).extract.stated
+              s"${stated.answer.map(_.json.render())} ${stated.parts.map(_.json.render())}"
+            case other => shown(other)
+          })
+        )
+      }
+      got ==> Seen(
+        Vector(Right("""Some({"name":"listing"}) Vector({"name":"rota"}, {"name":"plan"})"""))
       )
     }
   }

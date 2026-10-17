@@ -1,11 +1,11 @@
 package grit.act.moves
 
-import grit.core.act.Called
 import grit.core.act.MovesFixtures.shown
+import grit.core.act.{Answer, Called}
 import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
-import grit.core.flow.TestTainted
+import grit.core.flow.{TestTainted, Trusted}
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Service
@@ -13,7 +13,7 @@ import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.{Integrity, Label, Level, Provenance, Readers, ResultPart}
+import grit.core.visibility.{Facts, Integrity, Label, Level, Provenance, Readers, ResultPart}
 
 import utest.*
 
@@ -44,6 +44,12 @@ object MovesJournalTests extends TestSuite {
         case c @ Called.Done(text, _) => (shown(c), Some(text.integrity))
         case other => (shown(other), None)
       })
+
+  /** The facts a done answer stated; none for any other. */
+  private def stated(called: Called): Option[Outcome.Stated] = called match {
+    case Called.Done(answer, _) => Some(Trusted.asIs(answer).extract.stated)
+    case _ => None
+  }
 
   private val message: Message.Assistant = Message.Assistant(
     Vector(AssistantBlock.Text("hello")),
@@ -283,7 +289,10 @@ object MovesJournalTests extends TestSuite {
       "a call's answer step is written done with its label and integrity, failed, interrupted, or store"
     ) {
       given Journaled[Either[String, Called]] = MovesJournal.answered(Integrity.Authority)
-      val done = Called.Done(TestTainted.at("read", Integrity.Member), Label.Public)
+      val done = Called.Done(
+        TestTainted.at(Answer("read", Outcome.Stated.None), Integrity.Member),
+        Label.Public
+      )
       val written = """{"done":{"text":"read","at":"public","integrity":"member"}}"""
       summon[Journaled[Either[String, Called]]].encode(Right(done)) ==> written
       answer(written) ==> Right(Right(("Done(read,public)", Some(Integrity.Member))))
@@ -306,10 +315,31 @@ object MovesJournalTests extends TestSuite {
       val written =
         """{"done":{"text":"a \"quoted\" line\nand é","at":"public","integrity":"member"}}"""
       val read = journaled.decode(written)
-      (read.map(_.map(shown)), read.map(journaled.encode)) ==> (
+      (read.map(_.map(shown)), read.map(_.map(stated)), read.map(journaled.encode)) ==> (
         Right(Right("Done(a \"quoted\" line\nand é,public)")),
+        Right(Right(Some(Outcome.Stated.None))),
         Right(written)
       )
+    }
+
+    test("a done answer records its stated facts only when it has some") {
+      val journaled = MovesJournal.answered(Integrity.Authority)
+      val listed = Facts.of(ujson.Obj("complete" -> true))
+      val file = Facts.of(ujson.Obj("id" -> "f1"))
+      def done(s: Outcome.Stated): Either[String, Called] =
+        Right(Called.Done(TestTainted.at(Answer("read", s), Integrity.Member), Label.Public))
+      val prefix = """{"done":{"text":"read","at":"public","integrity":"member""""
+      val all = Vector(
+        Outcome.Stated(Some(listed), Vector(file, listed)) ->
+          (prefix + ""","stated":{"answer":{"complete":true},"parts":[{"id":"f1"},{"complete":true}]}}}"""),
+        Outcome.Stated(None, Vector(file)) -> (prefix + ""","stated":{"parts":[{"id":"f1"}]}}}"""),
+        Outcome.Stated(Some(listed), Vector.empty) ->
+          (prefix + ""","stated":{"answer":{"complete":true},"parts":[]}}}"""),
+        Outcome.Stated.None -> (prefix + "}}")
+      )
+      all.map((s, _) => journaled.encode(done(s))) ==> all.map(_._2)
+      all.map((_, w) => journaled.decode(w).map(_.map(stated))) ==>
+        all.map((s, _) => Right(Right(Some(s))))
     }
 
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside

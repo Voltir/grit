@@ -81,9 +81,12 @@ class ScriptedMoves(
   ): Either[MoveError, Called] =
     making(name, MoveKind.Call, limits.calls)(
       calls(service, tool, Trusted.asIs(arguments).extract).map {
-        case Called.Done(text, at) =>
+        case Called.Done(answer, at) =>
           Called.Done(
-            TestTainted.at(Trusted.asIs(text).extract, text.integrity.meet(arguments.integrity)),
+            TestTainted.at(
+              Trusted.asIs(answer).extract,
+              answer.integrity.meet(arguments.integrity)
+            ),
             at
           )
         case other => other

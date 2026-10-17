@@ -12,7 +12,7 @@ import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
-import grit.core.tool.ToolName
+import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.Label
 
 /** What an ask poses, and what its reply reads as: `R`. Each shape is answered by its own
@@ -69,24 +69,28 @@ object Posed {
   */
 final case class Asked[R](reply: Tainted[R], at: Label)
 
+/** A call's answer as a planner reads it: `text`, as the model would read it, and `stated`,
+  * the facts of what it kept, as its service's extension wrote them.
+  */
+final case class Answer(text: String, stated: Outcome.Stated) extends caps.Pure
+
 /** What a call came to. Never a person's decline or silence: a call whose tool asks first is
   * not sent under [[Gates.Closed]], and a planner's acting is closed.
   */
 enum Called {
 
-  /** The edge ran it: `text` is its answer, as the model would read it, holding nothing above
-    * `at`, the label in force at its service's place joined with those at the places of the
-    * parts it kept, and believed at most as what its
-    * service returns is
+  /** The edge ran it: `answer` is what it answered, holding nothing above `at`, the label in
+    * force at its service's place joined with those at the places of the parts it kept, and
+    * believed at most as what its service returns is
     * ([[grit.core.visibility.Visibility.outputOf]]) and as its arguments are.
     *
     * `at` labels what the service gave, which may sit below the caller's floor, and nothing
     * checks it against the floor, so it may sit above it too. It does not cover the request:
     * an answer whose text echoes its arguments back holds them, and they were written at the
-    * caller's floor. A reader that keeps `text`, or anything made from it, keeps it at `at`
+    * caller's floor. A reader that keeps `answer`, or anything made from it, keeps it at `at`
     * joined with its own floor.
     */
-  case Done(text: Tainted[String], at: Label)
+  case Done(answer: Tainted[Answer], at: Label)
 
   /** It did not run, or failed: `why`. Nothing was sent when no edge serves the place's tool,
     * the tool is not advertised there or asks first, or the acting may not read from that place,

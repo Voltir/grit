@@ -323,7 +323,7 @@ object TurnTools {
       case From(from) => from.map((_, o.accounted))
       case Ran(output) =>
         o match {
-          case Outcome.Done(_, Some(integrity), _, _) => Left(integrity)
+          case Outcome.Done(_, Some(integrity), _, _, _) => Left(integrity)
           case _ => Left(output)
         }
     }

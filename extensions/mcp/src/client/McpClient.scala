@@ -102,7 +102,7 @@ final class McpClient(val server: McpServer, authorizer: Authorizer, clock: Cloc
       shown <- server.scope.shown(tool, result).left.map(McpError.Unattributed(_))
       answer <- server.accounts.items(McpCalled(tool.name, sent, shown, looked)) match {
         case Itemised.Whole(items) => Answer.of(shown, items)
-        case Itemised.Parts(head, parts) => Answer.cut(shown, head, parts)
+        case Itemised.Parts(head, parts, _) => Answer.cut(shown, head, parts)
         case Itemised.Unplaced(why) => Left(McpError.Unplaced(why))
       }
     } yield answer

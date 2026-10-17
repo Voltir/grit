@@ -280,7 +280,7 @@ object Sync {
             read.map(_ => arguments)
           ) match {
             case Left(e) => Left(reason(e))
-            case Right(Called.Done(text, at)) => Right((text, at))
+            case Right(Called.Done(answer, at)) => Right((answer.map(_.text), at))
             case Right(Called.Failed(why)) =>
               Left(s"the call to ${source.service.name} failed: $why")
             case Right(Called.Interrupted) =>

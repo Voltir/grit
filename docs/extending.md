@@ -123,6 +123,19 @@ job's moves under a new `version`. `core/act` (`grit.act`) is grit's own module 
 these moves as durable steps, shared with the turn; a job or plugin never names it, only
 `grit.core.act`'s traits.
 
+**A tool's answer is data its extension renders.** A service's extension (its `Accounts`)
+may give what it reads `Facts` beside the text: JSON it wrote and renders that text from, on
+the answer itself (`Itemised.Parts`' and `Outcome.Done`'s `facts`) and on each part it cuts
+(`ResultPart`'s). Core reads no key of them. They ride with what they render: a part a reader
+may not read is withheld with its facts, and the model is never shown any. A job's `call`
+hands over the facts of what it kept (`Called.Done`'s `Answer.stated`), tainted and labelled
+as its text is, so code that acts on an answer reads its facts and never parses its text.
+An answer's own facts say what holds of it whole (a listing complete or cut short) and never
+count or name its parts, which would tell a reader what was withheld from it. Two bends: a
+third-party MCP server's data is its raw result, and the text is the client's clip of it, so
+a walk reading that text reads data; and vetting (ADR 0036) reads the text the model reads,
+never the facts it was rendered from.
+
 **Visibility** ([ADR 0030](decisions/0030-visibility-is-a-bell-lapadula-label-lattice-and-a-turn-reads-for-its-room-and-its-asker.md)).
 Who may see what is the one value a deployment injects into core about it,
 `Deployment.of(visibility = …)`, a `Visibility` built by `Visibility.of`, which refuses a

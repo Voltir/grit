@@ -58,9 +58,15 @@ enum Readers derives CanEqual {
 }
 
 /** One item of a service's result as its extension cut it: `item`, where it is kept and what
-  * its author is vouched at; `readers`, who may read it; `text`, what the model reads of it.
+  * its author is vouched at; `readers`, who may read it; `text`, what the model reads of it;
+  * `facts`, what `text` is rendered from, withheld with it.
   */
-final case class ResultPart(item: Provenance, readers: Readers, text: String) derives CanEqual
+final case class ResultPart(
+    item: Provenance,
+    readers: Readers,
+    text: String,
+    facts: Option[Facts] = None
+) derives CanEqual
 
 /** What a service's extension read of one result. */
 enum Itemised derives CanEqual {
@@ -69,9 +75,9 @@ enum Itemised derives CanEqual {
   case Whole(items: Accounted)
 
   /** `head`, read by every reader of its service, then each of `parts` read only by those its
-    * readers admit.
+    * readers admit; `facts`, what `head` is rendered from, read as it is.
     */
-  case Parts(head: String, parts: Vector[ResultPart])
+  case Parts(head: String, parts: Vector[ResultPart], facts: Option[Facts] = None)
 
   /** Read as its tool's but not placed: nothing of it is shown, saying `why` in words the model
     * reads.

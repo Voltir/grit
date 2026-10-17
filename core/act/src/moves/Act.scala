@@ -13,7 +13,7 @@ import grit.act.phase.{
   WaitSteps,
   Waiting
 }
-import grit.core.act.{Acting, Allowance, Called, MoveError, MoveName, Posed}
+import grit.core.act.{Acting, Allowance, Answer, Called, MoveError, MoveName, Posed}
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
 import grit.core.document.DocumentKeeper
@@ -344,7 +344,7 @@ private[moves] object Act {
                 .answerRead[String](env.records.requests, c.cs, None)
                 .map(r =>
                   called(
-                    r.outcome,
+                    r,
                     r.label.join(Tx.roomLabel(c.service.place)),
                     Tx.visibility(tx).believed(c.service, r.outcome.accounted).meet(c.believed)
                   )
@@ -362,7 +362,7 @@ private[moves] object Act {
     val waited: Flow[MovesEnv, Sending, Nothing, Either[MoveError, Called]] =
       awaiting.keeping
         .map {
-          case (s, Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _, _, _))) => Left(s)
+          case (s, Awaited.Rung(_) | Awaited.Answered(Outcome.Done(_, _, _, _, _))) => Left(s)
           case (_, Awaited.Answered(Outcome.Interrupted) | Awaited.Known(Outcome.Interrupted)) =>
             Right(Right(Called.Interrupted))
           case (_, Awaited.Answered(o)) => Right(Right(Called.Failed(failed(o))))
@@ -607,14 +607,16 @@ private[moves] object Act {
           }
     }
 
-  /** What an outcome is to a planner, its answer holding nothing above `at` and believed at
-    * `believed`.
+  /** What an outcome read is to a planner, its answer holding nothing above `at` and believed
+    * at `believed`.
     */
-  private def called(o: Outcome, at: Label, believed: Integrity): Called = o match {
-    case Outcome.Done(text, _, _, _) => Called.Done(Mint.tainted(text, believed), at)
-    case Outcome.Interrupted => Called.Interrupted
-    case other => Called.Failed(failed(other))
-  }
+  private def called(read: Outcome.Read, at: Label, believed: Integrity): Called =
+    read.outcome match {
+      case Outcome.Done(text, _, _, _, _) =>
+        Called.Done(Mint.tainted(Answer(text, read.stated), believed), at)
+      case Outcome.Interrupted => Called.Interrupted
+      case other => Called.Failed(failed(other))
+    }
 
   private def failed(o: Outcome): String =
     o.result(ToolCallId("move")).content

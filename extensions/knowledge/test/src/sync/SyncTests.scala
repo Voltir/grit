@@ -124,7 +124,10 @@ object SyncTests extends TestSuite {
         .flatMap(answers.get)
         .fold(Called.Failed("Not Found"))(text =>
           Called.Done(
-            TestTainted.at(text, path.flatMap(believed.get).getOrElse(Integrity.Member)),
+            TestTainted.at(
+              grit.core.act.Answer(text, grit.core.tool.Outcome.Stated.None),
+              path.flatMap(believed.get).getOrElse(Integrity.Member)
+            ),
             path.flatMap(raised.get).getOrElse(at)
           )
         )

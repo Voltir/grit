@@ -63,7 +63,8 @@ object OutcomeReadableTests extends TestSuite {
         )
         .readable ==> Outcome.Read(
         Outcome.Done("Found:\nrota.md", None, Accounted.of(Vector(staff)), None),
-        internal
+        internal,
+        Outcome.Stated.None
       )
     }
 
@@ -77,9 +78,49 @@ object OutcomeReadableTests extends TestSuite {
         Outcome.Done("Found:", parts = Some(Vector.empty)).readable,
         whole.readable
       ) ==> Vector(
-        Outcome.Read(Outcome.Done("Found:\nNothing was found."), Label.Public),
-        Outcome.Read(Outcome.Done("Found:\nNothing was found."), Label.Public),
-        Outcome.Read(whole, Label.Public)
+        Outcome.Read(Outcome.Done("Found:\nNothing was found."), Label.Public, Outcome.Stated.None),
+        Outcome.Read(Outcome.Done("Found:\nNothing was found."), Label.Public, Outcome.Stated.None),
+        Outcome.Read(whole, Label.Public, Outcome.Stated.None)
+      )
+    }
+
+    test(
+      "a part's facts are kept with it and withheld with it; the answer's own facts reach every reader"
+    ) {
+      val head = Facts.of(ujson.Obj("complete" -> true))
+      def facts(name: String) = Facts.of(ujson.Obj("name" -> name))
+      val cut = Outcome
+        .Done(
+          "Found:",
+          None,
+          Accounted.of(Vector.empty),
+          Some(
+            Vector(
+              ResultPart(minutes, Readers.AtPlace, "board-minutes.md", Some(facts("minutes"))),
+              ResultPart(staff, Readers.AtPlace, "rota.md", Some(facts("rota"))),
+              ResultPart(staff, Readers.AtPlace, "notes.md"),
+              ResultPart(staff, Readers.AtPlace, "plan.md", Some(facts("plan")))
+            )
+          ),
+          Some(head)
+        )
+      val whole = Outcome.Done("rota.md", facts = Some(head))
+      (cut.readable, whole.readable) ==> (
+        Outcome.Read(
+          Outcome.Done(
+            "Found:\nrota.md\nnotes.md\nplan.md",
+            None,
+            Accounted.of(Vector(staff, staff, staff)),
+            None
+          ),
+          internal,
+          Outcome.Stated(Some(head), Vector(facts("rota"), facts("plan")))
+        ),
+        Outcome.Read(
+          Outcome.Done("rota.md"),
+          Label.Public,
+          Outcome.Stated(Some(head), Vector.empty)
+        )
       )
     }
   }

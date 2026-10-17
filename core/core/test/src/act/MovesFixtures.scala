@@ -17,10 +17,11 @@ import grit.dbos.sql.TestTx
 object MovesFixtures {
 
   /** What a call came to, as the moves' tests and recorded runs' replies write it:
-    * `Done(text,label)`, `Failed(why)` or `Interrupted`, nothing said of what it is believed at.
+    * `Done(text,label)`, `Failed(why)` or `Interrupted`, nothing said of what it is believed at
+    * or of the facts it kept.
     */
   def shown(called: Called): String = called match {
-    case Called.Done(text, at) => s"Done(${Trusted.asIs(text).extract},$at)"
+    case Called.Done(answer, at) => s"Done(${Trusted.asIs(answer).extract.text},$at)"
     case other => other.toString
   }
 

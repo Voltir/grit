@@ -2,7 +2,15 @@ package grit.core.edge
 
 import grit.core.identity.Email
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Integrity, Provenance, Readers, ResultPart, TestLabels}
+import grit.core.visibility.{
+  Accounted,
+  Facts,
+  Integrity,
+  Provenance,
+  Readers,
+  ResultPart,
+  TestLabels
+}
 
 import utest.*
 
@@ -98,6 +106,54 @@ object OutcomeJsonTests extends TestSuite {
         OutcomeJson.read(ujson.read(recorded)).map(OutcomeJson.write(_).render()),
         OutcomeJson.read(ujson.read(answered)).map(OutcomeJson.answer(_).render())
       ) ==> (Right(recorded), Right(answered))
+    }
+
+    // A pin of the row's form: an edge writes facts there for the turn's planner to read, and a
+    // recorded step never holds them, so recorded turns keep the bytes they had.
+    test("facts ride on an answer's row and never on what a step records") {
+      val folder = TestLabels.place("service:files/confidential")
+      val listed = Facts.of(ujson.Obj("complete" -> false))
+      val plan = Facts.of(ujson.Obj("id" -> "f1", "kind" -> "document"))
+      val cut = Outcome.Done(
+        "2 files",
+        None,
+        Accounted.of(Vector.empty),
+        Some(
+          Vector(
+            ResultPart(
+              Provenance(folder, Integrity.Member),
+              Readers.AtPlace,
+              "plan.md",
+              Some(plan)
+            ),
+            ResultPart(Provenance(folder, Integrity.Member), Readers.AtPlace, "notes.md")
+          )
+        ),
+        Some(listed)
+      )
+      val whole = Outcome.Done("read", facts = Some(plan))
+      val answered =
+        """{"kind":"done","text":"2 files","items":[],"parts":[""" +
+          """{"place":"service:files/confidential","author":"member","readers":"place","text":"plan.md",""" +
+          """"facts":{"id":"f1","kind":"document"}},""" +
+          """{"place":"service:files/confidential","author":"member","readers":"place","text":"notes.md"}],""" +
+          """"facts":{"complete":false}}"""
+      val wholeAnswered = """{"kind":"done","text":"read","facts":{"id":"f1","kind":"document"}}"""
+      (
+        OutcomeJson.answer(cut).render(),
+        OutcomeJson.answer(whole).render(),
+        OutcomeJson.read(ujson.read(answered)),
+        OutcomeJson.read(ujson.read(wholeAnswered)),
+        OutcomeJson.write(cut).render(),
+        OutcomeJson.write(whole).render()
+      ) ==> (
+        answered,
+        wholeAnswered,
+        Right(cut),
+        Right(whole),
+        """{"kind":"done","text":"2 files","items":[]}""",
+        """{"kind":"done","text":"read"}"""
+      )
     }
   }
 }

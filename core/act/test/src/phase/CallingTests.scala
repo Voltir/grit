@@ -375,8 +375,8 @@ object CallingTests extends TestSuite {
       val (late, other) = sent(claimed = true)
       val second = waited(atAbandon, new Racing(late, atAbandon, other, Meanwhile.Quiet, answered))
       (first, second) ==> (
-        ("Answered(Done(ok,None,Unread,None))", Vector("expire:0:0")),
-        ("Answered(Done(ok,None,Unread,None))", Vector("expire:0:0", "abandon:0:0"))
+        ("Answered(Done(ok,None,Unread,None,None))", Vector("expire:0:0")),
+        ("Answered(Done(ok,None,Unread,None,None))", Vector("expire:0:0", "abandon:0:0"))
       )
     }
 

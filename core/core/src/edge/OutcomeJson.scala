@@ -3,7 +3,7 @@ package grit.core.edge
 import grit.core.identity.Email
 import grit.core.place.Place
 import grit.core.tool.Outcome
-import grit.core.visibility.{Accounted, Integrity, Provenance, Readers, ResultPart}
+import grit.core.visibility.{Accounted, Facts, Integrity, Provenance, Readers, ResultPart}
 
 /** An [[Outcome]]'s stored and wire form: what an edge writes on a request's row and sends
   * to the turn waiting on it, and what the turn records. `{"kind":"done","text":…}`, with
@@ -15,11 +15,11 @@ import grit.core.visibility.{Accounted, Integrity, Provenance, Readers, ResultPa
   */
 object OutcomeJson {
 
-  /** As a step records it: a `Done`'s parts never written, so it is recorded as its text,
-    * items and integrity.
+  /** As a step records it: a `Done`'s parts and facts never written, so it is recorded as its
+    * text, items and integrity.
     */
   def write(outcome: Outcome): ujson.Value = outcome match {
-    case Outcome.Done(text, integrity, items, _) => done(text, integrity, items)
+    case Outcome.Done(text, integrity, items, _, _) => done(text, integrity, items)
     case Outcome.Failed(why) => ujson.Obj("kind" -> "failed", "why" -> why)
     case Outcome.Declined(reason) =>
       ujson.Obj("kind" -> "denied", "reason" -> reason.fold[ujson.Value](ujson.Null)(ujson.Str(_)))
@@ -28,18 +28,23 @@ object OutcomeJson {
   }
 
   /** As an edge answers it on a request's row: [[write]]'s form, with a cut `Done`'s
-    * `"parts":[{"place","author","readers","text"}]`, `readers` `"place"` or
-    * `{"originator":<email>}`.
+    * `"parts":[{"place","author","readers","text","facts"?}]`, `readers` `"place"` or
+    * `{"originator":<email>}`, then a `Done`'s `"facts"`; a part's and a `Done`'s facts each
+    * only when present.
     */
   def answer(outcome: Outcome): ujson.Value = outcome match {
-    case Outcome.Done(text, integrity, items, Some(parts)) =>
+    case Outcome.Done(text, integrity, items, parts, facts) =>
       val answered = done(text, integrity, items)
-      answered("parts") = ujson.Arr.from(parts.map { p =>
-        ujson.Obj.from(
-          provenance(p.item) ++
-            Vector("readers" -> readers(p.readers), "text" -> ujson.Str(p.text))
-        )
-      })
+      parts.foreach(ps =>
+        answered("parts") = ujson.Arr.from(ps.map { p =>
+          ujson.Obj.from(
+            provenance(p.item) ++
+              Vector("readers" -> readers(p.readers), "text" -> ujson.Str(p.text)) ++
+              p.facts.map(f => "facts" -> f.json)
+          )
+        })
+      )
+      facts.foreach(f => answered("facts") = f.json)
       answered
     case other => write(other)
   }
@@ -71,7 +76,7 @@ object OutcomeJson {
               .fold[Either[String, Option[Vector[ResultPart]]]](Right(None))(
                 partsOf(_).map(Some(_))
               )
-          } yield Outcome.Done(text, integrity, items, parts)
+          } yield Outcome.Done(text, integrity, items, parts, o.get("facts").map(Facts.of))
         case "failed" => str(o, "why").map(Outcome.Failed(_))
         case "denied" => Right(Outcome.Declined(o.get("reason").flatMap(_.strOpt)))
         case "unanswered" => Right(Outcome.Unanswered)
@@ -126,7 +131,7 @@ object OutcomeJson {
               .toRight("an outcome's part has no readers")
               .flatMap(readersOf)
             text <- o.get("text").flatMap(_.strOpt).toRight("an outcome's part has no text")
-          } yield ResultPart(item, readers, text)
+          } yield ResultPart(item, readers, text, o.get("facts").map(Facts.of))
       )
     case _ => Left("an outcome's parts are not an array")
   }

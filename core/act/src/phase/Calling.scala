@@ -276,9 +276,10 @@ object Calling {
   )(using faults: Faults[F]): Either[F, Outcome.Read] =
     requests.answered(cs) match {
       case Right(Some(o)) => readable(o, bound).left.map(e => faults.store(e.toString))
-      case Right(None) => Right(Outcome.Read(Outcome.Failed(RungUnanswered), Label.Public))
+      case Right(None) =>
+        Right(Outcome.Read(Outcome.Failed(RungUnanswered), Label.Public, Outcome.Stated.None))
       case Left(StoreError.Invalid(_)) =>
-        Right(Outcome.Read(Outcome.Failed(RungGone), Label.Public))
+        Right(Outcome.Read(Outcome.Failed(RungGone), Label.Public, Outcome.Stated.None))
       case Left(e) => Left(faults.store(e.toString))
     }
 

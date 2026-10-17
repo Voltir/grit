@@ -164,7 +164,7 @@ object DriveEdgeTests extends TestSuite {
           run(fake, "drive_read", ujson.Obj("file" -> "file-4"), log += _),
           run(fake, "drive_search", ujson.Obj("text" -> "plan"), log += _)
         ).map {
-          case Outcome.Done(_, _, _, parts) => s"done, ${parts.map(_.size)}"
+          case Outcome.Done(_, _, _, parts, _) => s"done, ${parts.map(_.size)}"
           case other => other.toString
         }
         (outcomes, log.result()) ==> (
@@ -263,7 +263,7 @@ object DriveEdgeTests extends TestSuite {
       withFake { fake =>
         def placed(arguments: ujson.Obj): Vector[(String, String)] =
           run(fake, "drive_search", arguments) match {
-            case Outcome.Done(_, _, _, Some(parts)) =>
+            case Outcome.Done(_, _, _, Some(parts), _) =>
               parts.map(p => (p.text, p.item.place.written))
             case other => throw new java.lang.AssertionError(other.toString)
           }
@@ -293,7 +293,7 @@ object DriveEdgeTests extends TestSuite {
       withFake { fake =>
         def placed(arguments: ujson.Obj): Vector[(String, String)] =
           run(fake, "drive_list", arguments) match {
-            case Outcome.Done(_, _, _, Some(parts)) =>
+            case Outcome.Done(_, _, _, Some(parts), _) =>
               parts.map(p => (p.text, p.item.place.written))
             case other => throw new java.lang.AssertionError(other.toString)
           }
@@ -326,7 +326,7 @@ object DriveEdgeTests extends TestSuite {
       withFake { fake =>
         (
           run(fake, "drive_read", ujson.Obj("file" -> "file-1")) match {
-            case Outcome.Done(_, _, _, Some(Vector(part))) => (part.item.vouched, part.text)
+            case Outcome.Done(_, _, _, Some(Vector(part)), _) => (part.item.vouched, part.text)
             case other => throw new java.lang.AssertionError(other.toString)
           },
           run(fake, "drive_read", ujson.Obj("file" -> "file-404"))
@@ -346,7 +346,7 @@ object DriveEdgeTests extends TestSuite {
     ) {
       withFake { fake =>
         run(fake, "drive_read", ujson.Obj("file" -> "file-text")) match {
-          case Outcome.Done(_, _, _, Some(Vector(part))) =>
+          case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
             // Its own grants name a writer outside the domain; its drive's name none.
             (part.item.vouched, part.text) ==>
               (
