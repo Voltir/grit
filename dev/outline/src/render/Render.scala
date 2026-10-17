@@ -148,12 +148,7 @@ object Render {
       all.flatten.drop(pieces.size),
       keep.drop(pieces.size)
     )
-    val body =
-      (kept ++ cutBetween(all, keep, cap, hint = bodies.isEmpty) ++
-        summaries.map(testsLine))
-        .map(_ + "\n")
-        .mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    sized(kept ++ cutBetween(all, keep, cap, hint = bodies.isEmpty) ++ summaries.map(testsLine))
   }
 
   private def pkgOf(fullName: String): String =
@@ -292,9 +287,7 @@ object Render {
       here.zipWithIndex.map { case (lines, i) => if (i == 0) fileHeader +: lines else lines }
     }
 
-    val (kept, truncated) = fit(chunks, cap)
-    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    sized(fitUnder(header, chunks, cap))
   }
 
   /** The `uses` answer, grouped by file under `== file`, flagged as `show` flags it when the file is in `stale`: each run of sites with one owner as an `in <owner>` line, ending with the size `sizes` gives its first site, then each site as `<line>  <text>`; then the site and file counts. A site's owner is its enclosing definition without its package, or `<Suite>: <test name>` for a site `tests` names the test of, the suite being the owner's first segment. `overloaded` names the targets whose sites carry the `[→ name :line]` marker to their target's definition line after the line number; cut at `cap` bytes. */
@@ -352,18 +345,15 @@ object Render {
       if (listed) s"[${sites.size} sites in ${files.size} files]"
       else
         s"-- ${count(sites.size)} in ${files.size} files; --sites to list them all, or --in/--outside to narrow"
-    val body = (kept ++ truncated :+ summary).map(_ + "\n").mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    sized(kept ++ truncated :+ summary)
   }
 
   /** The most sites `uses` lists one by one without `allSites`; past it, each file and owner prints its count instead. */
   val SitesListed: Int = 20
 
   /** The `find` answer under `header`: `notes`, a line each, then each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes between lines. */
-  def find(notes: Vector[String], found: Vector[Defn], header: String, cap: Int): String = {
-    val body = linesUnder(notes ++ found.map(listing), header, cap)
-    body + s"[${kilobytes(bytesOf(body))} KB]"
-  }
+  def find(notes: Vector[String], found: Vector[Defn], header: String, cap: Int): String =
+    sized(fitUnder(header, (notes ++ found.map(listing)).map(Vector(_)), cap))
 
   /** `d` on one line, as `find` lists it: `<full name>  <file>:<lines>  <collapsed signature>` and its size tag. */
   def listing(d: Defn): String =
@@ -375,10 +365,8 @@ object Render {
   /** `header`, then the leading `lines` that fit in `cap` bytes, then the cut line saying how many more there are and the
     * budget that shows them all; each line ends with its newline.
     */
-  def linesUnder(lines: Vector[String], header: String, cap: Int): String = {
-    val (kept, truncated) = fit(lines.map(Vector(_)), cap)
-    (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
-  }
+  def linesUnder(lines: Vector[String], header: String, cap: Int): String =
+    fitUnder(header, lines.map(Vector(_)), cap).map(_ + "\n").mkString
 
   /** A definition of an area, with the role its family gives it: `prefix` is "" for a symbol or a trait, "impl " for an implementation, "contract " for a contract. */
   final case class Listed(defn: Defn, prefix: String)
@@ -407,9 +395,7 @@ object Render {
           s"== $file  $pkg" +: here.map(entryLine)
         }
 
-    val (kept, truncated) = fit(chunks, cap)
-    val body = (Vector(header) ++ kept ++ truncated).map(_ + "\n").mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    sized(fitUnder(header, chunks, cap))
   }
 
   /** A top-level definition in test sources, in another file than a suite's, whose members `used` the suite refers to. */
@@ -478,7 +464,9 @@ object Render {
       if (listFixtures)
         Vector(s"    $where") ++
           used
-            .map(m => s"      ${m.lines.start}-${m.lines.end} ${signatureLine(m)}${sizeTag(m.size)}")
+            .map(m =>
+              s"      ${m.lines.start}-${m.lines.end} ${signatureLine(m)}${sizeTag(m.size)}"
+            )
       else Vector(s"    $where  ${used.map(_.name).distinct.mkString(", ")}")
     }
     val fixtureHeader =
@@ -512,11 +500,7 @@ object Render {
 
     val keep = keptUnder(pieces, cap)
     val kept = pieces.zip(keep).collect { case (p, true) => p.lines }.flatten
-    val body =
-      (Vector(header) ++ kept ++ cutBetween(pieces.map(Vector(_)), keep, cap, hint = false))
-        .map(_ + "\n")
-        .mkString
-    body + s"[${kilobytes(bytesOf(body))} KB]"
+    sized(Vector(header) ++ kept ++ cutBetween(pieces.map(Vector(_)), keep, cap, hint = false))
   }
 
   /** The doc's first sentence: its text without the comment delimiters, whitespace collapsed, cut after the first `. ` and at 160 characters; none when the doc has no text. */
@@ -584,8 +568,7 @@ object Render {
     val chunks = body.sortBy(_._1).map(_._2) :+
       (Vector(s"$endFrom-$last end of file") ++ lines.slice(endFrom - 1, last))
     val (kept, truncated) = fit(chunks.headOption.map(heading +: _).toVector ++ chunks.drop(1), cap)
-    val text = (kept ++ truncated).map(_ + "\n").mkString
-    text + s"[${kilobytes(bytesOf(text))} KB]"
+    sized(kept ++ truncated)
   }
 
   /** The runs of `lines` (1-based) from `from` to `to` that no range of `covered` holds, each trimmed of its leading and
@@ -642,6 +625,18 @@ object Render {
           f.entries.map(e => s"  ${e.lines.start}-${e.lines.end} ${e.label}")
       if (i == 0) header +: lines else lines
     }
+  }
+
+  /** `header`, then what `fit` keeps of `chunks` in `cap`. */
+  private def fitUnder(header: String, chunks: Vector[Vector[String]], cap: Int): Vector[String] = {
+    val (kept, truncated) = fit(chunks, cap)
+    Vector(header) ++ kept ++ truncated
+  }
+
+  /** `lines`, each with its newline, then their size tag as a last line of its own. */
+  private def sized(lines: Vector[String]): String = {
+    val text = lines.map(_ + "\n").mkString
+    text + s"[${kilobytes(bytesOf(text))} KB]"
   }
 
   /** The leading `chunks` whose bytes, each line with its newline, fit in `cap`, then the cut line when some do not. */
