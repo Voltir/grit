@@ -14,7 +14,7 @@ import grit.turn.TurnRecord
 /** What a dry rehearsal showed, in the order it happened: each workflow it ran, with how its
   * body ended, the steps it ran (as a recorded workflow's are read) and each call made in it.
   */
-final case class Rehearsed(workflows: Vector[Rehearsed.Ran]) {
+final case class Rehearsed(workflows: Vector[Rehearsed.Ran]) extends caps.Pure {
 
   /** Every call, in the order made. */
   def calls: Vector[Rehearsed.Call] = workflows.flatMap(_.calls)

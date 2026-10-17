@@ -6,14 +6,16 @@ import utest.*
 
 /** What a dry rehearsal's answers may hold: nothing that reaches a model. [[Answers]] is
   * sealed, so no answers but its own are made, and pure, so a capability, a provider among
-  * them, can neither be held in one nor have its capture set added to one's type.
+  * them, can neither be held in one nor have its capture set added to one's type. What it
+  * showed ([[Rehearsed]]) is pure too: it outlives the rehearsal's block, so it holds no tape,
+  * tap or session.
   */
 object RehearseCaptureTests extends TestSuite {
 
   private val prelude =
     """package grit.probe
       |import grit.core.provider.Provider
-      |import grit.kit.rehearse.Answers
+      |import grit.kit.rehearse.{Answers, Rehearsed, Tape}
       |""".stripMargin
 
   /** The control: answers handed on beside a provider, holding none of it. */
@@ -28,9 +30,16 @@ object RehearseCaptureTests extends TestSuite {
     */
   private val pureHolding = "final class Live(p: Provider^) extends caps.Pure"
 
-  private val escapes = List(holding, pureHolding)
+  /** The control: what a rehearsal showed, handed on beside its tape. */
+  private val shownBeside =
+    "def g(t: Tape^): (Rehearsed, Tape^{t}) = (Rehearsed(Vector.empty), t)"
 
-  private lazy val compiled = Probes.batch(prelude, beside :: escapes)
+  /** What a rehearsal showed, typed as holding its tape. */
+  private val shownHolding = "def g(t: Tape^): Rehearsed^{t} = Rehearsed(Vector.empty)"
+
+  private val escapes = List(holding, pureHolding, shownHolding)
+
+  private lazy val compiled = Probes.batch(prelude, beside :: shownBeside :: escapes)
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -51,6 +60,14 @@ object RehearseCaptureTests extends TestSuite {
           .errors(pureHolding)
           .exists(_.contains("is not included in the allowed capture set {}"))
       )
+    }
+
+    test("what a rehearsal showed, handed on beside its tape, compiles") {
+      assert(compiled.errors(shownBeside).isEmpty)
+    }
+
+    test("what a rehearsal showed, typed as holding its tape, is rejected") {
+      assert(compiled.errors(shownHolding).exists(_.contains("Rehearsed is a pure type")))
     }
 
     test("capture checking is what rejects them") {
