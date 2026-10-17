@@ -42,7 +42,8 @@ In dependency order:
   workflows, telling the time by the engine's clock, with declared schedules reconciled at
   start and grit's own tools (`about`, and `clearance` over the engine's askers, which the kit
   alone holds) offered beside every plugin's. ← `deployment`, `environment`
-- **`rehearse`**: seeing what a shipped workflow body would do, without running it on the engine.
+- **`rehearse`**: seeing what a shipped workflow body would do, without running it on the engine
+  (ADR 0041).
   `Rehearsal` runs a body once and tells each step as it goes; nothing replays, and it is never
   handed to a workflow that must survive a crash. `RehearsalRunner` runs the workflows one
   message starts, in the session that recorded it, and answers their placements from its own.
