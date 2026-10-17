@@ -43,7 +43,8 @@ In dependency order:
   here alone. Imports `wire` and `scope`.
 - **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
   Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
-  words asked, a file, its grants, a Doc's, a Sheet's or a text file's text, and each failure
+  words asked, a listing of one folder's or drive's own files, a file and when it last changed,
+  its grants, a Doc's, a Sheet's or a text file's text, and each failure
   as a `DriveError` whose words name no setting, its cause for the operator's log alone), how
   a deployment's Drive is read (`DriveReading`: its people's domain, its own address, its
   declared writers, and how a person names a folder in a command, by its link or id), and
@@ -136,7 +137,10 @@ its drive, that a shared drive's top files have the drive's id as their only par
 folders carry `inheritedPermissionsDisabled` and grants `permissionDetails.inherited`, and that
 the account's own address is among a file's grants.
 
-Beside them, the `made-*` files are written by hand, since the recordings hold no text file:
-`made-file-text.json`, a text/plain file in `folder-3`; `made-file-text.txt`, its content,
-starting with a byte-order mark; and `made-permissions-file-text.json`, grants of its own, a
-writer outside the domain among them.
+Beside them, the `made-*` files are written by hand, since the recordings hold no text file
+and no `modifiedTime`: `made-file-text.json`, a text/plain file in `folder-3`;
+`made-file-text.txt`, its content, starting with a byte-order mark;
+`made-permissions-file-text.json`, grants of its own, a writer outside the domain among them;
+and `made-children-drive-a.json` and `made-children-folder-3.json`, the listing of each one's own
+files and folders (`'{id}' in parents`, no words), the recorded entries lying there, folders
+first and then by name, each with a `modifiedTime` of its own.

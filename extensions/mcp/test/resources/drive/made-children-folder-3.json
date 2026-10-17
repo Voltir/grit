@@ -1,0 +1,65 @@
+{
+  "files": [
+    {
+      "driveId": "drive-a",
+      "name": "name-10",
+      "mimeType": "application/vnd.google-apps.document",
+      "id": "file-1",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-08T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-12",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "id": "file-3",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-09T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-17",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "id": "file-8",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-10T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-18",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "id": "file-9",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-11T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-19",
+      "mimeType": "application/pdf",
+      "id": "file-10",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-12T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-30",
+      "mimeType": "text/plain",
+      "id": "file-text",
+      "parents": [
+        "folder-3"
+      ],
+      "modifiedTime": "2026-09-13T10:00:00.000Z"
+    }
+  ],
+  "incompleteSearch": false
+}

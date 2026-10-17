@@ -12,8 +12,10 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
 /** Drive's v3 REST API in this JVM, on a loopback port, answering from the recordings
   * ([[Recorded]]) and the hand-made `made-*` fixtures the requests [[DriveRest]] makes: a
   * search with `search-fulltext`, or, when its query holds `'{id}' in parents`, with those of
-  * its files whose parents name that id; a file with its `metadata-*` recording or, for any
-  * other id the searches or `made-file-text` name, its entry there; a text file's content
+  * its files whose parents name that id; a listing of one folder's own files (a query of
+  * `'{id}' in parents` and no words) with its `made-children-{id}`, or none when there is no
+  * such file; a file with its `metadata-*` recording or, for any
+  * other id the searches or the `made-*` files name, its entry there; a text file's content
   * (`alt=media`) with its `made-{id}.txt`, byte-order mark and all; a file's grants with its
   * own `made-permissions-{id}` when it has one, else its drive's `permissions-*`; a Doc's
   * markdown export with `export-doc.md`, a Sheet's CSV export with `export-sheet.csv`, any
@@ -111,6 +113,12 @@ final class FakeDriveServer private () {
   private def recorded(path: String, query: Map[String, String]): (Int, String) = {
     val media = query.get("alt").contains("media")
     path.split('/').toVector match {
+      case Vector("files") if query.get("q").exists(!_.contains("fullText contains")) =>
+        query.get("q").flatMap(FakeDriveServer.Parent.findFirstMatchIn).map(_.group(1)) match {
+          case Some(parent) if FakeDriveServer.Children(parent) =>
+            (200, Recorded.text(s"made-children-$parent.json"))
+          case _ => (200, ujson.write(ujson.Obj("files" -> ujson.Arr())))
+        }
       case Vector("files") =>
         val all = Recorded.json("search-fulltext")
         query.get("q").flatMap(FakeDriveServer.Parent.findFirstMatchIn).map(_.group(1)) match {
@@ -175,18 +183,23 @@ object FakeDriveServer {
   /** The parent a search's query holds it to, as [[DriveRest.search]] writes it. */
   private val Parent = "'([A-Za-z0-9_-]+)' in parents".r
 
+  /** The folders and drives whose own files are listed by hand, `made-children-{id}`. */
+  private val Children: Set[String] = Set("drive-a", "folder-3")
+
   /** The ids with grants of their own, `made-permissions-{id}`. */
   private val OwnGrants: Set[String] = Set("file-text")
 
-  /** Every file and folder the recorded searches and `made-file-text` name, by id. */
+  /** Every file and folder the recorded searches and the `made-*` files name, by id, a hand-made
+    * entry over a recorded one, since only the hand-made say when a file last changed.
+    */
   private lazy val listed: Map[String, ujson.Value] =
-    Vector(
+    (Vector(
       "search-files",
       "search-folders",
       "metadata-drive-a",
       "metadata-drive-b",
       "made-file-text"
-    )
+    ) ++ Children.toVector.sorted.map(c => s"made-children-$c"))
       .map(Recorded.json)
       .flatMap(a => a.obj.get("files").flatMap(_.arrOpt).map(_.toVector).getOrElse(Vector(a)))
       .flatMap(f => f.obj.get("id").flatMap(_.strOpt).map(_ -> f))

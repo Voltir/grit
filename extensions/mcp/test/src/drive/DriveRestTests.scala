@@ -53,6 +53,46 @@ object DriveRestTests extends TestSuite {
     }
 
     test(
+      "a listing asks for one folder's own files, none in the trash, a page of ListMost, folders first; a next page makes it incomplete"
+    ) {
+      withFake { (fake, rest) =>
+        val whole = rest.children(Recorded.id("folder-3")).map(_.incomplete)
+        val asked = fake.requests.lastOption.map((path, q) =>
+          (
+            path,
+            q.get("q"),
+            q.get("corpora"),
+            q.get("includeItemsFromAllDrives"),
+            q.get("pageSize"),
+            q.get("orderBy"),
+            q.get("fields")
+          )
+        )
+        val more = ujson.write(
+          ujson.Obj.from(
+            Recorded.json("made-children-folder-3").obj.toSeq :+ ("nextPageToken" -> ujson.Str("t"))
+          )
+        )
+        fake.answering("files", 200, more)
+        (whole, asked, rest.children(Recorded.id("folder-3")).map(_.incomplete)) ==> (
+          Right(false),
+          Some(
+            (
+              "files",
+              Some("'folder-3' in parents and trashed = false"),
+              Some("allDrives"),
+              Some("true"),
+              Some("100"),
+              Some("folder,name"),
+              Some(DriveJson.SearchFields)
+            )
+          ),
+          Right(true)
+        )
+      }
+    }
+
+    test(
       "a 403 for a rate or quota limit is busy, as are a 429 and a 5xx; any other 403, and a 404, are hidden"
     ) {
       withFake { (fake, rest) =>

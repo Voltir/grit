@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "driveId": "drive-a",
+      "name": "name-5",
+      "mimeType": "application/vnd.google-apps.folder",
+      "id": "folder-3",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-13",
+      "mimeType": "application/pdf",
+      "id": "file-4",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-02T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-14",
+      "mimeType": "application/pdf",
+      "id": "file-5",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-03T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-15",
+      "mimeType": "application/pdf",
+      "id": "file-6",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-04T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-26",
+      "mimeType": "application/vnd.google-apps.document",
+      "id": "file-18",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-05T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-28",
+      "mimeType": "application/vnd.google-apps.spreadsheet",
+      "id": "file-21",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-06T10:00:00.000Z"
+    },
+    {
+      "driveId": "drive-a",
+      "name": "name-29",
+      "mimeType": "application/vnd.google-apps.shortcut",
+      "id": "file-22",
+      "parents": [
+        "drive-a"
+      ],
+      "modifiedTime": "2026-09-07T10:00:00.000Z"
+    }
+  ],
+  "incompleteSearch": false
+}

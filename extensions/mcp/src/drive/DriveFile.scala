@@ -51,8 +51,8 @@ object DriveFile {
   val Spreadsheet: String = "application/vnd.google-apps.spreadsheet"
 }
 
-/** A search's first page of hits, in Drive's order; `incomplete` when Drive has more than these
-  * or searched only some of the drives shared with grit.
+/** A search's or a listing's first page of files, in Drive's order; `incomplete` when Drive has
+  * more than these or searched only some of the drives shared with grit.
   */
 final case class Hits(files: Vector[DriveFile], incomplete: Boolean)
 

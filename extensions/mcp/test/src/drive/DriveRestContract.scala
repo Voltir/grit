@@ -60,6 +60,23 @@ trait DriveRestContract extends TestSuite {
         (Right(Some(topFile._2)), Right(Some(folderFile._2)))
     }
 
+    test(
+      "a shared drive's and a folder's own files are listed, each lying directly within it and saying when it last changed"
+    ) {
+      def listed(in: FileId): Vector[DriveFile] =
+        rest.children(in).fold(e => throw new java.lang.AssertionError(e.message), _.files)
+      val top = listed(topFile._2)
+      val inFolder = listed(folderFile._2)
+      (
+        top.forall(_.within.contains(topFile._2)),
+        top.exists(_.id == topFile._1),
+        inFolder.forall(_.within.contains(folderFile._2)),
+        inFolder.exists(_.id == folderFile._1),
+        (top ++ inFolder).forall(_.changed.nonEmpty),
+        top.size <= DriveRest.ListMost
+      ) ==> (true, true, true, true, true, true)
+    }
+
     test("a file's grants are read whole, and name the account's own address") {
       val grants = rest.grants(doc)
       (

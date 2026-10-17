@@ -87,6 +87,23 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     ).flatMap(a => DriveJson.hits(a).left.map(DriveError.Malformed(_)))
   }
 
+  /** The first [[DriveRest.ListMost]] files and folders directly in `parent`, a folder or a
+    * shared drive, folders first and then by name, none in the trash; `incomplete` when Drive
+    * had more.
+    */
+  def children(parent: FileId): Either[DriveError, Hits] =
+    json(
+      "files",
+      Vector(
+        "q" -> s"'${FileId.value(parent)}' in parents and trashed = false",
+        "corpora" -> "allDrives",
+        "includeItemsFromAllDrives" -> "true",
+        "pageSize" -> DriveRest.ListMost.toString,
+        "orderBy" -> "folder,name",
+        "fields" -> DriveJson.SearchFields
+      )
+    ).flatMap(a => DriveJson.hits(a).left.map(DriveError.Malformed(_)))
+
   /** What Drive says of `id`. */
   def file(id: FileId): Either[DriveError, DriveFile] =
     json(s"files/${FileId.value(id)}", Vector("fields" -> DriveJson.FileFields))
@@ -201,6 +218,9 @@ object DriveRest {
 
   /** The most hits a search reads: 20. */
   val PageSize: Int = 20
+
+  /** The most files and folders a listing of one folder reads: 100, one page. */
+  val ListMost: Int = 100
 
   /** The most shared drives named: 100, one page. */
   val DrivesMost: Int = 100
