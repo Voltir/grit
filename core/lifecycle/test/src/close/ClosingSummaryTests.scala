@@ -143,6 +143,22 @@ object ClosingSummaryTests extends TestSuite {
     }
 
     // A real overheard closing added "The team will adjust their schedule accordingly."
+    test("both prompts ask for numbers, times and identifiers in digits, exactly as written") {
+      // "Out in full" was read as spelling numbers out: a clock time and a pull request's
+      // number came back as words, and no later message could be matched to them.
+      val rule = "numbers, times and identifiers in digits, exactly as written"
+      (
+        ClosingSummary
+          .system(true)
+          .contains(s"write names, file paths and commands out in full, and $rule"),
+        ClosingSummary
+          .overheard(true)
+          .contains(s"Write names, dates and file paths out in full, and $rule"),
+        ClosingSummary.system(true).contains("numbers, file paths"),
+        ClosingSummary.overheard(true).contains("numbers, dates")
+      ) ==> (true, true, false, false)
+    }
+
     test("the overheard prompt says to report only what was said, adding nothing") {
       assert(
         ClosingSummary

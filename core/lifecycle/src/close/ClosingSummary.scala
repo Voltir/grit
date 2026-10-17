@@ -24,7 +24,8 @@ object ClosingSummary {
       s"it changed. You are shown what is already known${labelledLike(labels)}, and then " +
       "the stretch's transcript. Reply with exactly the labelled parts " +
       "below, in this order, and nothing else. Every line you add must read alone: write " +
-      "names, numbers, file paths, commands and identifiers out in full, never \"as " +
+      "names, file paths and commands out in full, and numbers, times and identifiers in " +
+      "digits, exactly as written, never \"as " +
       "discussed\", \"that file\" or \"the above\". Add only what this stretch newly " +
       "established. Never repeat a line already known, and never record a recap, a lookup, " +
       "or a list of earlier activity that a tool or the assistant reported. Something not " +
@@ -52,7 +53,8 @@ object ClosingSummary {
       "said it. Reply with exactly the labelled parts below, in this order, and nothing else. " +
       "Write it as reported speech, naming who said what (\"Emily said the freeze moves to " +
       "Thursday\"): what someone said is what they said, never an established fact. Write " +
-      "names, numbers, dates, file paths and identifiers out in full, never \"as discussed\", " +
+      "names, dates and file paths out in full, and numbers, times and identifiers in digits, " +
+      "exactly as written, never \"as discussed\", " +
       "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
       "never repeat one. Report only what was said; add nothing nobody said."
 
