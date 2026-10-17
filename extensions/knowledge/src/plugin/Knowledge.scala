@@ -17,8 +17,9 @@ import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
   * with `+` written `-`, and declared at that label. Its documents: label "knowledge: what a
   * source holds, and how to read it", weight 1, kept 30 days after a version stops being
   * current, bounded at the sum of each GitHub source's `maxUnits` and each Drive source's
-  * `maxUnits` times its labels; at each start, a Drive source's card at a label it no longer
-  * declares is withdrawn ([[Documents.sweep]]); it posts nothing.
+  * `maxUnits` times its labels; at each start, a card of a corpus none of its sources has, and
+  * a Drive source's card at a label it no longer declares, is withdrawn ([[Documents.sweep]]);
+  * it posts nothing.
   */
 final class Knowledge private (
     val name: PluginName,
@@ -38,13 +39,16 @@ final class Knowledge private (
       val terms: DocumentTerms = kept
       val posting: Option[DocumentPosting] = None
 
-      /** A Drive source's card at a label not among its `labels`: no run of it reads that
-        * label, so no run would withdraw it.
+      /** A card of a corpus no source has, or a Drive source's card at a label not among its
+        * `labels`: no run reads it, so no run would withdraw it.
         */
-      override def undeclared(document: Document): Boolean =
+      override def undeclared(document: Document): Boolean = {
+        val corpora = declaring.map(_.corpus).distinct.map(Held.read(_, document))
+        corpora.forall(_ == Right(None)) ||
         drives.exists(d =>
           Held.read(d.corpus, document).exists(_.exists(h => !d.labels.contains(h.label)))
         )
+      }
     })
   }
 

@@ -41,6 +41,32 @@ object KnowledgeTests extends TestSuite {
   private val internal = Label.at(Level.Internal)
   private val confidential = Label.at(Level.Confidential)
 
+  /** The plugin's card of `corpus`'s file `f1`, kept at `label`. */
+  private def card(corpus: String, label: Label): Document = {
+    val pointer = right(Pointer.of(right(ToolName.of("drive_read")), "file" -> ujson.Str("f1")))
+    val card = Card.file(
+      right(CorpusName.of(corpus)),
+      "f1",
+      right(UnitVersion.of("2026-01-01T00:00:00Z")),
+      right(CardSummary.of("What the file holds.", Vector.empty)),
+      pointer
+    )
+    Document(
+      right(DocumentVersion.of(1).toRight("no version")),
+      name,
+      card.docKey,
+      label,
+      Integrity.Member,
+      driveService.place,
+      card.text,
+      card.data,
+      Some(pointer),
+      Instant.EPOCH,
+      Placement(0, Instant.EPOCH),
+      None
+    )
+  }
+
   /** The source `corpus` over GitHub's service at `label`, its one schedule keyed `key`. */
   private def source(
       label: Option[Label],
@@ -233,32 +259,15 @@ object KnowledgeTests extends TestSuite {
         )
       )
       val restricted = Label.at(Level.Restricted)
-      val pointer = right(Pointer.of(right(ToolName.of("drive_read")), "file" -> ujson.Str("f1")))
-      val summary = right(CardSummary.of("What the file holds.", Vector.empty))
-      def at(corpus: String, label: Label): Document = {
-        val card = Card.file(
-          right(CorpusName.of(corpus)),
-          "f1",
-          right(UnitVersion.of("2026-01-01T00:00:00Z")),
-          summary,
-          pointer
-        )
-        Document(
-          right(DocumentVersion.of(1).toRight("no version")),
-          name,
-          card.docKey,
-          label,
-          Integrity.Member,
-          driveService.place,
-          card.text,
-          card.data,
-          Some(pointer),
-          Instant.EPOCH,
-          Placement(0, Instant.EPOCH),
-          None
-        )
-      }
-      Vector(at("shared", internal), at("shared", restricted), at("repo", restricted))
+      Vector(card("shared", internal), card("shared", restricted), card("repo", restricted))
+        .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false)
+    }
+
+    test("a card of a corpus no source declares is undeclared, and a document no card is not") {
+      val plugin = right(Knowledge.of(name, Vector(source(None)), driveUnder(internal)))
+      val gone = card("gone", internal)
+      val noCard = gone.copy(data = ujson.Obj("note" -> "no card"))
+      Vector(card("repo", internal), gone, noCard)
         .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false)
     }
 
