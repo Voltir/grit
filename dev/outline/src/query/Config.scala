@@ -10,11 +10,12 @@ final case class Area(
     purpose: Option[String] = None
 )
 
-/** The query settings a repository gives in its own `.outline.conf`: source paths no query shows unless it names them fully, the named areas `area` answers for, and the call `tests` reads test names from. */
+/** The query settings a repository gives in its own `.outline.conf`: source paths no query shows unless it names them fully, the named areas `area` answers for, the call `tests` reads test names from, and the `secondary` source path prefixes, main sources a short name rarely means: a short name that one definition outside them and outside test sources matches resolves to that one. */
 final case class Config(
     hidden: Vector[String],
     areas: Vector[Area],
-    testCall: String = Config.defaultTestCall
+    testCall: String = Config.defaultTestCall,
+    secondary: Vector[String] = Vector.empty
 )
 
 object Config {
@@ -28,8 +29,9 @@ object Config {
   private val Hide = raw"hide\s+(.+)".r
   private val AreaLine = raw"""area\s+([^:\s"]+)(?:\s+"([^"]*)")?\s*:(.*)""".r
   private val TestCallLine = raw"test-call\s+(\S+)".r
+  private val SecondaryLine = raw"secondary\s+(.+)".r
 
-  /** `root`'s `.outline.conf`, or `empty` when it has none: lines `hide <prefix>` (a repo-relative source path prefix), `area <name> "<purpose>": <item> …` (the quoted purpose optional; an item a symbol name, or `family:<Trait>`) and `test-call <name>` (the call `tests` reads); `#` comments and blank lines are skipped. `Left` names the line that is none of these, an area with no items, an area whose name a line before already declared, and a `test-call` line after the first. */
+  /** `root`'s `.outline.conf`, or `empty` when it has none: lines `hide <prefix>` and `secondary <prefix>` (each a repo-relative source path prefix), `area <name> "<purpose>": <item> …` (the quoted purpose optional; an item a symbol name, or `family:<Trait>`) and `test-call <name>` (the call `tests` reads); `#` comments and blank lines are skipped. `Left` names the line that is none of these, an area with no items, an area whose name a line before already declared, and a `test-call` line after the first. */
   def read(root: Root): Either[String, Config] = {
     val file = root.dir / ".outline.conf"
     if (!os.isFile(file)) Right(empty)
@@ -39,46 +41,37 @@ object Config {
         .zipWithIndex
         .map { case (line, index) => (line.trim, index + 1) }
         .filter { case (line, _) => line.nonEmpty && !line.startsWith("#") }
-        .foldLeft[Either[String, (Vector[String], Vector[Area], Option[String])]](
-          Right((Vector.empty, Vector.empty, None))
-        ) {
+        // The config so far, and whether a test-call line has been read.
+        .foldLeft[Either[String, (Config, Boolean)]](Right((empty, false))) {
           case (Left(message), _) => Left(message)
-          case (Right((prefixes, areas, testCall)), (line, number)) =>
+          case (Right((config, namedTestCall)), (line, number)) =>
             line match {
-              case Hide(prefix) => Right((prefixes :+ prefix.trim, areas, testCall))
+              case Hide(prefix) =>
+                Right((config.copy(hidden = config.hidden :+ prefix.trim), namedTestCall))
+              case SecondaryLine(prefix) =>
+                Right((config.copy(secondary = config.secondary :+ prefix.trim), namedTestCall))
               case AreaLine(name, purpose, items) =>
                 val words = items.trim.split("\\s+").toVector.filter(_.nonEmpty)
                 if (words.isEmpty)
                   Left(s"$file: line $number declares area $name with no items: $line")
-                else if (areas.exists(_.name == name))
+                else if (config.areas.exists(_.name == name))
                   Left(s"$file: line $number repeats area $name: $line")
                 else {
                   val families = words.filter(_.startsWith("family:")).map(_.stripPrefix("family:"))
                   val symbols = words.filterNot(_.startsWith("family:"))
-                  Right(
-                    (
-                      prefixes,
-                      areas :+ Area(
-                        name,
-                        symbols,
-                        families,
-                        Option(purpose).map(_.trim).filter(_.nonEmpty)
-                      ),
-                      testCall
-                    )
-                  )
+                  val area =
+                    Area(name, symbols, families, Option(purpose).map(_.trim).filter(_.nonEmpty))
+                  Right((config.copy(areas = config.areas :+ area), namedTestCall))
                 }
               case TestCallLine(name) =>
-                if (testCall.isDefined) Left(s"$file: line $number repeats test-call: $line")
-                else Right((prefixes, areas, Some(name)))
+                if (namedTestCall) Left(s"$file: line $number repeats test-call: $line")
+                else Right((config.copy(testCall = name), true))
               case _ =>
                 Left(
-                  s"$file: line $number is neither `hide <prefix>`, `area <name> $"<purpose>$": <items>` nor `test-call <name>`: $line"
+                  s"$file: line $number is none of `hide <prefix>`, `secondary <prefix>`, `area <name> $"<purpose>$": <items>` and `test-call <name>`: $line"
                 )
             }
         }
-        .map { case (prefixes, areas, testCall) =>
-          Config(prefixes, areas, testCall.getOrElse(Config.defaultTestCall))
-        }
+        .map { case (config, _) => config }
   }
 }

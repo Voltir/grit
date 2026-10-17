@@ -33,7 +33,12 @@ The nearest suites are those under the symbol's own module directory first, then
 most references. `--tests` lists them instead: a `## tests exercising <Sym>` line, then per file a
 `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>`
 for a helper that itself holds a reference. `--no-tests` drops both. None of these lines is file text. A name main sources lack is looked up in test sources
-and shown from there, under a `-- in test sources: <full name>` note, with no tests line.
+and shown from there, under a `-- in test sources: <full name>` note, with no tests line. Every query reads a short name
+the same way: when several definitions' full names end with it and only one lies outside test sources and the
+`secondary` paths (Configuration, below), it means that one, under
+`-- Part taken as grit.core.edge.Part, the only one outside test and secondary sources; also grit.eval.harness.capture.Part (secondary: eval/harness/): name it fully to read it`;
+otherwise it means all of them, under `-- ambiguous Part, name one fully:` and one `--   ` line each, as `find` lists it,
+primary ones first and the others tagged.
 
     scripts/outline show Sym[,Sym…] [--depth 0|1|2] [--body m[,m…]] [--private] [--docs] [--tests|--no-tests] [--max-kb N] [--root DIR]
 
@@ -162,10 +167,14 @@ says on stderr why it ends, then or when stdin closes.
 The file sits at the repository root. Lines starting with `#` are comments.
 
     hide vendor/generated
+    secondary tools/
     area storage "Where records are kept.": com.example.store.Store com.example.store.Tx family:com.example.store.Repository
     test-call test
 
 - `hide <path>`: source paths no query shows unless it names them fully.
+- `secondary <path>`: main source paths a short name rarely means, such as tooling or a harness; a short name
+  with one candidate outside them and outside test sources means that one (Queries, show). A plain prefix:
+  end it with `/` to stop at a directory.
 - `area <name> "<purpose>": <symbols…>`: a named set of symbols, and `family:<Trait>` entries for a
   trait's implementations and contracts; the quoted purpose, optional, is what `area` with no name
   lists.

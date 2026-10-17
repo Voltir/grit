@@ -1,7 +1,8 @@
 package grit.outline.query
 
 import grit.outline.locate.{Layout, Locate, Root}
-import grit.outline.model.Defn
+import grit.outline.model.{Defn, Kind}
+import grit.outline.render.Render
 
 /** Which classes a name is looked up in: `Main` skips the classes directories holding only tests' classes. */
 enum Scope {
@@ -17,6 +18,75 @@ final case class Resolved(
 )
 
 object Resolve {
+
+  /** Where a candidate for a short name lies, most likely meant first: a primary source, under one of `.outline.conf`'s `secondary` prefixes, or a test source. */
+  private enum Standing {
+    case Primary
+    case Secondary(prefix: String)
+    case Test
+
+    def rank: Int = this match {
+      case Primary => 0
+      case Secondary(_) => 1
+      case Test => 2
+    }
+
+    /** What a note says after a candidate's name; none for a primary one. */
+    def tag: Option[String] = this match {
+      case Primary => None
+      case Secondary(prefix) => Some(s"secondary: $prefix")
+      case Test => Some("test sources")
+    }
+  }
+
+  private def standing(layout: Layout, config: Config, d: Defn): Standing =
+    if (layout.isTestSource(os.RelPath(d.file))) Standing.Test
+    else
+      config.secondary
+        .find(prefix => d.file.startsWith(prefix))
+        .fold(Standing.Primary)(Standing.Secondary(_))
+
+  /** The definitions `sym` picks among `suffix`, the definitions whose full name ends with `.sym`, and the notes saying so. */
+  private def bySuffix(
+      layout: Layout,
+      config: Config,
+      sym: String,
+      suffix: Vector[Defn]
+  ): (Vector[Defn], Vector[String]) = {
+    val names = suffix.map(_.fullName).distinct
+    if (names.sizeIs == 1) (suffix, Vector.empty)
+    else {
+      // One row per full name: a class or trait over its companion object.
+      val rows = names
+        .flatMap { name =>
+          val same = suffix.filter(_.fullName == name)
+          same.find(_.kind != Kind.Object).orElse(same.headOption)
+        }
+        .map(d => (d, standing(layout, config, d)))
+        .sortBy { case (d, s) => (s.rank, d.fullName) }
+      def tagged(name: String, s: Standing): String = s.tag.fold(name)(t => s"$name ($t)")
+      rows.filter { case (_, s) => s == Standing.Primary } match {
+        case Vector((chosen, _)) =>
+          val others = rows.collect {
+            case (d, s) if d.fullName != chosen.fullName => tagged(d.fullName, s)
+          }
+          (
+            suffix.filter(_.fullName == chosen.fullName),
+            Vector(
+              s"-- $sym taken as ${chosen.fullName}, the only one outside test and secondary sources; also ${others
+                  .mkString(", ")}: name it fully to read it"
+            )
+          )
+        case _ =>
+          (
+            suffix,
+            s"-- ambiguous $sym, name one fully:" +: rows.map { case (d, s) =>
+              s"--   ${Render.listing(d)}${s.tag.fold("")(t => s"  ($t)")}"
+            }
+          )
+      }
+    }
+  }
 
   /** The `.tasty` a `scope` searches among `tasty`: `Scope.Main` drops the classes directories holding only tests' classes. */
   private[query] def usable(
@@ -47,7 +117,7 @@ object Resolve {
     else Loaded.defns(root, layout, tasty, in).map { case (_, next, _) => next }
   }
 
-  /** `sym`'s definitions under `root`: those whose fullName is exactly `sym`; else those whose fullName ends with `.sym` (when more than one distinct fullName, the note `-- ambiguous <sym>: <full names, comma-separated> (name one fully)`); else, by `sym`'s last segment among the packages of files mentioning it. When `sym` has a qualifier, that step keeps the candidates whose owner (the fullName without its last segment) has the qualifier's last segment as its simple name; when none does, every candidate is listed and nothing resolves. One distinct fullName left resolves to its definitions, with the note `-- no <sym> as written; by last segment: <full names>`; more than one, or a qualifier that matches no candidate's owner, resolves to none, with the note `-- no <sym> as written; by last segment, name one fully: <full names, comma-separated>`. Only an exact match sees `config.hidden` sources; `Scope.Main` skips test-only classes dirs. Empty `defns` when nothing matches, with the note `-- no match for <sym>; try find *<last segment>*`. */
+  /** `sym`'s definitions under `root`: those whose fullName is exactly `sym`; else those whose fullName ends with `.sym`: when they hold more than one distinct fullName and exactly one lies outside test sources and `config.secondary`, only that one's, with the note `-- <sym> taken as <it>, …; also <each other, tagged (test sources) or (secondary: <prefix>)>: …`; with more than one such, or none, all of them, with the note `-- ambiguous <sym>, name one fully:` and a `--   ` line per fullName as `Render.listing` gives it, tagged likewise, primary first; else, by `sym`'s last segment among the packages of files mentioning it. When `sym` has a qualifier, that step keeps the candidates whose owner (the fullName without its last segment) has the qualifier's last segment as its simple name; when none does, every candidate is listed and nothing resolves. One distinct fullName left resolves to its definitions, with the note `-- no <sym> as written; by last segment: <full names>`; more than one, or a qualifier that matches no candidate's owner, resolves to none, with the note `-- no <sym> as written; by last segment, name one fully: <full names, comma-separated>`. Only an exact match sees `config.hidden` sources; `Scope.Main` skips test-only classes dirs. Empty `defns` when nothing matches, with the note `-- no match for <sym>; try find *<last segment>*`. */
   def resolve(
       root: Root,
       layout: Layout,
@@ -71,12 +141,8 @@ object Resolve {
         val suffix = all.filter(d => d.fullName.endsWith("." + sym) && !hidden(d))
         if (exact.nonEmpty) Right(Resolved(exact, Vector.empty, loaded, tops))
         else if (suffix.nonEmpty) {
-          val names = suffix.map(_.fullName).distinct.sorted
-          val notes =
-            if (names.size > 1)
-              Vector(s"-- ambiguous $sym: ${names.mkString(", ")} (name one fully)")
-            else Vector.empty
-          Right(Resolved(suffix, notes, loaded, tops))
+          val (defns, notes) = bySuffix(layout, config, sym, suffix)
+          Right(Resolved(defns, notes, loaded, tops))
         } else {
           val last = simple(sym)
           val classes = layout.classesDirs(root)

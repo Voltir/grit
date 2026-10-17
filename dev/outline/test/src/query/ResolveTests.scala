@@ -1,7 +1,7 @@
 package grit.outline.query
 
-import grit.outline.locate.{Locate, Root}
-import grit.outline.testing.FixtureLayout
+import grit.outline.locate.{Layout, Locate, Root}
+import grit.outline.testing.{FixtureLayout, FixtureSuitesLayout}
 
 import utest.*
 
@@ -24,9 +24,10 @@ object ResolveTests extends TestSuite {
   private def resolve(
       sym: String,
       config: Config = Config.empty,
-      scope: Scope = Scope.Main
+      scope: Scope = Scope.Main,
+      layout: Layout = FixtureLayout
   ): Resolved =
-    Resolve.resolve(root, FixtureLayout, config, scope, sym, Loaded.empty) match {
+    Resolve.resolve(root, layout, config, scope, sym, Loaded.empty) match {
       case Right(r) => r
       case Left(message) => throw new Exception(message)
     }
@@ -46,17 +47,58 @@ object ResolveTests extends TestSuite {
       assert(r.notes.isEmpty)
     }
 
-    test("a short name shared by two packages resolves to both, and the note names both") {
+    test(
+      "a short name shared by two packages resolves to both, and the notes give each one's file, lines and signature"
+    ) {
       val r = resolve("Tx")
       assert(
-        Set("grit.outline.fixture.Tx", "grit.outline.fixture.store.Tx").subsetOf(
-          r.defns.map(_.fullName).toSet
+        r.defns.map(_.fullName).distinct.sorted == Vector(
+          "grit.outline.fixture.Tx",
+          "grit.outline.fixture.store.Tx"
         )
       )
-      assert(r.notes.exists(_.startsWith("-- ambiguous Tx:")))
       assert(
-        r.notes.exists(n =>
-          n.contains("grit.outline.fixture.Tx") && n.contains("grit.outline.fixture.store.Tx")
+        r.notes == Vector(
+          "-- ambiguous Tx, name one fully:",
+          "--   grit.outline.fixture.Tx  dev/outline/fixture/src/Sample.scala:3-4  trait Tx extends caps.SharedCapability  [0.2 KB]",
+          "--   grit.outline.fixture.store.Tx  dev/outline/fixture/src/store/Store.scala:53-54  trait Tx  [0.2 KB]"
+        )
+      )
+    }
+
+    test(
+      "a short name one main source and one test source define resolves to the main one, and one note names the other"
+    ) {
+      val r = resolve("Pairs", scope = Scope.WithTests, layout = FixtureSuitesLayout)
+      assert(r.defns.map(_.fullName).distinct == Vector("grit.outline.fixture.store.Pairs"))
+      assert(
+        r.notes == Vector(
+          "-- Pairs taken as grit.outline.fixture.store.Pairs, the only one outside test and secondary sources; also grit.outline.fixture.suites.Pairs (test sources): name it fully to read it"
+        )
+      )
+    }
+
+    test(
+      "a short name one primary source and one secondary source define resolves to the primary one, and one note names the other"
+    ) {
+      val secondary = Config.empty.copy(secondary = Vector("dev/outline/fixture/src/store"))
+      val r = resolve("Tx", secondary)
+      assert(r.defns.map(_.fullName).distinct == Vector("grit.outline.fixture.Tx"))
+      assert(
+        r.notes == Vector(
+          "-- Tx taken as grit.outline.fixture.Tx, the only one outside test and secondary sources; also grit.outline.fixture.store.Tx (secondary: dev/outline/fixture/src/store): name it fully to read it"
+        )
+      )
+    }
+
+    test("two secondary candidates and no primary one stay ambiguous, each line tagged secondary") {
+      val secondary = Config.empty.copy(secondary = Vector("dev/outline/fixture/src"))
+      val r = resolve("Tx", secondary)
+      assert(r.defns.map(_.fullName).distinct.size == 2)
+      assert(
+        r.notes.drop(1) == Vector(
+          "--   grit.outline.fixture.Tx  dev/outline/fixture/src/Sample.scala:3-4  trait Tx extends caps.SharedCapability  [0.2 KB]  (secondary: dev/outline/fixture/src)",
+          "--   grit.outline.fixture.store.Tx  dev/outline/fixture/src/store/Store.scala:53-54  trait Tx  [0.2 KB]  (secondary: dev/outline/fixture/src)"
         )
       )
     }

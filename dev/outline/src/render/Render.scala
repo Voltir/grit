@@ -359,15 +359,13 @@ object Render {
 
   /** The `find` answer under `header`: `notes`, a line each, then each of `found`, in its order, as `<full name>  <file>:<lines>  <collapsed signature>` and its size tag; cut at `cap` bytes between lines. */
   def find(notes: Vector[String], found: Vector[Defn], header: String, cap: Int): String = {
-    val body = linesUnder(
-      notes ++ found.map(d =>
-        s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
-      ),
-      header,
-      cap
-    )
+    val body = linesUnder(notes ++ found.map(listing), header, cap)
     body + s"[${kilobytes(bytesOf(body))} KB]"
   }
+
+  /** `d` on one line, as `find` lists it: `<full name>  <file>:<lines>  <collapsed signature>` and its size tag. */
+  def listing(d: Defn): String =
+    s"${d.fullName}  ${d.file}:${d.lines.start}-${d.lines.end}  ${collapse(withoutDocs(d.signature))}${sizeTag(d.size)}"
 
   /** `header`, then the leading `lines` that fit in `cap` bytes, then the cut line saying how many more there are and the
     * budget that shows them all; each line ends with its newline.

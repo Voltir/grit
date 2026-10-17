@@ -181,7 +181,9 @@ object TestsTests extends TestSuite {
       assert(found.status == Status.NoMatch)
       assert(
         found.text.contains(
-          "-- ambiguous Twin: grit.outline.fixture.Twin, grit.outline.fixture.store.Twin (name one fully)"
+          "-- ambiguous Twin, name one fully:\n--   grit.outline.fixture.Twin  dev/outline/fixture/src/Sample.scala:"
+        ) && found.text.contains(
+          "\n--   grit.outline.fixture.store.Twin  dev/outline/fixture/src/store/Store.scala:"
         )
       )
       assert(!found.text.contains("== "))

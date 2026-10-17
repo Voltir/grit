@@ -19,5 +19,18 @@ object ConfigTests extends TestSuite {
     test("with no test-call line the test call is test") {
       assert(Config.empty.testCall == "test")
     }
+
+    test("secondary lines are read in order, beside the other kinds of line") {
+      val dir = os.temp.dir()
+      os.write(
+        dir / ".outline.conf",
+        "hide a/b\nsecondary eval/harness/\ntest-call check\nsecondary dev/\n"
+      )
+      assert(
+        Config.read(Root(dir)) == Right(
+          Config(Vector("a/b"), Vector.empty, "check", Vector("eval/harness/", "dev/"))
+        )
+      )
+    }
   }
 }
