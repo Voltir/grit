@@ -199,13 +199,14 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "opened, it advertises drive_search and drive_read at the service's place, its instructions the Place layer, logged"
+      "opened, it advertises drive_list, drive_search and drive_read at the service's place, its instructions the Place layer, logged"
     ) {
       withFake { fake =>
         val (result, edges, log) = opened(fake, Env)
         (
           result,
           edges.adverts.toVector.map((at, advert) => (at._2, advert.tools, advert.instructions)),
+          DriveTools.Offered.tools.map(e => ToolName.value(e.name)),
           log
         ) ==> (
           Right(()),
@@ -216,7 +217,8 @@ object DriveEdgeTests extends TestSuite {
               PlaceFragments.declared(Drive.place, DriveEdge.Instructions).toSeq.toVector.map(_.id)
             )
           ),
-          Vector("service:drive: serving drive_search, drive_read")
+          Vector("drive_list", "drive_search", "drive_read"),
+          Vector("service:drive: serving drive_list, drive_search, drive_read")
         )
       }
     }
@@ -286,6 +288,39 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
+      "a listing with no folder names the shared drives at the service's place; one of a drive, its files at the drive's place and its folders at the service's"
+    ) {
+      withFake { fake =>
+        def placed(arguments: ujson.Obj): Vector[(String, String)] =
+          run(fake, "drive_list", arguments) match {
+            case Outcome.Done(_, _, _, Some(parts)) =>
+              parts.map(p => (p.text, p.item.place.written))
+            case other => throw new java.lang.AssertionError(other.toString)
+          }
+        val drive = placed(ujson.Obj("folder" -> "drive-a"))
+        val asked = fake.requests.lastOption.flatMap(_._2.get("q"))
+        (placed(ujson.Obj()), drive.size, drive.take(2), asked) ==> (
+          Vector(
+            ("- name-1 (a shared drive), id drive-a", "service:drive"),
+            ("- name-2 (a shared drive), id drive-b", "service:drive")
+          ),
+          7,
+          Vector(
+            (
+              "- name-5 (a folder), id folder-3, last changed 2026-09-01T10:00:00Z",
+              "service:drive"
+            ),
+            (
+              "- name-13 (a PDF), id file-4, last changed 2026-09-02T10:00:00Z",
+              "service:drive/drive-a"
+            )
+          ),
+          Some("'drive-a' in parents and trashed = false")
+        )
+      }
+    }
+
+    test(
       "a read is answered with its name and text, believed at the meet over its writers; a file not shared is the error's words"
     ) {
       withFake { fake =>
@@ -314,7 +349,10 @@ object DriveEdgeTests extends TestSuite {
           case Outcome.Done(_, _, _, Some(Vector(part))) =>
             // Its own grants name a writer outside the domain; its drive's name none.
             (part.item.vouched, part.text) ==>
-              (Integrity.Outside, "name-30 (a text file):\ntext text.\ntext text, text.")
+              (
+                Integrity.Outside,
+                "name-30 (a text file), last changed 2026-09-13T10:00:00Z:\ntext text.\ntext text, text."
+              )
           case other => throw new java.lang.AssertionError(other.toString)
         }
       }
@@ -325,7 +363,8 @@ object DriveEdgeTests extends TestSuite {
         val failed = Vector(
           run(fake, "drive_read", ujson.Obj("file" -> "../x")),
           run(fake, "drive_search", ujson.Obj("text" -> "plan", "folder" -> "a b")),
-          run(fake, "drive_search", ujson.Obj("text" -> " "))
+          run(fake, "drive_search", ujson.Obj("text" -> " ")),
+          run(fake, "drive_list", ujson.Obj("folder" -> "a/b"))
         )
         (failed, fake.requests) ==> (
           Vector(
@@ -340,6 +379,10 @@ object DriveEdgeTests extends TestSuite {
             Outcome.Failed(
               "The call to `drive_search` was not run: Give at least one word to search for. " +
                 "You sent: {\"text\":\" \"}"
+            ),
+            Outcome.Failed(
+              "The call to `drive_list` was not run: A Drive file's id holds only letters, " +
+                "digits, - and _, not a/b. You sent: {\"folder\":\"a/b\"}"
             )
           ),
           Vector()

@@ -17,18 +17,19 @@ object DriveEdge {
     * default.
     */
   val Instructions: String =
-    "drive_search finds Drive files by the words in them, and drive_read reads one by its id. " +
+    "drive_list lists the shared drives, or what is directly in one folder or shared drive; " +
+      "drive_search finds Drive files by the words in them; and drive_read reads one by its id. " +
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
       "can open it to you with the label command, typing " +
       s"${DriveItems.Opening}: the link Drive shows for the folder, or " +
-      "the folder's id from a search."
+      "the folder's id from a list or a search."
 
-  /** The edge named for `reading`'s service, serving [[DriveTools.Search]] and
-    * [[DriveTools.Read]] there over Drive's API at `api` with `credential`'s tokens, read as
+  /** The edge named for `reading`'s service, serving [[DriveTools.List]], [[DriveTools.Search]]
+    * and [[DriveTools.Read]] there over Drive's API at `api` with `credential`'s tokens, read as
     * `reading` says, with `instructions` as the place's Place layer; or why not:
     * `instructions` blank, or `api` not an absolute URL. Opened, it registers the service's
-    * place for grit itself ([[PrincipalId.Grit]]), advertises the two there, logs that it
+    * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
     * serves them, and serves the requests addressed there with [[DriveTools]], logging what
     * they say of each run. It needs the
     * credential's variables, answers no ask, and delivers no replies. Opening it is refused,
@@ -95,7 +96,7 @@ object DriveEdge {
                   case Left(e) =>
                     Left(EdgeRefusal.Failed(s"its tools could not be advertised: ${e.why}"))
                   case Right(()) =>
-                    log(s"${place.written}: serving drive_search, drive_read")
+                    log(s"${place.written}: serving drive_list, drive_search, drive_read")
                     val server = new Server(
                       desk,
                       new DriveTools(clock, rest, reading),

@@ -144,7 +144,92 @@ object DriveItemsTests extends TestSuite {
     }
 
     test(
-      "a read is believed at the meet over its writers: the deployment's own address skipped, a declared writer at its integrity, the domain's people member"
+      "a listing's file is a names part at member at the place it lies within, a folder's at the service's own place, each line naming when it last changed; a file lying nowhere is left out"
+    ) {
+      val listed = right(DriveJson.hits(Recorded.json("made-children-drive-a")))
+      val nowhere = doc.copy(parent = None, drive = None)
+      val got = parts(DriveCalled.Listed(listed.copy(files = listed.files :+ nowhere)))
+      (got.size, got.take(2)) ==> (
+        7,
+        Vector(
+          ResultPart(
+            Provenance(Drive.place, Integrity.Member),
+            Readers.AtPlace,
+            "- name-5 (a folder), id folder-3, last changed 2026-09-01T10:00:00Z"
+          ),
+          ResultPart(
+            Provenance(place("drive-a"), Integrity.Member),
+            Readers.AtPlace,
+            "- name-13 (a PDF), id file-4, last changed 2026-09-02T10:00:00Z"
+          )
+        )
+      )
+    }
+
+    test(
+      "a listing's head says files in folders no one has labelled yet aren't listed, and how an administrator opens one; one Drive had more of says so"
+    ) {
+      val head = (incomplete: Boolean) =>
+        right(DriveItems.items(reading, DriveCalled.Listed(Hits(Vector(doc), incomplete)))).head
+      val opens =
+        "Files in folders that no one has labelled yet aren't listed. An administrator can " +
+          "open such a folder by typing `label internal at <the folder's link or id>`."
+      val lead = "The files and folders directly in that folder, one a line, each with its id " +
+        "and when it last changed; read a file, or list a folder, by its id."
+      (head(false), head(true)) ==> (
+        s"$lead $opens",
+        s"$lead Drive has more than these; only the first 100 are listed. $opens"
+      )
+    }
+
+    test(
+      "the shared drives are names parts at the service's own place, by name, one whose name is not a plain title saying so"
+    ) {
+      val listed = right(
+        DriveItems.items(
+          reading,
+          DriveCalled.Drives(
+            Map(
+              Recorded.id("drive-b") -> "Finance",
+              Recorded.id("drive-a") -> "Engineering",
+              Recorded.id("drive-c") -> "<b>x</b>"
+            )
+          )
+        )
+      )
+      (listed.head, listed.parts) ==> (
+        "The shared drives here, one a line, each with its id; list one's files and folders " +
+          "by its id. Files in folders that no one has labelled yet aren't listed. An " +
+          "administrator can open such a folder by typing " +
+          "`label internal at <the folder's link or id>`.",
+        Vector(
+          ResultPart(
+            Provenance(Drive.place, Integrity.Member),
+            Readers.AtPlace,
+            "- A shared drive whose name is not shown, since it is not a plain title, id drive-c"
+          ),
+          ResultPart(
+            Provenance(Drive.place, Integrity.Member),
+            Readers.AtPlace,
+            "- Engineering (a shared drive), id drive-a"
+          ),
+          ResultPart(
+            Provenance(Drive.place, Integrity.Member),
+            Readers.AtPlace,
+            "- Finance (a shared drive), id drive-b"
+          )
+        )
+      )
+    }
+
+    test("a read's part names when its file last changed, when Drive says") {
+      val changed = doc.copy(changed = Some(java.time.Instant.parse("2026-09-05T10:00:00Z")))
+      parts(DriveCalled.Read(changed, grants("permissions-drive-a"), "line one")).map(_.text) ==>
+        Vector("name-10 (a Doc), last changed 2026-09-05T10:00:00Z:\nline one")
+    }
+
+    test(
+      "a read is believed at the meet over its writers:the deployment's own address skipped, a declared writer at its integrity, the domain's people member"
     ) {
       (
         believed(doc, grants("permissions-drive-a")),

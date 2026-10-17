@@ -32,7 +32,15 @@ object DriveItems {
     *     refuses it), at
     *     member, at the place it lies within ([[DriveReading.place]]), a folder's at the
     *     service's own place; a hit lying nowhere is left out;
-    *   - a read: a head that names nothing of the file, then one part, its name and its text
+    *   - the shared drives: a head (ending as a search's, "listed" for "searched"), then each
+    *     drive as a names part, one line (its name, or a note that it is not shown, and its
+    *     id), at member, at the service's own place, by name;
+    *   - a listing of one folder: a head (saying, when Drive had more, that only the first
+    *     [[DriveRest.ListMost]] are listed, and ending as the drives' does), then each file as
+    *     a search's hit is, its line its name or that note, its type, its id and when it last
+    *     changed, when Drive says;
+    *   - a read: a head that names nothing of the file, then one part, its name, when it last
+    *     changed when Drive says, and its text
     *     (cut to whole lines that fit beside the head, saying how many were kept), at the place
     *     it lies within, at the meet over its writers' integrities: the deployment's own
     *     address skipped; a declared writer at its integrity; a person, or everyone, in the
@@ -56,16 +64,38 @@ object DriveItems {
             // Said of every search, never only of one whose hits were cut for lying in a place
             // no one has labelled: that would tell the asker their words matched a file no one
             // may read.
-            " Files in folders that no one has labelled yet aren't searched. An administrator " +
-            s"can open such a folder by typing $Opening."
-        val parts = hits.files.flatMap { f =>
-          val place = if (f.folder) Some(reading.service.place) else f.within.map(reading.place)
-          for {
-            p <- place
-            r <- readers(reading, f)
-          } yield ResultPart(Provenance(p, Integrity.Member), r, line(f, drives))
-        }
+            unlabelled("searched")
+        Right(Itemised.Parts(head, names(reading, hits.files, line(_, drives))))
+      case DriveCalled.Drives(drives) =>
+        val head = "The shared drives here, one a line, each with its id; list one's files and " +
+          "folders by its id." + unlabelled("listed")
+        val parts = drives.toVector
+          .sortBy((id, name) => (Some(name).filter(shown).getOrElse(""), FileId.value(id)))
+          .map { (id, name) =>
+            val title =
+              if (shown(name)) s"$name (a shared drive)"
+              else "A shared drive whose name is not shown, since it is not a plain title"
+            ResultPart(
+              Provenance(reading.service.place, Integrity.Member),
+              Readers.AtPlace,
+              s"- $title, id ${FileId.value(id)}"
+            )
+          }
         Right(Itemised.Parts(head, parts))
+      case DriveCalled.Listed(files) =>
+        val head = "The files and folders directly in that folder, one a line, each with its id " +
+          "and when it last changed; read a file, or list a folder, by its id." +
+          (if (files.incomplete)
+             s" Drive has more than these; only the first ${DriveRest.ListMost} are listed."
+           else "") +
+          // Said of every listing, as of every search.
+          unlabelled("listed")
+        Right(
+          Itemised.Parts(
+            head,
+            names(reading, files.files, f => s"- ${title(f)}, id ${FileId.value(f.id)}${since(f)}")
+          )
+        )
       case DriveCalled.Read(file, grants, text) =>
         file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
           val head = "The Drive file asked for:"
@@ -73,7 +103,7 @@ object DriveItems {
             ResultPart(
               Provenance(reading.place(at), believed(reading, grants)),
               r,
-              fitted(head, s"${title(file)}:", text)
+              fitted(head, s"${title(file)}${since(file)}:", text)
             )
           }
           Itemised.Parts(head, part.toVector)
@@ -108,6 +138,30 @@ object DriveItems {
       }
       .reduceOption(_.meet(_))
       .getOrElse(Integrity.Untrusted)
+
+  /** Each of `files` a names part, one line `line` writes, as [[items]] says of a search's. */
+  private def names(
+      reading: DriveReading,
+      files: Vector[DriveFile],
+      line: DriveFile => String
+  ): Vector[ResultPart] =
+    files.flatMap { f =>
+      val place = if (f.folder) Some(reading.service.place) else f.within.map(reading.place)
+      for {
+        p <- place
+        r <- readers(reading, f)
+      } yield ResultPart(Provenance(p, Integrity.Member), r, line(f))
+    }
+
+  /** The sentence every search's and listing's head ends with: files in folders no one has
+    * labelled yet aren't `done` (searched, listed), and how an administrator opens one.
+    */
+  private def unlabelled(done: String): String =
+    s" Files in folders that no one has labelled yet aren't $done. An administrator can open " +
+      s"such a folder by typing $Opening."
+
+  /** When `file` last changed, after a comma, as Drive gives it; nothing when Drive does not. */
+  private def since(file: DriveFile): String = file.changed.fold("")(t => s", last changed $t")
 
   /** `file`'s name as shown, and its type. */
   private def title(file: DriveFile): String =

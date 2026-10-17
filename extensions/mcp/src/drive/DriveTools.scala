@@ -20,7 +20,8 @@ import grit.core.tool.{
 import grit.edge.{Run, Tools}
 
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
-  * [[Run.request]] runs a tool: [[DriveTools.Search]] and [[DriveTools.Read]], each answered
+  * [[Run.request]] runs a tool: [[DriveTools.List]], [[DriveTools.Search]] and
+  * [[DriveTools.Read]], each answered
   * [[Outcome.Done]] with the parts [[DriveItems.items]] cuts, trimmed as [[Trimmed.of]] trims
   * them, or [[Outcome.Failed]] with a [[DriveError]]'s words or why it was not placed. The
   * run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
@@ -57,6 +58,15 @@ final class DriveTools(
         heard("drive_search", rest.search(s.text, s.folder)).map(DriveCalled.Searched(_, drives))
       )
     }
+    val list: Tool.Offered^{clock, said} = DriveTools.List.over { folder =>
+      DriveTools.answer(
+        reading,
+        folder match {
+          case None => heard("drive_list", rest.drives()).map(DriveCalled.Drives(_))
+          case Some(f) => heard("drive_list", rest.children(f)).map(DriveCalled.Listed(_))
+        }
+      )
+    }
     val read: Tool.Offered^{clock, said} = DriveTools.Read.over { id =>
       DriveTools.answer(
         reading,
@@ -76,9 +86,9 @@ final class DriveTools(
         )
       )
     }
-    Toolbox.of[caps.CapSet^{clock, said}](search, read) match {
+    Toolbox.of[caps.CapSet^{clock, said}](list, search, read) match {
       case Right(box) => Run.request(request, box)
-      // The two are named apart.
+      // The three are named apart.
       case Left(repeated) =>
         Outcome.Failed(s"two Drive tools are named ${ToolName.value(repeated.name)}.")
     }
@@ -142,6 +152,40 @@ object DriveTools {
     s => s.text
   )
 
+  /** `drive_list`: the shared drives grit is a member of, or the files and folders directly in
+    * one folder or shared drive, by its id.
+    */
+  val List: Hosted[Option[FileId]] = new Hosted(
+    ToolSpec(
+      ToolName("drive_list"),
+      "List what is shared here from Drive: with no folder, the shared drives; with the id of " +
+        "a folder or a shared drive, the files and folders directly in it. Each gives its name, " +
+        "type and id, and when it last changed. Files in folders no one has labelled yet are " +
+        "not shown.",
+      Args
+        .of(
+          (folder =
+            Field
+              .text(
+                "The id of a folder or a shared drive, from an earlier list or a search, to list " +
+                  "what is directly in it."
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          a.folder
+            .map(FileId.of(_).map(Some(_)))
+            .getOrElse(Right(None))
+            .left
+            .map(why => ArgsError.Refused("folder", DriveTools.sentence(why)))
+        ),
+      Retry.Rerun
+    ),
+    Gate.Free,
+    folder => folder.map(FileId.value).getOrElse("the shared drives")
+  )
+
   /** `drive_read`: one file's text, by its id. */
   val Read: Hosted[FileId] = new Hosted(
     ToolSpec(
@@ -159,7 +203,7 @@ object DriveTools {
     id => FileId.value(id)
   )
 
-  /** The two, as an edge advertises them. */
+  /** The three, as an edge advertises them. */
   val Offered: ToolSet =
-    ToolSet.of(Vector(Search.entry, Read.entry)).getOrElse(ToolSet.Empty)
+    ToolSet.of(Vector(List.entry, Search.entry, Read.entry)).getOrElse(ToolSet.Empty)
 }

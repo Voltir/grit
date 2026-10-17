@@ -48,9 +48,10 @@ In dependency order:
   as a `DriveError` whose words name no setting, its cause for the operator's log alone), how
   a deployment's Drive is read (`DriveReading`: its people's domain, its own address, its
   declared writers, and how a person names a folder in a command, by its link or id), and
-  `DriveItems`, each hit and read a part at the folder or drive it lies within, a hit naming
-  its shared drive as listed, a read believed at the meet over its writers (ADR 0039).
-  `DriveEdge` serves `drive_search` and `drive_read` at the service's place, its tools telling
+  `DriveItems`, each hit, listed file and read a part at the folder or drive it lies within (a
+  folder or drive itself at the service's place), a hit naming its shared drive as listed, a
+  read believed at the meet over its writers (ADR 0039). `DriveEdge` serves `drive_list`,
+  `drive_search` and `drive_read` at the service's place, its tools telling
   the operator's log what the model is not. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,

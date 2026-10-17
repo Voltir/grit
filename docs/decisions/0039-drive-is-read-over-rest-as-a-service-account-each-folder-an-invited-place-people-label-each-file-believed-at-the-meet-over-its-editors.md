@@ -21,9 +21,12 @@ without a deploy. Turned down:
 Decision:
 
 - **Drive is read over its v3 REST API**, read-only, as a service account the deployment
-  holds the key of (`grit.mcp.drive`). Two tools: a search by the words a file holds, and a
-  read of one file's text (a Doc as markdown, a Sheet's first sheet as CSV, a text file as it
-  is); any other type is refused in words.
+  holds the key of (`grit.mcp.drive`). Three tools: a listing, of the shared drives or of what
+  lies directly in one folder or drive (its first page of 100, each file saying when it last
+  changed), a search by the words a file holds, and a read of one file's text (a Doc as
+  markdown, a Sheet's first sheet as CSV, a text file as it is); any other type is refused in
+  words. A listing, like a search, always says that files in folders no one has labelled are
+  not shown, so an empty answer tells nothing of what a folder holds.
 - **Each folder is a place** under the service's: a file is kept at the place of the folder
   or shared drive it lies in. The service's own place is **invited** (`Visibility.invites`):
   every place strictly within it is read as an invited room no edge reported, so labelled
@@ -36,8 +39,9 @@ Decision:
 - **Who reads an item**: a file in a shared drive, whoever reads its place; one shared from a
   person's own drive, only that person when their address is in the deployment's Drive
   domain; any other file, no one.
-- **How far an item is believed**: a search hit, at member under its place's cap, its title
-  shown only when it is a plain line; a file read, at the meet, over everyone who may edit it,
+- **How far an item is believed**: a search hit or a listed file, at member under its place's
+  cap (a folder or shared drive itself at the service's place), its title shown only when it
+  is a plain line; a file read, at the meet, over everyone who may edit it,
   of each one's level: a person or a domain grant in the deployment's Drive domain, member; an
   address the deployment declares a writer (a service's, never a person's), the level it
   declares; anyone else, a group, or another domain, outside; anyone at all, untrusted; the
@@ -47,7 +51,8 @@ Decision:
 
 Consequences: labelling is a person's act at human rate, and a new folder shows nothing until
 someone labels it; the model is told so, and what to type, in plain words. A read costs three
-requests (the file, its grants, its text) and a search two (the hits, the drives' names).
+requests (the file, its grants, its text), a search two (the hits, the drives' names) and a
+listing one.
 Nothing Drive answers is recorded in a workflow's steps beyond what a tool result already
 holds. Enforced by the transaction's reads (`Tx.access`, `Tx.roomLabel`), ADR 0033's rule,
 and the law (`mcp-generic-names-no-github`, which keeps Drive out of the generic MCP client);
