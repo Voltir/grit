@@ -35,6 +35,8 @@ object TurnRecordLiveTests extends TestSuite {
           "stitched",
           "classify",
           "record-topic",
+          "DBOS.patch-assembly-steps",
+          "ask:query",
           "assemble",
           "record-window",
           "gate:0",

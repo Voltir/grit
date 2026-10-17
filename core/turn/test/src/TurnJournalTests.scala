@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.{Allotment, Headroom}
-import grit.core.context.{AssemblyNote, Results, Retrieved, Window}
+import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, ToolCallId, TurnSeq}
@@ -521,14 +521,29 @@ object TurnJournalTests extends TestSuite {
         doc -> TurnRelevance.Verdict.Rejected(Probability.clamped(0.25)),
         closed -> TurnRelevance.Verdict.Unjudged(TurnRelevance.Gone)
       )
-      roundTrip(results) ==> Right(results)
+      val searched = summon[Journaled[Either[TurnFailure, Results]]]
+      roundTrip[Either[TurnFailure, Results]](Right(results)) ==> Right(Right(results))
       roundTrip(verdicts) ==> Right(verdicts)
-      summon[Journaled[Results]].encode(Results(Vector(own -> 6.0, doc -> 0.5), 3)) ==>
-        """{"ranked":[{"own":2,"score":6},{"doc":7,"score":0.5}],"beyond":3}"""
+      searched.encode(Right(Results(Vector(own -> 6.0, doc -> 0.5), 3))) ==>
+        """{"ok":{"ranked":[{"own":2,"score":6},{"doc":7,"score":0.5}],"beyond":3}}"""
       summon[Journaled[Vector[(Retrieved, TurnRelevance.Verdict)]]].encode(verdicts) ==>
         """[{"own":2,"passed":0.75},{"doc":7,"rejected":0.25},{"closed":"c3","unjudged":"gone before it was briefed"}]"""
-      summon[Journaled[Results]].encode(Results(Vector(near -> 1.0))) ==>
-        """{"ranked":[{"near":"c2","turn":5,"score":1}],"beyond":0}"""
+      searched.encode(Right(Results(Vector(near -> 1.0)))) ==>
+        """{"ok":{"ranked":[{"near":"c2","turn":5,"score":1}],"beyond":0}}"""
+    }
+
+    test(
+      "a query step's outcome reads back as written: drawn with its notes, or written with its note"
+    ) {
+      val queried = TurnFixtures.queried
+      val drawn: Either[TurnFailure, Querying] =
+        Right(Querying.Drawn(Vector(AssemblyNote.FellBack("no query: none was asked for"))))
+      val written: Either[TurnFailure, Querying] =
+        Right(Querying.Written("hello greeting", queried))
+      roundTrip(drawn) ==> Right(drawn)
+      roundTrip(written) ==> Right(written)
+      summon[Journaled[Either[TurnFailure, Querying]]].encode(drawn) ==>
+        """{"ok":{"drawn":[{"fellBack":"no query: none was asked for"}]}}"""
     }
 
     test("a record in neither shape is rejected") {

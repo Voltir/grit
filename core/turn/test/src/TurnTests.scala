@@ -61,6 +61,8 @@ object TurnTests extends TestSuite {
       "stitched",
       "classify",
       "record-topic",
+      "DBOS.patch-assembly-steps",
+      "ask:query",
       "assemble",
       "record-window",
       "gate:0",
@@ -69,6 +71,33 @@ object TurnTests extends TestSuite {
       "summarise",
       "append-summary"
     )
+
+  /** The own earlier turns `turn`'s recorded window says it recalled; `None` when no window is
+    * recorded.
+    */
+  private def recalledIn(
+      durable: InMemoryDurable,
+      turn: grit.core.id.TurnRef
+  ): Option[Vector[TurnSeq]] =
+    durable
+      .history(turn.workflowId)
+      .collectFirst { case InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(o)) =>
+        o
+      }
+      .flatMap(o => TurnJournal.window.decode(o).toOption.flatMap(_.toOption))
+      .map(_.notes.flatMap {
+        case AssemblyNote.Recalled(turns) => turns
+        case _ => Vector.empty
+      })
+
+  /** The steps `turn` recorded from its topic's record to its window's, both left out. */
+  private def assemblySteps(durable: InMemoryDurable, turn: grit.core.id.TurnRef): Vector[String] =
+    durable
+      .recordedSteps(turn.workflowId)
+      .dropWhile(_ != "record-topic")
+      .drop(1)
+      .takeWhile(_ != "record-window")
+      .filterNot(_.startsWith("DBOS"))
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -79,7 +108,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 7
+  private val Placing = 9
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -148,10 +177,12 @@ object TurnTests extends TestSuite {
         "stitched",
         "classify",
         "record-topic",
+        "DBOS.patch-assembly-steps",
         "assemble",
         "record-window",
-        "gate",
         "ask",
+        "search",
+        "gate",
         "call",
         "record-verdict",
         "append",
@@ -240,14 +271,16 @@ object TurnTests extends TestSuite {
         "ask:relevance-0",
         "ask:relevance-2:record",
         "ask:relevance-x",
-        "ask:3"
+        "ask:3",
+        grit.core.durable.StepRecord.marker(TurnAssembly.Patch)
       ).map(Turn.Step.family) ==> Vector(
         Some("ask:query"),
         Some("ask:query:record"),
         Some("ask:relevance"),
         Some("ask:relevance:record"),
         None,
-        Some("ask")
+        Some("ask"),
+        None
       )
     }
 
@@ -517,24 +550,89 @@ object TurnTests extends TestSuite {
     }
 
     test(
-      "a query assembly wrote is recorded before the reply, with its cost and who served it, and never sent"
+      "a query the turn wrote is recorded before the reply, charged as its own move, and never sent"
     ) {
       val entries = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
       val durable = new InMemoryDurable
       val provider = new RecordingProvider
       val turn = say(entries, "hello")
-      val served = queried.copy(upstream = Some("Fireworks"))
       durable.run(turn.workflowId)(
-        turnBodyWith(entries, provider, new Noting(entries, served), ledger)
+        turnBodyWith(entries, provider, new Searching(entries, 0), ledger)
       ) ==> Done
       texts(entries).take(3) ==>
         Vector("user: hello", "query: hello greeting", "assistant: stub reply to: hello")
-      ledger.rows.map(r => (r._1, r._4, r._5)).headOption ==>
-        Some((Turn.queryId(turn, 0), queried.usage, queried.estimate))
-      ledger.of(turn.workflowId)(using TestTx.fake).map(_.headOption.map(_.upstream)) ==>
-        Right(Some(Some("Fireworks")))
-      provider.requests.map(_.messages) ==> Vector(Vector(Message.User("hello")))
+      val asked = ModelRequest("Write a search query.", Vector.empty)
+      ledger.rows.map(r => (EntryId.value(r._1), r._5)).headOption ==>
+        Some((s"move:${WorkflowId.value(turn.workflowId)}:query", CharEstimate.request(asked)))
+      ledger.rows.map(_._1).contains(Turn.queryId(turn, 0)) ==> false
+      provider.requests.map(_.messages) ==> Vector(Vector.empty, Vector(Message.User("hello")))
+    }
+
+    test("a written query is searched, judged in batches of ten and only what passed is packed") {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val sifter = new Sifter
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, new StubProvider(), new Searching(entries, 25), ledger, sifter)
+      ) ==> Done
+      sifter.asked.map((batch: Vector[String]) => batch.size) ==> Vector(10, 10, 5)
+      recalledIn(durable, turn) ==> Some((0 until 25 by 2).toVector.map(n => TurnSeq(n.toLong)))
+      assemblySteps(durable, turn) ==> Vector(
+        "ask:query",
+        "ask:query:record",
+        "search",
+        "ask:relevance-0",
+        "ask:relevance-0:record",
+        "ask:relevance-1",
+        "ask:relevance-1:record",
+        "ask:relevance-2",
+        "ask:relevance-2:record",
+        "assemble"
+      )
+    }
+
+    test(
+      "a turn resumed after its first relevance batch asks the classifier nothing again for it, and its ledger holds one row for it"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val sifter = new Sifter(crashAt = Some(2))
+      val turn = say(entries, "hello")
+      def run() =
+        durable.run(turn.workflowId)(
+          turnBodyWith(entries, new StubProvider(), new Searching(entries, 25), ledger, sifter)
+        )
+      assertThrows[InMemoryDurable.Crash](run())
+      run() ==> Done
+      val first = (0 until 10).toVector.map(n => Searching.brief(ownTurn(n)))
+      sifter.asked.count((batch: Vector[String]) => batch == first) ==> 1
+      sifter.asked.map((batch: Vector[String]) => batch.size) ==> Vector(10, 10, 10, 5)
+      val batch0 = s"move:${WorkflowId.value(turn.workflowId)}:relevance-0"
+      ledger.rows.count(r => EntryId.value(r._1).startsWith(batch0)) ==> 1
+    }
+
+    test("a turn whose classifier is none packs the first thirty unjudged") {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, new StubProvider(), new Searching(entries, 35), ledger)
+      ) ==> Done
+      recalledIn(durable, turn) ==> Some((0 until 30).toVector.map(n => TurnSeq(n.toLong)))
+      ledger.rows.map(r => EntryId.value(r._1)).filter(_.contains(":relevance-")) ==> Vector.empty
+    }
+
+    test("a turn with nothing to search records ask:query and assemble alone") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      runTurn(durable, entries, new RecordingProvider, turn) ==> Done
+      assemblySteps(durable, turn) ==> Vector("ask:query", "assemble")
     }
 
     test("a later turn sees earlier turns, then its own message") {

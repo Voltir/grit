@@ -54,6 +54,7 @@ object Turn {
     val Stitched: String = TurnSteps.Names.stitched.family
     val Classify: String = TurnSteps.Names.classify.family
     val RecordTopic: String = TurnSteps.Names.recordTopic.family
+    val Search: String = TurnSteps.Names.search.family
     val Assemble: String = TurnSteps.Names.assemble.family
     val RecordWindow: String = TurnSteps.Names.recordWindow.family
     val Ask: String = TurnRound.Names.ask.family
@@ -140,6 +141,7 @@ object Turn {
       */
     def family(name: String): Option[String] =
       name match {
+        case _ if name.startsWith(StepRecord.marker("")) => None
         case Query | QueryRecord => Some(name)
         case RelevanceBatch() => Some(Relevance)
         case RelevanceBatchRecord() => Some(RelevanceRecord)

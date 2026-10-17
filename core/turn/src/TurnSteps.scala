@@ -170,6 +170,7 @@ private[turn] object TurnSteps {
     val stitched: StepName[Any] = StepName("stitched")
     val classify: StepName[Any] = StepName("classify")
     val recordTopic: StepName[Any] = StepName("record-topic")
+    val search: StepName[Any] = StepName("search")
     val assemble: StepName[Any] = StepName("assemble")
     val recordWindow: StepName[Any] = StepName("record-window")
     val recordVerdict: StepName[Any] = StepName("record-verdict")
@@ -433,8 +434,9 @@ private[turn] object TurnSteps {
         }
     )
 
-  /** `assemble`: a fresh window over what came before the turn, at its offer's width, read as
-    * its route bounds it, its query written under the route's query pin
+  /** `assemble` of a turn whose history drew its window in this one step
+    * ([[TurnAssembly.Patch]] untaken): a fresh window over what came before the turn, at its
+    * offer's width, read as its route bounds it, its query written under the route's query pin
     * ([[Turn.Routed.picked]], whose failure it records).
     */
   val assemble: Step[Env, Placed, Either[TurnFailure, Window]] =
@@ -463,9 +465,22 @@ private[turn] object TurnSteps {
   /** `record-window`: the turn's window and the queries that chose it, recorded before the
     * model is called, so an edge sees them while the turn runs, and each document the window
     * holds counted as placed; and the limits its loop runs under ([[Env.limits]]), checked
-    * first, so a turn whose tools do not make one toolbox records no window.
+    * first, so a turn whose tools do not make one toolbox records no window. A query's cost is
+    * not kept here: its move, `ask:query`, kept it ([[TurnAssembly]]).
     */
   val recordWindow: Step[Env, Assembled, Either[TurnFailure, TurnRound.Limits]] =
+    windowStep(charged = false)
+
+  /** `record-window` of a turn that drew its window in one `assemble` step
+    * ([[TurnAssembly.Patch]] untaken), the cost of each query it wrote kept in the ledger here.
+    */
+  val recordChargedWindow: Step[Env, Assembled, Either[TurnFailure, TurnRound.Limits]] =
+    windowStep(charged = true)
+
+  /** `record-window`, each query's cost kept when `charged`. */
+  private def windowStep(
+      charged: Boolean
+  ): Step[Env, Assembled, Either[TurnFailure, TurnRound.Limits]] =
     Step.transact[Env, Assembled, Either[TurnFailure, TurnRound.Limits]](
       Names.recordWindow,
       onTurn
@@ -474,7 +489,8 @@ private[turn] object TurnSteps {
         (tx: Tx^) ?=>
           r.limits(in.at.offer, in.at.routed, TurnShown.asked(in.placing))
             .flatMap(limits =>
-              windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now()).map(_ => limits)
+              windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now(), charged)
+                .map(_ => limits)
             )
     )
 
@@ -1188,24 +1204,26 @@ private[turn] object TurnSteps {
   }
 
   /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
-    * dated `at`, and each document the window holds counted as placed at `at`.
+    * dated `at`, each query's cost kept when `charged`, and each document the window holds
+    * counted as placed at `at`.
     */
   private def windowRecorded(
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
-      at: Instant
+      at: Instant,
+      charged: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       next <- records.entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- records.entries.believed(turn).left.map(TurnFailure.ofStore)
-      _ <- writeWindow(records, turn, window, next.seq, level, at)
+      _ <- writeWindow(records, turn, window, next.seq, level, at, charged)
       _ <- records.documents.placed(window.documents, at).left.map(TurnFailure.ofStore)
     } yield Turn.windowId(turn)
 
-  /** Writes each query `window`'s notes say assembly wrote, as [[Turn.queryId]] with its own
-    * cost, then the window itself, as [[Turn.windowId]], from position `from`, dated `at`,
-    * believed at `level`; the position after the last one written.
+  /** Writes each query `window`'s notes say assembly wrote, as [[Turn.queryId]], with its own
+    * cost when `charged`, then the window itself, as [[Turn.windowId]], from position `from`,
+    * dated `at`, believed at `level`; the position after the last one written.
     */
   private def writeWindow(
       records: TurnRecords,
@@ -1213,7 +1231,8 @@ private[turn] object TurnSteps {
       window: Window,
       from: EntrySeq,
       level: Integrity,
-      at: Instant
+      at: Instant,
+      charged: Boolean
   )(using Tx^): Either[TurnFailure, EntrySeq] = {
     val TurnRecords(entries, ledger, _, _, _, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
@@ -1239,16 +1258,18 @@ private[turn] object TurnSteps {
             entries
               .insert(entry)
               .flatMap(_ =>
-                ledger.record(
-                  qid,
-                  turn,
-                  turn.workflowId,
-                  q.model,
-                  q.upstream,
-                  None,
-                  q.usage,
-                  q.estimate
-                )
+                if (!charged) Right(())
+                else
+                  ledger.record(
+                    qid,
+                    turn,
+                    turn.workflowId,
+                    q.model,
+                    q.upstream,
+                    None,
+                    q.usage,
+                    q.estimate
+                  )
               )
               .left
               .map(TurnFailure.ofStore)

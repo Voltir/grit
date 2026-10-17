@@ -38,7 +38,12 @@ object TurnReadTests extends TestSuite {
     */
   private def misread(turn: TurnRef, history: History, inFlight: Boolean): Vector[String] = {
     val records: Vector[StepRecord] = history.steps.map(FlowFixtures.recorded)
-    def expected(k: Int, named: String): Boolean = named == label(records.map(_.name), k)
+    // A run resumed where a history recorded the step before a patch takes the patch today,
+    // so its marker is the record named next there, until the epoch that retires it.
+    val patched = StepRecord.marker(TurnAssembly.Patch)
+    def expected(k: Int, named: String): Boolean =
+      named == label(records.map(_.name), k) ||
+        (named == patched && records.lift(k).exists(_.name == Turn.Step.Assemble))
     val prefixes = records.indices.toVector.flatMap { k =>
       val read = Flows.read(TurnFlow.flow, turn, records.take(k)).map(_.at) match {
         case Right(Flows.Read.Next(step, at)) if at == k && expected(k, step) => None

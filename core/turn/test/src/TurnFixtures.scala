@@ -1142,6 +1142,95 @@ object TurnFixtures {
       request
     )(_ => Left("never asked"), found => Results(found.ranked, found.beyond))
 
+  /** An earlier turn of the conversation's own, `n`, as a search finds it. */
+  def ownTurn(n: Int): Retrieved = Retrieved.Own(TurnSeq(n.toLong))
+
+  /** An assembler whose every query is written: it finds `found` earlier turns of its own, best
+    * first, each briefed as `candidate n`, an even one `relevant candidate n`; its window is the
+    * linear one, noted with the query's note and the own turns it was handed to pack
+    * ([[AssemblyNote.Recalled]]).
+    */
+  final class Searching(entries: EntryStore, found: Int) extends Drawing {
+    def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      linearOver(entries, request)
+    override def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
+      Right(
+        Prepared.Asking(
+          ModelRequest("Write a search query.", Vector.empty),
+          {
+            case Left(why) =>
+              grit.core.context.Querying.Drawn(Vector(AssemblyNote.FellBack(s"no query: $why")))
+            case Right(_) => grit.core.context.Querying.Written("hello greeting", queried)
+          }
+        )
+      )
+    override def search(request: AssemblyRequest, written: grit.core.context.Querying.Written)(using
+        Db^
+    ): Either[AssemblyError, Results] =
+      Right(Results((0 until found).toVector.map(n => ownTurn(n) -> (found - n).toDouble)))
+    override def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+        Db^
+    ): Either[AssemblyError, Briefs] =
+      Right(Briefs("hello", retrieved.map(r => r -> Searching.brief(r))))
+    override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
+        Db^
+    ): Either[AssemblyError, Window] =
+      packing match {
+        case grit.core.context.Packing.Drawn(d) => window(request).map(_.copy(notes = d.notes))
+        case grit.core.context.Packing.Searched(w, admitted) =>
+          val own = admitted.ranked.collect { case (Retrieved.Own(t), _) => t }
+          window(request).map(_.copy(notes = Vector(w.queried, AssemblyNote.Recalled(own))))
+      }
+  }
+
+  object Searching {
+
+    /** How [[Searching]] briefs `found`. */
+    def brief(found: Retrieved): String = found match {
+      case Retrieved.Own(t) if TurnSeq.value(t) % 2 == 0 =>
+        s"relevant candidate ${TurnSeq.value(t)}"
+      case Retrieved.Own(t) => s"candidate ${TurnSeq.value(t)}"
+      case other => other.toString
+    }
+  }
+
+  /** A classifier judging relevance by a candidate's words: yes at 0.9 to each one saying
+    * `relevant`, 0.1 to the rest; any other question as the stub classifier answers it. Each
+    * relevance call is counted, its candidates kept; the call numbered `crashAt` (from 1)
+    * dies, once, as a crashed process would.
+    */
+  final class Sifter(crashAt: Option[Int] = None) extends Classifier {
+    // Counted and kept by `answer`, which the turn under test calls on the test's one thread;
+    // read by the test's assertions after.
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[Vector[String]]
+
+    @caps.unsafe.untrackedCaptures
+    private var crashed = false
+
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] =
+      state.objOpt.flatMap(_.get("candidates")).flatMap(_.arrOpt) match {
+        case None => Right(grit.models.StubClassifier.answers(state, questions))
+        case Some(candidates) =>
+          val texts = candidates.toVector.flatMap(_.strOpt)
+          asked = asked :+ texts
+          if (crashAt.contains(asked.size) && !crashed) {
+            crashed = true
+            throw new InMemoryDurable.Crash
+          }
+          Right(
+            Answers(
+              texts.map(t => Answer.YesNo(if (t.contains("relevant")) 0.9 else 0.1)),
+              Usage(Tokens(10), Tokens(1), Tokens.Zero, None),
+              "jev"
+            )
+          )
+      }
+  }
+
   /** The linear window, with `note` added: an assembler that says it wrote a query. */
   final class Noting(entries: EntryStore, note: AssemblyNote) extends Drawing {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =

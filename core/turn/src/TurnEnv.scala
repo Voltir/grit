@@ -69,7 +69,7 @@ final case class TurnEnv(
   /** What the turn's moves are made with: its own models, classifier, db and clock, their costs
     * kept by `moveRecords`.
     */
-  def moves: MovesEnv^{models, classifier, db, clock} =
+  def moves: MovesEnv^{this} =
     MovesEnv(moveRecords, models, classifier, db, clock)
 }
 

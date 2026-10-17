@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
-import grit.core.context.{AssemblyNote, Results, Retrieved, Width, Window}
+import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.either.Traversal.sequence
@@ -838,11 +838,36 @@ private[turn] object TurnJournal {
         }
     )
 
-  /** A `search` step's output: `{"ranked": [{found, "score": s}, ...], "beyond": n}`, each found
-    * candidate's fields as [[writeFound]] writes them.
+  /** An `ask:query` step's outcome: `{"drawn": [note, ...]}`, no search and the window's notes,
+    * or `{"written": text, "queried": note}`, each note as a window's notes are written.
     */
-  given results: Journaled[Results] =
-    Journaled.json[Results](
+  given querying: Journaled[Either[TurnFailure, Querying]] =
+    outcome(
+      {
+        case Querying.Drawn(notes) => ujson.Obj("drawn" -> ujson.Arr.from(notes.map(writeNote)))
+        case Querying.Written(text, queried) =>
+          ujson.Obj("written" -> text, "queried" -> writeNote(queried))
+      },
+      v => {
+        val o = v.objOpt.getOrElse(ujson.Obj().value)
+        (o.get("drawn"), o.get("written"), o.get("queried")) match {
+          case (Some(ujson.Arr(notes)), None, None) =>
+            sequence(notes.toVector.map(readNote)).map(Querying.Drawn(_))
+          case (None, Some(ujson.Str(text)), Some(note)) =>
+            readNote(note).flatMap {
+              case q: AssemblyNote.Queried => Right(Querying.Written(text, q))
+              case _ => Left("querying: a written query's note is not its query's")
+            }
+          case _ => Left("querying: expected drawn, or written with its note")
+        }
+      }
+    )
+
+  /** A `search` step's outcome: `{"ranked": [{found, "score": s}, ...], "beyond": n}`, each
+    * found candidate's fields as [[writeFound]] writes them.
+    */
+  given results: Journaled[Either[TurnFailure, Results]] =
+    outcome[Results](
       r =>
         ujson.Obj(
           "ranked" -> ujson.Arr.from(
