@@ -19,7 +19,7 @@ object TurnReplayTests extends TestSuite {
     History.recorded(epoch)
 
   /** The epoch before this one, whose histories the rename map is checked against. */
-  private val Previous = "2026-10-14"
+  private val Previous = "2026-10-15"
 
   /** The most bytes a step of each family may record in these histories, about twice the
     * most any records today, each with what it records. A step new to the turn has none until
@@ -34,6 +34,12 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.Stitched -> 64, // what a placement did, in a line
     Turn.Step.Classify -> 1024, // the topic events and the classifier call's cost
     Turn.Step.RecordTopic -> 64, // an entry id
+    Turn.Step.Query -> 640, // the query written, or why none was, and its call's cost
+    Turn.Step.QueryRecord -> 64, // whether the cost was kept
+    // What the search found, by reference and score: a full one of 60 fits, about 22 bytes each.
+    Turn.Step.Search -> 1400,
+    Turn.Step.Relevance -> 840, // a batch's verdicts, by reference, and its call's cost
+    Turn.Step.RelevanceRecord -> 64, // whether the cost was kept
     Turn.Step.Assemble -> 640, // the window's entry seqs and notes
     Turn.Step.RecordWindow -> 128, // the loop's limits
     Turn.Step.Gate -> 800, // a round's level and the items it hid or lowered
@@ -58,33 +64,42 @@ object TurnReplayTests extends TestSuite {
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 6800
 
-  /** The name the previous epoch's step `name` has in this one; `None` for a retired patch's
-    * marker, which this epoch's turns no longer record.
+  /** The families this epoch draws a turn's window in before `assemble`, which the previous
+    * epoch drew in `assemble` alone.
     */
-  private def renamed(name: String): Option[String] = {
-    val Call = """call-model:(\d+)""".r
-    val Record = """record-call:(\d+)""".r
-    val Tool = """tool:(\d+):(\d+)""".r
-    val Ask = """ask:(\d+):(\d+)""".r
-    val Send = """dispatch:(\d+)""".r
-    val Dispatch = """dispatch:(\d+):(\d+)""".r
-    val Reach = """reach:(\d+):(.+)""".r
-    val Expire = """expire:(\d+):(\d+)""".r
-    val Abandon = """abandon:(\d+):(\d+)""".r
-    name match {
-      case "DBOS.patch-integrity" | "DBOS.patch-record-failure" => None
-      case "call-model" => Some("ask:0")
-      case Call(n) => Some(s"ask:$n")
-      case Record(n) => Some(s"ask:$n:record")
-      case Tool(n, j) => Some(s"call:$n:$j")
-      case Ask(n, j) => Some(s"call:$n:$j:approve")
-      case Send(n) => Some(s"call:$n:send")
-      case Dispatch(n, j) => Some(s"call:$n:$j:dispatch")
-      case Reach(n, place) => Some(s"call:$n:send:$place")
-      case Expire(n, j) => Some(s"call:$n:$j:expire")
-      case Abandon(n, j) => Some(s"call:$n:$j:abandon")
-      case other => Some(other)
-    }
+  private val Drawing: Set[String] = Set(
+    Turn.Step.Query,
+    Turn.Step.QueryRecord,
+    Turn.Step.Search,
+    Turn.Step.Relevance,
+    Turn.Step.RelevanceRecord
+  )
+
+  /** The assembly stage `names` recorded: its drawing steps and `assemble`, in order. */
+  private def stage(names: Vector[String]): Vector[String] =
+    names.filter(n => n == Turn.Step.Assemble || Turn.Step.family(n).exists(Drawing.contains))
+
+  /** Each history's assembly stage, by its file's name, where it is not `ask:query` then
+    * `assemble`: a query written and searched for, or a query step that kept its cost.
+    */
+  private val Stages: Map[String, Vector[String]] = {
+    val judged =
+      (0 to 2).toVector.flatMap(n => Vector(s"ask:relevance-$n", s"ask:relevance-$n:record"))
+    val unjudged = (0 to 2).toVector.map(n => s"ask:relevance-$n")
+    val searched = Vector("ask:query", "ask:query:record", "search")
+    val written = Vector("ask:query", "ask:query:record", "assemble")
+    Map(
+      // Searched for 25, judged in three batches by a classifier that answered each.
+      "queried.json" -> (searched ++ judged :+ "assemble"),
+      // Searched for one earlier turn, with no classifier: each batch asked nothing.
+      "recalled.json" -> (searched ++ unjudged :+ "assemble"),
+      // A query written under the route's query pin, and drawn on: no search.
+      "routed.json" -> written,
+      "routed-floored.json" -> written,
+      "routed-no-summary.json" -> written,
+      "routed-second-rung.json" -> written,
+      "routed-tasked.json" -> written
+    )
   }
 
   /** Each history of `epoch`, by its file's name, as the names of its steps. */
@@ -93,22 +108,27 @@ object TurnReplayTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "each history of the previous epoch, its steps renamed, is its scenario's in this one, less the retired patches' markers"
+      "each history of the previous epoch is its scenario's in this one, less the steps it draws its window in"
     ) {
       val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
-      // A history recorded before the integrity patch shipped did not take it, and ran its
-      // loop ungated: under this epoch every round's model call follows its gate.
-      val Asked = """ask:(\d+)""".r
-      def now(names: Vector[String]): Vector[String] = {
-        val renaming = names.flatMap(renamed)
-        if (names.contains("DBOS.patch-integrity")) renaming
-        else
-          renaming.flatMap {
-            case n @ Asked(round) => Vector(s"gate:$round", n); case n => Vector(n)
-          }
-      }
+      def undrawn(names: Vector[String]): Vector[String] =
+        names.filterNot(n => Turn.Step.family(n).exists(Drawing.contains))
       (before.size, before.keySet == after.keySet) ==> (57, true)
-      before.map((file, names) => file -> now(names)) ==> after
+      before.map((file: String, names: Vector[String]) => file -> undrawn(names)) ==>
+        after.map((file: String, names: Vector[String]) => file -> undrawn(names))
+    }
+
+    test(
+      "each history's assembly stage is its scenario's: a written query searched for and judged, else drawn"
+    ) {
+      val reached = namesOf(Turn.Epoch).filter((_: String, names: Vector[String]) =>
+        names.contains(Turn.Step.Assemble)
+      )
+      Stages.keySet.diff(reached.keySet) ==> Set.empty
+      reached.map((file: String, names: Vector[String]) => file -> stage(names)) ==>
+        reached.map((file: String, _: Vector[String]) =>
+          file -> Stages.getOrElse(file, Vector(Turn.Step.Query, Turn.Step.Assemble))
+        )
     }
 
     test("the current epoch has histories to replay") {

@@ -71,36 +71,9 @@ object LifecycleReplayTests extends TestSuite {
     test(
       "each lifecycle history of the previous epoch names its steps as its scenario's in this one"
     ) {
-      def namesOf(epoch: String)(named: History => Vector[String]): Map[String, Vector[String]] =
-        historiesOf(epoch).collect { case (p, Right(h)) => p -> named(h) }.toMap
-      // A settle's, triage's or shadow's `ask` is the move `ask:{workflow}`, a placement's
-      // `stitch` is `ask:stitch`, and a close's `gate` and `summarise` are `ask:gate` and
-      // `ask:summary`, each one's cost then
-      // recorded in its `:record` step when the classifier replied: a reply names its model,
-      // and a gate's leaves no note. A close unearned or ran asks no gate, and records no step
-      // for it.
-      def renamed(h: History): Vector[String] = h.steps.flatMap { s =>
-        val out = s.outcome.toString
-        (h.workflow, s.name) match {
-          case ("close", "gate") if out.contains("\"unearned\"") || out.contains("\"ran\"") =>
-            Vector()
-          case ("close", "gate") if out.contains("\"note\"") => Vector("ask:gate")
-          case ("close", "gate") => Vector("ask:gate", "ask:gate:record")
-          // A close's `summarise` is `ask:summary`, its cost recorded when a model replied.
-          case ("close", "summarise") if out.contains("\"cost\"") =>
-            Vector("ask:summary", "ask:summary:record")
-          case ("close", "summarise") => Vector("ask:summary")
-          case (w @ ("settle" | "triage" | "shadow"), "ask") if out.contains("\"model\"") =>
-            Vector(s"ask:$w", s"ask:$w:record")
-          case (w @ ("settle" | "triage" | "shadow"), "ask") => Vector(s"ask:$w")
-          case ("stitch", "stitch") if out.contains("\"model\"") =>
-            Vector("ask:stitch", "ask:stitch:record")
-          case ("stitch", "stitch") => Vector("ask:stitch")
-          case (_, name) => Vector(name)
-        }
-      }
-      val before = namesOf("2026-10-14")(renamed)
-      val after = namesOf(Turn.Epoch)(_.steps.map(_.name))
+      def namesOf(epoch: String): Map[String, Vector[String]] =
+        historiesOf(epoch).collect { case (p, Right(h)) => p -> h.steps.map(_.name) }.toMap
+      val (before, after) = (namesOf("2026-10-15"), namesOf(Turn.Epoch))
       (before.size, before == after) ==> (33, true)
     }
 

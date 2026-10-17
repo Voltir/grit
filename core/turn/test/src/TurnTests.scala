@@ -61,7 +61,6 @@ object TurnTests extends TestSuite {
       "stitched",
       "classify",
       "record-topic",
-      "DBOS.patch-assembly-steps",
       "ask:query",
       "assemble",
       "record-window",
@@ -108,7 +107,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 9
+  private val Placing = 8
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -177,11 +176,10 @@ object TurnTests extends TestSuite {
         "stitched",
         "classify",
         "record-topic",
-        "DBOS.patch-assembly-steps",
-        "assemble",
-        "record-window",
         "ask",
         "search",
+        "assemble",
+        "record-window",
         "gate",
         "call",
         "record-verdict",
@@ -272,7 +270,7 @@ object TurnTests extends TestSuite {
         "ask:relevance-2:record",
         "ask:relevance-x",
         "ask:3",
-        grit.core.durable.StepRecord.marker(TurnAssembly.Patch)
+        grit.core.durable.StepRecord.marker("a-patch")
       ).map(Turn.Step.family) ==> Vector(
         Some("ask:query"),
         Some("ask:query:record"),

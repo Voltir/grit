@@ -44,19 +44,6 @@ object JobReplayTests extends TestSuite {
   private def namesOf(epoch: String): Map[String, Vector[String]] =
     historiesOf(epoch).collect { case (path, Right(h)) => path -> h.steps.map(_.name) }.toMap
 
-  /** The name the previous epoch's step `name` has in this one: a move's `move:{name}` named
-    * for what it is, by the moves the recorder's jobs make (`a` and `j` ask, `c` calls, `note`
-    * keeps).
-    */
-  private def renamed(name: String): String = {
-    val Move = """move:([^:]+)(:.*)?""".r
-    val kinds = Map("a" -> "ask", "j" -> "ask", "c" -> "call", "note" -> "keep")
-    name match {
-      case Move(move, phase) => s"${kinds.getOrElse(move, "move")}:$move${Option(phase).mkString}"
-      case other => other
-    }
-  }
-
   /** Whether `history` made a move: a step `grit.act.moves.ActName` names. */
   private def moved(history: History): Boolean =
     history.steps.exists(s => Seq("ask:", "call:", "keep:").exists(s.name.startsWith))
@@ -101,11 +88,10 @@ object JobReplayTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "each run history of the previous epoch, its moves renamed, is its scenario's in this one"
+      "each run history of the previous epoch names its steps as its scenario's in this one"
     ) {
-      val (before, after) = (namesOf("2026-10-14"), namesOf(Turn.Epoch))
-      (before.size, before.keySet == after.keySet) ==> (19, true)
-      before.map((file, names) => file -> names.map(renamed)) ==> after
+      val (before, after) = (namesOf("2026-10-15"), namesOf(Turn.Epoch))
+      (before.size, before == after) ==> (19, true)
     }
 
     test("the current epoch has run histories to replay, redeployed ones and moves among them") {

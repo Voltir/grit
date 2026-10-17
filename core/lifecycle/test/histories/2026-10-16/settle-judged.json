@@ -1,0 +1,24 @@
+{
+  "workflow": "settle",
+  "id": "settle:c1:1:0:1789898400000",
+  "epoch": "2026-10-16",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"asking\":0}}"
+    },
+    {
+      "name": "ask:settle",
+      "output": "{\"made\":\"{\\\"nobody\\\":0.85,\\\"onPerson\\\":0.1,\\\"onOther\\\":0.05,\\\"model\\\":\\\"jev\\\"}\",\"calls\":[{\"model\":\"jev\",\"usage\":{\"input\":1,\"output\":1,\"cachedInput\":0},\"estimate\":604,\"upstream\":\"service:test\"}]}"
+    },
+    {
+      "name": "ask:settle:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

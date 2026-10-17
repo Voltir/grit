@@ -80,17 +80,12 @@ private[turn] object TurnFlow {
     def unran(at: Offered, failure: TurnFailure): Ended = Ended(at, Left(failure), None, None)
     def windowed(a: Assembled, limits: Either[TurnFailure, TurnRound.Limits]) =
       limits.map(l => (a, looping(a, l))).left.map(unran(a.at, _))
-    // A turn whose history drew its window in one step goes on as it began (ADR 0004).
-    val whole = Flow
-      .decide(assemble)((p, w) => w.map(Assembled(p.at, p.placing, _)).left.map(unran(p.at, _)))
-      .andThen(Flow.decide(recordChargedWindow)(windowed))
-    val staged = Flow
+    val assembled = Flow
       .mayEnd(
         TurnAssembly.flow.keeping
           .map((p, w) => w.map(Assembled(p.at, p.placing, _)).left.map(unran(p.at, _)))
       )
       .andThen(Flow.decide(recordWindow)(windowed))
-    val assembled = Flow.patch(TurnAssembly.Patch)(whole, staged)
     val looped = Flow
       .pass[(Assembled, TurnRound.Looping)]
       .map(_._2)

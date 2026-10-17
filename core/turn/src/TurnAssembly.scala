@@ -31,11 +31,6 @@ import TurnRelevance.Verdict
   */
 private[turn] object TurnAssembly {
 
-  /** The patch the stages shipped under: a history holding `assemble` where its marker would
-    * be is replayed through the one step that drew the window whole.
-    */
-  val Patch = "assembly-steps"
-
   /** From the placed message to its window, or why there is none. */
   def flow: Flow[Env, Placed, Nothing, Either[TurnFailure, Window]] =
     query

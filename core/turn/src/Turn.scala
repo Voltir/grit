@@ -29,7 +29,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-10-15"
+  val Epoch = "2026-10-16"
 
   /** The application version an engine opens under for a deployment whose own version is
     * `deployment`: [[Epoch]], `+`, then `deployment`. Only an engine of the same one resumes

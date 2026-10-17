@@ -1,7 +1,6 @@
 package grit.turn
 
 import grit.core.act.MovesFixtures.FakeDb as LabelledDb
-import grit.core.context.AssemblyNote
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{EntrySeq, TurnRef}
 import grit.core.model.{Grade, ModelRef}
@@ -198,8 +197,9 @@ object RecordTurnHistories {
         turnBodyWith(
           entries,
           new RecordingProvider,
-          new Noting(entries, TurnFixtures.queried),
-          new InMemoryUsageLedger
+          new Searching(entries, 25),
+          new InMemoryUsageLedger,
+          new Sifter
         )
       )
       recorded(durable, turn)
@@ -214,7 +214,7 @@ object RecordTurnHistories {
         turnBodyWith(
           entries,
           new RecordingProvider,
-          new Noting(entries, AssemblyNote.Recalled(Vector(one.turnSeq))),
+          new Searching(entries, 1),
           new InMemoryUsageLedger
         )
       )

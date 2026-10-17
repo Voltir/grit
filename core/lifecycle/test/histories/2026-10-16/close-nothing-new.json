@@ -1,0 +1,28 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-10-16",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "ask:gate",
+      "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":false,\\\"standing\\\":false,\\\"settled\\\":false}\",\"calls\":[{\"model\":\"jev\",\"usage\":{\"input\":1,\"output\":1,\"cachedInput\":0},\"estimate\":1054,\"upstream\":\"service:test\"}]}"
+    },
+    {
+      "name": "ask:gate:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"Chose staging.\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[],\\\"topics\\\":[]}},\\\"note\\\":\\\"nothing new: carried\\\"}\",\"calls\":[]}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}
