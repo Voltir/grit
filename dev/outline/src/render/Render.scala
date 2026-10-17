@@ -30,7 +30,7 @@ object Render {
 
   /** One line for a traced type: its lines and collapsed signature, then for an Enum its cases, and for a Trait or abstract Class the members of `companions` that extend it in `d`'s own file, each as its collapsed signature and start line; then `d`'s size tag. */
   def oneLine(d: Defn, companions: Vector[Defn]): String = {
-    val head = s"→ ${d.lines.start}-${d.lines.end} ${collapse(withoutDocs(d.signature))}"
+    val head = s"→ ${d.lines.start}-${d.lines.end} ${signatureLine(d)}"
     val items: Vector[Defn] =
       if (d.kind == Kind.Enum) d.members.filter(_.kind == Kind.EnumCase)
       else if (d.kind == Kind.Trait || (d.kind == Kind.Class && d.isAbstract))
@@ -237,8 +237,6 @@ object Render {
       Vector(headerLine(d, inContext = f.member.isEmpty), d.head) ++
         (if (body && d.body.nonEmpty) d.body.toVector else closingLines(d))
 
-    def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
-
     // The trait's closing lines come after its members' entries.
     val traitLines: Vector[String] =
       Vector(
@@ -253,7 +251,7 @@ object Render {
       }) ++ closingLines(f.trait0)
 
     def implLines(d: Defn): Vector[String] = {
-      val head = s"${headerOf(d)}  ${signatureOf(d)}${sizeTag(d.size)}"
+      val head = s"${headerOf(d)}  ${signatureLine(d)}${sizeTag(d.size)}"
       f.member match {
         case None => Vector(head)
         case Some(m) =>
@@ -272,11 +270,11 @@ object Render {
         if (suites.isEmpty) "  run by nothing"
         else s"  run by ${suites.map(s => s"${s.file}:${s.lines.start}").mkString(", ")}"
       Vector(
-        s"${c.lines.start}-${c.lines.end} contract ${ownerRelative(c)}  ${signatureOf(c)}${sizeTag(c.size)}"
+        s"${c.lines.start}-${c.lines.end} contract ${ownerRelative(c)}  ${signatureLine(c)}${sizeTag(c.size)}"
       ) ++
         c.members
           .filter(!_.isPrivate)
-          .map(m => s"  ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}") ++
+          .map(m => s"  ${m.lines.start}-${m.lines.end} ${signatureLine(m)}${sizeTag(m.size)}") ++
         Vector(runBy)
     }
 
@@ -442,7 +440,6 @@ object Render {
       cap: Int,
       stale: Boolean
   ): String = {
-    def signatureOf(d: Defn): String = collapse(withoutDocs(d.signature))
     val lines = src.split("\n", -1).toVector
 
     val fileLoose = loose(lines, 1, lines.size, tops.map(_.lines)).flatMap { case (from, to) =>
@@ -465,7 +462,7 @@ object Render {
     val helperPieces = helpers.sortBy(_.lines.start).map { h =>
       val named = bodies.contains(h.name)
       Piece(
-        Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureOf(h)}${sizeTag(h.size)}") ++
+        Vector(s"  ${h.lines.start}-${h.lines.end} ${signatureLine(h)}${sizeTag(h.size)}") ++
           (if (named) Vector(h.head) ++ h.body.toVector else Vector.empty),
         h.name,
         asked = named
@@ -482,7 +479,7 @@ object Render {
       if (listFixtures)
         Vector(s"    $where") ++
           used
-            .map(m => s"      ${m.lines.start}-${m.lines.end} ${signatureOf(m)}${sizeTag(m.size)}")
+            .map(m => s"      ${m.lines.start}-${m.lines.end} ${signatureLine(m)}${sizeTag(m.size)}")
       else Vector(s"    $where  ${used.map(_.name).distinct.mkString(", ")}")
     }
     val fixtureHeader =
@@ -758,7 +755,7 @@ object Render {
 
   private def caseItem(d: Defn): String = {
     // A case Read found no signature for falls back to its name, which is what the signature would be without `case `.
-    val signature = collapse(withoutDocs(d.signature))
+    val signature = signatureLine(d)
     val source = if (signature.isEmpty) d.name else signature
     val cut = source.indexOf(" extends ")
     val header = if (cut >= 0) source.take(cut) else source
