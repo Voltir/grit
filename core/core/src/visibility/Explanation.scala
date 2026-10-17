@@ -28,7 +28,7 @@ object Explanation {
   def text(e: Explanation): String =
     (Vector(
       s"This conversation is labelled ${Label.shown(e.room)}.",
-      s"From anywhere else, I read for you up to ${Label.shown(e.beyond)}."
+      s"From anywhere else, I read for you up to ${Label.clearance(e.beyond)}."
     ) ++ after(e)).mkString("\n\n")
 
   /** Who the asker is taken to be, their groups, the rules and the hidden-content line. */
@@ -40,7 +40,7 @@ object Explanation {
     * at it), then as [[text]] from who they are taken to be.
     */
   def cleared(e: Explanation): String =
-    (s"You are cleared for up to ${Label.shown(e.beyond)}, wherever you ask." +: after(e))
+    (s"You are cleared for up to ${Label.clearance(e.beyond)}, wherever you ask." +: after(e))
       .mkString("\n\n")
 
   /** How a room's speech and everything else is read, and how a label is written. */
@@ -79,7 +79,7 @@ object Explanation {
               .map(n => s"as a full member of a ${Namespace.value(n)} source") ++
             i.added.toVector.sorted
               .map(n => s"added through grit for your ${Namespace.value(n)} account")
-        s"- ${GroupName.value(i.group)}: ${Label.shown(i.label)}, ${ways.mkString(" and ")}"
+        s"- ${GroupName.value(i.group)}: ${Label.clearance(i.label)}, ${ways.mkString(" and ")}"
       }).mkString("\n")
 
   /** Who a turn answers, as the explanation may show them. */

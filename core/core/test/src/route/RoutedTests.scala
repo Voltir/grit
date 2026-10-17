@@ -99,7 +99,7 @@ object RoutedTests extends TestSuite {
 
   /** What a read that rose to restricted fails with, bounded at internal ([[Tx.within]]). */
   private val aboveInternal: StoreError = StoreError.Invalid(
-    s"a read at ${Label.shown(restricted)} is above the ${Label.shown(internal)} its calls " +
+    s"a read at ${Label.shown(restricted)} is above the ${Label.clearance(internal)} its calls " +
       "were routed for, which changed since: ask again"
   )
 

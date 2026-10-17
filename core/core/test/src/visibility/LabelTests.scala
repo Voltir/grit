@@ -134,6 +134,20 @@ object LabelTests extends TestSuite {
     }
 
     test(
+      "a clearance is shown by its level and compartments, one holding the unmapped mark also reading what no one has labelled yet, never the mark"
+    ) {
+      (
+        Label.clearance(Label.at(Level.Restricted, trial, acme).join(Label.Unmapped)),
+        Label.clearance(Label.Unmapped),
+        Label.clearance(Label.at(Level.Internal, acme))
+      ) ==> (
+        "[level: restricted, in: {acme, trial}, and what no one has labelled yet]",
+        "[level: public, and what no one has labelled yet]",
+        "[level: internal, in: {acme}]"
+      )
+    }
+
+    test(
       "a label holding the unmapped mark is shown as not labelled yet, never by its level or the mark"
     ) {
       (

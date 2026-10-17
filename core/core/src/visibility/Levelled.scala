@@ -39,6 +39,15 @@ private[visibility] final class Levelled[L <: reflect.Enum & caps.Pure](
     s"[${levels.shownAs}: ${levels.name(level)}$in]"
   }
 
+  /* As `shown`, the unmapped mark read as what no one has labelled yet rather than named. */
+  def plain: String = {
+    val named = compartments.toVector.filter(_ != Mark.Unmapped).map(Mark.name)
+    val in = if (named.isEmpty) "" else named.mkString(", in: {", ", ", "}")
+    val unlabelled =
+      if (compartments.contains(Mark.Unmapped)) ", and what no one has labelled yet" else ""
+    s"[${levels.shownAs}: ${levels.name(level)}$in$unlabelled]"
+  }
+
   override def equals(that: Any): Boolean = that match {
     case r: Levelled[?] => level == r.level && compartments == r.compartments
     case _ => false

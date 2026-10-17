@@ -237,8 +237,8 @@ object Tx {
       bound.dominates(known),
       (),
       StoreError.Invalid(
-        s"a read at ${Label.shown(known)} is above the ${Label.shown(bound)} its calls were " +
-          "routed for, which changed since: ask again"
+        s"a read at ${Label.shown(known)} is above the ${Label.clearance(bound)} its calls " +
+          "were routed for, which changed since: ask again"
       )
     )
   }
@@ -252,8 +252,8 @@ object Tx {
       bound.dominates(read) && floor(tx).dominates(read),
       (),
       StoreError.Invalid(
-        s"a read at ${Label.shown(read)} is above the ${Label.shown(bound)} its calls were " +
-          s"routed for or the ${Label.shown(floor(tx))} this is kept at: ask again"
+        s"a read at ${Label.shown(read)} is above the ${Label.clearance(bound)} its calls were " +
+          s"routed for or the ${Label.clearance(floor(tx))} this is kept at: ask again"
       )
     )
 

@@ -324,8 +324,8 @@ object TxTests extends TestSuite {
       val restricted = Label.at(Level.Restricted, trial)
       def refused(read: Label, bound: Label) = Left(
         StoreError.Invalid(
-          s"a read at ${Label.shown(read)} is above the ${Label.shown(bound)} its calls were " +
-            s"routed for or the ${Label.shown(confidentialTrial)} this is kept at: ask again"
+          s"a read at ${Label.shown(read)} is above the ${Label.clearance(bound)} its calls were " +
+            s"routed for or the ${Label.clearance(confidentialTrial)} this is kept at: ask again"
         )
       )
       Vector(

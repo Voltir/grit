@@ -91,7 +91,7 @@ object Downgrade {
           (
             "lowers classification",
             authority match {
-              case Authority.Rule(c) => s"by code, to no lower than ${Label.shown(c)}"
+              case Authority.Rule(c) => s"by code, to no lower than ${Label.clearance(c)}"
               case Authority.Person => "by the answering person, to what their clearance reads"
             }
           )

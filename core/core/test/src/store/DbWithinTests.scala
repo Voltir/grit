@@ -21,7 +21,7 @@ object DbWithinTests extends TestSuite {
   private def above(known: Label, bound: Label): Either[StoreError, Unit] =
     Left(
       StoreError.Invalid(
-        s"a read at ${Label.shown(known)} is above the ${Label.shown(bound)} its " +
+        s"a read at ${Label.shown(known)} is above the ${Label.clearance(bound)} its " +
           "calls were routed for, which changed since: ask again"
       )
     )

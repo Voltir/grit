@@ -99,6 +99,18 @@ object AnswerTests extends TestSuite {
     }
 
     test(
+      "a clearance holding the unmapped mark is shown by its level, and as reading what no one has labelled yet"
+    ) {
+      val top = compartments.top
+      (Answer.theirs(top).text, Answer.direct(top).text) ==> (
+        "Their clearance is [level: restricted, in: {acme, finance, trial}, and what no one has " +
+          "labelled yet].",
+        "This is a direct message: its label is your clearance, [level: restricted, in: {acme, " +
+          "finance, trial}, and what no one has labelled yet], and it cannot be changed."
+      )
+    }
+
+    test(
       "a place not labelled yet is said to be so, never by its level, whether it was or is again"
     ) {
       val placed = new Change.Relabel(ops, Label.Unmapped, Change.To.Set(internal))

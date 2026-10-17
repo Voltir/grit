@@ -178,13 +178,13 @@ object Answer {
     */
   def direct(clearance: Label): Answer =
     Shown(
-      s"This is a direct message: its label is your clearance, ${Label.shown(clearance)}, and " +
+      s"This is a direct message: its label is your clearance, ${Label.clearance(clearance)}, and " +
         "it cannot be changed."
     )
 
   /** Another person's clearance, `clearance`, shown to an administrator. */
   def theirs(clearance: Label): Answer =
-    Shown(s"Their clearance is ${Label.shown(clearance)}.")
+    Shown(s"Their clearance is ${Label.clearance(clearance)}.")
 
   /** The asker's own clearance, as `e` explains it, in [[Explanation.cleared]]'s words. */
   def clearance(e: Explanation): Answer = Shown(Explanation.cleared(e))
@@ -195,5 +195,5 @@ object Answer {
   private val KeepTheirs = "Conversations begun before keep theirs."
 
   private def clearance(after: Label): String =
-    s"Their clearance is now ${Label.shown(after)}."
+    s"Their clearance is now ${Label.clearance(after)}."
 }

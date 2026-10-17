@@ -94,13 +94,13 @@ object Knowledge {
     val label = cards.label.getOrElse(place)
     if (!label.dominates(place))
       Left(
-        s"the source $source is labelled ${Label.shown(label)}, below its service " +
+        s"the source $source is ${Label.described(label)}, below its service " +
           s"${service.name}'s place, ${Label.shown(place)}: its runs could not read the service"
       )
     else if (!cleared.dominates(label))
       Left(
-        s"the source $source is labelled ${Label.shown(label)}, above what its service " +
-          s"${service.name} is cleared for, ${Label.shown(cleared)}: " +
+        s"the source $source is ${Label.described(label)}, above what its service " +
+          s"${service.name} is cleared for, ${Label.clearance(cleared)}: " +
           "its runs' calls could not send"
       )
     else Right(label)

@@ -107,9 +107,10 @@ object Label {
     */
   def written(l: Label): String = l.written
 
-  /** Its form for people and the model to read, e.g. `[level: confidential, in: {acme, trial}]`,
-    * or `[level: internal]` with no compartment; one holding the unmapped mark, whatever its
-    * level, is `not labelled yet (no one can read it)`. Never parsed: [[written]] is the form a
+  /** A thing's label (a room's, a place's, what a read took in) for people and the model to
+    * read, e.g. `[level: confidential, in: {acme, trial}]`, or `[level: internal]` with no
+    * compartment; one holding the unmapped mark, whatever its level, is `not labelled yet (no
+    * one can read it)`. A clearance, bound or floor is shown by [[clearance]]. Never parsed: [[written]] is the form a
     * file or a recorded output holds.
     */
   def shown(l: Label): String = if (unmapped(l)) NotLabelled else l.shown
@@ -118,6 +119,14 @@ object Label {
     * or for one holding the unmapped mark, `not labelled yet (no one can read it)`.
     */
   def described(l: Label): String = if (unmapped(l)) NotLabelled else s"labelled ${l.shown}"
+
+  /** `l` as what something reads or is held to (a clearance, a bound a call was routed for, a
+    * floor), for people and the model: as [[shown]], but one holding the unmapped mark is shown
+    * by its level and compartments and `, and what no one has labelled yet`, e.g.
+    * `[level: restricted, in: {acme}, and what no one has labelled yet]`. A thing's own label
+    * is [[shown]] or [[described]].
+    */
+  def clearance(l: Label): String = l.plain
 
   private val NotLabelled = "not labelled yet (no one can read it)"
 
