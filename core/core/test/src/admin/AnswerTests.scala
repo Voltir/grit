@@ -42,11 +42,10 @@ object AnswerTests extends TestSuite {
         "This room is labelled [level: confidential, in: {trial}], set through grit.",
         "This room is labelled [level: internal], as the deployment declares it.",
         "This room is labelled [level: internal], the default for a public room.",
-        "This room is labelled [level: public, in: {unmapped}], the default for a private " +
-          "room.",
+        "This room is not labelled yet (no one can read it), the default for a private room.",
         "This room is labelled [level: internal], the deployment's default. Its access is not " +
           "yet known.",
-        "That place is labelled [level: public, in: {unmapped}], the default until a person " +
+        "That place is not labelled yet (no one can read it), the default until a person " +
           "labels it."
       )
     }
@@ -83,19 +82,36 @@ object AnswerTests extends TestSuite {
       ) ==> (
         Answer.Changed(
           set,
-          "This room is now labelled [level: confidential, in: {trial}]; it was " +
+          "This room is now labelled [level: confidential, in: {trial}]; it was labelled " +
             "[level: internal]. Conversations begun before keep theirs."
         ),
         Answer.Changed(
           unset,
-          "This room is back to its default label, [level: internal]; it was " +
+          "This room is back to its default, labelled [level: internal]; it was labelled " +
             "[level: confidential, in: {trial}]. Conversations begun before keep theirs."
         ),
         Answer.Changed(
           set,
-          "That place is now labelled [level: confidential, in: {trial}]; it was " +
+          "That place is now labelled [level: confidential, in: {trial}]; it was labelled " +
             "[level: internal]."
         )
+      )
+    }
+
+    test(
+      "a place not labelled yet is said to be so, never by its level, whether it was or is again"
+    ) {
+      val placed = new Change.Relabel(ops, Label.Unmapped, Change.To.Set(internal))
+      val partial = Label.at(Level.Confidential, trial).join(Label.Unmapped)
+      val back = new Change.Relabel(ops, internal, Change.To.Default(partial))
+      (
+        Answer.relabelled(placed, here = false).text,
+        Answer.relabelled(back, here = false).text
+      ) ==> (
+        "That place is now labelled [level: internal]; it was not labelled yet (no one can read " +
+          "it).",
+        "That place is back to its default, not labelled yet (no one can read it); it was " +
+          "labelled [level: internal]."
       )
     }
 

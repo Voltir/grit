@@ -133,6 +133,22 @@ object LabelTests extends TestSuite {
       )
     }
 
+    test(
+      "a label holding the unmapped mark is shown as not labelled yet, never by its level or the mark"
+    ) {
+      (
+        Label.shown(Label.Unmapped),
+        Label.shown(Label.at(Level.Confidential, trial).join(Label.Unmapped)),
+        Label.described(Label.Unmapped),
+        Label.described(Label.at(Level.Internal))
+      ) ==> (
+        "not labelled yet (no one can read it)",
+        "not labelled yet (no one can read it)",
+        "not labelled yet (no one can read it)",
+        "labelled [level: internal]"
+      )
+    }
+
     test("a written form naming no level first, or a level's name as a compartment, is refused") {
       Label.read("trial") ==> Left("trial names no level first: trial")
       Label.read("internal+confidential") ==>

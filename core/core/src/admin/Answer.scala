@@ -64,7 +64,7 @@ object Answer {
       case (Source.Default, None) => "the deployment's default"
     }
     val unknown = if (access.isEmpty) " Its access is not yet known." else ""
-    Shown(s"${subject(here)} is labelled ${Label.shown(label)}, $from.$unknown")
+    Shown(s"${subject(here)} is ${Label.described(label)}, $from.$unknown")
   }
 
   /** What an answer calls the room or place it speaks of. */
@@ -75,12 +75,12 @@ object Answer {
     */
   def relabelled(change: Change.Relabel, here: Boolean): Answer = {
     val now = change.to match {
-      case Change.To.Set(to) => s"now labelled ${Label.shown(to)}"
-      case Change.To.Default(to) => s"back to its default label, ${Label.shown(to)}"
+      case Change.To.Set(to) => s"now ${Label.described(to)}"
+      case Change.To.Default(to) => s"back to its default, ${Label.described(to)}"
     }
     Changed(
       change,
-      s"${subject(here)} is $now; it was ${Label.shown(change.from)}." +
+      s"${subject(here)} is $now; it was ${Label.described(change.from)}." +
         (if (here) s" $KeepTheirs" else "")
     )
   }

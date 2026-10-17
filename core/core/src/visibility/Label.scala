@@ -108,10 +108,18 @@ object Label {
   def written(l: Label): String = l.written
 
   /** Its form for people and the model to read, e.g. `[level: confidential, in: {acme, trial}]`,
-    * or `[level: internal]` with no compartment. Never parsed: [[written]] is the form a file
-    * or a recorded output holds.
+    * or `[level: internal]` with no compartment; one holding the unmapped mark, whatever its
+    * level, is `not labelled yet (no one can read it)`. Never parsed: [[written]] is the form a
+    * file or a recorded output holds.
     */
-  def shown(l: Label): String = l.shown
+  def shown(l: Label): String = if (unmapped(l)) NotLabelled else l.shown
+
+  /** What a thing labelled `l` is, to follow "is" or "was": `labelled ` and its [[shown]] form,
+    * or for one holding the unmapped mark, `not labelled yet (no one can read it)`.
+    */
+  def described(l: Label): String = if (unmapped(l)) NotLabelled else s"labelled ${l.shown}"
+
+  private val NotLabelled = "not labelled yet (no one can read it)"
 
   /** The label `text` writes, or why not. */
   def read(text: String): Either[String, Label] = Levelled.read[Level](text)
