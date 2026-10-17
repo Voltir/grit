@@ -9,7 +9,8 @@ enum Labelled {
   case Mapped(placed: Label)
 
   /** Not fully placed: `partial` is what could be, and it is kept at `partial` joined with
-    * [[Label.Unmapped]].
+    * [[Label.Unmapped]]. The two are one concept: this case is how a mapping says so, and that
+    * label is the mark it leaves on what it kept.
     */
   case Unmapped(partial: Label)
 
