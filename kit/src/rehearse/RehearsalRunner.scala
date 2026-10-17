@@ -16,7 +16,7 @@ import grit.dbos.engine.{Rehearsing, Starts}
   * session by `arrives`, then runs what that starts in the order the engine starts it (the
   * opening's placement, then the triage or the turn), then each turn a body it ran started, in
   * the order started, each once; every body as a [[Rehearsal]] over the session's `jot`,
-  * telling `told`. A body that throws ends there and the rest still run; a body stopped
+  * telling `told`, which is told [[Rehearsal.Event.Running]] before each. A body that throws ends there and the rest still run; a body stopped
   * ([[Stop]]) ends the rehearsal, and nothing after it runs. Of the bodies it is launched with
   * it runs only the stitch, triage and turn ones, and keeps none past `launched`. Launched
   * once; built and read inside one rehearsal's block.
@@ -62,6 +62,7 @@ final class RehearsalRunner(
   ): Unit = {
     synchronized(this.arrival += arrival)
     def ran(id: WorkflowId, body: WorkflowId => Durable^ ?=> String): Option[String] = {
+      told(Rehearsal.Event.Running(id))
       val came =
         try RehearsalRunner.Came.Returned(body(id)(using new Rehearsal(id, writes, told)))
         catch {

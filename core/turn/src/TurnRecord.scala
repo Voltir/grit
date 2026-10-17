@@ -11,6 +11,7 @@ import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
 import grit.core.tool.ToolSets
+import grit.core.visibility.Label
 
 import TurnJournal.given
 
@@ -26,6 +27,14 @@ object TurnRecord {
   def offer(steps: Vector[StepRecord]): Either[String, Option[TurnOffer.Recorded]] = {
     read[Either[TurnFailure, TurnOffer.Recorded]](steps, Turn.Step.Offer).map(_.flatMap(_.toOption))
   }
+
+  /** The label the `route` step `steps` recorded the turn's reads at, what its calls are routed
+    * for; `None` when no `route` step is recorded, or it recorded a failure. `Left` naming the
+    * step when its output does not read.
+    */
+  def routedAt(steps: Vector[StepRecord]): Either[String, Option[Label]] =
+    read[Either[TurnFailure, Route.Recorded]](steps, Turn.Step.Route)
+      .map(_.flatMap(_.toOption).map(_.classification))
 
   /** What the `weigh` step `steps` recorded. `Left` naming the step when its output does not
     * read.

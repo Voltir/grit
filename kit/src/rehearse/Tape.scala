@@ -25,7 +25,7 @@ final class Tape extends Rehearsal.Told {
       case Rehearsal.Event.Began(step) =>
         open.clear()
         open += step
-      case Rehearsal.Event.Ended(_) => open.clear()
+      case Rehearsal.Event.Ended(_) | Rehearsal.Event.Running(_) => open.clear()
       case Rehearsal.Event.Streamed(_, _) => ()
     }
   }

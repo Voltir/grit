@@ -95,8 +95,13 @@ final class Rehearsal(workflowId: WorkflowId, writes: Jot^, told: Rehearsal.Told
 
 object Rehearsal {
 
-  /** What a rehearsal tells as it runs. */
+  /** What a rehearsal tells as it runs, and its runner ([[RehearsalRunner]]) between bodies. */
   enum Event {
+
+    /** The body of workflow `workflow` is about to run: told by the runner, never by a
+      * rehearsal, so every operation told after it, until the next, is that workflow's.
+      */
+    case Running(workflow: WorkflowId)
 
     /** The operation `step` has begun. */
     case Began(step: String)
