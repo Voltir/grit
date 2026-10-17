@@ -499,7 +499,7 @@ object Query {
       val classes = layout.classesDirs(root)
       val stands = names.distinct.map(n => standFor(layout, config, classes, n))
       stands.collectFirst { case Left(message) => message } match {
-        case Some(message) => (Answer(message, Status.NoMatch), roots)
+        case Some(message) => (Answer(s"${header(root)}\n$message", Status.NoMatch), roots)
         case None if classes.isEmpty =>
           (Answer(layout.notCompiled(root), Status.Failed), roots)
         case None =>
@@ -792,7 +792,8 @@ object Query {
               uncompiled(root, layout, suite) match {
                 case Some(note) =>
                   (Answer(s"${header(root)}\n$note", Status.Failed), nextRoots)
-                case None => (Answer(s"no class or object $suite", Status.NoMatch), nextRoots)
+                case None =>
+                  (Answer(s"${header(root)}\nno class or object $suite", Status.NoMatch), nextRoots)
               }
             case Some(_) if ambiguous =>
               (

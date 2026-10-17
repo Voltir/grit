@@ -120,9 +120,12 @@ object AreaTests extends TestSuite {
       assert(!answer.text.linesIterator.exists(_.startsWith("grit.outline.fixture  ")))
     }
 
-    test("an undeclared area name is NoMatch, and the answer names the declared areas") {
+    test(
+      "an undeclared area name is NoMatch, and the answer names the declared areas under the root line"
+    ) {
       val answer = area(chain, Vector("nope"), 1)
       assert(answer.status == Status.NoMatch)
+      assert(answer.text.startsWith(s"## root ${root.dir} ("))
       assert(answer.text.contains("no area nope; declared: chain, colours"))
     }
   }

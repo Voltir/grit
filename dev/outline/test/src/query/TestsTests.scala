@@ -172,8 +172,15 @@ object TestsTests extends TestSuite {
       assert(answer(suite, Some("nope")).text.contains("-- no test starting \"nope\""))
     }
 
-    test("a name no class or object declares is NoMatch") {
-      assert(answer("grit.outline.fixture.store.Missing", None).status == Status.NoMatch)
+    test("a name no class or object declares is NoMatch, saying so under the root line") {
+      val missing = answer("grit.outline.fixture.store.Missing", None)
+      assert(missing.status == Status.NoMatch)
+      assert(missing.text.startsWith(s"## root ${root.dir} ("))
+      assert(
+        missing.text.linesIterator.toVector.lastOption.contains(
+          "no class or object grit.outline.fixture.store.Missing"
+        )
+      )
     }
 
     test("an ambiguous suite name is NoMatch, names every suite it matches, and prints none") {
