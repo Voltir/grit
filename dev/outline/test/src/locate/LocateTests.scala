@@ -192,6 +192,22 @@ object LocateTests extends TestSuite {
     }
 
     test(
+      "mentioningEach forgets the words of a file deleted since the words it was given: written back unchanged, it is scanned again"
+    ) {
+      val root = tree("core/x/src/A.scala", "core/x/src/B.scala")
+      val b = root.dir / "core/x/src/B.scala"
+      os.write.over(root.dir / "core/x/src/A.scala", "object A { Alpha }\n")
+      os.write.over(b, "object B { Bravo }\n")
+      val (_, both) = Locate.mentioningEach(root, Vector("Alpha"), SourceWords.empty)
+      os.remove(b)
+      val (_, afterDelete) = Locate.mentioningEach(root, Vector("Alpha"), both)
+      os.write(b, "object B { Bravo }\n")
+      // `read` answers with the same words, unchanged, only for a file whose bytes it holds.
+      assert(both.read(b)._3 eq both)
+      assert(!(afterDelete.read(b)._3 eq afterDelete))
+    }
+
+    test(
       "mentioningEach gives each word the files holding it whole as \\b reads it: not inside a longer name, beside a letter \\w lacks, or with a dot"
     ) {
       val root = tree("core/x/src/A.scala", "core/x/src/B.scala", "core/x/src/C.scala")
