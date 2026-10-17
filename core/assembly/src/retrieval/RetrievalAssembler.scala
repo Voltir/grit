@@ -16,7 +16,7 @@ import grit.core.context.{
   Window
 }
 import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, DocumentVersion, PluginName, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.TokenEstimator
@@ -183,7 +183,8 @@ final class RetrievalAssembler(
   }
 
   /** Each of `wanted`, once, in its order, as a search would find it for `base` now: one no
-    * longer there, or no longer in scope, left out.
+    * longer there, or no longer in scope, left out. Its documents are read in one read, and
+    * each conversation elsewhere once.
     */
   private def looked(request: AssemblyRequest, base: Base, wanted: Vector[Retrieved])(using
       db: Db^
@@ -193,18 +194,28 @@ final class RetrievalAssembler(
       .flatMap(t => t.headOption.filter(e => before(e.turnSeq, base.from)).map(_.turnSeq -> t))
       .toMap
     val terms = read.shelves.fold(Map.empty)(_.terms)
-    def one(r: Retrieved)(using grit.core.store.Tx^): Either[StoreError, Option[Candidate]] =
+    val asked = wanted.distinct
+    def openAt(c: ConversationId, seq: TurnSeq): Option[OpenPeriod] =
+      read.open.find(o => o.conversation == c && !before(seq, o.first))
+    val versions =
+      read.shelves.fold(Vector.empty)(_ => asked.collect { case Retrieved.Doc(v) => v })
+    val near = asked.collect {
+      case Retrieved.Near(c, seq) if openAt(c, seq).nonEmpty => c
+    }.distinct
+    def one(
+        r: Retrieved,
+        docs: Map[DocumentVersion, Document],
+        theirs: Map[ConversationId, Vector[Entry]]
+    )(using grit.core.store.Tx^): Either[StoreError, Option[Candidate]] =
       r match {
         case Retrieved.Own(seq) => Right(older.get(seq).map(Candidate.Own(seq, _)))
         case Retrieved.Near(c, seq) =>
-          read.open.find(o => o.conversation == c && !before(seq, o.first)) match {
-            case None => Right(None)
-            case Some(o) =>
-              entries.list(c).map { all =>
-                val messages = LinearAssembler.turnsBefore(all, seq, seq.next).flatten
-                Option.when(messages.nonEmpty)(Candidate.Near(c, o.place, seq, messages))
-              }
-          }
+          Right((openAt(c, seq), theirs.get(c)) match {
+            case (Some(o), Some(all)) =>
+              val messages = LinearAssembler.turnsBefore(all, seq, seq.next).flatten
+              Option.when(messages.nonEmpty)(Candidate.Near(c, o.place, seq, messages))
+            case _ => None
+          })
         case Retrieved.Closed(c) =>
           read.closed.find(_.conversation == c) match {
             case None => Right(None)
@@ -214,23 +225,25 @@ final class RetrievalAssembler(
                 .map(_.flatMap(ClosingEntry.of).map(Candidate.Record(c, k.place, _)))
           }
         case Retrieved.Doc(version) =>
-          read.shelves match {
-            case None => Right(None)
-            case Some(s) =>
-              documents
-                .read(Vector(version))
-                .map(_.headOption.flatMap { d =>
-                  terms
-                    .get(d.plugin)
-                    .filter(_ => s.places.contains(Shelved(d.plugin, d.place)))
-                    .map(Candidate.Doc(d, _))
-                })
-          }
+          Right(read.shelves.zip(docs.get(version)).flatMap { (s, d) =>
+            terms
+              .get(d.plugin)
+              .filter(_ => s.places.contains(Shelved(d.plugin, d.place)))
+              .map(Candidate.Doc(d, _))
+          })
       }
     db.read(Subject.Turn(request.turn)) {
-      wanted.distinct.foldLeft[Either[StoreError, Vector[Candidate]]](Right(Vector.empty)) {
-        (acc, r) => acc.flatMap(done => one(r).map(done ++ _))
-      }
+      for {
+        docs <-
+          if (versions.isEmpty) Right(Vector.empty) else documents.read(versions)
+        theirs <- near.foldLeft[Either[StoreError, Map[ConversationId, Vector[Entry]]]](
+          Right(Map.empty)
+        )((acc, c) => acc.flatMap(done => entries.list(c).map(es => done + (c -> es))))
+        byVersion = docs.map(d => d.version -> d).toMap
+        found <- asked.foldLeft[Either[StoreError, Vector[Candidate]]](Right(Vector.empty)) {
+          (acc, r) => acc.flatMap(done => one(r, byVersion, theirs).map(done ++ _))
+        }
+      } yield found
     }.left
       .map(AssemblyError.Store(_))
   }

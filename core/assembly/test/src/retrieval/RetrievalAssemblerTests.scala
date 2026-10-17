@@ -65,7 +65,9 @@ import grit.core.store.{
   Conversation,
   Entry,
   EntrySearch,
+  EntryStore,
   InMemoryConversationStore,
+  InMemoryEntryStore,
   InMemoryLifecycleStore,
   Nearby,
   OpenPeriod,
@@ -242,8 +244,33 @@ object RetrievalAssemblerTests extends TestSuite {
             .sortBy(-_.score)
         )
     }
-    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] = {
+      reads = reads :+ versions
       under.read(versions)
+    }
+    // Only ever holds immutable vectors; nothing reads it but the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var reads = Vector.empty[Vector[DocumentVersion]]
+  }
+
+  /** `under`'s entries, keeping which conversation each `list` asked for. */
+  private final class Listing(under: InMemoryEntryStore) extends EntryStore {
+    // Only ever holds immutable vectors; nothing reads it but the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var listed = Vector.empty[ConversationId]
+
+    def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = under.insert(entry)
+    def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = under.get(id)
+    def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = {
+      listed = listed :+ conversation
+      under.list(conversation)
+    }
+    def at(conversation: ConversationId, seqs: Vector[EntrySeq])(using
+        Tx^
+    ): Either[StoreError, Vector[Entry]] = under.at(conversation, seqs)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = under.ofTurn(turn)
+    def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
+      under.lockNext(conversation)
   }
 
   private def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
@@ -404,7 +431,8 @@ object RetrievalAssemblerTests extends TestSuite {
       tuning: Tuning = Tuning.Default,
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
-      documents: DocumentSearch = new InMemoryDocuments
+      documents: DocumentSearch = new InMemoryDocuments,
+      entries: Option[EntryStore] = None
   ): RetrievalAssembler = {
     val conversations = new InMemoryConversationStore
     conversations.all =
@@ -426,7 +454,7 @@ object RetrievalAssemblerTests extends TestSuite {
       )(using TestTx.fake)
       .getOrElse(sys.error("in-memory store"))
     new RetrievalAssembler(
-      world.entries,
+      entries.getOrElse(world.entries),
       conversations,
       world.periods,
       world.principals,
@@ -1042,6 +1070,41 @@ object RetrievalAssemblerTests extends TestSuite {
           Vector(Retrieved.Own(TurnSeq(0)) -> "Which database do probes")
         )
       )
+    }
+
+    test(
+      "what was found is read back in one read of its documents and one list per conversation elsewhere"
+    ) {
+      val world = store(ask)
+      val api = elsewhere(
+        world,
+        "api",
+        close = false,
+        exchange("lunch?", "later"),
+        exchange("flaky?", "TZ")
+      )
+      val docs = shelf("notes" -> 1.0)
+      val a = write(docs, "notes", "a", placeOf("api"), "the probe budget, alpha")
+      val b = write(docs, "notes", "b", placeOf("api"), "the probe budget, beta")
+      val listing = new Listing(world.entries)
+      val found = Vector(
+        Retrieved.Doc(b),
+        Retrieved.Near(api, TurnSeq(1)),
+        Retrieved.Doc(a),
+        Retrieved.Near(api, TurnSeq(0))
+      )
+      val briefs = retrieval(
+        world,
+        1000,
+        new Scripted(),
+        documents = docs,
+        entries = Some(listing)
+      ).briefs(AssemblyRequest(TurnRef(c1, TurnSeq(0))), found, chars = 40)(using new FakeDb)
+      (
+        briefs.map(_.found.map(_._1)),
+        docs.reads,
+        listing.listed.count(_ == api)
+      ) ==> (Right(found), Vector(Vector(b, a)), 1)
     }
 
     test("after a close, the closings come first and the search stays in the open period") {
