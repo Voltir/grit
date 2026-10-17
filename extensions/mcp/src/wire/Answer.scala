@@ -41,22 +41,10 @@ object Answer {
   def of(result: ujson.Obj, items: Accounted = Accounted.Unread): Either[McpError, Answer] =
     read(result).map { (content: Vector[ujson.Value], isError: Boolean) =>
       val blocks = content.map(block)
-      val structured =
-        result.obj
-          .get("structuredContent")
-          .filter(_ => !blocks.exists(_._2))
-          .map(ujson.write(_))
-      val all = blocks.map(_._1) ++ structured
-      val whole = all.mkString("\n")
       val structure = result.obj.get("structuredContent")
-      if (Clipped.fits(whole))
-        new Answer(
-          Clipped.head(whole, Clipped.cutHint).show,
-          isError,
-          items,
-          None,
-          structure.map(Facts.of)
-        )
+      val all = blocks.map(_._1) ++ structure.filter(_ => !blocks.exists(_._2)).map(ujson.write(_))
+      val whole = all.mkString("\n")
+      if (Clipped.fits(whole)) new Answer(whole, isError, items, None, structure.map(Facts.of))
       else
         byItems(all, blocks.map(_._2)) match {
           case Some((clipped, kept, of)) =>
