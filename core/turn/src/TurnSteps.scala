@@ -14,16 +14,7 @@ import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechStore}
 import grit.core.stitch.{Along, Strand}
-import grit.core.store.{
-  Entry,
-  EntryStore,
-  ModelProfileStore,
-  Nearby,
-  Payload,
-  StoreError,
-  Tx,
-  UsageLedger
-}
+import grit.core.store.{Entry, EntryStore, ModelProfileStore, Payload, StoreError, Tx, UsageLedger}
 import grit.core.tool.ToolName
 import grit.core.triage.Weighing
 import grit.core.visibility.{Integrity, Label, Subject}
