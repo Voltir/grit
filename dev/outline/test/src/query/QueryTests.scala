@@ -609,6 +609,34 @@ object QueryTests extends TestSuite {
     }
 
     test(
+      "a tests line with no test says what it searched: helpers alone for Numbers, no name of Shelves.one or of Labels"
+    ) {
+      val (answer, _) =
+        Query.show(
+          root,
+          FixtureSuitesLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector(
+            "grit.outline.fixture.typed.Numbers",
+            "grit.outline.fixture.typed.Shelves.one",
+            "grit.outline.fixture.typed.Labels"
+          ),
+          0,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(
+        answer.text.linesIterator.filter(_.startsWith("-- tests")).toVector == Vector(
+          "-- tests of Numbers: no test names it; helpers in 1 suite do (nearest: ShelfTests); --tests to list",
+          "-- tests of Shelves.one: none name it (a call through a supertype's member it overrides is not counted)",
+          "-- tests of Labels: none name it or a member (a subtype's own members are not counted)"
+        )
+      )
+    }
+
+    test(
       "the nearest suites are those in the symbol's own module first, then those holding the most references"
     ) {
       val ranked = Query.nearest(

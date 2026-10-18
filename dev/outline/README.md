@@ -35,7 +35,10 @@ its type's head prints, as `g` in `trait T { def g: Int }`, has no entry of its 
 line per named symbol counts the tests in test sources that exercise it:
 `-- tests of Label: 41 in 12 suites (nearest: LabelTests, TxTests, InboxContract); --tests to list`.
 The nearest suites are those under the symbol's own module directory first, then those holding the
-most references. `--tests` lists them instead: a `## tests exercising <Sym>` line, then per file a
+most references. With no reference, the line says what is not counted: `none name it (a call through a
+supertype's member it overrides is not counted)`, or for a type `none name it or a member (a subtype's own members
+are not counted)`; with references only in helpers outside every test, `no test names it; helpers in 2 suites do`.
+`--tests` lists them instead: a `## tests exercising <Sym>` line, then per file a
 `== file  package` line and entries `NN-MM <Suite>: <test name>`, or `NN-MM <Suite>: helper <def>`
 for a helper that itself holds a reference. `--no-tests` drops both. None of these lines is file text. A name main sources lack is looked up in test sources
 and shown from there, under a `-- in test sources: <full name>` note, with no tests line. Every query reads a short name

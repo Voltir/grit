@@ -1360,7 +1360,9 @@ object Query {
         name,
         on.filter(_.inTest).map(h => (h.site.file, h.entry)).distinct.size,
         suites.size,
-        nearest(same.headOption.fold("")(_.file), suites)
+        nearest(same.headOption.fold("")(_.file), suites),
+        member = same
+          .forall(d => Set(Kind.Def, Kind.Val, Kind.Var, Kind.Param, Kind.Given).contains(d.kind))
       )
     }
 

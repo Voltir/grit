@@ -12,9 +12,16 @@ enum TestsShown {
 }
 
 /** What `show`'s tests line says of the named symbol `symbol`: how many tests in test sources hold a reference to it or to
-  * one of its members, how many suites hold one in a test or a helper, and the nearest of those suites, at most three.
+  * one of its members, how many suites hold one in a test or a helper, and the nearest of those suites, at most three;
+  * `member` when the symbol is a def, val, var, constructor val or given rather than a type, which says what a count of none leaves out.
   */
-final case class TestsSummary(symbol: String, tests: Int, suites: Int, nearest: Vector[String])
+final case class TestsSummary(
+    symbol: String,
+    tests: Int,
+    suites: Int,
+    nearest: Vector[String],
+    member: Boolean
+)
 
 /** A trait's family: the trait, its implementations, and each contract with the suites extending it. */
 final case class Family(
@@ -605,15 +612,21 @@ object Render {
   final case class Exercise(lines: Lines, label: String)
 
   /** `s` as `show`'s tests line: `-- tests of <name>: N in M suites (nearest: A, B, C); --tests to list`, the name without
-    * its package; `-- tests of <name>: none` when no suite holds a reference to it.
+    * its package. Only references by the symbol's own name, or a type's members' names, are counted, so a line with none
+    * says what is left out: a call through a supertype's member it overrides, for a member; a subtype's own members, for
+    * a type. When suites hold a reference only in helpers, outside every test, the line says so.
     */
   def testsLine(s: TestsSummary): String = {
     val name = ownerRelativeName(s.symbol)
-    if (s.suites == 0) s"-- tests of $name: none"
-    else {
-      val suites = if (s.suites == 1) "1 suite" else s"${s.suites} suites"
-      s"-- tests of $name: ${s.tests} in $suites (nearest: ${s.nearest.mkString(", ")}); --tests to list"
-    }
+    def suites = if (s.suites == 1) "1 suite" else s"${s.suites} suites"
+    def nearest = s.nearest.mkString(", ")
+    if (s.suites == 0)
+      if (s.member)
+        s"-- tests of $name: none name it (a call through a supertype's member it overrides is not counted)"
+      else s"-- tests of $name: none name it or a member (a subtype's own members are not counted)"
+    else if (s.tests == 0)
+      s"-- tests of $name: no test names it; helpers in $suites do (nearest: $nearest); --tests to list"
+    else s"-- tests of $name: ${s.tests} in $suites (nearest: $nearest); --tests to list"
   }
 
   /** The tests section of `show`, one chunk per file: the `## tests exercising <syms>` line leads the first, then each file's `== file  package` line and its entries as `NN-MM` then their label. Empty when no file has an entry. */
