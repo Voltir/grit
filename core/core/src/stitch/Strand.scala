@@ -1,8 +1,11 @@
 package grit.core.stitch
 
+import java.time.Instant
+
 import grit.core.id.ConversationId
 import grit.core.place.Place
 import grit.core.store.Entry
+import grit.core.visibility.Label
 
 /** `conversation`'s first message continues the exchange `root` began. */
 final case class Link(conversation: ConversationId, root: ConversationId)
@@ -47,4 +50,24 @@ object Strand {
   object Read {
     val empty: Read = Read(None, Vector.empty, Vector.empty, Set.empty)
   }
+
+  /** A strand as it stood `asOf`, by ids and counts alone ([[StrandShelf]]): its `room` and the
+    * label in force there; its `root` and `members`, the root first then its followers by
+    * first message, each holding a message said before `asOf` that is still kept and its
+    * reader reads; how many messages they hold (`said`) and how many characters of them a
+    * reader is shown, at most [[Stitching.MessageChars]] of each (`chars`); when the first and
+    * last were said; and their [[StrandDigest]].
+    */
+  final case class Seen(
+      room: Place,
+      roomLabel: Label,
+      root: ConversationId,
+      members: Vector[ConversationId],
+      said: Int,
+      chars: Int,
+      since: Instant,
+      touched: Instant,
+      digest: StrandDigest,
+      asOf: Instant
+  ) extends caps.Pure
 }
