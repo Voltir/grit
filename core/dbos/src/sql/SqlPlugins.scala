@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.PreparedStatement
+import java.sql.ResultSet
 import java.time.Instant
 
 import scala.util.Using
@@ -28,7 +28,7 @@ final class SqlPluginDocs(plugin: PluginName) extends PluginDocs {
       ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
       ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
       ps.setString(SqlClearance.Params + 3, key)
-    }.map(_.headOption.map(_._2))
+    }(keyed).map(_.headOption.map(_._2))
 
   def newest(prefix: String, n: Int)(using
       tx: Tx^
@@ -44,7 +44,7 @@ final class SqlPluginDocs(plugin: PluginName) extends PluginDocs {
       ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
       ps.setString(SqlClearance.Params + 3, prefix)
       ps.setInt(SqlClearance.Params + 4, n max 0)
-    }
+    }(keyed)
 }
 
 /** [[CacheDocs]] over `plugin`'s rows of `grit.plugin_docs`, posted from the closed period
@@ -197,44 +197,9 @@ private object SqlPlugins {
   /** The generation of the cursor of the plugin bound at this point: none without one. */
   val Generation = "(SELECT generation FROM grit.plugin_cursors WHERE plugin = ?)"
 
-  def update(
-      sql: String
-  )(bind: PreparedStatement => Unit)(using tx: Tx^): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlStatements.attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
+  /** A row's key and its document. */
+  def keyed(rs: ResultSet): (String, ujson.Value) =
+    rs.getString("key") -> ujson.read(rs.getString("doc"))
 
-  /** As [[query]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
-    * parameters are set first, to the transaction's, then `bind`'s.
-    */
-  def cleared(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[(String, ujson.Value)]] = {
-    val clearance = Tx.clearance(tx)
-    query(sql) { ps =>
-      SqlClearance.bind(ps, 1, clearance)
-      bind(ps)
-    }
-  }
-
-  def query(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[(String, ujson.Value)]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlStatements.attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[(String, ujson.Value)]
-          while (rs.next()) rows += (rs.getString("key") -> ujson.read(rs.getString("doc")))
-          rows.result()
-        }
-      }
-    }
-  }
+  export SqlStatements.{cleared, update}
 }
