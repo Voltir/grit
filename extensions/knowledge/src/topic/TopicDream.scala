@@ -17,8 +17,8 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
 
 /** The job `topics-dream`, version 1, its days reckoned in `zone`, its cards through `cards`
   * when its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at
-  * its floor, reading strands as they stood at that day's end (or now, if sooner) and cards as
-  * they are now: scans its topics, the strands of rooms at its floor spoken in within `recent`,
+  * its floor, reading strands as they stood at that day's end (or now, if sooner) and the cards
+  * written by then: scans its topics, the strands of rooms at its floor spoken in within `recent`,
   * and the cards changed within `cardRecent`; withdraws from a topic each passage naming a
   * strand it no longer reads at its floor (its room at another label now, or its messages
   * gone), the topic itself when none is left; attaches each strand or card a topic already

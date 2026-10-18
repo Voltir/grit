@@ -541,6 +541,20 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a run for a past day is shown no card written after that day's end") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", StrandWorld.at(3600))
+      val _ = runs.card("menu2", "The lunch menu.", StrandWorld.at(86400))
+      val _ = runs.run(day = Some(Day), now = StrandWorld.at(2 * 86400))
+      runs.asked
+        .map(a =>
+          (a.kind, a.shown.contains("The deploy plan."), a.shown.contains("The lunch menu."))
+        ) ==>
+        Vector(("attach", true, false), ("write", false, false), ("write", true, false))
+    }
+
     test("a link too long to keep as a ref is counted, and stays in the topic's text") {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")

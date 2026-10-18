@@ -10,12 +10,14 @@ import grit.knowledge.ref.{CardKey, Ref}
 /** Cards as another plugin reads them through [[grit.knowledge.plugin.Knowledge]]'s export. */
 trait CardShelf extends caps.Pure {
 
-  /** Every card its transaction reads written from `since` on, most recent first, at most `n`,
-    * each by its version, key, title and what its pointer reads ([[Ref.ofPointer]]): never its
+  /** Every card its transaction reads written from `since` until `until`, both included, most
+    * recent first, at most `n`, each by its version, key, title and what its pointer reads ([[Ref.ofPointer]]): never its
     * summary, which a model reads only as a document shown to
     * [[grit.core.act.Dreaming.summarise]].
     */
-  def changed(since: Instant, n: Int)(using Tx^): Either[StoreError, Vector[CardShelf.Seen]]
+  def changed(since: Instant, until: Instant, n: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[CardShelf.Seen]]
 }
 
 object CardShelf {
@@ -28,12 +30,15 @@ object CardShelf {
 
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
-    def changed(since: Instant, n: Int)(using Tx^): Either[StoreError, Vector[Seen]] = {
-      // The newest `k` documents, `k` doubled until they hold `n` cards written since, reach one
+    def changed(since: Instant, until: Instant, n: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[Seen]] = {
+      // The newest `k` documents, `k` doubled until they hold `n` cards written between, reach one
       // written before it (every later one is older), or are all there are.
       def from(k: Int): Either[StoreError, Vector[Seen]] =
         documents.newest(k).flatMap { ds =>
-          val seen = ds.filterNot(_.written.isBefore(since)).flatMap(card)
+          val seen =
+            ds.filterNot(d => d.written.isBefore(since) || d.written.isAfter(until)).flatMap(card)
           val done =
             seen.size >= n || ds.size < k || ds.lastOption.exists(_.written.isBefore(since))
           if (done || k > Int.MaxValue / 2) Right(seen.take(n)) else from(k * 2)

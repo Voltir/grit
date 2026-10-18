@@ -53,7 +53,7 @@ private[topic] object TopicScan {
     * from each, the passages naming a strand `strands` no longer reads at the floor (its room at
     * another label now, or its messages gone) withdrawn, the topic itself when none is left;
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
-    * changed within `cardRecent` before `at`: the floor's [[Aside]] kept to those among them at
+    * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
     * the digest or version set aside; each already in a topic's lineage or the aside at its
     * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
     * `most` strands and `most` cards to place, oldest first, the others left.
@@ -74,7 +74,7 @@ private[topic] object TopicScan {
         strands
           .atFloor(until.minusSeconds(params.recent.toSeconds), until)
           .flatMap((recent: Vector[Strand.Digested]) =>
-            changed(cards, needs, at.minusSeconds(params.cardRecent.toSeconds))
+            changed(cards, needs, until.minusSeconds(params.cardRecent.toSeconds), until)
               .flatMap((seen: Vector[CardShelf.Seen]) =>
                 aside(keeper, floor, recent, seen, at).flatMap((aside: Lineage) =>
                   placed(keeper, kept.flatMap(_.topic), aside, recent, seen)
@@ -160,13 +160,18 @@ private[topic] object TopicScan {
     }
   }
 
-  /** The cards changed `since`, at most [[Cards]], through `cards`' service; none when there is
-    * no such plugin or it is not among the needs.
+  /** The cards changed from `since` until `until`, at most [[Cards]], through `cards`' service;
+    * none when there is no such plugin or it is not among the needs.
     */
-  private def changed(cards: Option[Exported[CardShelf]], needs: Needs, since: Instant)(using
-      Tx^
-  ): Either[StoreError, Vector[CardShelf.Seen]] =
-    cards.flatMap(e => needs.of(e).toOption).fold(Right(Vector.empty))(_.changed(since, Cards))
+  private def changed(
+      cards: Option[Exported[CardShelf]],
+      needs: Needs,
+      since: Instant,
+      until: Instant
+  )(using Tx^): Either[StoreError, Vector[CardShelf.Seen]] =
+    cards
+      .flatMap(e => needs.of(e).toOption)
+      .fold(Right(Vector.empty))(_.changed(since, until, Cards))
 
   /** The floor's aside, kept to the strands of `recent` and the cards of `seen` it holds at the
     * digest or version they are now: the aside after.
