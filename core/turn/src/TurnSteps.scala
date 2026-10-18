@@ -227,13 +227,26 @@ private[turn] object TurnSteps {
     */
   final case class Appended(reply: EntryId, followed: Vector[DocumentVersion])
 
-  /** What `at`'s steps from `assemble` to `append` came to: its reply entry, or why it has
-    * none; the verdict's record when it failed without failing the turn; and the turn's level
-    * at its end, `None` when it ended before its loop had a reply ([[TurnRound.Progress.level]]).
+  /** What a turn's steps from `stitched` to `append` came to. */
+  enum Result {
+
+    /** It failed, for `failure`. */
+    case Failed(failure: TurnFailure)
+
+    /** The needs gate rejected the heard message of a turn rooted at `root`: nothing drafted. */
+    case Unneeded(root: TurnNeeds.Unasked)
+
+    /** Its reply or draft, kept as `entry`. */
+    case Kept(entry: EntryId)
+  }
+
+  /** What `at`'s steps from `stitched` to `append` came to (`result`); the verdict's record
+    * when it failed without failing the turn; and the turn's level at its end, `None` when it
+    * ended before its loop had a reply ([[TurnRound.Progress.level]]).
     */
   final case class Ended(
       at: Offered,
-      result: Either[TurnFailure, EntryId],
+      result: Result,
       verdictUnrecorded: Option[TurnFailure],
       level: Option[Integrity]
   ) extends OfTurn {
@@ -503,19 +516,21 @@ private[turn] object TurnSteps {
   val judge: Step[Env, OfTurn, TurnJudge.Judgement] =
     Step[Env, OfTurn, TurnJudge.Judgement](Names.judge)(r => in => judgeDraft(r.env, in.turn))
 
-  /** `record-speech` for a heard-rooted turn that failed: `Failed` kept as what became of its
-    * draft.
+  /** `turn`, its draft never made: `outcome` kept as what became of it. */
+  final case class Undrafted(turn: TurnRef, outcome: Outcome) extends OfTurn
+
+  /** `record-speech` for a heard-rooted turn that drafted nothing: its `outcome` kept as what
+    * became of its draft.
     */
-  val speechFailed: Step[Env, Failed, Either[TurnFailure, Outcome]] =
-    Step.transact[Env, Failed, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
+  val speechUndrafted: Step[Env, Undrafted, Either[TurnFailure, Outcome]] =
+    Step.transact[Env, Undrafted, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
-          val failed = Outcome.Failed(in.failure.toString)
           r.env.speech.store
-            .drafted(in.turn, failed, None, r.env.clock.now())
+            .drafted(in.turn, in.outcome, None, r.env.clock.now())
             .left
             .map(TurnFailure.ofStore)
-            .map(_ => failed)
+            .map(_ => in.outcome)
         }
     )
 
@@ -869,7 +884,7 @@ private[turn] object TurnSteps {
     * (`all`'s) until `until`, in the scope in force ([[Along.read]]); nothing for a
     * conversation gone.
     */
-  private def strandOf(
+  private[turn] def strandOf(
       stitching: TurnStitching^,
       conversations: grit.core.store.ConversationStore,
       turn: TurnRef,

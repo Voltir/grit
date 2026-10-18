@@ -1195,15 +1195,18 @@ object TurnFixtures {
   }
 
   /** A classifier judging relevance by a candidate's words: yes at 0.9 to each one saying
-    * `relevant`, 0.1 to the rest; any other question as the stub classifier answers it. Each
-    * relevance call is counted, its candidates kept; the call numbered `crashAt` (from 1)
-    * dies, once, as a crashed process would.
+    * `relevant`, 0.1 to the rest; the needs gate's question ([[TurnNeeds.State]], a message and
+    * a thread alone) yes at `needs`; any other question as the stub classifier answers it. Each
+    * relevance call is counted, its candidates kept, and each gate call's state kept; the
+    * relevance call numbered `crashAt` (from 1) dies, once, as a crashed process would.
     */
-  final class Sifter(crashAt: Option[Int] = None) extends Classifier {
+  final class Sifter(crashAt: Option[Int] = None, needs: Double = 0.9) extends Classifier {
     // Counted and kept by `answer`, which the turn under test calls on the test's one thread;
     // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Vector[String]]
+    @caps.unsafe.untrackedCaptures
+    var gated = Vector.empty[ujson.Value]
 
     @caps.unsafe.untrackedCaptures
     private var crashed = false
@@ -1213,6 +1216,15 @@ object TurnFixtures {
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] =
       state.objOpt.flatMap(_.get("candidates")).flatMap(_.arrOpt) match {
+        case None if state.objOpt.exists(_.keySet == Set("message", "thread")) =>
+          gated = gated :+ state
+          Right(
+            Answers(
+              Vector(Answer.YesNo(needs)),
+              Usage(Tokens(20), Tokens(1), Tokens.Zero, None),
+              "jev"
+            )
+          )
         case None => Right(grit.models.StubClassifier.answers(state, questions))
         case Some(candidates) =>
           val texts = candidates.toVector.flatMap(_.strOpt)

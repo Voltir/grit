@@ -1,0 +1,16 @@
+{
+  "workflow": "shadow",
+  "id": "shadow:c1:1:0:words",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask:shadow",
+      "output": "{\"made\":\"{\\\"ok\\\":{\\\"entry\\\":\\\"e0\\\",\\\"row\\\":{\\\"failed\\\":{\\\"request\\\":\\\"195a6b5d91467ad1a7992bd482fa50853b01e4299469dd076ba6602653510d5b\\\",\\\"kind\\\":\\\"unavailable\\\",\\\"ms\\\":250}}}}\",\"calls\":[],\"at\":\"public\"}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

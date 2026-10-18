@@ -73,7 +73,7 @@ object LifecycleReplayTests extends TestSuite {
     ) {
       def namesOf(epoch: String): Map[String, Vector[String]] =
         historiesOf(epoch).collect { case (p, Right(h)) => p -> h.steps.map(_.name) }.toMap
-      val (before, after) = (namesOf("2026-10-15"), namesOf(Turn.Epoch))
+      val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
       (before.size, before == after) ==> (33, true)
     }
 

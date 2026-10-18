@@ -204,6 +204,38 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    // A message said to grit that the needs gate rejects: its window drawn with no query.
+    val unneeded = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "thanks!")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          new Searching(entries, 5),
+          new InMemoryUsageLedger,
+          new Sifter(needs = 0.1)
+        )
+      )
+      recorded(durable, turn)
+    }
+    // A heard message the needs gate rejects: kept nothing recalled, nothing drafted.
+    val heardUnneeded = {
+      val w = speechWorld()
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider,
+          new Searching(w.entries, 5),
+          w.ledger,
+          new Sifter(needs = 0.1),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries)
+        )
+      )
+      recorded(durable, w.turn)
+    }
     val recalled = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -626,6 +658,8 @@ object RecordTurnHistories {
       "documented" -> documented,
       "recalled" -> recalled,
       "queried" -> queried,
+      "unneeded" -> unneeded,
+      "heard-unneeded" -> heardUnneeded,
       "summary-failed" -> summaryFailed,
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),

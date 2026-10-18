@@ -1,0 +1,32 @@
+{
+  "workflow": "close",
+  "id": "close:c1:2:1:1790071320000",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":1,\"known\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}],\"topics\":[{\"text\":\"Deploy Target\",\"since\":1,\"touched\":1,\"summary\":\"where to deploy\"}]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "ask:gate",
+      "output": "{\"made\":\"{\\\"outcome\\\":true,\\\"open\\\":false,\\\"standing\\\":true,\\\"settled\\\":true}\",\"calls\":[{\"model\":\"jev\",\"usage\":{\"input\":1,\"output\":1,\"cachedInput\":0},\"estimate\":1060,\"upstream\":\"service:test\"}],\"at\":\"public\"}"
+    },
+    {
+      "name": "ask:gate:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"We chose staging.\\\",\\\"outcome\\\":\\\"staging\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[{\\\"text\\\":\\\"staging first\\\",\\\"since\\\":1,\\\"touched\\\":2,\\\"ground\\\":\\\"claimed\\\"}],\\\"topics\\\":[{\\\"text\\\":\\\"Deploy Target\\\",\\\"since\\\":1,\\\"touched\\\":2,\\\"summary\\\":\\\"where to deploy\\\"}]}}}\",\"calls\":[{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":2546}],\"at\":\"public\"}"
+    },
+    {
+      "name": "ask:summary:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:2\"}}"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "workflow": "triage",
+  "id": "triage:c2:1:0",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "stitched",
+      "output": "{\"ok\":\"stitched: follows\"}"
+    },
+    {
+      "name": "ask:triage",
+      "output": "{\"made\":\"{\\\"ok\\\":{\\\"entry\\\":\\\"c2:e0\\\",\\\"tags\\\":{\\\"answers\\\":[{\\\"name\\\":\\\"gap\\\",\\\"choice\\\":\\\"asks\\\",\\\"weights\\\":[{\\\"key\\\":\\\"asks\\\",\\\"p\\\":0.9},{\\\"key\\\":\\\"owes\\\",\\\"p\\\":0.1},{\\\"key\\\":\\\"closes\\\",\\\"p\\\":0},{\\\"key\\\":\\\"states\\\",\\\"p\\\":0}]},{\\\"name\\\":\\\"open\\\",\\\"yes\\\":0.1},{\\\"name\\\":\\\"to\\\",\\\"yes\\\":0.1},{\\\"name\\\":\\\"to-grit\\\",\\\"yes\\\":0.2},{\\\"name\\\":\\\"durable\\\",\\\"yes\\\":0.5},{\\\"name\\\":\\\"anchor-record\\\",\\\"yes\\\":0.125}],\\\"model\\\":\\\"jev-1.13.0\\\",\\\"usage\\\":{\\\"input\\\":640,\\\"output\\\":0,\\\"cachedInput\\\":0,\\\"costUsd\\\":\\\"0.00002688\\\"}}}}\",\"calls\":[{\"model\":\"jev-1.13.0\",\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"},\"estimate\":2432,\"upstream\":\"service:test\"}],\"at\":\"public\"}"
+    },
+    {
+      "name": "ask:triage:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    },
+    {
+      "name": "consider",
+      "output": "{\"ok\":{\"held\":{\"kind\":\"off\"}}}"
+    }
+  ]
+}

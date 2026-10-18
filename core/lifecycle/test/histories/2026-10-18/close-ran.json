@@ -1,0 +1,20 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"ran\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "ask:summary",
+      "output": "{\"made\":\"{\\\"closing\\\":{\\\"v\\\":3,\\\"flows\\\":{\\\"prose\\\":\\\"Scheduled run of remind, due 2026-09-20 10:00 UTC\\\",\\\"outcome\\\":\\\"Stand up: 3 open pull requests.\\\",\\\"changes\\\":[]},\\\"balance\\\":{\\\"open\\\":[],\\\"standing\\\":[],\\\"topics\\\":[]}}}\",\"calls\":[]}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}

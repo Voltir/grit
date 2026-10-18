@@ -11,7 +11,7 @@ import grit.core.durable.{FlowFixtures, Flows, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, TestClosings}
+import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.Place
 import grit.core.prompt.Voice
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -61,6 +61,7 @@ object TurnTests extends TestSuite {
       "stitched",
       "classify",
       "record-topic",
+      "ask:needs",
       "ask:query",
       "assemble",
       "record-window",
@@ -107,7 +108,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 8
+  private val Placing = 9
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -268,16 +269,19 @@ object TurnTests extends TestSuite {
       Vector(
         "ask:0",
         "ask:3",
+        "ask:needs",
         "ask:query",
         "ask:relevance-1",
         "ask:2:record",
         "gate:2",
         Turn.Step.Summarise
-      ).map(Turn.Step.answering) ==> Vector(true, true, false, false, false, false, false)
+      ).map(Turn.Step.answering) ==> Vector(true, true, false, false, false, false, false, false)
     }
 
     test("each assembly step is named by its family, not read as a loop round") {
       Vector(
+        "ask:needs",
+        "ask:needs:record",
         "ask:query",
         "ask:query:record",
         "ask:relevance-0",
@@ -286,6 +290,8 @@ object TurnTests extends TestSuite {
         "ask:3",
         grit.core.durable.StepRecord.marker("a-patch")
       ).map(Turn.Step.family) ==> Vector(
+        Some("ask:needs"),
+        Some("ask:needs:record"),
         Some("ask:query"),
         Some("ask:query:record"),
         Some("ask:relevance"),
@@ -595,6 +601,8 @@ object TurnTests extends TestSuite {
       sifter.asked.map((batch: Vector[String]) => batch.size) ==> Vector(10, 10, 5)
       recalledIn(durable, turn) ==> Some((0 until 25 by 2).toVector.map(n => TurnSeq(n.toLong)))
       assemblySteps(durable, turn) ==> Vector(
+        "ask:needs",
+        "ask:needs:record",
         "ask:query",
         "ask:query:record",
         "search",
@@ -672,12 +680,65 @@ object TurnTests extends TestSuite {
       ledger.rows.map(r => EntryId.value(r._1)).filter(_.contains(":relevance-")) ==> Vector.empty
     }
 
-    test("a turn with nothing to search records ask:query and assemble alone") {
+    test(
+      "a turn with nothing to search records ask:needs, unjudged and asking nothing, then ask:query and assemble alone"
+    ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
+      val sifter = new Sifter
       val turn = say(entries, "hello")
-      runTurn(durable, entries, new RecordingProvider, turn) ==> Done
-      assemblySteps(durable, turn) ==> Vector("ask:query", "assemble")
+      runTurn(durable, entries, new RecordingProvider, turn, classifier = sifter) ==> Done
+      assemblySteps(durable, turn) ==> Vector("ask:needs", "ask:query", "assemble")
+      sifter.gated ==> Vector.empty
+      durable
+        .history(turn.workflowId)
+        .collectFirst { case InMemoryDurable.Step("ask:needs", InMemoryDurable.Outcome.Output(o)) =>
+          grit.act.moves.Judging.made[TurnRelevance.Verdict](o)(using TurnJournal.verdict)
+        } ==> Some(Right(TurnRelevance.Verdict.Unjudged(TurnNeeds.NothingToSearch)))
+    }
+
+    test(
+      "an addressed turn whose message the gate rejects replies from a window drawn with no query, noted unneeded, and its writer is never asked"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val sifter = new Sifter(needs = 0.1)
+      val turn = say(entries, "thanks!")
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, provider, new Searching(entries, 5), ledger, sifter)
+      ) ==> Done
+      assemblySteps(durable, turn) ==>
+        Vector("ask:needs", "ask:needs:record", "ask:query", "assemble")
+      sifter.gated.map(_.obj.get("message").flatMap(_.strOpt)) ==> Vector(Some("Someone: thanks!"))
+      durable
+        .history(turn.workflowId)
+        .collectFirst { case InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(o)) =>
+          TurnJournal.window.decode(o).map(_.map(_.notes))
+        } ==> Some(Right(Right(Vector(AssemblyNote.FellBack(s"no query: ${TurnNeeds.Unneeded}")))))
+      ledger.rows.map(r => EntryId.value(r._1)).filter(_.startsWith("move:")) ==>
+        Vector(s"move:${WorkflowId.value(turn.workflowId)}:needs")
+      provider.requests.map(_.messages) ==> Vector(Vector(Message.User("thanks!")))
+    }
+
+    test("a turn whose message the gate passes searches as it would with no gate") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val sifter = new Sifter(needs = Probability.value(TurnNeeds.Pass))
+      val turn = say(entries, "when is the freeze?")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new StubProvider(),
+          new Searching(entries, 3),
+          new InMemoryUsageLedger,
+          sifter
+        )
+      ) ==> Done
+      assemblySteps(durable, turn).take(4) ==>
+        Vector("ask:needs", "ask:needs:record", "ask:query", "ask:query:record")
+      sifter.asked.size ==> 1
     }
 
     test("a later turn sees earlier turns, then its own message") {

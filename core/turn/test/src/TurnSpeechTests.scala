@@ -255,6 +255,42 @@ object TurnSpeechTests extends TestSuite {
       (outcome(w), awaited(w)) ==> (Some(Outcome.Unjudged("unavailable: down")), Vector.empty)
     }
 
+    test(
+      "a heard message the gate rejects keeps nothing recalled, and nothing after the gate is searched, drafted, judged or summarised"
+    ) {
+      val w = speechWorld()
+      val sifter = new Sifter(needs = 0.1)
+      val durable = new InMemoryDurable
+      val provider = new Scripted((_, _) => Right(said("It moved to Thursday.")))
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          provider,
+          new Searching(w.entries, 5),
+          w.ledger,
+          sifter,
+          TurnSpeech(Speaking.Within(speechLimits), w.store, w.deliveries),
+          weighing = TurnWeighing(
+            new InMemoryTriageStore(w.entries, NoPeriods),
+            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
+          )
+        )
+      )
+      (
+        outcome(w),
+        durable.recordedSteps(w.turn.workflowId).dropWhile(_ != "record-topic").drop(1),
+        sifter.gated.size,
+        sifter.asked,
+        reply(w)
+      ) ==> (
+        Some(Outcome.NothingRecalled),
+        Vector("ask:needs", "ask:needs:record", "record-speech"),
+        1,
+        Vector.empty,
+        None
+      )
+    }
+
     test("the turn failing before its draft: kept failed with the turn's failure, nothing posted") {
       val w = speechWorld()
       run(w, new Judge(Some((0.9, 0.9))), answer = Left(ProviderError.Unavailable("down")))

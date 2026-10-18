@@ -29,7 +29,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-10-16"
+  val Epoch = "2026-10-18"
 
   /** The application version an engine opens under for a deployment whose own version is
     * `deployment`: [[Epoch]], `+`, then `deployment`. Only an engine of the same one resumes
@@ -79,6 +79,12 @@ object Turn {
       * decided before its model call `ask:n`.
       */
     val Gate: String = "gate"
+
+    /** The needs gate's verdict on the turn's message, before its query ([[TurnNeeds]]). */
+    val Needs: String = "ask:needs"
+
+    /** The cost of the needs gate's call recorded, when its classifier answered. */
+    val NeedsRecord: String = "ask:needs:record"
 
     /** The turn's query written for its search, a move of its own. */
     val Query: String = "ask:query"
@@ -138,8 +144,9 @@ object Turn {
       */
     val Wait: String = "call:wait"
 
-    /** The step `name` stands for among [[all]], the assembly's asks ([[Query]],
-      * [[QueryRecord]], [[Relevance]], [[RelevanceRecord]]) and the tool loop's families
+    /** The step `name` stands for among [[all]], the assembly's asks ([[Needs]],
+      * [[NeedsRecord]], [[Query]], [[QueryRecord]], [[Relevance]], [[RelevanceRecord]]) and the
+      * tool loop's families
       * ([[Gate]], [[Record]], [[Approve]], [[Wait]], [[Call]], [[Send]], [[Dispatch]],
       * [[Expire]], [[Abandon]]): its round, batch, index or place dropped (`ask:3` is [[Ask]],
       * `ask:relevance-1` is [[Relevance]], `call:1:0` is [[Call]]). `None` for a name that is not the turn's, such as a patch's marker or
@@ -148,7 +155,7 @@ object Turn {
     def family(name: String): Option[String] =
       name match {
         case _ if name.startsWith(StepRecord.marker("")) => None
-        case Query | QueryRecord => Some(name)
+        case Needs | NeedsRecord | Query | QueryRecord => Some(name)
         case RelevanceBatch() => Some(Relevance)
         case RelevanceBatchRecord() => Some(RelevanceRecord)
         case _ => loopFamily(name)

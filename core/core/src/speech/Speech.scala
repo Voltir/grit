@@ -177,8 +177,9 @@ enum Outcome {
 
   /** An unprompted turn recalled nothing: the model was shown no other conversation's section,
     * no document, no record of this conversation the thread did not show whole, and none of
-    * its own tool results but a failed one. Nothing grounded its draft, so it was not judged.
-    * What counts as recalled is `grit.turn.TurnJudge.state`'s.
+    * its own tool results but a failed one, so nothing grounded its draft and it was not
+    * judged; or the needs gate judged that its message needs nothing recalled, so no draft was
+    * made (`grit.turn.TurnNeeds`). What counts as recalled is `grit.turn.TurnJudge.state`'s.
     */
   case NothingRecalled
 

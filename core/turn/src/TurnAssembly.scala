@@ -17,22 +17,51 @@ import grit.core.durable.{Flow, Step}
 import grit.core.model.Pins
 import grit.core.period.Probability
 import grit.core.route.Routed
+import grit.core.store.Tx
 import grit.core.visibility.Subject
 
 import TurnJournal.given
 import TurnSteps.{Env, Placed}
 import TurnRelevance.Verdict
 
-/** The turn's window drawn in recorded steps, from its placed message: `ask:query`, its search
-  * query written as a move of its own; on a written query, `search`, then `ask:relevance-0` to
+/** The turn's window drawn in recorded steps, from its placed message: `ask:needs`, whether its
+  * message needs a search ([[TurnNeeds]]); unless it ends there, `ask:query`, its search query
+  * written as a move of its own; on a written query, `search`, then `ask:relevance-0` to
   * `ask:relevance-2`, each judging a batch of what it found ([[TurnRelevance]]); then
   * `assemble`, the window packed with what they admitted. A turn resumed between them repeats
   * none of the calls before.
   */
 private[turn] object TurnAssembly {
 
-  /** From the placed message to its window, or why there is none. */
-  def flow: Flow[Env, Placed, Nothing, Either[TurnFailure, Window]] =
+  /** From the placed message to its window; `Right(Left(root))` when the needs gate rejected a
+    * heard message, so none is drawn; `Left` why there is none.
+    */
+  def flow: Flow[Env, Placed, Nothing, Either[TurnFailure, Either[TurnNeeds.Unasked, Window]]] =
+    needs.andThen(
+      Flow.branch((judged: (Placed, Verdict)) =>
+        TurnNeeds.after(judged._2, judged._1.at.offer.root) match {
+          case TurnNeeds.After.Ends(root) => Left(Right(Left(root)))
+          case TurnNeeds.After.Searches => Right((judged._1, true))
+          case TurnNeeds.After.Unsearched => Right((judged._1, false))
+        }
+      )(
+        Flow.pass[Either[TurnFailure, Either[TurnNeeds.Unasked, Window]]],
+        drawn.map(_.map(Right(_)))
+      )
+    )
+
+  /** `ask:needs`: the needs gate's verdict on the placed message ([[TurnNeeds]]). */
+  private def needs: Flow[Env, Placed, Nothing, (Placed, Verdict)] =
+    Judging
+      .flow[Env, Placed, Verdict](MoveName("needs"), charged)(
+        r => r.env.moves,
+        r => r.env.routing.budget
+      )(r => p => needing(r.env, p))
+      .keeping
+      .map((p: Placed, judged: Judging.Judged[Verdict]) => (p, judged.made))
+
+  /** From the placed message, searching when `true`, to its window, or why there is none. */
+  private def drawn: Flow[Env, (Placed, Boolean), Nothing, Either[TurnFailure, Window]] =
     query
       .andThen(
         Flow.branch((queried: (Placed, Either[TurnFailure, Querying])) =>
@@ -58,15 +87,23 @@ private[turn] object TurnAssembly {
       verdicts: Vector[(Retrieved, Verdict)]
   )
 
-  /** `ask:query`: the turn's query written, or why the window is drawn with none. */
-  private def query: Flow[Env, Placed, Nothing, (Placed, Either[TurnFailure, Querying])] =
+  /** `ask:query`: the turn's query written when it searches, or why the window is drawn with
+    * none.
+    */
+  private def query
+      : Flow[Env, (Placed, Boolean), Nothing, (Placed, Either[TurnFailure, Querying])] =
     Judging
-      .flow[Env, Placed, Either[TurnFailure, Querying]](MoveName("query"), charged)(
+      .flow[Env, (Placed, Boolean), Either[TurnFailure, Querying]](
+        MoveName("query"),
+        (p, _) => charged(p)
+      )(
         r => r.env.moves,
         r => r.env.routing.budget
-      )(r => p => writing(r.env, p))
+      )(r => (p, searching) => writing(r.env, p, searching))
       .keeping
-      .map((p: Placed, judged: Judging.Judged[Either[TurnFailure, Querying]]) => (p, judged.made))
+      .map((at: (Placed, Boolean), judged: Judging.Judged[Either[TurnFailure, Querying]]) =>
+        (at._1, judged.made)
+      )
 
   /** On a written query, `search` then each batch judged: what the window packs, or why the
     * search failed.
@@ -125,10 +162,74 @@ private[turn] object TurnAssembly {
     case AssemblyError.Store(e) => TurnFailure.Assembly(TurnFailure.describe(e))
   }
 
-  /** The `ask:query` body: the assembler's preparation read as the route bounds it; when it
-    * asks, its request written under the route's query pin, as cleared for what was read.
+  /** The `ask:needs` body: asked of the turn's classifier, cleared for what was read, about its
+    * message and thread ([[TurnNeeds.State]]) read as the route bounds them, when its window
+    * could find anything by searching; unjudged, asking nothing, when it could not
+    * ([[TurnNeeds.NothingToSearch]]) or nothing can be asked.
     */
-  private def writing(env: TurnEnv^, p: Placed): Pose[Either[TurnFailure, Querying]]^{env} = {
+  private def needing(env: TurnEnv^, p: Placed): Pose[Verdict]^{env} = {
+    def unjudged(why: String): Pose[Verdict] = Pose.Made(Verdict.Unjudged(why))
+    p.at.routed.picked(env) match {
+      case Left(f) => unjudged(TurnFailure.reason(f))
+      case Right(pins) =>
+        val db = pins.reads(env.db)
+        // `ask:query` reads `prepare` again: a read, never a call, and `Prepared.Asking` holds a
+        // function, so it cannot be recorded here and passed on.
+        env.assembler.prepare(request(p))(using db) match {
+          case Left(e) => unjudged(TurnFailure.reason(failed(e)))
+          case Right(Prepared.Drawn(_)) => unjudged(TurnNeeds.NothingToSearch)
+          case Right(Prepared.Asking(_, _)) if pins.query.isEmpty =>
+            unjudged(TurnNeeds.NothingToSearch)
+          case Right(Prepared.Asking(_, _)) =>
+            val turn = p.turn
+            Routed
+              .reading(db, Subject.Turn(turn)) { (routed, reads) =>
+                reads.read { (tx: Tx^) ?=>
+                  for {
+                    all <- env.records.entries.list(turn.conversationId)
+                    strand <- TurnSteps.strandOf(
+                      env.stitching,
+                      env.hosting.conversations,
+                      turn,
+                      all,
+                      env.clock.now()
+                    )
+                    named <- env.records.principals.speakers((all ++ strand.shown).map(_.id))
+                  } yield TurnNeeds.state(
+                    TurnJudge.told(
+                      all,
+                      TurnShown.own(all, turn),
+                      strand,
+                      env.stitching.tuning.strandChars,
+                      named
+                    )
+                  )
+                } match {
+                  case Left(e) => unjudged(TurnFailure.describe(e))
+                  case Right(state) =>
+                    Pose.asking[TurnNeeds.State, Probability, Verdict](
+                      env.classifier,
+                      routed,
+                      state,
+                      TurnNeeds.ask
+                    )((answered, _) => TurnNeeds.verdict(answered))
+                }
+              }
+              .fold(e => unjudged(TurnFailure.describe(e)), identity)
+        }
+    }
+  }
+
+  /** The `ask:query` body: the assembler's preparation read as the route bounds it; when it
+    * asks and the turn searches, its request written under the route's query pin, as cleared
+    * for what was read; when it does not search, the window drawn with no query, noted
+    * [[TurnNeeds.Unneeded]].
+    */
+  private def writing(
+      env: TurnEnv^,
+      p: Placed,
+      searching: Boolean
+  ): Pose[Either[TurnFailure, Querying]]^{env} = {
     p.at.routed.picked(env) match {
       case Left(f) => Pose.Made(Left(f))
       case Right(pins) =>
@@ -136,6 +237,8 @@ private[turn] object TurnAssembly {
         env.assembler.prepare(request(p))(using db) match {
           case Left(e) => Pose.Made(Left(failed(e)))
           case Right(Prepared.Drawn(drawn)) => Pose.Made(Right(drawn))
+          case Right(Prepared.Asking(_, written)) if !searching =>
+            Pose.Made(Right(written(Left(TurnNeeds.Unneeded))))
           case Right(Prepared.Asking(asked, written)) =>
             pins.query match {
               case None => Pose.Made(Right(written(Left(Prepared.NoPin))))

@@ -1,0 +1,20 @@
+{
+  "workflow": "shadow",
+  "id": "shadow:c1:1:0:asks",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask:shadow",
+      "output": "{\"made\":\"{\\\"ok\\\":{\\\"entry\\\":\\\"e0\\\",\\\"row\\\":{\\\"answered\\\":{\\\"request\\\":\\\"c37faf30d666603161b8142ddd121132d1563d82ebad979e712e7bd7767f3d06\\\",\\\"answers\\\":[{\\\"name\\\":\\\"gap\\\",\\\"choice\\\":\\\"asks\\\",\\\"weights\\\":[{\\\"key\\\":\\\"asks\\\",\\\"p\\\":0.75},{\\\"key\\\":\\\"owes\\\",\\\"p\\\":0.125},{\\\"key\\\":\\\"closes\\\",\\\"p\\\":0},{\\\"key\\\":\\\"nothing\\\",\\\"p\\\":0.125}]},{\\\"name\\\":\\\"open\\\",\\\"yes\\\":0.875},{\\\"name\\\":\\\"to\\\",\\\"yes\\\":0.25},{\\\"name\\\":\\\"durable\\\",\\\"yes\\\":0.125},{\\\"name\\\":\\\"anchor\\\",\\\"yes\\\":0},{\\\"name\\\":\\\"source:github\\\",\\\"yes\\\":0.5}],\\\"usage\\\":{\\\"input\\\":640,\\\"output\\\":0,\\\"cachedInput\\\":0,\\\"costUsd\\\":\\\"0.00002688\\\"},\\\"requested\\\":\\\"jev-variant\\\",\\\"model\\\":\\\"jev-1.13.0\\\",\\\"ms\\\":250}}}}\",\"calls\":[{\"model\":\"jev-1.13.0\",\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"},\"estimate\":1781,\"upstream\":\"service:test\"}],\"at\":\"public\"}"
+    },
+    {
+      "name": "ask:shadow:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

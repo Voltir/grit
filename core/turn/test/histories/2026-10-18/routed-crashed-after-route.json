@@ -1,0 +1,20 @@
+{
+  "workflow": "turn",
+  "id": "c1:0",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":\"65e98389206b6006\"}"
+    },
+    {
+      "name": "weigh",
+      "output": "null"
+    },
+    {
+      "name": "route",
+      "output": "{\"ok\":{\"classification\":\"public\",\"turn\":0,\"summary\":0,\"query\":0}}"
+    }
+  ]
+}

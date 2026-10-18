@@ -77,13 +77,19 @@ private[turn] object TurnFlow {
               )
             )
         )
-    def unran(at: Offered, failure: TurnFailure): Ended = Ended(at, Left(failure), None, None)
+    def unran(at: Offered, result: Result): Ended = Ended(at, result, None, None)
     def windowed(a: Assembled, limits: Either[TurnFailure, TurnRound.Limits]) =
-      limits.map(l => (a, looping(a, l))).left.map(unran(a.at, _))
+      limits.map(l => (a, looping(a, l))).left.map(f => unran(a.at, Result.Failed(f)))
     val assembled = Flow
       .mayEnd(
         TurnAssembly.flow.keeping
-          .map((p, w) => w.map(Assembled(p.at, p.placing, _)).left.map(unran(p.at, _)))
+          .map((p, drawn) =>
+            drawn match {
+              case Left(f) => Left(unran(p.at, Result.Failed(f)))
+              case Right(Left(root)) => Left(unran(p.at, Result.Unneeded(root)))
+              case Right(Right(w)) => Right(Assembled(p.at, p.placing, w))
+            }
+          )
       )
       .andThen(Flow.decide(recordWindow)(windowed))
     val looped = Flow
@@ -128,7 +134,7 @@ private[turn] object TurnFlow {
       .map { case ((a, s), unrecorded) =>
         Ended(
           a.at,
-          Left(s.failure),
+          Result.Failed(s.failure),
           unrecorded,
           s.at.replies.headOption.map(_ => s.at.level)
         )
@@ -148,7 +154,12 @@ private[turn] object TurnFlow {
           .andThen(Flow.step(append))
           .keeping
           .map { case ((a, unrecorded), kept) =>
-            Ended(a.at.at, kept.map(_.reply), unrecorded, Some(a.looped.at.level))
+            Ended(
+              a.at.at,
+              kept.fold(Result.Failed(_), k => Result.Kept(k.reply)),
+              unrecorded,
+              Some(a.looped.at.level)
+            )
           }
       )
 
@@ -175,7 +186,7 @@ private[turn] object TurnFlow {
       Flow.pass[String],
       // A draft's branch first: a reader names the steps in the order a run reaches them,
       // and a drafting turn judges before it records its speech.
-      Flow.either(drafted, Flow.either(speechFailing, summarised("replied")))
+      Flow.either(drafted, Flow.either(undrafting, summarised("replied")))
     )
 
   /** What a turn's steps came to, by what its root is: what [[ending]] goes on with. */
@@ -187,43 +198,57 @@ private[turn] object TurnFlow {
     /** A heard or named turn's `draft`, to settle. */
     case Drafted(at: Ended, draft: EntryId)
 
-    /** A heard, named or by-name turn that failed: `failed`, kept as what became of its draft. */
-    case Unsettled(at: Ended, failed: Failed)
+    /** A heard, named or by-name turn that failed, or a heard or named one the needs gate
+      * rejected: `undrafted`, kept as what became of its draft; `said`, what it did.
+      */
+    case Unsettled(at: Ended, undrafted: Undrafted, said: String)
 
     /** An addressed or by-name turn's `reply`, to summarise. */
     case Replied(at: Ended, reply: EntryId)
 
     /** The arm of [[ending]] that goes on with it, in the order the arms are written. */
-    def split: Either[String, Either[(Ended, EntryId), Either[(Ended, Failed), (Ended, EntryId)]]] =
+    def split: Either[
+      String,
+      Either[(Ended, EntryId), Either[(Ended, Undrafted, String), (Ended, EntryId)]]
+    ] =
       this match {
         case Stopped(said) => Left(said)
         case Drafted(at, draft) => Right(Left((at, draft)))
-        case Unsettled(at, failed) => Right(Right(Left((at, failed))))
+        case Unsettled(at, undrafted, said) => Right(Right(Left((at, undrafted, said))))
         case Replied(at, reply) => Right(Right(Right((at, reply))))
       }
   }
 
   private object Ending {
 
-    /** What `e` came to, by its result and its offer's root. */
+    /** What `e` came to, by its result and its offer's root: an unneeded turn's root is a
+      * heard one by type ([[TurnNeeds.Unasked]]).
+      */
     def of(e: Ended): Ending = (e.result, e.at.offer.root) match {
-      case (Left(failure), TurnOffer.Root.Addressed) => Stopped(s"failed: $failure${e.notes}")
-      case (Right(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
-      case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
-        Unsettled(e, Failed(e.turn, failure))
-      case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) => Replied(e, reply)
+      case (Result.Unneeded(_), _) =>
+        Unsettled(e, Undrafted(e.turn, Outcome.NothingRecalled), "unneeded")
+      case (Result.Failed(failure), TurnOffer.Root.Addressed) =>
+        Stopped(s"failed: $failure${e.notes}")
+      case (Result.Kept(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
+      case (
+            Result.Failed(failure),
+            TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName
+          ) =>
+        Unsettled(e, Undrafted(e.turn, Outcome.Failed(failure.toString)), s"failed: $failure")
+      case (Result.Kept(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
+        Replied(e, reply)
     }
   }
 
-  /** A heard-rooted turn that failed: `Failed` kept as what became of its draft. */
-  private def speechFailing: Flow[Env, (Ended, Failed), Nothing, String] =
+  /** A heard-rooted turn that drafted nothing: its outcome kept as what became of its draft. */
+  private def undrafting: Flow[Env, (Ended, Undrafted, String), Nothing, String] =
     Flow
-      .pass[(Ended, Failed)]
+      .pass[(Ended, Undrafted, String)]
       .map(_._2)
-      .andThen(Flow.step(speechFailed))
+      .andThen(Flow.step(speechUndrafted))
       .keeping
-      .map { case ((e, f), settled) =>
-        s"failed: ${f.failure}${e.notes}${settled.fold(n => s"; not recorded: $n", _ => "")}"
+      .map { case ((e, _, said), settled) =>
+        s"$said${e.notes}${settled.fold(n => s"; not recorded: $n", _ => "")}"
       }
 
   /** A heard-rooted turn's draft settled: judged when unprompted, then `record-speech`; a

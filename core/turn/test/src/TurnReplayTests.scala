@@ -19,7 +19,7 @@ object TurnReplayTests extends TestSuite {
     History.recorded(epoch)
 
   /** The epoch before this one, whose histories the rename map is checked against. */
-  private val Previous = "2026-10-15"
+  private val Previous = "2026-10-16"
 
   /** The most bytes a step of each family may record in these histories, about twice the
     * most any records today, each with what it records. A step new to the turn has none until
@@ -34,6 +34,8 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.Stitched -> 64, // what a placement did, in a line
     Turn.Step.Classify -> 1024, // the topic events and the classifier call's cost
     Turn.Step.RecordTopic -> 64, // an entry id
+    Turn.Step.Needs -> 320, // the needs gate's verdict and its call's cost
+    Turn.Step.NeedsRecord -> 64, // whether the cost was kept
     Turn.Step.Query -> 640, // the query written, or why none was, and its call's cost
     Turn.Step.QueryRecord -> 64, // whether the cost was kept
     // What the search found, by reference and score: a full one of 60 fits, about 22 bytes each.
@@ -64,10 +66,13 @@ object TurnReplayTests extends TestSuite {
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 6800
 
-  /** The families this epoch draws a turn's window in before `assemble`, which the previous
-    * epoch drew in `assemble` alone.
+  /** The needs gate's families, new in this epoch: the previous one went from `record-topic`
+    * straight to `ask:query`.
     */
-  private val Drawing: Set[String] = Set(
+  private val Gating: Set[String] = Set(Turn.Step.Needs, Turn.Step.NeedsRecord)
+
+  /** The families a turn's window is drawn in before `assemble`. */
+  private val Drawing: Set[String] = Gating ++ Set(
     Turn.Step.Query,
     Turn.Step.QueryRecord,
     Turn.Step.Search,
@@ -79,20 +84,24 @@ object TurnReplayTests extends TestSuite {
   private def stage(names: Vector[String]): Vector[String] =
     names.filter(n => n == Turn.Step.Assemble || Turn.Step.family(n).exists(Drawing.contains))
 
-  /** Each history's assembly stage, by its file's name, where it is not `ask:query` then
-    * `assemble`: a query written and searched for, or a query step that kept its cost.
+  /** Each history's assembly stage, by its file's name, where it is not `ask:needs`,
+    * `ask:query` then `assemble` (no gate answered, nothing searched): a gate that answered, a
+    * query written and searched for, or a query step that kept its cost.
     */
   private val Stages: Map[String, Vector[String]] = {
     val judged =
       (0 to 2).toVector.flatMap(n => Vector(s"ask:relevance-$n", s"ask:relevance-$n:record"))
     val unjudged = (0 to 2).toVector.map(n => s"ask:relevance-$n")
     val searched = Vector("ask:query", "ask:query:record", "search")
-    val written = Vector("ask:query", "ask:query:record", "assemble")
+    val written = Vector("ask:needs", "ask:query", "ask:query:record", "assemble")
     Map(
-      // Searched for 25, judged in three batches by a classifier that answered each.
-      "queried.json" -> (searched ++ judged :+ "assemble"),
-      // Searched for one earlier turn, with no classifier: each batch asked nothing.
-      "recalled.json" -> (searched ++ unjudged :+ "assemble"),
+      // Gated and searched for 25, judged in three batches by a classifier that answered each.
+      "queried.json" -> (Vector("ask:needs", "ask:needs:record") ++ searched ++ judged :+
+        "assemble"),
+      // Searched for one earlier turn, with no classifier: the gate and each batch asked nothing.
+      "recalled.json" -> (Vector("ask:needs") ++ searched ++ unjudged :+ "assemble"),
+      // Said to grit, its message rejected by the gate: drawn with no query, its writer unasked.
+      "unneeded.json" -> Vector("ask:needs", "ask:needs:record", "ask:query", "assemble"),
       // A query written under the route's query pin, and drawn on: no search.
       "routed.json" -> written,
       "routed-floored.json" -> written,
@@ -108,14 +117,17 @@ object TurnReplayTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "each history of the previous epoch is its scenario's in this one, less the steps it draws its window in"
+      "each history of the previous epoch is its scenario's in this one, less the needs gate's steps"
     ) {
       val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
-      def undrawn(names: Vector[String]): Vector[String] =
-        names.filterNot(n => Turn.Step.family(n).exists(Drawing.contains))
-      (before.size, before.keySet == after.keySet) ==> (57, true)
-      before.map((file: String, names: Vector[String]) => file -> undrawn(names)) ==>
-        after.map((file: String, names: Vector[String]) => file -> undrawn(names))
+      def ungated(names: Vector[String]): Vector[String] =
+        names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
+      // The shapes the gate's rejection made, which no history before it could have.
+      val rejected = Set("unneeded.json", "heard-unneeded.json")
+      (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
+      before ==> after.collect {
+        case (file, names) if !rejected.contains(file) => file -> ungated(names)
+      }
     }
 
     test(
@@ -127,7 +139,10 @@ object TurnReplayTests extends TestSuite {
       Stages.keySet.diff(reached.keySet) ==> Set.empty
       reached.map((file: String, names: Vector[String]) => file -> stage(names)) ==>
         reached.map((file: String, _: Vector[String]) =>
-          file -> Stages.getOrElse(file, Vector(Turn.Step.Query, Turn.Step.Assemble))
+          file -> Stages.getOrElse(
+            file,
+            Vector(Turn.Step.Needs, Turn.Step.Query, Turn.Step.Assemble)
+          )
         )
     }
 

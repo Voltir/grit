@@ -107,7 +107,7 @@ object TurnRecordTests extends TestSuite {
         scores("heard-posted", TurnOffer.Root.Heard),
         scores("named-posted", TurnOffer.Root.Named, Earlier),
         scores("by-name-replied", TurnOffer.Root.ByName)
-      ) ==> Vector(Right(Some((0.9, 0.9, 63L))), Right(None), Right(None))
+      ) ==> Vector(Right(Some((0.9, 0.9, 67L))), Right(None), Right(None))
     }
 
     test("what became of a heard turn's draft reads from its record-speech step") {

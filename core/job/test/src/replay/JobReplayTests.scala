@@ -90,7 +90,7 @@ object JobReplayTests extends TestSuite {
     test(
       "each run history of the previous epoch names its steps as its scenario's in this one"
     ) {
-      val (before, after) = (namesOf("2026-10-15"), namesOf(Turn.Epoch))
+      val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
       (before.size, before == after) ==> (19, true)
     }
 
