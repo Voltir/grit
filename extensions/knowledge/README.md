@@ -54,8 +54,12 @@ Packages, in one-way order (each names only those before it):
   and facts a person or a tool established at a conversation's close (its Standing lines),
   one document per close, with no model call; its terms, posting and data. Names core alone.
 - **`topic`**: a topic (`Topic`, `Passage`, `Lineage`, `TopicNote`, `Claim`): a lead and dated
-  passages in prose, whose notes are its links and claims, and its data and text. Imports
-  `ref` and `grit.prose`; never `strand`, `sync` or a source.
+  passages in prose, whose notes are its links and claims, and its data and text; and
+  `TopicDream`, the dreaming job `topics-dream`, which scans topics, strands and cards by ids,
+  asks once where the unplaced ones go and once per topic touched for its new lead and the
+  day's passage, and keeps it with refs to what it was written from and links. Its code never
+  holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `strand`,
+  `sync` or a source.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
   documents' terms, the `Sync` job, each source's sync schedules (the keys in `Knowledge`'s
   doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the `StrandDream` job
