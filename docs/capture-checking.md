@@ -332,6 +332,19 @@ give the helper an explicit result type that does not name the parameter.
   of its argument, is rejected however it is typed: `over` finds an environment, it never
   makes one.
 
+**A lambda passed to a constructor that takes defaulted named arguments.**
+
+- *Symptom:* at the lambda, *"Found: (jsons$1 : (String, Vector[Message^{}]{val prefix1:
+  Array[Object^{}]^{any}}) -> …) Required: (String, Vector[Message]) -> …"*, then *"capability
+  `any²` cannot flow into capture set {any} of value jsons$1 … The error occurred for a
+  synthesized tree: jsons$1"*, where `any²` is classified as `Unscoped`.
+- *Cause:* a call naming some arguments and defaulting others is rewritten to bind each
+  argument to a synthesized `val` first (`jsons$1`), and that val's type is inferred from the
+  lambda, a refined, capturing `Vector`, not taken from the parameter. Annotating the lambda's
+  parameters does not help.
+- *Fix:* bind the lambda to a `val` of the parameter's type, and pass the val
+  (`TopicDreamTests`' `answer`, handed to `ScriptedDreaming`).
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or
