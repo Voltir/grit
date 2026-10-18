@@ -43,17 +43,19 @@ object ToldTests extends TestSuite {
   private val unread = placed(ujson.Obj("kind" -> "unread", "why" -> "no answer", "seen" -> seen))
 
   /** What a kept placement says: whom it follows, at what, by whom, and what was shown. */
-  private def said(p: Placed): (Option[ConversationId], Double, ujson.Value) = p match {
-    case f: Placed.Follows => (Some(f.root), Probability.value(f.p), f.seen.state)
-    case b: Placed.Begins => (None, Probability.value(b.p), b.seen.state)
-    case u: Placed.Unread => (None, 0.0, u.seen.state)
+  private def said(p: Placed): (Option[ConversationId], Double, String, ujson.Value) = p match {
+    case f: Placed.Follows => (Some(f.root), Probability.value(f.p), f.model, f.seen.state)
+    case b: Placed.Begins => (None, Probability.value(b.p), b.model, b.seen.state)
+    case u: Placed.Unread => (None, 0.0, "", u.seen.state)
   }
 
   val tests = Tests {
-    test("an opening the truth says follows is kept following its root, with what Jev was shown") {
+    test(
+      "an opening the truth says follows is kept following its root, by the truth, with what Jev was shown"
+    ) {
       val root = ConversationId("c-root")
       Vector(follows, begins, unread).map(p => Told.placement(Some(root), p).map(_.map(said))) ==>
-        Vector.fill(3)(Right(Some((Some(root), 1.0, seen("state")))))
+        Vector.fill(3)(Right(Some((Some(root), 1.0, "truth", seen("state")))))
     }
 
     test("an opening the truth says begins keeps nothing, so it links to no strand") {
