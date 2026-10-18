@@ -116,7 +116,10 @@ object RehearseLiveTests extends TestSuite {
       )
     )
 
-  /** Retrieval with each settled line kept as a document ([[StandingDocuments]]). */
+  /** How a standing document's message begins. */
+  private val Header = "[doc] what a conversation settled"
+
+  /** Retrieval with what each closing settled kept as a document ([[StandingDocuments]]). */
   private val standing: Deployment =
     deployed(
       Assembly.Retrieval(Tokens(8000), Tokens(2000)),
@@ -383,9 +386,8 @@ object RehearseLiveTests extends TestSuite {
             .fold(sys.error, identity)
         } finally engine.close()
       val document =
-        "[doc] standing: a decision or fact a conversation settled, at slack:T1/C1/1.0, " +
-          "2026-10-17:\nStaging deploys from main (a person said so)\n" +
-          "From a conversation that came to: Staging deploys from main."
+        "[doc] what a conversation settled, at slack:T1/C1/1.0, 2026-10-17:\n" +
+          "Staging deploys from main.\n- Staging deploys from main"
       val judged = shown.calls.collect {
         case Rehearsed.Call(Some(step), _, _, Rehearsed.Input.Classifier(state, _), _)
             if step.startsWith("ask:relevance") =>
@@ -393,9 +395,9 @@ object RehearseLiveTests extends TestSuite {
       }.flatten
       val window = shown.calls.collect {
         case Rehearsed.Call(_, _, _, Rehearsed.Input.Model(r), _) =>
-          r.messages.collect { case Message.User(t) if t.startsWith("[doc] standing") => t }
+          r.messages.collect { case Message.User(t) if t.startsWith(Header) => t }
       }.lastOption
-      (posted, judged.filter(_.startsWith("[doc] standing")), window) ==> (
+      (posted, judged.filter(_.startsWith(Header)), window) ==> (
         true,
         Vector(document.take(TurnRelevance.Chars)),
         Some(Vector(document))
