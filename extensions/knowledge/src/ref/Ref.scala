@@ -28,7 +28,7 @@ enum Ref extends caps.Pure {
 object Ref {
 
   /** `r` as a reference of kind `strand`, `topic`, `drive`, `github` (`{owner}/{repo}/{path}`)
-    * or `url`, or why not: what it holds over [[grit.core.document.DocRef]]'s 512 characters,
+    * or `url`, or why not: what it holds over [[grit.core.document.DocRef]]'s character bound,
     * or holding a NUL.
     */
   def written(r: Ref): Either[String, DocRef] = r match {

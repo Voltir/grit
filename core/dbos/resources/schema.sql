@@ -1055,15 +1055,17 @@ CREATE INDEX IF NOT EXISTS idx_documents_bm25 ON grit.documents
     USING bm25 (body) WITH (text_config = 'english');
 
 -- What a document version refers to outside it (DocRef), in its plugin's own terms; read by
--- DocumentShelf.referring. At most 256 per version. A withdrawal holds none.
+-- DocumentShelf.referring. At most 256 per version, each ref 1 to 8192 characters. Unique per
+-- version and kind, and looked up, by the ref's md5; equality on the ref is checked beside it.
+-- A withdrawal holds none.
 -- Retention: ledger: with its version (Target.Document), by cascade.
 CREATE TABLE IF NOT EXISTS grit.document_refs (
     version BIGINT NOT NULL REFERENCES grit.documents(version) ON DELETE CASCADE,
     kind    TEXT NOT NULL CHECK (kind ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
-    ref     TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 512),
-    PRIMARY KEY (version, kind, ref)
+    ref     TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 8192)
 );
-CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, ref);
+CREATE UNIQUE INDEX IF NOT EXISTS document_refs_key ON grit.document_refs (version, kind, md5(ref));
+CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md5(ref));
 
 -- A plugin's document put up for review on a day (DocumentKeeper.forReview), and what became
 -- of its prompt (DocumentReviews): posted at `address`, or dropped; the verdict its rater gave,

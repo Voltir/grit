@@ -1,8 +1,8 @@
 package grit.core.document
 
 /** A reference a document holds to something outside it, in its plugin's own terms: `kind`,
-  * lower-case words and digits joined by `-`, and `ref`, 1 to 512 characters, none of them NUL. Core keeps and
-  * finds them ([[DocumentShelf.referring]]); what they mean is the plugin's.
+  * lower-case words and digits joined by `-`, and `ref`, 1 to 8192 characters, none of them
+  * NUL. Core keeps and finds them ([[DocumentShelf.referring]]); what they mean is the plugin's.
   */
 final case class DocRef private (kind: String, ref: String) extends caps.Pure
 
@@ -22,6 +22,6 @@ object DocRef {
   /** 256: the most references one version holds. */
   val Most: Int = 256
 
-  private val Longest = 512
+  private val Longest = 8192
   private val Kind = "[a-z0-9]+(-[a-z0-9]+)*".r
 }

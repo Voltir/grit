@@ -138,7 +138,7 @@ object RefTests extends TestSuite {
     }
 
     test("a ref over what a reference holds is refused, naming why") {
-      assert(Ref.written(url("https://example.com/" + "a" * 600)).isLeft)
+      assert(Ref.written(url("https://example.com/" + "a" * 8200)).isLeft)
     }
 
     test("a topic key is opened by a strand or a card and read back from its document's key") {

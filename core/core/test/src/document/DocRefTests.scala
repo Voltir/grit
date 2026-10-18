@@ -11,8 +11,8 @@ object DocRefTests extends TestSuite {
         Vector(true, true, true, false, false, false, false, false, false)
     }
 
-    test("a ref is 1 to 512 characters, counted as code points, none of them NUL") {
-      Vector("", "a" * 512, "a" * 513, "😀" * 512, "a\u0000b")
+    test("a ref is 1 to 8192 characters, counted as code points, none of them NUL") {
+      Vector("", "a" * 8192, "a" * 8193, "😀" * 8192, "a\u0000b")
         .map(DocRef.of("strand", _).isRight) ==> Vector(false, true, false, true, false)
     }
   }

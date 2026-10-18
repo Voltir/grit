@@ -1296,5 +1296,19 @@ abstract class DocumentContract extends TestSuite {
       val forgot = transaction(ok(reviews.forget(Instant.parse("1990-01-02T00:00:00Z"))))
       (forgot, offered(p, publicPlace)) ==> (1, Vector("b"))
     }
+
+    test(
+      "a document holding a 4000-character reference is found by it, and not by one differing in its last character"
+    ) {
+      val p = name("doc-refs-long")
+      val k = keeper(p, terms())
+      val held = ref("strand", "x" * 3999 + "a")
+      val near = ref("strand", "x" * 3999 + "b")
+      put(k, "long", "held", 1, refs = Set(held))
+      (
+        transaction(keys(ok(shelf(p).referring(held, 10)))),
+        transaction(keys(ok(shelf(p).referring(near, 10))))
+      ) ==> (Vector("long"), Vector())
+    }
   }
 }

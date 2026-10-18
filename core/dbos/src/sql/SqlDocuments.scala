@@ -336,13 +336,15 @@ private[sql] object SqlDocuments {
              | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
              |   AND ${SqlClearance.kept("d")}
              |   AND EXISTS (SELECT 1 FROM grit.document_refs r
-             |                WHERE r.version = d.version AND r.kind = ? AND r.ref = ?)
+             |                WHERE r.version = d.version AND r.kind = ?
+             |                  AND md5(r.ref) = md5(?) AND r.ref = ?)
              | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
         ) { ps =>
           ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
           ps.setString(SqlClearance.Params + 2, ref.kind)
           ps.setString(SqlClearance.Params + 3, ref.ref)
-          ps.setInt(SqlClearance.Params + 4, n)
+          ps.setString(SqlClearance.Params + 4, ref.ref)
+          ps.setInt(SqlClearance.Params + 5, n)
         }(document)
   }
 
