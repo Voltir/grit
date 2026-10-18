@@ -42,7 +42,7 @@ object ScriptedMovesTests extends MovesContract {
     (use(moves), moves.kept)
   }
 
-  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld, integrity: Integrity)(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])]) = {
     val shown = new Shown
@@ -56,7 +56,11 @@ object ScriptedMovesTests extends MovesContract {
       (system, messages) => {
         shown.add(system, messages.collect { case Message.User(t) => t })
         Right(Asked(TestTainted.at(Answered, Believed), Floor))
-      }
+      },
+      // Positional: a named argument lifts the capturing script into a val it cannot flow into.
+      new InMemoryDocuments,
+      Instant.EPOCH,
+      integrity
     )
     (use(moves), shown.all)
   }

@@ -71,9 +71,13 @@ abstract class MovesContract extends TestSuite {
   /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose scans read
     * `world`'s strands and whose summaries read its messages, a JSON ask's model replying
     * [[Answered]]; and each JSON ask's system text and user messages, as the model was shown
-    * them, in order.
+    * them, in order. The run starts believed at `integrity`.
     */
-  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+  def dreaming[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      integrity: Integrity = Integrity.Authority
+  )(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])])
 
@@ -368,9 +372,7 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
-    test(
-      "a strand's summary is asked of its system text then its excerpt, its reply believed at the meet of the summary and every message read"
-    ) {
+    test("a strand's summary is asked of its system text then its excerpt") {
       val (w, root) = strand()
       val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
       val (got, shown) = dreaming(limits(1, 0), w)(m => Seen(Vector(summarised(m, "s", seen))))
@@ -378,6 +380,22 @@ abstract class MovesContract extends TestSuite {
         Seen(Vector(Right(s"$Shaped at outside"))),
         Vector((SummarySystem, Vector("Someone: the deploy is stuck\nSomeone: still stuck?")))
       )
+    }
+
+    test(
+      "a strand's summary's reply is believed at the meet of the summary, the run and every message read"
+    ) {
+      def believed(follower: Integrity, summary: Integrity, run: Integrity) = {
+        val (w, root) = strand(follower)
+        val seen =
+          StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+        dreaming(limits(1, 0), w, run)(m => Seen(Vector(summarised(m, "s", seen, summary))))._1
+      }
+      val (a, m, o) = (Integrity.Authority, Integrity.Member, Integrity.Outside)
+      Vector(believed(m, m, a), believed(o, m, a), believed(m, o, a), believed(m, m, o)) ==>
+        Vector("member", "outside", "outside", "outside").map(i =>
+          Seen(Vector(Right(s"$Shaped at $i")))
+        )
     }
 
     test("a scan's body reads its transaction's strands beside its documents, and spends no ask") {
@@ -628,33 +646,41 @@ object MovesContract {
       )
       .map(w => Kept(Label.written(w.kept)))
 
-  /** A strand of two threads in room `C1` of `w`: the root said "the deploy is stuck", and
-    * its follower, a guest, "still stuck?" a minute after; and its root.
+  /** A strand of two threads in room `C1` of `w`: the root, a member, said "the deploy is
+    * stuck", and its follower, believed at `follower`, "still stuck?" a minute after; and its
+    * root.
     */
-  def strand(): (StrandWorld, grit.core.id.ConversationId) = {
+  def strand(
+      follower: Integrity = Integrity.Outside
+  ): (StrandWorld, grit.core.id.ConversationId) = {
     val w = new StrandWorld
     val a = w.thread("C1", "1.0")
     val b = w.thread("C1", "2.0")
     w.say(a, "the deploy is stuck", 0)
-    w.follow(w.say(b, "still stuck?", 60, Integrity.Outside), a)
+    w.follow(w.say(b, "still stuck?", 60, follower), a)
     (w, a.id)
   }
 
   /** What every strand's summary in the contract is asked under. */
   val SummarySystem = "Summarise the strand."
 
-  /** The summary `n` of `seen` through `m`, believed at [[Believed]], held to
+  /** The summary `n` of `seen` through `m`, believed at `believed`, held to
     * [[AnswerSchema]]: its conforming JSON's text and what it is believed at, or "none" when
     * nothing was asked.
     */
-  def summarised(m: Dreaming^, n: String, seen: Vector[Strand.Seen]): Either[MoveError, String] =
+  def summarised(
+      m: Dreaming^,
+      n: String,
+      seen: Vector[Strand.Seen],
+      believed: Integrity = Believed
+  ): Either[MoveError, String] =
     seen.headOption
       .toRight(MoveError.Store("no strand"))
       .flatMap(s =>
         m.summarise(
           name(n),
           s,
-          TestTainted.at(Dreaming.Summary(SummarySystem, 1000, Typed.json(AnswerSchema)), Believed)
+          TestTainted.at(Dreaming.Summary(SummarySystem, 1000, Typed.json(AnswerSchema)), believed)
         )
       )
       .map(

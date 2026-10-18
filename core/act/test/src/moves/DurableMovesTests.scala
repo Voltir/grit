@@ -83,10 +83,10 @@ object DurableMovesTests extends MovesContract {
     (got, docs)
   }
 
-  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld, integrity: Integrity)(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])]) = {
-    val w = new MovesWorld(broken = false, MovesContract.Floor)
+    val w = new MovesWorld(broken = false, MovesContract.Floor, integrity)
     val (got, requests) = w.dreaming(limits, world)(use)
     (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
