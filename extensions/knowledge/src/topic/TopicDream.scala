@@ -36,8 +36,9 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * topic it links and the unit of each other link; a ref [[Ref.written]] refuses is left out
   * and counted. It puts up at most [[TopicDream.Reviewed]] of the topics it writes for review,
   * new first. A strand or card already in a topic's lineage or set aside at the same digest or
-  * version touches nothing. Replies [[Gathered.line]]. Its `limits`: asks `1 + perRunMost`; no calls
-  * or judgments.
+  * version touches nothing. Replies [[Gathered.line]], which holds no cost: its asks' cost is
+  * read from the spend ledger ([[grit.core.store.UsageLedger]]), each recorded under its run's
+  * workflow. Its `limits`: asks `1 + perRunMost`; no calls or judgments.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
