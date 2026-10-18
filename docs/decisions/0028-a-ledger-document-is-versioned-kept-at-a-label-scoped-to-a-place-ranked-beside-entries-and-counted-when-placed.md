@@ -42,6 +42,11 @@ Decision:
   them with the version, a write differing only in them being a new version, and finds a
   plugin's current documents by one (`DocumentShelf.referring`), since a plugin runs no SQL;
   what a reference means is the plugin's.
+- **A plugin may put a current version up for review** (`DocumentKeeper.forReview`), once a
+  day per key and label; an edge posts it through the same `Reviews` path as triage's prompts,
+  only where it may be read, and keeps its rater's word (`DocumentReviews`). The review is keyed
+  by key, label and day, so a label outlives the version it was given on; reviews are a ledger,
+  forgotten past the ledger window.
 - **Core counts placement and follows.** The step that records a window records each document
   it holds by version and, in the same transaction, each one's placement count and last
   placement. The step that appends a turn's reply, or its draft, counts in its own

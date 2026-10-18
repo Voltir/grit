@@ -160,6 +160,11 @@ class Stores private[engine] (visibility: Visibility) {
     */
   val documents: DocumentStore = sqlDocuments
 
+  /** The reviews of the documents plugins put up, as an edge posts them and the collector
+    * forgets them.
+    */
+  val documentReviews: grit.core.review.DocumentReviews = new grit.dbos.sql.SqlDocumentReviews
+
   /** Each plugin's own documents as its tools and its service read them: given a plugin's
     * name, its own, and no other plugin's.
     */

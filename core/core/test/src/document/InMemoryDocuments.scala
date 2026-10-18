@@ -1,10 +1,12 @@
 package grit.core.document
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.retention.Target
+import grit.core.review.{DocumentLabel, DocumentReview, DocumentReviews, ReviewWord, Reviews}
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
 import grit.core.visibility.{Integrity, Item, Label}
 
@@ -16,7 +18,7 @@ import grit.core.visibility.{Integrity, Item, Label}
   * otherwise ignores it: nothing is rolled back but by its [[savepoints]].
   */
 final class InMemoryDocuments extends DocumentStore {
-  import InMemoryDocuments.Row
+  import InMemoryDocuments.{Row, Up, UpFor}
 
   // Only ever replaced by a new immutable map, as the store's table would be.
   @caps.unsafe.untrackedCaptures
@@ -31,6 +33,10 @@ final class InMemoryDocuments extends DocumentStore {
   @caps.unsafe.untrackedCaptures
   private var terms = Map.empty[PluginName, (DocumentTerms, Boolean)]
 
+  // As `rows`: only ever replaced by a new immutable map. The reviews put up, by their key.
+  @caps.unsafe.untrackedCaptures
+  private var ups = Map.empty[UpFor, Up]
+
   /** Where its keepers mark the versions they leave for deletion. */
   val tombstones: InMemoryTombstones =
     new InMemoryTombstones(v => rows.get(DocumentVersion.value(v)).map(_.plugin))
@@ -41,9 +47,12 @@ final class InMemoryDocuments extends DocumentStore {
         tx: Tx^
     ): Either[StoreError, A] = {
       // Its identity column is not rolled back, as a sequence is not: `last` stays.
-      val before = rows
+      val (before, upBefore) = (rows, ups)
       val out = tombstones.undoing(body(using tx))
-      if (out.isLeft) rows = before
+      if (out.isLeft) {
+        rows = before
+        ups = upBefore
+      }
       out
     }
   }
@@ -130,10 +139,119 @@ final class InMemoryDocuments extends DocumentStore {
             } yield Some(version(w))
           case _ => Right(None)
         }
+
+      def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Boolean] = {
+        val v = DocumentVersion.value(version)
+        Right(
+          rows
+            .get(v)
+            .filter(r => r.plugin == plugin && r.superseded.isEmpty && r.text.nonEmpty && reads(r))
+            .map(r => UpFor(plugin, r.key, r.label, day))
+            .filterNot(ups.contains)
+            .fold(false) { u =>
+              ups = ups.updated(u, Up(Some(v), at, None, None, None))
+              true
+            }
+        )
+      }
     }
 
   /** `plugin`'s documents as it reads them. */
   def shelf(plugin: PluginName): DocumentShelf = new Shelf(plugin)
+
+  /** The reviews of the documents its keepers put up. */
+  val reviews: DocumentReviews = new DocumentReviews {
+    def of(plugin: PluginName): Reviews[DocumentReview, ReviewWord] =
+      new Reviews[DocumentReview, ReviewWord] {
+        def unposted(to: Place)(using tx: Tx^): Either[StoreError, Vector[DocumentReview]] =
+          Right(Tx.writable(to).fold(Vector.empty) { at =>
+            ups.toVector
+              .collect {
+                case (u, Up(Some(v), queued, None, None, _))
+                    if u.plugin == plugin && at.dominates(u.label) =>
+                  rows
+                    .get(v)
+                    .filter(reads)
+                    .flatMap(r => r.text.map(document(v, r, _)))
+                    .map(d => (queued, v, DocumentReview(plugin, u.key, u.label, u.day, d)))
+              }
+              .flatten
+              .sortBy((queued, v, r) => (queued, DocKey.value(r.key), r.day, v))
+              .map(_._3)
+          })
+
+        def posted(subject: DocumentReview, address: String, at: Instant)(using
+            Tx^
+        ): Either[StoreError, Boolean] = {
+          val taken = ups.values.exists(_.address.exists(_._1 == address))
+          waiting(subject) match {
+            case Some((u, up)) if !taken =>
+              ups = ups.updated(u, up.copy(address = Some((address, at))))
+              Right(true)
+            case _ => Right(false)
+          }
+        }
+
+        def dropped(subject: DocumentReview, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+          waiting(subject) match {
+            case Some((u, up)) =>
+              ups = ups.updated(u, up.copy(dropped = Some(at)))
+              Right(true)
+            case None => Right(false)
+          }
+
+        def reacted(address: String, rater: Account, verdict: ReviewWord, at: Instant)(using
+            Tx^
+        ): Either[StoreError, Boolean] =
+          Right(postedAt(address).fold(false) { (u, up) =>
+            ups = ups.updated(u, up.copy(verdict = Some((verdict, rater, at))))
+            true
+          })
+
+        def unreacted(address: String, rater: Account, verdict: ReviewWord)(using
+            Tx^
+        ): Either[StoreError, Boolean] =
+          Right(postedAt(address) match {
+            case Some((u, up)) if up.verdict.exists(v => v._1 == verdict && v._2 == rater) =>
+              ups = ups.updated(u, up.copy(verdict = None))
+              true
+            case _ => false
+          })
+
+        /** `subject`'s review while it waits: neither posted nor dropped, its version kept. */
+        private def waiting(subject: DocumentReview): Option[(UpFor, Up)] = {
+          val u = UpFor(plugin, subject.key, subject.label, subject.day)
+          ups
+            .get(u)
+            .filter(up => up.version.nonEmpty && up.address.isEmpty && up.dropped.isEmpty)
+            .map(u -> _)
+        }
+
+        private def postedAt(address: String): Option[(UpFor, Up)] =
+          ups.find((u, up) => u.plugin == plugin && up.address.exists(_._1 == address))
+      }
+
+    def labels(plugin: PluginName, from: LocalDate)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentLabel]] =
+      Right(
+        ups.toVector
+          .collect {
+            case (u, up @ Up(_, _, _, _, Some((verdict, rater, at))))
+                if u.plugin == plugin && !u.day.isBefore(from) =>
+              DocumentLabel(u.key, u.label, u.day, up.version.map(version), verdict, rater, at)
+          }
+          .sortBy(l => (l.day, l.at, DocKey.value(l.key)))
+      )
+
+    def forget(before: Instant)(using Tx^): Either[StoreError, Int] = {
+      val gone = ups.filter((_, up) => up.queued.isBefore(before))
+      ups = ups -- gone.keys
+      Right(gone.size)
+    }
+  }
 
   def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
     Right(terms.toVector.collect { case (p, (t, true)) => p -> t })
@@ -227,7 +345,9 @@ final class InMemoryDocuments extends DocumentStore {
     Right((rows.values.map(_.plugin).toVector ++ terms.keys).distinct)
 
   def forget(version: DocumentVersion)(using Tx^): Either[StoreError, Unit] = {
-    rows = rows - DocumentVersion.value(version)
+    val v = DocumentVersion.value(version)
+    rows = rows - v
+    ups = ups.map((u, up) => u -> (if (up.version.contains(v)) up.copy(version = None) else up))
     Right(())
   }
 
@@ -240,6 +360,7 @@ final class InMemoryDocuments extends DocumentStore {
     }
     rows = rows -- gone
     terms = terms - plugin
+    ups = ups.filterNot((u, _) => u.plugin == plugin)
     ended
   }
 
@@ -332,6 +453,20 @@ object InMemoryDocuments {
       placement: Placement,
       following: Option[Following],
       refs: Set[DocRef]
+  )
+
+  /** A review's key: a plugin's document key at its label, put up on a day. */
+  private final case class UpFor(plugin: PluginName, key: DocKey, label: Label, day: LocalDate)
+
+  /** A review put up: its version while kept, when it was put up, where and when it was posted
+    * or when dropped, and the verdict standing, by whom and when.
+    */
+  private final case class Up(
+      version: Option[Long],
+      queued: Instant,
+      address: Option[(String, Instant)],
+      dropped: Option[Instant],
+      verdict: Option[(ReviewWord, Account, Instant)]
   )
 
   /** `text`'s words, lower case. */

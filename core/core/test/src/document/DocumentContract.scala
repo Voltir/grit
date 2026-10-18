@@ -1,16 +1,27 @@
 package grit.core.document
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
+import grit.core.review.{DocumentLabel, DocumentReviews, ReviewWord}
 import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.core.visibility.{Clearance, Label, TestLabels}
+import grit.core.visibility.{
+  Clearance,
+  Compartments,
+  Label,
+  Labelled,
+  Labeller,
+  Room,
+  TestLabels,
+  Visibility
+}
 
 import utest.*
 
@@ -44,6 +55,12 @@ abstract class DocumentContract extends TestSuite {
 
   /** Makes `origin`'s room one the store knows, as its first conversation does. */
   protected def room(origin: Origin): Unit
+
+  /** The reviews of the documents the store's keepers put up. */
+  protected def reviews: DocumentReviews
+
+  /** Runs `body` as [[opened]] does, labelling places as `visibility` does. */
+  protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A
 
   /** Runs `body` in one transaction opened publicly, committed when it returns: what every
     * case but the labelled ones writes and reads at.
@@ -121,6 +138,51 @@ abstract class DocumentContract extends TestSuite {
       limit: Int = 10
   ): Vector[DocumentSearch.Hit] =
     transaction(ok(search.search(shelves, query, limit, at(m))))
+
+  /** Where [[posting]] maps the trial's review place, and the public one. */
+  private val trialPlace = Place.under(Namespace.Slack, Vector("T", "CTRIAL"))
+  private val publicPlace = Place.under(Namespace.Slack, Vector("T", "CPUBLIC"))
+
+  /** [[TestLabels.trial]] declared; [[trialPlace]] mapped at [[TestLabels.Trial]],
+    * [[publicPlace]] at public, every other place unmapped.
+    */
+  private val posting: Visibility = {
+    val rooms: Labeller[Room] = new Labeller[Room] {
+      def label(item: Room): Labelled =
+        if (item.place == trialPlace) Labelled.Mapped(TestLabels.Trial)
+        else if (item.place == publicPlace) Labelled.Mapped(Label.Public)
+        else Labelled.Unmapped(Label.Public)
+      def requires: Vector[grit.core.visibility.Compartment] = Vector(TestLabels.trial)
+    }
+    (for {
+      compartments <- Compartments.of(Vector(TestLabels.trial)).left.map(_.toString)
+      v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+  }
+
+  private val Day = LocalDate.parse("2026-03-01")
+  private val rater = TestAccounts.account("slack:T/U1")
+  private def word(s: String): ReviewWord = got(ReviewWord.of(s))
+
+  /** The keys `p`'s reviews offer `to`, in a transaction opened at `clearance` under [[posting]]. */
+  private def offered(
+      p: PluginName,
+      to: Place,
+      clearance: Clearance = Clearance.of(Label.Public)
+  ): Vector[String] =
+    openedUnder(clearance, posting)(ok(reviews.of(p).unposted(to))).map(r => DocKey.value(r.key))
+
+  /** `p`'s one waiting review, as it is offered to [[publicPlace]]. */
+  private def waiting(p: PluginName) =
+    openedUnder(Clearance.of(Label.Public), posting)(
+      ok(reviews.of(p).unposted(publicPlace))
+    ) match {
+      case Vector(only) => only
+      case other => throw new java.lang.AssertionError(s"not one waiting: $other")
+    }
+
+  private def labelled(p: PluginName): Vector[DocumentLabel] =
+    transaction(ok(reviews.labels(p, Day)))
 
   val tests = Tests {
     test("a write supersedes the key's version: the new one is current, the old still read") {
@@ -994,6 +1056,212 @@ abstract class DocumentContract extends TestSuite {
         transaction(keys(ok(shelf(p).referring(ref("strand", "s-0"), 10)))),
         transaction(keys(ok(shelf(p).referring(over, 10))))
       ) ==> (None, Vector("j"), Vector())
+    }
+
+    test(
+      "a document put up is offered only to a place written at a label dominating its own, and only to a transaction reading it"
+    ) {
+      val p = name("doc-review-to")
+      val k = keeper(p, terms())
+      val low = put(k, "low", "low", 1)
+      val high = opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("high"),
+            Empty,
+            None,
+            at(2)
+          )
+        )
+      ) match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      val up = opened(Clearance.of(TestLabels.Trial))(
+        Vector(ok(k.forReview(low, Day, at(3))), ok(k.forReview(high, Day, at(4))))
+      )
+      val trial = Clearance.of(TestLabels.Trial)
+      (
+        up,
+        offered(p, publicPlace, trial),
+        offered(p, trialPlace, trial),
+        offered(p, trialPlace),
+        offered(p, place("unmapped"), trial),
+        offered(name("doc-review-other"), trialPlace, trial)
+      ) ==> (
+        Vector(true, true),
+        Vector("low"),
+        Vector("low", "high"),
+        Vector("low"),
+        Vector(),
+        Vector()
+      )
+    }
+
+    test(
+      "a version is put up once a day, only while it is one of the plugin's current documents"
+    ) {
+      val (p, q) = (name("doc-review-once"), name("doc-review-once-q"))
+      val k = keeper(p, terms())
+      val first = put(k, "k", "first", 1)
+      val second = put(k, "k", "second", 2)
+      val theirs = put(keeper(q, terms()), "k", "theirs", 2)
+      val gone = put(k, "gone", "gone", 2)
+      transaction(ok(k.withdraw(key("gone"), Label.Public, at(3))))
+      val answers = transaction(
+        Vector(
+          ok(k.forReview(first, Day, at(4))),
+          ok(k.forReview(theirs, Day, at(4))),
+          ok(k.forReview(gone, Day, at(4))),
+          ok(k.forReview(second, Day, at(4))),
+          ok(k.forReview(second, Day, at(5))),
+          ok(k.forReview(second, Day.plusDays(1), at(5)))
+        )
+      )
+      answers ==> Vector(false, false, false, true, false, true)
+      openedUnder(Clearance.of(Label.Public), posting)(ok(reviews.of(p).unposted(publicPlace)))
+        .map(r => (DocText.value(r.document.text), r.day)) ==>
+        Vector(("second", Day), ("second", Day.plusDays(1)))
+    }
+
+    test(
+      "a review is offered until posted, posted once at an address no other holds, and dropped only while waiting"
+    ) {
+      val p = name("doc-review-posted")
+      val k = keeper(p, terms())
+      val (a, b) = (put(k, "a", "a", 1), put(k, "b", "b", 1))
+      transaction {
+        ok(k.forReview(a, Day, at(2)))
+        ok(k.forReview(b, Day, at(3)))
+      }
+      val Vector(ra, rb) =
+        openedUnder(Clearance.of(Label.Public), posting)(
+          ok(reviews.of(p).unposted(publicPlace))
+        ): @unchecked
+      val r = reviews.of(p)
+      val answers = transaction(
+        Vector(
+          ok(r.posted(ra, "doc-review/1", at(4))),
+          ok(r.posted(ra, "doc-review/2", at(4))),
+          ok(r.posted(rb, "doc-review/1", at(4))),
+          ok(r.dropped(ra, at(5))),
+          ok(r.dropped(rb, at(5))),
+          ok(r.dropped(rb, at(5))),
+          ok(r.posted(rb, "doc-review/3", at(5)))
+        )
+      )
+      (answers, offered(p, publicPlace)) ==>
+        (Vector(true, false, false, false, true, false, false), Vector())
+    }
+
+    test(
+      "a reaction keeps its verdict, a later one replacing it, withdrawn only when it is that verdict by that rater"
+    ) {
+      val p = name("doc-review-reacted")
+      val k = keeper(p, terms())
+      val v = put(k, "k", "words", 1)
+      transaction(ok(k.forReview(v, Day, at(2))))
+      val r = reviews.of(p)
+      val subject = waiting(p)
+      val other = TestAccounts.account("slack:T/U2")
+      val (good, bad) = (word("good"), word("not-useful"))
+      val answers = transaction(
+        Vector(
+          ok(r.posted(subject, "doc-reacted/1", at(3))),
+          ok(r.reacted("doc-reacted/none", rater, good, at(4))),
+          ok(r.reacted("doc-reacted/1", rater, good, at(4))),
+          ok(r.reacted("doc-reacted/1", rater, bad, at(5))),
+          ok(reviews.of(name("doc-review-reacted-q")).reacted("doc-reacted/1", rater, good, at(6)))
+        )
+      )
+      val kept = labelled(p)
+      val refused = transaction(
+        Vector(
+          ok(r.unreacted("doc-reacted/1", rater, good)),
+          ok(r.unreacted("doc-reacted/1", other, bad))
+        )
+      )
+      val withdrawn = transaction(ok(r.unreacted("doc-reacted/1", rater, bad)))
+      (answers, kept, refused, withdrawn, labelled(p)) ==> (
+        Vector(true, false, true, true, false),
+        Vector(DocumentLabel(key("k"), Label.Public, Day, Some(v), bad, rater, at(5))),
+        Vector(false, false),
+        true,
+        Vector()
+      )
+    }
+
+    test(
+      "a label outlives its version, read by labels from a day, earliest day first; the review is no longer offered"
+    ) {
+      val p = name("doc-review-outlives")
+      val k = keeper(p, terms())
+      val (a, b, c) = (put(k, "a", "a", 1), put(k, "b", "b", 1), put(k, "c", "c", 1))
+      transaction {
+        ok(k.forReview(a, Day.plusDays(1), at(2)))
+        ok(k.forReview(b, Day, at(2)))
+        ok(k.forReview(c, Day.minusDays(1), at(2)))
+      }
+      val r = reviews.of(p)
+      val up = openedUnder(Clearance.of(Label.Public), posting)(ok(r.unposted(publicPlace)))
+      transaction {
+        up.zipWithIndex.foreach { (s, i) =>
+          ok(r.posted(s, s"doc-outlives/$i", at(3)))
+          ok(r.reacted(s"doc-outlives/$i", rater, word("good"), at(4)))
+        }
+      }
+      val d = put(k, "d", "d", 5)
+      transaction(ok(k.forReview(d, Day, at(5))))
+      val before = offered(p, publicPlace)
+      put(k, "b", "b again", 6)
+      put(k, "d", "d again", 6)
+      transaction {
+        ok(store.forget(b))
+        ok(store.forget(d))
+      }
+      (
+        labelled(p).map(l => (DocKey.value(l.key), l.day, l.version)),
+        before,
+        offered(p, publicPlace)
+      ) ==> (
+        Vector(("b", Day, None), ("a", Day.plusDays(1), Some(a))),
+        Vector("d"),
+        Vector()
+      )
+    }
+
+    test("remove deletes a plugin's reviews; another's stay") {
+      val (p, q) = (name("doc-review-remove-p"), name("doc-review-remove-q"))
+      val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))
+      val (vp, vq) = (put(kp, "k", "p", 1), put(kq, "k", "q", 1))
+      transaction {
+        ok(kp.forReview(vp, Day, at(2)))
+        ok(kq.forReview(vq, Day, at(2)))
+      }
+      transaction {
+        ok(reviews.of(p).posted(waiting(p), "doc-remove/p", at(3)))
+        ok(reviews.of(p).reacted("doc-remove/p", rater, word("good"), at(3)))
+        ok(reviews.of(q).posted(waiting(q), "doc-remove/q", at(3)))
+        ok(reviews.of(q).reacted("doc-remove/q", rater, word("good"), at(3)))
+      }
+      transaction(ok(store.remove(p, at(4))))
+      (labelled(p), labelled(q).map(_.version)) ==> (Vector(), Vector(Some(vq)))
+    }
+
+    test("forget deletes every review put up before an instant, and no other; how many") {
+      val p = name("doc-review-forget")
+      val k = keeper(p, terms())
+      val (a, b) = (put(k, "a", "a", 1), put(k, "b", "b", 1))
+      transaction {
+        ok(k.forReview(a, Day, Instant.parse("1990-01-01T00:00:00Z")))
+        ok(k.forReview(b, Day, Instant.parse("1990-01-03T00:00:00Z")))
+      }
+      val forgot = transaction(ok(reviews.forget(Instant.parse("1990-01-02T00:00:00Z"))))
+      (forgot, offered(p, publicPlace)) ==> (1, Vector("b"))
     }
   }
 }

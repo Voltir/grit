@@ -216,6 +216,7 @@ final class Engine private (
       cursors,
       shadows,
       documents,
+      documentReviews,
       sqlSchedules,
       () => enabled.get(),
       () => posting.get(),

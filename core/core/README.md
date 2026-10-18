@@ -66,8 +66,6 @@ In dependency order, each with the core packages it imports:
 - **`speech`**: whether grit speaks where it was not addressed (ADR 0022); never unprompted to
   a message believed below `Outside`. ← `id`, `identity`, `visibility`, `message`, `period`,
   `place`, `spend`, `store`, `triage`
-- **`review`**: a person's verdict on grit's speech decision, asked of a few heard messages a
-  day; kept after the message's entry is gone (ADR 0022). ← `id`, `classify`, `store`, `speech`
 - **`durable`**: steps that survive a crash, and waits for a message; a workflow's steps as a
   flow of pure step values, run over `Durable` and read over a recorded history (ADR 0038). Not
   the `flow` package below, whose values carry integrity. ← `id`, `visibility`, `store`
@@ -88,6 +86,11 @@ In dependency order, each with the core packages it imports:
   `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
   key, or a withdrawal, supersedes it. ← `id`, `place`, `visibility`, `store`, `tool`
+- **`review`**: what a person says of what grit puts up for review, by one edge path
+  (`Reviews`): a verdict on grit's speech decision, asked of a few heard messages a day and kept
+  after the message's entry is gone (ADR 0022), and a word on a plugin's document, kept after
+  its version is gone (ADR 0028). ← `id`, `identity`, `place`, `visibility`, `classify`,
+  `store`, `speech`, `document`
 - **`context`**: the `ContextAssembler` trait, and what the model is shown of a window. ← `id`,
   `place`, `message`, `period`, `store`, `document`
 - **`sanitise`**: the integrity tree (ADR 0036): what code flags in a text, what the classifier

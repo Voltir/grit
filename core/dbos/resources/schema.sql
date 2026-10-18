@@ -1065,6 +1065,36 @@ CREATE TABLE IF NOT EXISTS grit.document_refs (
 );
 CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, ref);
 
+-- A plugin's document put up for review on a day (DocumentKeeper.forReview), and what became
+-- of its prompt (DocumentReviews): posted at `address`, or dropped; the verdict its rater gave,
+-- the latest standing. Keyed by the document's key, label and day, so a label outlives the
+-- version (`version` set NULL when it is deleted), as grit.reviews' outlive their entries.
+-- Retention: ledger: rows put up before the ledger window are deleted each collector sweep
+-- (DocumentReviews.forget, beside Tombstones.forget); every row of a plugin removed
+-- (DocumentStore.remove).
+CREATE TABLE IF NOT EXISTS grit.document_reviews (
+    plugin            TEXT NOT NULL,
+    key               TEXT NOT NULL,
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    day               DATE NOT NULL,
+    version           BIGINT REFERENCES grit.documents(version) ON DELETE SET NULL,
+    queued_at         TIMESTAMPTZ NOT NULL,
+    address           TEXT UNIQUE,
+    posted_at         TIMESTAMPTZ,
+    dropped_at        TIMESTAMPTZ,
+    verdict           TEXT CHECK (verdict ~ '^[a-z]+(-[a-z]+)*$'),
+    rater             TEXT,
+    labelled_at       TIMESTAMPTZ,
+    PRIMARY KEY (plugin, key, classification_id, day),
+    CHECK ((address IS NULL) = (posted_at IS NULL)
+       AND (verdict IS NULL) = (rater IS NULL)
+       AND (verdict IS NULL) = (labelled_at IS NULL)
+       AND (verdict IS NULL OR address IS NOT NULL)
+       AND (dropped_at IS NULL OR address IS NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_document_reviews_queued ON grit.document_reviews (queued_at);
+CREATE INDEX IF NOT EXISTS idx_document_reviews_version ON grit.document_reviews (version);
+
 -- The terms each plugin declared for its documents (DocumentTerms), written at every engine
 -- start: `enabled` for the plugins that start enabled, false for one declared before and not
 -- now; the newest start wins. Not versioned: readers use the terms in force.

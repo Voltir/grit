@@ -74,6 +74,22 @@ object LiveDb {
         } catch { case e: Throwable => conn.rollback(); throw e }
     }
 
+  /** Runs `body` as [[transaction]] does, opened at `clearance`, labelling places as
+    * `visibility` does.
+    */
+  def underAt[A](config: DbConfig, visibility: Visibility, clearance: Clearance)(
+      body: (Tx^) ?=> A
+  ): A =
+    Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+      conn =>
+        conn.setAutoCommit(false)
+        try {
+          val a = body(using opened(new Opener(visibility).at(clearance, conn)))
+          conn.commit()
+          a
+        } catch { case e: Throwable => conn.rollback(); throw e }
+    }
+
   /** The conversation for `origin`, created at `label` if new. */
   def conversation(config: DbConfig, origin: Origin, label: Label = Label.Public): Conversation =
     transaction(config)(

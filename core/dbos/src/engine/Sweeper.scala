@@ -10,6 +10,7 @@ import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
 import grit.core.job.Slot
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
+import grit.core.review.DocumentReviews
 import grit.core.speech.SpeechStore
 import grit.core.spend.Day
 import grit.core.store.{
@@ -50,6 +51,7 @@ private[engine] final class Sweeper(
     cursors: PluginCursors,
     shadows: TriageShadows,
     documents: DocumentStore,
+    documentReviews: DocumentReviews,
     schedules: SqlSchedules,
     plugins: () -> Vector[(PluginName, Int)],
     posting: () -> Vector[(PluginName, Int)],
@@ -69,6 +71,7 @@ private[engine] final class Sweeper(
     prompts,
     cursors,
     documents,
+    documentReviews,
     schedules,
     tombstones,
     opener

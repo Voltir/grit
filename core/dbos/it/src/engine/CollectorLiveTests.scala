@@ -315,6 +315,24 @@ object CollectorLiveTests extends TestSuite {
       }
     }
 
+  /** The days `plugin`'s documents' reviews are kept for, earliest first. */
+  private def reviewDays(config: DbConfig, plugin: PluginName): Vector[java.time.LocalDate] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT day FROM grit.document_reviews WHERE plugin = ? ORDER BY day"
+        )
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        Using.resource(ps.executeQuery()) { rs =>
+          val days = Vector.newBuilder[java.time.LocalDate]
+          while (rs.next()) days += rs.getDate("day").toLocalDate
+          days.result()
+        }
+      }
+    }
+
   /** How many usage rows are kept for `entries`, and profiles and prompts for `turns`. */
   private def ledgered(
       config: DbConfig,
@@ -1159,6 +1177,26 @@ object CollectorLiveTests extends TestSuite {
           Right(versions.take(1).map(Target.Document(_)))
         LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
           Right(versions.drop(1))
+      } finally engine.close()
+    }
+
+    test("a sweep forgets the documents' reviews put up longer ago than the ledger window") {
+      val config = TestPostgres.freshDatabase("collect_document_reviews")
+      val p = PluginName.of("reviewing").getOrElse(sys.error("name"))
+      val engine = launched(config, 2.minutes, Vector(new Keeping(p)))
+      try {
+        val now = Instant.now()
+        val Vector(v) = wrote(config, p, now.minusSeconds(3600), "kept"): @unchecked
+        val keeper = documents.keeper(p, Terms)
+        val day = java.time.LocalDate.parse("2026-03-01")
+        LiveDb.transaction(config, Clearance.of(Label.Public))(
+          for {
+            old <- keeper.forReview(v, day, now.minusSeconds(180))
+            recent <- keeper.forReview(v, day.plusDays(1), now.minusSeconds(60))
+          } yield (old, recent)
+        ) ==> Right((true, true))
+        engine.sweep(now).map(_.collected) ==> Right(Vector())
+        reviewDays(config, p) ==> Vector(day.plusDays(1))
       } finally engine.close()
     }
 

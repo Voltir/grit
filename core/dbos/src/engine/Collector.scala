@@ -11,6 +11,7 @@ import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.{Retention, Target, Tombstone}
+import grit.core.review.DocumentReviews
 import grit.core.speech.SpeechStore
 import grit.core.store.{
   ConversationStore,
@@ -47,6 +48,7 @@ private[engine] final class Collector(
     prompts: PromptStore,
     cursors: PluginCursors,
     documents: DocumentStore,
+    documentReviews: DocumentReviews,
     schedules: SqlSchedules,
     tombstones: Tombstones,
     opener: Opener
@@ -56,7 +58,8 @@ private[engine] final class Collector(
   /** Every due tombstone of each kind, at most [[Batch]] a kind, and of a kind whose
     * retention each plugin declares, at most [[Batch]] for each enabled plugin under its
     * terms in force, collected, spared or deferred at `now` under `settings`; then the
-    * tombstones ended longer ago than the ledger window forgotten.
+    * tombstones ended, and the documents' reviews put up, longer ago than the ledger window
+    * forgotten.
     */
   def once(settings: LifecycleSettings, now: Instant): Either[StoreError, Swept] =
     for {
@@ -91,6 +94,9 @@ private[engine] final class Collector(
       }
       _ <- Transact.write(dataSource, opener)(
         tombstones.forget(now.minusMillis(settings.windows.ledger.toMillis))
+      )
+      _ <- Transact.write(dataSource, opener)(
+        documentReviews.forget(now.minusMillis(settings.windows.ledger.toMillis))
       )
     } yield swept
 

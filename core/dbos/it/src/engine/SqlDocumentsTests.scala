@@ -9,10 +9,12 @@ import grit.core.document.{
   DocumentTerms
 }
 import grit.core.id.PluginName
+import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
-import grit.core.visibility.Clearance
+import grit.core.visibility.{Clearance, Visibility}
 import grit.dbos.sql.{
   LiveDb,
+  SqlDocumentReviews,
   SqlDocumentSearch,
   SqlDocuments,
   SqlSavepoints,
@@ -48,6 +50,11 @@ object SqlDocumentsTests extends DocumentContract {
 
   protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
     LiveDb.transaction(config, clearance)(body)
+
+  protected val reviews: DocumentReviews = new SqlDocumentReviews
+
+  protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A =
+    LiveDb.underAt(config, visibility, clearance)(body)
 
   protected def room(origin: Origin): Unit = {
     val _ = LiveDb.conversation(config, origin)

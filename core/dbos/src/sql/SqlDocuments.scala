@@ -1,7 +1,7 @@
 package grit.dbos.sql
 
 import java.sql.{PreparedStatement, ResultSet}
-import java.time.{Instant, OffsetDateTime, ZoneOffset}
+import java.time.{Instant, LocalDate, OffsetDateTime, ZoneOffset}
 
 import grit.core.document.{
   DocLabel,
@@ -27,7 +27,8 @@ import grit.core.store.{StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label}
 
-/** [[DocumentStore]] over `grit.documents` and `grit.document_terms`, reading as
+/** [[DocumentStore]] over `grit.documents`, `grit.document_refs` and `grit.document_terms`, its
+  * keepers putting up reviews in `grit.document_reviews` ([[SqlDocumentReviews]]), reading as
   * [[SqlDocumentSearch]] does, marking in `tombstones` the versions its keepers leave for
   * deletion. Keys order bytewise (`COLLATE "C"`), as the
   * in-memory fake orders them; a retention is kept to the microsecond.
@@ -144,6 +145,9 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
         ps.setString(3, Target.Kind.Document.name)
       }
       _ <- update("DELETE FROM grit.document_terms WHERE plugin = ?")(
+        _.setString(1, PluginName.value(plugin))
+      )
+      _ <- update("DELETE FROM grit.document_reviews WHERE plugin = ?")(
         _.setString(1, PluginName.value(plugin))
       )
     } yield ()
@@ -455,6 +459,27 @@ private[sql] object SqlDocuments {
         tx: Tx^
     ): Either[StoreError, Option[DocumentVersion]] =
       SqlLabels.intern(label).flatMap(withdrawn(key, _, at))
+
+    def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Boolean] = {
+      val clearance = Tx.clearance(tx)
+      update(
+        s"""WITH ${SqlClearance.With}
+           |INSERT INTO grit.document_reviews (plugin, key, classification_id, day, version, queued_at)
+           |SELECT d.plugin, d.key, d.classification_id, ?, d.version, ?
+           |  FROM grit.documents d
+           | WHERE d.version = ? AND d.plugin = ? AND d.superseded_at IS NULL
+           |   AND d.body IS NOT NULL AND ${SqlClearance.kept("d")}
+           |ON CONFLICT DO NOTHING""".stripMargin
+      ) { ps =>
+        SqlClearance.bind(ps, 1, clearance)
+        ps.setDate(SqlClearance.Params + 1, java.sql.Date.valueOf(day))
+        ps.setObject(SqlClearance.Params + 2, utc(at))
+        ps.setLong(SqlClearance.Params + 3, DocumentVersion.value(version))
+        ps.setString(SqlClearance.Params + 4, PluginName.value(plugin))
+      }.map(_ == 1)
+    }
 
     /** As [[withdraw]], at the label whose id is `label`. */
     private def withdrawn(key: DocKey, label: Int, at: Instant)(using

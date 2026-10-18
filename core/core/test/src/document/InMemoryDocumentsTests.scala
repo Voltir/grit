@@ -1,8 +1,9 @@
 package grit.core.document
 
 import grit.core.id.PluginName
+import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
-import grit.core.visibility.Clearance
+import grit.core.visibility.{Clearance, Visibility}
 import grit.dbos.sql.TestTx
 
 /** The documents contract, kept by the in-memory fake. */
@@ -23,6 +24,11 @@ object InMemoryDocumentsTests extends DocumentContract {
 
   protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
     body(using TestTx.fake(clearance))
+
+  protected val reviews: DocumentReviews = documents.reviews
+
+  protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A =
+    body(using TestTx.fake(clearance, visibility))
 
   // Rooms are places, which the fake needs no row for.
   protected def room(origin: Origin): Unit = ()
