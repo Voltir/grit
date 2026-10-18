@@ -152,6 +152,20 @@ object ClassifyTests extends TestSuite {
       sent ==> Vector("choice: Which team should handle `ticket`?", "yes/no: Is `ticket` urgent?")
     }
 
+    test("Ask.all asks the first and the rest in order and reads each answer by position") {
+      val asked = Ask.all(
+        urgent,
+        Vector("Is `ticket` angry?", "Is `ticket` spam?").map(Ask.yesNo[Ticket](_, None, None))
+      )
+      val canned = new Canned(Answer.YesNo(0.1), Answer.YesNo(0.5), Answer.YesNo(0.9))
+      canned.ask(Ticket("x"), asked).map(_.value) ==> Right(Vector(0.1, 0.5, 0.9))
+      canned.asked.collect { case Question.YesNo(instructions, _, _) => instructions } ==> Vector(
+        "Is `ticket` urgent?",
+        "Is `ticket` angry?",
+        "Is `ticket` spam?"
+      )
+    }
+
     test("asking a question twice is two questions") {
       val canned = new Canned(Answer.YesNo(0.1), Answer.YesNo(0.9))
       canned.ask(Ticket("x"), urgent.zip(urgent)).map(_.value) ==> Right((0.1, 0.9))

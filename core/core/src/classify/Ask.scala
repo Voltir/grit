@@ -125,6 +125,12 @@ object Ask {
   /** Two criteria of one choice given the same `key`. */
   final case class DuplicateKey(key: String)
 
+  /** `first` and `rest` in one request, answered in that order. */
+  def all[S, T](first: Ask[S, T], rest: Vector[Ask[S, T]]): Ask[S, Vector[T]] =
+    rest.foldLeft[Ask[S, Vector[T]]](first.map(Vector(_)))(
+      _.zip(_).map((ts: Vector[T], t) => ts :+ t)
+    )
+
   /** Which criterion fits the state, read back into its value. Reading is `Unreadable` when
     * the answer is yes/no, its choice is no criterion's key, or no criterion's key has positive
     * probability; weights on other keys are dropped.

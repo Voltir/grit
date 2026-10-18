@@ -70,10 +70,7 @@ object TurnRelevance {
     */
   def ask(state: State): Option[Ask[State, Vector[Probability]]] =
     state.candidates.indices.toVector.map(question) match {
-      case first +: rest =>
-        Some(rest.foldLeft(first.map(p => Vector(p))) { (asked, next) =>
-          asked.zip(next).map((pair: (Vector[Probability], Probability)) => pair._1 :+ pair._2)
-        })
+      case first +: rest => Some(Ask.all(first, rest))
       case _ => None
     }
 

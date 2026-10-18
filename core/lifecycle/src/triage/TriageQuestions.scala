@@ -74,11 +74,10 @@ final case class TriageQuestions private (
   def asked(
       sources: Corpora
   ): Ask[TriageQuestion.State, VectorMap[QuestionName, Answer]] = {
-    val start =
-      Ask.answer[TriageQuestion.State](first.question).map(a => VectorMap(first.name -> a))
-    questions(sources).toVector.drop(1).foldLeft(start) { case (acc, (name, question)) =>
-      acc.zip(Ask.answer[TriageQuestion.State](question)).map((m, a) => m.updated(name, a))
-    }
+    val named = questions(sources)
+    Ask
+      .all(Ask.answer(first.question), named.values.toVector.drop(1).map(Ask.answer))
+      .map(a => VectorMap.from(named.keys.zip(a)))
   }
 }
 
