@@ -8,12 +8,22 @@ import scala.util.Using
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, ClearedClassifier, Question}
 import grit.core.clock.SetClock
-import grit.core.id.PluginName
-import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, PluginName, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
-import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
+import grit.core.period.{
+  Change,
+  CloseReason,
+  Closing,
+  Flows,
+  Ground,
+  LifecycleSettings,
+  Probability,
+  Section,
+  TestClosings
+}
+import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
@@ -26,10 +36,10 @@ import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns, Taps}
 import grit.kit.run.Launch
 import grit.knowledge.card.CardSummary
-import grit.knowledge.plugin.StrandDocuments
+import grit.knowledge.plugin.{StandingDocuments, StrandDocuments}
 import grit.knowledge.strand.StrandDocument
 import grit.models.{KeptCatalog, StubClassifier, StubProvider}
-import grit.turn.{Turn, TurnJudge, TurnLoop}
+import grit.turn.{Turn, TurnJudge, TurnLoop, TurnRelevance}
 
 import utest.*
 
@@ -48,11 +58,11 @@ object RehearseLiveTests extends TestSuite {
       None
     )
 
-  /** A deployment assembling by `assembly` and speaking unaddressed as `speaking`. */
+  /** A deployment assembling by `assembly`, speaking unaddressed as `speaking`, with `plugins`. */
   private def deployed(
       assembly: Assembly,
       speaking: Speaking,
-      plugins: Vector[grit.core.plugin.Plugin] = Vector.empty
+      plugins: Vector[Plugin] = Vector.empty
   ): Deployment =
     Deployment
       .of(
@@ -104,6 +114,69 @@ object RehearseLiveTests extends TestSuite {
         )
       )
     )
+
+  /** Retrieval with each settled line kept as a document ([[StandingDocuments]]). */
+  private val standing: Deployment =
+    deployed(
+      Assembly.Retrieval(Tokens(8000), Tokens(2000)),
+      Speaking.Off,
+      Vector(new StandingDocuments(PluginName.of("standing").fold(sys.error, identity)))
+    )
+
+  /** In `origin`'s conversation, heard through `engine` at [[Now]] and closed resolved, its
+    * closing adding the Standing line "Staging deploys from main" as a person said it; whether
+    * a document was kept within 30 s, as the engine's posting keeps one.
+    */
+  private def settledLine(engine: Engine^, origin: Origin, config: DbConfig): Boolean = {
+    def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
+    engine.inbox.hear(
+      origin,
+      SourceId("1.0"),
+      "staging deploys from main",
+      Account.Local,
+      Now,
+      Reach.Nowhere
+    ) ==>
+      Right(())
+    within(() => settled(config)) ==> true
+    val c = right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
+      .getOrElse(sys.error("heard"))
+    val first = TurnRef(c.id, TurnSeq.First)
+    val line =
+      TestClosings.line(Section.Standing, "Staging deploys from main", 1, 1, ground = Ground.Person)
+    val closing = Closing(
+      Flows
+        .of("We settled deploys.", Some("Staging deploys from main."), Vector(Change.Added(line)))
+        .getOrElse(sys.error("flows")),
+      TestClosings.balance(line)
+    )
+    // Closed a minute before the rehearsed message: a turn draws documents written before it.
+    val closedAt = Now.minusSeconds(60)
+    right(engine.jot.write(Subject.Public)(engine.periods.of(first))).foreach { p =>
+      right(
+        engine.jot.write(Subject.Public)(
+          engine.periods.seal(
+            CloseRef(p.ref, first.turnSeq, closedAt),
+            CloseReason.Resolved(Probability.One),
+            closing,
+            closedAt
+          )
+        )
+      )
+    }
+    // The engine posts on its sweep, which a launch alone does not run.
+    right(engine.sweep(Now))
+    within(() => kept(config) > 0)
+  }
+
+  /** How many document versions `config`'s database keeps. */
+  private def kept(config: DbConfig): Int =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement("SELECT count(*) FROM grit.documents")) { ps =>
+        Using.resource(ps.executeQuery()) { rs => if (rs.next()) rs.getInt(1) else 0 }
+      }
+    }
 
   /** In `origin`'s conversation, heard through `engine` at [[Now]]: a remark longer than the
     * judge's thread shows, its period closed with a record, so the record is what a later turn
@@ -268,6 +341,60 @@ object RehearseLiveTests extends TestSuite {
           Vector()
         )
       } finally engine.close()
+    }
+
+    test(
+      "a Standing line another thread of the channel settled is shown to the relevance judge, and to the turn, as its document"
+    ) {
+      val config = TestPostgres.freshDatabase("rehearse_standing")
+      val clock = new SetClock(Now)
+      val seed = Taps.seed(standing.policy).fold(sys.error, identity)
+      val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
+      val (posted, shown) =
+        try {
+          val cleared = ClearedClassifier.of(StubClassifier.Service, new Asked)
+          Launch.asking(
+            engine,
+            standing,
+            Map.empty,
+            new Through(seed, engine, new Capturing),
+            cleared,
+            cleared,
+            _ => ()
+          )
+          val posted = settledLine(engine, Origin.Slack("T1", "C1", "1.0"), config)
+          posted -> Rehearse
+            .dry(
+              config,
+              standing,
+              Situation.Said(
+                Origin.Slack("T1", "C1", "2.0"),
+                Account.Local,
+                "@grit where does staging deploy from?"
+              ),
+              StandIns.Stubbed,
+              clock
+            )
+            .fold(sys.error, identity)
+        } finally engine.close()
+      val document =
+        "[doc] standing: a decision or fact a conversation settled, at slack:T1/C1/1.0, " +
+          "2026-10-17:\nStaging deploys from main (a person said so)\n" +
+          "From a conversation that came to: Staging deploys from main."
+      val judged = shown.calls.collect {
+        case Rehearsed.Call(Some(step), _, _, Rehearsed.Input.Classifier(state, _), _)
+            if step.startsWith("ask:relevance") =>
+          state("candidates").arr.map(_.str).toVector
+      }.flatten
+      val window = shown.calls.collect {
+        case Rehearsed.Call(_, _, _, Rehearsed.Input.Model(r), _) =>
+          r.messages.collect { case Message.User(t) if t.startsWith("[doc] standing") => t }
+      }.lastOption
+      (posted, judged.filter(_.startsWith("[doc] standing")), window) ==> (
+        true,
+        Vector(document.take(TurnRelevance.Chars)),
+        Some(Vector(document))
+      )
     }
 
     test(
