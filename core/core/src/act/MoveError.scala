@@ -45,3 +45,28 @@ enum MoveError {
     */
   case Undeclared(node: String)
 }
+
+object MoveError {
+
+  /** Why a move was not made, as a run's reply says it: one clause, lower case, naming the
+    * move or the limit when it has one.
+    */
+  def said(error: MoveError): String = error match {
+    case Below(_) => "it came from somewhere not trusted enough to keep"
+    case Repeated(name) => s"the move ${MoveName.value(name)} was made already"
+    case OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
+    case Capped => "the day's recorded spend reached its cap"
+    case Model(why) => why
+    case Uncleared(at) => s"no model is cleared for ${Label.shown(at)}"
+    case Store(why) => why
+    case Diverged(name) => s"the run's moves differ from its record at ${MoveName.value(name)}"
+    case Undeclared(node) => s"the job's code does not allow the $node it used"
+  }
+
+  private def plural(kind: MoveKind): String = kind match {
+    case MoveKind.Ask => "asks"
+    case MoveKind.Judge => "judgments"
+    case MoveKind.Call => "calls"
+    case MoveKind.Keep => "keeps"
+  }
+}

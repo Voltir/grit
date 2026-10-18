@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.annotation.tailrec
 
-import grit.core.act.{Answer, Called, Keeping, MoveError, MoveKind, MoveLimits, MoveName, Posed}
+import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, MoveName, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}
@@ -125,7 +125,7 @@ object Sync {
     moves.keep(CardMoves.Held, start)((_, keeper, _) => holding(corpus, source.at, keeper)) match {
       case Left(e) =>
         val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
-        none.copy(stopped = Some(s"reading the cards held: ${reason(e)}")).line
+        none.copy(stopped = Some(s"reading the cards held: ${MoveError.said(e)}")).line
       case Right(h) =>
         val paths = h.held.map(c => c.key -> c.path).toMap
 
@@ -198,7 +198,8 @@ object Sync {
               val on = seen.getOrElse(path, Seen(h.floor, read, Way.Run))
               val from = believed(path, read, seen)
               moves.ask(key, from.map(_ => asked)) match {
-                case Left(e) => (Outcome.Stopped(s"summarising $path: ${reason(e)}"), read, seen)
+                case Left(e) =>
+                  (Outcome.Stopped(s"summarising $path: ${MoveError.said(e)}"), read, seen)
                 case Right(a) =>
                   (
                     Outcome.Summarised(Trusted.asIs(a.reply).extract),
@@ -267,7 +268,7 @@ object Sync {
             case Nil => Right(Right(done))
             case w :: more =>
               moves.vet(CardMoves.vet(key, i), text.map(_ => w), source) match {
-                case Left(e) => Left(reason(e))
+                case Left(e) => Left(MoveError.said(e))
                 case Right(v) =>
                   v.verdict match {
                     case Verdict.Raised(_) => go(i + 1, more, done.zip(v.text).map(_ + _))
@@ -325,7 +326,7 @@ object Sync {
             tool,
             from.map(_ => arguments)
           ) match {
-            case Left(e) => Left(reason(e))
+            case Left(e) => Left(MoveError.said(e))
             case Right(Called.Done(answer, at)) => Right((answer, at))
             case Right(Called.Failed(why)) =>
               Left(s"the call to ${source.service.name} failed: $why")
@@ -347,7 +348,7 @@ object Sync {
 
   /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
   private def kept(result: Either[MoveError, Kept], doing: String): Outcome[Nothing] =
-    result.fold(e => Outcome.Stopped(s"$doing: ${reason(e)}"), _ => Outcome.Kept)
+    result.fold(e => Outcome.Stopped(s"$doing: ${MoveError.said(e)}"), _ => Outcome.Kept)
 
   /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
     * key, each kept elsewhere when not at `at`; or the first document that is no card, as the
@@ -484,27 +485,6 @@ object Sync {
 
   /** `read`, and `answer` read after it. */
   private def heard(read: Read, answer: Tainted[?]): Read = read.zip(answer).map(_ => ())
-
-  /** Why a move was not made, as a run's reply says it. */
-  private def reason(error: MoveError): String = error match {
-    case MoveError.Below(_) => "it came from somewhere not trusted enough to keep"
-    case MoveError.Repeated(name) => s"the move ${MoveName.value(name)} was made already"
-    case MoveError.OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
-    case MoveError.Capped => "the day's recorded spend reached its cap"
-    case MoveError.Model(why) => why
-    case MoveError.Uncleared(at) => s"no model is cleared for ${Label.shown(at)}"
-    case MoveError.Store(why) => why
-    case MoveError.Diverged(name) =>
-      s"the run's moves differ from its record at ${MoveName.value(name)}"
-    case MoveError.Undeclared(node) => s"the job's code does not allow the $node it used"
-  }
-
-  private def plural(kind: MoveKind): String = kind match {
-    case MoveKind.Ask => "asks"
-    case MoveKind.Judge => "judgments"
-    case MoveKind.Call => "calls"
-    case MoveKind.Keep => "keeps"
-  }
 }
 
 /** What a keep writing, relabelling or dropping cards did, as its move records it: how many
