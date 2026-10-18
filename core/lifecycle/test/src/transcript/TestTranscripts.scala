@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload, Speakers}
 import grit.core.visibility.Integrity
 
@@ -47,14 +48,17 @@ object TestTranscripts {
 
   /** `entries` as the writer's transcript, nobody named. */
   def labelled(entries: Entry*): Labelled =
-    PeriodTranscript.labelled(entries.toVector, Speakers.none)
+    PeriodTranscript.labelled(entries.toVector, Speakers.none, Persona.Grit)
 
   /** `entries` as the writer's transcript, the entry at each `seq` of `names` written by that
-    * person.
+    * person, for an assistant presenting as `persona`.
     */
-  def labelledBy(names: Map[Long, String])(entries: Entry*): Labelled =
+  def labelledBy(names: Map[Long, String], persona: Persona = Persona.Grit)(
+      entries: Entry*
+  ): Labelled =
     PeriodTranscript.labelled(
       entries.toVector,
-      Speakers(names.map((seq, name) => EntryId(s"e$seq") -> name))
+      Speakers(names.map((seq, name) => EntryId(s"e$seq") -> name)),
+      persona
     )
 }

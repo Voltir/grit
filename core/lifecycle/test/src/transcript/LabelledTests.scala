@@ -1,6 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.period.Ground
+import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Integrity
 
@@ -80,6 +81,22 @@ object LabelledTests extends TestSuite {
           "[a4] Assistant: Friday."
         ).mkString("\n\n")
       labelledBy(Map(0L -> "Ana"))(said(0, "Ship it.")).text ==> "[u1] Ana: Ship it."
+    }
+
+    test(
+      "a person's mention of the assistant is their words to it, never the assistant speaking; another's mention is kept"
+    ) {
+      val persona = Persona.of("Pip").fold(sys.error, identity)
+      labelledBy(Map(0L -> "Ana", 1L -> "Ben", 2L -> "Cy"), persona)(
+        heard(0, "@Pip what moved the freeze?"),
+        heard(1, "thanks @pip, and @Ana too"),
+        said(2, "@Pipkin is on it")
+      ).text ==>
+        Vector(
+          "[h1] Ana, to the assistant: what moved the freeze?",
+          "[h2] Ben, to the assistant: thanks, and @Ana too",
+          "[u3] Cy: @Pipkin is on it"
+        ).mkString("\n\n")
     }
 
     test(

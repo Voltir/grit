@@ -373,7 +373,7 @@ object Close {
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
     val labelled = {
       val own = entries.getOrElse(Vector.empty)
-      PeriodTranscript.labelled(own, names(read, env, own))
+      PeriodTranscript.labelled(own, names(read, env, own), env.persona)
     }
     val period = attempt.period.seq
     // The topics' edits are the fold's, free and exact: made whether or not a model writes.

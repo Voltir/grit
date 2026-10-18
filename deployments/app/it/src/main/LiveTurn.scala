@@ -223,7 +223,8 @@ object LiveTurn {
             moves,
             uncapped,
             engine.db,
-            Clock.system()
+            Clock.system(),
+            grit.core.persona.Persona.Grit
           )
         ),
         Settle.body(

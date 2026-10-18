@@ -255,7 +255,8 @@ private[grit] object Launch {
           moves,
           d.budget,
           db,
-          clock
+          clock,
+          d.persona
         )
       )
     val settle: WorkflowId => Durable^ ?=> String =

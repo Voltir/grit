@@ -420,7 +420,8 @@ object CloseFixtures {
           TestMoves.withModels(recording, ledger, gate, db, clock, models),
           Budget(ZoneOffset.UTC, cap),
           db,
-          clock
+          clock,
+          grit.core.persona.Persona.Grit
         )
       )(id)
   }

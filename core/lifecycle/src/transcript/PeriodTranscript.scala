@@ -1,8 +1,11 @@
 package grit.lifecycle.transcript
 
+import java.util.regex.Pattern
+
 import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Section
+import grit.core.persona.Persona
 import grit.core.stitch.Stitching
 import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
 import grit.core.visibility.Integrity
@@ -103,11 +106,12 @@ object PeriodTranscript {
   val ToolChars = 120
 
   /** `entries` as [[Labelled]]: each person's message (`u` to grit, `h` heard) and reply
-    * text as [[of]] renders it with `speakers`, and
-    * each tool result as its call as shown, " → ", and its content on one line, "failed: "
-    * first when it failed, clipped to [[ToolChars]].
+    * text as [[of]] renders it with `speakers`, but a person's message mentioning the
+    * assistant, which presents as `persona`, as their words to it (`[h1] Ana, to the
+    * assistant: …`, the mention taken out); and each tool result as its call as shown, " → ",
+    * and its content on one line, "failed: " first when it failed, clipped to [[ToolChars]].
     */
-  def labelled(entries: Vector[Entry], speakers: Speakers): Labelled = {
+  def labelled(entries: Vector[Entry], speakers: Speakers, persona: Persona): Labelled = {
     // Who wrote each line, and its text after the label.
     val written: Vector[(Labelled.Source, Integrity, String)] = entries.flatMap(e =>
       e.payload match {
@@ -116,9 +120,13 @@ object PeriodTranscript {
           val failed = if (result.isError) "failed: " else ""
           Some((Labelled.Source.Tool(!result.isError), e.integrity, s"$shown → $failed$content"))
         case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(l => (Labelled.Source.Person, e.integrity, l.shown))
+          line(e, speakers).map(l =>
+            (Labelled.Source.Person, e.integrity, addressed(l, persona).shown)
+          )
         case Payload.Heard(_) =>
-          line(e, speakers).map(l => (Labelled.Source.Heard, e.integrity, l.shown))
+          line(e, speakers).map(l =>
+            (Labelled.Source.Heard, e.integrity, addressed(l, persona).shown)
+          )
         case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e.integrity, l.shown))
       }
     )
@@ -137,6 +145,25 @@ object PeriodTranscript {
       }
       Labelled.Line(label, source, clipped, integrity)
     })
+  }
+
+  /** `l`, a person's line, its every mention of `persona` (`@` and its name, in any case, not
+    * running on into a longer name) taken out of its text and its speaker shown speaking to the
+    * assistant (`Ana, to the assistant: …`), when it holds one; else `l`.
+    */
+  private def addressed(l: Stitching.Line, persona: Persona): Stitching.Line = {
+    val mention = ("(?i)@" + Pattern.quote(persona.name) + """(?![\p{L}\p{N}_])""").r
+    if (mention.findFirstIn(l.text).isEmpty) l
+    else
+      l.copy(
+        speaker = s"${l.speaker}, to the assistant",
+        text = mention
+          .replaceAllIn(l.text, "")
+          .replaceAll("""\s+(?=[,.;:!?])""", "")
+          .replaceAll("""\s{2,}""", " ")
+          .replaceFirst("""^[\s,;:]+""", "")
+          .trim
+      )
   }
 
   /** `entry` as one line: a person's words under their name in `speakers` (`User` for one

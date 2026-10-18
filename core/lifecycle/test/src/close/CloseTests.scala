@@ -648,7 +648,7 @@ object CloseTests extends TestSuite {
       summary.requests.map(_.system) ==> Vector(
         ClosingSummary
           .request(
-            PeriodTranscript.labelled(Vector.empty, Speakers.none),
+            PeriodTranscript.labelled(Vector.empty, Speakers.none, grit.core.persona.Persona.Grit),
             Balance.empty,
             Vector.empty,
             Asked.Every,
@@ -729,7 +729,7 @@ object CloseTests extends TestSuite {
       some.requests.map(_.system) ==> Vector(
         ClosingSummary
           .request(
-            PeriodTranscript.labelled(Vector.empty, Speakers.none),
+            PeriodTranscript.labelled(Vector.empty, Speakers.none, grit.core.persona.Persona.Grit),
             Balance.empty,
             Vector.empty,
             Asked(false, false, false, true),
@@ -748,7 +748,8 @@ object CloseTests extends TestSuite {
         Vector(
           ClosingSummary
             .request(
-              PeriodTranscript.labelled(Vector.empty, Speakers.none),
+              PeriodTranscript
+                .labelled(Vector.empty, Speakers.none, grit.core.persona.Persona.Grit),
               Balance.empty,
               Vector.empty,
               Asked.Every,
