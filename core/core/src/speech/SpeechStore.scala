@@ -29,7 +29,7 @@ trait SpeechStore {
     */
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]]
 
-  /** What the unprompted turns' recorded calls cost on `day`: their drafts, queries, topics,
+  /** What the unprompted turns' recorded calls cost on `day`: their drafts, queries, agenda placements,
     * summaries and judges ([[grit.core.store.UsageLedger]]). A turn answered as said to grit
     * ([[Decision.Answering]]) is not among them: as an addressed turn, it counts only in the
     * deployment's budget.

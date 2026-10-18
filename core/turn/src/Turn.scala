@@ -18,7 +18,7 @@ import TurnShown.{asked, gatedOffer, loopShape, offered, requestOf, shown, stubs
   * output is recorded, so a turn resumed after a crash never calls a model twice. A step that
   * fails returns a [[TurnFailure]], recorded like any other output, so a rerun ends the same
   * way without calling anything. A failure before the reply ends the turn; a failed summary
-  * leaves the reply standing, and the turn without a summary. Topics never fail a turn.
+  * leaves the reply standing, and the turn without a summary. The agenda never fails a turn.
   */
 object Turn {
 
@@ -53,7 +53,7 @@ object Turn {
     val RecordFailure: String = TurnSteps.Names.recordFailure.family
     val Stitched: String = TurnSteps.Names.stitched.family
     val Classify: String = TurnSteps.Names.classify.family
-    val RecordTopic: String = TurnSteps.Names.recordTopic.family
+    val RecordAgenda: String = TurnSteps.Names.recordAgenda.family
     val Search: String = TurnSteps.Names.search.family
     val Assemble: String = TurnSteps.Names.assemble.family
     val RecordWindow: String = TurnSteps.Names.recordWindow.family
@@ -348,7 +348,7 @@ object Turn {
       byRef <- needed[TurnOffer.Recorded](Step.Offer)
       profileId <- needed[TurnProfileId](Step.PinModels)
       window <- needed[Window](Step.Assemble)
-      classified <- output[TurnTopics.Classification](Step.Classify)
+      classified <- output[TurnAgenda.Classification](Step.Classify)
       profile <- kept("profile", reads.profiles.get(profileId))
         .flatMap(_.toRight(s"no profile kept under ${TurnProfileId.value(profileId)}"))
       offer <- kept("offer", TurnOffer.load(reads.toolSets, reads.prompts, byRef))
@@ -382,7 +382,7 @@ object Turn {
       // after every own entry the call was shown: recordCall and append read `shown` after
       // lockNext, which serialises the conversation, and before inserting the reply, so the
       // own entries it saw are exactly those below the reply's seq. Own entries Shown.turn
-      // does not show (a window, a query, a topic event, an ask) change nothing either side.
+      // does not show (a window, a query, an agenda event, an ask) change nothing either side.
       sent = (round: Round, use: ToolUse, reply: EntryId) =>
         showing.mine.find(_.id == reply) match {
           case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")

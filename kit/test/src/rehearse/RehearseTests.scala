@@ -9,7 +9,7 @@ import grit.core.identity.Account
 import grit.core.spend.DailyCap
 import grit.core.store.Origin
 import grit.dbos.sql.DbConfig
-import grit.kit.deployment.{Deployments, Topics}
+import grit.kit.deployment.{Deployments, Placer}
 import grit.lifecycle.shadow.{ShadowAsking, ShadowVariant}
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.{JevConfig, StubClassifier}
@@ -59,19 +59,19 @@ object RehearseTests extends TestSuite {
     }
 
     test(
-      "each shadow asks the rehearsal's classifier, of the model it names, else its topics' classifier's own: Jev's default or the stub's"
+      "each shadow asks the rehearsal's classifier, of the model it names, else its placer's classifier's own: Jev's default or the stub's"
     ) {
       val tapped = ClearedClassifier.none("tapped")
       def shown(name: ShadowName, asking: ShadowAsking^{tapped}): (String, String, Boolean) =
         (name.toString, asking.requested, asking.classifier == tapped)
-      def asked(topics: Topics) =
+      def asked(placer: Placer) =
         Deployments
           .of(
-            topics = topics,
+            placer = placer,
             shadows = Vector(variant("named", Some("jev-1.2")), variant("plain", None))
           )
           .map(d => Rehearse.shadowing(d, tapped).toVector.map(shown).sorted)
-      (asked(Topics.Jev), asked(Topics.Stub)) ==> (
+      (asked(Placer.Jev), asked(Placer.Stub)) ==> (
         Right(Vector(("named", "jev-1.2", true), ("plain", JevConfig.DefaultModel, true))),
         Right(Vector(("named", "jev-1.2", true), ("plain", StubClassifier.Model, true)))
       )

@@ -54,7 +54,7 @@ object BoundaryTests extends TestSuite {
       |val asked: TriageQuestions = TriageQuestions.V1
       |val shadows: Vector[ShadowVariant] = Vector.empty
       |val seeded = Seed.catalog
-      |val jev = Topics.JevService
+      |val jev = Placer.JevService
       |""".stripMargin
 
   private val internals = List(engineOpen, engineStart, linkAttach, lockTake, workflow)

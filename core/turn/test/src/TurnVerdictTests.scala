@@ -1,11 +1,11 @@
 package grit.turn
 
+import grit.core.agenda.{Agenda, Placement}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{Provider, ToolUse}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError, Tx}
-import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict}
 
 import utest.*
 
@@ -32,7 +32,7 @@ object TurnVerdictTests extends TestSuite {
       underlying.lockNext(c)
   }
 
-  /** Two earlier turns, the second a new topic; then `asked` answered by `provider`, with
+  /** Two earlier turns, the second a new item; then `asked` answered by `provider`, with
     * the stub classifier. The last turn, its conversation's entries and ledger.
     */
   private def third(
@@ -59,14 +59,14 @@ object TurnVerdictTests extends TestSuite {
     (turn, entries, ledger)
   }
 
-  private def placements(entries: InMemoryEntryStore, turn: TurnRef): Vector[TopicEvent.Placed] =
-    topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty)
+  private def placements(entries: InMemoryEntryStore, turn: TurnRef): Vector[Agenda.Event.Placed] =
+    agenda(entries).placements.getOrElse(turn.turnSeq, Vector.empty)
 
   private def lastBy(entries: InMemoryEntryStore, turn: TurnRef): Option[Placement] =
     placements(entries, turn).lastOption.map(_.by)
 
   val tests = Tests {
-    test("sure of the topic: no tool, no note") {
+    test("sure of the item: no tool, no note") {
       val provider = new RecordingProvider
       val (_, _, _) = third("more ~0.9", provider)
       provider.requests.lastOption.map(r => (r.tools, r.messages.lastOption)) ==>
@@ -91,34 +91,36 @@ object TurnVerdictTests extends TestSuite {
       texts(entries).filter(_.startsWith("user: hm")) ==> Vector("user: hm ~0.5")
     }
 
-    test("the verdict names an earlier topic: placed back in it") {
+    test("the verdict names an earlier item: placed back in it") {
       val (turn, entries, _) =
         third(
           """back ~0.5 #call:{"about":"earlier","earlier":"new topic (2)"}""",
           new RecordingProvider
         )
-      val t = topics(entries)
+      val t = agenda(entries)
       t.placed(turn.turnSeq) ==> Some(
-        TopicId.openedBy(TurnRef(conversation, grit.core.id.TurnSeq(0)))
+        Agenda.ItemId.openedBy(TurnRef(conversation, grit.core.id.TurnSeq(0)))
       )
-      t.topics.size ==> 2
+      t.items.size ==> 2
     }
 
     test("reading a call: the earlier key an enum, and each refusal's message") {
-      val none = TurnTopics.Classification(Vector.empty, None, Vector.empty, None, None)
+      val none = TurnAgenda.Classification(Vector.empty, None, Vector.empty, None, None)
       val two = none.copy(
         earlier = Vector(
-          TurnTopics.Shown(TopicId("a"), "Knots"),
-          TurnTopics.Shown(TopicId("b"), "Knots (2)")
+          TurnAgenda.Shown(Agenda.ItemId("a"), "Knots"),
+          TurnAgenda.Shown(Agenda.ItemId("b"), "Knots (2)")
         )
       )
       TurnVerdict.read(two, ujson.Obj("about" -> "earlier", "earlier" -> "Knots (2)")) ==>
-        Right(Verdict.Earlier("Knots (2)"))
+        Right(Agenda.Verdict.Earlier("Knots (2)"))
       TurnVerdict.read(two, ujson.Obj("about" -> "new", "name" -> "  Sailing ")) ==>
-        Right(Verdict.New(Some("Sailing")))
-      TurnVerdict.read(two, ujson.Obj("about" -> "new", "name" -> " ")) ==> Right(Verdict.New(None))
+        Right(Agenda.Verdict.New(Some("Sailing")))
+      TurnVerdict.read(two, ujson.Obj("about" -> "new", "name" -> " ")) ==> Right(
+        Agenda.Verdict.New(None)
+      )
       TurnVerdict.read(two, ujson.Obj("about" -> "current", "earlier" -> "Knots")) ==>
-        Right(Verdict.Current)
+        Right(Agenda.Verdict.Current)
       TurnVerdict.read(two, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
         Left("`earlier` is missing: it takes one of `Knots`, `Knots (2)`.")
       TurnVerdict
@@ -126,8 +128,8 @@ object TurnVerdictTests extends TestSuite {
         .left
         .map(_.message) ==>
         Left("`earlier` takes one of `Knots`, `Knots (2)`, not \"knots\".")
-      // No earlier topics: no `earlier` field to send, and no `earlier` to say.
-      TurnVerdict.topic(none).schema(strict = false).parameters("properties").obj.keys.toVector ==>
+      // No earlier items: no `earlier` field to send, and no `earlier` to say.
+      TurnVerdict.spec(none).schema(strict = false).parameters("properties").obj.keys.toVector ==>
         Vector("about", "name")
       TurnVerdict.read(none, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
         Left("`about` takes one of `current`, `new`, not \"earlier\".")
@@ -136,20 +138,20 @@ object TurnVerdictTests extends TestSuite {
     }
 
     test("a loop's anomalies: none, one, then each said in order") {
-      val topic = topicCall("current")
+      val verdict = verdictCall("current")
       val other = AssistantBlock.ToolCall(grit.core.id.ToolCallId("p"), "peek", ujson.Obj())
       val table: Vector[(Vector[Message.Assistant], Option[String])] = Vector(
-        Vector(said("", topic, other), said("done")) -> None,
+        Vector(said("", verdict, other), said("done")) -> None,
         Vector(said("hi")) -> Some("no topic call in the first reply"),
         Vector.empty -> Some("no topic call in the first reply"),
-        Vector(said("", topic, topic), said("done")) ->
+        Vector(said("", verdict, verdict), said("done")) ->
           Some("topic called 2 times; only the first counts"),
-        Vector(said("", topic), said("", topic), said("done")) ->
+        Vector(said("", verdict), said("", verdict), said("done")) ->
           Some("topic called 2 times; only the first counts"),
-        Vector(said("", other), said("", other), said("", topic), said("done")) -> Some(
+        Vector(said("", other), said("", other), said("", verdict), said("done")) -> Some(
           "no topic call in the first reply; topic called only in a later round (2); not read"
         ),
-        Vector(said("", other), said("", topic), said("", topic)) -> Some(
+        Vector(said("", other), said("", verdict), said("", verdict)) -> Some(
           "no topic call in the first reply; topic called only in a later round (1, 2); not " +
             "read; topic called 2 times; only the first counts"
         )
@@ -162,14 +164,14 @@ object TurnVerdictTests extends TestSuite {
     test("the verdict says current: it stays") {
       val (turn, entries, _) =
         third("""hm ~0.5 #call:{"about":"current"}""", new RecordingProvider)
-      val t = topics(entries)
-      // The current topic is the one the second turn opened; none is opened for this one.
-      t.placed(turn.turnSeq) ==> Some(TopicId.openedBy(TurnRef(conversation, TurnSeq(1))))
-      t.topics.size ==> 2
-      lastBy(entries, turn) ==> Some(Placement.Asked(Verdict.Current, None))
+      val t = agenda(entries)
+      // The current item is the one the second turn opened; none is opened for this one.
+      t.placed(turn.turnSeq) ==> Some(Agenda.ItemId.openedBy(TurnRef(conversation, TurnSeq(1))))
+      t.items.size ==> 2
+      lastBy(entries, turn) ==> Some(Placement.Asked(Agenda.Verdict.Current, None))
     }
 
-    test("the earlier topics are an enum in the tool's schema, offered per call") {
+    test("the earlier items are an enum in the tool's schema, offered per call") {
       val provider = new RecordingProvider
       val (_, _, _) = third("hm ~0.5", provider)
       val shown = provider.requests.lift(provider.requests.size - 1).flatMap(_.tools.headOption)
@@ -218,7 +220,7 @@ object TurnVerdictTests extends TestSuite {
       ) ==>
         "replied: reply:c1:2; summarised: summary:c1:2"
       entries.windows ==> 1
-      lastBy(store, turn) ==> Some(Placement.Asked(Verdict.New(Some("Sailing")), None))
+      lastBy(store, turn) ==> Some(Placement.Asked(Agenda.Verdict.New(Some("Sailing")), None))
     }
   }
 }

@@ -1,6 +1,7 @@
 package grit.lifecycle.close
 
 import grit.core.act.MovesFixtures.PerChar
+import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
   ConversationId,
@@ -39,7 +40,6 @@ import grit.core.provider.ProviderError
 import grit.core.retention.{Target, Tombstone}
 import grit.core.spend.DailyCap
 import grit.core.store.{Origin, Payload, Speakers, UsageLedger}
-import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.core.triage.{Kind, Tags}
 import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
@@ -761,18 +761,18 @@ object CloseTests extends TestSuite {
     }
 
     test(
-      "nothing new: the balance is carried with no summary, its lines untouched, topics as spoken"
+      "nothing new: the balance is carried with no summary, its lines untouched, the agenda as spoken"
     ) {
       val w = new World
       val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
-      val deployTopic = TopicId("topic:c1:0")
+      val deployItem = Agenda.ItemId("topic:c1:0")
       w.add(
         t0,
-        Payload.Topic(
+        Payload.Agenda(
           Vector(
-            TopicEvent.Opened(deployTopic),
-            TopicEvent.Placed(t0.turnSeq, Weights.whole(deployTopic), Placement.First),
-            TopicEvent.Described(deployTopic, "Deploy Target", "where to deploy")
+            Agenda.Event.Opened(deployItem),
+            Agenda.Event.Placed(t0.turnSeq, Weights.whole(deployItem), Placement.First),
+            Agenda.Event.Described(deployItem, "Deploy Target", "where to deploy")
           )
         ),
         0,
@@ -781,13 +781,14 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.body(gate, answering(written), new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      val topic = line(Section.Topics, "Deploy Target", 1, 1)
+      val item = line(Section.Agenda, "Deploy Target", 1, 1)
       val t1 = w.turn("where did we say we deploy?", "staging", "Recalled staging.", Lapsed + 1)
       w.add(
         t1,
-        Payload.Topic(
+        Payload.Agenda(
           Vector(
-            TopicEvent.Placed(t1.turnSeq, Weights.whole(TopicId.carried(topic.id)), Placement.First)
+            Agenda.Event
+              .Placed(t1.turnSeq, Weights.whole(Agenda.ItemId.carried(item.id)), Placement.First)
           )
         ),
         Lapsed + 1,
@@ -810,7 +811,7 @@ object CloseTests extends TestSuite {
             balance(
               prod,
               deploy,
-              line(Section.Topics, "Deploy Target", 1, 2, Some("where to deploy"))
+              line(Section.Agenda, "Deploy Target", 1, 2, Some("where to deploy"))
             )
           )
         )
@@ -936,18 +937,18 @@ object CloseTests extends TestSuite {
     }
 
     test(
-      "a close adds the topics named in its period with their summaries, and touches carried ones spoken in"
+      "a close adds the items named in its period with their summaries, and touches carried ones spoken in"
     ) {
       val w = new World
       val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
-      val deployTopic = TopicId("topic:c1:0")
+      val deployItem = Agenda.ItemId("topic:c1:0")
       w.add(
         t0,
-        Payload.Topic(
+        Payload.Agenda(
           Vector(
-            TopicEvent.Opened(deployTopic),
-            TopicEvent.Placed(t0.turnSeq, Weights.whole(deployTopic), Placement.First),
-            TopicEvent.Described(deployTopic, "Deploy Target", "where to deploy")
+            Agenda.Event.Opened(deployItem),
+            Agenda.Event.Placed(t0.turnSeq, Weights.whole(deployItem), Placement.First),
+            Agenda.Event.Described(deployItem, "Deploy Target", "where to deploy")
           )
         ),
         0,
@@ -956,16 +957,17 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.body(gate, answering("Summary: We chose staging."), new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      val topic = line(Section.Topics, "Deploy Target", 1, 1)
+      val item = line(Section.Agenda, "Deploy Target", 1, 1)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
-        Some(balance(line(Section.Topics, "Deploy Target", 1, 1, Some("where to deploy"))))
+        Some(balance(line(Section.Agenda, "Deploy Target", 1, 1, Some("where to deploy"))))
 
       val t1 = w.turn("staging again?", "yes", "Staging again.", Lapsed + 1)
       w.add(
         t1,
-        Payload.Topic(
+        Payload.Agenda(
           Vector(
-            TopicEvent.Placed(t1.turnSeq, Weights.whole(TopicId.carried(topic.id)), Placement.First)
+            Agenda.Event
+              .Placed(t1.turnSeq, Weights.whole(Agenda.ItemId.carried(item.id)), Placement.First)
           )
         ),
         Lapsed + 1,
@@ -976,7 +978,7 @@ object CloseTests extends TestSuite {
         w.body(gate, answering("Summary: Staging again."), new SetClock(at(3 * Lapsed)))
       ) ==> "closed: closing:c1:2"
       w.closingOf(p2).map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
-        Some(balance(line(Section.Topics, "Deploy Target", 1, 2, Some("where to deploy"))))
+        Some(balance(line(Section.Agenda, "Deploy Target", 1, 2, Some("where to deploy"))))
     }
 
     test(

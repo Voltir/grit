@@ -1,10 +1,10 @@
 package grit.turn
 
+import grit.core.agenda.Agenda
 import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Payload}
-import grit.core.topic.Topic
 
 /** A turn's short summary: what the summary model is asked, and what of its reply is kept.
   * The summary is written from the turn's own messages alone, so it reads on its own
@@ -17,8 +17,8 @@ object TurnSummary {
       "sentences: what was asked, and what was answered or decided. Keep names, numbers, " +
       "file names and identifiers exactly as written. Reply with the summary only."
 
-  /** The system prompt when the summary also names and describes the turn's topic. */
-  val TopicalSystem: String =
+  /** The system prompt when the summary also names and describes the turn's item. */
+  val AgendaSystem: String =
     "You write the memory of a conversation. Read the exchange below and reply with exactly " +
       "three lines and nothing else:\n" +
       "Summary: one or two sentences: what was asked, and what was answered or decided. Keep " +
@@ -27,13 +27,13 @@ object TurnSummary {
       "topic already has a name, repeat it.\n" +
       "About: one line saying what the topic covers so far, this exchange included."
 
-  /** What the request says of a topic with no name yet. Worded so it has nothing a model
+  /** What the request says of an item with no name yet. Worded so it has nothing a model
     * could repeat as a name: "Topic so far: new, not yet named." came back live as the
     * name "new, not yet named".
     */
-  val TopicUnnamed: String = "This exchange starts a topic that has no name yet: give it one."
+  val ItemUnnamed: String = "This exchange starts a topic that has no name yet: give it one."
 
-  /** The most words a topic's name keeps. */
+  /** The most words an item's name keeps. */
   val NameWords = 4
 
   /** How much of a tool result the summary model sees. The store keeps all of it. */
@@ -44,27 +44,27 @@ object TurnSummary {
     EntryId(s"summary:${WorkflowId.value(turn.workflowId)}")
 
   /** The request that summarises the turn whose entries are `own`, as one transcript. With
-    * `topic`, the topic its message is in, as it stands, it also asks for the topic's name
+    * `item`, the item its message is in, as it stands, it also asks for the item's name
     * and what it covers ([[read]]).
     */
-  def request(own: Vector[Entry], topic: Option[Topic] = None): ModelRequest = {
+  def request(own: Vector[Entry], item: Option[Agenda.Item] = None): ModelRequest = {
     val transcript = own.flatMap(e => line(e.payload)).mkString("\n\n")
-    topic match {
+    item match {
       case None => ModelRequest(System, Vector(Message.User(transcript)))
       case Some(t) =>
-        val so = t.name.fold(TopicUnnamed)(n =>
+        val so = t.name.fold(ItemUnnamed)(n =>
           s"Topic so far: $n${t.summary.fold("")(a => s" (about: $a)")}."
         )
-        ModelRequest(TopicalSystem, Vector(Message.User(s"$so\n\n$transcript")))
+        ModelRequest(AgendaSystem, Vector(Message.User(s"$so\n\n$transcript")))
     }
   }
 
-  /** A summary as [[read]] reads it: the turn's `summary`, and its topic's `name` and what
+  /** A summary as [[read]] reads it: the turn's `summary`, and its item's `name` and what
     * it is `about`, when the reply gave both.
     */
-  final case class Read(summary: String, topic: Option[(String, String)])
+  final case class Read(summary: String, item: Option[(String, String)])
 
-  /** The summary in `reply`, and the topic lines when it has them: `Summary:`, `Topic:` and
+  /** The summary in `reply`, and the item lines when it has them: `Summary:`, `Topic:` and
     * `About:` (any case, markdown emphasis ignored), a label's text running to the next
     * label, text before the first label standing for a missing `Summary:`. Three unlabelled
     * lines are read as those three lines in order. Otherwise, without a summary, the whole
@@ -137,7 +137,7 @@ object TurnSummary {
       val kind = if (isError) "Tool error" else "Tool result"
       Some(s"$kind (${ToolCallId.value(id)}): ${content.take(ToolResultChars)}")
     // A post is the first entry of a turn that never runs, so never a summarised turn's.
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _) | Payload.Agenda(_) |
         Payload.Attempt(_) | Payload.Ask(_, _) | Payload.Closed(_, _, _) | Payload.Draft(_) |
         Payload.Posted(_) =>
       None

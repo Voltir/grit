@@ -64,11 +64,11 @@ private[turn] object TurnFlow {
       (stitched: Flow[Env, Offered, Nothing, Either[TurnFailure, Option[String]]]).keeping
         .map((o, s) => o.copy(notes = o.notes + s.fold(f => s"; not placed: $f", _ => "")))
         .andThen(
-          Flow.step[Env, Offered, TurnTopics.Classification](classify).keeping.map(Placed(_, _))
+          Flow.step[Env, Offered, TurnAgenda.Classification](classify).keeping.map(Placed(_, _))
         )
         .andThen(
           Flow
-            .step(recordTopic)
+            .step(recordAgenda)
             .keeping
             .map((p, kept) =>
               p.copy(at =

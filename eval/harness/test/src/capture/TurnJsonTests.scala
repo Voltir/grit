@@ -152,7 +152,7 @@ object TurnJsonTests extends TestSuite {
       TurnRecord.Role.Needs,
       TurnRecord.Role.Query,
       TurnRecord.Role.Relevance(2),
-      TurnRecord.Role.Topic,
+      TurnRecord.Role.Agenda,
       TurnRecord.Role.Round(1),
       TurnRecord.Role.Reply,
       TurnRecord.Role.Judge,
@@ -272,6 +272,13 @@ object TurnJsonTests extends TestSuite {
         """"build":"unknown","triage":null,"offered":null,"weighed":"unrecorded",""" +
         """"window":null,"rounds":[],""" +
         """"ended":{"unfinished":"PENDING"},"spend":[],"speech":null}"""
+    }
+
+    test("a spend's role is pinned by its written name, the agenda's as topic") {
+      // The stored form, as above: a role renamed in Scala keeps the name captures hold.
+      ujson.read(TurnJson.write(heard).render())("spend").arr.map(_("role")).toVector ==>
+        Vector("needs", "query", "relevance:2", "topic", "round:1", "reply", "judge", "summary")
+          .map(ujson.Str(_)) ++ Vector(ujson.Str("weigh"), ujson.Str("extract"), ujson.Null)
     }
 
     test(

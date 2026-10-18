@@ -28,7 +28,7 @@ object CloseGateTests extends TestSuite {
       val known = TestClosings.balance(
         TestClosings.line(Section.Open, "backup frequency?", 1, 1),
         TestClosings.line(Section.Standing, "exiftool renames photos", 1, 1),
-        TestClosings.line(Section.Topics, "Photo Rename", 1, 1)
+        TestClosings.line(Section.Agenda, "Photo Rename", 1, 1)
       )
       // The state's keys are what the classifier reads the question against.
       StateJson[CloseGate.Transcript].json(

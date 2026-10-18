@@ -27,7 +27,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Runtime, Stores}
 import grit.job.clock.ClockEdge
 import grit.job.run.{Run as JobRun, RunEnv, RunRecords}
-import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, PluginBinding, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, Placer, PluginBinding}
 import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -118,7 +118,7 @@ private[grit] object Launch {
   }
 
   /** `d`'s workflows launched on `runtime` as [[apply]] launches them on an engine, but sweeping
-    * nothing, every model call made through `models`, and every question the topics and a job's
+    * nothing, every model call made through `models`, and every question the placer and a job's
     * judgments ask going to `classifier`, and the turn's weighing's to `weighing`, each as its
     * clearance allows: a launch whose calls a test counts, or a rehearsal's. `d`'s lifecycle
     * settings and schedules are written through `runtime.jot` first. Each shadow asks the
@@ -575,38 +575,38 @@ private[grit] object Launch {
       s"scope ${s.locality.scope.written}, weight ${Weight.value(s.locality.weight)}"
   }
 
-  /** The classifier `d` places topics with: Jev over `s`'s settings, which [[Secrets.of]]
-    * holds for [[Topics.Jev]], as the party [[JevClassifier.Service]]; the stub as
+  /** The classifier `d` places messages with: Jev over `s`'s settings, which [[Secrets.of]]
+    * holds for [[Placer.Jev]], as the party [[JevClassifier.Service]]; the stub as
     * [[StubClassifier.Service]].
     */
   private def classifier(d: Deployment, s: Secrets): ClearedClassifier^ =
-    (d.topics, s.jev) match {
-      case (Topics.Jev, Some(config)) =>
+    (d.placer, s.jev) match {
+      case (Placer.Jev, Some(config)) =>
         ClearedClassifier.of(JevClassifier.Service, new JevClassifier(config))
-      case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
-      case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-      case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+      case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+      case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+      case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
     }
 
   /** [[classifier]] for a mention's weighing: Jev's requests time out at
     * [[Mentions.AskWithin]], so a call the weighing gave up on ends there too.
     */
   private def weighing(d: Deployment, s: Secrets): ClearedClassifier^ =
-    (d.topics, s.jev) match {
-      case (Topics.Jev, Some(config)) =>
+    (d.placer, s.jev) match {
+      case (Placer.Jev, Some(config)) =>
         ClearedClassifier.of(
           JevClassifier.Service,
           new JevClassifier(
             config.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis))
           )
         )
-      case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
-      case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-      case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+      case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+      case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+      case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
     }
 
   /** Each of `d`'s shadows by name, asking its question of the model [[shadowModel]] names,
-    * through the classifier `d` places topics with ([[classifier]]) made for that model.
+    * through the classifier `d` places messages with ([[classifier]]) made for that model.
     */
   private def variants(d: Deployment, s: Secrets): Map[ShadowName, ShadowAsking^] = {
     // Recursive rather than a `map`: each classifier is a capability made per variant, which
@@ -614,32 +614,32 @@ private[grit] object Launch {
     def asked(shadows: List[ShadowVariant]): Map[ShadowName, ShadowAsking^] = shadows match {
       case Nil => Map.empty
       case v :: rest =>
-        val model = shadowModel(d.topics, v)
+        val model = shadowModel(d.placer, v)
         asked(rest).updated(v.name, ShadowAsking(v.questions, model, classifying(model)))
     }
     def classifying(model: String): ClearedClassifier^ =
-      (d.topics, s.jev) match {
-        case (Topics.Jev, Some(config)) =>
+      (d.placer, s.jev) match {
+        case (Placer.Jev, Some(config)) =>
           ClearedClassifier.of(
             JevClassifier.Service,
             new JevClassifier(config.copy(model = model))
           )
-        case (Topics.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-        case (Topics.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
-        // Deployment.of refuses shadows with topics off.
-        case (Topics.Off(reason), _) => ClearedClassifier.none(reason)
+        case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
+        case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
+        // Deployment.of refuses shadows with the placer off.
+        case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
       }
     asked(d.shadows.toList)
   }
 
-  /** The model the shadow `v` asks of, under a deployment whose topics are `topics`: the one it
+  /** The model the shadow `v` asks of, under a deployment whose placer is `placer`: the one it
     * names, else Jev's [[JevConfig.DefaultModel]] or the stub's [[StubClassifier.Model]];
-    * `"none"` with topics off, which [[Deployment.of]] refuses beside a shadow.
+    * `"none"` with the placer off, which [[Deployment.of]] refuses beside a shadow.
     */
-  private[grit] def shadowModel(topics: Topics, v: ShadowVariant): String = topics match {
-    case Topics.Jev => v.model.getOrElse(JevConfig.DefaultModel)
-    case Topics.Stub => v.model.getOrElse(StubClassifier.Model)
-    case Topics.Off(_) => "none"
+  private[grit] def shadowModel(placer: Placer, v: ShadowVariant): String = placer match {
+    case Placer.Jev => v.model.getOrElse(JevConfig.DefaultModel)
+    case Placer.Stub => v.model.getOrElse(StubClassifier.Model)
+    case Placer.Off(_) => "none"
   }
 
   /** `models`, each call printed with the model it goes to. */

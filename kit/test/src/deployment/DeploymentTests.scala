@@ -103,22 +103,22 @@ object DeploymentTests extends TestSuite {
         Left(DeploymentRefusal.EdgeRepeated(EdgeName("slack")))
     }
 
-    test("speaking unprompted with topics off is refused: no classifier could judge a draft") {
+    test("speaking unprompted with the placer off is refused: no classifier could judge a draft") {
       val limits = grit.core.speech.Limits.suggested(
         grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
         grit.lifecycle.triage.TriageQuestions.ShippedSpeak
       )
-      val off = Topics.Off("no key")
+      val off = Placer.Off("no key")
       (
         Deployments
-          .of(topics = off, speaking = grit.core.speech.Speaking.Within(limits))
+          .of(placer = off, speaking = grit.core.speech.Speaking.Within(limits))
           .map(_ => ()),
         Deployments
-          .of(topics = off, speaking = grit.core.speech.Speaking.Shadow(limits))
+          .of(placer = off, speaking = grit.core.speech.Speaking.Shadow(limits))
           .map(_ => ()),
-        Deployments.of(topics = off).map(_ => ()),
+        Deployments.of(placer = off).map(_ => ()),
         Deployments
-          .of(topics = Topics.Stub, speaking = grit.core.speech.Speaking.Within(limits))
+          .of(placer = Placer.Stub, speaking = grit.core.speech.Speaking.Within(limits))
           .map(_ => ())
       ) ==> (
         Left(DeploymentRefusal.SpeaksUnjudged("no key")),
@@ -129,7 +129,7 @@ object DeploymentTests extends TestSuite {
     }
 
     test(
-      "two shadows of one name are refused, and shadows with topics off: no classifier could be asked"
+      "two shadows of one name are refused, and shadows with the placer off: no classifier could be asked"
     ) {
       def variant(name: String) = grit.lifecycle.shadow.ShadowVariant(
         grit.core.id.ShadowName.of(name).getOrElse(sys.error("a name")),
@@ -138,14 +138,14 @@ object DeploymentTests extends TestSuite {
         grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
         java.time.Instant.EPOCH
       )
-      def shadowed(topics: Topics, shadows: String*) =
-        Deployments.of(topics = topics, shadows = shadows.toVector.map(variant)).map(_ => ())
+      def shadowed(placer: Placer, shadows: String*) =
+        Deployments.of(placer = placer, shadows = shadows.toVector.map(variant)).map(_ => ())
       (
-        shadowed(Topics.Jev, "words", "replica", "words"),
-        shadowed(Topics.Off("no key"), "words"),
-        shadowed(Topics.Off("no key")),
-        shadowed(Topics.Jev, "words", "replica"),
-        shadowed(Topics.Stub, "words")
+        shadowed(Placer.Jev, "words", "replica", "words"),
+        shadowed(Placer.Off("no key"), "words"),
+        shadowed(Placer.Off("no key")),
+        shadowed(Placer.Jev, "words", "replica"),
+        shadowed(Placer.Stub, "words")
       ) ==> (
         Left(
           DeploymentRefusal.ShadowRepeated(
@@ -353,16 +353,18 @@ object DeploymentTests extends TestSuite {
       )
     }
 
-    test("a recipe offering by source with topics off is refused: nothing could weigh a message") {
+    test(
+      "a recipe offering by source with the placer off is refused: nothing could weigh a message"
+    ) {
       val addressed = grit.core.recipe.TurnRecipe.Shipped.copy(addressed = bySource.heard.focused)
-      def declared(recipe: grit.core.recipe.TurnRecipe, topics: Topics) = Deployments
-        .of(worksIn = inGithub, knowledge = repoInGithub, recipe = recipe, topics = topics)
+      def declared(recipe: grit.core.recipe.TurnRecipe, placer: Placer) = Deployments
+        .of(worksIn = inGithub, knowledge = repoInGithub, recipe = recipe, placer = placer)
         .map(_ => ())
       (
-        declared(addressed, Topics.Off("no key")),
-        declared(bySource, Topics.Off("no key")),
-        declared(addressed, Topics.Stub),
-        declared(grit.core.recipe.TurnRecipe.Shipped, Topics.Off("no key"))
+        declared(addressed, Placer.Off("no key")),
+        declared(bySource, Placer.Off("no key")),
+        declared(addressed, Placer.Stub),
+        declared(grit.core.recipe.TurnRecipe.Shipped, Placer.Off("no key"))
       ) ==> (
         Left(DeploymentRefusal.RecipeUnweighed("no key")),
         Left(DeploymentRefusal.RecipeUnweighed("no key")),
@@ -921,7 +923,7 @@ object DeploymentTests extends TestSuite {
           offer =
             Offer(Offered.Read, grit.turn.TurnLoop.Rounds.of(4).getOrElse(sys.error("rounds"))),
           assembly = Assembly.Linear(grit.core.message.Tokens(1000)),
-          topics = Topics.Stub,
+          placer = Placer.Stub,
           lifecycle = grit.core.period.LifecycleSettings.Default,
           budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
           speaking = grit.core.speech.Speaking.Off,

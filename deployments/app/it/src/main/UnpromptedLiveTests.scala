@@ -15,7 +15,7 @@ import grit.core.store.{Origin, StoreError}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, TestPostgres}
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.turn.{Turn, TurnLoop}
@@ -62,7 +62,7 @@ object UnpromptedLiveTests extends TestSuite {
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(4000)),
-        topics = Topics.Stub,
+        placer = Placer.Stub,
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = speaking,

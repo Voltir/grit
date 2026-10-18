@@ -13,7 +13,7 @@ object TestClosings {
     )
 
   /** A line of `section` reading `text`, added at `since` and touched at `touched`, with
-    * `summary` if it is a topic's, and on `ground` (Claimed unless given) if it is a
+    * `summary` if it is an agenda line, and on `ground` (Claimed unless given) if it is a
     * Standing line.
     */
   def line(

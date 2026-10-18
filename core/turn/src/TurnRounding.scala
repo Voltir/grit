@@ -246,7 +246,7 @@ private[turn] object Rounding {
   private def tools[C^](
       tooling: TurnTooling[C]^,
       offer: TurnOffer,
-      asked: Option[TurnTopics.Classification]
+      asked: Option[TurnAgenda.Classification]
   ): Either[TurnFailure, Toolbox[C]] =
     TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked)
 

@@ -45,7 +45,7 @@ object TurnTally {
   /** `turn`, whose body returned `said`, as its stores hold it: its conversation's place;
     * `rounds`, the assistant messages it recorded (each round's reply that called tools, then
     * its reply or draft, counted once when a posted draft is also its reply); the tools those
-    * called; and the cost of every row `ledger` holds for its workflow (query, rounds, topic
+    * called; and the cost of every row `ledger` holds for its workflow (query, rounds, agenda
     * verdict, judge, summary). `Left` when a store fails, or [[StoreError.Invalid]] when its
     * conversation is gone.
     */

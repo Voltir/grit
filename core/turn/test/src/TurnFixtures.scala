@@ -437,7 +437,7 @@ object TurnFixtures {
     )
 
   /** A call to the `topic` tool, saying the message is `about` that. */
-  def topicCall(about: String): AssistantBlock.ToolCall =
+  def verdictCall(about: String): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(
       ToolCallId("t1"),
       grit.core.tool.ToolName.value(TurnVerdict.Name),
@@ -1100,7 +1100,7 @@ object TurnFixtures {
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
-        case Payload.Window(_, _, _, _) | Payload.Topic(_) => None
+        case Payload.Window(_, _, _, _) | Payload.Agenda(_) => None
       }
     }
 
@@ -1624,10 +1624,10 @@ object TurnFixtures {
     }
   }
 
-  /** The conversation's topics as its entries leave them. */
-  def topics(entries: EntryStore): grit.core.topic.Topics =
-    grit.core.topic.Topics
-      .fold(Vector.empty, all(entries).flatMap(e => grit.core.store.EntryTopics.events(e.payload)))
+  /** The conversation's agenda as its entries leave it. */
+  def agenda(entries: EntryStore): grit.core.agenda.Agenda =
+    grit.core.agenda.Agenda
+      .fold(Vector.empty, all(entries).flatMap(e => grit.core.store.EntryAgenda.events(e.payload)))
 
   /** No classifier: every message after a conversation's first is unclassified. */
   def NoClassifier: Classifier^ = Classifier.none("no classifier")

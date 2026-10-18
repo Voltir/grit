@@ -227,9 +227,9 @@ object TurnRecord {
     else if (id.startsWith(s"${Extract.Prefix}${WorkflowId.value(turn.workflowId)}:"))
       Some(Role.Extract)
     else if (
-      Vector(TurnTopics.placedId(turn), TurnTopics.describedId(turn), TurnVerdict.verdictId(turn))
+      Vector(TurnAgenda.placedId(turn), TurnAgenda.describedId(turn), TurnVerdict.verdictId(turn))
         .contains(entry)
-    ) Some(Role.Topic)
+    ) Some(Role.Agenda)
     else if ((0 +: last.toVector).exists(i => Turn.queryId(turn, i) == entry)) Some(Role.Query)
     else if (id == s"${moves}needs") Some(Role.Needs)
     else if (id == s"${moves}query") Some(Role.Query)
@@ -250,10 +250,10 @@ object TurnRecord {
     /** A classifier call judging batch `batch` (from 0) of what the turn's search found. */
     case Relevance(batch: Int)
 
-    /** Placing the turn's message among its conversation's topics, describing a topic, or
-      * the reply's verdict on one.
+    /** Placing the turn's message on its conversation's agenda, describing an item, or the
+      * reply's verdict on one.
       */
-    case Topic
+    case Agenda
 
     /** The reply to round `index` (from 0) of the tool loop, which called tools. */
     case Round(index: Int)

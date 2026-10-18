@@ -24,7 +24,7 @@ object StubClassifier {
     grit.core.place.Service.of("stub").fold(e => throw new IllegalStateException(e), identity)
 
   /** Answers from markers in the state's `new_message` string (the field `grit.turn`'s
-    * topic states send):
+    * agenda states send):
     *
     *   - A yes/no question: the probability after `~` (`~0.1`, `~0.5`), or 0.9 without one.
     *   - A choice: the key that follows `~back:` (to the next `~back:` or the end of the

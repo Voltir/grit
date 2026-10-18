@@ -1,10 +1,10 @@
 package grit.app.chat
 
+import grit.core.agenda.{Agenda, Placement}
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.spend.{DailyCap, Spend}
 import grit.core.store.{Entry, Payload, UsageLedger}
-import grit.core.topic.{Placement, TopicEvent}
 
 /** The conversation so far, as the panel's session tab shows it: how long it is, what it
   * cost, what search recalled, and which models answered in each role. Pure data, built by
@@ -53,7 +53,7 @@ object SessionView {
   )
 
   /** The roles, by what each writes: the query assembly searched with, the reply, the
-    * turn's summary, the classifier's placement of its message among the topics, and the
+    * turn's summary, the classifier's placement of its message among the items, and the
     * main model's verdict on it.
     */
   val Query = "query"
@@ -78,9 +78,9 @@ object SessionView {
         case Payload.Query(_) => Some(Query)
         case Payload.Message(Message.Assistant(_, _, _, _, _)) => Some(Turn)
         case Payload.Summary(_) => Some(Summary)
-        case Payload.Topic(events) =>
+        case Payload.Agenda(events) =>
           val asked = events.exists {
-            case TopicEvent.Placed(_, _, Placement.Asked(_, _)) => true
+            case Agenda.Event.Placed(_, _, Placement.Asked(_, _)) => true
             case _ => false
           }
           Some(if (asked) Verdict else Classify)

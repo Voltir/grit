@@ -267,7 +267,7 @@ object Look {
       case Step.Assemble => "ᛟ assembling"
       case Step.Ask => "ᚨ answering"
       case Step.Gate => "ᛉ weighing what it read"
-      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.Record | Step.Append |
+      case Step.RecordAgenda | Step.RecordWindow | Step.RecordVerdict | Step.Record | Step.Append |
           Step.AppendSummary | Step.NeedsRecord | Step.QueryRecord | Step.RelevanceRecord =>
         "ᛃ recording"
       case Step.Call => s"$Tool using a tool"

@@ -110,14 +110,14 @@ private[turn] object TurnRound {
       offer: TurnOffer.Recorded,
       routed: Turn.Routed,
       seen: Window,
-      asked: Option[TurnTopics.Classification],
+      asked: Option[TurnAgenda.Classification],
       budget: TurnLoop.Rounds,
       answerWithin: FiniteDuration
   )
 
   /** Where a turn's loop, run under `looping`, stands at round `round`: for a gated turn, the
     * gate of each round so far, by its index; and every reply so far, as the model sent it,
-    * the first first: the verdict on the message's topic is read from the first and checked
+    * the first first: the verdict on the message's item is read from the first and checked
     * against them all.
     */
   final case class Progress(

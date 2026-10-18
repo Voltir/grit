@@ -30,7 +30,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.ClockEdge
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.run.Launch
 import grit.remind.Reminders
 import grit.slack.client.{FakeSlack, Self}
@@ -90,7 +90,7 @@ object RunRetentionLiveTests extends TestSuite {
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(3).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(8000)),
-        topics = Topics.Stub,
+        placer = Placer.Stub,
         lifecycle = Small,
         budget = Budget(ZoneOffset.UTC, None),
         speaking = Speaking.Off,

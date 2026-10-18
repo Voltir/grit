@@ -3,7 +3,7 @@ package grit.kit.run
 import grit.core.edge.{EdgeRefusal, Variable}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Domain, Identities, Realm, Vouching}
-import grit.kit.deployment.{Deployments, Topics}
+import grit.kit.deployment.{Deployments, Placer}
 import grit.kit.environment.SecretsRefusal
 import grit.models.OpenRouterConfig
 
@@ -14,10 +14,10 @@ import utest.*
   */
 object KitTests extends TestSuite {
 
-  private def deployment(topics: Topics) =
+  private def deployment(placer: Placer) =
     Deployments.accepted(
       edges = Vector(Deployments.edge("slack", asks = false, needs = Vector("SLACK_BOT_TOKEN"))),
-      topics = topics
+      placer = placer
     )
 
   // Never reached when refused before the engine opens: nothing listens on port 1.
@@ -27,7 +27,7 @@ object KitTests extends TestSuite {
     test(
       "an edge's variable unset refuses the start before the engine opens, naming the edge and the variable"
     ) {
-      Kit.serve(deployment(Topics.Stub), nowhere) ==>
+      Kit.serve(deployment(Placer.Stub), nowhere) ==>
         Left(KitFailure.Edge(EdgeName("slack"), EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN"))))
     }
 
@@ -50,8 +50,8 @@ object KitTests extends TestSuite {
       )
     }
 
-    test("Jev's topics without JEV_API_KEY refuse the start before the engine opens") {
-      Kit.serve(deployment(Topics.Jev), nowhere + ("SLACK_BOT_TOKEN" -> "xoxb-1")) ==>
+    test("Jev as placer without JEV_API_KEY refuse the start before the engine opens") {
+      Kit.serve(deployment(Placer.Jev), nowhere + ("SLACK_BOT_TOKEN" -> "xoxb-1")) ==>
         Left(
           KitFailure.Unconfigured(
             SecretsRefusal.Key(OpenRouterConfig.Invalid.Missing("JEV_API_KEY"))

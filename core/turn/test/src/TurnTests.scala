@@ -51,7 +51,7 @@ object TurnTests extends TestSuite {
 
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
-  /** What an addressed turn that answers at its first model call, its topic sure, records. */
+  /** What an addressed turn that answers at its first model call, its item sure, records. */
   private val Recorded: Vector[String] =
     Vector(
       "pin-models",
@@ -90,7 +90,7 @@ object TurnTests extends TestSuite {
         case _ => Vector.empty
       })
 
-  /** The steps `turn` recorded from its topic's record to its window's, both left out. */
+  /** The steps `turn` recorded from its item's record to its window's, both left out. */
   private def assemblySteps(durable: InMemoryDurable, turn: grit.core.id.TurnRef): Vector[String] =
     durable
       .recordedSteps(turn.workflowId)
@@ -421,7 +421,7 @@ object TurnTests extends TestSuite {
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       summarizer.requests.lastOption ==> Some(
         ModelRequest(
-          TurnSummary.TopicalSystem,
+          TurnSummary.AgendaSystem,
           Vector(
             Message.User(
               "This exchange starts a topic that has no name yet: give it one.\n\nUser: two\n\nAssistant: stub reply to: two"
@@ -910,7 +910,7 @@ object TurnTests extends TestSuite {
             .mkString("\n\n")
         )
       summary.requests.size ==> 1
-      summary.requests.map(_.system) ==> Vector(TurnSummary.TopicalSystem)
+      summary.requests.map(_.system) ==> Vector(TurnSummary.AgendaSystem)
     }
 
     test(

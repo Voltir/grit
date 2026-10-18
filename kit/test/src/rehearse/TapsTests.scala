@@ -12,7 +12,7 @@ import grit.core.route.Routed
 import grit.core.store.{Db, InMemoryModelSettingStore, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
-import grit.kit.deployment.Topics
+import grit.kit.deployment.Placer
 import grit.models.{Seed, StubModels}
 
 import utest.*
@@ -129,11 +129,11 @@ object TapsTests extends TestSuite {
     }
 
     test(
-      "a classifier's call goes to the service the deployment's topics name, answered by the stand-in for its step and kept"
+      "a classifier's call goes to the service the deployment's placer names, answered by the stand-in for its step and kept"
     ) {
       val tape = new Tape
       val answers = StandIns.supplied(Map("ask:triage" -> "0.9"))
-      val jev = Taps.classifier(Topics.Jev, answers, tape)
+      val jev = Taps.classifier(Placer.Jev, answers, tape)
       val routed = Routed.of(using TestTx.fake)
       val asked = Ask.yesNo[String]("Is it about lunch?", None, None)
       val d = new Rehearsal(WorkflowId("c:0"), new RehearsalTests.Writes, tape)
@@ -144,7 +144,7 @@ object TapsTests extends TestSuite {
       tape.entries.collect { case Entry.Called(c) => c } ==> Vector(
         Call.Classifier(
           Some("ask:triage"),
-          Topics.JevService,
+          Placer.JevService,
           ujson.Str("lunch?"),
           asked.questions,
           answers.judge("ask:triage", ujson.Str("lunch?"), asked.questions)
@@ -152,9 +152,9 @@ object TapsTests extends TestSuite {
       )
     }
 
-    test("topics off ask nothing: every call Unavailable, nothing kept") {
+    test("the placer off asks nothing: every call Unavailable, nothing kept") {
       val tape = new Tape
-      val off = Taps.classifier(Topics.Off("no topics here"), StandIns.Stubbed, tape)
+      val off = Taps.classifier(Placer.Off("no topics here"), StandIns.Stubbed, tape)
       val asked = Ask.yesNo[String]("Is it about lunch?", None, None)
       off.asking(Routed.of(using TestTx.fake)).ask("lunch?", asked) ==>
         Left(ClassifierError.Unavailable("no topics here"))

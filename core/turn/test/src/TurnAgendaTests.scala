@@ -1,18 +1,18 @@
 package grit.turn
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
-import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
 import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.models.StubClassifier
 
 import utest.*
 
-object TurnTopicsTests extends TestSuite {
+object TurnAgendaTests extends TestSuite {
   import TurnFixtures.*
 
   /** Each of `said` answered in turn, in one conversation, placed by `classifier`. */
@@ -31,24 +31,24 @@ object TurnTopicsTests extends TestSuite {
     (entries, turns)
   }
 
-  private def last(t: Topics, turn: TurnRef): Option[TopicEvent.Placed] =
+  private def last(t: Agenda, turn: TurnRef): Option[Agenda.Event.Placed] =
     t.placements.get(turn.turnSeq).flatMap(_.lastOption)
 
   private def close(x: Double, y: Double): Boolean = math.abs(x - y) < 1e-9
 
-  /** The keys of topics named `names`, in order (turnless topics fold newest first). */
+  /** The keys of items named `names`, in order (turnless items fold newest first). */
   private def named(names: String*): Vector[String] = {
     val events = names.toVector.zipWithIndex.reverse.flatMap { (name, i) =>
-      val id = TopicId(s"t$i")
-      Vector(TopicEvent.Opened(id), TopicEvent.Described(id, name, "about"))
+      val id = Agenda.ItemId(s"t$i")
+      Vector(Agenda.Event.Opened(id), Agenda.Event.Described(id, name, "about"))
     }
-    TurnTopics.keys(Topics.fold(Vector.empty, events).topics).map(_._2.key)
+    TurnAgenda.keys(Agenda.fold(Vector.empty, events).items).map(_._2.key)
   }
 
   val tests = Tests {
-    test("after the purge, the first message of a period is weighed against the carried topic") {
+    test("after the purge, the first message of a period is weighed against the carried item") {
       import grit.core.period.{CloseReason, Closing, Flows, Section, TestClosings}
-      val photo = TestClosings.line(Section.Topics, "Photo Rename Script", 1, 1)
+      val photo = TestClosings.line(Section.Agenda, "Photo Rename Script", 1, 1)
       val at = java.time.Instant.parse("2026-09-20T10:00:00Z")
       // Period 1 (turns 0 and 1) is purged: only its closing entry is left.
       val all = Vector(
@@ -80,17 +80,17 @@ object TurnTopicsTests extends TestSuite {
           Integrity.Member
         )
       )
-      val placed = TurnTopics.place(
+      val placed = TurnAgenda.place(
         new CountingClassifier,
         CharEstimate,
         TurnRef(conversation, TurnSeq(2)),
         all
       )
-      placed.current.map(_.id) ==> Some(TopicId.carried(photo.id))
+      placed.current.map(_.id) ==> Some(Agenda.ItemId.carried(photo.id))
       placed.events ==> Vector(
-        TopicEvent.Placed(
+        Agenda.Event.Placed(
           TurnSeq(2),
-          Weights.same(TopicId.carried(photo.id), 0.9),
+          Weights.same(Agenda.ItemId.carried(photo.id), 0.9),
           Placement.Classified(0.9, Placement.Outcome.Same)
         )
       )
@@ -120,13 +120,13 @@ object TurnTopicsTests extends TestSuite {
           Integrity.Member
         )
       )
-      val opened = TopicEvent.Opened(TopicId.openedBy(TurnRef(conversation, TurnSeq(0))))
-      val first = TopicEvent.Placed(
+      val opened = Agenda.Event.Opened(Agenda.ItemId.openedBy(TurnRef(conversation, TurnSeq(0))))
+      val first = Agenda.Event.Placed(
         TurnSeq(0),
-        Weights.whole(TopicId.openedBy(TurnRef(conversation, TurnSeq(0)))),
+        Weights.whole(Agenda.ItemId.openedBy(TurnRef(conversation, TurnSeq(0)))),
         Placement.First
       )
-      val withTopic = all.patch(
+      val withItem = all.patch(
         1,
         Vector(
           Entry(
@@ -135,38 +135,38 @@ object TurnTopicsTests extends TestSuite {
             TurnSeq(0),
             None,
             EntrySeq(0),
-            Payload.Topic(Vector(opened, first)),
+            Payload.Agenda(Vector(opened, first)),
             at,
             Integrity.Member
           )
         ),
         0
       )
-      TurnTopics
-        .place(new CountingClassifier, CharEstimate, TurnRef(conversation, TurnSeq(1)), withTopic)
+      TurnAgenda
+        .place(new CountingClassifier, CharEstimate, TurnRef(conversation, TurnSeq(1)), withItem)
         .events
-        .collect { case p: TopicEvent.Placed => p.by } ==>
+        .collect { case p: Agenda.Event.Placed => p.by } ==>
         Vector(Placement.Classified(0.85, Placement.Outcome.Same))
     }
 
-    test("the first message opens a topic, and nothing is asked") {
+    test("the first message opens an item, and nothing is asked") {
       val classifier = new CountingClassifier
       val (entries, turns) = converse(Vector("hello"), classifier)
       classifier.calls ==> 0
-      val t = topics(entries)
-      t.topics.map(_.id) ==> Vector(TopicId.openedBy(turns(0)))
+      val t = agenda(entries)
+      t.items.map(_.id) ==> Vector(Agenda.ItemId.openedBy(turns(0)))
       last(t, turns(0)).map(p => (p.weights, p.by)) ==>
-        Some((Weights.whole(TopicId.openedBy(turns(0))), Placement.First))
+        Some((Weights.whole(Agenda.ItemId.openedBy(turns(0))), Placement.First))
       // Recorded as its own entry; that no request carries it is TurnTests' (only messages).
-      entries.get(TurnTopics.placedId(turns(0)))(using TestTx.fake).map(_.map(_.payload)) ==>
+      entries.get(TurnAgenda.placedId(turns(0)))(using TestTx.fake).map(_.map(_.payload)) ==>
         Right(
           Some(
-            Payload.Topic(
+            Payload.Agenda(
               Vector(
-                TopicEvent.Opened(TopicId.openedBy(turns(0))),
-                TopicEvent.Placed(
+                Agenda.Event.Opened(Agenda.ItemId.openedBy(turns(0))),
+                Agenda.Event.Placed(
                   turns(0).turnSeq,
-                  Weights.whole(TopicId.openedBy(turns(0))),
+                  Weights.whole(Agenda.ItemId.openedBy(turns(0))),
                   Placement.First
                 )
               )
@@ -181,38 +181,38 @@ object TurnTopicsTests extends TestSuite {
       val (entries, turns) =
         converse(Vector("hello", "and more ~0.85"), classifier, ledger = ledger)
       classifier.calls ==> 1
-      val t = topics(entries)
-      t.topics.size ==> 1
+      val t = agenda(entries)
+      t.items.size ==> 1
       val placed = last(t, turns(1))
       placed.map(_.by) ==> Some(Placement.Classified(0.85, Placement.Outcome.Same))
-      placed.map(_.weights.byTopic) ==>
-        Some(Vector(Weights.Share(TopicId.openedBy(turns(0)), 0.85)))
+      placed.map(_.weights.byItem) ==>
+        Some(Vector(Weights.Share(Agenda.ItemId.openedBy(turns(0)), 0.85)))
       assert(placed.exists(p => close(p.weights.elsewhere, 0.15)))
-      ledger.rows.collect { case r if r._1 == TurnTopics.placedId(turns(1)) => r._3 } ==>
+      ledger.rows.collect { case r if r._1 == TurnAgenda.placedId(turns(1)) => r._3 } ==>
         Vector(StubClassifier.Model)
       // Served by the classifier's service, as its clearance names it.
       ledger
         .of(turns(1).workflowId)(using TestTx.fake)
-        .map(_.collect { case r if r.entry == TurnTopics.placedId(turns(1)) => r.upstream }) ==>
+        .map(_.collect { case r if r.entry == TurnAgenda.placedId(turns(1)) => r.upstream }) ==>
         Right(Vector(Some("service:test")))
     }
 
     test("unsure: it stays for now, in the uncertain band") {
       val (entries, turns) = converse(Vector("hello", "hm ~0.5"))
-      val t = topics(entries)
-      t.placed(turns(1).turnSeq) ==> Some(TopicId.openedBy(turns(0)))
+      val t = agenda(entries)
+      t.placed(turns(1).turnSeq) ==> Some(Agenda.ItemId.openedBy(turns(0)))
       // The classifier's placement; the model's verdict follows it (TurnVerdictTests).
       t.placements.get(turns(1).turnSeq).flatMap(_.headOption).map(_.by) ==>
         Some(Placement.Classified(0.5, Placement.Outcome.Uncertain))
     }
 
-    test("changed, with nowhere earlier to go: a new topic, and no second question") {
+    test("changed, with nowhere earlier to go: a new item, and no second question") {
       val classifier = new CountingClassifier
       val (entries, turns) = converse(Vector("hello", "knots? ~0.1"), classifier)
       classifier.calls ==> 1
-      val t = topics(entries)
-      t.current.map(_.id) ==> Some(TopicId.openedBy(turns(1)))
-      t.earlier.map(_.id) ==> Vector(TopicId.openedBy(turns(0)))
+      val t = agenda(entries)
+      t.current.map(_.id) ==> Some(Agenda.ItemId.openedBy(turns(1)))
+      t.earlier.map(_.id) ==> Vector(Agenda.ItemId.openedBy(turns(0)))
       last(t, turns(1)).map(_.by) ==>
         Some(
           Placement.Classified(
@@ -222,7 +222,7 @@ object TurnTopicsTests extends TestSuite {
         )
     }
 
-    test("changed, back to an earlier topic: the choice scaled by 1 - p(same)") {
+    test("changed, back to an earlier item: the choice scaled by 1 - p(same)") {
       val classifier = new CountingClassifier
       val (entries, turns) =
         converse(Vector("hello", "knots? ~0.1", "back ~0.1 ~back:new topic (2)"), classifier)
@@ -241,32 +241,32 @@ object TurnTopicsTests extends TestSuite {
         Some(Vector(Vector("from", "text"), Vector("from", "text")))
       classifier.states.lastOption.map(_("new_message").str) ==>
         Some("back ~0.1 ~back:new topic (2)")
-      val t = topics(entries)
-      val (first, second) = (TopicId.openedBy(turns(0)), TopicId.openedBy(turns(1)))
+      val t = agenda(entries)
+      val (first, second) = (Agenda.ItemId.openedBy(turns(0)), Agenda.ItemId.openedBy(turns(1)))
       t.placed(turns(2).turnSeq) ==> Some(first)
       t.current.map(_.id) ==> Some(first)
       val placed = last(t, turns(2)).getOrElse(sys.error("placed"))
-      placed.weights.byTopic.map(_.topic) ==> Vector(second, first)
+      placed.weights.byItem.map(_.item) ==> Vector(second, first)
       assert(
-        placed.weights.byTopic.map(_.weight).zip(Vector(0.1, 0.81)).forall((x, y) => close(x, y)),
+        placed.weights.byItem.map(_.weight).zip(Vector(0.1, 0.81)).forall((x, y) => close(x, y)),
         close(placed.weights.elsewhere, 0.09)
       )
-      // No new topic was opened: only the two.
-      t.topics.size ==> 2
+      // No new item was opened: only the two.
+      t.items.size ==> 2
     }
 
-    test("changed, to something new: a new topic among earlier ones") {
+    test("changed, to something new: a new item among earlier ones") {
       val (entries, turns) = converse(Vector("hello", "knots? ~0.1", "sailing? ~0.1"))
-      val t = topics(entries)
-      t.topics.map(_.id) ==> turns.reverse.map(TopicId.openedBy)
-      t.placed(turns(2).turnSeq) ==> Some(TopicId.openedBy(turns(2)))
+      val t = agenda(entries)
+      t.items.map(_.id) ==> turns.reverse.map(Agenda.ItemId.openedBy)
+      t.placed(turns(2).turnSeq) ==> Some(Agenda.ItemId.openedBy(turns(2)))
     }
 
-    test("the classifier down: unclassified, in the current topic, and the turn replies") {
+    test("the classifier down: unclassified, in the current item, and the turn replies") {
       val (entries, turns) =
         converse(Vector("hello", "more"), new CountingClassifier(fail = true))
-      val t = topics(entries)
-      t.placed(turns(1).turnSeq) ==> Some(TopicId.openedBy(turns(0)))
+      val t = agenda(entries)
+      t.placed(turns(1).turnSeq) ==> Some(Agenda.ItemId.openedBy(turns(0)))
       last(t, turns(1)).map(_.by) ==>
         Some(Placement.Unclassified("unavailable: HTTP 529: overloaded"))
       texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
@@ -292,7 +292,7 @@ object TurnTopicsTests extends TestSuite {
         )
         turn
       }
-      (last(topics(entries), turns(1)).map(_.by), classifier.calls) ==> (
+      (last(agenda(entries), turns(1)).map(_.by), classifier.calls) ==> (
         Some(
           Placement.Unclassified("unavailable: " + grit.core.classify.TestClassifiers.Uncleared)
         ),
@@ -306,7 +306,7 @@ object TurnTopicsTests extends TestSuite {
       val classifier = new CountingClassifier
       converse(Vector("hello"), classifier, store)
       val turn = say(store, "more")
-      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Topic])
+      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Agenda])
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       )
@@ -321,21 +321,21 @@ object TurnTopicsTests extends TestSuite {
       )
       runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       classifier.calls ==> 1
-      topics(store).placements.get(turn.turnSeq).map(_.size) ==> Some(1)
+      agenda(store).placements.get(turn.turnSeq).map(_.size) ==> Some(1)
     }
 
-    test("a conversation from before topics: its next message opens the first topic") {
-      // An earlier turn with no topic events, as one that ran before the patch left it.
+    test("a conversation from before agendas: its next message opens the first item") {
+      // An earlier turn with no agenda events, as one that ran before the patch left it.
       val entries = new InMemoryEntryStore
       val _ = say(entries, "from before")
       val classifier = new CountingClassifier
       val (_, turns) = converse(Vector("after"), classifier, entries)
       classifier.calls ==> 0
-      last(topics(entries), turns(0)).map(_.by) ==> Some(Placement.First)
+      last(agenda(entries), turns(0)).map(_.by) ==> Some(Placement.First)
       TurnSeq.value(turns(0).turnSeq) ==> 1L
     }
 
-    test("the summary names a new topic and says what it covers; the name then stays") {
+    test("the summary names a new item and says what it covers; the name then stays") {
       val summaries = Vector(
         "Summary: Asked about knots.\nTopic: **Knots and hitches under load**\nAbout: which knot holds.",
         "Summary: Asked about bowlines.\nTopic: Bowlines\nAbout: knots, the bowline most."
@@ -358,8 +358,8 @@ object TurnTopicsTests extends TestSuite {
         "summary: Asked about bowlines.",
         "summary: no labels here"
       )
-      val topic = topics(entries).current.getOrElse(sys.error("no topic"))
-      (topic.name, topic.summary) ==> (
+      val item = agenda(entries).current.getOrElse(sys.error("no topic"))
+      (item.name, item.summary) ==> (
         Some("Knots and hitches under"),
         Some("knots, the bowline most.")
       )
@@ -374,31 +374,31 @@ object TurnTopicsTests extends TestSuite {
     }
 
     test("keys are distinct: a repeated name is numbered") {
-      val (a, b, c) = (TopicId("a"), TopicId("b"), TopicId("c"))
-      val ts = Topics
+      val (a, b, c) = (Agenda.ItemId("a"), Agenda.ItemId("b"), Agenda.ItemId("c"))
+      val ts = Agenda
         .fold(
           Vector.empty,
           Vector(
-            TopicEvent.Opened(a),
-            TopicEvent.Opened(b),
-            TopicEvent.Described(b, "X", "x"),
-            TopicEvent.Opened(c)
+            Agenda.Event.Opened(a),
+            Agenda.Event.Opened(b),
+            Agenda.Event.Described(b, "X", "x"),
+            Agenda.Event.Opened(c)
           )
         )
-        .topics
-      TurnTopics.keys(ts).map(_._2.key) ==> Vector("new topic", "X", "new topic (2)")
+        .items
+      TurnAgenda.keys(ts).map(_._2.key) ==> Vector("new topic", "X", "new topic (2)")
     }
 
     test("keys are distinct when a number would repeat a shown name") {
       named("x", "x", "x (2)") ==> Vector("x", "x (3)", "x (2)")
     }
 
-    test("a topic shown as the new-topic key is numbered") {
-      named(TurnTopics.NewKey, "y") ==> Vector(s"${TurnTopics.NewKey} (1)", "y")
+    test("an item shown as the new-item key is numbered") {
+      named(TurnAgenda.NewKey, "y") ==> Vector(s"${TurnAgenda.NewKey} (1)", "y")
     }
 
-    test("keys are pairwise distinct and never the new-topic key") {
-      val n = TurnTopics.NewKey
+    test("keys are pairwise distinct and never the new-item key") {
+      val n = TurnAgenda.NewKey
       val cases = Vector(
         Vector("x", "x", "x (2)"),
         Vector("x (2)", "x", "x"),

@@ -14,8 +14,8 @@ object ClosingSummaryTests extends TestSuite {
   private val backup = line(Section.Open, "How often should the laptop backup run?", 1, 1)
   private val drive = line(Section.Open, "Which drive holds the off-site copy?", 1, 2)
   private val exiftool = line(Section.Standing, "Photos are renamed with exiftool", 1, 1)
-  private val topic = line(Section.Topics, "Photo Rename", 1, 1)
-  private val known: Balance = balance(backup, drive, exiftool, topic)
+  private val item = line(Section.Agenda, "Photo Rename", 1, 1)
+  private val known: Balance = balance(backup, drive, exiftool, item)
 
   /** A period: a question, an empty search, a failed read, a read that showed the port, the
     * person stating a decision, and the assistant's answer.
@@ -52,7 +52,7 @@ object ClosingSummaryTests extends TestSuite {
     Some(ClosingSummary.Written(prose, outcome, edits.toVector))
 
   val tests = Tests {
-    test("the writer sees open lines as o1…, standing as s1…, in the balance's order; no topics") {
+    test("the writer sees open lines as o1…, standing as s1…, in the balance's order; no agenda") {
       ClosingSummary.labels(known) ==> Vector("o1" -> backup, "o2" -> drive, "s1" -> exiftool)
     }
 

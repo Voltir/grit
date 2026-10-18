@@ -3,7 +3,6 @@ package grit.core.store
 import grit.core.id.{DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing}
-import grit.core.topic.TopicEvent
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
   * assembly is a future case.
@@ -51,11 +50,11 @@ enum Payload {
       documents: Vector[DocumentVersion] = Vector.empty
   )
 
-  /** What happened to the conversation's topics during the turn the entry belongs to
-    * ([[grit.core.topic.Topics]] folds them). A record: never shown to the model, never
-    * searched.
+  /** What happened to the conversation's agenda during the turn the entry belongs to
+    * ([[grit.core.agenda.Agenda.fold]] folds them). A record: never shown to the model, never
+    * searched. Stored under the kind `"topic"`, the name from before the rename to agenda.
     */
-  case Topic(events: Vector[TopicEvent])
+  case Agenda(events: Vector[grit.core.agenda.Agenda.Event])
 
   /** A reply inside the tool loop of the turn the entry belongs to that called tools; each
     * call's [[Result]] follows it. The turn's own later model calls and its summary read it;

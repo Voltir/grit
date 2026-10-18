@@ -136,8 +136,8 @@ object ShownTests extends TestSuite {
         balance(
           line(Section.Open, "Prod deploy is not set up", 2, 3),
           line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person),
-          line(Section.Topics, "Laptop Backup Setup", 1, 2),
-          line(Section.Topics, "Staging Deploy", 2, 3)
+          line(Section.Agenda, "Laptop Backup Setup", 1, 2),
+          line(Section.Agenda, "Staging Deploy", 2, 3)
         )
       )
       val resolved =

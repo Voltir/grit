@@ -47,7 +47,7 @@ object TurnSummaryTests extends TestSuite {
       )
     }
 
-    test("labelled lines: the summary, and the topic's name and what it covers") {
+    test("labelled lines: the summary, and the item's name and what it covers") {
       TurnSummary.read(reply("Summary: a.\nTopic: Knots\nAbout: which knot.")) ==>
         Some(TurnSummary.Read("a.", Some(("Knots", "which knot."))))
     }
@@ -58,12 +58,12 @@ object TurnSummaryTests extends TestSuite {
       ) ==> Some(TurnSummary.Read("one\ntwo", Some(("Rust borrow checker errors", "x"))))
     }
 
-    test("no labels: all of it is the summary, as every summary before topics was") {
+    test("no labels: all of it is the summary, as every summary before agendas was") {
       TurnSummary.read(reply("  Asked about knots.  ")) ==>
         Some(TurnSummary.Read("Asked about knots.", None))
     }
 
-    test("a summary without both topic lines names no topic; no text reads as nothing") {
+    test("a summary without both item lines names no item; no text reads as nothing") {
       TurnSummary.read(reply("Summary: a.\nTopic: Knots")) ==> Some(TurnSummary.Read("a.", None))
       TurnSummary.read(reply("   ")) ==> None
     }

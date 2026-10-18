@@ -33,7 +33,7 @@ import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns, Taps}
 import grit.kit.run.Launch
 import grit.knowledge.card.CardSummary
@@ -73,7 +73,7 @@ object RehearseLiveTests extends TestSuite {
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(3).getOrElse(sys.error("rounds"))),
         assembly = assembly,
-        topics = Topics.Stub,
+        placer = Placer.Stub,
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = speaking,

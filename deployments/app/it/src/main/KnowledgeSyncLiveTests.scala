@@ -37,7 +37,7 @@ import grit.core.visibility.{
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.ClockEdge
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.knowledge.github.GitHubCards
@@ -162,7 +162,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Retrieval(Tokens(4000), RetrievalAssembler.DefaultTail),
-        topics = Topics.Off("no classifier here"),
+        placer = Placer.Off("no classifier here"),
         lifecycle = lifecycle,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,

@@ -45,7 +45,7 @@ import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.drive.DriveCards
@@ -86,10 +86,10 @@ import grit.turn.TurnLoop
   * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
   * `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]]) plus the earlier turns a
   * written query finds ([[RetrievalAssembler]]); or `linear`, the recent turns that fit. Every variable
-  * may come from a `.env` file instead ([[DotEnv]]). Each message is placed among the
-  * conversation's topics by Jev when `JEV_API_KEY` is set ([[JevConfig]]); without it, by
+  * may come from a `.env` file instead ([[DotEnv]]). Each message is placed on the
+  * conversation's agenda by Jev when `JEV_API_KEY` is set ([[JevConfig]]); without it, by
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
-  * which leaves each message in the topic it is in. The TUI starts in the theme
+  * which leaves each message in the item it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
   * model is offered the tools `GRIT_TOOLS` names ([[Offered]]) in at most
   * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
@@ -97,7 +97,7 @@ import grit.turn.TurnLoop
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
   * runs in, with its instruction files; a command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
-  * [[DefaultSweep]]), asking the same classifier as the topics whether anyone is waiting on
+  * [[DefaultSweep]]), asking the same classifier as the placer whether anyone is waiting on
   * each quiet period ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
@@ -751,15 +751,15 @@ object Main {
       )
     } yield CardSource.Drive(cards)
 
-  private val StubTopicsVar = "GRIT_STUB_TOPICS"
+  private val StubPlacerVar = "GRIT_STUB_TOPICS"
 
   /** Jev when `JEV_API_KEY` is set (its value is [[Secrets]]'s to read); else the stub when
     * `GRIT_STUB_TOPICS` is `1`; else none, saying why.
     */
-  private[main] def topics(env: Map[String, String]): Topics =
-    if (env.contains(JevConfig.KeyVar)) Topics.Jev
-    else if (env.get(StubTopicsVar).map(_.trim).contains("1")) Topics.Stub
-    else Topics.Off(s"${JevConfig.KeyVar} is not set")
+  private[main] def placer(env: Map[String, String]): Placer =
+    if (env.contains(JevConfig.KeyVar)) Placer.Jev
+    else if (env.get(StubPlacerVar).map(_.trim).contains("1")) Placer.Stub
+    else Placer.Off(s"${JevConfig.KeyVar} is not set")
 
   /** The model policy: the seed catalog's ([[Seed]]), with the roles' variables laid over it
     * ([[OpenRouterConfig.policy]]) when OpenRouter's key is set.
@@ -839,7 +839,7 @@ object Main {
           policy = models,
           offer = Offer(offered, rounds),
           assembly = if (retrieving) Assembly.Retrieval(window, tail) else Assembly.Linear(window),
-          topics = topics(env),
+          placer = placer(env),
           lifecycle = lifecycle,
           budget = spend,
           // grit's own deployment never speaks where it was not addressed; a deployment that

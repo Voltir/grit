@@ -23,7 +23,7 @@ object Shown {
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
-    * only the assistant said listed apart, as not confirmed) and its topics, each text the
+    * only the assistant said listed apart, as not confirmed) and its agenda, each text the
     * period carried as [[pasted]] shows it; `None` for any other entry.
     */
   def of(entry: Entry, speakers: Speakers): Option[Message] = entry.payload match {
@@ -283,7 +283,7 @@ object Shown {
 
   /** `closing` as a record shows it after its header: its prose, its outcome, the lines it
     * resolved and how, and the balance's open lines, its standing lines (those only the
-    * assistant said listed apart, as not confirmed) and its topics; each text grit carried
+    * assistant said listed apart, as not confirmed) and its agenda; each text grit carried
     * from the period as [[pasted]] shows it, since the writer can copy a person's words.
     */
   private def body(closing: Closing): String = {
@@ -294,7 +294,7 @@ object Shown {
     }
     def list(title: String, lines: Vector[String]): Vector[String] =
       Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
-    val topics = balance.in(Section.Topics).map(l => pasted(l.text))
+    val agenda = balance.in(Section.Agenda).map(l => pasted(l.text))
     // Standing only the assistant said is listed apart (ADR 0018), each line recast as an open
     // question ([[unconfirmed]]).
     val (claimed, confirmed) =
@@ -308,7 +308,7 @@ object Shown {
           "Standing, said by the assistant and not confirmed",
           claimed.map(l => unconfirmed(pasted(l.text)))
         ) ++
-        Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
+        Option.when(agenda.nonEmpty)(s"Topics so far: ${agenda.mkString("; ")}").toVector))
       .mkString("\n")
   }
 

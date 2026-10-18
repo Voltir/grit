@@ -1,5 +1,6 @@
 package grit.turn
 
+import grit.core.agenda.{Agenda, AgendaJson}
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Width, Window}
 import grit.core.durable.Journaled
@@ -23,7 +24,6 @@ import grit.core.recipe.ServiceOffer
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
-import grit.core.topic.{TopicId, TopicJson}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.core.visibility.{Integrity, Label}
 
@@ -128,11 +128,11 @@ private[turn] object TurnJournal {
   /** The `classify` step's output: `{"events": [...], "current": {id, key} | null,
     * "earlier": [{id, key}], "cost": {model, usage, estimate} | null, "note": text | null}`.
     */
-  given classification: Journaled[TurnTopics.Classification] =
-    Journaled.json[TurnTopics.Classification](
+  given classification: Journaled[TurnAgenda.Classification] =
+    Journaled.json[TurnAgenda.Classification](
       c =>
         ujson.Obj(
-          "events" -> ujson.Arr.from(c.events.map(TopicJson.write)),
+          "events" -> ujson.Arr.from(c.events.map(AgendaJson.write)),
           "current" -> c.current.fold[ujson.Value](ujson.Null)(writeShown),
           "earlier" -> ujson.Arr.from(c.earlier.map(writeShown)),
           "cost" -> c.cost.fold[ujson.Value](ujson.Null) { (model, usage, estimate) =>
@@ -151,7 +151,7 @@ private[turn] object TurnJournal {
             .get("events")
             .flatMap(_.arrOpt)
             .toRight("classification: missing events")
-            .flatMap(es => sequence(es.toVector.map(TopicJson.read)))
+            .flatMap(es => sequence(es.toVector.map(AgendaJson.read)))
           current <- o.get("current") match {
             case None | Some(ujson.Null) => Right(None)
             case Some(s) => readShown(s).map(Some(_))
@@ -182,18 +182,18 @@ private[turn] object TurnJournal {
             case Some(ujson.Str(n)) => Right(Some(n))
             case Some(_) => Left("classification: note is not a string")
           }
-        } yield TurnTopics.Classification(events, current, earlier, cost, note)
+        } yield TurnAgenda.Classification(events, current, earlier, cost, note)
     )
 
-  private def writeShown(s: TurnTopics.Shown): ujson.Value =
-    ujson.Obj("id" -> TopicId.value(s.id), "key" -> s.key)
+  private def writeShown(s: TurnAgenda.Shown): ujson.Value =
+    ujson.Obj("id" -> Agenda.ItemId.value(s.id), "key" -> s.key)
 
-  private def readShown(v: ujson.Value): Either[String, TurnTopics.Shown] =
+  private def readShown(v: ujson.Value): Either[String, TurnAgenda.Shown] =
     (
       v.objOpt.flatMap(_.get("id")).flatMap(_.strOpt),
       v.objOpt.flatMap(_.get("key")).flatMap(_.strOpt)
     ) match {
-      case (Some(id), Some(key)) => Right(TurnTopics.Shown(TopicId(id), key))
+      case (Some(id), Some(key)) => Right(TurnAgenda.Shown(Agenda.ItemId(id), key))
       case _ => Left("a topic shown: expected {id, key}")
     }
 

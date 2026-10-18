@@ -58,16 +58,16 @@ object TurnRecordLiveTests extends TestSuite {
               Vector.empty
             )
           )
-        // Where each message went, written to Postgres and read back as topic events. The
+        // Where each message went, written to Postgres and read back as agenda events. The
         // counts are a smoke check that they arrive; which events they are is grit.turn's to pin.
         val placed = Vector(first, turn).flatMap { t =>
           engine.db
-            .read(Subject.Public)(engine.entries.get(grit.turn.TurnTopics.placedId(t)))
+            .read(Subject.Public)(engine.entries.get(grit.turn.TurnAgenda.placedId(t)))
             .toOption
             .flatten
         }
         placed.map(_.payload match {
-          case Payload.Topic(events) => events.size
+          case Payload.Agenda(events) => events.size
           case _ => 0
         }) ==> Vector(2, 1)
       } finally engine.close()

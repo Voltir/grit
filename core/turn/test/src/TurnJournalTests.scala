@@ -259,20 +259,20 @@ object TurnJournalTests extends TestSuite {
     }
 
     test("a classification reads back as written") {
-      import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
-      val (a, b) = (TopicId("a"), TopicId("b"))
+      import grit.core.agenda.{Agenda, Placement, Weights}
+      val (a, b) = (Agenda.ItemId("a"), Agenda.ItemId("b"))
       val choice = Vector(Placement.Chance(None, 0.9), Placement.Chance(Some(a), 0.1))
-      val full = TurnTopics.Classification(
+      val full = TurnAgenda.Classification(
         Vector(
-          TopicEvent.Opened(b),
-          TopicEvent.Placed(
+          Agenda.Event.Opened(b),
+          Agenda.Event.Placed(
             TurnSeq(3),
             Weights.changed(a, 0.1, choice, Some(b)),
             Placement.Classified(0.1, Placement.Outcome.Changed(choice))
           )
         ),
-        Some(TurnTopics.Shown(a, "Knots")),
-        Vector(TurnTopics.Shown(b, "new topic")),
+        Some(TurnAgenda.Shown(a, "Knots")),
+        Vector(TurnAgenda.Shown(b, "new topic")),
         Some(
           (
             "jev-1",
@@ -283,10 +283,10 @@ object TurnJournalTests extends TestSuite {
         None
       )
       val empty =
-        TurnTopics.Classification(Vector.empty, None, Vector.empty, None, Some("store: down"))
+        TurnAgenda.Classification(Vector.empty, None, Vector.empty, None, Some("store: down"))
       roundTrip(full) ==> Right(full)
       roundTrip(empty) ==> Right(empty)
-      assert(summon[Journaled[TurnTopics.Classification]].decode("""{"events":[]}""").isLeft)
+      assert(summon[Journaled[TurnAgenda.Classification]].decode("""{"events":[]}""").isLeft)
     }
 
     test("a round's record keeps its reply and each of its calls' kinds, in its pinned form") {

@@ -25,22 +25,22 @@ object BalanceTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a summarise replaces a topic line's summary, normalised, and neither touches nor moves it"
+      "a summarise replaces an agenda line's summary, normalised, and neither touches nor moves it"
     ) {
-      val t = TestClosings.line(Section.Topics, "Photo Rename", 1, 1, Some("renaming photos"))
-      val u = line(Section.Topics, "Backup", 1, 2)
+      val t = TestClosings.line(Section.Agenda, "Photo Rename", 1, 1, Some("renaming photos"))
+      val u = line(Section.Agenda, "Backup", 1, 2)
       val after =
         balance(t, u).edit(Vector(Edit.Summarise(t.id, "  renaming \n HEIC photos ")), p(3))
       after.balance ==> balance(
-        TestClosings.line(Section.Topics, "Photo Rename", 1, 1, Some("renaming HEIC photos")),
+        TestClosings.line(Section.Agenda, "Photo Rename", 1, 1, Some("renaming HEIC photos")),
         u
       )
       after.changes ==> Vector()
     }
 
-    test("a summarise of a line that is not a topic's, or a blank one, is ignored") {
+    test("a summarise of a line that is not an agenda line, or a blank one, is ignored") {
       val s = line(Section.Standing, "s", 1, 1)
-      val t = line(Section.Topics, "T", 1, 1)
+      val t = line(Section.Agenda, "T", 1, 1)
       val after =
         balance(s, t).edit(Vector(Edit.Summarise(s.id, "x"), Edit.Summarise(t.id, "  ")), p(2))
       after.balance ==> balance(s, t)
@@ -50,8 +50,8 @@ object BalanceTests extends TestSuite {
       )
     }
 
-    test("a topic's summary counts toward the bytes a cap holds") {
-      balance(TestClosings.line(Section.Topics, "ab", 1, 1, Some("cdé"))).bytes ==> 6
+    test("an agenda line's summary counts toward the bytes a cap holds") {
+      balance(TestClosings.line(Section.Agenda, "ab", 1, 1, Some("cdé"))).bytes ==> 6
     }
 
     test(
@@ -236,7 +236,7 @@ object BalanceTests extends TestSuite {
         line(Section.Open, "one", 1, 3),
         line(Section.Open, "two", 2, 3),
         line(Section.Standing, "three", 3, 3),
-        line(Section.Topics, "four", 1, 2)
+        line(Section.Agenda, "four", 1, 2)
       )
       for (cap <- -1 to 16) {
         val fitted = b.fit(cap, p(3))

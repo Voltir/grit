@@ -28,9 +28,9 @@ import grit.turn.TurnStream
   *     and its latest turn (or the one `Show` pinned) is described for the turn panel
   *     whenever that changes ([[TurnView]], its window and the system prompt it recorded
   *     estimated with `estimator`); and the conversation as a whole is described for the
-  *     panel's session tab whenever an entry is added ([[SessionView]]), and its topics
-  *     for the topics tab, with the shown turn's placing, whenever those change
-  *     ([[TopicsView]]).
+  *     panel's session tab whenever an entry is added ([[SessionView]]), and its items
+  *     for the agenda tab, with the shown turn's placing, whenever those change
+  *     ([[AgendaView]]).
   *   - `Send` ingests a message and starts its turn, once the engine is open; the reply
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
@@ -239,7 +239,7 @@ final class ChatHost(
       case Right(conversation) =>
         var state = Follow.start
         var shown: Option[TurnView] = None
-        var topics: Option[TopicsView] = None
+        var agenda: Option[AgendaView] = None
         var listened = Set.empty[TurnSeq]
         var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
         var spendsShown = Map.empty[TurnSeq, TurnSpend]
@@ -302,10 +302,10 @@ final class ChatHost(
                 .filter(t => entries.exists(_.turnSeq == t))
                 .map(TurnRef(conversation, _))
                 .orElse(TurnView.latest(entries))
-              val placed = TopicsView.of(entries, target.map(_.turnSeq))
-              if (!topics.contains(placed)) {
-                topics = Some(placed)
-                mailbox.offer(ChatScreen.Msg.Topics(placed))
+              val placed = AgendaView.of(entries, target.map(_.turnSeq))
+              if (!agenda.contains(placed)) {
+                agenda = Some(placed)
+                mailbox.offer(ChatScreen.Msg.Agenda(placed))
               }
               target.foreach { turn =>
                 // A settled turn changes no more: its view is not read again.

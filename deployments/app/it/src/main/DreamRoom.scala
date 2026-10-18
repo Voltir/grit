@@ -18,7 +18,7 @@ import grit.core.store.{Entry, Origin, Payload, PayloadJson, StoreError}
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.Launch
 import grit.knowledge.plugin.StrandDocuments
@@ -96,7 +96,7 @@ object DreamRoom {
           policy = policy,
           offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
           assembly = Assembly.Linear(Tokens(4000)),
-          topics = Topics.Off("the room's truth places its openings"),
+          placer = Placer.Off("the room's truth places its openings"),
           lifecycle = LifecycleSettings.Default,
           budget = Budget(ZoneOffset.UTC, Some(cap)),
           speaking = Speaking.Off,

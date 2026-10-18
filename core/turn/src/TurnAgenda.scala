@@ -2,6 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
+import grit.core.agenda.{Agenda, Band, Placement, Weights}
 import grit.core.classify.{
   Answered,
   Ask,
@@ -16,33 +17,32 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.TokenEstimator
 import grit.core.route.Routed
-import grit.core.store.{Db, Entry, EntryStore, EntryTopics, Payload, StoreError, Tx, UsageLedger}
-import grit.core.topic.{Band, Placement, Topic, TopicEvent, TopicId, Weights}
+import grit.core.store.{Db, Entry, EntryAgenda, EntryStore, Payload, StoreError, Tx, UsageLedger}
 import grit.core.visibility.Subject
 
-/** Where a turn's message goes among its conversation's topics, before its window is
+/** Where a turn's message goes on its conversation's agenda, before its window is
   * assembled: the `classify` step's work and the `record-topic` step's record.
   *
-  * The first message of a conversation (or the first since topics began) opens a topic
+  * The first message of a conversation (or the first since agendas began) opens an item
   * with no call. Every other is put to the classifier as a yes/no, "is it about the
-  * current topic?", and its p(same) read as a [[Band]]: same, it stays; changed, the
-  * classifier chooses among the earlier topics and a new one; uncertain, it stays for now
+  * current item?", and its p(same) read as a [[Band]]: same, it stays; changed, the
+  * classifier chooses among the earlier items and a new one; uncertain, it stays for now
   * and the main model is asked. A classifier that does not answer
-  * leaves it where it is, unclassified: topics never fail a turn.
+  * leaves it where it is, unclassified: the agenda never fails a turn.
   */
-object TurnTopics {
+object TurnAgenda {
 
-  /** A topic as the classifier was shown it: its id and the key it went by. */
-  final case class Shown(id: TopicId, key: String)
+  /** An item as the classifier was shown it: its id and the key it went by. */
+  final case class Shown(id: Agenda.ItemId, key: String)
 
-  /** What `classify` decided: the `events` to record (a topic `Opened`, then the message
+  /** What `classify` decided: the `events` to record (an item `Opened`, then the message
     * `Placed`; none when the store could not be read, as `note` says), the `current`
-    * topic and the `earlier` ones as they stood before the message, and what the
+    * item and the `earlier` ones as they stood before the message, and what the
     * classifier's calls cost, when it was called: its model, their usage, and the
     * estimated input.
     */
   final case class Classification(
-      events: Vector[TopicEvent],
+      events: Vector[Agenda.Event],
       current: Option[Shown],
       earlier: Vector[Shown],
       cost: Option[(String, Usage, Tokens)],
@@ -50,7 +50,9 @@ object TurnTopics {
   ) {
 
     /** The classifier's placement of the message. */
-    def placed: Option[TopicEvent.Placed] = events.collectFirst { case p: TopicEvent.Placed => p }
+    def placed: Option[Agenda.Event.Placed] = events.collectFirst { case p: Agenda.Event.Placed =>
+      p
+    }
 
     /** Whether the classifier was unsure, so the main model is to be asked. */
     def uncertain: Boolean = placed.exists {
@@ -66,15 +68,15 @@ object TurnTopics {
     s"topic:${WorkflowId.value(turn.workflowId)}:placed"
   )
 
-  /** The key the classifier and the model are offered for a new topic. */
+  /** The key the classifier and the model are offered for a new item. */
   val NewKey = "something new"
 
-  /** The JSON field names of [[SameTopic]] and [[WhichTopic]], for their codecs and the
+  /** The JSON field names of [[SameItem]] and [[WhichItem]], for their codecs and the
     * instructions that refer to them.
     */
   private object Field {
-    val CurrentTopic = "current_topic"
-    val LeftTopic = "left_topic"
+    val CurrentItem = "current_topic"
+    val LeftItem = "left_topic"
     val Recent = "recent_messages"
     val NewMessage = "new_message"
   }
@@ -85,33 +87,33 @@ object TurnTopics {
   /** Whether `newMessage` stays on `current`, as the classifier is shown it: `{current_topic:
     * {name, summary}, recent_messages: [{from, text}], new_message}`.
     */
-  private final case class SameTopic(current: Topic, recent: Vector[Said], newMessage: String)
+  private final case class SameItem(current: Agenda.Item, recent: Vector[Said], newMessage: String)
 
   /** Where `newMessage`, having left `left`, went: `{left_topic: {name, summary},
     * recent_messages: [{from, text}], new_message}`.
     */
-  private final case class WhichTopic(left: Topic, recent: Vector[Said], newMessage: String)
+  private final case class WhichItem(left: Agenda.Item, recent: Vector[Said], newMessage: String)
 
-  private given StateJson[SameTopic] = StateJson.instance(s =>
+  private given StateJson[SameItem] = StateJson.instance(s =>
     ujson.Obj(
-      Field.CurrentTopic -> topicJson(s.current),
+      Field.CurrentItem -> itemJson(s.current),
       Field.Recent -> saidJson(s.recent),
       Field.NewMessage -> s.newMessage
     )
   )
 
-  private given StateJson[WhichTopic] = StateJson.instance(s =>
+  private given StateJson[WhichItem] = StateJson.instance(s =>
     ujson.Obj(
-      Field.LeftTopic -> topicJson(s.left),
+      Field.LeftItem -> itemJson(s.left),
       Field.Recent -> saidJson(s.recent),
       Field.NewMessage -> s.newMessage
     )
   )
 
-  private val same: Ask[SameTopic, Double] = Ask.yesNo(
-    s"Is `${Field.NewMessage}` about `${Field.CurrentTopic}`?",
+  private val same: Ask[SameItem, Double] = Ask.yesNo(
+    s"Is `${Field.NewMessage}` about `${Field.CurrentItem}`?",
     Some(
-      s"Yes: it carries on `${Field.CurrentTopic}`, answers or follows up on the recent " +
+      s"Yes: it carries on `${Field.CurrentItem}`, answers or follows up on the recent " +
         "messages, or goes deeper into one part of it."
     ),
     Some(
@@ -156,36 +158,36 @@ object TurnTopics {
       all: Vector[Entry]
   ): Classification = {
     val before = all.filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(turn.turnSeq))
-    val topics = EntryTopics.before(all, turn.turnSeq)
+    val agenda = EntryAgenda.before(all, turn.turnSeq)
     // What its person said: a message to grit, or the heard one an unprompted turn answers.
     val asked = all
       .filter(_.turnSeq == turn.turnSeq)
       .flatMap(_.payload.said)
       .headOption
       .getOrElse("")
-    val keyed = keys(topics.topics)
+    val keyed = keys(agenda.items)
     val current =
-      topics.current.flatMap(c => keyed.collectFirst { case (t, s) if t.id == c.id => s })
+      agenda.current.flatMap(c => keyed.collectFirst { case (t, s) if t.id == c.id => s })
     val earlier = keyed.collect { case (t, s) if !current.exists(_.id == t.id) => (t, s) }
-    val opened = TopicId.openedBy(turn)
+    val opened = Agenda.ItemId.openedBy(turn)
     def classification(
-        events: Vector[TopicEvent],
+        events: Vector[Agenda.Event],
         cost: Option[(String, Usage, Tokens)]
     ): Classification = Classification(events, current, earlier.map(_._2), cost, None)
-    def placed(weights: Weights, by: Placement) = TopicEvent.Placed(turn.turnSeq, weights, by)
+    def placed(weights: Weights, by: Placement) = Agenda.Event.Placed(turn.turnSeq, weights, by)
 
-    current.flatMap(c => topics.get(c.id).map(c -> _)) match {
+    current.flatMap(c => agenda.get(c.id).map(c -> _)) match {
       case None =>
         classification(
           Vector(
-            TopicEvent.Opened(opened),
+            Agenda.Event.Opened(opened),
             placed(Weights.whole(opened), Placement.First)
           ),
           None
         )
-      case Some((shown, topic)) =>
+      case Some((shown, item)) =>
         val recent = recentMessages(before)
-        val sameState = SameTopic(topic, recent, asked)
+        val sameState = SameItem(item, recent, asked)
         classifier.ask(sameState, same) match {
           case Left(error) =>
             classification(
@@ -194,7 +196,7 @@ object TurnTopics {
             )
           case Right(Answered(p, u1, model)) =>
             val cost1 =
-              (model, u1, estimator.system(ujson.write(StateJson[SameTopic].json(sameState))))
+              (model, u1, estimator.system(ujson.write(StateJson[SameItem].json(sameState))))
             def stays(outcome: Placement.Outcome) = classification(
               Vector(placed(Weights.same(shown.id, p), Placement.Classified(p, outcome))),
               Some(cost1)
@@ -205,7 +207,7 @@ object TurnTopics {
               case Band.Changed =>
                 earlier match {
                   case latest +: older =>
-                    val whichState = WhichTopic(topic, recent, asked)
+                    val whichState = WhichItem(item, recent, asked)
                     which(latest, older).left
                       .map(d => s"two options share the key ${d.key}")
                       .flatMap(classifier.ask(whichState, _).left.map(_.said)) match {
@@ -227,11 +229,11 @@ object TurnTopics {
                           model,
                           sum(u1, u2),
                           cost1._3 + estimator.system(
-                            ujson.write(StateJson[WhichTopic].json(whichState))
+                            ujson.write(StateJson[WhichItem].json(whichState))
                           )
                         )
                         classification(
-                          Option.when(isNew)(TopicEvent.Opened(opened)).toVector :+
+                          Option.when(isNew)(Agenda.Event.Opened(opened)).toVector :+
                             placed(
                               Weights.changed(shown.id, p, choice, Option.when(isNew)(opened)),
                               Placement.Classified(p, Placement.Outcome.Changed(choice))
@@ -244,7 +246,7 @@ object TurnTopics {
                     val choice = Vector(Placement.Chance(None, 1.0))
                     classification(
                       Vector(
-                        TopicEvent.Opened(opened),
+                        Agenda.Event.Opened(opened),
                         placed(
                           Weights.changed(shown.id, p, choice, Some(opened)),
                           Placement.Classified(p, Placement.Outcome.Changed(choice))
@@ -292,7 +294,7 @@ object TurnTopics {
       ledger: UsageLedger,
       turn: TurnRef,
       id: EntryId,
-      events: Vector[TopicEvent],
+      events: Vector[Agenda.Event],
       cost: Option[(String, Option[String], Usage, Tokens)],
       grade: Option[Grade],
       at: Instant
@@ -309,7 +311,7 @@ object TurnTopics {
             turn.turnSeq,
             None,
             next.seq,
-            Payload.Topic(events),
+            Payload.Agenda(events),
             at,
             level
           )
@@ -319,73 +321,74 @@ object TurnTopics {
         }
       } yield id).left.map(TurnFailure.ofStore)
 
-  /** The id of the entry recording the description `turn`'s summary gave its topic. */
+  /** The id of the entry recording the description `turn`'s summary gave its item. */
   def describedId(turn: TurnRef): EntryId =
     EntryId(s"topic:${WorkflowId.value(turn.workflowId)}:described")
 
-  /** The topic `turn`'s message is in, as `all` of its conversation's entries leave it. */
-  def topicOf(all: Vector[Entry], turn: TurnRef): Option[Topic] = {
-    val topics = EntryTopics.through(all, turn.turnSeq)
-    topics.placed(turn.turnSeq).flatMap(topics.get)
+  /** The item `turn`'s message is in, as `all` of its conversation's entries leave it. */
+  def itemOf(all: Vector[Entry], turn: TurnRef): Option[Agenda.Item] = {
+    val agenda = EntryAgenda.through(all, turn.turnSeq)
+    agenda.placed(turn.turnSeq).flatMap(agenda.get)
   }
 
-  /** What the summary's `read` says of `topic`: its name, kept once it has one, and what it
+  /** What the summary's `read` says of `item`: its name, kept once it has one, and what it
     * covers now. Nothing when the summary said nothing of it, or nothing new.
     */
-  def described(topic: Topic, read: TurnSummary.Read): Vector[TopicEvent] =
-    read.topic.toVector.flatMap { (name, about) =>
-      val kept = topic.name.getOrElse(name)
+  def described(item: Agenda.Item, read: TurnSummary.Read): Vector[Agenda.Event] =
+    read.item.toVector.flatMap { (name, about) =>
+      val kept = item.name.getOrElse(name)
       Option
-        .when(!(topic.name.contains(kept) && topic.summary.contains(about)))(
-          TopicEvent.Described(topic.id, kept, about)
+        .when(!(item.name.contains(kept) && item.summary.contains(about)))(
+          Agenda.Event.Described(item.id, kept, about)
         )
         .toVector
     }
 
-  /** The choice among the earlier topics, `first` then `more`, and a new one (`None`). */
+  /** The choice among the earlier items, `first` then `more`, and a new one (`None`). */
   private def which(
-      first: (Topic, Shown),
-      more: Vector[(Topic, Shown)]
-  ): Either[Ask.DuplicateKey, Ask[WhichTopic, Decision[Option[TopicId]]]] = {
-    def criterion(ts: (Topic, Shown)) = Criterion(Option(ts._1.id), ts._2.key, ts._1.summary)
+      first: (Agenda.Item, Shown),
+      more: Vector[(Agenda.Item, Shown)]
+  ): Either[Ask.DuplicateKey, Ask[WhichItem, Decision[Option[Agenda.ItemId]]]] = {
+    def criterion(ts: (Agenda.Item, Shown)) = Criterion(Option(ts._1.id), ts._2.key, ts._1.summary)
     val fresh = Criterion(
-      Option.empty[TopicId],
+      Option.empty[Agenda.ItemId],
       NewKey,
       Some("None of the others: a subject not discussed before in this conversation.")
     )
     Ask.choice(
-      s"`${Field.NewMessage}` has moved away from `${Field.LeftTopic}`. Which of these topics " +
+      s"`${Field.NewMessage}` has moved away from `${Field.LeftItem}`. Which of these topics " +
         "is it about?",
       criterion(first),
-      // The new topic comes last, as the second option or after the others.
+      // The new item comes last, as the second option or after the others.
       more.headOption.map(criterion).getOrElse(fresh),
       (more.drop(1).map(criterion) ++ Option.when(more.nonEmpty)(fresh))*
     )
   }
 
-  /** Each of `topics`, in order, with the key it goes by: its shown name, and a number after
-    * it when an earlier one in `topics` is shown the same or the name is [[NewKey]]. No two
+  /** Each of `items`, in order, with the key it goes by: its shown name, and a number after
+    * it when an earlier one in `items` is shown the same or the name is [[NewKey]]. No two
     * keys are equal, and none is [[NewKey]].
     */
-  private[turn] def keys(topics: Vector[Topic]): Vector[(Topic, Shown)] = {
+  private[turn] def keys(items: Vector[Agenda.Item]): Vector[(Agenda.Item, Shown)] = {
     // A numbered key skips any number that would make it a shown name or an earlier key.
-    val names = topics.map(_.shown).toSet + NewKey
+    val names = items.map(_.shown).toSet + NewKey
     @annotation.tailrec
     def numbered(name: String, n: Int, used: Set[String]): String = {
       val key = s"$name ($n)"
       if (names(key) || used(key)) numbered(name, n + 1, used) else key
     }
-    topics.zipWithIndex
-      .foldLeft((Vector.empty[(Topic, Shown)], Set.empty[String])) { case ((done, used), (t, i)) =>
-        val before = topics.take(i).count(_.shown == t.shown)
-        val key =
-          if (before == 0 && t.shown != NewKey) t.shown else numbered(t.shown, before + 1, used)
-        (done :+ (t -> Shown(t.id, key)), used + key)
+    items.zipWithIndex
+      .foldLeft((Vector.empty[(Agenda.Item, Shown)], Set.empty[String])) {
+        case ((done, used), (t, i)) =>
+          val before = items.take(i).count(_.shown == t.shown)
+          val key =
+            if (before == 0 && t.shown != NewKey) t.shown else numbered(t.shown, before + 1, used)
+          (done :+ (t -> Shown(t.id, key)), used + key)
       }
       ._1
   }
 
-  private def topicJson(t: Topic): ujson.Value =
+  private def itemJson(t: Agenda.Item): ujson.Value =
     ujson.Obj("name" -> t.shown, "summary" -> t.summary.fold[ujson.Value](ujson.Null)(ujson.Str(_)))
 
   private def saidJson(said: Vector[Said]): ujson.Value =

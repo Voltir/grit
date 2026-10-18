@@ -5,7 +5,7 @@ import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned, Policy}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{Db, ModelSettingStore}
-import grit.kit.deployment.Topics
+import grit.kit.deployment.Placer
 import grit.models.{KeptCatalog, Seed, StubClassifier}
 import grit.turn.Turn
 
@@ -34,15 +34,15 @@ object Taps {
       tape: Tape^
   ): Models^ = new Tapped(seed, db, settings, answers, tape)
 
-  /** The classifier a deployment of `topics` places messages with, cleared as that one is: its
-    * states go to the service the live one's go to ([[Topics.JevService]], or the stub's), or,
-    * for [[Topics.Off]], none, every call `Unavailable` and nothing kept.
+  /** The classifier a deployment of `placer` places messages with, cleared as that one is: its
+    * states go to the service the live one's go to ([[Placer.JevService]], or the stub's), or,
+    * for [[Placer.Off]], none, every call `Unavailable` and nothing kept.
     */
-  def classifier(topics: Topics, answers: StandIns, tape: Tape^): ClearedClassifier^ =
-    topics match {
-      case Topics.Jev => cleared(Topics.JevService, answers, tape)
-      case Topics.Stub => cleared(StubClassifier.Service, answers, tape)
-      case Topics.Off(reason) => ClearedClassifier.none(reason)
+  def classifier(placer: Placer, answers: StandIns, tape: Tape^): ClearedClassifier^ =
+    placer match {
+      case Placer.Jev => cleared(Placer.JevService, answers, tape)
+      case Placer.Stub => cleared(StubClassifier.Service, answers, tape)
+      case Placer.Off(reason) => ClearedClassifier.none(reason)
     }
 
   private def cleared(

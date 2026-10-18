@@ -32,8 +32,8 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.Offer -> 1100, // the offer by reference: ids, tool names, places, its shape
     Turn.Step.RecordFailure -> 64, // whether the failure was kept
     Turn.Step.Stitched -> 64, // what a placement did, in a line
-    Turn.Step.Classify -> 1024, // the topic events and the classifier call's cost
-    Turn.Step.RecordTopic -> 64, // an entry id
+    Turn.Step.Classify -> 1024, // the agenda events and the classifier call's cost
+    Turn.Step.RecordAgenda -> 64, // an entry id
     Turn.Step.Needs -> 320, // the needs gate's verdict and its call's cost
     Turn.Step.NeedsRecord -> 64, // whether the cost was kept
     Turn.Step.Query -> 640, // the query written, or why none was, and its call's cost
@@ -325,7 +325,7 @@ object TurnReplayTests extends TestSuite {
     }
 
     test("every recorded classification is written back byte for byte") {
-      // Topic events are recorded data: today's codec must read them and write the same text.
+      // Agenda events are recorded data: today's codec must read them and write the same text.
       val j = TurnJournal.classification
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {

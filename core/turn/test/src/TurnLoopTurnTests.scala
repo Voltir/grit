@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.agenda.{Agenda, Placement}
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
@@ -8,7 +9,6 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
-import grit.core.topic.{Placement, Verdict}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -439,7 +439,7 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "unsure of the topic: topic offered first, asked for on the first call, its verdict recorded"
+      "unsure of the item: topic offered first, asked for on the first call, its verdict recorded"
     ) {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
@@ -489,11 +489,11 @@ object TurnLoopTurnTests extends TestSuite {
         Vector(TurnVerdict.Noted, "alpha")
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:1") ==>
         Vector("ask:1", "record-verdict", "append", "summarise", "append-summary")
-      topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
-        Some(Placement.Asked(Verdict.Current, None))
+      agenda(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
+        Some(Placement.Asked(Agenda.Verdict.Current, None))
     }
 
-    test("unsure of the topic, and topic called only in a later round: that is on the record") {
+    test("unsure of the item, and topic called only in a later round: that is on the record") {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
       Vector("hello", "knots? ~0.1").foreach { text =>
@@ -531,10 +531,10 @@ object TurnLoopTurnTests extends TestSuite {
           5
         )
       )
-      topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
+      agenda(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
         Some(
           Placement.Asked(
-            Verdict.Unreadable("answered without calling topic"),
+            Agenda.Verdict.Unreadable("answered without calling topic"),
             Some(
               "no topic call in the first reply; topic called only in a later round (1); not read"
             )

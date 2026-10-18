@@ -97,11 +97,11 @@ object ChatScreen {
     }
   }
 
-  /** What the turn panel shows: a turn, the conversation so far, or its topics. */
+  /** What the turn panel shows: a turn, the conversation so far, or its items. */
   enum Tab(val label: String) extends caps.Pure {
     case Turn extends Tab("turn")
     case Session extends Tab("session")
-    case Topics extends Tab("topics")
+    case Agenda extends Tab("topics")
 
     /** The tab after this one, round again after the last. */
     def next: Tab = Tab.fromOrdinal((ordinal + 1) % Tab.values.length)
@@ -151,7 +151,7 @@ object ChatScreen {
       hearing: Option[Hearing] = None,
       tab: Tab = Tab.Turn,
       session: Option[SessionView] = None,
-      topics: Option[TopicsView] = None,
+      agenda: Option[AgendaView] = None,
       summaries: Boolean = false,
       loaded: Boolean = false,
       asking: Option[Asked] = None,
@@ -288,8 +288,8 @@ object ChatScreen {
     /** From the host: the conversation so far, as it now stands. */
     case Session(view: SessionView)
 
-    /** From the host: the conversation's topics, and the shown turn's placing. */
-    case Topics(view: TopicsView)
+    /** From the host: the conversation's agenda, and the shown turn's placing. */
+    case Agenda(view: AgendaView)
 
     /** The turn panel, scrolled, selected or copied from. */
     case PanelReader(m: Scroller.Msg)
@@ -476,7 +476,7 @@ object ChatScreen {
         case Msg.NextTab => (tabbed(s, s.tab.next), Effect.NoOp)
         case Msg.ShowTab(tab) => (tabbed(s, tab), Effect.NoOp)
         case Msg.Session(view) => (s.copy(session = Some(view)), Effect.NoOp)
-        case Msg.Topics(view) => (s.copy(topics = Some(view)), Effect.NoOp)
+        case Msg.Agenda(view) => (s.copy(agenda = Some(view)), Effect.NoOp)
         case Msg.PanelReader(Scroller.Msg.Copied(text, _)) =>
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
           else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
@@ -704,7 +704,7 @@ object ChatScreen {
         val rows = s.tab match {
           case Tab.Turn => panel.blocks(s.turn, shown, s.pinned.nonEmpty)
           case Tab.Session => panel.session(s.session)
-          case Tab.Topics => panel.topics(s.topics)
+          case Tab.Agenda => panel.agenda(s.agenda)
         }
         val turn = Scroller
           .view(Panel, Doc(rows), s.panelReader, bar = bar)

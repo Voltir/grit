@@ -1,10 +1,10 @@
 package grit.core.store
 
+import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
-import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
 
@@ -199,13 +199,14 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(json) ==> Right(asked)
     }
 
-    test("topic") {
+    test("agenda") {
       PayloadJson
         .write(
-          Payload.Topic(
+          Payload.Agenda(
             Vector(
-              TopicEvent.Opened(TopicId("t1")),
-              TopicEvent.Placed(TurnSeq(2), Weights.same(TopicId("t1"), 0.5), Placement.First)
+              Agenda.Event.Opened(Agenda.ItemId("t1")),
+              Agenda.Event
+                .Placed(TurnSeq(2), Weights.same(Agenda.ItemId("t1"), 0.5), Placement.First)
             )
           )
         )
@@ -285,13 +286,13 @@ object PayloadJsonTests extends TestSuite {
 
     test("every sample round-trips, through text too") {
       val window = Payload.Window(Vector(EntrySeq(0)), Vector(TurnSeq(0), TurnSeq(7)))
-      val (t1, t2) = (TopicId("topic:c:0"), TopicId("topic:c:3"))
-      val topic = Payload.Topic(
+      val (t1, t2) = (Agenda.ItemId("topic:c:0"), Agenda.ItemId("topic:c:3"))
+      val agenda = Payload.Agenda(
         Vector(
-          TopicEvent.Opened(t1),
-          TopicEvent.Placed(TurnSeq(0), Weights.whole(t1), Placement.First),
-          TopicEvent.Placed(TurnSeq(1), Weights.whole(t1), Placement.Unclassified("no key")),
-          TopicEvent.Placed(
+          Agenda.Event.Opened(t1),
+          Agenda.Event.Placed(TurnSeq(0), Weights.whole(t1), Placement.First),
+          Agenda.Event.Placed(TurnSeq(1), Weights.whole(t1), Placement.Unclassified("no key")),
+          Agenda.Event.Placed(
             TurnSeq(3),
             Weights.changed(
               t1,
@@ -306,33 +307,37 @@ object PayloadJsonTests extends TestSuite {
               )
             )
           ),
-          TopicEvent
-            .Placed(TurnSeq(4), Weights.same(t1, 0.5), Placement.Asked(Verdict.Current, None)),
-          TopicEvent.Placed(
+          Agenda.Event
+            .Placed(
+              TurnSeq(4),
+              Weights.same(t1, 0.5),
+              Placement.Asked(Agenda.Verdict.Current, None)
+            ),
+          Agenda.Event.Placed(
             TurnSeq(4),
             Weights.whole(t2),
-            Placement.Asked(Verdict.Earlier("Knots"), Some("called a tool again"))
+            Placement.Asked(Agenda.Verdict.Earlier("Knots"), Some("called a tool again"))
           ),
-          TopicEvent
-            .Placed(TurnSeq(5), Weights.whole(t2), Placement.Asked(Verdict.New(None), None)),
-          TopicEvent.Placed(
+          Agenda.Event
+            .Placed(TurnSeq(5), Weights.whole(t2), Placement.Asked(Agenda.Verdict.New(None), None)),
+          Agenda.Event.Placed(
             TurnSeq(6),
             Weights.whole(t2),
-            Placement.Asked(Verdict.New(Some("Sailing")), None)
+            Placement.Asked(Agenda.Verdict.New(Some("Sailing")), None)
           ),
-          TopicEvent.Placed(
+          Agenda.Event.Placed(
             TurnSeq(7),
             Weights.whole(t2),
-            Placement.Asked(Verdict.Unreadable("{}"), None)
+            Placement.Asked(Agenda.Verdict.Unreadable("{}"), None)
           ),
-          TopicEvent.Described(t2, "Knots", "Which knot holds under load.")
+          Agenda.Event.Described(t2, "Knots", "Which knot holds under load.")
         )
       )
       (samples.map(Payload.Message(_)) ++ samples.collect { case a: Message.Assistant =>
         Payload.Exchange(a)
       } ++ samples.collect { case r: Message.ToolResult => Payload.Result(r, "read a.txt") } :+
         Payload.Summary("s") :+
-        Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
+        Payload.Query("q") :+ window :+ agenda :+ Payload.Attempt(ToolCallId("c1")) :+
         Payload.Ask(ToolCallId("c1"), "Edit a.txt") :+
         Payload.Closed(
           PeriodSeq.First,

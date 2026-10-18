@@ -243,7 +243,7 @@ object TurnRequestsTests extends TestSuite {
       calls.map(_.answered.map(_.on) == provider.requests.lastOption) ==> Right(false)
     }
 
-    test("a turn asked about its topic is rebuilt with its first call tagged and topic offered") {
+    test("a turn asked about its item is rebuilt with its first call tagged and topic offered") {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
       Vector("hello", "knots? ~0.1").foreach(text =>

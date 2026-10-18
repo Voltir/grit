@@ -519,6 +519,8 @@ object TurnJson {
   private def role(r: TurnRecord.Role): String = r match {
     case TurnRecord.Role.Round(n) => s"round:$n"
     case TurnRecord.Role.Relevance(n) => s"relevance:$n"
+    // The agenda's role is written `topic`, its name from before the rename to agenda.
+    case TurnRecord.Role.Agenda => "topic"
     case other => other.toString.toLowerCase
   }
 
@@ -535,7 +537,7 @@ object TurnJson {
         Vector(
           TurnRecord.Role.Needs,
           TurnRecord.Role.Query,
-          TurnRecord.Role.Topic,
+          TurnRecord.Role.Agenda,
           TurnRecord.Role.Reply,
           TurnRecord.Role.Judge,
           TurnRecord.Role.Summary,

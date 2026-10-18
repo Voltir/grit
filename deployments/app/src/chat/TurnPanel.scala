@@ -1,9 +1,9 @@
 package grit.app.chat
 
 import grit.app.look.{Look, ProseLook, Theme}
+import grit.core.agenda.{Agenda, Band}
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
-import grit.core.topic.{Band, Verdict}
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
 import grit.tui.model.text.StyledText
@@ -11,8 +11,8 @@ import grit.turn.Turn
 
 /** The turn panel's rows. Its turn tab, for a [[TurnView]]: the steps as a timeline, then
   * the query, the recalled turns, the window as a stacked bar against `budget`, and the
-  * cost. Its session tab, for a [[SessionView]]: the conversation so far. Its topics tab,
-  * for a [[TopicsView]]: the topics, and how one turn's message was placed. Every row but a
+  * cost. Its session tab, for a [[SessionView]]: the conversation so far. Its agenda tab,
+  * for an [[AgendaView]]: the items, and how one turn's message was placed. Every row but a
   * long model name fits in [[TurnPanel.Cols]] columns, so none wraps.
   */
 final case class TurnPanel(look: Look, budget: Tokens) {
@@ -76,23 +76,23 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           Vector(blank) ++ recalled ++ Vector(blank) ++ roles(v.roles)
     }
 
-  /** The rows of the topics tab for `view`, or a placeholder before the host has read the
-    * conversation: each topic (the current one marked) with its messages, then how the
+  /** The rows of the agenda tab for `view`, or a placeholder before the host has read the
+    * conversation: each item (the current one marked) with its messages, then how the
     * shown turn's message was placed: p(same) and its band, the classifier's choice, the
     * model's verdict, a flag when the two disagreed, and the heaviest weights.
     */
-  def topics(view: Option[TopicsView]): Vector[Block] =
+  def agenda(view: Option[AgendaView]): Vector[Block] =
     view match {
       case None => Vector(row(" reading the conversation…" -> fg(t.faint)))
       case Some(v) =>
-        val count = if (v.topics.size == 1) "1 topic" else s"${v.topics.size} topics"
+        val count = if (v.items.size == 1) "1 topic" else s"${v.items.size} topics"
         val rows =
-          if (v.topics.isEmpty) Vector(row(" none yet" -> fg(t.faint)))
+          if (v.items.isEmpty) Vector(row(" none yet" -> fg(t.faint)))
           else
-            v.topics.map { r =>
+            v.items.map { r =>
               row(
                 (if (r.current) " ● " else "   ") -> fg(t.grit),
-                clip(r.name, TopicCols).padTo(TopicCols, ' ') -> fg(
+                clip(r.name, AgendaCols).padTo(AgendaCols, ' ') -> fg(
                   if (r.current) t.ink else t.faint
                 ),
                 r.messages.toString.reverse.padTo(4, ' ').reverse -> fg(t.faint)
@@ -102,13 +102,13 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           rows ++ v.placing.toVector.flatMap(p => blank +: placing(p))
     }
 
-  private def placing(p: TopicsView.Placing): Vector[Block] = {
+  private def placing(p: AgendaView.Placing): Vector[Block] = {
     def label(l: String): (String, Style) = s" ${l.padTo(9, ' ')}" -> fg(t.faint)
     def shares(items: Vector[(String, Double)]): Vector[Block] =
       items.map((n, w) =>
         row(
           "   " -> fg(t.faint),
-          clip(n, TopicCols).padTo(TopicCols, ' ') -> fg(t.ink),
+          clip(n, AgendaCols).padTo(AgendaCols, ' ') -> fg(t.ink),
           share(w).reverse.padTo(5, ' ').reverse -> fg(t.ink)
         )
       )
@@ -118,10 +118,10 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       case Band.Changed => "changed"
     }
     val verdict = p.verdict.map {
-      case Verdict.Current => "current"
-      case Verdict.Earlier(n) => s"earlier: $n"
-      case Verdict.New(n) => n.fold("new")(x => s"new: $x")
-      case Verdict.Unreadable(_) => "unreadable"
+      case Agenda.Verdict.Current => "current"
+      case Agenda.Verdict.Earlier(n) => s"earlier: $n"
+      case Agenda.Verdict.New(n) => n.fold("new")(x => s"new: $x")
+      case Agenda.Verdict.Unreadable(_) => "unreadable"
     }
     Vector(row(s" TURN ${number(p.turn)}" -> (fg(t.ink) + Style.Bold))) ++
       Option.when(p.first)(row(label("jev"), "first message" -> fg(t.faint))) ++
@@ -135,7 +135,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         row(label("p(same)"), share(ps) -> fg(t.ink), band.fold("")(b => s" · $b") -> fg(t.faint))
       ) ++
       (if (p.choice.isEmpty) Vector.empty
-       else row(label("jev chose")) +: shares(p.choice.take(TopicsView.Weights))) ++
+       else row(label("jev chose")) +: shares(p.choice.take(AgendaView.Weights))) ++
       verdict.map(v => row(label("model"), clip(v, Cols - 12) -> fg(t.ink))) ++
       p.anomaly.map(a => row(s"   ${clip(a, Cols - 5)}" -> fg(t.faint))) ++
       Option.when(p.disagree)(
@@ -146,7 +146,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       Option.when(p.elsewhere > 0.005)(
         row(
           "   " -> fg(t.faint),
-          "elsewhere".padTo(TopicCols, ' ') -> fg(t.faint),
+          "elsewhere".padTo(AgendaCols, ' ') -> fg(t.faint),
           share(p.elsewhere).reverse.padTo(5, ' ').reverse -> fg(t.faint)
         )
       )
@@ -369,7 +369,7 @@ object TurnPanel {
   val ShownFrom = 100
 
   private val NameCols = 16
-  private val TopicCols = 28
+  private val AgendaCols = 28
   private val BarCells = 8
   private val WindowCells = 24
 

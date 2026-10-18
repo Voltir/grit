@@ -18,7 +18,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.edge.{Server, Tools}
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.models.StubProvider
@@ -50,7 +50,7 @@ object ReachLiveTests extends TestSuite {
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
         assembly = Assembly.Linear(Tokens(4000)),
-        topics = Topics.Off("no classifier here"),
+        placer = Placer.Off("no classifier here"),
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,

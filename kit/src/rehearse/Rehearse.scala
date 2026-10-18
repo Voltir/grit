@@ -46,7 +46,7 @@ object Rehearse {
       val tape = new Tape
       val runner = new RehearsalRunner(arrives(situation), tape)
       Rehearsing(config, d.budget, d.visibility, clock, runner) { r =>
-        val classifier = Taps.classifier(d.topics, answers, tape)
+        val classifier = Taps.classifier(d.placer, answers, tape)
         // Launch.asking throws only for what its deployment cannot write or offer.
         try {
           Launch.asking(
@@ -105,7 +105,7 @@ object Rehearse {
       classifier: ClearedClassifier^
   ): Map[ShadowName, ShadowAsking^{classifier}] =
     d.shadows
-      .map(v => v.name -> ShadowAsking(v.questions, Launch.shadowModel(d.topics, v), classifier))
+      .map(v => v.name -> ShadowAsking(v.questions, Launch.shadowModel(d.placer, v), classifier))
       .toMap
 
   /** `situation`'s message recorded through the session, as its edge would hand it over now. */

@@ -1,6 +1,6 @@
 package grit.kit.environment
 
-import grit.kit.deployment.{Deployments, Topics}
+import grit.kit.deployment.{Deployments, Placer}
 import grit.models.OpenRouterConfig
 
 import utest.*
@@ -9,9 +9,9 @@ import utest.*
 object SecretsTests extends TestSuite {
 
   val tests = Tests {
-    test("Jev's settings are read only for Jev's topics, and a blank key is refused, naming it") {
-      val jev = Deployments.accepted(topics = Topics.Jev)
-      val stub = Deployments.accepted(topics = Topics.Stub)
+    test("Jev's settings are read only for Jev as placer, and a blank key is refused, naming it") {
+      val jev = Deployments.accepted(placer = Placer.Jev)
+      val stub = Deployments.accepted(placer = Placer.Stub)
       (
         Secrets.of(Map("JEV_API_KEY" -> "sk-jev-1"), jev).map(_.jev.map(_.apiKey)),
         Secrets.of(Map("JEV_API_KEY" -> "sk-jev-1"), stub).map(_.jev.map(_.apiKey)),

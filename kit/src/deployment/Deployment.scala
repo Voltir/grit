@@ -64,10 +64,10 @@ enum Assembly {
   case Linear(window: Tokens)
 }
 
-/** How a message is placed among its conversation's topics, and how each quiet period is
+/** Who places a message on its conversation's agenda, and how each quiet period is
   * asked whether anyone is waiting on it.
   */
-enum Topics {
+enum Placer {
 
   /** By Jev; needs `JEV_API_KEY` ([[grit.kit.environment.Secrets]]). */
   case Jev
@@ -79,10 +79,10 @@ enum Topics {
   case Off(reason: String)
 }
 
-object Topics {
+object Placer {
 
   /** The service Jev's states go to, `service:jev`: the party a deployment clears when its
-    * topics are Jev's.
+    * placer is Jev.
     */
   val JevService: Service = JevClassifier.Service
 }
@@ -129,10 +129,11 @@ enum DeploymentRefusal {
   /** The sweep, `every`, is under a second. */
   case SweepTooOften(every: FiniteDuration)
 
-  /** It speaks where it was not addressed, but places topics with no classifier, so no draft
-    * could be judged: it would pay for drafts and never post one. `topics` says why it has none.
+  /** It speaks where it was not addressed, but places messages with no classifier, so no
+    * draft could be judged: it would pay for drafts and never post one. `reason` says why it has
+    * none.
     */
-  case SpeaksUnjudged(topics: String)
+  case SpeaksUnjudged(reason: String)
 
   /** Speaking's gate reads `reading`, which live triage ([[Deployment.triage]]) does not
     * ask, so it would hold every message.
@@ -148,11 +149,11 @@ enum DeploymentRefusal {
   /** Two shadows are named `name`. */
   case ShadowRepeated(name: ShadowName)
 
-  /** Shadows are declared, but topics are placed with no classifier, so none could be asked:
-    * each shadow asks the topics' classifier, Jev of the shadow's own model when it names one,
-    * or the stub. `topics` says why there is none.
+  /** Shadows are declared, but messages are placed with no classifier, so none could be asked:
+    * each shadow asks the placer's classifier, Jev of the shadow's own model when it names one,
+    * or the stub. `reason` says why there is none.
     */
-  case ShadowsUnasked(topics: String)
+  case ShadowsUnasked(reason: String)
 
   /** The review names `shadow`, which is not declared among the shadows, so no gate says
     * when it would draft.
@@ -170,11 +171,11 @@ enum DeploymentRefusal {
     */
   case RecipeUnread(reading: Reading)
 
-  /** The recipe offers a service by source, but topics are placed with no classifier, and
+  /** The recipe offers a service by source, but messages are placed with no classifier, and
     * live triage and a mention's weighing ask that one: every answer would be missing, and the
-    * recipe would never act. `topics` says why there is none.
+    * recipe would never act. `reason` says why there is none.
     */
-  case RecipeUnweighed(topics: String)
+  case RecipeUnweighed(reason: String)
 
   /** The recipe offers a service by source, but no corpus supplies one: no gate
     * would be read, and the recipe would never act.
@@ -262,23 +263,23 @@ enum DeploymentRefusal {
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
     case EdgeRepeated(name) => s"two edges are named ${EdgeName.value(name)}"
     case SweepTooOften(every) => s"the sweep, every $every, must be at least a second apart"
-    case SpeaksUnjudged(topics) =>
-      s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
+    case SpeaksUnjudged(reason) =>
+      s"speaking unprompted needs a classifier to judge each draft, and topics are off: $reason"
     case SpeechUnread(reading) =>
       s"speaking's gate reads $reading, which live triage does not ask, so it would hold every message"
     case DurableUnasked =>
       s"live triage does not ask ${QuestionName.value(Earning.Durable)} as a yes/no, so every period it heard would earn a closing"
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
-    case ShadowsUnasked(topics) =>
-      s"a shadow asks its question set of the topics' classifier, and topics are off: $topics"
+    case ShadowsUnasked(reason) =>
+      s"a shadow asks its question set of the topics' classifier, and topics are off: $reason"
     case ReviewUngated(shadow) =>
       s"the review names ${ShadowName.value(shadow)}, which is not a declared shadow"
     case ReviewUnspoken =>
       "a review compares a shadow's gate with live triage's, and speaking is off, so live's is never reached"
     case RecipeUnread(reading) =>
       s"the recipe offers a service by $reading, which live triage does not ask, so it would never act"
-    case RecipeUnweighed(topics) =>
-      s"the recipe offers a service by source, which needs a classifier to weigh each message, and topics are off: $topics"
+    case RecipeUnweighed(reason) =>
+      s"the recipe offers a service by source, which needs a classifier to weigh each message, and topics are off: $reason"
     case RecipeUnsourced =>
       "the recipe offers a service by source, and no corpus supplies a service, so it would never act"
     case OffersUnlinked(source, service) =>
@@ -324,7 +325,7 @@ enum DeploymentRefusal {
   * posts to, the
   * model policy its calls are made under (laid over by the model settings the database
   * keeps), what its turns are offered and how their windows are assembled, how messages are
-  * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
+  * placed on the agenda, the lifecycle's settings, what it may spend a day, whether and within
   * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
   * records beside live triage ([[ShadowVariant]]), the corpora its shadows'
   * question sets ask about ([[Corpora]]), and its turns' offering by the services
@@ -347,7 +348,7 @@ final case class Deployment private (
     policy: Policy,
     offer: Offer,
     assembly: Assembly,
-    topics: Topics,
+    placer: Placer,
     lifecycle: LifecycleSettings,
     budget: Budget,
     speaking: Speaking,
@@ -395,7 +396,7 @@ object Deployment {
       policy: Policy,
       offer: Offer,
       assembly: Assembly,
-      topics: Topics,
+      placer: Placer,
       lifecycle: LifecycleSettings,
       budget: Budget,
       speaking: Speaking,
@@ -530,9 +531,9 @@ object Deployment {
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
       // Earning reads durable by name: a live set without it would earn every period a closing.
       _ <- earning(live)
-      _ <- (speaking, topics) match {
-        // The judge is the topics' classifier: with none, no draft could ever post.
-        case (Speaking.Shadow(_) | Speaking.Within(_), Topics.Off(reason)) =>
+      _ <- (speaking, placer) match {
+        // The judge is the placer's classifier: with none, no draft could ever post.
+        case (Speaking.Shadow(_) | Speaking.Within(_), Placer.Off(reason)) =>
           Left(DeploymentRefusal.SpeaksUnjudged(reason))
         case _ => Right(())
       }
@@ -548,9 +549,9 @@ object Deployment {
         .headOption
         .map(DeploymentRefusal.ShadowRepeated(_))
         .toLeft(())
-      _ <- topics match {
-        // A shadow asks the topics' classifier: with none, it could never be asked.
-        case Topics.Off(reason) if shadows.nonEmpty =>
+      _ <- placer match {
+        // A shadow asks the placer's classifier: with none, it could never be asked.
+        case Placer.Off(reason) if shadows.nonEmpty =>
           Left(DeploymentRefusal.ShadowsUnasked(reason))
         case _ => Right(())
       }
@@ -570,9 +571,9 @@ object Deployment {
       }
       bySource = Vector(recipe.heard.focused, recipe.heard.open, recipe.addressed)
         .exists(_.offering != Offering.All)
-      _ <- (bySource, topics) match {
-        // Live triage and a mention's weighing ask the topics' classifier: with none, no answer.
-        case (true, Topics.Off(reason)) => Left(DeploymentRefusal.RecipeUnweighed(reason))
+      _ <- (bySource, placer) match {
+        // Live triage and a mention's weighing ask the placer's classifier: with none, no answer.
+        case (true, Placer.Off(reason)) => Left(DeploymentRefusal.RecipeUnweighed(reason))
         case _ => Right(())
       }
       _ <- Either.cond(
@@ -591,7 +592,7 @@ object Deployment {
       policy,
       offer,
       assembly,
-      topics,
+      placer,
       lifecycle,
       budget,
       speaking,

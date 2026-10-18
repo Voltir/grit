@@ -13,7 +13,7 @@ import grit.core.retention.Target
 import grit.core.route.Routed
 import grit.core.store.{
   Entry,
-  EntryTopics,
+  EntryAgenda,
   Payload,
   Reads,
   Sealed,
@@ -45,13 +45,13 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      the classifier does not answer; none, with no classifier call, when unearned or ran.
   *   1. `ask:summary` — the closing: its flows written by the catalog's summary pin
   *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the
-  *      balance it opened with after the writer's edits and the topics'
-  *      ([[grit.core.store.EntryTopics.edits]]), held to the cap
+  *      balance it opened with after the writer's edits and the items'
+  *      ([[grit.core.store.EntryAgenda.edits]]), held to the cap
   *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
   *      is cut off at its token limit, or when the gate found nothing new, the day's spend
   *      reached its cap or no pin of its role is cleared for what its period reads now
   *      ([[grit.core.route.Routed]]; and then no model is called), the period's per-turn
-  *      summaries joined as the prose, and the balance carried with the topics' edits alone.
+  *      summaries joined as the prose, and the balance carried with the agenda's edits alone.
   *      A period grit only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]])
   *      that earned its closing is written by the catalog's heard pin, as reported speech, asking only its
   *      prose and outcome; one that did not is closed with no model call, its prose
@@ -376,14 +376,14 @@ object Close {
       PeriodTranscript.labelled(own, names(read, env, own), env.persona)
     }
     val period = attempt.period.seq
-    // The topics' edits are the fold's, free and exact: made whether or not a model writes.
-    val topics =
-      EntryTopics.edits(
+    // The agenda's edits are the fold's, free and exact: made whether or not a model writes.
+    val agendaEdits =
+      EntryAgenda.edits(
         known,
-        entries.getOrElse(Vector.empty).flatMap(e => EntryTopics.events(e.payload))
+        entries.getOrElse(Vector.empty).flatMap(e => EntryAgenda.events(e.payload))
       )
     def closed(prose: String, outcome: Option[String], edits: Vector[Edit]): Option[Closing] = {
-      val edited = known.edit(edits ++ topics, period)
+      val edited = known.edit(edits ++ agendaEdits, period)
       val fitted = edited.balance.fit(cap, period)
       Flows
         .of(prose, outcome, edited.changes ++ fitted.changes)

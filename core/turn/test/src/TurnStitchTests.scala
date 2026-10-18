@@ -8,7 +8,7 @@ import grit.dbos.sql.TestTx
 import utest.*
 
 /** A Slack thread's first message, said to grit at a channel's top level, placed by its own
-  * workflow, which the turn waits for before its topics are placed (ADR 0023).
+  * workflow, which the turn waits for before it places its message on the agenda (ADR 0023).
   */
 object TurnStitchTests extends TestSuite {
   import TurnFixtures.*
@@ -23,7 +23,7 @@ object TurnStitchTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "an addressed first message waits, before its topics, for its placement, which follows the exchange"
+      "an addressed first message waits, before its agenda, for its placement, which follows the exchange"
     ) {
       val ch = new StitchChannel(Payload.Message(Message.User("@grit is this a real question?")))
       val jev = new FirstOption

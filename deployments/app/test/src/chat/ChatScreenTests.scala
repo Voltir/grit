@@ -345,10 +345,10 @@ object ChatScreenTests extends TestSuite {
       keyed.state.tab ==> ChatScreen.Tab.Session
       keyed.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
         Some(Theme.Default.headerBg)
-      // Ctrl-t again: the topics; and once more comes round to the turn.
-      val topical = keyed.input(Input.Keyboard(Key.Ctrl('t')))
-      topical.state.tab ==> ChatScreen.Tab.Topics
-      topical.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
+      // Ctrl-t again: the items; and once more comes round to the turn.
+      val onAgenda = keyed.input(Input.Keyboard(Key.Ctrl('t')))
+      onAgenda.state.tab ==> ChatScreen.Tab.Agenda
+      onAgenda.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
 
       // A click on a pill shows its tab.
       val clicked = click(wide, " session ")
@@ -421,27 +421,27 @@ object ChatScreenTests extends TestSuite {
       assert(shown.contains("today    ≥ $0.2"), !shown.contains(" of $"))
     }
 
-    test("the topics tab: the topics, the current marked, and how the shown turn was placed") {
+    test("the agenda tab: the items, the current marked, and how the shown turn was placed") {
       val wide = Headless
         .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(40, 110))
         .message(Msg.Opened)
       val on = click(wide, " topics ")
-      on.state.tab ==> ChatScreen.Tab.Topics
+      on.state.tab ==> ChatScreen.Tab.Agenda
       assert(on.screen.mkString.contains("reading the conversation"))
-      val view = TopicsView(
+      val view = AgendaView(
         Vector(
-          TopicsView.Row("Knots", 3, current = true),
-          TopicsView.Row("Rust borrow checker", 1, current = false)
+          AgendaView.Row("Knots", 3, current = true),
+          AgendaView.Row("Rust borrow checker", 1, current = false)
         ),
         Some(
-          TopicsView.Placing(
+          AgendaView.Placing(
             turn = TurnSeq(3),
             first = false,
             unclassified = None,
             pSame = Some(0.62),
-            band = Some(grit.core.topic.Band.Uncertain),
+            band = Some(grit.core.agenda.Band.Uncertain),
             choice = Vector.empty,
-            verdict = Some(grit.core.topic.Verdict.Earlier("Rust borrow checker")),
+            verdict = Some(grit.core.agenda.Agenda.Verdict.Earlier("Rust borrow checker")),
             anomaly = None,
             weights = Vector("Rust borrow checker" -> 1.0),
             elsewhere = 0.0,
@@ -450,7 +450,7 @@ object ChatScreenTests extends TestSuite {
           )
         )
       )
-      val painted = on.message(Msg.Topics(view))
+      val painted = on.message(Msg.Agenda(view))
       val shown = painted.screen.mkString("\n")
       assert(
         shown.contains("TOPICS  · 2 topics"),

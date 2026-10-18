@@ -38,7 +38,7 @@ import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
   * and [[TurnHosting]], then the capabilities it calls. `assembler` builds its window,
-  * `classifier` places its message among the topics, `models` holds the catalog the turn
+  * `classifier` places its message on the agenda, `models` holds the catalog the turn
   * pins and makes each role's calls under its pin, `db` reads the store outside a
   * transaction, `clock` dates entries and paces the reply's stream, and `fresh` tags each
   * attempt at a model call ([[TurnStream]]); `classifier` also judges an unprompted turn's

@@ -31,8 +31,8 @@ object ClosingTests extends TestSuite {
     balance(
       line(Section.Open, "Prod deploy is not set up", 2, 3),
       line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person),
-      line(Section.Topics, "Laptop Backup Setup", 1, 2),
-      line(Section.Topics, "Staging Deploy", 2, 3)
+      line(Section.Agenda, "Laptop Backup Setup", 1, 2),
+      line(Section.Agenda, "Staging Deploy", 2, 3)
     )
   )
 
@@ -90,8 +90,10 @@ object ClosingTests extends TestSuite {
       )
     }
 
-    test("a topic line's summary is stored beside its text, and read back; other lines have none") {
-      val t = TestClosings.line(Section.Topics, "Photo Rename", 1, 2, Some("renaming photos"))
+    test(
+      "an agenda line's summary is stored beside its text, and read back; other lines have none"
+    ) {
+      val t = TestClosings.line(Section.Agenda, "Photo Rename", 1, 2, Some("renaming photos"))
       val c = Closing(TestClosings.prose("x").flows, balance(t))
       ClosingJson.writeBalance(c.balance).render() ==>
         """{"open":[],"standing":[],"topics":[{"text":"Photo Rename","since":1,"touched":2,"summary":"renaming photos"}]}"""

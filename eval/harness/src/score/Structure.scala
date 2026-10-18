@@ -124,7 +124,7 @@ object Paid {
     case Some(TurnRecord.Role.Needs) => Needs
     case Some(TurnRecord.Role.Query) => Query
     case Some(TurnRecord.Role.Relevance(_)) => Relevance
-    case Some(TurnRecord.Role.Topic) => Topic
+    case Some(TurnRecord.Role.Agenda) => Topic
     case Some(TurnRecord.Role.Round(_)) => Rounds
     case Some(TurnRecord.Role.Reply) => Reply
     case Some(TurnRecord.Role.Judge) => Judge

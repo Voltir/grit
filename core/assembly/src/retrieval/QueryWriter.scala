@@ -23,7 +23,7 @@ object QueryWriter {
   val ToolResultChars = 500
 
   /** The request for a query, from the turn's own entries, `own`. The earlier turns are
-    * left out: shown the latest exchange, the model searched for its topic instead of the
+    * left out: shown the latest exchange, the model searched for its item instead of the
     * new message's (the eval, 2026-09-24).
     */
   def request(own: Vector[Entry]): ModelRequest =
@@ -55,7 +55,7 @@ object QueryWriter {
     case Payload.Heard(text) => Some(s"Overheard: $text")
     // Assembly runs before the turn's tool loop, so its own entries hold no exchange yet; a
     // post is the first entry of a turn that never runs, so never a turn's own.
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _) | Payload.Agenda(_) |
         Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
         Payload.Closed(_, _, _) | Payload.Draft(_) | Payload.Posted(_) =>
       None

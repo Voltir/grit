@@ -399,13 +399,13 @@ object RecordTurnHistories {
     /** `said` answered in turn in one conversation, with the stub classifier (failing when
       * `down`), the last turn's entries crashing where `crash` says; the last turn's history.
       */
-    def topical(
+    def onAgenda(
         said: Vector[String],
         down: Boolean = false,
         crash: Option[grit.core.store.Entry -> Boolean] = None
     ): History = answered(said, new RecordingProvider, down, crash)
 
-    /** As [[topical]], the last turn answered by `provider`. */
+    /** As [[onAgenda]], the last turn answered by `provider`. */
     def answered(
         said: Vector[String],
         provider: grit.core.provider.Provider^,
@@ -610,16 +610,16 @@ object RecordTurnHistories {
           else new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
         )
       ),
-      "topical-first" -> topical(Vector("hello")),
-      "topical-same" -> topical(Vector("hello", "more ~0.9")),
-      "topical-uncertain" -> topical(Vector("hello", "hm ~0.5")),
-      "topical-changed-new" -> topical(Vector("hello", "knots? ~0.1")),
+      "topical-first" -> onAgenda(Vector("hello")),
+      "topical-same" -> onAgenda(Vector("hello", "more ~0.9")),
+      "topical-uncertain" -> onAgenda(Vector("hello", "hm ~0.5")),
+      "topical-changed-new" -> onAgenda(Vector("hello", "knots? ~0.1")),
       "topical-changed-back" ->
-        topical(Vector("hello", "knots? ~0.1", "back ~0.1 ~back:new topic (2)")),
-      "topical-unclassified" -> topical(Vector("hello", "more"), down = true),
+        onAgenda(Vector("hello", "knots? ~0.1", "back ~0.1 ~back:new topic (2)")),
+      "topical-unclassified" -> onAgenda(Vector("hello", "more"), down = true),
       "topical-crashed-placing" ->
-        topical(Vector("hello", "more"), crash = Some(_.payload.isInstanceOf[Payload.Topic])),
-      "topical-verdict" -> topical(
+        onAgenda(Vector("hello", "more"), crash = Some(_.payload.isInstanceOf[Payload.Agenda])),
+      "topical-verdict" -> onAgenda(
         Vector(
           "hello",
           "knots? ~0.1",

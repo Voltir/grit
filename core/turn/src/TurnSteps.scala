@@ -59,7 +59,7 @@ private[turn] object TurnSteps {
     def limits(
         offer: TurnOffer.Recorded,
         routed: Turn.Routed,
-        asked: Option[TurnTopics.Classification]
+        asked: Option[TurnAgenda.Classification]
     )(using Tx^): Either[TurnFailure, TurnRound.Limits]
 
     /** What the turn's rounds act through. */
@@ -121,7 +121,7 @@ private[turn] object TurnSteps {
     def limits(
         offer: TurnOffer.Recorded,
         routed: Turn.Routed,
-        asked: Option[TurnTopics.Classification]
+        asked: Option[TurnAgenda.Classification]
     )(using Tx^): Either[TurnFailure, TurnRound.Limits] =
       turnEnv.hosting
         .offered(offer)
@@ -152,7 +152,7 @@ private[turn] object TurnSteps {
     val recordFailure: StepName[Any] = StepName("record-failure")
     val stitched: StepName[Any] = StepName("stitched")
     val classify: StepName[Any] = StepName("classify")
-    val recordTopic: StepName[Any] = StepName("record-topic")
+    val recordAgenda: StepName[Any] = StepName("record-topic")
     val search: StepName[Any] = StepName("search")
     val assemble: StepName[Any] = StepName("assemble")
     val recordWindow: StepName[Any] = StepName("record-window")
@@ -199,12 +199,12 @@ private[turn] object TurnSteps {
   ) extends OfTurn
 
   /** `at`, its message placed as `placing` says. */
-  final case class Placed(at: Offered, placing: TurnTopics.Classification) extends OfTurn {
+  final case class Placed(at: Offered, placing: TurnAgenda.Classification) extends OfTurn {
     def turn: TurnRef = at.turn
   }
 
   /** `at`, over the window `seen`. */
-  final case class Assembled(at: Offered, placing: TurnTopics.Classification, seen: Window)
+  final case class Assembled(at: Offered, placing: TurnAgenda.Classification, seen: Window)
       extends OfTurn {
     def turn: TurnRef = at.turn
   }
@@ -212,7 +212,7 @@ private[turn] object TurnSteps {
   /** `turn`'s model asked about `asked`, its verdict read from `first` against `replies`. */
   final case class Verdict(
       turn: TurnRef,
-      asked: TurnTopics.Classification,
+      asked: TurnAgenda.Classification,
       first: Message.Assistant,
       replies: Vector[Message.Assistant]
   ) extends OfTurn
@@ -407,24 +407,24 @@ private[turn] object TurnSteps {
       )
       .over[Env](r => r.placing)
 
-  /** `classify`: the turn's message placed among its conversation's topics
-    * ([[TurnTopics.classify]]).
+  /** `classify`: the turn's message placed on its conversation's agenda
+    * ([[TurnAgenda.classify]]).
     */
-  val classify: Step[Env, OfTurn, TurnTopics.Classification] =
-    Step[Env, OfTurn, TurnTopics.Classification](Names.classify)(r =>
+  val classify: Step[Env, OfTurn, TurnAgenda.Classification] =
+    Step[Env, OfTurn, TurnAgenda.Classification](Names.classify)(r =>
       in => {
         val (env, records) = (r.env, r.env.records)
-        TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, in.turn)
+        TurnAgenda.classify(env.classifier, records.entries, env.db, records.estimator, in.turn)
       }
     )
 
-  /** `record-topic`: the placement recorded ([[TurnTopics.record]]). */
-  val recordTopic: Step[Env, Placed, Either[TurnFailure, EntryId]] =
-    Step.transact[Env, Placed, Either[TurnFailure, EntryId]](Names.recordTopic, onTurn)(r =>
+  /** `record-topic`: the placement recorded ([[TurnAgenda.record]]). */
+  val recordAgenda: Step[Env, Placed, Either[TurnFailure, EntryId]] =
+    Step.transact[Env, Placed, Either[TurnFailure, EntryId]](Names.recordAgenda, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
           val (env, records) = (r.env, r.env.records)
-          TurnTopics.record(
+          TurnAgenda.record(
             records.entries,
             records.ledger,
             env.classifier.upstream,
@@ -454,7 +454,7 @@ private[turn] object TurnSteps {
             )
     )
 
-  /** `record-verdict`: the model's verdict on the turn's topic, when the classifier was unsure
+  /** `record-verdict`: the model's verdict on the turn's item, when the classifier was unsure
     * ([[TurnVerdict]]).
     */
   val recordVerdict: Step[Env, Verdict, Either[TurnFailure, EntryId]] =
@@ -462,7 +462,7 @@ private[turn] object TurnSteps {
       in =>
         (tx: Tx^) ?=> {
           val (env, turn) = (r.env, in.turn)
-          TurnTopics.writeEvents(
+          TurnAgenda.writeEvents(
             env.records.entries,
             env.records.ledger,
             turn,
@@ -542,7 +542,7 @@ private[turn] object TurnSteps {
 
   /** `summarise`: the summary of the turn whose reply is `answered`, asked of the summary's
     * pin, again while the summarizer is unavailable, as a reply is ([[Asking.reply]]), with
-    * the name and description of its message's topic; its reasoning dropped.
+    * the name and description of its message's item; its reasoning dropped.
     * `Uncleared` when no summary pin is cleared; `Store` when its route's pins do not read
     * back ([[Turn.Routed.picked]]).
     */
@@ -1009,16 +1009,16 @@ private[turn] object TurnSteps {
   }
 
   /** The summary request for `turn`, from `all` of its conversation's entries: asking after
-    * its topic too when it has one.
+    * its item too when it has one.
     */
   private def summaryRequest(all: Vector[Entry], turn: TurnRef): ModelRequest =
-    TurnSummary.request(own(all, turn), TurnTopics.topicOf(all, turn))
+    TurnSummary.request(own(all, turn), TurnAgenda.itemOf(all, turn))
 
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger beside the
     * estimate of the request that produced it, rebuilt as [[appended]] rebuilds its own.
-    * What it says of the message's topic is recorded after it ([[TurnTopics.describedId]]).
+    * What it says of the message's item is recorded after it ([[TurnAgenda.describedId]]).
     */
   private def appendSummaryOf(
       records: TurnRecords,
@@ -1059,12 +1059,12 @@ private[turn] object TurnSteps {
         .spent(ledger, id, turn, message, Some(grade), estimate)
         .left
         .map(TurnFailure.ofStore)
-      described = TurnTopics.topicOf(all, turn).toVector.flatMap(TurnTopics.described(_, read))
-      _ <- TurnTopics.writeEvents(
+      described = TurnAgenda.itemOf(all, turn).toVector.flatMap(TurnAgenda.described(_, read))
+      _ <- TurnAgenda.writeEvents(
         entries,
         ledger,
         turn,
-        TurnTopics.describedId(turn),
+        TurnAgenda.describedId(turn),
         described,
         None,
         None,

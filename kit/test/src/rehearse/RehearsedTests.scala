@@ -12,7 +12,7 @@ import grit.core.store.{Db, InMemoryModelSettingStore, StoreError, Tx}
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.Starts
 import grit.dbos.sql.TestTx
-import grit.kit.deployment.Topics
+import grit.kit.deployment.Placer
 import grit.models.{StubClassifier, StubModels}
 
 import utest.*
@@ -47,7 +47,7 @@ object RehearsedTests extends TestSuite {
     val tape = new Tape
     val seed = Taps.seed(StubModels.Catalog.policy).fold(sys.error, identity)
     val models = Taps.models(seed, FakeDb, new InMemoryModelSettingStore, answers, tape)
-    val classifier = Taps.classifier(Topics.Stub, answers, tape)
+    val classifier = Taps.classifier(Placer.Stub, answers, tape)
     val runner = new RehearsalRunner(_ => Left(InboxError.Invalid("unused")), tape)
     val body: WorkflowId => Durable^ ?=> String = _ =>
       d ?=> {

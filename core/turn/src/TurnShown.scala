@@ -22,7 +22,7 @@ import TurnLoop.Round
 private[turn] object TurnShown {
 
   /** `c`, when the classifier was unsure: the classification the model is asked about. */
-  def asked(c: TurnTopics.Classification): Option[TurnTopics.Classification] =
+  def asked(c: TurnAgenda.Classification): Option[TurnAgenda.Classification] =
     Option.when(c.uncertain)(c)
 
   /** The tools each call of the loop offers: `own`, after `topic` for the classification
@@ -34,7 +34,7 @@ private[turn] object TurnShown {
     */
   def offered[C^](
       own: Toolbox[C],
-      asked: Option[TurnTopics.Classification]
+      asked: Option[TurnAgenda.Classification]
   ): Either[TurnFailure, Toolbox[C]] = {
     val tools = asked match {
       case None => Right(own)
@@ -89,7 +89,7 @@ private[turn] object TurnShown {
     * with each of `lines`, in order, each after a blank line ([[gatedOffer]]).
     */
   def loopShape(
-      asked: Option[TurnTopics.Classification],
+      asked: Option[TurnAgenda.Classification],
       round: Round,
       use: ToolUse,
       tools: Vector[ToolSchema],
@@ -249,7 +249,7 @@ private[turn] object TurnShown {
     * its tool, and any other by its position, a person's named as [[Showing.named]] names them
     * ("someone" when it does not), grit's as "an earlier reply" and a closing as "a closing
     * record". An entry the request does not show (an earlier turn's tool exchange or result, a
-    * window, a query, a summary, a topic, an ask, a message with no text nearby) is none.
+    * window, a query, a summary, an item, an ask, a message with no text nearby) is none.
     */
   def itemsOf(showing: Showing, window: Window): Vector[Item] = {
     val Showing(shownWindow, mine, near, named, documents) = showing

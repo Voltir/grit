@@ -1,29 +1,30 @@
-package grit.core.topic
+package grit.core.agenda
 
 import grit.core.either.Traversal.traverse
 import grit.core.id.TurnSeq
 
-/** The stored JSON form of [[TopicEvent]]s. Written by hand: it is persisted data, so a
-  * rename in Scala must not change it, and reading it is total.
+/** The stored JSON form of [[Agenda.Event]]s. Written by hand: it is persisted data, so a
+  * rename in Scala must not change it, and reading it is total. The `"topic"` key is an
+  * item's name from before the rename to agenda.
   */
-object TopicJson {
+object AgendaJson {
 
-  def write(e: TopicEvent): ujson.Value = e match {
-    case TopicEvent.Opened(t) => ujson.Obj("event" -> "opened", "topic" -> TopicId.value(t))
-    case TopicEvent.Placed(turn, weights, by) =>
+  def write(e: Agenda.Event): ujson.Value = e match {
+    case Agenda.Event.Opened(t) => ujson.Obj("event" -> "opened", "topic" -> Agenda.ItemId.value(t))
+    case Agenda.Event.Placed(turn, weights, by) =>
       ujson.Obj(
         "event" -> "placed",
         "turn" -> TurnSeq.value(turn).toDouble,
         "weights" -> ujson.Arr.from(
-          weights.byTopic.map(s => ujson.Arr(TopicId.value(s.topic), s.weight))
+          weights.byItem.map(s => ujson.Arr(Agenda.ItemId.value(s.item), s.weight))
         ),
         "elsewhere" -> weights.elsewhere,
         "by" -> placement(by)
       )
-    case TopicEvent.Described(t, name, summary) =>
+    case Agenda.Event.Described(t, name, summary) =>
       ujson.Obj(
         "event" -> "described",
-        "topic" -> TopicId.value(t),
+        "topic" -> Agenda.ItemId.value(t),
         "name" -> name,
         "summary" -> summary
       )
@@ -43,7 +44,7 @@ object TopicJson {
         "band" -> bandKey(outcome.band),
         "choice" -> ujson.Arr.from(choice.map { c =>
           ujson.Arr(
-            c.topic.fold[ujson.Value](ujson.Null)(id => ujson.Str(TopicId.value(id))),
+            c.item.fold[ujson.Value](ujson.Null)(id => ujson.Str(Agenda.ItemId.value(id))),
             c.probability
           )
         })
@@ -60,23 +61,23 @@ object TopicJson {
     case Band.Changed => "changed"
   }
 
-  private def writeVerdict(v: Verdict): ujson.Value = v match {
-    case Verdict.Current => ujson.Obj("about" -> "current")
-    case Verdict.Earlier(name) => ujson.Obj("about" -> "earlier", "name" -> name)
-    case Verdict.New(name) =>
+  private def writeVerdict(v: Agenda.Verdict): ujson.Value = v match {
+    case Agenda.Verdict.Current => ujson.Obj("about" -> "current")
+    case Agenda.Verdict.Earlier(name) => ujson.Obj("about" -> "earlier", "name" -> name)
+    case Agenda.Verdict.New(name) =>
       val o = ujson.Obj("about" -> "new")
       name.foreach(n => o("name") = n)
       o
-    case Verdict.Unreadable(why) => ujson.Obj("about" -> "unreadable", "why" -> why)
+    case Agenda.Verdict.Unreadable(why) => ujson.Obj("about" -> "unreadable", "why" -> why)
   }
 
   /** The event `v` encodes, or why it encodes none. */
-  def read(v: ujson.Value): Either[String, TopicEvent] =
+  def read(v: ujson.Value): Either[String, Agenda.Event] =
     for {
       o <- v.objOpt.toRight("a topic event is not an object")
       kind <- str(o, "event")
       e <- kind match {
-        case "opened" => str(o, "topic").map(t => TopicEvent.Opened(TopicId(t)))
+        case "opened" => str(o, "topic").map(t => Agenda.Event.Opened(Agenda.ItemId(t)))
         case "placed" =>
           for {
             turn <- o
@@ -93,7 +94,8 @@ object TopicJson {
                 traverse(ws.toVector) {
                   case ujson.Arr(pair) =>
                     pair.toVector match {
-                      case Vector(ujson.Str(t), ujson.Num(w)) => Right(Weights.Share(TopicId(t), w))
+                      case Vector(ujson.Str(t), ujson.Num(w)) =>
+                        Right(Weights.Share(Agenda.ItemId(t), w))
                       case _ => Left("placed: a weight is not [topic, number]")
                     }
                   case _ => Left("placed: a weight is not [topic, number]")
@@ -102,13 +104,13 @@ object TopicJson {
             elsewhere <- num(o, "elsewhere")
             valid <- Weights.of(weights, elsewhere).left.map(e => s"placed: ${whyNot(e)}")
             by <- o.get("by").toRight("placed: no by").flatMap(readPlacement)
-          } yield TopicEvent.Placed(turn, valid, by)
+          } yield Agenda.Event.Placed(turn, valid, by)
         case "described" =>
           for {
             t <- str(o, "topic")
             name <- str(o, "name")
             summary <- str(o, "summary")
-          } yield TopicEvent.Described(TopicId(t), name, summary)
+          } yield Agenda.Event.Described(Agenda.ItemId(t), name, summary)
         case other => Left(s"unknown topic event: $other")
       }
     } yield e
@@ -133,7 +135,7 @@ object TopicJson {
                   case ujson.Arr(pair) =>
                     pair.toVector match {
                       case Vector(ujson.Str(t), ujson.Num(q)) =>
-                        Right(Placement.Chance(Some(TopicId(t)), q))
+                        Right(Placement.Chance(Some(Agenda.ItemId(t)), q))
                       case Vector(ujson.Null, ujson.Num(q)) => Right(Placement.Chance(None, q))
                       case _ => Left("classified: an option is not [topic or null, number]")
                     }
@@ -161,29 +163,29 @@ object TopicJson {
       }
     } yield p
 
-  private def readVerdict(v: ujson.Value): Either[String, Verdict] =
+  private def readVerdict(v: ujson.Value): Either[String, Agenda.Verdict] =
     for {
       o <- v.objOpt.toRight("a verdict is not an object")
       about <- str(o, "about")
       verdict <- about match {
-        case "current" => Right(Verdict.Current)
-        case "earlier" => str(o, "name").map(Verdict.Earlier(_))
-        case "new" => Right(Verdict.New(o.get("name").flatMap(_.strOpt)))
-        case "unreadable" => str(o, "why").map(Verdict.Unreadable(_))
+        case "current" => Right(Agenda.Verdict.Current)
+        case "earlier" => str(o, "name").map(Agenda.Verdict.Earlier(_))
+        case "new" => Right(Agenda.Verdict.New(o.get("name").flatMap(_.strOpt)))
+        case "unreadable" => str(o, "why").map(Agenda.Verdict.Unreadable(_))
         case other => Left(s"unknown verdict: $other")
       }
     } yield verdict
 
   private def whyNot(e: WeightsError): String = e match {
-    case WeightsError.NoTopic => "no topic weighed"
-    case WeightsError.Repeated(t) => s"${TopicId.value(t)} weighed twice"
+    case WeightsError.NoItem => "no topic weighed"
+    case WeightsError.Repeated(t) => s"${Agenda.ItemId.value(t)} weighed twice"
     case WeightsError.Negative(t) => s"${share(t)} is negative"
     case WeightsError.NotFinite(t) => s"${share(t)} is not finite"
     case WeightsError.SumOff(sum) => s"the weights sum to $sum"
   }
 
-  private def share(t: Option[TopicId]): String =
-    t.fold("elsewhere")(id => s"the weight of ${TopicId.value(id)}")
+  private def share(t: Option[Agenda.ItemId]): String =
+    t.fold("elsewhere")(id => s"the weight of ${Agenda.ItemId.value(id)}")
 
   private def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
     o.get(key).flatMap(_.strOpt).toRight(s"missing string $key")

@@ -1,11 +1,11 @@
 package grit.core.store
 
+import grit.core.agenda.AgendaJson
 import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
-import grit.core.topic.TopicJson
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
   * persisted data, so a rename in Scala must not change it, and reading it is
@@ -30,8 +30,9 @@ object PayloadJson {
       if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
       if (documents.nonEmpty) o("documents") = writeVersions(documents)
       o
-    case Payload.Topic(events) =>
-      ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
+    // "topic" is the agenda's kind from before its rename.
+    case Payload.Agenda(events) =>
+      ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(AgendaJson.write)))
     case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
     case Payload.Draft(reply) => ujson.Obj("kind" -> "draft", "message" -> message(reply))
     case Payload.Result(result, shown) =>
@@ -114,7 +115,8 @@ object PayloadJson {
               else Right(Vector.empty)
             documents <- o.value.get("documents").fold(Right(Vector.empty))(readVersions)
           } yield Payload.Window(entries, recalled, nearby, documents)
-        case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
+        case "topic" =>
+          arr(o, "events").flatMap(traverse(_)(AgendaJson.read)).map(Payload.Agenda(_))
         case "exchange" =>
           field(o, "message").flatMap(readMessage).flatMap {
             case reply: Message.Assistant => Right(Payload.Exchange(reply))

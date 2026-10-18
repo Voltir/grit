@@ -421,21 +421,21 @@ object RecordLifecycleHistories {
         id
       },
       record("close-carried") { (w, d) =>
-        // Period 2's close, opening with period 1's balance: a standing line and a topic,
-        // the topic spoken in again.
+        // Period 2's close, opening with period 1's balance: a standing line and an item,
+        // the item spoken in again.
         val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
-        val deploy = grit.core.topic.TopicId("topic:c1:0")
+        val deploy = grit.core.agenda.Agenda.ItemId("topic:c1:0")
         w.add(
           t0,
-          Payload.Topic(
+          Payload.Agenda(
             Vector(
-              grit.core.topic.TopicEvent.Opened(deploy),
-              grit.core.topic.TopicEvent.Placed(
+              grit.core.agenda.Agenda.Event.Opened(deploy),
+              grit.core.agenda.Agenda.Event.Placed(
                 t0.turnSeq,
-                grit.core.topic.Weights.whole(deploy),
-                grit.core.topic.Placement.First
+                grit.core.agenda.Weights.whole(deploy),
+                grit.core.agenda.Placement.First
               ),
-              grit.core.topic.TopicEvent.Described(deploy, "Deploy Target", "where to deploy")
+              grit.core.agenda.Agenda.Event.Described(deploy, "Deploy Target", "where to deploy")
             )
           ),
           0,
@@ -447,18 +447,18 @@ object RecordLifecycleHistories {
         val t1 = w.turn("staging again?", "yes", "Staging again.", Lapsed + 1)
         w.add(
           t1,
-          Payload.Topic(
+          Payload.Agenda(
             Vector(
-              grit.core.topic.TopicEvent.Placed(
+              grit.core.agenda.Agenda.Event.Placed(
                 t1.turnSeq,
-                grit.core.topic.Weights.whole(
-                  grit.core.topic.TopicId.carried(
+                grit.core.agenda.Weights.whole(
+                  grit.core.agenda.Agenda.ItemId.carried(
                     grit.core.period.TestClosings
-                      .line(grit.core.period.Section.Topics, "Deploy Target", 1, 1)
+                      .line(grit.core.period.Section.Agenda, "Deploy Target", 1, 1)
                       .id
                   )
                 ),
-                grit.core.topic.Placement.First
+                grit.core.agenda.Placement.First
               )
             )
           ),

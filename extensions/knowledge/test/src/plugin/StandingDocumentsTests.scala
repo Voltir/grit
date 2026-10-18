@@ -105,9 +105,9 @@ object StandingDocumentsTests extends TestSuite {
       "a closing's person- and tool-grounded lines are one document under its conversation and period: its headline, then a line each, at the conversation's label, believed at the closing's integrity, at its thread, written at its close"
     ) {
       val kept = new Kept
-      val topic = TestClosings.line(Section.Topics, "deploys", 1, 1)
+      val item = TestClosings.line(Section.Agenda, "deploys", 1, 1)
       kept.post(
-        closed(1, added(deploys, topic, freeze), Vector(deploys, topic, freeze)),
+        closed(1, added(deploys, item, freeze), Vector(deploys, item, freeze)),
         TestLabels.Trial
       )
       kept.newest.map(d =>

@@ -54,7 +54,7 @@ object Deployments {
   def of(
       edges: Vector[ServedEdge] = Vector.empty,
       tools: Offered = Offered.Read,
-      topics: Topics = Topics.Stub,
+      placer: Placer = Placer.Stub,
       sweep: FiniteDuration = 30.seconds,
       speaking: grit.core.speech.Speaking = grit.core.speech.Speaking.Off,
       shadows: Vector[grit.lifecycle.shadow.ShadowVariant] = Vector.empty,
@@ -77,7 +77,7 @@ object Deployments {
       policy = Policy.one(assigned, assigned, assigned, assigned),
       offer = Offer(tools, TurnLoop.Rounds.of(4).getOrElse(sys.error("rounds"))),
       assembly = Assembly.Linear(Tokens(1000)),
-      topics = topics,
+      placer = placer,
       lifecycle = LifecycleSettings.Default,
       budget = Budget(java.time.ZoneOffset.UTC, None),
       speaking = speaking,
@@ -96,6 +96,6 @@ object Deployments {
     )
 
   /** [[of]], which the test expects to be accepted. */
-  def accepted(edges: Vector[ServedEdge] = Vector.empty, topics: Topics = Topics.Stub): Deployment =
-    of(edges = edges, topics = topics).fold(r => sys.error(r.message), identity)
+  def accepted(edges: Vector[ServedEdge] = Vector.empty, placer: Placer = Placer.Stub): Deployment =
+    of(edges = edges, placer = placer).fold(r => sys.error(r.message), identity)
 }

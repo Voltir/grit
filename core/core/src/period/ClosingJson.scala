@@ -5,7 +5,7 @@ import grit.core.id.{EntryId, PeriodSeq}
 
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
   * is the first kept: every version from it on stays readable. Written by hand, never
-  * derived. A topic line's `summary` is an optional key of version 2, added after its first
+  * derived. An agenda line's `summary` is an optional key of version 2, added after its first
   * closings were written: a line without it reads as having none. Version 3 records each
   * Standing line's ground (ADR 0018); a version-2 closing still reads, its Standing lines
   * `Claimed`. An added change's `cited` ([[Cited]]) is an optional key of version 3, added

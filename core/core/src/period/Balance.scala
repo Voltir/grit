@@ -13,8 +13,8 @@ enum Section(val key: String) {
   /** Decisions settled and facts established that later work relies on. */
   case Standing extends Section("standing")
 
-  /** The topics spoken in, each by its name. */
-  case Topics extends Section("topics")
+  /** The items spoken in, each by its name. */
+  case Agenda extends Section("topics")
 }
 
 object Section {
@@ -47,7 +47,7 @@ object Ground {
 
 /** A line of a balance: its `text` as first written, added at the close of period `since`,
   * and last added, confirmed or relied on at the close of `touched`, never before `since`.
-  * A topic's line also carries the topic's one-line `summary`, as it was last described;
+  * An item's line also carries the item's one-line `summary`, as it was last described;
   * a line of another section never has one. The summary is not part of the line's id. A
   * Standing line carries its `ground`, as first recorded; a line of another section never
   * has one.
@@ -67,7 +67,7 @@ object Line {
 
   /** The line, or why not: `text` or `summary` blank, or not already trimmed to one line
     * with single spaces, `touched` before `since`, a summary on a line that is not a
-    * topic's, or a Standing line without a ground, or another with one.
+    * item's, or a Standing line without a ground, or another with one.
     */
   private[period] def of(
       section: Section,
@@ -83,7 +83,7 @@ object Line {
       Left(
         s"a line touched at ${PeriodSeq.value(touched)} before its since ${PeriodSeq.value(since)}"
       )
-    else if (summary.nonEmpty && section != Section.Topics)
+    else if (summary.nonEmpty && section != Section.Agenda)
       Left(s"a ${section.key} line has a summary: $text")
     else if (summary.exists(s => s.isEmpty || normal(s) != s))
       Left(s"a line's summary is blank or not normalised: $text")
@@ -125,8 +125,8 @@ object Line {
 /** What a close proposes to do to the balance ([[Balance.edit]]). */
 enum Edit {
 
-  /** A new line `text`: an open item, or a topic. */
-  case Add(section: Section.Open.type | Section.Topics.type, text: String)
+  /** A new line `text`: an open item, or an agenda item. */
+  case Add(section: Section.Open.type | Section.Agenda.type, text: String)
 
   /** A new Standing line `text`, established on `ground`, and what its citation named. */
   case Stand(text: String, ground: Ground, cited: Cited)
@@ -140,7 +140,7 @@ enum Edit {
   /** `line` confirmed or relied on. */
   case Touch(line: LineId)
 
-  /** The topic `line` now summarised as `summary`, replacing the summary it had. */
+  /** The item `line` now summarised as `summary`, replacing the summary it had. */
   case Summarise(line: LineId, summary: String)
 
   /** What the writer wrote as an edit that reads as none, and why. */
@@ -185,7 +185,7 @@ enum Change {
 }
 
 /** A conversation's state after a close: its open items, then its standing decisions and
-  * facts, then its topics, each section's lines in the order they were last added or
+  * facts, then its items, each section's lines in the order they were last added or
   * touched, oldest first. No two lines share an id.
   */
 final case class Balance private (lines: Vector[Line]) {
@@ -201,9 +201,9 @@ final case class Balance private (lines: Vector[Line]) {
     * as `Add` does, with its ground, its `Added` change carrying what its citation named;
     * when that line is there already, it touches it and keeps the ground it has. `Resolve` and `Drop` take a
     * line out. `Touch` sets its `touched` to `period` and moves it last in its section.
-    * `Summarise` replaces a topic line's summary, normalised as an `Add`'s text, and neither
+    * `Summarise` replaces an item line's summary, normalised as an `Add`'s text, and neither
     * touches nor moves it. An edit naming no line of the balance, a blank `Add` or
-    * `Summarise`, a `Summarise` of a line that is not a topic's, or `Unread` changes nothing
+    * `Summarise`, a `Summarise` of a line that is not an item's, or `Unread` changes nothing
     * and is listed as `Ignored`. Every other edit but a touch or a summary is listed as the
     * change it made.
     */
@@ -248,7 +248,7 @@ final case class Balance private (lines: Vector[Line]) {
         case Edit.Summarise(id, summary) =>
           present(id) { l =>
             val normal = Line.normal(summary)
-            if (l.section != Section.Topics) ignored("only a topic's line has a summary")
+            if (l.section != Section.Agenda) ignored("only a topic's line has a summary")
             else if (normal.isEmpty) ignored("blank")
             else Balance.Changed(b.replaced(l.summarised(normal)), done.changes)
           }
