@@ -6,13 +6,24 @@ import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms, Pointer}
-import grit.core.id.{ConversationId, CorpusName, Declarer, PluginName, ScheduleId, ScheduleKey}
-import grit.core.job.{Declared, Grace, SlotRule}
+import grit.core.id.{
+  ConversationId,
+  CorpusName,
+  Declarer,
+  DocKey,
+  DocumentVersion,
+  PluginName,
+  ScheduleId,
+  ScheduleKey
+}
+import grit.core.job.{Declared, Grace, Slot, SlotRule}
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.PluginReads
 import grit.core.place.Place
 import grit.core.plugin.{DocumentPosting, Documents, Exports, Plugin}
 import grit.core.spend.DailyCap
 import grit.core.stitch.StrandShelf
+import grit.core.store.{Entry, Payload}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -21,7 +32,7 @@ import grit.eval.{Room, TopicScore}
 import grit.kit.run.Launch
 import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
-import grit.knowledge.ref.{Ref, TopicKey}
+import grit.knowledge.ref.{CardKey, Ref, TopicKey}
 import grit.knowledge.topic.{TopicDream, TopicParams}
 
 /** A real topics run over a room of the eval's shape (`eval/resources/rooms`), one run per past
@@ -36,9 +47,11 @@ import grit.knowledge.topic.{TopicDream, TopicParams}
   * written when the room says. The topics plugin at public then runs `topics-dream` once for
   * each of the room's days in order, each due a minute after the last finished, reading the
   * strands of the [[TopicDocuments.Recent]] before that day's end and every card. Prints, by
-  * shape alone: each day's run, how its schedule ended and the topics then current; the score
-  * at opening level ([[TopicScore]]), each opening placed in the topics referring to a strand
-  * holding it, each card in those referring to its file; and the day's spend.
+  * shape alone: each day's run, how its schedule ended, the topics then current and its reply
+  * line; the score at opening level ([[TopicScore]]), each opening placed in the topics
+  * referring to a strand holding it, each card in those referring to its file; each truth item
+  * sharing no topic with another of its truth topic, by id, and where it went (the topics
+  * holding it, set aside, or left); and the day's spend.
   */
 object TopicRoom {
 
@@ -96,7 +109,8 @@ object TopicRoom {
           Vector(DayRun(topics, dream, i, at, params(days(i).plusDays(moved)))) ++ cards,
           cap
         )
-      first <- day(0, Instant.now().plusSeconds(60))
+      firstAt = Instant.now().plusSeconds(60)
+      first <- day(0, firstAt)
     } yield {
       val (deployment, secrets) = first
       val engine = LiveEngine.open(
@@ -111,9 +125,10 @@ object TopicRoom {
         cardsKept(engine, room, Duration.ofDays(moved))
         val terms = topics.documents.map(_.terms).getOrElse(sys.error("the topics' terms"))
         days.indices.foreach { i =>
+          val at = if (i == 0) firstAt else Instant.now().plusSeconds(60)
           val ran =
             if (i == 0) Right(deployment)
-            else day(i, Instant.now().plusSeconds(60)).map(_._1)
+            else day(i, at).map(_._1)
           ran match {
             case Left(why) => println(s"day ${i + 1}: not run: $why")
             case Right(d) =>
@@ -122,18 +137,19 @@ object TopicRoom {
                 s"day ${i + 1} (${days(i).plusDays(moved)}): ${waited(engine, i)}; " +
                   s"${current(engine, terms).size} topics; spent ${RoomRun.spent(engine)}"
               )
+              println(s"  replied: ${replied(engine, i, at)}")
           }
         }
-        val score = TopicScore.of(
-          TopicScore.truth(room, ZoneOffset.UTC),
-          placed(engine, terms, room, conversations)
-        )
+        val truth = TopicScore.truth(room, ZoneOffset.UTC)
+        val where = placed(engine, terms, room, conversations)
+        val score = TopicScore.of(truth, where.map((id, w) => id -> w.topics))
         def rate(items: Vector[(String, Boolean)]) = s"${items.count(_._2)}/${items.size}"
         println(
           s"precision ${rate(score.precision)}, recall ${rate(score.recall)}, " +
             s"splits ${score.splits}, merges ${score.merges}, mergeable ${score.mergeable}, " +
             s"cross-day ${score.crossDay}, unplaced ${score.unplaced}"
         )
+        missed(truth, where).foreach(println)
         println(s"spent ${RoomRun.spent(engine)}")
       } finally engine.close()
     }
@@ -220,16 +236,78 @@ object TopicRoom {
     right(engine.db.read(Subject.Public)(engine.keeper(Topics, terms).newest(Int.MaxValue)))
       .flatMap(d => TopicKey.read(d.key).map(TopicKey.value))
 
+  /** Day `i`'s run's reply, its schedule's once slot due `at`; or that it has none. */
+  private def replied(engine: Engine^, i: Int, at: Instant): String = {
+    val slot = Slot(ScheduleId.declared(Declarer.Plugin(Topics), key(i)), Slot.kept(at))
+    right(engine.db.read(Subject.Public) {
+      engine.conversations
+        .find(slot.origin(TopicDream.Name))
+        .flatMap(_.fold(Right(Vector.empty))(c => engine.entries.list(c.id)))
+    }).reverseIterator
+      .collectFirst { case Entry(_, _, _, _, _, Payload.Message(a: Message.Assistant), _, _) =>
+        a.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      }
+      .getOrElse("no reply")
+  }
+
+  /** Where a truth item went: an `opening` or a card, in `topics` (by key), and whether it is
+    * in its floor's aside at any digest or version (`aside`).
+    */
+  private final case class Where(opening: Boolean, topics: Set[String], aside: Boolean)
+
+  /** Each topical item of `truth` that shares no topic with one of its truth topic's others:
+    * `missed {id} ({opening|card} of {topic}): {where}`, where is the topics holding it, `set
+    * aside`, or `left`.
+    */
+  private def missed(truth: Vector[TopicScore.Truth], where: Map[String, Where]): Vector[String] = {
+    val topical = truth.collect { case TopicScore.Truth(id, Some(t), _) => id -> t }
+    def in(id: String) = where.get(id).fold(Set.empty[String])(_.topics)
+    topical.collect {
+      case (id, t)
+          if topical.exists((o, ot) => o != id && ot == t && (in(id) intersect in(o)).isEmpty) =>
+        val w = where.get(id)
+        val kind = if (w.forall(_.opening)) "opening" else "card"
+        val went =
+          if (in(id).nonEmpty) in(id).toVector.sorted.mkString("in ", ", ", "")
+          else if (w.exists(_.aside)) "set aside"
+          else "left"
+        s"missed $id ($kind of $t): $went"
+    }
+  }
+
+  /** The aside's key, as the topics plugin writes it; read here by its data alone. */
+  private val AsideKey: DocKey = DocKey.of("topic:aside").fold(sys.error, identity)
+
   /** Each opening, by id, in the topics referring to a strand holding its conversation; each
-    * card in those referring to its file.
+    * card in those referring to its file; each with whether the aside holds it.
     */
   private def placed(
       engine: Engine^,
       terms: DocumentTerms,
       room: Room,
       conversations: Map[String, ConversationId]
-  ): Map[String, Set[String]] = {
+  ): Map[String, Where] = {
     val now = Instant.now()
+    val aside = right(
+      engine.db.read(Subject.Public)(engine.keeper(Topics, terms).current(AsideKey, Label.Public))
+    ).flatMap(_.data.objOpt).flatMap(_.get("aside")).flatMap(_.arrOpt).toVector.flatten
+    def asideHolds(key: String, value: ujson.Value) =
+      aside.exists(_.objOpt.flatMap(_.get(key)).contains(value))
+    val cardTerms = RoomCards.documents.map(_.terms).getOrElse(sys.error("the cards' terms"))
+    def cardVersion(id: String): Option[Long] =
+      CorpusName
+        .of("room")
+        .toOption
+        .flatMap(corpus =>
+          right(
+            engine.db.read(Subject.Public)(
+              engine
+                .keeper(Cards, cardTerms)
+                .current(CardKey.docKey(CardKey.of(corpus, id)), Label.Public)
+            )
+          )
+        )
+        .map(d => DocumentVersion.value(d.version))
     def referring(r: Ref): Set[String] =
       Ref
         .written(r)
@@ -248,9 +326,20 @@ object TopicRoom {
       )
     )
     val byStrand = strands.map(s => s -> referring(Ref.Strand(s.root)))
-    val openings = conversations.map((id, c) =>
-      id -> byStrand.collect { case (s, ts) if s.members.contains(c) => ts }.flatten.toSet
+    val openings = conversations.map { (id, c) =>
+      val holding = byStrand.filter(_._1.members.contains(c))
+      id -> Where(
+        true,
+        holding.flatMap(_._2).toSet,
+        holding.exists((s, _) => asideHolds("strand", ujson.Str(ConversationId.value(s.root))))
+      )
+    }
+    openings ++ room.cards.map(c =>
+      c.id -> Where(
+        false,
+        referring(Ref.Drive(c.id)),
+        cardVersion(c.id).exists(v => asideHolds("card", ujson.Num(v.toDouble)))
+      )
     )
-    openings ++ room.cards.map(c => c.id -> referring(Ref.Drive(c.id)))
   }
 }
