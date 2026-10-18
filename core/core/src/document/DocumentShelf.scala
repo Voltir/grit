@@ -11,7 +11,7 @@ import grit.core.visibility.{Integrity, Label}
   * those its transaction reads ([[grit.core.store.Tx.clearance]]): a document kept in the
   * transaction's own room up to that room's label, any other up to
   * [[grit.core.store.Tx.cleared]]. Another plugin's are reached only through the service it
-  * exports ([[grit.core.plugin.Needs]]).
+  * exports ([[grit.core.need.Needs]]).
   */
 trait DocumentShelf {
 
