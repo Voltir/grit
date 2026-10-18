@@ -195,7 +195,7 @@ object SyncTests extends TestSuite {
     * when given), asks as `summaries`, keeps into `documents`. A call reading a path in
     * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there; a
     * call reading a path in `believedAt` is believed at its integrity there. A judgment is
-    * answered `judged` to each of its questions, or, with none, is the classifier's failure.
+    * answered `judged` to each of its questions, or, with none, fails.
     */
   private def keeping(
       at: Label,
@@ -219,7 +219,7 @@ object SyncTests extends TestSuite {
       // keeps `Vector`'s internal array (docs/capture-checking.md).
       (system, messages) => reply(summaries, at, summaryAt, system, messages),
       request =>
-        judged.fold(Left(MoveError.Model("the classifier is unavailable: down")))(p =>
+        judged.fold(Left(MoveError.Model("no judgment is asked in this run")))(p =>
           Right(Asked(TestTainted.authority(request.questions.map(_ => Answer.YesNo(p))), at))
         ),
       documents
@@ -478,7 +478,7 @@ object SyncTests extends TestSuite {
             )
           }),
         (system, messages) => reply(Summaries.Fixed, floor, Map.empty, system, messages),
-        _ => Left(MoveError.Model("the classifier is unavailable: down")),
+        _ => Left(MoveError.Model("no judgment is asked in this run")),
         documents
       )
       val watched = new Watched(k)

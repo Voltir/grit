@@ -49,8 +49,8 @@ object TurnJudge {
     /** The draft passed ([[said]]): nothing was asked. */
     case Passed
 
-    /** The turn recalled no record, no other conversation and no document: nothing to ground
-      * a draft in, so nothing was asked.
+    /** The turn recalled nothing, as [[TurnJudge.state]] counts recall: nothing to ground a
+      * draft in, so nothing was asked.
       */
     case NothingRecalled
 
