@@ -44,7 +44,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
-| `grit.knowledge` | `card`, `github`, `sync`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
+| `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.host` | `grit.host` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
