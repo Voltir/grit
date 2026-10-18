@@ -20,7 +20,7 @@ Decision:
   ends. Each workflow the message starts runs once, in the engine's order, through a `Durable`
   that runs every step and records nothing (`Rehearsal`).
 - **Calls are seen at the taps.** The rehearsal's `Models` and classifier keep each call with
-  the step it was made in and answer it from a stand-in (`Answers`, pure, so a dry rehearsal
+  the step it was made in and answer it from a stand-in (`StandIns`, pure, so a dry rehearsal
   can hold no model), until the turn's own call (`Turn.Step.answering`), which is kept and
   never answered. What a rehearsal shows is what the taps were asked, by part, each with the
   label its step's record or the turn's route record names.

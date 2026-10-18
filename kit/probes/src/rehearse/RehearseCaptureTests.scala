@@ -4,7 +4,7 @@ import grit.core.durable.Probes
 
 import utest.*
 
-/** What a dry rehearsal's answers may hold: nothing that reaches a model. [[Answers]] is
+/** What a dry rehearsal's answers may hold: nothing that reaches a model. [[StandIns]] is
   * sealed, so no answers but its own are made, and pure, so a capability, a provider among
   * them, can neither be held in one nor have its capture set added to one's type. What it
   * showed ([[Rehearsed]]) is pure too: it outlives the rehearsal's block, so it holds no tape,
@@ -15,17 +15,17 @@ object RehearseCaptureTests extends TestSuite {
   private val prelude =
     """package grit.probe
       |import grit.core.provider.Provider
-      |import grit.kit.rehearse.{Answers, Rehearsed, Tape}
+      |import grit.kit.rehearse.{StandIns, Rehearsed, Tape}
       |""".stripMargin
 
   /** The control: answers handed on beside a provider, holding none of it. */
   private val beside =
-    "def f(p: Provider^): (Answers, Provider^{p}) = (Answers.Stubbed, p)"
+    "def f(p: Provider^): (StandIns, Provider^{p}) = (StandIns.Stubbed, p)"
 
-  /** Answers typed as holding a provider. */
-  private val holding = "def f(p: Provider^): Answers^{p} = Answers.Stubbed"
+  /** StandIns typed as holding a provider. */
+  private val holding = "def f(p: Provider^): StandIns^{p} = StandIns.Stubbed"
 
-  /** A pure class, as answers are, holding a provider: what a case of [[Answers]] holding one
+  /** A pure class, as answers are, holding a provider: what a case of [[StandIns]] holding one
     * would be, which only its own file could declare.
     */
   private val pureHolding = "final class Live(p: Provider^) extends caps.Pure"
@@ -51,7 +51,7 @@ object RehearseCaptureTests extends TestSuite {
     }
 
     test("answers typed as holding a provider are rejected") {
-      assert(compiled.errors(holding).exists(_.contains("Answers is a pure type")))
+      assert(compiled.errors(holding).exists(_.contains("StandIns is a pure type")))
     }
 
     test("a pure class holding a provider, as a case of answers would, is rejected") {

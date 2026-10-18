@@ -21,14 +21,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
-import grit.kit.rehearse.{
-  Answers as StandIns,
-  RehearsalRunner,
-  Rehearse,
-  Rehearsed,
-  Situation,
-  Taps
-}
+import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns, Taps}
 import grit.kit.run.Launch
 import grit.models.{KeptCatalog, StubClassifier, StubProvider}
 import grit.turn.{Turn, TurnJudge, TurnLoop}

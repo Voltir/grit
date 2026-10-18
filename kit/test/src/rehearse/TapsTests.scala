@@ -39,7 +39,7 @@ object TapsTests extends TestSuite {
   private given StateJson[String] = StateJson.instance(s => ujson.Str(s))
 
   /** The tapped models over `settings`, answering by `answers`, keeping on `tape`. */
-  private def tapped(answers: Answers, tape: Tape, settings: InMemoryModelSettingStore) =
+  private def tapped(answers: StandIns, tape: Tape, settings: InMemoryModelSettingStore) =
     Taps.models(Taps.seed(policy).fold(sys.error, identity), FakeDb, settings, answers, tape)
 
   val tests = Tests {
@@ -47,7 +47,7 @@ object TapsTests extends TestSuite {
       "the turn's own call is kept unanswered and stops the rehearsal: the step begun, the call, the step ended with no output"
     ) {
       val tape = new Tape
-      val models = tapped(Answers.Stubbed, tape, new InMemoryModelSettingStore)
+      val models = tapped(StandIns.Stubbed, tape, new InMemoryModelSettingStore)
       val pinned = StubModels.Catalog.pin.turn.first
       val d = new Rehearsal(WorkflowId("c:0"), new RehearsalTests.Writes, tape)
       val stopped =
@@ -68,7 +68,7 @@ object TapsTests extends TestSuite {
     ) {
       val tape = new Tape
       val models = tapped(
-        Answers.supplied(Map("ask:0" -> "Try the noodle place.")),
+        StandIns.supplied(Map("ask:0" -> "Try the noodle place.")),
         tape,
         new InMemoryModelSettingStore
       )
@@ -85,7 +85,7 @@ object TapsTests extends TestSuite {
         tape.entries.collect { case Entry.Called(Call.Model(step, _, _, a)) => step -> a.map(_.by) }
       ) ==> (
         Vector(AssistantBlock.Text("Try the noodle place.")).toString,
-        Vector(Some("ask:0") -> Some(Answers.StandIn.Supplied))
+        Vector(Some("ask:0") -> Some(StandIns.StandIn.Supplied))
       )
     }
 
@@ -93,7 +93,7 @@ object TapsTests extends TestSuite {
       "a model's call in any other step is answered by the stand-in for its step and kept with its pin and request"
     ) {
       val tape = new Tape
-      val answers = Answers.supplied(Map("ask:query" -> "lunch places"))
+      val answers = StandIns.supplied(Map("ask:query" -> "lunch places"))
       val models = tapped(answers, tape, new InMemoryModelSettingStore)
       val pinned = StubModels.Catalog.pin.query.first
       val d = new Rehearsal(WorkflowId("c:0"), new RehearsalTests.Writes, tape)
@@ -113,7 +113,7 @@ object TapsTests extends TestSuite {
       "the catalog is the seed under the deployment's policy, with the settings kept by each call laid over it"
     ) {
       val settings = new InMemoryModelSettingStore
-      val models = tapped(Answers.Stubbed, new Tape, settings)
+      val models = tapped(StandIns.Stubbed, new Tape, settings)
       val ours = seed.withPolicy(policy)
       models.catalog().map(_.version) ==> Right(ours.version)
       val asSent =
@@ -132,7 +132,7 @@ object TapsTests extends TestSuite {
       "a classifier's call goes to the service the deployment's topics name, answered by the stand-in for its step and kept"
     ) {
       val tape = new Tape
-      val answers = Answers.supplied(Map("ask:triage" -> "0.9"))
+      val answers = StandIns.supplied(Map("ask:triage" -> "0.9"))
       val jev = Taps.classifier(Topics.Jev, answers, tape)
       val routed = Routed.of(using TestTx.fake)
       val asked = Ask.yesNo[String]("Is it about lunch?", None, None)
@@ -154,7 +154,7 @@ object TapsTests extends TestSuite {
 
     test("topics off ask nothing: every call Unavailable, nothing kept") {
       val tape = new Tape
-      val off = Taps.classifier(Topics.Off("no topics here"), Answers.Stubbed, tape)
+      val off = Taps.classifier(Topics.Off("no topics here"), StandIns.Stubbed, tape)
       val asked = Ask.yesNo[String]("Is it about lunch?", None, None)
       off.asking(Routed.of(using TestTx.fake)).ask("lunch?", asked) ==>
         Left(ClassifierError.Unavailable("no topics here"))

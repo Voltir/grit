@@ -35,7 +35,7 @@ final case class Rehearsed(workflows: Vector[Rehearsed.Ran]) extends caps.Pure {
     (c.input, c.answered) match {
       case (
             Rehearsed.Input.Classifier(_, _),
-            Rehearsed.Answered.StandIn(Answers.StandIn.Stub, _)
+            Rehearsed.Answered.StandIn(StandIns.StandIn.Stub, _)
           ) =>
         true
       case _ => false
@@ -132,7 +132,7 @@ object Rehearsed {
   enum Answered {
 
     /** By the stand-in `by`, which replied `reply`. */
-    case StandIn(by: Answers.StandIn, reply: String)
+    case StandIn(by: StandIns.StandIn, reply: String)
 
     /** Not at all: the turn's own call, shown and never sent ([[Stop]]). */
     case Unsent
@@ -265,8 +265,8 @@ object Rehearsed {
     label.fold("label unrecorded")(l => s"routed for ${Label.shown(l)}")
 
   private def answeredBy(answered: Answered): String = answered match {
-    case Answered.StandIn(Answers.StandIn.Stub, _) => "answered: STAND-IN (stub)"
-    case Answered.StandIn(Answers.StandIn.Supplied, _) => "answered: STAND-IN (supplied)"
+    case Answered.StandIn(StandIns.StandIn.Stub, _) => "answered: STAND-IN (stub)"
+    case Answered.StandIn(StandIns.StandIn.Supplied, _) => "answered: STAND-IN (supplied)"
     case Answered.Unsent => "not sent: the turn's own call"
   }
 }

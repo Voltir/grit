@@ -8,7 +8,7 @@ import grit.models.{StubClassifier, StubProvider}
 import utest.*
 
 /** How a dry rehearsal's stand-ins answer: each call by its step, every answer marked. */
-object AnswersTests extends TestSuite {
+object StandInsTests extends TestSuite {
 
   private val request = ModelRequest("system", Vector(Message.User("lunch?")))
 
@@ -20,16 +20,16 @@ object AnswersTests extends TestSuite {
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   private val supplied =
-    Answers.supplied(Map("ask:query" -> "lunch places", "ask:triage" -> "0.2;0.3,0.7"))
+    StandIns.supplied(Map("ask:query" -> "lunch places", "ask:triage" -> "0.2;0.3,0.7"))
 
   val tests = Tests {
     test("a step supplied is answered with its text as grit/supplied, every other as the stub") {
       val query = supplied.reply("ask:query", request)
       val other = supplied.reply("ask:1", request)
-      assert(query.by == Answers.StandIn.Supplied)
+      assert(query.by == StandIns.StandIn.Supplied)
       assert(query.answer.blocks == Vector(AssistantBlock.Text("lunch places")))
       assert(query.answer.model == "grit/supplied")
-      assert(other.by == Answers.StandIn.Stub)
+      assert(other.by == StandIns.StandIn.Stub)
       assert(other.answer.model == StubProvider.Model)
     }
 
@@ -42,7 +42,7 @@ object AnswersTests extends TestSuite {
           ToolUse.Required
         )
       val reply =
-        Answers.supplied(Map("ask:summary" -> """{"gist":"lunch"}""")).reply("ask:summary", json)
+        StandIns.supplied(Map("ask:summary" -> """{"gist":"lunch"}""")).reply("ask:summary", json)
       reply.answer.blocks ==> Vector(
         AssistantBlock.ToolCall(StubProvider.CallId, "reply", ujson.Obj("gist" -> "lunch"))
       )
@@ -50,7 +50,7 @@ object AnswersTests extends TestSuite {
 
     test("a supplied classifier answer reads one list of probabilities per question") {
       val judged = supplied.judge("ask:triage", ujson.Obj(), Vector(yesNo, choice))
-      assert(judged.by == Answers.StandIn.Supplied)
+      assert(judged.by == StandIns.StandIn.Supplied)
       val answers =
         judged.answer.fold(e => throw new java.lang.AssertionError(e.toString), identity)
       assert(answers.model == "grit/supplied")
@@ -64,8 +64,8 @@ object AnswersTests extends TestSuite {
     }
 
     test("an unsupplied yes/no question is answered as the stub classifier answers it") {
-      val judged = Answers.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo))
-      assert(judged.by == Answers.StandIn.Stub)
+      val judged = StandIns.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo))
+      assert(judged.by == StandIns.StandIn.Stub)
       judged.answer ==> Right(StubClassifier.answers(ujson.Obj(), Vector(yesNo)))
     }
 
@@ -76,7 +76,7 @@ object AnswersTests extends TestSuite {
         Question
           .score("How hungry?", "not", "a little", "very")
           .fold(e => sys.error(e.toString), identity)
-      val judged = Answers.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo, choice, score))
+      val judged = StandIns.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo, choice, score))
       val answers =
         judged.answer.fold(e => throw new java.lang.AssertionError(e.toString), _.answers)
       (

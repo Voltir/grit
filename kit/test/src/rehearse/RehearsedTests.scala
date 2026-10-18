@@ -43,7 +43,7 @@ object RehearsedTests extends TestSuite {
   /** A turn, run by a runner over taps answering by `answers`: its query written, a classifier
     * asked, its route recorded, then its own call; the tape and what it showed.
     */
-  private def rehearsed(answers: Answers): (Tape, Rehearsed) = {
+  private def rehearsed(answers: StandIns): (Tape, Rehearsed) = {
     val tape = new Tape
     val seed = Taps.seed(StubModels.Catalog.policy).fold(sys.error, identity)
     val models = Taps.models(seed, FakeDb, new InMemoryModelSettingStore, answers, tape)
@@ -73,7 +73,7 @@ object RehearsedTests extends TestSuite {
     test(
       "a dry rehearsal stops at the turn's own call and shows it unsent, every earlier call answered as a stand-in"
     ) {
-      val (tape, shown) = rehearsed(Answers.supplied(Map("ask:query" -> "lunch places")))
+      val (tape, shown) = rehearsed(StandIns.supplied(Map("ask:query" -> "lunch places")))
       tape.entries.takeRight(3) ==> Vector(
         Entry.Told(Event.Began("ask:0")),
         Entry.Called(Call.Model(Some("ask:0"), pinned, request, None)),
@@ -82,10 +82,10 @@ object RehearsedTests extends TestSuite {
       shown.workflows.map(w => (w.workflow, w.came)) ==>
         Vector((turn.workflowId, Came.Stopped("ask:0")))
       shown.calls.map(c => (c.step, c.answered)) ==> Vector(
-        (Some("ask:query"), Answered.StandIn(Answers.StandIn.Supplied, "lunch places")),
+        (Some("ask:query"), Answered.StandIn(StandIns.StandIn.Supplied, "lunch places")),
         (
           Some("classify"),
-          Answered.StandIn(Answers.StandIn.Stub, """{"q1":{"type":"noul","noul":0.9}}""")
+          Answered.StandIn(StandIns.StandIn.Stub, """{"q1":{"type":"noul","noul":0.9}}""")
         ),
         (Some("ask:0"), Answered.Unsent)
       )
@@ -94,7 +94,7 @@ object RehearsedTests extends TestSuite {
     test(
       "a model call's input is shown by part, the system prompt and each message sized in characters and in tokens as the kit estimates them"
     ) {
-      val (_, shown) = rehearsed(Answers.Stubbed)
+      val (_, shown) = rehearsed(StandIns.Stubbed)
       shown.calls.lastOption.map(_.parts) ==> Some(
         Vector(
           Part("system", "Be brief.", 9, CharEstimate.system("Be brief.")),
@@ -120,7 +120,7 @@ object RehearsedTests extends TestSuite {
               StubClassifier.Service,
               ujson.Obj(),
               questions,
-              Answers
+              StandIns
                 .supplied(Map("ask:triage" -> "0.25;1,0"))
                 .judge("ask:triage", ujson.Obj(), questions)
             )
@@ -139,7 +139,7 @@ object RehearsedTests extends TestSuite {
         ),
         Vector(
           Answered.StandIn(
-            Answers.StandIn.Supplied,
+            StandIns.StandIn.Supplied,
             """{"q1":{"type":"noul","noul":0.25},"q2":{"type":"choice","choice":"here","probabilities":{"here":1,"there":0},"confidence":1}}"""
           )
         )
@@ -149,7 +149,7 @@ object RehearsedTests extends TestSuite {
     test(
       "a turn's calls are shown under the label its route recorded, and a call no record names as unrecorded"
     ) {
-      val (_, shown) = rehearsed(Answers.Stubbed)
+      val (_, shown) = rehearsed(StandIns.Stubbed)
       shown.calls.map(_.label) ==> Vector.fill(3)(Some(Label.Public))
       val elsewhere = Rehearsed.of(
         Vector(
@@ -166,7 +166,7 @@ object RehearsedTests extends TestSuite {
     test(
       "its shape names each part with its size, each answer by its kind, and holds no text sent or answered"
     ) {
-      val (_, shown) = rehearsed(Answers.supplied(Map("ask:query" -> "lunch places")))
+      val (_, shown) = rehearsed(StandIns.supplied(Map("ask:query" -> "lunch places")))
       val counted = shown.counted
       (
         counted.startsWith(Rehearsed.Header),
@@ -192,7 +192,7 @@ object RehearsedTests extends TestSuite {
         ),
         Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
       )
-      val (_, judged) = rehearsed(Answers.Stubbed)
+      val (_, judged) = rehearsed(StandIns.Stubbed)
       (
         elsewhere.written.contains("stub classifier"),
         judged.written.contains("stub classifier")

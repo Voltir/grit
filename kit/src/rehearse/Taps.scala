@@ -10,7 +10,7 @@ import grit.models.{KeptCatalog, Seed, StubClassifier}
 import grit.turn.Turn
 
 /** A dry rehearsal's models and classifier: each call kept on a [[Tape]] with the step it is
-  * made in, and answered by [[Answers]] for that step (a call made between operations as the
+  * made in, and answered by [[StandIns]] for that step (a call made between operations as the
   * step `""`), never sent.
   */
 object Taps {
@@ -30,7 +30,7 @@ object Taps {
       seed: Catalog,
       db: Db^,
       settings: ModelSettingStore,
-      answers: Answers,
+      answers: StandIns,
       tape: Tape^
   ): Models^ = new Tapped(seed, db, settings, answers, tape)
 
@@ -38,7 +38,7 @@ object Taps {
     * states go to the service the live one's go to ([[Topics.JevService]], or the stub's), or,
     * for [[Topics.Off]], none, every call `Unavailable` and nothing kept.
     */
-  def classifier(topics: Topics, answers: Answers, tape: Tape^): ClearedClassifier^ =
+  def classifier(topics: Topics, answers: StandIns, tape: Tape^): ClearedClassifier^ =
     topics match {
       case Topics.Jev => cleared(Topics.JevService, answers, tape)
       case Topics.Stub => cleared(StubClassifier.Service, answers, tape)
@@ -47,7 +47,7 @@ object Taps {
 
   private def cleared(
       service: grit.core.place.Service,
-      standIns: Answers,
+      standIns: StandIns,
       tape: Tape^
   ): ClearedClassifier^ =
     ClearedClassifier.of(
@@ -69,7 +69,7 @@ object Taps {
       seed: Catalog,
       db: Db^,
       settings: ModelSettingStore,
-      answers: Answers,
+      answers: StandIns,
       tape: Tape^
   ) extends Models {
 
@@ -81,7 +81,7 @@ object Taps {
         val reply = answers.reply(step.getOrElse(""), request)
         step.filter(Turn.Step.answering) match {
           // The stub never stands in for the turn's own call: only a supplied answer does.
-          case Some(own) if reply.by != Answers.StandIn.Supplied =>
+          case Some(own) if reply.by != StandIns.StandIn.Supplied =>
             tape.called(Tape.Call.Model(step, pinned, request, None))
             throw Stop(own)
           case _ =>

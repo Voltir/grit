@@ -39,7 +39,7 @@ object Rehearse {
       config: DbConfig,
       d: Deployment,
       situation: Situation,
-      answers: Answers,
+      answers: StandIns,
       clock: Clock^
   ): Either[String, Rehearsed] =
     rehearsable(config).flatMap(_ => Taps.seed(d.policy)).flatMap { seed =>

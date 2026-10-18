@@ -8,23 +8,23 @@ import grit.core.provider.{ModelRequest, ToolUse}
 import grit.models.{StubClassifier, StubProvider}
 
 /** How a dry rehearsal's calls are answered: every answer is shown as the stand-in it is. */
-sealed trait Answers extends caps.Pure {
+sealed trait StandIns extends caps.Pure {
 
   /** The stand-in reply to `request`, a call made in the step `step`. */
-  def reply(step: String, request: ModelRequest): Answers.Reply[Message.Assistant]
+  def reply(step: String, request: ModelRequest): StandIns.Reply[Message.Assistant]
 
   /** The stand-in answers to `questions` about `state`, a classifier's call made in the step
-    * `step`; `Unreadable` when the text supplied for it does not read as [[Answers.supplied]]
+    * `step`; `Unreadable` when the text supplied for it does not read as [[StandIns.supplied]]
     * says.
     */
   def judge(
       step: String,
       state: ujson.Value,
       questions: Vector[Question]
-  ): Answers.Reply[Either[ClassifierError, grit.core.classify.Answers]]
+  ): StandIns.Reply[Either[ClassifierError, grit.core.classify.Answers]]
 }
 
-object Answers {
+object StandIns {
 
   /** What stood in for a model or a classifier. */
   enum StandIn {
@@ -47,7 +47,7 @@ object Answers {
     * own takes the last), so triage's `gap` reads as asking; [[Rehearsed.StubJudge]] says what
     * that does to the chain.
     */
-  val Stubbed: Answers = Supplying(Map.empty)
+  val Stubbed: StandIns = Supplying(Map.empty)
 
   /** Each call made in a step `byStep` names answered with its text, under the model id
     * [[SuppliedModel]]; every other call as [[Stubbed]]. A model's call offered a tool it must
@@ -57,9 +57,9 @@ object Answers {
     * written `p1,p2,…` in the question's order: a yes/no question's one number, p(yes); a
     * choice's one per key; a score's one per level.
     */
-  def supplied(byStep: Map[String, String]): Answers = Supplying(byStep)
+  def supplied(byStep: Map[String, String]): StandIns = Supplying(byStep)
 
-  private final case class Supplying(byStep: Map[String, String]) extends Answers {
+  private final case class Supplying(byStep: Map[String, String]) extends StandIns {
 
     def reply(step: String, request: ModelRequest): Reply[Message.Assistant] =
       byStep.get(step) match {

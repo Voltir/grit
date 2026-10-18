@@ -66,7 +66,7 @@ object Tape {
         step: Option[String],
         pinned: Pinned,
         request: ModelRequest,
-        answered: Option[Answers.Reply[Message.Assistant]]
+        answered: Option[StandIns.Reply[Message.Assistant]]
     )
 
     /** `questions` about `state`, sent to `service`; `answered`, what stood in for it. */
@@ -75,7 +75,7 @@ object Tape {
         service: Service,
         state: ujson.Value,
         questions: Vector[Question],
-        answered: Answers.Reply[Either[ClassifierError, grit.core.classify.Answers]]
+        answered: StandIns.Reply[Either[ClassifierError, grit.core.classify.Answers]]
     )
   }
 }

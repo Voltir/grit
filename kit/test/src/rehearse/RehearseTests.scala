@@ -42,7 +42,7 @@ object RehearseTests extends TestSuite {
               DbConfig(url, "nobody", "none"),
               d,
               Situation.Said(Origin.Slack("T1", "C1", "1.0"), Account.Local, "lunch?"),
-              Answers.Stubbed,
+              StandIns.Stubbed,
               new SetClock(Instant.EPOCH)
             )
           )
