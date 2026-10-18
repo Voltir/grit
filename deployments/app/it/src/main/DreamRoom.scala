@@ -1,29 +1,16 @@
 package grit.app.main
 
-import java.nio.file.Path
 import java.time.{Duration, Instant, LocalTime, ZoneOffset}
 
-import scala.concurrent.duration.*
-
 import grit.core.document.DocText
-import grit.core.id.{ConversationId, EntryId, PluginName}
-import grit.core.identity.Account
-import grit.core.message.{Tokens, Usage}
-import grit.core.period.{LifecycleSettings, Probability}
-import grit.core.persona.Persona
-import grit.core.speech.Speaking
-import grit.core.spend.{Budget, DailyCap, Day}
-import grit.core.stitch.{StitchJson, StrandShelf, Tuning}
-import grit.core.store.{Entry, Origin, Payload, PayloadJson, StoreError}
-import grit.core.visibility.{Integrity, Label, Subject, Visibility}
+import grit.core.id.PluginName
+import grit.core.spend.DailyCap
+import grit.core.stitch.StrandShelf
+import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
-import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.Launch
 import grit.knowledge.plugin.StrandDocuments
-import grit.models.{OpenRouterConfig, Seed}
-import grit.turn.TurnLoop
 
 /** A real dream run over a room of the eval's shape (`eval/resources/rooms`), for a person to
   * read what the strands plugin writes: run by hand, never by the suites.
@@ -46,33 +33,16 @@ object DreamRoom {
       sys.exit(1)
     }
 
-  private def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
-
-  private final case class Said(
-      id: String,
-      at: Instant,
-      topic: Option[String],
-      thread: Option[String],
-      text: String
-  )
+  import RoomRun.right
 
   private def run(args: Vector[String]): Either[String, Unit] =
     for {
       file <- args.headOption.toRight("no room file")
       cap <- args.lift(1).toRight("no cap").flatMap(DailyCap.of)
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- RoomRun.env
       config <- DbConfig.fromEnv(env).left.map(_.toString)
-      room = ujson.read(os.read(os.Path(Path.of(file).toAbsolutePath)))
-      said = room("messages").arr.toVector.map { m =>
-        Said(
-          m("id").str,
-          Instant.parse(m("at").str),
-          m.obj.get("topic").flatMap(_.strOpt),
-          m.obj.get("thread").flatMap(_.strOpt),
-          m("text").str
-        )
-      }
-      last <- said.map(_.at).maxOption.toRight("an empty room")
+      room <- RoomRun.room(file)
+      last <- room.messages.map(_.at).maxOption.toRight("an empty room")
       now = Instant.now()
       shift = Duration.between(last, now.minusSeconds(3600))
       due = now.plusSeconds(60)
@@ -84,28 +54,7 @@ object DreamRoom {
         ZoneOffset.UTC,
         Visibility.Shipped
       )
-      seed <- Seed.catalog
-      policy <-
-        if (!env.contains(OpenRouterConfig.KeyVar)) Left(s"${OpenRouterConfig.KeyVar} is unset")
-        else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
-      deployment <- Deployment
-        .of(
-          edges = Vector.empty,
-          worksIn = Vector.empty,
-          plugins = Vector(strands),
-          policy = policy,
-          offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
-          assembly = Assembly.Linear(Tokens(4000)),
-          placer = Placer.Off("the room's truth places its openings"),
-          lifecycle = LifecycleSettings.Default,
-          budget = Budget(ZoneOffset.UTC, Some(cap)),
-          speaking = Speaking.Off,
-          sweep = 30.seconds,
-          persona = Persona.Grit
-        )
-        .left
-        .map(_.message)
-      secrets <- Secrets.of(env, deployment).left.map(_.message)
+      (deployment, secrets) <- RoomRun.deployment(env, Vector(strands), cap)
     } yield {
       val engine = LiveEngine.open(
         config,
@@ -114,7 +63,7 @@ object DreamRoom {
         deployment.visibility
       )
       try {
-        seeded(engine, room("team").str, room("channel").str, said, shift)
+        val _ = RoomRun.seeded(engine, room, shift)
         Launch(engine, deployment, secrets, Launch.Run.Served, sweeping = true, println)
         val until = due.plusSeconds(240)
         def done = Instant.now().isAfter(due.plusSeconds(45)) && engine.unfinished().contains(0)
@@ -139,90 +88,7 @@ object DreamRoom {
           )
         )
         documents.foreach(d => println(s"\n---- ${d.key}\n${DocText.value(d.text)}"))
-        val spent = right(
-          engine.db.read(Subject.Public)(
-            engine.spending.on(Day.at(Instant.now(), ZoneOffset.UTC))
-          )
-        )
-        println(s"\n${documents.size} documents; ${spent.calls} calls, ${spent.cost}")
+        println(s"\n${documents.size} documents; ${RoomRun.spent(engine)}")
       } finally engine.close()
     }
-
-  /** `said` written into `engine`'s room `team`/`channel`, each `shift` later. */
-  private def seeded(
-      engine: grit.dbos.engine.Engine^,
-      team: String,
-      channel: String,
-      said: Vector[Said],
-      shift: Duration
-  ): Unit = {
-    val ts = said.map(s => s.id -> s"${s.at.plus(shift).getEpochSecond}.000000").toMap
-    val roots = said.filter(_.thread.isEmpty)
-    val written =
-      said.sortBy(_.at).foldLeft(Map.empty[String, (ConversationId, EntryId)]) { (done, s) =>
-        val thread = s.thread.getOrElse(s.id)
-        val at = s.at.plus(shift)
-        val entry = right(engine.jot.write(Subject.Public) {
-          for {
-            c <- engine.conversations.findOrCreate(
-              Origin.Slack(team, channel, ts.getOrElse(thread, thread)),
-              Account.Local,
-              Label.Public
-            )
-            next <- engine.entries.lockNext(c.id)
-            e = Entry(
-              EntryId(s"${ConversationId.value(c.id)}:${next.seq}"),
-              c.id,
-              next.turnSeq,
-              None,
-              next.seq,
-              Payload.Heard(s.text),
-              at,
-              Integrity.Member
-            )
-            _ <- engine.entries.insert(e)
-          } yield (c.id, e.id)
-        })
-        done + (s.id -> entry)
-      }
-    roots.foreach { s =>
-      val root = s.topic.flatMap(t => roots.find(r => r.topic.contains(t) && r.at.isBefore(s.at)))
-      for {
-        r <- root
-        (rootConversation, _) <- written.get(r.id)
-        (_, first) <- written.get(s.id)
-      } {
-        // Only the stitch makes a placement; the room's truth is one in its stored form.
-        val t = Tuning.Default
-        val placed = StitchJson
-          .read(
-            ujson.Obj(
-              "kind" -> "follows",
-              "root" -> ConversationId.value(rootConversation),
-              "p" -> 0.9,
-              "model" -> "truth",
-              "usage" -> PayloadJson.writeUsage(Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None)),
-              "seen" -> ujson.Obj(
-                "state" -> ujson.Obj(),
-                "offered" -> ujson.Arr(),
-                "tuning" -> ujson.Obj(
-                  "horizon_seconds" -> t.horizon.toSeconds.toDouble,
-                  "recent" -> t.recent,
-                  "lexical" -> t.lexical,
-                  "follows_at" -> Probability.value(t.followsAt),
-                  "window_tokens" -> Tokens.value(t.windowTokens).toDouble,
-                  "strand_chars" -> t.strandChars
-                )
-              )
-            )
-          )
-          .fold(sys.error, identity)
-        val _ = right(
-          engine.jot.write(Subject.Public)(
-            engine.stitches.record(first, placed, s.at.plus(shift))
-          )
-        )
-      }
-    }
-  }
 }
