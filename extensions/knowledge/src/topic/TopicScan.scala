@@ -28,7 +28,8 @@ private[topic] object TopicScan {
   }
 
   /** What a scan came to: the topics `attached` to by ref; the `strands` and `cards` the
-    * attach ask places, and the topics it shows (`leads`, by key and version, newest first); how
+    * attach ask places, and the topics it shows (`leads`, by key and version: those attached to,
+    * then at most [[Leads]] others, newest first); how
     * many passages it `withdrew`, and how many strands and cards it found `unchanged` or `left`
     * past the run's most.
     */
@@ -229,11 +230,11 @@ private[topic] object TopicScan {
     val strands = p.strands.collect { case (s, None) => s }
     // Most recent first as the shelf gives them: placed oldest first, as strands are.
     val cards = p.cards.collect { case (c, None) => c }.reverse
-    val shown = attached.map(_.key).toSet
-    val leads = topics
+    val byRef = attached.flatMap(t => t.version.map(t.key -> _))
+    val leads = byRef ++ topics
       .sortBy((_, v, _) => -DocumentVersion.value(v))
       .map((k, v, _) => (k, v))
-      .filterNot((k, _) => shown.contains(k))
+      .filterNot((k, _) => byRef.exists(_._1 == k))
       .take(Leads)
     Scanned(
       attached,

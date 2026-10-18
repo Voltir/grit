@@ -341,6 +341,25 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a topic a strand attaches to by ref is among those the attach ask shows") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      w.say(a, "the rollback works now", 50)
+      val b = strand(w, "C2", "deploy rollback", 100)
+      val reply = runs.run(
+        now = Now.plusSeconds(600),
+        attach = (_, _) => ujson.Obj("discussions" -> ujson.Arr("1"), "cards" -> ujson.Arr())
+      )
+      val attach = runs.asked.filter(_.kind == "attach").last
+      (reply, counted(attach.shown), runs.referring(Ref.Strand(b.id))) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        (1, 1, 0),
+        Vector(key(a))
+      )
+    }
+
     test("a strand a topic already refers to is attached to it without the attach ask") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
