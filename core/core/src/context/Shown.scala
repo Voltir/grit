@@ -272,6 +272,15 @@ object Shown {
     )
   }
 
+  /** A Standing line only the assistant said, as a record shows it: an open question, "Open:
+    * whether "{text}" (the assistant said so; nothing confirmed it)". `text` as given: a caller
+    * pastes it where grit did not write it.
+    */
+  def unconfirmed(text: String): String =
+    // The wording is measured: a model restated a plain list as fact, and hedged more often
+    // with this form. Rewording it needs a new measurement.
+    s"Open: whether \"$text\" (the assistant said so; nothing confirmed it)"
+
   /** `closing` as a record shows it after its header: its prose, its outcome, the lines it
     * resolved and how, and the balance's open lines, its standing lines (those only the
     * assistant said listed apart, as not confirmed) and its topics; each text grit carried
@@ -287,8 +296,7 @@ object Shown {
       Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
     val topics = balance.in(Section.Topics).map(l => pasted(l.text))
     // Standing only the assistant said is listed apart (ADR 0018), each line recast as an open
-    // question. The wording is measured: a model restated the plain list as fact, and hedged
-    // more often with this form. Rewording it needs a new measurement.
+    // question ([[unconfirmed]]).
     val (claimed, confirmed) =
       balance.in(Section.Standing).partition(_.ground.contains(Ground.Claimed))
     (pasted(flows.prose) +:
@@ -298,10 +306,7 @@ object Shown {
         list("Standing", confirmed.map(l => pasted(l.text))) ++
         list(
           "Standing, said by the assistant and not confirmed",
-          claimed
-            .map(l =>
-              s"Open: whether \"${pasted(l.text)}\" (the assistant said so; nothing confirmed it)"
-            )
+          claimed.map(l => unconfirmed(pasted(l.text)))
         ) ++
         Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
       .mkString("\n")
