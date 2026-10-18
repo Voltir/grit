@@ -21,15 +21,19 @@ final class SqlDocumentReviews extends DocumentReviews {
   def labels(plugin: PluginName, from: LocalDate)(using
       tx: Tx^
   ): Either[StoreError, Vector[DocumentLabel]] =
-    rows(
-      s"""SELECT r.key, r.day, r.version, r.verdict, r.rater, r.labelled_at,
+    // A review is read as kept in no room (the row holds none), by SqlClearance's own rule.
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT r.key, r.day, r.version, r.verdict, r.rater, r.labelled_at,
          |       ${SqlLabels.columns("l")}
-         |  FROM grit.document_reviews r JOIN grit.classifications l ON l.id = r.classification_id
+         |  FROM (SELECT *, NULL::uuid AS room_id FROM grit.document_reviews) r
+         |  JOIN grit.classifications l ON l.id = r.classification_id
          | WHERE r.plugin = ? AND r.verdict IS NOT NULL AND r.day >= ?
+         |   AND ${SqlClearance.kept("r")}
          | ORDER BY r.day, r.labelled_at, r.key COLLATE "C"""".stripMargin
     ) { ps =>
-      ps.setString(1, PluginName.value(plugin))
-      ps.setObject(2, from)
+      ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+      ps.setObject(SqlClearance.Params + 2, from)
     } { rs =>
       for {
         key <- DocKey.of(rs.getString("key"))

@@ -1234,6 +1234,39 @@ abstract class DocumentContract extends TestSuite {
       )
     }
 
+    test("labels reads only the labels given on reviews at a label the transaction reads") {
+      val p = name("doc-review-labels-above")
+      val k = keeper(p, terms())
+      val trial = Clearance.of(TestLabels.Trial)
+      val high = opened(trial)(
+        ok(
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("high"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
+      ) match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      opened(trial)(ok(k.forReview(high, Day, at(2))))
+      openedUnder(trial, posting) {
+        val r = reviews.of(p)
+        ok(r.unposted(trialPlace)).foreach(s => ok(r.posted(s, "doc-labels-above/1", at(3))))
+        ok(r.reacted("doc-labels-above/1", rater, word("good"), at(4)))
+      }
+      (
+        labelled(p).map(l => DocKey.value(l.key)),
+        opened(trial)(ok(reviews.labels(p, Day))).map(l => DocKey.value(l.key))
+      ) ==> (Vector(), Vector("high"))
+    }
+
     test("remove deletes a plugin's reviews; another's stay") {
       val (p, q) = (name("doc-review-remove-p"), name("doc-review-remove-q"))
       val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))

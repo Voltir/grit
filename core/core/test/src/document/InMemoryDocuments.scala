@@ -234,13 +234,14 @@ final class InMemoryDocuments extends DocumentStore {
       }
 
     def labels(plugin: PluginName, from: LocalDate)(using
-        Tx^
+        tx: Tx^
     ): Either[StoreError, Vector[DocumentLabel]] =
       Right(
         ups.toVector
           .collect {
             case (u, up @ Up(_, _, _, _, Some((verdict, rater, at))))
-                if u.plugin == plugin && !u.day.isBefore(from) =>
+                if u.plugin == plugin && !u.day.isBefore(from) &&
+                  Tx.clearance(tx).reads(Item.Kept(None), u.label) =>
               DocumentLabel(u.key, u.label, u.day, up.version.map(version), verdict, rater, at)
           }
           .sortBy(l => (l.day, l.at, DocKey.value(l.key)))

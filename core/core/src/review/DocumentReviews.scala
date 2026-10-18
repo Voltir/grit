@@ -58,8 +58,9 @@ trait DocumentReviews {
     */
   def of(plugin: PluginName): Reviews[DocumentReview, ReviewWord]
 
-  /** Every label `plugin`'s reviews were given on days from `from`, earliest day first, then
-    * earliest given (ties by key).
+  /** Every label `plugin`'s reviews were given on days from `from` at a label this transaction
+    * reads, as a document kept in no room, earliest day first, then earliest given (ties by
+    * key).
     */
   def labels(plugin: PluginName, from: LocalDate)(using
       Tx^
