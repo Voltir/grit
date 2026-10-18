@@ -18,6 +18,7 @@ import grit.core.id.{
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{
   Change,
+  Cited,
   CloseReason,
   Closing,
   Flows,
@@ -121,7 +122,8 @@ object ShownTests extends TestSuite {
                   3,
                   3,
                   ground = Ground.Person
-                )
+                ),
+                Cited.Empty
               ),
               Change.Resolved(backup, "daily at 02:00"),
               Change.Dropped(line(Section.Standing, "Deploys are manual", 1, 2), "superseded"),
@@ -445,7 +447,7 @@ object ShownTests extends TestSuite {
         line(Section.Standing, "Deploys freeze Friday 17:00", 1, 1, ground = Ground.Person)
       val closing = Closing(
         Flows
-          .of("We set the freeze.", Some("freeze set"), Vector(Change.Added(standing)))
+          .of("We set the freeze.", Some("freeze set"), Vector(Change.Added(standing, Cited.Empty)))
           .getOrElse(throw new java.lang.AssertionError("flows")),
         balance(
           standing,

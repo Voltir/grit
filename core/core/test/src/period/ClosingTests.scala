@@ -1,6 +1,6 @@
 package grit.core.period
 
-import grit.core.id.LineId
+import grit.core.id.{EntryId, LineId}
 
 import TestClosings.{balance, line}
 import utest.*
@@ -17,7 +17,8 @@ object ClosingTests extends TestSuite {
       "We set up the staging deploy.",
       Some("staging deploys from main"),
       Change.Added(
-        line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person)
+        line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person),
+        Cited.Empty
       ),
       Change.Resolved(backup, "daily at 02:00"),
       Change.Dropped(line(Section.Standing, "Deploys are manual", 1, 2), "superseded"),
@@ -69,6 +70,24 @@ object ClosingTests extends TestSuite {
         """"balance":{"open":[],"standing":[],"topics":[]}}"""
     }
 
+    test(
+      "an add's citation is stored beside its line, its tools sorted, and read back; an add stored without one reads with none"
+    ) {
+      val stood = line(Section.Standing, "Port 3000", 1, 1, ground = Ground.Tool)
+      val cited = Cited.of(Vector(EntryId("e7"), EntryId("e2")), Set("search_code", "read_file"))
+      val c = Closing(flows("x", None, Change.Added(stood, cited)), balance(stood))
+      val stored = ClosingJson.write(c)
+      (
+        stored("flows")("changes")(0).obj.get("cited").map(_.render()),
+        ClosingJson.read(stored).map(_.flows.changes),
+        ClosingJson.read(ClosingJson.write(full)).map(_.flows.changes.headOption)
+      ) ==> (
+        Some("""{"entries":["e7","e2"],"tools":["read_file","search_code"]}"""),
+        Right(Vector(Change.Added(stood, cited))),
+        Right(full.flows.changes.headOption)
+      )
+    }
+
     test("a topic line's summary is stored beside its text, and read back; other lines have none") {
       val t = TestClosings.line(Section.Topics, "Photo Rename", 1, 2, Some("renaming photos"))
       val c = Closing(TestClosings.prose("x").flows, balance(t))
@@ -109,7 +128,9 @@ object ClosingTests extends TestSuite {
         Right(
           (
             Vector(Some(Ground.Claimed)),
-            Vector(Change.Added(line(Section.Standing, "s", 1, 1, ground = Ground.Claimed)))
+            Vector(
+              Change.Added(line(Section.Standing, "s", 1, 1, ground = Ground.Claimed), Cited.Empty)
+            )
           )
         )
     }

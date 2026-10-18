@@ -1,6 +1,7 @@
 package grit.lifecycle.transcript
 
-import grit.core.period.Ground
+import grit.core.id.EntryId
+import grit.core.period.{Cited, Ground}
 import grit.core.visibility.Integrity
 
 /** A period's transcript as the closing writer reads it: each line under a label, `u` for
@@ -35,35 +36,61 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
     * names one of those, so what rests on them alone is not kept.
     */
   def ground(cited: Vector[String]): Option[Ground] = {
-    val named = cited.map(_.trim.toLowerCase).toSet
-    val sources = lines.filter(l => named.contains(l.label))
+    val sources = named(cited)
     val supporting = sources
       .filter(l => l.source != Labelled.Source.Heard && !l.integrity.belowOutside)
       .map(_.source)
     if (sources.nonEmpty && supporting.isEmpty) None
     else if (supporting.contains(Labelled.Source.Person)) Some(Ground.Person)
-    else if (supporting.contains(Labelled.Source.Tool(succeeded = true))) Some(Ground.Tool)
+    else if (
+      supporting.exists {
+        case Labelled.Source.Tool(succeeded, _) => succeeded
+        case _ => false
+      }
+    ) Some(Ground.Tool)
     else Some(Ground.Claimed)
+  }
+
+  /** The entries and tools the lines `labels` name in this transcript ([[Cited]]); a label it
+    * does not have names nothing.
+    */
+  def cited(labels: Vector[String]): Cited = {
+    val lines = named(labels)
+    Cited.of(
+      lines.map(_.entry),
+      lines.collect { case Labelled.Line(_, _, Labelled.Source.Tool(_, Some(tool)), _, _) =>
+        tool
+      }.toSet
+    )
+  }
+
+  /** Its lines `labels` name, in order, any case. */
+  private def named(labels: Vector[String]): Vector[Labelled.Line] = {
+    val wanted = labels.map(_.trim.toLowerCase).toSet
+    lines.filter(l => wanted.contains(l.label))
   }
 }
 
 object Labelled {
 
   /** Who or what wrote a line: a person speaking to grit, a person heard where grit
-    * listens, the assistant, or a tool, whose result `succeeded` or was an error.
+    * listens, the assistant, or a tool, whose result `succeeded` or was an error, and whose
+    * call named it `tool` (as the model sent it; `None` when the call is not among the
+    * period's entries).
     */
   enum Source {
     case Person
     case Heard
     case Assistant
-    case Tool(succeeded: Boolean)
+    case Tool(succeeded: Boolean, tool: Option[String])
   }
 
-  /** A line: its `label`, what it `rendered` as, `[{label}] …`, who wrote it, and the
-    * `integrity` its row is believed at.
+  /** A line: its `label`, the `entry` it was rendered from, what it `rendered` as,
+    * `[{label}] …`, who wrote it, and the `integrity` its row is believed at.
     */
   final case class Line private[transcript] (
       label: String,
+      entry: EntryId,
       source: Source,
       rendered: String,
       integrity: Integrity

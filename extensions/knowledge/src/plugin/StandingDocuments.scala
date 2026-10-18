@@ -64,7 +64,7 @@ object StandingDocuments {
       // An Added line the cap then refused is not in the balance: never written.
       val added =
         if (closed.reason.shownElsewhere) closed.closing.flows.changes.collect {
-          case Change.Added(l) if inBalance(l.id) && kept(l) => l
+          case Change.Added(l, _) if inBalance(l.id) && kept(l) => l
         }
         else Vector.empty
       val gone = closed.closing.flows.changes.collect {

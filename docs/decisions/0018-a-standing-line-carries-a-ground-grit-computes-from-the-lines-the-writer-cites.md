@@ -1,6 +1,6 @@
 # 0018. A Standing line carries a ground grit computes from the lines the writer cites
 
-Status: accepted (2026-09-27); revised (2026-10-14)
+Status: accepted (2026-09-27); revised (2026-10-14, 2026-10-18)
 
 Context: a closing's Standing lines are what later periods treat as settled (ADR 0011). A
 closing writer that read only the period's messages could not tell a fact a tool showed from
@@ -28,6 +28,12 @@ Decision: each Standing line records its ground: `Person`, `Tool` or `Claimed`.
 - Grounds are computed only over the lines the writer was shown. An uncited item or an unknown
   label is `Claimed`, never dropped. A ground is copied verbatim when its line is carried, and
   never changed by a touch.
+- **An add records what its citation named** (`Cited`): the ids of the entries its labels name,
+  whatever ground they gave, and the tools those entries ran, by their stored calls' names. It
+  lives on the add in the closing's flows (`Change.Added`), never on the line, which the cap may
+  evict and every closing copies; it is bounded by the writer's reply, which its model profile's
+  output token limit caps. It does not depend on how much of a result the writer was shown. The
+  references dangle once their entries are purged; nothing reads them yet.
 - The window's record lists `Claimed` Standing apart, each line an open question (`Open:
   whether "…" (the assistant said so; nothing confirmed it)`), and the base prompt says to check
   it before relying on it. Closings are stored as version 3; version-2 Standing lines read as

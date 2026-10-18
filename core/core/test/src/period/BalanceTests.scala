@@ -73,7 +73,7 @@ object BalanceTests extends TestSuite {
         line(Section.Standing, "s", 1, 2),
         added
       )
-      after.changes ==> Vector(Change.Added(added))
+      after.changes ==> Vector(Change.Added(added, Cited.Empty))
     }
 
     test("an add of a line already there touches it instead, and adds no second one") {
@@ -121,19 +121,41 @@ object BalanceTests extends TestSuite {
       } ==> Vector("names no line", "names no line", "names no line", "blank", "names no line")
     }
 
+    test("a Stand's citation reaches its Added change; one that only touches lists none") {
+      val cited = Cited.of(Vector(grit.core.id.EntryId("e3")), Set("read_file"))
+      val first =
+        Balance.empty.edit(Vector(Edit.Stand("port 3000", Ground.Tool, cited)), p(1))
+      val again = first.balance.edit(Vector(Edit.Stand("port 3000", Ground.Tool, cited)), p(2))
+      (first.changes, again.changes) ==> (
+        Vector(
+          Change.Added(line(Section.Standing, "port 3000", 1, 1, ground = Ground.Tool), cited)
+        ),
+        Vector()
+      )
+    }
+
     test("a standing line is added with its ground; one already there keeps its ground") {
       val first =
-        Balance.empty.edit(Vector(Edit.Stand(" backups run  nightly ", Ground.Person)), p(1))
+        Balance.empty.edit(
+          Vector(Edit.Stand(" backups run  nightly ", Ground.Person, Cited.Empty)),
+          p(1)
+        )
       first.balance ==> balance(
         line(Section.Standing, "backups run nightly", 1, 1, ground = Ground.Person)
       )
       first.changes ==>
         Vector(
-          Change.Added(line(Section.Standing, "backups run nightly", 1, 1, ground = Ground.Person))
+          Change.Added(
+            line(Section.Standing, "backups run nightly", 1, 1, ground = Ground.Person),
+            Cited.Empty
+          )
         )
       // Stood again on a weaker ground: touched, and its ground kept (no upgrade or downgrade).
       val again =
-        first.balance.edit(Vector(Edit.Stand("backups run nightly", Ground.Claimed)), p(2))
+        first.balance.edit(
+          Vector(Edit.Stand("backups run nightly", Ground.Claimed, Cited.Empty)),
+          p(2)
+        )
       again.balance ==> balance(
         line(Section.Standing, "backups run nightly", 1, 2, ground = Ground.Person)
       )
@@ -157,7 +179,7 @@ object BalanceTests extends TestSuite {
     }
 
     test("an ignored stand is shown as a stand, with its ground") {
-      Balance.empty.edit(Vector(Edit.Stand("  ", Ground.Tool)), p(1)).changes ==>
+      Balance.empty.edit(Vector(Edit.Stand("  ", Ground.Tool, Cited.Empty)), p(1)).changes ==>
         Vector(Change.Ignored("stand (tool):   ", "blank"))
     }
 

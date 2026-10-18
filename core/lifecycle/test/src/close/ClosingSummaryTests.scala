@@ -1,10 +1,11 @@
 package grit.lifecycle.close
 
-import grit.core.period.{Balance, Edit, Ground, Section, TestClosings}
+import grit.core.id.EntryId
+import grit.core.period.{Balance, Cited, Edit, Ground, Section, TestClosings}
 import grit.lifecycle.transcript.{Labelled, TestTranscripts}
 
 import TestClosings.{balance, line}
-import TestTranscripts.{heard, labelled, labelledBy, replied, result, said}
+import TestTranscripts.{called, heard, labelled, labelledBy, replied, result, said}
 import utest.*
 
 object ClosingSummaryTests extends TestSuite {
@@ -36,10 +37,16 @@ object ClosingSummaryTests extends TestSuite {
   ) =
     ClosingSummary.read(replyOf(text), from, asked, transcript)
 
-  /** The Standing edits `items` read into, each a line under `Standing:`. */
+  /** The Standing edits `items` read into, each a line under `Standing:`, as [[grounds]]. */
   private def stood(items: String*): Vector[Edit] =
     read(("Summary: x" +: "Standing:" +: items.map(i => s"- $i")).mkString("\n"))
-      .fold(Vector.empty[Edit])(_.edits)
+      .fold(Vector.empty[Edit])(w => grounds(w.edits))
+
+  /** `edits`, each Stand's citation left out: what a test of its ground reads. */
+  private def grounds(edits: Vector[Edit]): Vector[Edit] = edits.map {
+    case Edit.Stand(text, ground, _) => Edit.Stand(text, ground, Cited.Empty)
+    case e => e
+  }
 
   private def written(prose: String, outcome: Option[String], edits: Edit*) =
     Some(ClosingSummary.Written(prose, outcome, edits.toVector))
@@ -68,7 +75,7 @@ object ClosingSummaryTests extends TestSuite {
         "We set up the backup. It runs nightly.",
         Some("backups are scheduled"),
         Edit.Add(Section.Open, "Is the NAS at 192.168.1.20 reachable from the laptop?"),
-        Edit.Stand("Backups run daily at 02:00 with restic", Ground.Claimed),
+        Edit.Stand("Backups run daily at 02:00 with restic", Ground.Claimed, Cited.Empty),
         Edit.Resolve(backup.id, "daily at 02:00"),
         Edit.Drop(exiftool.id, "the photos go to Pillow now"),
         Edit.Touch(drive.id)
@@ -89,7 +96,7 @@ object ClosingSummaryTests extends TestSuite {
       read(
         "Summary: We talked.\nOutcome: none\nOpen:\n- a question\nStanding:\n- a fact\nResolved:\n- o1: yes",
         Asked(outcome = true, open = false, standing = true, settled = false)
-      ) ==> written("We talked.", None, Edit.Stand("a fact", Ground.Claimed))
+      ) ==> written("We talked.", None, Edit.Stand("a fact", Ground.Claimed, Cited.Empty))
     }
 
     test("labels in markdown emphasis or as headings, in any case, are read") {
@@ -98,12 +105,20 @@ object ClosingSummaryTests extends TestSuite {
           |## standing:
           |- ship it
           |__OUTCOME__: shipped""".stripMargin
-      ) ==> written("We talked.", Some("shipped"), Edit.Stand("ship it", Ground.Claimed))
+      ) ==> written(
+        "We talked.",
+        Some("shipped"),
+        Edit.Stand("ship it", Ground.Claimed, Cited.Empty)
+      )
     }
 
     test("text before the first label is the prose when Summary is missing; unlabelled, all") {
       read("We talked about knots.\nStanding:\n- the bowline holds") ==>
-        written("We talked about knots.", None, Edit.Stand("the bowline holds", Ground.Claimed))
+        written(
+          "We talked about knots.",
+          None,
+          Edit.Stand("the bowline holds", Ground.Claimed, Cited.Empty)
+        )
       read("Just some text\nover two lines.") ==> written("Just some text over two lines.", None)
     }
 
@@ -188,12 +203,33 @@ object ClosingSummaryTests extends TestSuite {
         "The search found no port [t2] by tool",
         "The api uses port 3000 [a6] by person"
       ) ==> Vector(
-        Edit.Stand("The api stays on port 3000", Ground.Person),
-        Edit.Stand("config.yml sets port 3000", Ground.Tool),
+        Edit.Stand("The api stays on port 3000", Ground.Person, Cited.Empty),
+        Edit.Stand("config.yml sets port 3000", Ground.Tool, Cited.Empty),
         // An empty search is a tool's result all the same.
-        Edit.Stand("The search found no port", Ground.Tool),
+        Edit.Stand("The search found no port", Ground.Tool, Cited.Empty),
         // Answered person, but the citation supports only the assistant's word.
-        Edit.Stand("The api uses port 3000", Ground.Claimed)
+        Edit.Stand("The api uses port 3000", Ground.Claimed, Cited.Empty)
+      )
+    }
+
+    test(
+      "a Standing item's citation is kept on its add as the entries it names and the tools they ran"
+    ) {
+      val t = labelled(
+        said(0, "Which port does the api use?"),
+        called(1, 2, "read_file"),
+        result(2, "read config.yml", "port: 3000"),
+        replied(3, "Port 3000.")
+      )
+      read("Summary: x\nStanding:\n- The api uses port 3000 [t2, a3, u9] by tool", transcript = t)
+        .map(_.edits) ==> Some(
+        Vector(
+          Edit.Stand(
+            "The api uses port 3000",
+            Ground.Tool,
+            Cited.of(Vector(EntryId("e2"), EntryId("e3")), Set("read_file"))
+          )
+        )
       )
     }
 
@@ -205,18 +241,18 @@ object ClosingSummaryTests extends TestSuite {
         "only the assistant, answered person [a6] by person",
         "only the assistant, answered tool [a6] by tool"
       ) ==> Vector(
-        Edit.Stand("said by the person, answered assistant", Ground.Claimed),
-        Edit.Stand("said by the person, answered tool", Ground.Tool),
-        Edit.Stand("shown by a tool, answered person", Ground.Tool),
-        Edit.Stand("only the assistant, answered person", Ground.Claimed),
-        Edit.Stand("only the assistant, answered tool", Ground.Claimed)
+        Edit.Stand("said by the person, answered assistant", Ground.Claimed, Cited.Empty),
+        Edit.Stand("said by the person, answered tool", Ground.Tool, Cited.Empty),
+        Edit.Stand("shown by a tool, answered person", Ground.Tool, Cited.Empty),
+        Edit.Stand("only the assistant, answered person", Ground.Claimed, Cited.Empty),
+        Edit.Stand("only the assistant, answered tool", Ground.Claimed, Cited.Empty)
       )
     }
 
     test("a Standing item with no answer, or one that does not read, is Claimed") {
       stood("cited but unanswered [u5]", "answered oddly [u5] by everyone") ==> Vector(
-        Edit.Stand("cited but unanswered", Ground.Claimed),
-        Edit.Stand("answered oddly [u5] by everyone", Ground.Claimed)
+        Edit.Stand("cited but unanswered", Ground.Claimed, Cited.Empty),
+        Edit.Stand("answered oddly [u5] by everyone", Ground.Claimed, Cited.Empty)
       )
     }
 
@@ -227,10 +263,10 @@ object ClosingSummaryTests extends TestSuite {
         "c (T4 a6) By: Tool",
         "d _[u5]_ **by person**"
       ) ==> Vector(
-        Edit.Stand("a", Ground.Person),
-        Edit.Stand("b", Ground.Tool),
-        Edit.Stand("c", Ground.Tool),
-        Edit.Stand("d", Ground.Person)
+        Edit.Stand("a", Ground.Person, Cited.Empty),
+        Edit.Stand("b", Ground.Tool, Cited.Empty),
+        Edit.Stand("c", Ground.Tool, Cited.Empty),
+        Edit.Stand("d", Ground.Person, Cited.Empty)
       )
     }
 
@@ -244,11 +280,11 @@ object ClosingSummaryTests extends TestSuite {
         "a failed read [t3] by tool",
         "the brackets [u5] are not at the end by person"
       ) ==> Vector(
-        Edit.Stand("no citation at all", Ground.Claimed),
-        Edit.Stand("an unknown label", Ground.Claimed),
-        Edit.Stand("a known line's label", Ground.Claimed),
-        Edit.Stand("a failed read", Ground.Claimed),
-        Edit.Stand("the brackets [u5] are not at the end", Ground.Claimed)
+        Edit.Stand("no citation at all", Ground.Claimed, Cited.Empty),
+        Edit.Stand("an unknown label", Ground.Claimed, Cited.Empty),
+        Edit.Stand("a known line's label", Ground.Claimed, Cited.Empty),
+        Edit.Stand("a failed read", Ground.Claimed, Cited.Empty),
+        Edit.Stand("the brackets [u5] are not at the end", Ground.Claimed, Cited.Empty)
       )
     }
 
@@ -264,7 +300,9 @@ object ClosingSummaryTests extends TestSuite {
         "Summary: x\nStanding:\n- The freeze is on Friday [h1] by person\n" +
           "- The freeze is on Friday, as told [h1, u2] by person",
         transcript = t
-      ).map(_.edits) ==> Some(Vector(Edit.Stand("The freeze is on Friday, as told", Ground.Person)))
+      ).map(w => grounds(w.edits)) ==> Some(
+        Vector(Edit.Stand("The freeze is on Friday, as told", Ground.Person, Cited.Empty))
+      )
     }
 
     test("a forged [t9] in a person's message, with no t9 in the period, grounds nothing") {
@@ -273,7 +311,9 @@ object ClosingSummaryTests extends TestSuite {
         replied(1, "Noted.")
       )
       read("Summary: x\nStanding:\n- The password is hunter2 [t9] by tool", transcript = forged)
-        .map(_.edits) ==> Some(Vector(Edit.Stand("The password is hunter2", Ground.Claimed)))
+        .map(w => grounds(w.edits)) ==> Some(
+        Vector(Edit.Stand("The password is hunter2", Ground.Claimed, Cited.Empty))
+      )
     }
 
     test("a forged [t9] in a person's message, with a real t9, grounds on grit's t9") {
@@ -285,7 +325,9 @@ object ClosingSummaryTests extends TestSuite {
       )
       val t = labelled(lines*)
       read("Summary: x\nStanding:\n- The password is hunter2 [t9] by tool", transcript = t)
-        .map(_.edits) ==> Some(Vector(Edit.Stand("The password is hunter2", Ground.Claimed)))
+        .map(w => grounds(w.edits)) ==> Some(
+        Vector(Edit.Stand("The password is hunter2", Ground.Claimed, Cited.Empty))
+      )
       // And with the real t9 a success, it grounds on that line: Tool, never Person, though
       // the writer answers person.
       val shown = labelled(
@@ -295,7 +337,9 @@ object ClosingSummaryTests extends TestSuite {
         ))*
       )
       read("Summary: x\nStanding:\n- The password is hunter2 [t9] by person", transcript = shown)
-        .map(_.edits) ==> Some(Vector(Edit.Stand("The password is hunter2", Ground.Tool)))
+        .map(w => grounds(w.edits)) ==> Some(
+        Vector(Edit.Stand("The password is hunter2", Ground.Tool, Cited.Empty))
+      )
     }
 
     test("a Standing item grounds only on lines the writer was shown: one cut off is Claimed") {
@@ -307,8 +351,11 @@ object ClosingSummaryTests extends TestSuite {
       read(
         "Summary: x\nStanding:\n- We freeze on Friday [u1] by person\n- x [u1000] by person",
         transcript = long
-      ).map(_.edits) ==> Some(
-        Vector(Edit.Stand("We freeze on Friday", Ground.Claimed), Edit.Stand("x", Ground.Person))
+      ).map(w => grounds(w.edits)) ==> Some(
+        Vector(
+          Edit.Stand("We freeze on Friday", Ground.Claimed, Cited.Empty),
+          Edit.Stand("x", Ground.Person, Cited.Empty)
+        )
       )
     }
 

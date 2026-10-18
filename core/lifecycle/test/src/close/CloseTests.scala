@@ -22,6 +22,7 @@ import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
   Balance,
   Change,
+  Cited,
   CloseReason,
   Closing,
   Flows,
@@ -70,7 +71,7 @@ object CloseTests extends TestSuite {
         .of(
           "We chose a deploy target.",
           Some("staging deploys from main"),
-          Vector(Change.Added(prod), Change.Added(deploy))
+          Vector(Change.Added(prod, Cited.Empty), Change.Added(deploy, Cited.Empty))
         )
         .getOrElse(throw new java.lang.AssertionError("flows")),
       balance(deploy, prod)
@@ -866,7 +867,7 @@ object CloseTests extends TestSuite {
           CloseReason.Lapsed,
           Closing(
             Flows
-              .of("We looked at prod.", None, Vector(Change.Added(key)))
+              .of("We looked at prod.", None, Vector(Change.Added(key, Cited.Empty)))
               .getOrElse(throw new java.lang.AssertionError("flows")),
             balance(deploy, prod, key)
           )
@@ -921,7 +922,11 @@ object CloseTests extends TestSuite {
               .of(
                 "We chose a deploy target.",
                 Some("staging deploys from main"),
-                Vector(Change.Added(prod), Change.Added(deploy), Change.Refused(prod))
+                Vector(
+                  Change.Added(prod, Cited.Empty),
+                  Change.Added(deploy, Cited.Empty),
+                  Change.Refused(prod)
+                )
               )
               .getOrElse(throw new java.lang.AssertionError("flows")),
             balance(deploy)

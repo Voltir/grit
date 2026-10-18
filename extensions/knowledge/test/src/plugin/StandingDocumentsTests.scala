@@ -8,6 +8,7 @@ import grit.core.id.{ConversationId, DocKey, LineId, PeriodRef, PeriodSeq, Plugi
 import grit.core.message.Message
 import grit.core.period.{
   Change,
+  Cited,
   CloseOrdinal,
   CloseReason,
   Closing,
@@ -94,7 +95,7 @@ object StandingDocumentsTests extends TestSuite {
   private val freeze = standing("Hotfixes skip the freeze", 1, Ground.Tool)
   private val claimed = standing("Port 3000 is the usual choice", 1, Ground.Claimed)
 
-  private def added(lines: Line*): Vector[Change] = lines.toVector.map(Change.Added(_))
+  private def added(lines: Line*): Vector[Change] = lines.toVector.map(Change.Added(_, Cited.Empty))
 
   val tests = Tests {
     test(
@@ -225,7 +226,11 @@ object StandingDocumentsTests extends TestSuite {
       kept.post(
         closed(
           1,
-          Vector(Change.Added(deploys), Change.Refused(deploys), Change.Added(open)),
+          Vector(
+            Change.Added(deploys, Cited.Empty),
+            Change.Refused(deploys),
+            Change.Added(open, Cited.Empty)
+          ),
           Vector(open)
         )
       )

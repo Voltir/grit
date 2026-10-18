@@ -128,8 +128,8 @@ enum Edit {
   /** A new line `text`: an open item, or a topic. */
   case Add(section: Section.Open.type | Section.Topics.type, text: String)
 
-  /** A new Standing line `text`, established on `ground`. */
-  case Stand(text: String, ground: Ground)
+  /** A new Standing line `text`, established on `ground`, and what its citation named. */
+  case Stand(text: String, ground: Ground, cited: Cited)
 
   /** `line` taken out as answered or done: `how` it was. */
   case Resolve(line: LineId, how: String)
@@ -156,7 +156,7 @@ object Edit {
     def line(id: LineId) = named.get(id).fold(LineId.value(id))(t => s"\"$t\"")
     e match {
       case Add(section, text) => s"add ${section.key}: $text"
-      case Stand(text, ground) => s"stand (${ground.key}): $text"
+      case Stand(text, ground, _) => s"stand (${ground.key}): $text"
       case Resolve(id, how) => s"resolve ${line(id)}: $how"
       case Drop(id, why) => s"drop ${line(id)}: $why"
       case Touch(id) => s"touch ${line(id)}"
@@ -168,7 +168,9 @@ object Edit {
 
 /** What a close did to the balance, as its flows list it. */
 enum Change {
-  case Added(line: Line)
+
+  /** `line` added, with what its citation named ([[Cited]]). */
+  case Added(line: Line, cited: Cited)
   case Resolved(line: Line, how: String)
   case Dropped(line: Line, why: String)
 
@@ -196,8 +198,8 @@ final case class Balance private (lines: Vector[Line]) {
   /** `edits`, made at the close of `period`, applied in order. `Add` puts its text, trimmed
     * and with each run of whitespace made one space, last in its section with `since` and
     * `touched` at `period`, or touches the line already there. `Stand` adds a Standing line
-    * as `Add` does, with its ground; when that line is there already, it touches it and
-    * keeps the ground it has. `Resolve` and `Drop` take a
+    * as `Add` does, with its ground, its `Added` change carrying what its citation named;
+    * when that line is there already, it touches it and keeps the ground it has. `Resolve` and `Drop` take a
     * line out. `Touch` sets its `touched` to `period` and moves it last in its section.
     * `Summarise` replaces a topic line's summary, normalised as an `Add`'s text, and neither
     * touches nor moves it. An edit naming no line of the balance, a blank `Add` or
@@ -214,7 +216,12 @@ final case class Balance private (lines: Vector[Line]) {
         Balance.Changed(b, done.changes :+ Change.Ignored(Edit.shown(e, named), why))
       def present(id: LineId)(f: Line => Balance.Changed): Balance.Changed =
         b.lines.find(_.id == id).fold(ignored("names no line"))(f)
-      def add(section: Section, text: String, ground: Option[Ground]): Balance.Changed = {
+      def add(
+          section: Section,
+          text: String,
+          ground: Option[Ground],
+          cited: Cited
+      ): Balance.Changed = {
         val normal = Line.normal(text)
         if (normal.isEmpty) ignored("blank")
         else {
@@ -222,13 +229,16 @@ final case class Balance private (lines: Vector[Line]) {
           b.lines.find(_.id == line.id) match {
             case Some(there) => Balance.Changed(b.moved(there.touchedAt(period)), done.changes)
             case None =>
-              Balance.Changed(Balance.grouped(b.lines :+ line), done.changes :+ Change.Added(line))
+              Balance.Changed(
+                Balance.grouped(b.lines :+ line),
+                done.changes :+ Change.Added(line, cited)
+              )
           }
         }
       }
       e match {
-        case Edit.Add(section, text) => add(section, text, None)
-        case Edit.Stand(text, ground) => add(Section.Standing, text, Some(ground))
+        case Edit.Add(section, text) => add(section, text, None, Cited.Empty)
+        case Edit.Stand(text, ground, cited) => add(Section.Standing, text, Some(ground), cited)
         case Edit.Resolve(id, how) =>
           present(id)(l => Balance.Changed(b.without(l), done.changes :+ Change.Resolved(l, how)))
         case Edit.Drop(id, why) =>

@@ -20,7 +20,7 @@ import grit.core.id.{
 }
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground}
+import grit.core.period.{Balance, Cited, CloseReason, Closing, Edit, Flows, Ground}
 import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
 import grit.core.visibility.Integrity
@@ -341,7 +341,7 @@ object Load {
       for {
         flows <- Flows.of(c.said, None, Vector.empty).toRight(s"${layout.c.name}: no flows")
         carried = Balance.empty
-          .edit(c.carried.map(Edit.Stand(_, Ground.Person)), PeriodSeq.First)
+          .edit(c.carried.map(Edit.Stand(_, Ground.Person, Cited.Empty)), PeriodSeq.First)
           .balance
         _ <- jot
           .write(Subject.Conversation(conversation))(

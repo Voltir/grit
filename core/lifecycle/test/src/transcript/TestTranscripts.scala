@@ -42,7 +42,22 @@ object TestTranscripts {
     )
   )
 
-  /** A tool call shown as `shown`, its result `content`, an error when `error`. */
+  /** The assistant's call `c{call}` of the tool `name`, with no text. */
+  def called(seq: Long, call: Long, name: String): Entry = entry(
+    seq,
+    Payload.Exchange(
+      Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId(s"c$call"), name, ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+    )
+  )
+
+  /** A tool call shown as `shown`, its result `content`, an error when `error`: the result of
+    * the call `c{seq}`.
+    */
   def result(seq: Long, shown: String, content: String, error: Boolean = false): Entry =
     entry(seq, Payload.Result(Message.ToolResult(ToolCallId(s"c$seq"), content, error), shown))
 

@@ -1,14 +1,15 @@
 package grit.core.period
 
 import grit.core.either.Traversal.traverse
-import grit.core.id.PeriodSeq
+import grit.core.id.{EntryId, PeriodSeq}
 
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
   * is the first kept: every version from it on stays readable. Written by hand, never
   * derived. A topic line's `summary` is an optional key of version 2, added after its first
   * closings were written: a line without it reads as having none. Version 3 records each
   * Standing line's ground (ADR 0018); a version-2 closing still reads, its Standing lines
-  * `Claimed`.
+  * `Claimed`. An added change's `cited` ([[Cited]]) is an optional key of version 3, added
+  * after its first closings were written: an add without it reads as citing nothing.
   */
 object ClosingJson {
 
@@ -126,7 +127,14 @@ object ClosingJson {
       .toRight(s"a line's $key is not a period")
 
   private def writeChange(c: Change): ujson.Value = c match {
-    case Change.Added(l) => ujson.Obj("added" -> writeLine(l, withSection = true))
+    case Change.Added(l, cited) =>
+      val o = ujson.Obj("added" -> writeLine(l, withSection = true))
+      if (cited != Cited.Empty)
+        o("cited") = ujson.Obj(
+          "entries" -> ujson.Arr.from(cited.entries.map(EntryId.value)),
+          "tools" -> ujson.Arr.from(cited.tools.toVector.sorted)
+        )
+      o
     case Change.Resolved(l, how) =>
       ujson.Obj("resolved" -> writeLine(l, withSection = true), "how" -> how)
     case Change.Dropped(l, why) =>
@@ -134,6 +142,31 @@ object ClosingJson {
     case Change.Evicted(l) => ujson.Obj("evicted" -> writeLine(l, withSection = true))
     case Change.Refused(l) => ujson.Obj("refused" -> writeLine(l, withSection = true))
     case Change.Ignored(edit, why) => ujson.Obj("ignored" -> edit, "why" -> why)
+  }
+
+  /** An added change's citation; none when it has no `cited`. */
+  private def cited(o: collection.Map[String, ujson.Value]): Either[String, Cited] = {
+    def strings(
+        c: collection.Map[String, ujson.Value],
+        key: String
+    ): Either[String, Vector[String]] =
+      c.get(key)
+        .flatMap(_.arrOpt)
+        .flatMap(a => traverse(a.toVector)(_.strOpt.toRight(())).toOption)
+        .toRight(s"a citation's $key is not a list of strings")
+    o.get("cited") match {
+      case None => Right(Cited.Empty)
+      case Some(v) =>
+        for {
+          c <- v.objOpt.toRight("a citation is not an object")
+          entries <- strings(c, "entries")
+          tools <- strings(c, "tools")
+        } yield {
+          val ids: Vector[EntryId] = entries.map(EntryId(_))
+          val names: Set[String] = tools.toSet
+          Cited.of(ids, names)
+        }
+    }
   }
 
   private def readChange(v: ujson.Value, version: Int): Either[String, Change] = {
@@ -144,7 +177,8 @@ object ClosingJson {
     v.objOpt.toRight("a change is not an object").flatMap { o =>
       Vector("added", "resolved", "dropped", "evicted", "refused", "ignored")
         .find(o.contains) match {
-        case Some("added") => line(o, "added").map(Change.Added(_))
+        case Some("added") =>
+          for { l <- line(o, "added"); c <- cited(o) } yield Change.Added(l, c)
         case Some("resolved") =>
           for { l <- line(o, "resolved"); how <- text(o, "how") } yield Change.Resolved(l, how)
         case Some("dropped") =>

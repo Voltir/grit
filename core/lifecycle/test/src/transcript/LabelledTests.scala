@@ -1,11 +1,12 @@
 package grit.lifecycle.transcript
 
-import grit.core.period.Ground
+import grit.core.id.EntryId
+import grit.core.period.{Cited, Ground}
 import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Integrity
 
-import TestTranscripts.{heard, labelledBy, replied, result, said}
+import TestTranscripts.{called, heard, labelledBy, replied, result, said}
 import utest.*
 
 /** [[PeriodTranscript.labelled]] and [[Labelled]]: the transcript the closing writer cites
@@ -128,6 +129,30 @@ object LabelledTests extends TestSuite {
       t.ground(Vector("t1", "u2")) ==> Some(Ground.Person)
       t.ground(Vector("t1", "a3")) ==> Some(Ground.Claimed)
       outside.ground(Vector("u1")) ==> Some(Ground.Person)
+    }
+
+    test(
+      "a cited label names its entry, a tool line its call's tool, an unknown label nothing; heard, untrusted and error lines are named too"
+    ) {
+      val t = labelledBy(Map(1L -> "Ana"))(
+        called(0, 2, "search_code"),
+        heard(1, "Is the freeze on Friday?"),
+        result(2, "search \"freeze\"", "freeze: Friday").copy(integrity = Integrity.Untrusted),
+        called(3, 4, "read_file"),
+        result(4, "read missing.yml", "missing.yml does not exist", error = true),
+        result(5, "read lost.yml", "lost.yml: 3 lines"),
+        replied(6, "The freeze is on Friday.")
+      )
+      (
+        t.cited(Vector("a5", "t2", "h1", "T3", "t4", "u99")),
+        t.cited(Vector.empty)
+      ) ==> (
+        Cited.of(
+          Vector("e1", "e2", "e4", "e5", "e6").map(EntryId(_)),
+          Set("search_code", "read_file")
+        ),
+        Cited.Empty
+      )
     }
 
     test("a tool line whose result is an error grounds nothing") {

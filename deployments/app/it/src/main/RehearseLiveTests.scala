@@ -14,6 +14,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{
   Change,
+  Cited,
   CloseReason,
   Closing,
   Flows,
@@ -146,7 +147,11 @@ object RehearseLiveTests extends TestSuite {
       TestClosings.line(Section.Standing, "Staging deploys from main", 1, 1, ground = Ground.Person)
     val closing = Closing(
       Flows
-        .of("We settled deploys.", Some("Staging deploys from main."), Vector(Change.Added(line)))
+        .of(
+          "We settled deploys.",
+          Some("Staging deploys from main."),
+          Vector(Change.Added(line, Cited.Empty))
+        )
         .getOrElse(sys.error("flows")),
       TestClosings.balance(line)
     )

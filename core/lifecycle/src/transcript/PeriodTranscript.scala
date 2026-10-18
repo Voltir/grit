@@ -2,13 +2,12 @@ package grit.lifecycle.transcript
 
 import java.util.regex.Pattern
 
-import grit.core.id.{PeriodRef, TurnSeq}
+import grit.core.id.{PeriodRef, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Section
 import grit.core.persona.Persona
 import grit.core.stitch.Stitching
 import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
-import grit.core.visibility.Integrity
 
 /** A period as a classifier or the summary model reads it. */
 object PeriodTranscript {
@@ -109,41 +108,49 @@ object PeriodTranscript {
     * text as [[of]] renders it with `speakers`, but a person's message mentioning the
     * assistant, which presents as `persona`, as their words to it (`[h1] Ana, to the
     * assistant: …`, the mention taken out); and each tool result as its call as shown, " → ",
-    * and its content on one line, "failed: " first when it failed, clipped to [[ToolChars]].
+    * and its content on one line, "failed: " first when it failed, clipped to [[ToolChars]];
+    * each line knows the entry it was rendered from, and a tool line the name its call among
+    * `entries` gave.
     */
   def labelled(entries: Vector[Entry], speakers: Speakers, persona: Persona): Labelled = {
-    // Who wrote each line, and its text after the label.
-    val written: Vector[(Labelled.Source, Integrity, String)] = entries.flatMap(e =>
+    // Each call's name, by its id, as the replies among the entries sent it.
+    val called: Map[ToolCallId, String] = entries
+      .flatMap(_.payload match {
+        case Payload.Exchange(reply) => reply.blocks
+        case Payload.Message(reply: Message.Assistant) => reply.blocks
+        case _ => Vector.empty
+      })
+      .collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
+      .toMap
+    // Who wrote each line, which entry it is, and its text after the label.
+    val written: Vector[(Labelled.Source, Entry, String)] = entries.flatMap(e =>
       e.payload match {
         case Payload.Result(result, shown) =>
           val content = result.content.trim.split("\\s+").mkString(" ")
           val failed = if (result.isError) "failed: " else ""
-          Some((Labelled.Source.Tool(!result.isError), e.integrity, s"$shown → $failed$content"))
+          val source = Labelled.Source.Tool(!result.isError, called.get(result.callId))
+          Some((source, e, s"$shown → $failed$content"))
         case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(l =>
-            (Labelled.Source.Person, e.integrity, addressed(l, persona).shown)
-          )
+          line(e, speakers).map(l => (Labelled.Source.Person, e, addressed(l, persona).shown))
         case Payload.Heard(_) =>
-          line(e, speakers).map(l =>
-            (Labelled.Source.Heard, e.integrity, addressed(l, persona).shown)
-          )
-        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e.integrity, l.shown))
+          line(e, speakers).map(l => (Labelled.Source.Heard, e, addressed(l, persona).shown))
+        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e, l.shown))
       }
     )
-    Labelled.of(written.zipWithIndex.map { case ((source, integrity, text), i) =>
+    Labelled.of(written.zipWithIndex.map { case ((source, e, text), i) =>
       val letter = source match {
         case Labelled.Source.Person => "u"
         case Labelled.Source.Heard => "h"
         case Labelled.Source.Assistant => "a"
-        case Labelled.Source.Tool(_) => "t"
+        case Labelled.Source.Tool(_, _) => "t"
       }
       val label = s"$letter${i + 1}"
       val rendered = s"[$label] $text"
       val clipped = source match {
-        case Labelled.Source.Tool(_) => Cut.head(rendered, ToolChars)
+        case Labelled.Source.Tool(_, _) => Cut.head(rendered, ToolChars)
         case _ => rendered
       }
-      Labelled.Line(label, source, clipped, integrity)
+      Labelled.Line(label, e.id, source, clipped, e.integrity)
     })
   }
 

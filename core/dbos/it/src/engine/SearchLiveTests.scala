@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
+import grit.core.period.{Change, Cited, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}
 import grit.core.visibility.Integrity
@@ -253,7 +253,7 @@ object SearchLiveTests extends TestSuite {
             "we compared kakapo diets",
             Some("kea eat anything"),
             Vector(
-              Change.Added(added),
+              Change.Added(added, Cited.Empty),
               Change.Resolved(line(Section.Open, "where do weka roost", 1, 1), "the tuatara knows"),
               Change
                 .Dropped(line(Section.Standing, "moa survive", 1, 1), "extinct, says the kokako")

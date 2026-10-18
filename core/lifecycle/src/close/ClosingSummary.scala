@@ -180,7 +180,8 @@ object ClosingSummary {
     * that answer and what the cited lines support in what of `transcript` the writer was
     * shown ([[visible]], [[Labelled.ground]]), so the answer can only lower it, and an item
     * resting only on heard lines is not kept; an item with
-    * no answer, no citation, or only labels it lacks, is `Claimed`; and a `Resolve`,
+    * no answer, no citation, or only labels it lacks, is `Claimed`; each `Stand` carries
+    * what its cited lines name ([[Labelled.cited]]); and a `Resolve`,
     * `Drop` or `Touch` per Resolved, Dropped or Touched item whose label is one of `known`'s
     * ([[labels]]). An item with no label, or a label `known` does not show, is `Unread`.
     * Parts are labelled `Summary:`, `Outcome:` and so on (any case, markdown emphasis and
@@ -267,8 +268,9 @@ object ClosingSummary {
 
   /** A Standing item as its edit: the citation and the writer's answer at its end taken off
     * its text; its ground the weaker ([[Ground.min]]) of the answer and what the cited
-    * lines of `transcript`, the lines the writer was shown, support. No answer, or one that
-    * does not read, is `Claimed`. `None` for an item resting only on heard lines.
+    * lines of `transcript`, the lines the writer was shown, support, and what those lines
+    * name ([[Labelled.cited]]). No answer, or one that does not read, is `Claimed`. `None` for
+    * an item resting only on heard lines.
     */
   private def stand(item: String, transcript: Labelled): Option[Edit] = {
     // Peel the end off one piece at a time: a citation (`[u1, t3]`, `[u1][t3]`, `(u1 t3)`)
@@ -279,7 +281,7 @@ object ClosingSummary {
         answer: Option[Ground]
     ): (String, Vector[String], Option[Ground]) =
       text match {
-        case Cited(rest, labels) =>
+        case Citation(rest, labels) =>
           peel(rest, labels.split("[,\\s*_]+").toVector.filter(_.nonEmpty) ++ cited, answer)
         case Answered(rest, who) if answer.isEmpty =>
           val ground = who.toLowerCase match {
@@ -294,14 +296,18 @@ object ClosingSummary {
     transcript
       .ground(cited)
       .map(supported =>
-        Edit.Stand(text.trim, Ground.min(answer.getOrElse(Ground.Claimed), supported))
+        Edit.Stand(
+          text.trim,
+          Ground.min(answer.getOrElse(Ground.Claimed), supported),
+          transcript.cited(cited)
+        )
       )
   }
 
   /** An item's text, then one citation at its very end: a bracket or parenthesis holding
     * only labels (a letter and a number each), with any emphasis marks around or inside it.
     */
-  private val Cited =
+  private val Citation =
     """^(.*?)[\s*_]*[\[(][\s*_]*((?:[a-zA-Z]\d+[\s*_,]*)+)[\])][\s*_]*$""".r
 
   /** An item's text, then the writer's answer at its very end: "by" and one of person, tool
