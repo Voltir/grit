@@ -30,6 +30,7 @@ object JobReplayTests extends TestSuite {
     "call:abandon" -> 64, // the wait's state when given up
     "keep" -> 64, // what was kept
     "keep:scan" -> 1024, // the strands a dreaming run scanned, by ids and counts
+    "keep:gather" -> 1536, // two strands and the versions to show, by ids and counts
     "DBOS.recv" -> 64, // an edge's ring
     "DBOS.sleep" -> 64, // when the wait ends
     "reply" -> 256 // the run's reply
@@ -58,9 +59,13 @@ object JobReplayTests extends TestSuite {
     */
   private def dreamed(history: History): Boolean = history.steps.exists(_.name == "keep:scan")
 
+  /** Whether `history` dreamed over many sources: it holds [[Gatherer]]'s scan. */
+  private def gathered(history: History): Boolean =
+    history.steps.exists(_.name == "keep:gather")
+
   /** A step's family as [[Budgets]] holds it: a dreaming run's scan apart from other keeps. */
   private def family(name: String): String =
-    if (name == "keep:scan") name else RecordedSizes.familyOf(name)
+    if (name == "keep:scan" || name == "keep:gather") name else RecordedSizes.familyOf(name)
 
   /** What [[probes]] at version 1 replies when `history` is replayed under today's body, or why
     * the replay failed: a move whose input's digest no longer matches the one recorded replies
@@ -122,7 +127,8 @@ object JobReplayTests extends TestSuite {
         "run-redeployed-before-moves",
         "run-moved-then-redeployed",
         "run-kept",
-        "run-dreamed"
+        "run-dreamed",
+        "run-dreamed-many"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
     }
@@ -142,7 +148,8 @@ object JobReplayTests extends TestSuite {
     }
 
     test("every run history that asked or called replays under today's body, at its own version") {
-      failing(h => moved(h) && !kept(h) && !dreamed(h), jobsOf(probing(1))) ==> Vector()
+      failing(h => moved(h) && !kept(h) && !dreamed(h) && !gathered(h), jobsOf(probing(1))) ==>
+        Vector()
     }
 
     test("every run history that kept replays under today's body, its keeping job at its version") {
@@ -156,10 +163,17 @@ object JobReplayTests extends TestSuite {
     }
 
     test(
+      "every run history that dreamed over many sources replays under today's body, its dreaming job at its version"
+    ) {
+      failing(gathered, dreamingJobs(new Gatherer(1))) ==> Vector()
+    }
+
+    test(
       "every run history that asked or called, and replied, replies under today's body as it recorded"
     ) {
       val replied = histories.collect {
-        case (path, Right(h)) if moved(h) && !kept(h) && !dreamed(h) && recorded(h).nonEmpty =>
+        case (path, Right(h))
+            if moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && recorded(h).nonEmpty =>
           (path, h)
       }
       // Every one that recorded a reply is compared: one whose reply no longer parses would

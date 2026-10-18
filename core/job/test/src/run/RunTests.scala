@@ -39,7 +39,15 @@ object RunTests extends TestSuite {
       val env = new World().env()
       Flows
         .downgrades(
-          Run.flow(jobs(1), env.budget, env.keepers, env.strands, env.needs, env.excerpts)
+          Run.flow(
+            jobs(1),
+            env.budget,
+            env.keepers,
+            env.strands,
+            env.needs,
+            env.excerpts,
+            env.documents
+          )
         )
         .map(d => (d.at.name, d.sits, d.node)) ==> Vector(
         ("moves", Flows.Sits.Within, Extraction.Node),

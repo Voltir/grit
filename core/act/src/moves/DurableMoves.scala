@@ -17,10 +17,10 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
-import grit.core.document.DocumentKeeper
+import grit.core.document.{DocumentKeeper, DocumentSearch}
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
-import grit.core.id.CallSlot
+import grit.core.id.{CallSlot, DocumentVersion, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
@@ -66,28 +66,35 @@ object DurableMoves {
   )(using steps: Steps[MovesEnv]^): A =
     body(new Kept(acting, limits, keeper))
 
-  /** As [[keeping]], its moves also reading `strands` and `needs` ([[Dreaming]]), a strand's
-    * summary reading its messages through `excerpts` in its own step: recorded as an
-    * `ask:{name}` in a JSON ask's form, under its own digest ([[MovesJournal.strand]]).
+  /** As [[keeping]], `plugin`'s, its moves also reading `strands` and `needs` ([[Dreaming]]),
+    * a summary reading its strands' messages through `excerpts` and its documents through
+    * `documents` (`plugin`'s own and its needs' alone) in its own step: recorded as an
+    * `ask:{name}` in a JSON ask's form, under its own digest ([[MovesJournal.strands]]).
     */
   def dreaming[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       strands: StrandShelf,
       needs: Needs,
-      excerpts: StrandExcerpts
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
   )(body: Dreaming^ => A)(using steps: Steps[MovesEnv]^): A =
-    body(new Dreamt(acting, limits, keeper, strands, needs, excerpts))
+    body(new Dreamt(acting, limits, plugin, keeper, strands, needs, excerpts, documents))
 
-  /** One run's moves, its keeps over `keeper`, and its scans over `strands` and `needs`. */
+  /** One run's moves, its keeps over `keeper`, its scans over `strands` and `needs`, and its
+    * summaries over `excerpts` and the documents of `plugin` and its needs in `documents`.
+    */
   private final class Dreamt(
       acting: Acting,
       limits: MoveLimits,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       strands: StrandShelf,
       needs: Needs,
-      excerpts: StrandExcerpts
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
   )(using steps: Steps[MovesEnv]^)
       extends Kept(acting, limits, keeper),
         Dreaming {
@@ -99,28 +106,62 @@ object DurableMoves {
 
     def summarise[T](
         name: MoveName,
-        seen: Strand.Digested,
+        seen: Vector[Strand.Digested],
+        shown: Vector[DocumentVersion],
         summary: Tainted[Dreaming.Summary[T]]
-    ): Either[MoveError, Option[Asked[T]]] =
+    ): Either[MoveError, Option[Dreaming.Summarised[T]]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
-        val Dreaming.Summary(system, chars, reply) = Trusted.asIs(summary).extract
-        val digest = MovesJournal.strand(seen, system, chars, reply.schema)
+        val Dreaming.Summary(system, chars, documentChars, reply) = Trusted.asIs(summary).extract
+        val digest =
+          MovesJournal.strands(seen, shown, system, chars, documentChars, reply.schema)
+        val readable = plugin +: needs.plugins
         val asked = made(
           Act.ask(Act.summary[T]),
-          Act.Summary(name, acting, seen, system, chars, reply, excerpts, digest)
+          Act.Summary(
+            name,
+            acting,
+            seen,
+            shown,
+            system,
+            chars,
+            documentChars,
+            reply,
+            excerpts,
+            documents,
+            readable,
+            digest
+          )
         )
-        val same = MovesJournal.sameStrand(asked.made.digest, seen, system, chars, reply.schema)
+        val same = MovesJournal.sameStrands(
+          asked.made.digest,
+          seen,
+          shown,
+          system,
+          chars,
+          documentChars,
+          reply.schema
+        )
         asked.made match {
           case AskMade.Refused(AskMade.Kind.Changed, _, _, _) if same => Right(None)
           case _ =>
             settled(name, asked, same) {
-              case AskMade.Shaped(_, written, at, level, _) =>
+              case AskMade.Shaped(_, written, at, level, _, _) =>
                 Some(
                   readBack(reply, written)
                     .map(r => Asked(Mint.tainted(r, summary.integrity.meet(level)), at))
                 )
               case _ => None
-            }.map(Some(_))
+            }.map(a =>
+              Some(
+                Dreaming.Summarised(
+                  a,
+                  asked.made match {
+                    case AskMade.Shaped(_, _, _, _, _, versions) => versions
+                    case _ => Vector.empty
+                  }
+                )
+              )
+            )
         }
       }
   }
@@ -261,7 +302,7 @@ object DurableMoves {
         val (asked, x) = made(flow, Act.Json(name, acting, system, messages, reply, digest))
         val same = MovesJournal.sameJson(asked.made.digest, system, messages, reply.schema)
         settled(name, asked, same) {
-          case AskMade.Shaped(_, written, at, _, _) =>
+          case AskMade.Shaped(_, written, at, _, _, _) =>
             Some(readBack(reply, written).map(r => Asked(Mint.tainted(r, believed), at)))
           case _ => None
         }.map((_, x))
@@ -336,7 +377,7 @@ object DurableMoves {
           type Said = Option[Trusted[Option[Extracted]]]
           val flow: Flow[MovesEnv, Act.Json[Option[Extracted]], Nothing, (Act.Settling, Said)] =
             Act.raised(Act.json[Option[Extracted]], Extraction.Node) {
-              case AskMade.Shaped(_, written, _, level, _) =>
+              case AskMade.Shaped(_, written, _, level, _, _) =>
                 readBack(typed, written).toOption.map(a => (answer = a, level = level))
               case _ => None
             }

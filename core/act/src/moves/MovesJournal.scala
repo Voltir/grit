@@ -6,7 +6,7 @@ import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, DocumentVersion}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -40,16 +40,17 @@ private[moves] enum AskMade extends Asked {
 
   /** A JSON ask's reply conformed and read: `reply`, its conforming JSON written compactly;
     * what it was asked held nothing above `at`; `level`, the integrity of the acting that posed
-    * it (a strand's summary's met with every message it read), which an extraction of the
-    * reply is trusted at ([[grit.core.act.Extraction.Node]]); `calls`, its model calls in
-    * order.
+    * it (a summary's met with every message it read and document it showed), which an
+    * extraction of the reply is trusted at ([[grit.core.act.Extraction.Node]]); `calls`, its
+    * model calls in order; `shown`, the documents a summary showed, in order.
     */
   case Shaped(
       digest: String,
       reply: String,
       at: Label,
       level: Integrity,
-      calls: Vector[AskMade.Call]
+      calls: Vector[AskMade.Call],
+      shown: Vector[DocumentVersion] = Vector.empty
   )
 
   /** A JSON ask's reply did not read, `why`, after `calls`, its model calls in order. */
@@ -66,12 +67,20 @@ private[moves] enum AskMade extends Asked {
 
   def digest: String
 
+  /** This record, a shaped reply holding `shown` as the documents it was shown; any other as
+    * it is.
+    */
+  def withShown(shown: Vector[DocumentVersion]): AskMade = this match {
+    case s: Shaped => s.copy(shown = shown)
+    case other => other
+  }
+
   /** Each model call this record holds, in order: what its record step records. */
   def spent: Vector[AskMade.Call] = this match {
     case Made(_, message, _, estimate) =>
       Vector(AskMade.Call(message.model, message.usage, estimate, message.upstream))
     case Refused(_, _, _, _) => Vector()
-    case Shaped(_, _, _, _, calls) => calls
+    case Shaped(_, _, _, _, calls, _) => calls
     case Unshaped(_, _, calls) => calls
     case Judged(_, _, _, call) => Vector(call)
     case Unjudged(_, _, call) => Vector(call)
@@ -80,7 +89,7 @@ private[moves] enum AskMade extends Asked {
   def label: Option[Label] = this match {
     case Made(_, _, at, _) => Some(at)
     case Refused(_, _, _, at) => at
-    case Shaped(_, _, at, _, _) => Some(at)
+    case Shaped(_, _, at, _, _, _) => Some(at)
     case Unshaped(_, _, _) => None
     case Judged(_, _, at, _) => Some(at)
     case Unjudged(_, _, _) => None
@@ -157,8 +166,11 @@ private[moves] object CallMade {
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
   *     it ([[grit.core.store.PayloadJson.writeUsage]]), then `"upstream":p` when who served it
   *     was reported;
-  *   - a strand's summary's `ask:{n}`: a JSON ask's, under its [[strand]] digest, or
-  *     `{"refused":"changed","why":w,"digest":d}` when its strand's messages changed;
+  *   - a summary's `ask:{n}` ([[grit.core.act.Dreaming.summarise]]): a JSON ask's, under its
+  *     [[strands]] digest, its `shaped` holding `"shown":[v…]` after `calls` when it showed
+  *     documents, each `v` a version's number (none when absent, as a record made before it
+  *     held them); or `{"refused":"changed","why":w,"digest":d}` when a strand's messages
+  *     changed;
   *   - a judgment's `ask:{n}`:
   *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}` (its
   *     call's `"upstream":p` before `at` when reported), each `a`
@@ -182,7 +194,8 @@ private[moves] object CallMade {
   *   - a keep's `keep:{n}`: `{"kept":k}`, `k` its body's result in that result's own journaled
   *     form as a string, or `{"store":w}` ([[kept]]).
   *
-  * A digest is `v1:` and the lowercase hex SHA-256 of a canonical form of the move's input
+  * A digest is `v1:` (`v2:` for a summary of more than one strand or of documents,
+  * [[strands]]) and the lowercase hex SHA-256 of a canonical form of the move's input
   * that this object owns, never an engine codec's, so a change to those between builds cannot
   * make a run in flight diverge. A form is never changed: a new one is added under the next
   * version, and a recorded digest is compared under its own ([[sameAsk]], [[sameJson]],
@@ -244,15 +257,36 @@ object MovesJournal {
     case _ => false
   }
 
-  /** As [[sameAsk]], for a strand's summary. */
-  def sameStrand(
-      recorded: String,
-      seen: Strand.Digested,
+  /** The digest of a summary of `seen` and `shown`: one strand and no documents, its
+    * [[strand]] digest (v1); otherwise v2, of its strands' roots, [[grit.core.stitch.StrandDigest]]s
+    * and `asOf`s in order, then the versions of `shown` in order, `chars`, `documentChars`, the
+    * system text, and the schema as [[json]] writes it. What it was shown is not in it: the
+    * strands' digests and the versions stand for that.
+    */
+  def strands(
+      seen: Vector[Strand.Digested],
+      shown: Vector[DocumentVersion],
       system: String,
       chars: Int,
+      documentChars: Int,
+      schema: JsonSchema
+  ): String = (seen, shown) match {
+    case (Vector(one), Vector()) => strand(one, system, chars, schema)
+    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema))
+  }
+
+  /** As [[sameAsk]], for a summary ([[strands]]). */
+  def sameStrands(
+      recorded: String,
+      seen: Vector[Strand.Digested],
+      shown: Vector[DocumentVersion],
+      system: String,
+      chars: Int,
+      documentChars: Int,
       schema: JsonSchema
   ): Boolean = recorded match {
-    case s"v1:$_" => recorded == strand(seen, system, chars, schema)
+    case s"v1:$_" | s"v2:$_" =>
+      recorded == strands(seen, shown, system, chars, documentChars, schema)
     case _ => false
   }
 
@@ -309,9 +343,30 @@ object MovesJournal {
   private[moves] def callForm(service: Service, tool: ToolName, arguments: ujson.Obj): String =
     "call" + text(service.place.written) + text(ToolName.value(tool)) + canonical(arguments)
 
-  private def v1(form: String): String = {
+  /** v2's canonical form of a summary, which [[strands]] hashes. */
+  private[moves] def strandsForm(
+      seen: Vector[Strand.Digested],
+      shown: Vector[DocumentVersion],
+      system: String,
+      chars: Int,
+      documentChars: Int,
+      schema: JsonSchema
+  ): String =
+    "strands" + count(seen.size) + seen.map { s =>
+      text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
+        text(s.asOf.toString)
+    }.mkString + count(shown.size) + shown
+      .map(v => text(DocumentVersion.value(v).toString))
+      .mkString +
+      count(chars) + count(documentChars) + text(system) + text(ujson.write(schema.json))
+
+  private def v1(form: String): String = "v1:" + sha(form)
+
+  private def v2(form: String): String = "v2:" + sha(form)
+
+  private def sha(form: String): String = {
     val sha = java.security.MessageDigest.getInstance("SHA-256")
-    "v1:" + sha.digest(form.getBytes("UTF-8")).map(b => f"$b%02x").mkString
+    sha.digest(form.getBytes("UTF-8")).map(b => f"$b%02x").mkString
   }
 
   private def text(s: String): String = s"${s.length}:$s"
@@ -536,14 +591,18 @@ object MovesJournal {
         Vector[(String, ujson.Value)]("refused" -> kind.key, "why" -> why, "digest" -> digest) ++
           at.map(l => "at" -> ujson.Str(Label.written(l)))
       )
-    case AskMade.Shaped(digest, reply, at, level, calls) =>
+    case AskMade.Shaped(digest, reply, at, level, calls, shown) =>
       ujson.Obj(
-        "shaped" -> ujson.Obj(
-          "digest" -> digest,
-          "reply" -> ujson.read(reply),
-          "at" -> Label.written(at),
-          "level" -> Integrity.written(level),
-          "calls" -> ujson.Arr.from(calls.map(writeCost))
+        "shaped" -> ujson.Obj.from(
+          Vector[(String, ujson.Value)](
+            "digest" -> digest,
+            "reply" -> ujson.read(reply),
+            "at" -> Label.written(at),
+            "level" -> Integrity.written(level),
+            "calls" -> ujson.Arr.from(calls.map(writeCost))
+          ) ++ Option.when(shown.nonEmpty)(
+            "shown" -> ujson.Arr.from(shown.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+          )
         )
       )
     case AskMade.Unshaped(digest, why, calls) =>
@@ -605,7 +664,8 @@ object MovesJournal {
             at <- str(f, "at").flatMap(Label.read)
             level <- str(f, "level").flatMap(Integrity.read)
             calls <- costs(f)
-          } yield AskMade.Shaped(digest, reply, at, level, calls)
+            shown <- versions(f)
+          } yield AskMade.Shaped(digest, reply, at, level, calls, shown)
         case (_, _, _, Some(unshaped)) =>
           for {
             f <- fields(unshaped, "ask.unshaped")
@@ -657,6 +717,28 @@ object MovesJournal {
       .flatMap(_.toVector.foldLeft[Either[String, Vector[AskMade.Call]]](Right(Vector())) {
         (acc, c) => acc.flatMap(done => fields(c, "ask.calls").flatMap(cost).map(done :+ _))
       })
+
+  /** A summary's shown versions, `shown` in `f`: none when absent, as a record made before it
+    * held them.
+    */
+  private def versions(
+      f: collection.Map[String, ujson.Value]
+  ): Either[String, Vector[DocumentVersion]] =
+    f.get("shown") match {
+      case None => Right(Vector.empty)
+      case Some(v) =>
+        v.arrOpt
+          .toRight("ask: shown is not a list")
+          .flatMap(_.toVector.foldLeft[Either[String, Vector[DocumentVersion]]](Right(Vector())) {
+            (acc, n) =>
+              acc.flatMap(done =>
+                n.numOpt
+                  .flatMap(d => DocumentVersion.of(d.toLong))
+                  .toRight(s"ask: shown holds no version: $n")
+                  .map(done :+ _)
+              )
+          })
+    }
 
   /** One recorded call, from its fields `model`, `usage` and `estimate` in `o`. */
   private def cost(o: collection.Map[String, ujson.Value]): Either[String, AskMade.Call] =

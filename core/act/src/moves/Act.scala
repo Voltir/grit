@@ -13,14 +13,23 @@ import grit.act.phase.{
   WaitSteps,
   Waiting
 }
-import grit.core.act.{Acting, Allowance, Answer, Called, MoveError, MoveName, Posed}
+import grit.core.act.{Acting, Allowance, Answer, Called, Dreaming, MoveError, MoveName, Posed}
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
-import grit.core.document.DocumentKeeper
+import grit.core.document.{DocLabel, Document, DocumentKeeper, DocumentSearch}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
+import grit.core.either.Traversal.sequence
 import grit.core.flow.{Downgrade, Mint}
-import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  DocumentVersion,
+  EntryId,
+  PluginName,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
 import grit.core.place.Service
@@ -116,17 +125,23 @@ private[moves] object Act {
       digest: String
   ) extends Acted
 
-  /** The summary `name` of `seen`, its messages read through `excerpts` and shown within
-    * `chars` after `system`, its reply read by `reply`, under `digest`.
+  /** The summary `name` of `seen` and `shown`, after `system`: the strands' messages read
+    * through `excerpts`, each within `chars`; then each of `shown` that `documents` reads and
+    * whose plugin is one of `readable`, its head within `documentChars`; its reply read by
+    * `reply`, under `digest`.
     */
   final case class Summary[T](
       name: MoveName,
       acting: Acting,
-      seen: Strand.Digested,
+      seen: Vector[Strand.Digested],
+      shown: Vector[DocumentVersion],
       system: String,
       chars: Int,
+      documentChars: Int,
       reply: Typed[T],
       excerpts: StrandExcerpts,
+      documents: DocumentSearch,
+      readable: Vector[PluginName],
       digest: String
   ) extends Acted
 
@@ -205,24 +220,49 @@ private[moves] object Act {
     )
   }
 
-  /** A strand's summary's `ask:{n}`: its strand's messages read for its acting's subject, then,
-    * when they are the ones its scan digested, asked of the dream role's pins as a JSON ask of
-    * one user message, their excerpt, its `level` the acting's integrity met with theirs.
+  /** A summary's `ask:{n}`: its strands' messages and its documents read in one transaction for
+    * its acting's subject, then, when every strand's are the ones its scan digested, asked of
+    * the dream role's pins as a JSON ask of one user message, [[Dreaming.shown]] of each
+    * strand's excerpt and each document read under its plugin's label; its `level` the
+    * acting's integrity met with every message's and document's.
     */
   def summary[T]: Step[MovesEnv, Summary[T], AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Summary[T], AskMade](Asks.move)(env =>
       s =>
-        env.db.read(s.acting.subject)(s.excerpts.excerpt(s.seen, s.chars)) match {
+        env.db.read(s.acting.subject)(read(s)) match {
           case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest)
           case Right(None) => AskMade.Refused(AskMade.Kind.Changed, Changed, s.digest)
-          case Right(Some(shown)) =>
-            val messages = Vector(Message.User(shown.excerpt.text))
-            val level = s.acting.integrity.meet(shown.integrity)
+          case Right(Some((strands, documents))) =>
+            val text = Dreaming.shown(
+              strands.map(_.excerpt.text),
+              documents.map((d, label) => (label, d.text)),
+              s.documentChars
+            )
+            val messages = Vector(Message.User(text))
+            val level = (strands.map(_.integrity) ++ documents.map(_._1.integrity))
+              .foldLeft(s.acting.integrity)(_.meet(_))
             shaping(env, s.acting, Dreams, s.system, messages, s.reply, s.digest, level)
+              .withShown(documents.map(_._1.version))
         }
     )
   }
+
+  /** What `s` is shown: each strand's excerpt and each document read with its plugin's label;
+    * `None` when a strand's messages are not the ones its scan digested.
+    */
+  private def read[T](
+      s: Summary[T]
+  )(using Tx^): Either[StoreError, Option[(Vector[Strand.Shown], Vector[(Document, DocLabel)])]] =
+    sequence(s.seen.map(seen => s.excerpts.excerpt(seen, s.chars))).flatMap { excerpts =>
+      sequence(excerpts.map(_.toRight(()))) match {
+        case Left(_) => Right(None)
+        case Right(strands) =>
+          s.documents
+            .labelled(s.shown)
+            .map(ds => Some((strands, ds.filter((d, _) => s.readable.contains(d.plugin)))))
+      }
+    }
 
   /** A JSON ask of `system` then `messages` for `acting`, under `digest`: admitted to `role`'s
     * pins, then the model's reply, shaped and repaired, recorded at `level`.

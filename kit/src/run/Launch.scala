@@ -352,7 +352,8 @@ private[grit] object Launch {
           StrandShelf.over(runtime.stitches, runtime.conversations),
           // A dreaming job's plugin is always among the deployment's: none other is asked.
           plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
-          StrandExcerpts.over(runtime.stitches, runtime.principals)
+          StrandExcerpts.over(runtime.stitches, runtime.principals),
+          runtime.documents
         ),
         d.allJobs
       )

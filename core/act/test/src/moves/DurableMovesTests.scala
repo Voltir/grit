@@ -19,6 +19,7 @@ import grit.core.document.{
   DocWeight,
   Document,
   DocumentKeeper,
+  DocumentSearch,
   DocumentTerms,
   InMemoryDocuments
 }
@@ -268,7 +269,7 @@ final class MovesWorld(
       use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
     val models = new Answering(Answer)
-    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs)(use)
+    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs, documents)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(Flows.run(dreams, env(models), ()).merge)
@@ -288,13 +289,21 @@ object MovesWorld {
       limits: MoveLimits,
       keeper: DocumentKeeper,
       world: StrandWorld,
-      needs: Needs = Needs.over(Notes, Vector.empty)
+      needs: Needs = Needs.over(Notes, Vector.empty),
+      documents: DocumentSearch = new InMemoryDocuments
   )(use: Dreaming^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
     Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
       _ =>
-        DurableMoves.dreaming(acting, limits, keeper, world.shelf, needs, world.excerpts)(use)(using
-          steps
-        )
+        DurableMoves.dreaming(
+          acting,
+          limits,
+          Notes,
+          keeper,
+          world.shelf,
+          needs,
+          world.excerpts,
+          documents
+        )(use)(using steps)
     )
 
   /** What `use` returns over the moves of `acting` within `limits`, as a job's program makes

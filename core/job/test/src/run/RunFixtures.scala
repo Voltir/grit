@@ -9,7 +9,15 @@ import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar, replied
 import grit.core.act.{Asked, Dreaming, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
 import grit.core.classify.{Answers, Ask, ClassifierError, Criterion, Decision, StateJson}
 import grit.core.clock.SetClock
-import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  DocumentKeeper,
+  DocumentTerms,
+  InMemoryDocuments,
+  Written
+}
 import grit.core.durable.{InMemoryDurable, Journaled}
 import grit.core.edge.{
   Advert,
@@ -27,6 +35,7 @@ import grit.core.id.{
   ConversationId,
   Declarer,
   DocKey,
+  DocumentVersion,
   EntryId,
   PluginName,
   PrincipalId,
@@ -180,42 +189,146 @@ object RunFixtures {
         .flatMap(_.seen.headOption.toRight("no strand"))
         .flatMap(seen =>
           moves
-            .summarise(move("summary"), seen, run.tainted.map(_ => Summarised))
+            .summarise(
+              move("summary"),
+              Vector(seen),
+              Vector.empty,
+              run.tainted.map(_ => Summarised)
+            )
             .left
             .map(_.toString)
             .flatMap(_.toRight("its strand changed"))
         )
-        .flatMap(asked =>
-          moves
-            .keep(move("dreamt"), asked.reply) { (answer, keeper, at) =>
-              (for {
-                key <- DocKey.of("dreamt")
-                text <- DocText.of(answer)
-              } yield (key, text)) match {
-                case Left(why) => Left(StoreError.Invalid(why))
-                case Right((key, text)) =>
-                  keeper
-                    .write(
-                      key,
-                      Label.Public,
-                      Integrity.Member,
-                      Place.under(Namespace.Task, Vector("notes")),
-                      text,
-                      ujson.Obj(),
-                      None,
-                      at
-                    )
-                    .map(w => Noted(Label.written(w.kept)))
-              }
-            }
-            .left
-            .map(_.toString)
-        )
+        .flatMap(summarised => dreamt(moves, summarised.asked.reply))
         .fold(identity, _.label)
   }
 
+  /** `remind` at `version` as [[Notes]]' dreaming job over many sources: its run, in its keep
+    * `gather`, keeps a note under the key `seen` and reads the strands spoken in before it
+    * started; summarises them all with that note, as [[Summarised]] asks it, in its ask
+    * `summary`; and keeps the answer as [[Dreamer]] does; it replies the label kept at and how
+    * many documents the summary was shown, or why it stopped.
+    */
+  final class Gatherer(val version: Int) extends DreamingJob[Count] {
+    val name = remind.name
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+    override def limits: MoveLimits = MoveLimits.of(1, 0).fold(sys.error, identity)
+    def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      moves
+        .scan(move("gather"), run.tainted)((_, keeper, strands, _, at) =>
+          for {
+            note <- noted(keeper, "seen", "the deploy is on hold", at)
+            seen <- strands.touched(Instant.EPOCH, at)
+          } yield Gathered(seen, Vector(note))
+        )
+        .left
+        .map(_.toString)
+        .flatMap(gathered =>
+          moves
+            .summarise(
+              move("summary"),
+              gathered.seen,
+              gathered.shown,
+              run.tainted.map(_ => Summarised)
+            )
+            .left
+            .map(_.toString)
+            .flatMap(_.toRight("a strand changed"))
+        )
+        .flatMap(summarised =>
+          dreamt(moves, summarised.asked.reply)
+            .map(n => s"${n.label} shown ${summarised.shown.size}")
+        )
+        .merge
+  }
+
+  /** `text` kept under `key` at [[Notes]]' place, publicly, believed a member's: its version. */
+  private def noted(keeper: DocumentKeeper, key: String, text: String, at: Instant)(using
+      Tx^
+  ): Either[StoreError, DocumentVersion] =
+    (for {
+      k <- DocKey.of(key)
+      t <- DocText.of(text)
+    } yield (k, t)) match {
+      case Left(why) => Left(StoreError.Invalid(why))
+      case Right((k, t)) =>
+        keeper
+          .write(k, Label.Public, Integrity.Member, NotesPlace, t, ujson.Obj(), None, at)
+          .map {
+            case Written.Versioned(v, _, _) => v
+            case Written.Unchanged(v, _) => v
+          }
+    }
+
+  /** Where [[Notes]]' documents are kept. */
+  private val NotesPlace: Place = Place.under(Namespace.Task, Vector("notes"))
+
+  /** `answer` kept under the key `dreamt` in the keep `dreamt` of `moves`: the label kept at, or
+    * why not.
+    */
+  private def dreamt(moves: Dreaming^, answer: Tainted[String]): Either[String, Noted] =
+    moves
+      .keep(move("dreamt"), answer) { (answer, keeper, at) =>
+        (for {
+          key <- DocKey.of("dreamt")
+          text <- DocText.of(answer)
+        } yield (key, text)) match {
+          case Left(why) => Left(StoreError.Invalid(why))
+          case Right((key, text)) =>
+            keeper
+              .write(key, Label.Public, Integrity.Member, NotesPlace, text, ujson.Obj(), None, at)
+              .map(w => Noted(Label.written(w.kept)))
+        }
+      }
+      .left
+      .map(_.toString)
+
+  /** What [[Gatherer]]'s scan gathered, as it records them: the strands as
+    * [[Strand.Digested.write]] writes them, and the versions to show.
+    */
+  final case class Gathered(seen: Vector[Strand.Digested], shown: Vector[DocumentVersion])
+      extends caps.Pure
+  object Gathered {
+    given Journaled[Gathered] = Journaled.json(
+      g =>
+        ujson.Obj(
+          "seen" -> ujson.Arr.from(g.seen.map(Strand.Digested.write)),
+          "shown" -> ujson.Arr.from(g.shown.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+        ),
+      v =>
+        for {
+          o <- v.objOpt.toRight("not an object")
+          seen <- o
+            .get("seen")
+            .flatMap(_.arrOpt)
+            .toRight("no strands")
+            .flatMap(
+              _.toVector.foldLeft[Either[String, Vector[Strand.Digested]]](Right(Vector())) {
+                (acc, x) => acc.flatMap(done => Strand.Digested.read(x).map(done :+ _))
+              }
+            )
+          shown <- o
+            .get("shown")
+            .flatMap(_.arrOpt)
+            .toRight("no versions")
+            .flatMap(
+              _.toVector.foldLeft[Either[String, Vector[DocumentVersion]]](Right(Vector())) {
+                (acc, x) =>
+                  acc.flatMap(done =>
+                    x.numOpt
+                      .flatMap(n => DocumentVersion.of(n.toLong))
+                      .toRight("no version")
+                      .map(done :+ _)
+                  )
+              }
+            )
+        } yield Gathered(seen, shown)
+    )
+  }
+
   /** What [[Dreamer]] asks of a strand: its answer, within 1,000 characters. */
-  def Summarised: Dreaming.Summary[String] = Dreaming.Summary("Summarise.", 1000, Answered)
+  def Summarised: Dreaming.Summary[String] = Dreaming.Summary("Summarise.", 1000, 1000, Answered)
 
   /** The strands a scan read, as it records them ([[Strand.Digested.write]]). */
   final case class Scanned(seen: Vector[Strand.Digested]) extends caps.Pure
@@ -316,14 +429,19 @@ object RunFixtures {
     /** Its rooms' strands, which a dreaming job reads. */
     val strands: StrandWorld = new StrandWorld(Due.minusSeconds(3600))
 
-    /** A strand of two threads in room `C1`, said an hour before [[Due]]: "the deploy is
-      * stuck", then "still stuck?" a minute later.
+    /** A strand of two threads in `room`, said an hour before [[Due]]: "the deploy is stuck",
+      * then "still stuck?" a minute later.
       */
-    def strand(): Unit = {
-      val a = strands.thread("C1", "1.0")
-      val b = strands.thread("C1", "2.0")
+    def strand(room: String = "C1"): Unit = {
+      val a = strands.thread(room, "1.0")
+      val b = strands.thread(room, "2.0")
       val _ = strands.say(a, "the deploy is stuck", 0)
       strands.follow(strands.say(b, "still stuck?", 60), a)
+    }
+
+    /** [[Notes]]' terms in force, so a summary reads its documents. */
+    def declareNotes(): Unit = {
+      val _ = documents.declare(Vector(Notes -> NotesTerms))(using TestTx.fake)
     }
     val models: Answering = new Answering(Answer, crashModel, shapes, calling, upstream)
     val classifier: Judging = new Judging(judged)
@@ -389,7 +507,8 @@ object RunFixtures {
         (plugin, terms) => documents.keeper(plugin, terms),
         strands.shelf,
         plugin => Needs.over(plugin, Vector.empty),
-        strands.excerpts
+        strands.excerpts,
+        documents
       )
 
     /** The requests written, in order. */

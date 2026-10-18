@@ -34,7 +34,9 @@ Decision:
   dependency's own version. It reaches the dependency at runtime only through a service value
   the dependency exports, a trait over its own documents, handed over when the deployment is
   built: to its tools, and to its dreaming jobs' scans, in the scan's transaction. No plugin
-  reads or writes another's documents directly.
+  reads or writes another's documents directly. Core alone shows a model another plugin's
+  documents for a dreaming job's summary (ADR 0042), and only those of the plugins the job's
+  plugin needs, read under the transaction's labels and believed at the meet of what was read.
 - **`Deployment.of` refuses a plugin whose dependency is not among the deployment's
   plugins** (`PluginUnmet`), naming both.
 - **A plugin never reads a dependency while posting**: each plugin's cursor moves on its own,

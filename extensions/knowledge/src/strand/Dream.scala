@@ -78,13 +78,14 @@ final class Dream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[Dr
           .foldLeft(Dreamt.of(scan)) { case (done, (seen, i)) =>
             moves.summarise(
               Dream.move("summary", i),
-              seen,
+              Vector(seen),
+              Vector.empty,
               run.tainted.map(_ => Dream.Asked)
             ) match {
               case Left(e) => done.unwritten(seen.root, MoveError.said(e))
               case Right(None) => done.changed
-              case Right(Some(asked)) =>
-                moves.keep(Dream.move("write", i), asked.reply)((summary, keeper, at) =>
+              case Right(Some(summarised)) =>
+                moves.keep(Dream.move("write", i), summarised.asked.reply)((summary, keeper, at) =>
                   Dream.written(seen, summary, keeper, at)
                 ) match {
                   case Left(e) => done.unwritten(seen.root, MoveError.said(e))
@@ -134,7 +135,9 @@ object Dream {
   )
 
   /** Every strand's summary ask. */
-  private val Asked: Dreaming.Summary[CardSummary] = Dreaming.Summary(System, Chars, Reply)
+  private val Asked: Dreaming.Summary[CardSummary] =
+    // It shows no documents, so their budget is never spent.
+    Dreaming.Summary(System, Chars, 0, Reply)
 
   /** The move `{kind}-{i}`. */
   private def move(kind: String, i: Int): MoveName = move(s"$kind-$i")

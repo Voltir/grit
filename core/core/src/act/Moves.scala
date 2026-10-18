@@ -3,10 +3,11 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.classify.{Ask, Request, StateJson}
-import grit.core.document.DocumentKeeper
+import grit.core.document.{DocLabel, DocText, DocumentKeeper}
 import grit.core.durable.Journaled
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
-import grit.core.message.Message
+import grit.core.id.DocumentVersion
+import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -222,9 +223,10 @@ trait Keeping extends Moves {
   ): Either[MoveError, A]
 }
 
-/** [[Keeping]], and the strands of the rooms its run reads, by ids and counts: what a
-  * [[grit.core.job.DreamingJob]]'s run is handed. Their messages' text reaches a model only
-  * through [[summarise]], read in its own step, and never the job's code.
+/** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's
+  * needs: what a [[grit.core.job.DreamingJob]]'s run is handed. Their messages' text, and a
+  * document's text it is to read, reach a model only through [[summarise]], read in its own
+  * step, and never the job's code.
   */
 trait Dreaming extends Keeping {
 
@@ -238,25 +240,47 @@ trait Dreaming extends Keeping {
       body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
 
-  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text then one user message: what
-    * `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]] shows
-    * them within `summary`'s `chars` (the root's first message, then the latest), read in this
-    * move's own step, so only the ask's record is kept. Its reply is believed at the meet of
-    * `summary` and every message read: a guest's message caps it. `Right(None)`, asking
-    * nothing, when those messages are not the ones `seen` digested (one was removed or said
-    * since its scan); the move counts as made either way.
+  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text, then one user message: what
+    * each of `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]]
+    * shows them within `summary`'s `chars`, strand by strand; then the text of each of `shown`,
+    * its head within `summary`'s `documentChars` cut at a word, in their order, each under its
+    * plugin's label; read in this move's own step, so only the ask's record is kept. Asked of
+    * the catalog's `dream` role ([[grit.core.model.Policy]]). Its reply is believed at the meet
+    * of `summary`, every message read and every document shown: a guest's message or a
+    * document believed less caps it. One of `shown` not read (no longer kept, above the
+    * transaction's clearance, or neither the acting plugin's own nor one of its needs') is
+    * left out, and [[Dreaming.Summarised.shown]] lists those that were shown. `Right(None)`,
+    * asking nothing, when a strand's messages are not the ones `seen` digested (one was
+    * removed or said since its scan). The move counts as made either way.
     */
   def summarise[T](
       name: MoveName,
-      seen: Strand.Digested,
+      seen: Vector[Strand.Digested],
+      shown: Vector[DocumentVersion],
       summary: Tainted[Dreaming.Summary[T]]
-  ): Either[MoveError, Option[Asked[T]]]
+  ): Either[MoveError, Option[Dreaming.Summarised[T]]]
 }
 
 object Dreaming {
 
-  /** A strand summary's ask: `system`, the most characters of the strand shown (`chars`), and
-    * the reply it reads as.
+  /** A summary's reply, and the versions of `shown` it was shown, in their order. */
+  final case class Summarised[T](asked: Asked[T], shown: Vector[DocumentVersion])
+
+  /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
+    * document (`documentChars`); and the reply it reads as.
     */
-  final case class Summary[T](system: String, chars: Int, reply: Typed[T])
+  final case class Summary[T](system: String, chars: Int, documentChars: Int, reply: Typed[T])
+
+  /** The user message a summary is asked in: each of `excerpts`, then each of `documents`
+    * under its label, its text's head within `documentChars` ([[grit.core.message.Cut.head]]),
+    * a blank line between each. One excerpt and no documents is that excerpt alone.
+    */
+  def shown(
+      excerpts: Vector[String],
+      documents: Vector[(DocLabel, DocText)],
+      documentChars: Int
+  ): String =
+    (excerpts ++ documents.map((label, text) =>
+      s"${DocLabel.value(label)}:\n${Cut.head(DocText.value(text), documentChars)}"
+    )).mkString("\n\n")
 }

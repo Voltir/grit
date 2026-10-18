@@ -245,7 +245,7 @@ object ActCaptureTests extends TestSuite {
       |        newest <- needs.of(Newer).fold(_ => Right(Vector.empty), _.newest())
       |      } yield Count(seen.size + newest.size)
       |    }
-      |      .fold(_.toString, c => moves.summarise(Names.of("one"), ???, run.tainted.map(_ => summary)).fold(_.toString, _.fold("none")(a => Names.open(a.reply))))
+      |      .fold(_.toString, c => moves.summarise(Names.of("one"), ???, Vector.empty, run.tainted.map(_ => summary)).fold(_.toString, _.fold("none")(s => Names.open(s.asked.reply))))
       |}
       |""".stripMargin
 

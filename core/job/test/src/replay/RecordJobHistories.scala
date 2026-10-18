@@ -143,6 +143,16 @@ object RecordJobHistories {
         d.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Dreamer(1))))
         turn.workflowId
       },
+      // Two strands and a document of its own, summarised in one ask: its digest is v2, and
+      // its shaped record lists the version shown.
+      record("run-dreamed-many") { (w, d) =>
+        w.strand()
+        w.strand("C2")
+        w.declareNotes()
+        val turn = w.started(w.declared("dream", 1))
+        d.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Gatherer(1))))
+        turn.workflowId
+      },
       // The process died recording the ask's cost: its model call is recorded, its record not.
       // Coming back at another version, the run's reply step meets that move.
       record("run-moved-then-redeployed", crashRecord = true) { (w, d) =>

@@ -17,10 +17,20 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer as Judged, Ask, ClassifierError, StateJson}
-import grit.core.document.{DocText, Document, DocumentKeeper, DocumentShelf, InMemoryDocuments}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  Document,
+  DocumentKeeper,
+  DocumentShelf,
+  DocumentTerms,
+  InMemoryDocuments,
+  Written
+}
 import grit.core.durable.Journaled
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.{DocKey, PluginName}
+import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
 import grit.core.place.{Namespace, Place, Service}
@@ -402,6 +412,87 @@ abstract class MovesContract extends TestSuite {
         )
     }
 
+    test(
+      "a summary shows its strands, then its documents under their plugins' labels, each within its characters"
+    ) {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val own =
+        put(shelves, MovesWorld.Notes, "n", "the release slipped to friday", Integrity.Member)
+      val card = put(shelves, Cards.name, "c", "deploys", Integrity.Member)
+      val (got, asked) = dreaming(limits(1, 0), w, shelves = shelves)(m =>
+        Seen(Vector(summarised(m, "s", seen, shown = Vector(card, own))))
+      )
+      (got, asked) ==> (
+        Seen(
+          Vector(
+            Right(
+              s"$Shaped at outside shown ${DocumentVersion.value(card)},${DocumentVersion.value(own)}"
+            )
+          )
+        ),
+        Vector(
+          (
+            SummarySystem,
+            Vector(
+              "Someone: the deploy is stuck\nSomeone: still stuck?\n\ncards:\ndeploys\n\nnotes:\nthe release slipped…"
+            )
+          )
+        )
+      )
+    }
+
+    test(
+      "a summary's reply is believed at the meet of its messages and the documents it showed: a document believed less caps it"
+    ) {
+      def believed(document: Integrity) = {
+        val (w, root) = strand(Integrity.Member)
+        val seen =
+          StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+        val shelves = Shelves(needed = Vector(Cards))
+        declared(shelves)
+        val card = put(shelves, Cards.name, "c", "deploys", document)
+        dreaming(limits(1, 0), w, shelves = shelves)(m =>
+          Seen(Vector(summarised(m, "s", seen, Integrity.Member, Vector(card))))
+        )._1
+      }
+      Vector(believed(Integrity.Authority), believed(Integrity.Outside)).map(
+        _.moves.map(_.map(_.split(" shown").head))
+      ) ==> Vector(
+        Vector(Right(s"$Shaped at member")),
+        Vector(Right(s"$Shaped at outside"))
+      )
+    }
+
+    test(
+      "a summary leaves out a shown version gone, above its clearance or of a plugin neither its own nor needed, and still asks"
+    ) {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val gone = DocumentVersion.of(999).getOrElse(throw new java.lang.AssertionError("version"))
+      val above = put(
+        shelves,
+        Cards.name,
+        "secret",
+        "the merger",
+        Integrity.Member,
+        Label.at(Level.Restricted),
+        Label.at(Level.Restricted)
+      )
+      val other = put(shelves, Others.name, "o", "elsewhere", Integrity.Member)
+      val (got, asked) = dreaming(limits(1, 0), w, shelves = shelves)(m =>
+        Seen(Vector(summarised(m, "s", seen, shown = Vector(gone, above, other))))
+      )
+      (got, asked) ==> (
+        Seen(Vector(Right(s"$Shaped at outside"))),
+        Vector((SummarySystem, Vector("Someone: the deploy is stuck\nSomeone: still stuck?")))
+      )
+    }
+
     test("a scan's body reads its transaction's strands beside its documents, and spends no ask") {
       val (w, root) = strand()
       val (got, _) = dreaming(MoveLimits.Zero, w) { m =>
@@ -748,20 +839,76 @@ object MovesContract {
       m: Dreaming^,
       n: String,
       seen: Vector[Strand.Digested],
-      believed: Integrity = Believed
+      believed: Integrity = Believed,
+      shown: Vector[DocumentVersion] = Vector.empty
   ): Either[MoveError, String] =
-    seen.headOption
-      .toRight(MoveError.Store("no strand"))
-      .flatMap(s =>
-        m.summarise(
-          name(n),
-          s,
-          TestTainted.at(Dreaming.Summary(SummarySystem, 1000, Typed.json(AnswerSchema)), believed)
-        )
+    m.summarise(
+      name(n),
+      seen,
+      shown,
+      TestTainted.at(
+        Dreaming.Summary(SummarySystem, 1000, DocumentChars, Typed.json(AnswerSchema)),
+        believed
       )
-      .map(
-        _.fold("none")(a => s"${replied(a).text} at ${Integrity.written(a.reply.integrity)}")
+    ).map(
+      _.fold("none")(s =>
+        s"${replied(s.asked).text} at ${Integrity.written(s.asked.reply.integrity)}" +
+          (if (s.shown.isEmpty) ""
+           else s" shown ${s.shown.map(DocumentVersion.value).mkString(",")}")
       )
+    )
+
+  /** The most characters of each document a contract's summary shows. */
+  val DocumentChars: Int = 20
+
+  /** Terms labelling a plugin's documents `label`. */
+  def terms(label: String): DocumentTerms =
+    DocLabel
+      .of(label)
+      .flatMap(
+        DocumentTerms.of(_, DocWeight.Unscaled, scala.concurrent.duration.Duration(1, "day"), 10)
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** Declares [[MovesWorld.Notes]], [[Cards]] and [[Others]] enabled in `shelves`, each labelled
+    * its own name.
+    */
+  def declared(shelves: Shelves): Unit = {
+    val enabled = Vector(
+      MovesWorld.Notes -> MovesWorld.NotesTerms,
+      Cards.name -> terms("cards"),
+      Others.name -> terms("others")
+    )
+    val _ = shelves.documents.declare(enabled)(using TestTx.fake)
+  }
+
+  /** `text`, kept by `plugin` under `key` in `shelves` at `label` (joined with what a
+    * transaction cleared for `clearance` writes at), believed at `integrity`: its version.
+    */
+  def put(
+      shelves: Shelves,
+      plugin: PluginName,
+      key: String,
+      text: String,
+      integrity: Integrity,
+      label: Label = Label.Public,
+      clearance: Label = Floor
+  ): DocumentVersion =
+    shelves.documents
+      .keeper(plugin, MovesWorld.NotesTerms)
+      .write(
+        DocKey.of(key).fold(e => throw new java.lang.AssertionError(e), identity),
+        label,
+        integrity,
+        Here,
+        DocText.of(text).fold(e => throw new java.lang.AssertionError(e), identity),
+        ujson.Obj(),
+        None,
+        Instant.EPOCH
+      )(using TestTx.fake(grit.core.visibility.Clearance.of(clearance))) match {
+      case Right(Written.Versioned(v, _, _)) => v
+      case other => throw new java.lang.AssertionError(s"not written: $other")
+    }
 
   /** Limits of no asks or calls and `n` judgments. */
   def judgments(n: Int): MoveLimits =

@@ -2,7 +2,7 @@ package grit.job.run
 
 import grit.act.moves.MovesEnv
 import grit.core.clock.Clock
-import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.document.{DocumentKeeper, DocumentSearch, DocumentTerms}
 import grit.core.edge.Deliveries
 import grit.core.id.PluginName
 import grit.core.job.ScheduleStore
@@ -26,8 +26,8 @@ final case class RunRecords(
   * its slot marked replied; `clock`, which dates them; `moves`, what its job's moves are made
   * with; `budget`, which admits each of its asks against the day's spend; `keepers`, given
   * a plugin and its terms, its documents as its keeping jobs write them; `strands` and, given
-  * a plugin, its `needs`, what its dreaming jobs' scans read; and `excerpts`, what their
-  * summaries are asked of.
+  * a plugin, its `needs`, what its dreaming jobs' scans read; and `excerpts` and `documents`,
+  * what their summaries are asked of.
   */
 final case class RunEnv(
     records: RunRecords,
@@ -39,5 +39,6 @@ final case class RunEnv(
     keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
     strands: StrandShelf,
     needs: PluginName -> Needs,
-    excerpts: StrandExcerpts
+    excerpts: StrandExcerpts,
+    documents: DocumentSearch
 )

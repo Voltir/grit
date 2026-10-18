@@ -6,7 +6,7 @@ import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.flow.{TestTainted, Trusted}
-import grit.core.id.{ConversationId, ToolCallId}
+import grit.core.id.{ConversationId, DocumentVersion, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
@@ -203,6 +203,25 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
+      "a summary's shaped step holds the versions it showed after its calls; one recorded without them showed none"
+    ) {
+      val versions = Vector(3L, 7L).map(n =>
+        DocumentVersion.of(n).getOrElse(throw new java.lang.AssertionError(s"version $n"))
+      )
+      val shaped =
+        AskMade.Shaped("v2:ab", """{"a":"x"}""", Label.Public, Integrity.Member, Vector())
+      pinned[AskMade](
+        shaped.withShown(versions),
+        """{"shaped":{"digest":"v2:ab","reply":{"a":"x"},"at":"public","level":"member","calls":[],"shown":[3,7]}}"""
+      )
+      summon[Journaled[AskMade]].decode(
+        """{"shaped":{"digest":"v1:ab","reply":{"a":"x"},"at":"public","level":"member","calls":[]}}"""
+      ) ==> Right(
+        AskMade.Shaped("v1:ab", """{"a":"x"}""", Label.Public, Integrity.Member, Vector())
+      )
+    }
+
+    test(
       "a judgment's move step is written judged with its digest, answers as written, call and label, or unjudged saying why"
     ) {
       val call = AskMade.Call(
@@ -378,7 +397,7 @@ object MovesJournalTests extends TestSuite {
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside
     // grit (`printf '%s' '<form>' | sha256sum`).
     test(
-      "a strand's summary's v1 digest is of its root, its strand's digest, asOf, chars, system text and schema, and a changed strand is refused so"
+      "a summary of one strand alone is digested v1, of its root, strand digest, asOf, chars, system text and schema; of more, v2, its documents' budget included; and a changed strand is refused so"
     ) {
       val schema = JsonSchema
         .read(
@@ -410,20 +429,66 @@ object MovesJournalTests extends TestSuite {
       MovesJournal.strand(seen, "Summarise.", 1000, schema) ==>
         "v1:124bfd546ae887abb0a8afdd91774f22a6644f51e5bf01855aeb4789971ae667"
       assert(
-        MovesJournal.sameStrand(
+        MovesJournal.sameStrands(
           MovesJournal.strand(seen, "Summarise.", 1000, schema),
-          seen,
+          Vector(seen),
+          Vector.empty,
           "Summarise.",
           1000,
+          0,
           schema
         ),
-        !MovesJournal.sameStrand(
+        !MovesJournal.sameStrands(
           MovesJournal.strand(seen, "Summarise.", 999, schema),
-          seen,
+          Vector(seen),
+          Vector.empty,
           "Summarise.",
           1000,
+          0,
           schema
         )
+      )
+      // One strand and no documents is digested as v1 was, whatever the documents' budget.
+      MovesJournal.strands(Vector(seen), Vector.empty, "Summarise.", 1000, 500, schema) ==>
+        MovesJournal.strand(seen, "Summarise.", 1000, schema)
+      val version =
+        DocumentVersion.of(7).getOrElse(throw new java.lang.AssertionError("version"))
+      val many =
+        MovesJournal.strands(Vector(seen), Vector(version), "Summarise.", 1000, 500, schema)
+      (
+        many,
+        MovesJournal.sameStrands(
+          many,
+          Vector(seen),
+          Vector(version),
+          "Summarise.",
+          1000,
+          500,
+          schema
+        ),
+        MovesJournal.sameStrands(
+          many,
+          Vector(seen),
+          Vector(version),
+          "Summarise.",
+          1000,
+          400,
+          schema
+        ),
+        MovesJournal.sameStrands(
+          many,
+          Vector(seen, seen),
+          Vector.empty,
+          "Summarise.",
+          1000,
+          500,
+          schema
+        )
+      ) ==> (
+        "v2:d45de61289993f40fdb6057d4b43904f8b6d38fde33b5f81b8a4ad0eccb5a879",
+        true,
+        false,
+        false
       )
       pinned[AskMade](
         AskMade.Refused(AskMade.Kind.Changed, "moved", "v1:ab"),

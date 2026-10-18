@@ -25,6 +25,11 @@ Decision:
   summary's characters, and records only the JSON ask's own form under a digest of the
   strand's ids. Its reply is believed at the meet of every message read, so a guest's message
   caps the document. When the messages are not the ones the scan digested, it asks nothing.
+  One summary may show several strands and documents, the job naming documents by version:
+  each document is read in the same step, under its plugin's label, only when it is the
+  job's plugin's own or a need's and the transaction reads it (one that is not is left out,
+  and the job told which were shown), and the reply is believed at the meet of everything
+  read. One strand and no documents is digested as a strand's summary always was.
 - **One document per strand root, at its room's label.** A run is kept at one label (its
   schedule's clearance), writes only for rooms whose label in force is its floor, and
   withdraws a document whose room has moved to another; a deployment declares one schedule per

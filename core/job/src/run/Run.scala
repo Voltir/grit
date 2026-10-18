@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.act.moves.{DurableMoves, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates}
-import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.document.{DocumentKeeper, DocumentSearch, DocumentTerms}
 import grit.core.durable.{Durable, Flow, Flows, Step as DurableStep, StepName, Steps}
 import grit.core.flow.Trusted
 import grit.core.id.{EntryId, JobName, PluginName, TurnRef, WorkflowId}
@@ -53,7 +53,8 @@ object Run {
     *      asks a person first never sent ([[grit.core.act.Gates.Closed]]), within the job's
     *      limits, and a plugin's keeping or dreaming job's keeps over its plugin's documents, as
     *      `keepers` gives them, a dreaming job's scans over `strands` and its plugin's `needs`
-    *      and its summaries reading their messages through `excerpts`;
+    *      and its summaries reading their messages through `excerpts` and their documents
+    *      through `documents`;
     *   1. `reply` — the job's reply (or the line saying its parameters could not be read) as
     *      the turn's reply, awaited where its schedule reports, and the slot marked replied, in
     *      one transaction. A reply already kept is returned first, whatever the version. Under
@@ -70,7 +71,8 @@ object Run {
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
       strands: StrandShelf,
       needs: PluginName -> Needs,
-      excerpts: StrandExcerpts
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
   ): Flow[RunEnv, WorkflowId, String, String] =
     Flow
       .fromEither(WorkflowId.as("run", TurnRef.fromWorkflowId))
@@ -80,10 +82,12 @@ object Run {
       })
       .andThen(
         Flow.branch((r: (TurnRef, SlotRead.Read)) => planned(jobs, budget, r._1, r._2))(
-          moves(keepers, strands, needs, excerpts).over[RunEnv](env => env.moves).keeping.map {
-            (p, text) =>
+          moves(keepers, strands, needs, excerpts, documents)
+            .over[RunEnv](env => env.moves)
+            .keeping
+            .map { (p, text) =>
               Replying(p.acting.turn, p.read, Planned.Says(text))
-          },
+            },
           Flow.pass[Replying]
         )
       )
@@ -96,11 +100,15 @@ object Run {
       })
 
   /** The run of a job whose turn's workflow id is `id`: [[flow]] run over `env`, with the jobs
-    * of `jobs` and `env`'s budget, keepers, strands, needs and excerpts.
+    * of `jobs` and `env`'s budget, keepers, strands, needs, excerpts and documents.
     */
   def body(env: RunEnv^, jobs: Jobs)(id: WorkflowId)(using d: Durable^): String =
     Flows
-      .run(flow(jobs, env.budget, env.keepers, env.strands, env.needs, env.excerpts), env, id)
+      .run(
+        flow(jobs, env.budget, env.keepers, env.strands, env.needs, env.excerpts, env.documents),
+        env,
+        id
+      )
       .merge
 
   /** What a read slot comes to under `jobs`: its job's moves to make under the acting of its
@@ -138,7 +146,8 @@ object Run {
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
       strands: StrandShelf,
       needs: PluginName -> Needs,
-      excerpts: StrandExcerpts
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
   ): Flow[MovesEnv, Planning, Nothing, String] =
     Flow.program[MovesEnv, Planning, String]("moves", DurableMoves.Within) { steps => p =>
       p.owned match {
@@ -148,7 +157,10 @@ object Run {
           keeping(job, p.read, p.acting, keepers(plugin, terms))(using steps)
         case Owned.Dreams(plugin, terms, job) =>
           val keeper = keepers(plugin, terms)
-          dreaming(job, p.read, p.acting, keeper, strands, needs(plugin), excerpts)(using steps)
+          val read = needs(plugin)
+          dreaming(job, p.read, p.acting, plugin, keeper, strands, read, excerpts, documents)(using
+            steps
+          )
       }
     }
 
@@ -273,21 +285,23 @@ object Run {
       DurableMoves.keeping(acting, job.limits, keeper)(moves => Said(job.run(run, moves))).text
     )
 
-  /** As [[keeping]], its moves also scanning `strands` and `needs`, and summarising through
-    * `excerpts`.
+  /** As [[keeping]], `plugin`'s, its moves also scanning `strands` and `needs`, and
+    * summarising through `excerpts` and `documents`.
     */
   private def dreaming[P <: caps.Pure](
       job: DreamingJob[P],
       read: SlotRead.Read,
       acting: Acting,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       strands: StrandShelf,
       needs: Needs,
-      excerpts: StrandExcerpts
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
   )(using steps: Steps[MovesEnv]^): String =
     said(job, read, acting)(run =>
       DurableMoves
-        .dreaming(acting, job.limits, keeper, strands, needs, excerpts)(moves =>
+        .dreaming(acting, job.limits, plugin, keeper, strands, needs, excerpts, documents)(moves =>
           Said(job.run(run, moves))
         )
         .text

@@ -26,12 +26,14 @@ object JobReadTests extends TestSuite {
   /** The families of a move's steps ([[grit.act.moves.ActName]]). */
   private val Moves = Seq("ask:", "call:", "keep:")
 
-  /** The jobs `history` was recorded with: [[Noting]] for one that kept, [[Dreamer]] for one
-    * that dreamed, [[probes]] for one that made another move, else `remind`, which makes none.
+  /** The jobs `history` was recorded with: [[Noting]] for one that kept, [[Dreamer]] or
+    * [[Gatherer]] for one that dreamed, [[probes]] for one that made another move, else
+    * `remind`, which makes none.
     */
   private def jobsFor(history: History): Jobs =
     if (history.steps.exists(_.name == "keep:note")) keepingJobs(new Noting(1))
     else if (history.steps.exists(_.name == "keep:scan")) dreamingJobs(new Dreamer(1))
+    else if (history.steps.exists(_.name == "keep:gather")) dreamingJobs(new Gatherer(1))
     else if (history.steps.exists(s => Moves.exists(s.name.startsWith))) jobsOf(probing(1))
     else jobs(1)
 
@@ -60,7 +62,8 @@ object JobReadTests extends TestSuite {
       world.keepers,
       world.strands,
       world.needs,
-      world.excerpts
+      world.excerpts,
+      world.documents
     )
     val records = history.steps.map(FlowFixtures.recorded)
     val prefixes = records.indices.toVector.flatMap { k =>
@@ -93,7 +96,7 @@ object JobReadTests extends TestSuite {
       // Without moves cut inside, and a wait among them, the gate would not reach the planner.
       val inside =
         runs.flatMap((_, h) => h.steps.map(_.name)).filter(n => Moves.exists(n.startsWith))
-      (runs.size, inside.exists(_.endsWith(":expire")), read) ==> (20, true, Vector())
+      (runs.size, inside.exists(_.endsWith(":expire")), read) ==> (21, true, Vector())
     }
   }
 }
