@@ -26,7 +26,8 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * from that card or links it), and asks once (`attach`) where each other one goes, at most
   * `perRun` strands and `perRun` cards: to one of the topics shown (those attached to, and at
   * most [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
-  * [[TopicDream.LeadChars]]), to a new topic of its own, or to none: set aside (`aside`), in a
+  * [[TopicDream.LeadChars]]), to a new topic of its own, with a discussion shown (where that one
+  * goes, a topic it opens included; left when it names none, or a loop), or to none: set aside (`aside`), in a
   * document of its floor under `topic:aside` holding no topic, while within `recent` or
   * `cardRecent` at the digest or version set aside; then, for each topic touched, at most `perRun` and at most
   * `perRunMost`, new topics first, asks once (`write-{i}`) for its new lead and the day's
@@ -95,6 +96,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       scan: Scanned,
       g: Gathered
   ): (Vector[Touch], Gathered) = {
+    import TopicDream.Goes
     val n = scan.strands.size + scan.cards.size
     if (n == 0) (Vector.empty, g)
     else {
@@ -122,11 +124,36 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           val placing = Trusted.asIs(s.asked.reply).extract
           val topics = s.shown.flatMap(v => scan.leads.find(_._2 == v))
           val shownCards = scan.cards.filter(c => s.shown.contains(c.version))
-          def to(p: Placing.Place): Option[Either[Unit, (TopicKey, DocumentVersion)]] = p match {
-            case Placing.Place.In(k) => topics.lift(k - 1).map(Right(_))
-            case Placing.Place.New => Some(Left(()))
-            case Placing.Place.Aside => None
+          // `p` followed through each `with` to a place of its own, and the discussion, by
+          // index, whose place that is (`None`, the item's own); `None` when a `with` names no
+          // discussion shown or one already followed (`seen`).
+          def resolved(
+              p: Placing.Place,
+              seen: Set[Int]
+          ): Option[(Option[Int], Placing.Place)] = p match {
+            case Placing.Place.With(j) if !seen.contains(j - 1) =>
+              placing.strands
+                .lift(j - 1)
+                .flatMap(q => resolved(q, seen + (j - 1)))
+                .map((owner, r) => (owner.orElse(Some(j - 1)), r))
+            case Placing.Place.With(_) => None
+            case other => Some((None, other))
           }
+          // Where an item placed `p` goes; `opens`, the topic it opens when `new` is its own.
+          def goes(p: Placing.Place, seen: Set[Int], opens: Either[String, TopicKey]): Goes =
+            resolved(p, seen) match {
+              case None => Goes.Unplaced
+              case Some((_, Placing.Place.Aside)) => Goes.Aside
+              case Some((_, Placing.Place.In(k))) =>
+                topics.lift(k - 1).fold(Goes.Unplaced)((key, v) => Goes.Into(key, Some(v)))
+              case Some((owner, Placing.Place.New)) =>
+                owner
+                  .flatMap(scan.strands.lift)
+                  .fold(opens)(st => TopicKey.strand(st.root))
+                  .fold(Goes.Unopened(_), Goes.Into(_, None))
+              // `resolved` follows every `with`.
+              case Some((_, Placing.Place.With(_))) => Goes.Unplaced
+            }
           if (placing.strands.size != scan.strands.size || placing.cards.size != shownCards.size)
             (
               Vector.empty,
@@ -137,31 +164,21 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               )
             )
           else {
-            val strands = scan.strands
-              .zip(placing.strands)
-              .flatMap((st, p) =>
-                to(p).map {
-                  case Right((k, v)) => Right(Touch(k, Some(v), Vector(st), Vector.empty))
-                  case Left(()) =>
-                    TopicKey.strand(st.root).map(Touch(_, None, Vector(st), Vector.empty))
-                }
-              )
-            val unopened = strands.collect { case Left(why) => ("a strand", why) }
-            val cardsPlaced = shownCards
+            val strands = scan.strands.zip(placing.strands).zipWithIndex.map { case ((st, p), i) =>
+              st -> goes(p, Set(i), TopicKey.strand(st.root))
+            }
+            val cards = shownCards
               .zip(placing.cards)
-              .flatMap((c, p) =>
-                to(p).map {
-                  case Right((k, v)) => Touch(k, Some(v), Vector.empty, Vector(c))
-                  case Left(()) => Touch(TopicKey.card(c.key), None, Vector.empty, Vector(c))
-                }
-              )
-            val placed = strands.collect { case Right(t) => t } ++ cardsPlaced
-            val setAside =
-              scan.strands.zip(placing.strands).collect { case (st, Placing.Place.Aside) =>
-                Lineage.Tag.Strand(st.root, st.room, st.digest)
-              } ++ shownCards.zip(placing.cards).collect { case (c, Placing.Place.Aside) =>
-                Lineage.Tag.Card(c.version)
-              }
+              .map((c, p) => c -> goes(p, Set.empty, Right(TopicKey.card(c.key))))
+            val unopened = (strands ++ cards).collect { case (_, Goes.Unopened(why)) =>
+              ("a strand", why)
+            }
+            val placed = strands.collect { case (st, Goes.Into(k, v)) =>
+              Touch(k, v, Vector(st), Vector.empty)
+            } ++ cards.collect { case (c, Goes.Into(k, v)) => Touch(k, v, Vector.empty, Vector(c)) }
+            val setAside = strands.collect { case (st, Goes.Aside) =>
+              Lineage.Tag.Strand(st.root, st.room, st.digest)
+            } ++ cards.collect { case (c, Goes.Aside) => Lineage.Tag.Card(c.version) }
             val kept =
               if (setAside.isEmpty) Vector.empty
               else
@@ -269,6 +286,17 @@ object TopicDream {
     // Lower case words and digits joined by `-`: MoveName.of never refuses them.
     MoveName.of(name).fold(e => throw new IllegalStateException(e), identity)
 
+  /** Where the attach ask's reply places a strand or card shown: `Into` the topic `key`, at the
+    * `version` shown or `None` for one this run opens; set `Aside`; `Unplaced`, in no topic
+    * shown; or `Unopened`, a topic of its own refused.
+    */
+  private enum Goes {
+    case Into(key: TopicKey, version: Option[DocumentVersion])
+    case Aside
+    case Unplaced
+    case Unopened(why: String)
+  }
+
   /** How many strands and cards `ts` attach. */
   private def items(ts: Vector[Touch]): Int = ts.map(t => t.strands.size + t.cards.size).sum
 
@@ -300,7 +328,9 @@ object TopicDream {
       "by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
       "and `cards`, one per card in the order shown, each the number of the topic it belongs " +
       "to, `new` when it opens a subject no topic shown covers that the team is likely to " +
-      "come back to, or `none` when it is too slight to keep."
+      "come back to, `with N` when it belongs with the Nth discussion shown, wherever that one " +
+      "goes (a card of a subject a discussion opens, or two discussions of one new subject), " +
+      "or `none` when it is too slight to keep."
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
@@ -321,7 +351,8 @@ object TopicDream {
     def placed(what: String) = ujson.Obj(
       "type" -> "array",
       "items" -> ujson.Obj("type" -> "string"),
-      "description" -> s"For each $what in the order shown: a topic's number, `new` or `none`."
+      "description" ->
+        s"For each $what in the order shown: a topic's number, `new`, `with N` or `none`."
     )
     typed(
       ujson.Obj(
@@ -426,11 +457,15 @@ private[topic] object Placing {
     /** In a topic of its own. */
     case New
 
+    /** Where the `n`th discussion shown goes, from 1. */
+    case With(n: Int)
+
     /** In none. */
     case Aside
   }
 
   def read(v: ujson.Value): Either[String, Placing] = {
+    def number(n: String) = n.nonEmpty && n.forall(_.isDigit) && n.length < 6
     def places(key: String): Either[String, Vector[Place]] =
       v.objOpt
         .flatMap(_.get(key))
@@ -442,10 +477,13 @@ private[topic] object Placing {
               e.strOpt.map(_.trim.toLowerCase) match {
                 case Some("new") => Right(done :+ Place.New)
                 case Some("none") => Right(done :+ Place.Aside)
-                case Some(n) if n.nonEmpty && n.forall(_.isDigit) && n.length < 6 =>
-                  Right(done :+ Place.In(n.toInt))
+                case Some(n) if number(n) => Right(done :+ Place.In(n.toInt))
+                case Some(w) if w.startsWith("with ") && number(w.drop(5).trim) =>
+                  Right(done :+ Place.With(w.drop(5).trim.toInt))
                 case _ =>
-                  Left(s"each of `$key` is a topic's number, `new` or `none`: ${ujson.write(e)}")
+                  Left(
+                    s"each of `$key` is a topic's number, `new`, `with N` or `none`: ${ujson.write(e)}"
+                  )
               }
             )
           )
