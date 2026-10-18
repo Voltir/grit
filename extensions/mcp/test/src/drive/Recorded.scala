@@ -24,7 +24,10 @@ object Recorded {
     * its own address `self@project.iam.example`, declaring `writer-bot-1@project.iam.example` a
     * writer at member.
     */
-  val reading: DriveReading = {
+  val reading: DriveReading = readingAt(Integrity.Member)
+
+  /** [[reading]], its writer declared at `writer` instead. */
+  def readingAt(writer: Integrity): DriveReading = {
     def right[A](e: Either[String, A]): A =
       e.fold(why => throw new java.lang.AssertionError(why), identity)
     val example = right(Domain.of("example.com"))
@@ -35,7 +38,7 @@ object Recorded {
           example,
           right(Identities.of(Vector.empty, Set(example)).left.map(_.toString)),
           right(Email.of("self@project.iam.example")),
-          Map(right(Email.of("writer-bot-1@project.iam.example")) -> Integrity.Member)
+          Map(right(Email.of("writer-bot-1@project.iam.example")) -> writer)
         )
         .left
         .map(_.message)

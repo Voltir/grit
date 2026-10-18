@@ -29,14 +29,15 @@ object CardTests extends TestSuite {
 
   private val changed = Instant.parse("2026-10-14T09:30:00Z")
 
-  private def drive(title: Option[String]): Card =
+  private def drive(title: Option[String], within: Option[String] = None): Card =
     Card.file(
       corpus,
       "docs/testing.md",
       UnitVersion.Changed(changed),
       right(CardSummary.of("How the project is tested.", Vector("unit tests"))),
       pointer,
-      title
+      title,
+      within
     )
 
   val tests = Tests {
@@ -153,16 +154,16 @@ object CardTests extends TestSuite {
       val text = DocText.value(drive(Some("a\nb" + "c" * 100)).text)
       assert(text.startsWith("a b" + "c" * 77 + " (docs/testing.md), last changed 2026-10-14\n"))
     }
-    test("a Changed card's data holds its title and the day it changed too") {
-      assert(
-        drive(Some("Budget 2027")).data == ujson.Obj(
-          "kind" -> "file",
-          "path" -> "docs/testing.md",
-          "terms" -> ujson.Arr("unit tests"),
-          "version" -> "2026-10-14T09:30:00Z",
-          "changed" -> "2026-10-14",
-          "title" -> "Budget 2027"
-        )
+    test("a Changed card's data holds its title, the day it changed and its folder too") {
+      // The stored form: cards already written are read back by these keys.
+      drive(Some("Budget 2027"), within = Some("folder-3")).data ==> ujson.Obj(
+        "kind" -> "file",
+        "path" -> "docs/testing.md",
+        "terms" -> ujson.Arr("unit tests"),
+        "version" -> "2026-10-14T09:30:00Z",
+        "changed" -> "2026-10-14",
+        "title" -> "Budget 2027",
+        "within" -> "folder-3"
       )
     }
     // A title now shows in every card's first line, not in a Changed card's alone.

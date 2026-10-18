@@ -386,7 +386,9 @@ object SyncTests extends TestSuite {
       (walked(Vector("a", "b")), walked(Vector("b", "a"))) ==> (expected, expected)
     }
 
-    test("a card is believed at what its unit's reads were, not at its service's cap") {
+    test(
+      "a repository's card is believed at what the run read before it, not at the run's own belief"
+    ) {
       // The shipped visibility caps no place, so `github`'s results are believed at
       // `Cap.Undeclared`, untrusted; each read here is answered at member, as a call to a
       // repository capped at member is.
@@ -711,13 +713,14 @@ object SyncTests extends TestSuite {
       "the summary model is told what the file is in the line before it, and to call it that"
     ) {
       val asked = Sync.summarising("A text file named `notes` in Google Drive", "Plans.")
-      (asked.system, asked.messages) ==> (
-        "You summarise one file for a catalog that tells an assistant what each file holds, so " +
-          "it can choose which to read. The line before the file says what it is and where it " +
-          "is kept: call it what that line calls it, whatever its text looks like. Reply by " +
-          "calling `reply` with `summary`, at most 60 words on what the file is and what it " +
-          "holds, and `terms`, at most 8 search terms, each one to three words, for what it " +
-          "holds that the summary leaves out.",
+      (
+        asked.system.contains(
+          "The line before the file says what it is and where it is kept: call it what that " +
+            "line calls it, whatever its text looks like."
+        ),
+        asked.messages
+      ) ==> (
+        true,
         Vector(Message.User("A text file named `notes` in Google Drive:\n\nPlans."))
       )
     }

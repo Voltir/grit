@@ -156,22 +156,29 @@ object AnswerTests extends TestSuite {
     ) {
       def page(items: Vector[ujson.Value]): ujson.Obj =
         ujson.Obj("total_count" -> 30, "items" -> ujson.Arr.from(items))
-      def structured(payload: ujson.Value): ujson.Obj = {
-        val r = result(text(ujson.write(payload)))
+      def beside(shown: ujson.Value, payload: ujson.Value): ujson.Obj = {
+        val r = result(text(ujson.write(shown)))
         r("structuredContent") = payload
         r
       }
+      def structured(payload: ujson.Value): ujson.Obj = beside(payload, payload)
       val k = most(thirty, Clipped.MaxBytes - bytes(ujson.write(page(Vector.empty))))
       val two = ujson.Obj("items" -> ujson.Arr.from(thirty), "more" -> ujson.Arr(1, 2))
+      // Items small enough that all thirty fit as facts: only the text's cut holds them to k.
+      val small = (1 to 30).toVector.map(n => ujson.Obj("n" -> n): ujson.Value)
       Vector(
         structured(page(thirty.take(2))),
         structured(page(thirty)),
         structured(two),
-        result(text(ujson.write(page(thirty.take(2)))))
+        result(text(ujson.write(page(thirty.take(2))))),
+        beside(page(thirty), page(small)),
+        beside(page(thirty), page(small.take(29)))
       ).map(Answer.of(_).map(_.facts)) ==> Vector(
         Right(Some(Facts.of(page(thirty.take(2))))),
         Right(Some(Facts.of(page(thirty.take(k))))),
         Right(None),
+        Right(None),
+        Right(Some(Facts.of(page(small.take(k))))),
         Right(None)
       )
     }

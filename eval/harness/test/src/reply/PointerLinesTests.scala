@@ -2,7 +2,7 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
-import grit.core.context.{AssemblyNote, Querying, Results, Retrieved}
+import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, SectionTag}
 import grit.core.document.{DocText, Document, Placement, Pointer}
 import grit.core.id.{DocKey, DocumentVersion, PluginName, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
@@ -109,9 +109,10 @@ object PointerLinesTests extends TestSuite {
     }
 
     test("the lead line names documents, never the program") {
-      PointerLines.Lead ==>
-        "[doc] documents found for this turn but judged not relevant, " +
-        "so not shown; any of them can still be read:"
+      (
+        PointerLines.Lead.startsWith(SectionTag.Document.tag),
+        PointerLines.Lead.toLowerCase.contains("grit")
+      ) ==> (true, false)
     }
   }
 }

@@ -181,7 +181,7 @@ object RehearsedTests extends TestSuite {
     }
 
     test(
-      "a rehearsal with no classifier call has no stub-judge line in its header, and one that asked a classifier names the stub judge"
+      "a rehearsal whose classifier the stub answered names the stub judge after its header; one with no classifier call, or whose classifier answer was supplied, does not"
     ) {
       val elsewhere = Rehearsed.of(
         Vector(
@@ -193,10 +193,20 @@ object RehearsedTests extends TestSuite {
         Vector(RehearsalRunner.Finished(WorkflowId("t"), Came.Threw("broke")))
       )
       val (_, judged) = rehearsed(StandIns.Stubbed)
+      val (_, supplied) = rehearsed(StandIns.supplied(Map("classify" -> "0.4")))
       (
         elsewhere.written.contains("stub classifier"),
-        judged.written.contains("stub classifier")
-      ) ==> (false, true)
+        judged.written.linesIterator.toVector.take(2),
+        supplied.calls.map(_.answered).lift(1),
+        supplied.written.contains("stub classifier")
+      ) ==> (
+        false,
+        Vector(Rehearsed.Header, Rehearsed.StubJudge),
+        Some(
+          Answered.StandIn(StandIns.StandIn.Supplied, """{"q1":{"type":"noul","noul":0.4}}""")
+        ),
+        false
+      )
     }
   }
 }

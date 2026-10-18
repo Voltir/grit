@@ -13,8 +13,8 @@ import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
   * source's sync schedules, the source's `_` written `-` in each key. A GitHub source's are
   * keyed `{source}-{key}` and declared at its label; a Drive source declares each once per
   * label, keyed `{source}-{key}-{label}`, the label in its written form ([[Label.written]])
-  * with `+` written `-`, and declared at that label. Its documents: label "knowledge: what a
-  * source holds, and how to read it", weight 1, kept 30 days after a version stops being
+  * with `+` written `-`, and declared at that label. Its documents: label "knowledge card",
+  * weight 1, kept 30 days after a version stops being
   * current, bounded at the sum of each GitHub source's `maxUnits` and each Drive source's
   * `maxUnits` times its labels; at each start, a card of a corpus none of its sources has, or
   * at a label its source's schedules are not declared at, is withdrawn ([[Documents.sweep]]);

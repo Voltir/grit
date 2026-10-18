@@ -253,10 +253,24 @@ object DriveItemsTests extends TestSuite {
     test(
       "a read is believed at the meet over its writers:the deployment's own address skipped, a declared writer at its integrity, the domain's people member"
     ) {
+      // drive-b's grants name the declared writer beside the domain's people.
+      def at(writer: Integrity) = right(
+        DriveItems.items(
+          Recorded.readingAt(writer),
+          DriveCalled.Read(doc, grants("permissions-drive-b"), "text")
+        )
+      ).parts.map(_.item.vouched)
       (
         believed(doc, grants("permissions-drive-a")),
-        believed(doc, grants("permissions-drive-b"))
-      ) ==> (Vector(Integrity.Member), Vector(Integrity.Member))
+        believed(doc, grants("permissions-drive-b")),
+        at(Integrity.Authority),
+        at(Integrity.Outside)
+      ) ==> (
+        Vector(Integrity.Member),
+        Vector(Integrity.Member),
+        Vector(Integrity.Member),
+        Vector(Integrity.Outside)
+      )
     }
 
     test(

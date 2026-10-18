@@ -285,8 +285,7 @@ object DriveWalkTests extends TestSuite {
           held("file-low", Label.Public, 1, "drive-a")
         )
       val (steps, _) = run(source.walk(5, confidential, holding, due), world.removed("drive-b"))
-      assert(dropped(steps).contains(("file-old", internal)))
-      assert(!dropped(steps).exists(_._1 == "file-low"))
+      dropped(steps) ==> Vector(("file-old", internal))
     }
 
     test("past a lowered maxUnits, the cards last by their files' ids are withdrawn") {
