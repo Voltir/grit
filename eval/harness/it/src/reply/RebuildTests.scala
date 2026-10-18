@@ -627,9 +627,7 @@ object RebuildTests extends TestSuite {
       (found(AsOf(reader, end).documentsAtEnd), found(AsOf(reader, end))) ==>
         (Vector(version), Vector.empty)
     }
-    test(
-      "a turn that followed no document is left out of the recall replay, whether or not it searched"
-    ) {
+    test("a turn that followed no document is left out of the recall replay") {
       val (reader, _, _, _, _, _) = judged
       val turns = right(reader.turns(now()))
       val current = Refound.Current.of(right(reader.all.read(reader.current())))
