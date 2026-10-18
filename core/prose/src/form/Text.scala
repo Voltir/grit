@@ -49,6 +49,20 @@ object Text {
 
   val empty: Text[Nothing] = Text(Vector.empty)
 
+  /** `spans` with adjacent ones that share both their marks and their notes joined, and empty
+    * ones dropped.
+    */
+  def of[A <: caps.Pure](spans: Vector[Span[A]]): Text[A] =
+    Text(spans.foldLeft(Vector.empty[Span[A]]) { (acc, s) =>
+      if (s.text.isEmpty) acc
+      else
+        acc.lastOption match {
+          case Some(last) if last.marks == s.marks && last.notes == s.notes =>
+            acc.dropRight(1) :+ Span(last.text + s.text, s.marks, s.notes)
+          case _ => acc :+ s
+        }
+    })
+
   /** `s` with no marks. */
   def plain(s: String): Text[Nothing] = if (s.isEmpty) empty else Text(Vector(Span.plain(s)))
 }

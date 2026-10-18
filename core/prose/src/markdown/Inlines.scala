@@ -14,9 +14,8 @@ private[markdown] object Inlines {
     * about to open or close something is held back, so what is shown does not change
     * shape when the rest arrives. Otherwise an unclosed opener is literal.
     */
-  def parse(s: String, open: Boolean): Text[Nothing] = Text(
-    merged(spans(s, 0, s.length, Set.empty, open))
-  )
+  def parse(s: String, open: Boolean): Text[Nothing] =
+    Text.of(spans(s, 0, s.length, Set.empty, open))
 
   private def spans(
       s: String,
@@ -244,16 +243,4 @@ private[markdown] object Inlines {
 
   private def isPunct(c: Char): Boolean =
     c < 128 && "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(c)
-
-  /** Adjacent spans with the same marks joined, empty ones dropped. */
-  private def merged(in: Vector[Span[Nothing]]): Vector[Span[Nothing]] =
-    in.foldLeft(Vector.empty[Span[Nothing]]) { (acc, s) =>
-      if (s.text.isEmpty) acc
-      else
-        acc.lastOption match {
-          case Some(last) if last.marks == s.marks =>
-            acc.dropRight(1) :+ Span(last.text + s.text, s.marks)
-          case _ => acc :+ s
-        }
-    }
 }
