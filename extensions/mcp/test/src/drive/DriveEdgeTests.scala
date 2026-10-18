@@ -335,10 +335,12 @@ object DriveEdgeTests extends TestSuite {
           },
           run(fake, "drive_read", ujson.Obj("file" -> "file-404"))
         ) ==> (
-          // Its name and type, then the export's lines, the last one's newline ending it.
+          // Its name, type and change time, then the export's lines, the last one's newline
+          // ending it.
           (
             Integrity.Member,
-            s"name-10 (a Doc):\n${Recorded.text("export-doc.md").stripSuffix("\n")}"
+            "name-10 (a Doc), last changed 2026-09-08T10:00:00Z:\n" +
+              Recorded.text("export-doc.md").stripSuffix("\n")
           ),
           Outcome.Failed("That file isn't shared here, or doesn't exist.")
         )

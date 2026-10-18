@@ -56,17 +56,20 @@ object DriveItemsTests extends TestSuite {
         ResultPart(
           Provenance(place("drive-a"), Integrity.Member),
           Readers.AtPlace,
-          "- name-13 (a PDF), id file-4, in the shared drive Engineering (drive-a)"
+          "- name-13 (a PDF), id file-4, in the shared drive Engineering (drive-a), " +
+            "last changed 2026-09-02T10:00:00Z"
         ),
         ResultPart(
           Provenance(place("folder-3"), Integrity.Member),
           Readers.AtPlace,
-          "- name-10 (a Doc), id file-1, in folder-3, in the shared drive Engineering"
+          "- name-10 (a Doc), id file-1, in folder-3, in the shared drive Engineering, " +
+            "last changed 2026-09-08T10:00:00Z"
         ),
         ResultPart(
           Provenance(Drive.place, Integrity.Member),
           Readers.AtPlace,
-          "- name-3 (a folder), id folder-2, in folder-1, in the shared drive drive-b"
+          "- name-3 (a folder), id folder-2, in folder-1, in the shared drive drive-b, " +
+            "last changed 2026-08-15T10:00:00Z"
         )
       )
     }
@@ -101,9 +104,9 @@ object DriveItemsTests extends TestSuite {
         false,
         true,
         Vector.fill(4)(
-          "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1, in folder-3, in the shared drive drive-a"
+          "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1, in folder-3, in the shared drive drive-a, last changed 2026-09-08T10:00:00Z"
         ) :+
-          "- Q3 plan_v2 (a Doc), id file-1, in folder-3, in the shared drive drive-a"
+          "- Q3 plan_v2 (a Doc), id file-1, in folder-3, in the shared drive drive-a, last changed 2026-09-08T10:00:00Z"
       )
     }
 
@@ -130,7 +133,8 @@ object DriveItemsTests extends TestSuite {
 
     test("a search hit names when its file last changed, as a listing's does, when Drive says") {
       val changed = doc.copy(changed = Some(java.time.Instant.parse("2026-09-05T10:00:00Z")))
-      parts(DriveCalled.Searched(Hits(Vector(changed, doc), incomplete = false), Map.empty))
+      val unsaid = doc.copy(changed = None)
+      parts(DriveCalled.Searched(Hits(Vector(changed, unsaid), incomplete = false), Map.empty))
         .map(_.text) ==> Vector(
         "- name-10 (a Doc), id file-1, in folder-3, in the shared drive drive-a, last changed " +
           "2026-09-05T10:00:00Z",
@@ -305,7 +309,12 @@ object DriveItemsTests extends TestSuite {
           DriveCalled.Read(doc.copy(parent = None, drive = None), None, "text")
         )
       ) ==> (
-        Vector((place("folder-3"), "name-10 (a Doc):\nline one\nline two")),
+        Vector(
+          (
+            place("folder-3"),
+            "name-10 (a Doc), last changed 2026-09-08T10:00:00Z:\nline one\nline two"
+          )
+        ),
         Left("This file's folder could not be read, so it is not shown.")
       )
     }
@@ -427,6 +436,7 @@ object DriveItemsTests extends TestSuite {
             "id" -> "file-1",
             "kind" -> "document",
             "name" -> "name-10",
+            "changed" -> "2026-09-08T10:00:00Z",
             "within" -> "folder-3",
             "text" -> "line one\nline two",
             "complete" -> true
@@ -434,7 +444,7 @@ object DriveItemsTests extends TestSuite {
         ),
         // Its name's line, then the kept lines, a blank line and the cut's note.
         Vector((kept.slice(1, kept.size - 2).mkString("\n"), false)),
-        Vector(Set("id", "kind", "name", "within"))
+        Vector(Set("id", "kind", "name", "changed", "within"))
       )
     }
 

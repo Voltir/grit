@@ -190,7 +190,7 @@ object FakeDriveServer {
   private val OwnGrants: Set[String] = Set("file-text")
 
   /** Every file and folder the recorded searches and the `made-*` files name, by id, a hand-made
-    * entry over a recorded one, since only the hand-made say when a file last changed.
+    * entry over a recorded one.
     */
   private lazy val listed: Map[String, ujson.Value] =
     (Vector(

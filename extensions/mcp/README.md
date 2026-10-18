@@ -137,10 +137,13 @@ itself as `self@project.iam.example` and another service account as
 reason, a role, a type) and every key and its order as sent. They show that every item names
 its drive, that a shared drive's top files have the drive's id as their only parent, that
 folders carry `inheritedPermissionsDisabled` and grants `permissionDetails.inherited`, and that
-the account's own address is among a file's grants.
+the account's own address is among a file's grants. The capture came before the reader asked
+for `modifiedTime`, which Drive gives every file: each recorded file's was added by hand, a
+stand-in, the `made-*` file's where one lists it (`DriveCaptureTests` checks that every
+recorded file holds each field Drive gives it).
 
-Beside them, the `made-*` files are written by hand, since the recordings hold no text file
-and no `modifiedTime`: `made-file-text.json`, a text/plain file in `folder-3`;
+Beside them, the `made-*` files are written by hand, since the recordings hold no text file:
+`made-file-text.json`, a text/plain file in `folder-3`;
 `made-file-text.txt`, its content, starting with a byte-order mark;
 `made-permissions-file-text.json`, grants of its own, a writer outside the domain among them;
 and `made-children-drive-a.json` and `made-children-folder-3.json`, the listing of each one's own
