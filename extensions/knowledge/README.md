@@ -3,9 +3,11 @@
 Cards: one short document per unit of a source (a repository's files and directories), each a
 summary with search terms and a pointer (ADR 0028) to the hosted call that reads the unit, so a
 window can show what a source holds without holding it. Names `grit.core` alone: a source is
-read through the MCP tools a deployment offers, never a client of its own.
+read through the MCP tools a deployment offers, never a client of its own. Beside the cards, a
+second plugin keeps each decision or fact a closed conversation settled as a document
+(`StandingDocuments`, in `plugin`).
 
-Strand documents: by a second plugin in the same module, one short document per strand of a
+Strand documents: by a third plugin in the same module, one short document per strand of a
 room's threads (ADR 0023), summarised from what its members said, so a window and the
 relevance judge see a topic spread over threads as one thing.
 
@@ -45,9 +47,13 @@ Packages, in one-way order (each names only those before it):
   has core summarise each changed one from what its members said, and keeps or withdraws
   their documents. Its code never holds a message's text. Imports `card`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
-  `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc); and
+  `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc);
   `StrandDocuments`, the strands plugin: the `Dream` job on a daily schedule per label it is
-  declared at, and its documents' terms. Imports `github`, `drive`, `sync` and `strand`.
+  declared at, and its documents' terms; and `StandingDocuments`, a plugin of its own over core
+  alone: each decision or fact a conversation's close settled (a Standing line) kept as a
+  document, with no model call. Each is its own plugin because a plugin's documents share one
+  label and one bound, and a sync holds every current document to be a card. Imports `github`,
+  `drive`, `sync` and `strand`.
 
 ## What a deployment declares
 
