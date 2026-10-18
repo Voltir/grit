@@ -105,8 +105,8 @@ import grit.turn.TurnLoop
   * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each Markdown
   * file, and of each directory holding one, of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
   * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
-  * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]; with standing on, a
-  * document of each Standing line a close settles). When a period is asked about
+  * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]; with standing on, one
+  * document of each close's person- and tool-established Standing lines). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,

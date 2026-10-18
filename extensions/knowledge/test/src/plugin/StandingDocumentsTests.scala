@@ -35,20 +35,24 @@ object StandingDocumentsTests extends TestSuite {
   private def standing(text: String, since: Long, ground: Ground = Ground.Person): Line =
     TestClosings.line(Section.Standing, text, since, since, ground = ground)
 
-  /** The `n`th close (ordinal `n`, on October `n`th at noon) of `conversation`, at `origin`:
-    * `changes` made, leaving `kept`.
+  /** The `n`th close (ordinal `n`, on October `n`th at noon) of `conversation`'s `period`, at
+    * `origin`: `changes` made, leaving `kept`.
     */
   private def closed(
       n: Long,
       changes: Vector[Change],
       kept: Vector[Line],
       reason: CloseReason = CloseReason.Resolved(Probability.One),
+      period: Long = 1,
       conversation: String = "c1",
       origin: Origin = thread,
       outcome: String = "Staging deploys from main."
   ): ClosedPeriod =
     ClosedPeriod(
-      PeriodRef(ConversationId(conversation), PeriodSeq.First),
+      PeriodRef(
+        ConversationId(conversation),
+        PeriodSeq.of(period).getOrElse(throw new java.lang.AssertionError(period))
+      ),
       origin,
       reason,
       Closing(
@@ -88,81 +92,131 @@ object StandingDocumentsTests extends TestSuite {
 
   private val deploys = standing("Staging deploys from main", 1)
   private val freeze = standing("Hotfixes skip the freeze", 1, Ground.Tool)
+  private val claimed = standing("Port 3000 is the usual choice", 1, Ground.Claimed)
+
+  private def added(lines: Line*): Vector[Change] = lines.toVector.map(Change.Added(_))
 
   val tests = Tests {
     test(
-      "each Standing line an earned closing adds is kept under its conversation and line, at the conversation's label, believed at the closing's integrity, at its thread, written at its close"
+      "a closing's person- and tool-grounded lines are one document under its conversation and period: its headline, then a line each, at the conversation's label, believed at the closing's integrity, at its thread, written at its close"
     ) {
       val kept = new Kept
       val topic = TestClosings.line(Section.Topics, "deploys", 1, 1)
       kept.post(
-        closed(1, Vector(Change.Added(deploys), Change.Added(topic)), Vector(deploys, topic)),
+        closed(1, added(deploys, topic, freeze), Vector(deploys, topic, freeze)),
         TestLabels.Trial
       )
       kept.newest.map(d =>
-        (key(d), d.label, d.integrity, d.place, d.written, d.pointer)
+        (key(d), d.label, d.integrity, d.place, d.written, d.pointer, DocText.value(d.text))
       ) ==> Vector(
         (
-          s"standing:c1/${id(deploys)}",
+          "standing:c1/1",
           TestLabels.Trial,
           Integrity.Outside,
           thread.place,
           Instant.parse("2026-10-01T12:00:00Z"),
-          None
+          None,
+          "Staging deploys from main.\n- Staging deploys from main\n- Hotfixes skip the freeze"
         )
       )
     }
 
+    test("a claimed line is left out, and a closing of only claimed lines keeps nothing") {
+      val kept = new Kept
+      kept.post(closed(1, added(deploys, claimed), Vector(deploys, claimed)))
+      kept.post(closed(2, added(claimed), Vector(claimed), conversation = "c2", origin = other))
+      kept.texts ==> Vector("Staging deploys from main.\n- Staging deploys from main")
+    }
+
     test(
-      "a document's text is its line on its ground, one only the assistant said as not confirmed, then what its closing came to"
+      "the data names the conversation, the period, the adding closing's day, its headline and each line with its ground"
     ) {
       val kept = new Kept
-      val claimed = standing("Port 3000 is the usual choice", 1, Ground.Claimed)
-      val lines = Vector(deploys, freeze, claimed)
-      kept.post(closed(1, lines.map(Change.Added(_)), lines))
-      kept.texts.sorted ==> Vector(
-        "Hotfixes skip the freeze (a tool's result showed it)\n" +
-          "From a conversation that came to: Staging deploys from main.",
-        "Open: whether \"Port 3000 is the usual choice\" (the assistant said so; nothing confirmed it)\n" +
-          "From a conversation that came to: Staging deploys from main.",
-        "Staging deploys from main (a person said so)\n" +
-          "From a conversation that came to: Staging deploys from main."
+      kept.post(closed(1, added(deploys, freeze), Vector(deploys, freeze)))
+      kept.newest.map(_.data) ==> Vector(
+        ujson.Obj(
+          "conversation" -> "c1",
+          "period" -> 1,
+          "day" -> "2026-10-01",
+          "headline" -> "Staging deploys from main.",
+          "lines" -> ujson.Arr(
+            ujson.Obj("line" -> id(deploys), "ground" -> "person"),
+            ujson.Obj("line" -> id(freeze), "ground" -> "tool")
+          )
+        )
       )
     }
 
-    test("a kept line is shown to a window as a document under the plugin's label") {
+    test("a kept document is shown to a window under the plugin's label") {
       val kept = new Kept
-      kept.post(closed(1, Vector(Change.Added(deploys)), Vector(deploys)))
+      kept.post(closed(1, added(deploys), Vector(deploys)))
       kept.newest.map(Shown.document(_, StandingDocuments.Terms.label)) ==> Vector(
         Message.User(
-          "[doc] standing: a decision or fact a conversation settled, at slack:T1/C1/1.0, " +
-            "2026-10-01:\nStaging deploys from main (a person said so)\n" +
-            "From a conversation that came to: Staging deploys from main."
+          "[doc] what a conversation settled, at slack:T1/C1/1.0, 2026-10-01:\n" +
+            "Staging deploys from main.\n- Staging deploys from main"
         )
       )
     }
 
     test(
-      "a later closing that resolves, drops or evicts a line withdraws its document, and leaves the rest"
+      "a later closing that resolves one of two lines writes the document again at its close without it, under the adding closing's headline and day; resolving the last withdraws it"
     ) {
       val kept = new Kept
-      val third = standing("Reviews need two approvals", 1)
-      val fourth = standing("The bot posts in #deploys", 1)
-      val all = Vector(deploys, freeze, third, fourth)
-      kept.post(closed(1, all.map(Change.Added(_)), all))
+      kept.post(closed(1, added(deploys, freeze), Vector(deploys, freeze)))
       kept.post(
         closed(
           2,
-          Vector(
-            Change.Resolved(deploys, "moved to a release branch"),
-            Change.Dropped(freeze, "no longer true"),
-            Change.Evicted(third)
-          ),
-          Vector(fourth),
-          reason = CloseReason.Lapsed
+          Vector(Change.Resolved(deploys, "moved to a release branch")),
+          Vector(freeze),
+          period = 2,
+          outcome = "Releases branch off main."
         )
       )
-      kept.newest.map(key(_)) ==> Vector(s"standing:c1/${id(fourth)}")
+      val rewritten =
+        kept.newest.map(d => (key(d), d.written, DocText.value(d.text), d.data("day").str))
+      kept.post(closed(3, Vector(Change.Dropped(freeze, "no longer true")), Vector(), period = 3))
+      (rewritten, kept.newest) ==> (
+        Vector(
+          (
+            "standing:c1/1",
+            Instant.parse("2026-10-02T12:00:00Z"),
+            "Staging deploys from main.\n- Hotfixes skip the freeze",
+            "2026-10-01"
+          )
+        ),
+        Vector()
+      )
+    }
+
+    test("a later closing closed unearned, or a job's run, still writes again or withdraws") {
+      val kept = new Kept
+      val third = standing("Reviews need two approvals", 1)
+      kept.post(closed(1, added(deploys, freeze, third), Vector(deploys, freeze, third)))
+      kept.post(
+        closed(
+          2,
+          Vector(Change.Evicted(deploys)),
+          Vector(freeze, third),
+          CloseReason.Unearned,
+          period = 2
+        )
+      )
+      val rewritten = kept.texts
+      kept.post(
+        closed(
+          3,
+          Vector(Change.Resolved(freeze, "done"), Change.Dropped(third, "gone")),
+          Vector(),
+          CloseReason.Ran,
+          period = 3
+        )
+      )
+      (rewritten, kept.newest) ==> (
+        Vector(
+          "Staging deploys from main.\n- Hotfixes skip the freeze\n- Reviews need two approvals"
+        ),
+        Vector()
+      )
     }
 
     test("a line added and refused at once, or added in another section, keeps nothing") {
@@ -180,27 +234,22 @@ object StandingDocumentsTests extends TestSuite {
 
     test("a line a later closing carries unchanged writes no new version") {
       val kept = new Kept
-      kept.post(closed(1, Vector(Change.Added(deploys)), Vector(deploys)))
+      kept.post(closed(1, added(deploys), Vector(deploys)))
       val first = kept.newest.map(_.version)
+      val later = standing("Hotfixes skip the freeze", 2, Ground.Tool)
       kept.post(
-        closed(
-          2,
-          Vector(Change.Added(freeze)),
-          Vector(deploys, freeze),
-          outcome = "Hotfixes skip the freeze."
-        )
+        closed(2, added(later), Vector(deploys, later), period = 2, outcome = "Hotfixes skip it.")
       )
-      (first.size, kept.newest.filter(d => key(d).endsWith(id(deploys))).map(_.version)) ==>
-        (1, first)
+      kept.newest.filter(key(_) == "standing:c1/1").map(_.version) ==> first
     }
 
     test("a period closed unearned, or a job's run, keeps nothing") {
       val kept = new Kept
-      kept.post(closed(1, Vector(Change.Added(deploys)), Vector(deploys), CloseReason.Unearned))
+      kept.post(closed(1, added(deploys), Vector(deploys), CloseReason.Unearned))
       kept.post(
         closed(
           2,
-          Vector(Change.Added(freeze)),
+          added(freeze),
           Vector(freeze),
           CloseReason.Ran,
           conversation = "c2",
@@ -214,20 +263,10 @@ object StandingDocumentsTests extends TestSuite {
       "the same line in two conversations is two documents, and resolving one leaves the other"
     ) {
       val kept = new Kept
-      kept.post(closed(1, Vector(Change.Added(deploys)), Vector(deploys)))
-      kept.post(
-        closed(
-          2,
-          Vector(Change.Added(deploys)),
-          Vector(deploys),
-          conversation = "c2",
-          origin = other
-        )
-      )
-      kept.post(closed(3, Vector(Change.Resolved(deploys, "done")), Vector()))
-      kept.newest.map(d => (key(d), d.place)) ==> Vector(
-        (s"standing:c2/${id(deploys)}", other.place)
-      )
+      kept.post(closed(1, added(deploys), Vector(deploys)))
+      kept.post(closed(2, added(deploys), Vector(deploys), conversation = "c2", origin = other))
+      kept.post(closed(3, Vector(Change.Resolved(deploys, "done")), Vector(), period = 2))
+      kept.newest.map(d => (key(d), d.place)) ==> Vector(("standing:c2/1", other.place))
     }
   }
 }

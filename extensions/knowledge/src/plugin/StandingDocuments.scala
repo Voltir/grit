@@ -1,24 +1,26 @@
 package grit.knowledge.plugin
 
+import java.time.ZoneOffset
+
 import scala.concurrent.duration.*
 
-import grit.core.context.Shown
-import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
-import grit.core.id.{ConversationId, DocKey, LineId, PluginName}
+import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentKeeper, DocumentTerms}
+import grit.core.id.{ConversationId, DocKey, LineId, PeriodSeq, PluginName}
 import grit.core.period.{Change, Ground, Line, Section}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
+import grit.core.visibility.Label
 
-/** Each decision or fact a conversation settled, kept as a document of its own (ADR 0028), so a
-  * window elsewhere can find it once the conversation is done: every Standing line an earned
-  * closing ([[grit.core.period.CloseReason.shownElsewhere]]) adds, under its conversation and
-  * line, at the closed conversation's label, believed at its closing's integrity, placed at its
-  * conversation, written at that close; its text the line on its ground (a line only the
-  * assistant said, as not confirmed) and what the closing came to
-  * ([[grit.core.period.Closing.headline]]). Withdrawn when a later closing of its conversation
-  * resolves, drops or evicts the line, whatever that closing's reason; a line carried unchanged
-  * writes nothing. A line whose adding closing was purged before the plugin was first posted is
-  * never kept. No model call.
+/** What each earned closing ([[grit.core.period.CloseReason.shownElsewhere]]) of a conversation
+  * settled, kept as one document (ADR 0028) so a window elsewhere can find it once the
+  * conversation is done: the closing's headline ([[grit.core.period.Closing.headline]]), then
+  * each Standing line it added on a person's or a tool's ground; a closing adding none keeps
+  * nothing. At the closed conversation's label, believed at its closing's integrity, placed at
+  * its conversation, written at that close. When a later closing of the conversation, earned or
+  * not, resolves, drops or evicts one of its lines, the document is written again at that close
+  * without it, at the integrity it had, or withdrawn when none of its lines is left; a line
+  * carried unchanged writes nothing. A closing purged before the plugin was first posted keeps
+  * nothing. No model call.
   */
 final class StandingDocuments(val name: PluginName) extends Plugin {
 
@@ -29,14 +31,16 @@ final class StandingDocuments(val name: PluginName) extends Plugin {
 
 object StandingDocuments {
 
-  /** Label "standing: a decision or fact a conversation settled", unscaled, kept 30 days, at
-    * most 1000 documents over every label.
+  /** Label "what a conversation settled", unscaled, kept 30 days, at most 1000 documents over
+    * every label. A document's data is `{"conversation", "period", "day", "headline", "lines":
+    * [{"line", "ground"}]}`: the adding closing's conversation, period, UTC day and headline,
+    * and each line it keeps by id with its ground's key.
     */
   val Terms: DocumentTerms =
     // Literals both constructors accept, read when the object is first used: every test of
     // the plugin throws here if not.
     (for {
-      label <- DocLabel.of("standing: a decision or fact a conversation settled")
+      label <- DocLabel.of("what a conversation settled")
       terms <- DocumentTerms.of(label, DocWeight.Unscaled, 30.days, 1000)
     } yield terms).fold(why => throw new IllegalStateException(why), identity)
 
@@ -46,18 +50,21 @@ object StandingDocuments {
     val posting: Option[DocumentPosting] = Some(Posted)
   }
 
-  /** Each Standing line a closing adds, kept; each it takes out, withdrawn. */
+  /** Each closing's kept lines, written; each document a closing takes a line from, written
+    * again without it.
+    */
   private object Posted extends DocumentPosting {
     def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
         tx: Tx^
     ): Either[StoreError, Unit] = {
       // Posting reads and keeps at the closed conversation's label (Tx.cleared).
       val label = Tx.cleared(tx)
-      val standing = closed.closing.balance.in(Section.Standing).map(_.id).toSet
+      val standing = closed.closing.balance.in(Section.Standing)
+      val inBalance = standing.map(_.id).toSet
       // An Added line the cap then refused is not in the balance: never written.
       val added =
         if (closed.reason.shownElsewhere) closed.closing.flows.changes.collect {
-          case Change.Added(l) if standing(l.id) => l
+          case Change.Added(l) if inBalance(l.id) && kept(l) => l
         }
         else Vector.empty
       val gone = closed.closing.flows.changes.collect {
@@ -66,54 +73,141 @@ object StandingDocuments {
         case Change.Evicted(l) if l.section == Section.Standing => l
       }
       for {
-        _ <- each(gone)(l => key(closed, l).flatMap(keeper.withdraw(_, label, closed.at)))
-        _ <- each(added) { l =>
+        _ <- each(gone.map(_.since).distinct)(since =>
           for {
-            k <- key(closed, l)
-            text <- DocText.of(text(l, closed.closing.headline)).left.map(StoreError.Invalid(_))
-            _ <- keeper.write(
-              k,
-              label,
-              closed.integrity,
-              closed.origin.place,
-              text,
-              data(closed, l),
-              None,
-              closed.at
-            )
+            k <- key(closed, since)
+            now <- keeper.current(k, label)
+            _ <- now.fold(Right(()))(again(keeper, k, label, _, standing, closed))
           } yield ()
-        }
+        )
+        _ <-
+          if (added.isEmpty) Right(())
+          else {
+            val made = Made(
+              closed.ref.conversationId,
+              closed.ref.seq,
+              closed.at.atOffset(ZoneOffset.UTC).toLocalDate.toString,
+              closed.closing.headline,
+              added
+            )
+            for {
+              k <- key(closed, closed.ref.seq)
+              text <- made.text
+              _ <- keeper.write(
+                k,
+                label,
+                closed.integrity,
+                closed.origin.place,
+                text,
+                made.data,
+                None,
+                closed.at
+              )
+            } yield ()
+          }
       } yield ()
     }
   }
 
-  /** `standing:{conversation}/{line}`: a line's id is the same in every conversation. */
-  private def key(closed: ClosedPeriod, l: Line): Either[StoreError, DocKey] =
+  /** `document`, under `key` at `label`, written again at `closed`'s close with only its lines
+    * still in `standing`, or withdrawn when none is, or when its data does not read: a document
+    * this plugin cannot read back cannot be told apart from one it no longer keeps.
+    */
+  private def again(
+      keeper: DocumentKeeper,
+      key: DocKey,
+      label: Label,
+      document: Document,
+      standing: Vector[Line],
+      closed: ClosedPeriod
+  )(using Tx^): Either[StoreError, Unit] =
+    Made.read(document.data, standing) match {
+      case Some(made) if made.lines.nonEmpty =>
+        made.text.flatMap(text =>
+          keeper
+            .write(
+              key,
+              label,
+              document.integrity,
+              document.place,
+              text,
+              made.data,
+              document.pointer,
+              closed.at
+            )
+            .map(_ => ())
+        )
+      case _ => keeper.withdraw(key, label, closed.at).map(_ => ())
+    }
+
+  /** Whether `l` is one a document keeps: a Standing line a person or a tool established. */
+  private def kept(l: Line): Boolean =
+    l.section == Section.Standing && l.ground.exists(g => g == Ground.Person || g == Ground.Tool)
+
+  /** A document as made: what the closing of `conversation`'s `period`, on `day`, came to, and
+    * the `lines` it keeps, in the balance's order.
+    */
+  private final case class Made(
+      conversation: ConversationId,
+      period: PeriodSeq,
+      day: String,
+      headline: String,
+      lines: Vector[Line]
+  ) {
+    def text: Either[StoreError, DocText] =
+      DocText
+        .of((headline +: lines.map(l => s"- ${l.text}")).mkString("\n"))
+        .left
+        .map(StoreError.Invalid(_))
+
+    def data: ujson.Value =
+      ujson.Obj(
+        "conversation" -> ConversationId.value(conversation),
+        "period" -> PeriodSeq.value(period).toDouble,
+        "day" -> day,
+        "headline" -> headline,
+        "lines" -> ujson.Arr.from(
+          lines.map(l =>
+            ujson.Obj(
+              "line" -> LineId.value(l.id),
+              "ground" -> l.ground.fold(ujson.Null: ujson.Value)(g => ujson.Str(g.key))
+            )
+          )
+        )
+      )
+  }
+
+  private object Made {
+
+    /** What `data` says, its lines those of `standing` it names; `None` when it does not read. */
+    def read(data: ujson.Value, standing: Vector[Line]): Option[Made] =
+      for {
+        o <- data.objOpt
+        conversation <- o.get("conversation").flatMap(_.strOpt)
+        period <- o.get("period").flatMap(_.numOpt).flatMap(n => PeriodSeq.of(n.toLong))
+        day <- o.get("day").flatMap(_.strOpt)
+        headline <- o.get("headline").flatMap(_.strOpt)
+        named <- o.get("lines").flatMap(_.arrOpt)
+      } yield {
+        val ids = named.flatMap(_.objOpt).flatMap(_.get("line")).flatMap(_.strOpt).toSet
+        Made(
+          ConversationId(conversation),
+          period,
+          day,
+          headline,
+          standing.filter(l => ids(LineId.value(l.id)))
+        )
+      }
+  }
+
+  /** `standing:{conversation}/{period}`: the document of the closing of that period. */
+  private def key(closed: ClosedPeriod, period: PeriodSeq): Either[StoreError, DocKey] =
     DocKey
       .of(
-        s"standing:${ConversationId.value(closed.ref.conversationId)}/${LineId.value(l.id)}"
+        s"standing:${ConversationId.value(closed.ref.conversationId)}/${PeriodSeq.value(period)}"
       )
       .left
       .map(StoreError.Invalid(_))
-
-  /** The line on its ground, then what its closing came to. */
-  private def text(l: Line, headline: String): String = {
-    val said = l.ground match {
-      case Some(Ground.Claimed) => Shown.unconfirmed(l.text)
-      case Some(Ground.Tool) => s"${l.text} (a tool's result showed it)"
-      case Some(Ground.Person) => s"${l.text} (a person said so)"
-      // A Standing line always has a ground; a line without one is shown as it reads.
-      case None => l.text
-    }
-    s"$said\nFrom a conversation that came to: $headline"
-  }
-
-  private def data(closed: ClosedPeriod, l: Line): ujson.Value =
-    ujson.Obj(
-      "conversation" -> ConversationId.value(closed.ref.conversationId),
-      "line" -> LineId.value(l.id),
-      "ground" -> l.ground.fold(ujson.Null: ujson.Value)(g => ujson.Str(g.key))
-    )
 
   private def each[A](as: Vector[A])(f: A => Either[StoreError, ?]): Either[StoreError, Unit] =
     as.foldLeft[Either[StoreError, Unit]](Right(()))((done, a) =>

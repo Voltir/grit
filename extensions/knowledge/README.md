@@ -4,7 +4,7 @@ Cards: one short document per unit of a source (a repository's files and directo
 summary with search terms and a pointer (ADR 0028) to the hosted call that reads the unit, so a
 window can show what a source holds without holding it. Names `grit.core` alone: a source is
 read through the MCP tools a deployment offers, never a client of its own. Beside the cards, a
-second plugin keeps each decision or fact a closed conversation settled as a document
+second plugin keeps what each closed conversation settled as a document
 (`StandingDocuments`, in `plugin`).
 
 Strand documents: by a third plugin in the same module, one short document per strand of a
@@ -50,8 +50,8 @@ Packages, in one-way order (each names only those before it):
   `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc);
   `StrandDocuments`, the strands plugin: the `Dream` job on a daily schedule per label it is
   declared at, and its documents' terms; and `StandingDocuments`, a plugin of its own over core
-  alone: each decision or fact a conversation's close settled (a Standing line) kept as a
-  document, with no model call. Each is its own plugin because a plugin's documents share one
+  alone: the decisions and facts a person or a tool established at a conversation's
+  close (its Standing lines), one document per close, with no model call. Each is its own plugin because a plugin's documents share one
   label and one bound, and a sync holds every current document to be a card. Imports `github`,
   `drive`, `sync` and `strand`.
 
