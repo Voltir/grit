@@ -15,9 +15,9 @@ private[markdown] object Blocks {
   /** `lines` as blocks. When `open`, they end where a reply still arriving has got to, and
     * the last block's inline text is read as unfinished ([[Inlines.parse]]).
     */
-  def parse(lines: Vector[String], open: Boolean): Vector[Block] = {
+  def parse(lines: Vector[String], open: Boolean): Vector[Block[Nothing]] = {
     val n = lines.length
-    val out = Vector.newBuilder[Block]
+    val out = Vector.newBuilder[Block[Nothing]]
 
     /** Whether a leaf whose lines end before `end` is the last thing in `lines`. */
     def atEnd(end: Int): Boolean =
@@ -105,9 +105,9 @@ private[markdown] object Blocks {
       i: Int,
       first: Marker,
       open: Boolean
-  ): (Block, Int) = {
+  ): (Block[Nothing], Int) = {
     val n = lines.length
-    val out = Vector.newBuilder[Item]
+    val out = Vector.newBuilder[Item[Nothing]]
     var k = i
     var current: Option[Marker] = Some(first)
     while (current.nonEmpty) {
@@ -208,7 +208,7 @@ private[markdown] object Blocks {
       quoted(line).nonEmpty || marker(line).exists(m => !m.ordered || m.number == 1)
 
   /** A table row's cells, split at unescaped pipes, the outer pipes dropped. */
-  private def cells(line: String, open: Boolean): Vector[Text] = {
+  private def cells(line: String, open: Boolean): Vector[Text[Nothing]] = {
     val t = line.trim.stripPrefix("|")
     val body = if (t.endsWith("|") && !t.endsWith("\\|")) t.dropRight(1) else t
     val out = Vector.newBuilder[String]

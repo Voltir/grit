@@ -5,5 +5,5 @@ package grit.prose.form
   * and of what it was built with -- a theme, say -- and nothing else.
   */
 trait Renderer[+Out] {
-  def render(doc: Doc): Out
+  def render(doc: Doc[Nothing]): Out
 }

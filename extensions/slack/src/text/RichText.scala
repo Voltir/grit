@@ -28,7 +28,7 @@ object RichText extends Renderer[Vector[Post]] {
     * a table as preformatted aligned text, a code block's language dropped, a list or quote
     * inside a list item or a quote flattened to its text. None for an empty doc.
     */
-  def render(doc: Doc): Vector[Post] =
+  def render(doc: Doc[Nothing]): Vector[Post] =
     posts(doc.blocks.flatMap(block).flatMap(fit))
 
   /** `posts` with `line` as a context block, in plain text, after the last post's blocks; in a
@@ -121,7 +121,7 @@ object RichText extends Renderer[Vector[Post]] {
         )
       )
 
-  private def block(b: Block): Vector[Piece] = b match {
+  private def block(b: Block[Nothing]): Vector[Piece] = b match {
     case Block.Paragraph(t) => Vector(Piece(rich(section(spans(t))), t.plain))
     case Block.Heading(_, t) => Vector(Piece(rich(section(spans(t, bold = true))), t.plain))
     case Block.Rule => Vector(Piece(ujson.Obj("type" -> "divider"), ""))
@@ -158,7 +158,7 @@ object RichText extends Renderer[Vector[Post]] {
   private def lists(
       style: String,
       offset: Int,
-      items: Vector[Item],
+      items: Vector[Item[Nothing]],
       indent: Int
   ): Vector[ujson.Obj] = {
     def list(at: Int, sections: Vector[ujson.Value]): ujson.Obj =
@@ -196,7 +196,7 @@ object RichText extends Renderer[Vector[Post]] {
   /** `blocks` as one run of inline elements, a line break between blocks: what a list item or
     * a quote may hold.
     */
-  private def flat(blocks: Vector[Block]): Vector[ujson.Value] =
+  private def flat(blocks: Vector[Block[Nothing]]): Vector[ujson.Value] =
     merge(blocks.zipWithIndex.flatMap { (b, i) =>
       val sep = if (i == 0) Vector.empty else Vector(plain("\n"))
       sep ++ (b match {
@@ -207,7 +207,7 @@ object RichText extends Renderer[Vector[Post]] {
       })
     })
 
-  private def plainOf(blocks: Vector[Block]): String =
+  private def plainOf(blocks: Vector[Block[Nothing]]): String =
     blocks
       .map {
         case Block.Paragraph(t) => t.plain
@@ -221,8 +221,8 @@ object RichText extends Renderer[Vector[Post]] {
       }
       .mkString("\n")
 
-  private def spans(t: Text, bold: Boolean = false): Vector[ujson.Value] =
-    merge(t.spans.map { case Span(text, marks) =>
+  private def spans(t: Text[Nothing], bold: Boolean = false): Vector[ujson.Value] =
+    merge(t.spans.map { case Span(text, marks, _) =>
       val all = if (bold) marks + Mark.Strong else marks
       all.collectFirst { case Mark.Link(href) => href } match {
         case Some(href) =>
@@ -278,7 +278,7 @@ object RichText extends Renderer[Vector[Post]] {
   /** `header` and `rows` as aligned text: cells padded to their column's width, split by
     * ` | `, the header ruled off with `-` and `+`.
     */
-  private def table(header: Vector[Text], rows: Vector[Vector[Text]]): String = {
+  private def table(header: Vector[Text[Nothing]], rows: Vector[Vector[Text[Nothing]]]): String = {
     val all = (header +: rows).map(_.map(_.plain))
     val columns = all.map(_.size).maxOption.getOrElse(0)
     val cells = all.map(r => r.padTo(columns, ""))

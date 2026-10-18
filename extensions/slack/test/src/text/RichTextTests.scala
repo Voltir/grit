@@ -19,9 +19,9 @@ object RichTextTests extends TestSuite {
     o
   }
 
-  private def para(t: String): Block = Block.Paragraph(Text.plain(t))
+  private def para(t: String): Block[Nothing] = Block.Paragraph(Text.plain(t))
 
-  private def only(doc: Doc): ujson.Arr =
+  private def only(doc: Doc[Nothing]): ujson.Arr =
     RichText.render(doc) match {
       case Vector(post) => post.blocks
       case other => throw new java.lang.AssertionError(s"${other.size} posts")

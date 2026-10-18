@@ -10,7 +10,7 @@ object Markdown {
   /** A whole piece of markdown, as prose. An emphasis or code span left unclosed is
     * literal text; a code fence left unclosed runs to the end.
     */
-  def parse(text: String): Doc = Doc(Blocks.parse(lines(text), open = false))
+  def parse(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(text), open = false))
 
   /** The start of markdown still arriving -- a reply as it streams -- as prose that the
     * rest will only extend: an unclosed span runs to the end, a delimiter or a line that
@@ -18,7 +18,7 @@ object Markdown {
     * code. So each prefix renders close to the last, rather than flipping between
     * literal markers and styled text as tokens land.
     */
-  def parsePrefix(text: String): Doc = Doc(Blocks.parse(lines(held(text)), open = true))
+  def parsePrefix(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(held(text)), open = true))
 
   /** `text` split into lines, carriage returns dropped. */
   private def lines(text: String): Vector[String] =

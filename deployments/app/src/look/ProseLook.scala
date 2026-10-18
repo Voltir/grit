@@ -48,7 +48,7 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
     }
   }
 
-  def render(doc: Doc): Vector[Block] =
+  def render(doc: Doc[Nothing]): Vector[Block] =
     if (doc.isEmpty) Vector(Block.Text("").beside(lead, indent))
     else {
       val out = Vector.newBuilder[Block]
@@ -69,7 +69,12 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
     * reply's indent and the rails and indents of the lists and quotes it sits in. `depth`
     * is how many lists deep.
     */
-  private def block(b: Prose, first: StyledText, rest: StyledText, depth: Int): Vector[Block] =
+  private def block(
+      b: Prose[Nothing],
+      first: StyledText,
+      rest: StyledText,
+      depth: Int
+  ): Vector[Block] =
     b match {
       case Prose.Paragraph(_) | Prose.Heading(_, _) =>
         Vector(Block.styled(words(b)).beside(first, rest))
@@ -115,7 +120,7 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
     * its marker on a row of its own.
     */
   private def list(
-      items: Vector[Item],
+      items: Vector[Item[Nothing]],
       marker: Int -> String,
       first: StyledText,
       rest: StyledText,
@@ -157,12 +162,12 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
     * wrapped at the pane's edge, after `margin` on every row.
     */
   private def table(
-      header: Vector[Inline],
-      rows: Vector[Vector[Inline]],
+      header: Vector[Inline[Nothing]],
+      rows: Vector[Vector[Inline[Nothing]]],
       margin: StyledText
   ): Block = {
     val cols = (header.length +: rows.map(_.length)).maxOption.getOrElse(0)
-    def cells(row: Vector[Inline], style: Style): Vector[StyledText] =
+    def cells(row: Vector[Inline[Nothing]], style: Style): Vector[StyledText] =
       (0 until cols).toVector.map(c => row.lift(c).fold(StyledText.empty)(t => phrase(t, style)))
     val head = cells(header, body + Style.Bold)
     val body1 = rows.map(cells(_, body))
@@ -188,7 +193,7 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
   }
 
   /** A paragraph's or a heading's words, in their styles; nothing for any other block. */
-  private def words(b: Prose): StyledText = b match {
+  private def words(b: Prose[Nothing]): StyledText = b match {
     case Prose.Paragraph(t) => phrase(t, body)
     case Prose.Heading(level, t) =>
       phrase(t, if (level.value <= 2) Style.fg(theme.grit) + Style.Bold else body + Style.Bold)
@@ -198,7 +203,7 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
   /** `t` in `base`. A link's text is followed by where it goes, faint, unless the text is
     * the address.
     */
-  private def phrase(t: Inline, base: Style): StyledText = {
+  private def phrase(t: Inline[Nothing], base: Style): StyledText = {
     var acc = StyledText.empty
     var linked = ""
     var i = 0

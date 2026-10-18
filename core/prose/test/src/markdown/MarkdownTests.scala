@@ -9,14 +9,14 @@ import utest.*
   */
 object MarkdownTests extends TestSuite {
 
-  private def plain(s: String): Text = Text.plain(s)
+  private def plain(s: String): Text[Nothing] = Text.plain(s)
 
-  private def marked(s: String, marks: Mark*): Span = Span(s, marks.toSet)
+  private def marked(s: String, marks: Mark*): Span[Nothing] = Span(s, marks.toSet)
 
-  private def para(spans: Span*): Block = Block.Paragraph(Text(spans.toVector))
+  private def para(spans: Span[Nothing]*): Block[Nothing] = Block.Paragraph(Text(spans.toVector))
 
   /** Every block, depth first: the shape a reader sees, whatever the words. */
-  private def kinds(blocks: Vector[Block]): Vector[String] =
+  private def kinds(blocks: Vector[Block[Nothing]]): Vector[String] =
     blocks.flatMap {
       case Block.Paragraph(_) => Vector("p")
       case Block.Heading(l, _) => Vector(s"h${l.value}")
@@ -29,7 +29,7 @@ object MarkdownTests extends TestSuite {
     }
 
   /** Every character a reader would be shown, marks dropped. */
-  private def shown(blocks: Vector[Block]): String =
+  private def shown(blocks: Vector[Block[Nothing]]): String =
     blocks
       .map {
         case Block.Paragraph(t) => t.plain

@@ -18,21 +18,26 @@ enum Mark {
   case Link(href: String)
 }
 
-/** A run of text under one set of marks. A `'\n'` in `text` is a line break the author
-  * wrote, which an edge keeps.
+/** A run of text under one set of marks, carrying `notes`: what its writer says of it, never
+  * shown by a renderer. A `'\n'` in `text` is a line break the author wrote, which an edge
+  * keeps.
   */
-final case class Span(text: String, marks: Set[Mark])
+final case class Span[+A <: caps.Pure](text: String, marks: Set[Mark], notes: Vector[A])
 
 object Span {
 
+  /** `text` under `marks`, with no notes. */
+  def apply(text: String, marks: Set[Mark]): Span[Nothing] = Span(text, marks, Vector.empty)
+
   /** `text` with no marks. */
-  def plain(text: String): Span = Span(text, Set.empty)
+  def plain(text: String): Span[Nothing] = Span(text, Set.empty)
 }
 
 /** Inline text: the spans of a paragraph, a heading, a table cell. Adjacent spans never
-  * share a set of marks, and none is empty, when the parser made them.
+  * share both their marks and their notes, and none is empty, when the parser or [[Text.of]]
+  * made them.
   */
-final case class Text(spans: Vector[Span]) {
+final case class Text[+A <: caps.Pure](spans: Vector[Span[A]]) {
 
   /** The characters alone, marks dropped. */
   def plain: String = spans.map(_.text).mkString
@@ -42,8 +47,8 @@ final case class Text(spans: Vector[Span]) {
 
 object Text {
 
-  val empty: Text = Text(Vector.empty)
+  val empty: Text[Nothing] = Text(Vector.empty)
 
   /** `s` with no marks. */
-  def plain(s: String): Text = if (s.isEmpty) empty else Text(Vector(Span.plain(s)))
+  def plain(s: String): Text[Nothing] = if (s.isEmpty) empty else Text(Vector(Span.plain(s)))
 }

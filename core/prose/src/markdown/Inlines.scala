@@ -14,7 +14,9 @@ private[markdown] object Inlines {
     * about to open or close something is held back, so what is shown does not change
     * shape when the rest arrives. Otherwise an unclosed opener is literal.
     */
-  def parse(s: String, open: Boolean): Text = Text(merged(spans(s, 0, s.length, Set.empty, open)))
+  def parse(s: String, open: Boolean): Text[Nothing] = Text(
+    merged(spans(s, 0, s.length, Set.empty, open))
+  )
 
   private def spans(
       s: String,
@@ -22,8 +24,8 @@ private[markdown] object Inlines {
       until: Int,
       marks: Set[Mark],
       open: Boolean
-  ): Vector[Span] = {
-    val out = Vector.newBuilder[Span]
+  ): Vector[Span[Nothing]] = {
+    val out = Vector.newBuilder[Span[Nothing]]
     val lit = new StringBuilder
     def flush(): Unit =
       if (lit.nonEmpty) { out += Span(lit.toString, marks); lit.clear() }
@@ -244,8 +246,8 @@ private[markdown] object Inlines {
     c < 128 && "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(c)
 
   /** Adjacent spans with the same marks joined, empty ones dropped. */
-  private def merged(in: Vector[Span]): Vector[Span] =
-    in.foldLeft(Vector.empty[Span]) { (acc, s) =>
+  private def merged(in: Vector[Span[Nothing]]): Vector[Span[Nothing]] =
+    in.foldLeft(Vector.empty[Span[Nothing]]) { (acc, s) =>
       if (s.text.isEmpty) acc
       else
         acc.lastOption match {

@@ -32,7 +32,7 @@ private[edge] object ReviewPrompt {
   /** What every prompt shows: the question, its message in `channel` (as a person reads it)
     * linked by `permalink`, and the legend of [[Reactions]].
     */
-  def doc(channel: String, permalink: String): Doc =
+  def doc(channel: String, permalink: String): Doc[Nothing] =
     Doc(
       Vector(
         Block.Paragraph(
