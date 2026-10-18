@@ -9,7 +9,6 @@ believed however placed or framed, on every model tried. Turned down:
 
 - Strict Biba (no read down): an assistant must read untrusted text. The model as the judge of
   what to believe: the measurement above.
-- FIDES' flipped order (untrusted on top): ADR 0035 binds "higher integrity" to Biba's sense.
 - One interned id per (confidentiality, integrity) pair: it couples the dimensions, though
   integrity never hides a row.
 - Always showing and lowering what reads below the turn, always hiding it, or re-offering a
@@ -29,8 +28,9 @@ Decision:
   compartments), met with its room's cap in the entries insert, so no caller can forget it. A
   deployment caps (`Cap`) what is said at a place and every place within it no deeper cap
   covers: a room, a service, a repository. A tool result is believed per item: its
-  service's extension reads each item's place and author (`Accounts`; a file read, the meet
-  over everyone who may edit it, ADR 0039), and the result takes the meet of each author's
+  service's extension reads each item's place and author (`Accounts`; a Drive file read, the
+  meet over everyone who may edit it, ADR 0039; a repository's file at a branch or tag, member,
+  as only its writers push those), and the result takes the meet of each author's
   level and place's cap: untrusted if unaccountable, its service's cap if unread (untrusted
   when none, as for a relay). What grit writes takes its writer's current level.
 - **A turn's low-water mark.** A turn starts at its trigger's level and falls, each round, to
@@ -53,9 +53,7 @@ Decision:
   at most `Bounded.K` bits (`extract`: a typed question to a quarantined model) to `Trusted`
   at the turn's level met with member; and the sanitiser, which raises free text from below
   outside to outside, still `Tainted`. A classifier labels features and code decides. Vetting
-  reads the text the model reads, rendered from an answer's facts, never the facts themselves
-  (`docs/extending.md`, "A tool's answer is data").
-- **In SQL**, each labelled row has an `integrity_id` (`grit.integrity_labels`).
+  reads the text the model reads, never the facts it is rendered from (`docs/extending.md`).
 - **In the types.** `Tainted[T]` has a pure `map` and no exit. `Trusted[T]` has a free `extract`
   and a pure `coflatMap`, and is made only by a check against a required level
   (`Trusted.check`), a downgrade, or a constant. A gated tool takes `Trusted` arguments.

@@ -5,9 +5,10 @@ Status: accepted (2026-10-16)
 Context: a turn's window was drawn in one `assemble` step, with its search query written by a
 model call inside that step and nothing recorded between. A crash mid-assembly paid the query
 writer again, the pool the search ranked was never kept, and nothing judged whether what BM25
-ranked high was about the turn at all: whatever fit the budget was packed. Turned down: Stage 2
-as its own workflow before the turn (mentions never pass triage, ADR 0025, so it would need a
-second enqueue path); one `assemble` step recording the pool and verdicts in its output (a crash
+ranked high was about the turn at all: whatever fit the budget was packed. Turned down: judging
+relevance in a workflow of its own before the turn, rather than as the turn's own step between
+the assembler's reads (mentions never pass triage, ADR 0025, so it would need a second enqueue
+path); one `assemble` step recording the pool and verdicts in its output (a crash
 pays the writer and the classifier again); the turn's own call-then-cost steps, as `weigh` and
 `offer` make them, instead of moves (no daily-cap admission, a second cost path); an assembler
 holding `Models` or a `Classifier` and making the calls itself (it hides calls from the record);

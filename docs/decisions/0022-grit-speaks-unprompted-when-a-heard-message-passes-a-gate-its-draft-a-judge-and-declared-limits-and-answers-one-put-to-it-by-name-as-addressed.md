@@ -42,10 +42,12 @@ Decision:
 - **Otherwise the turn drafts** (root `Heard`): told it was not addressed, to add what the
   thread lacks or reply `pass`. A draft is never shown, never searched, and not a period's
   activity.
-- **A classifier judges the draft**: is it `grounded` in what the turn recalled or its
-  thread, and `worth` posting, answering the heard message where the thread has not; the
-  weaker is its score (`Judged.score`). A pass, or a window that
-  recalled nothing, is settled without asking.
+- **A classifier judges the draft** against the heard message, its thread, and what the turn
+  recalled: sections from elsewhere, documents, its own record where the thread cuts what it
+  covers, and what its own calls read. Is it `grounded` in those, and `worth` posting, answering
+  the heard message where the thread has not; the weaker is its score (`Judged.score`). A pass,
+  or a draft with nothing recalled, is settled without asking; a document above the judge's
+  clearance leaves it unjudged, so not posted.
 - **The draft is posted** in the message's thread only when its score reaches `postAt`,
   speaking is `Within`, and the assistant has not replied since, in the thread or its strand
   (ADR 0023), checked in the transaction that writes the reply.
@@ -64,4 +66,4 @@ message's text (`Prompt` has no field for it); a label is read back by its entry
 
 Consequences: every unprompted post traces to the scores that allowed it. Harder: every
 heard message in a speaking deployment writes a decision row. Enforced by `SpeechTests`,
-`ReviewContract`, and the replay gate (`TurnReplayTests`).
+the reviews store's contract, and the replay gate (`TurnReplayTests`).

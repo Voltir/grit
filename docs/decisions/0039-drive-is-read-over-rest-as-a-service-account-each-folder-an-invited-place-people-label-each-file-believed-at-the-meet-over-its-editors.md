@@ -61,4 +61,4 @@ listing one.
 A workflow's steps record nothing of Drive beyond a tool result and the facts a call's answer
 kept, a read's text a second time at most. Enforced by the transaction's reads (`Tx.access`, `Tx.roomLabel`), ADR 0033's rule,
 and the law (`mcp-generic-names-no-github`, which keeps Drive out of the generic MCP client);
-`DriveItemsTests`, `DriveFactsPinTests` and `AdministrationContract`.
+`DriveItemsTests` and `AdministrationContract`.

@@ -41,9 +41,9 @@ Decision:
 
 Consequences:
 
-- Recall across sessions, repositories and threads needs no link or configuration. Retrieval
-  writes its search query on a period's first turn whenever anything in scope is open or has a
-  closing kept: one small model call.
+- Recall across sessions, repositories and threads needs no link or configuration. A turn
+  writes a search query (ADR 0040) whenever a search could find what its window would leave
+  out: one small model call, then up to three relevance calls.
 - A thread can answer from what a closed thread settled. A record costs its whole text when it
   wins a place in the window.
 - Ranking across conversations relies on the index's corpus statistics being global (ADR
@@ -55,5 +55,5 @@ Consequences:
   whole; judging its lines one by one is deferred, not ruled out.
 - Narrowing the default is a setting, not a migration: a deployment seeds the scope (the
   reference deployment, serving an edge, seeds `room`).
-- Enforced by `PlaceTests` (scopes and rooms) and `RetrievalAssemblerTests`, and by the period
-  contract (`openElsewhere`, `closedElsewhere`).
+- Enforced by `PlaceTests` (scopes and rooms) and `RetrievalAssemblerTests`, over the period
+  store's `openElsewhere` and `closedElsewhere`.

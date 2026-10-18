@@ -35,7 +35,7 @@ Decision:
 - **A document may hold a pointer** (`Pointer`): the one hosted call that reads what it
   stands for. It names the tool as the model is offered it (an MCP server's tool under its
   server's prefix), so a window shows the line only to a turn offered that name, and a call
-  follows it by comparing names alone. Its arguments never name a destination (ADR 0031): a
+  follows it when it names that tool and holds each of its arguments unchanged, more besides. Its arguments never name a destination (ADR 0031): a
   pointer names a read.
 - **Core counts placement and follows.** The step that records a window records each document
   it holds by version and, in the same transaction, each one's placement count and last
