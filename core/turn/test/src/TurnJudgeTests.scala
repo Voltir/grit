@@ -233,6 +233,21 @@ object TurnJudgeTests extends TestSuite {
       ).thread ==> s"…\nAna: one two\nSomeone: ${"y" * 1_000}"
     }
 
+    test("a one-message conversation's thread is empty, and its message holds the heard message") {
+      val heard = entry(0, Payload.Heard("is it still on?"))
+      val state = judging(
+        Vector(heard),
+        Window(Vector(heard.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        Speakers(Map(heard.id -> "Ben")),
+        "draft",
+        mine = Vector(heard)
+      )
+      assert(state.thread.isEmpty, state.message == "Ben: is it still on?")
+    }
+
     test("an asked section is recalled: what grit was asked elsewhere grounds a draft") {
       val place = Place.read("slack:T1/C2/3.0").fold(e => sys.error(e), identity)
       val ask = Entry(

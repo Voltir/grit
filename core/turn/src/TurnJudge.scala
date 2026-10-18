@@ -28,7 +28,8 @@ object TurnJudge {
   val RecalledChars = 60_000
 
   /** The judge's state: `{"message": ..., "thread": ..., "draft": ..., "recalled": ...}`,
-    * the heard message's first [[ThreadChars]], the thread's last [[ThreadChars]], the draft,
+    * the heard message's first [[ThreadChars]] (the thread leaves it out), the thread's last
+    * [[ThreadChars]] (what came before the heard message, and every reply after it), the draft,
     * and what the turn recalled its first [[RecalledChars]].
     */
   final case class State(message: String, thread: String, draft: String, recalled: String)
@@ -112,11 +113,13 @@ object TurnJudge {
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
     * `showing` what the turn's request over `window` was shown ([[TurnShown.shown]]), `strand`
     * what its strand said, and `speakers` who wrote `all` and the strand: the message is the
-    * turn's own first message under its speaker's name, empty when it has none; the thread is
-    * the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's message
-    * and each reply so far, the heard message and every reply after it included, within
-    * [[ThreadChars]] altogether ([[Stitching.fit]]), one per line under its speaker's name
-    * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
+    * heard message, the turn's own first message under its speaker's name, empty when it has
+    * none; the thread is the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then
+    * each person's message and each reply so far within [[ThreadChars]] altogether
+    * ([[Stitching.fit]]), one per line under its speaker's name ("Assistant" for grit's). The
+    * heard message is left out of the thread, so it is read once, under the message; the thread
+    * holds what came before it and every reply after it. Recalled is what the model was shown
+    * ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
     * then of each record among the window's entries whose earlier messages the thread does
     * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
@@ -142,9 +145,20 @@ object TurnJudge {
         case p => p.said.map(line(speakers.of(e.id).getOrElse("Someone"), _))
       }).map(e.seq -> _)
     }
+    // The heard message is the turn's own first message; it is read once, under `message`, so
+    // the thread leaves it out. It counts as shown, as `message` shows it whole.
+    val heard = showing.mine
+      .sortBy(e => EntrySeq.value(e.seq))
+      .flatMap(e =>
+        e.payload.said.map(said =>
+          e.seq -> Stitching.Line(speakers.of(e.id).getOrElse("Someone"), said, e.createdAt)
+        )
+      )
+      .headOption
+    val others = lines.filterNot((seq, _) => heard.exists((h, _) => h == seq)).map(_._2)
     val thread = Stitching.fit(
       Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
-      lines.map(_._2),
+      others,
       "\n",
       ThreadChars
     )
@@ -152,7 +166,7 @@ object TurnJudge {
     // not show that whole: the thread holds none of it, or leaves a message out whole or cut
     // inside (its shown messages are then not all of them as said).
     def unshown(record: Entry): Boolean =
-      thread.cut.nonEmpty || thread.shown != lines.map(_._2) || !lines.headOption.exists((seq, _) =>
+      thread.cut.nonEmpty || thread.shown != others || !lines.headOption.exists((seq, _) =>
         EntrySeq.value(seq) < EntrySeq.value(record.seq)
       )
     val sections = window.nearby
@@ -180,15 +194,8 @@ object TurnJudge {
     }
     val recalled =
       (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
-    val message = showing.mine
-      .sortBy(e => EntrySeq.value(e.seq))
-      .flatMap(e =>
-        e.payload.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _, e.createdAt))
-      )
-      .headOption
-      .fold("")(_.shown)
     State(
-      message,
+      heard.fold("")((_, line) => line.shown),
       thread.text,
       draft,
       recalled.mkString("\n\n")
