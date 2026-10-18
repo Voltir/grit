@@ -155,6 +155,26 @@ object MarkdownTests extends TestSuite {
       lost ==> Vector.empty
     }
 
+    test("a list marker of another character starts a new list") {
+      kinds(Markdown.parse("- a\n+ b\n* c\n\n1. x\n2) y").blocks) ==>
+        Vector("ul", "li", "p", "ul", "li", "p", "ul", "li", "p", "ol", "li", "p", "ol", "li", "p")
+    }
+
+    test("adjacent lists of one kind are written apart, and read back as they were") {
+      def list(s: String) = Vector(Item(Vector(Block.Paragraph(plain(s)))))
+      val doc = Doc(
+        Vector(
+          Block.Bullets(list("a")),
+          Block.Bullets(list("b")),
+          Block.Bullets(list("c")),
+          Block.Numbered(1, list("x")),
+          Block.Numbered(5, list("y")),
+          Block.Quote(Vector(Block.Bullets(list("q")), Block.Bullets(list("r"))))
+        )
+      )
+      Markdown.parse(Markdown.write(doc)) ==> doc
+    }
+
     test("a code span holding backticks is fenced with one more") {
       Markdown.write(
         Doc(Vector(para(marked("a`b", Mark.Code), marked(" and "), marked("``", Mark.Code))))

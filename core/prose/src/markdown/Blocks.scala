@@ -5,8 +5,9 @@ import scala.util.matching.Regex
 import grit.prose.form.{Block, Item, Level, Text}
 
 /** Markdown's block syntax, read line by line into blocks: ATX headings, fenced code,
-  * thematic breaks, block quotes, bullet and numbered lists (nested by indentation),
-  * pipe tables, and paragraphs. A line break inside a paragraph is kept. Not supported,
+  * thematic breaks, block quotes, bullet and numbered lists (nested by indentation; a
+  * marker of another character, `-` `+` `*` or `.` `)`, starts a new list, as in
+  * CommonMark), pipe tables, and paragraphs. A line break inside a paragraph is kept. Not supported,
   * and so read as paragraphs: setext headings (they would change a line's meaning after
   * it had been shown), indented code blocks, HTML.
   */
@@ -93,9 +94,19 @@ private[markdown] object Blocks {
     * behind `> `.
     */
   def write(blocks: Vector[Block[Nothing]]): Vector[String] =
-    blocks.map(write).reduceOption(_ ++ Vector("") ++ _).getOrElse(Vector.empty)
+    // Each of a run of lists of one kind under the other marker from the one before it.
+    blocks
+      .foldLeft((Vector.empty[Vector[String]], Option.empty[(Int, Boolean)])) {
+        case ((out, before), b) =>
+          val apart = before.exists((kind, was) => kind == b.ordinal && !was)
+          (out :+ write(b, apart), Some((b.ordinal, apart)))
+      }
+      ._1
+      .reduceOption(_ ++ Vector("") ++ _)
+      .getOrElse(Vector.empty)
 
-  private def write(b: Block[Nothing]): Vector[String] = b match {
+  /** `b`'s lines; `apart` writes a list under its other marker (`+`, or `)`). */
+  private def write(b: Block[Nothing], apart: Boolean): Vector[String] = b match {
     // An empty line inside a paragraph is a lone backslash, which the reader strips.
     case Block.Paragraph(t) =>
       Inlines
@@ -106,11 +117,11 @@ private[markdown] object Blocks {
     case Block.Heading(level, t) =>
       val text = Inlines.write(t, heading = true)
       Vector("#" * level.value + (if (text.isEmpty) "" else " " + text))
-    case Block.Bullets(items) => items.flatMap(item("-", _))
+    case Block.Bullets(items) => items.flatMap(item(if (apart) "+" else "-", _))
     case Block.Numbered(start, items) =>
       items.zipWithIndex.flatMap { (i, k) =>
         val n = if (start.toLong + k <= 999999999L) start + k else start
-        item(s"$n.", i)
+        item(s"$n${if (apart) ")" else "."}", i)
       }
     case Block.Quote(bs) =>
       val inner = write(bs)
@@ -140,12 +151,14 @@ private[markdown] object Blocks {
     }
   }
 
-  /** A list item's marker line: where the marker starts, whether it counts, its number,
-    * and the text after it and the column that text starts at.
+  /** A list item's marker line: where the marker starts, whether it counts, its number, the
+    * character ending it (a list goes on only under the same one, as in CommonMark), and the
+    * text after it and the column that text starts at.
     */
   private final case class Marker(
       indent: Int,
       ordered: Boolean,
+      delimiter: Char,
       number: Int,
       text: String,
       content: Int
@@ -195,7 +208,7 @@ private[markdown] object Blocks {
           // The next item, if the list goes on: blank lines between items are allowed.
           var q = k
           while (q < n && blank(lines(q))) q += 1
-          current = if (q < n) marker(lines(q)).filter(_.ordered == first.ordered) else None
+          current = if (q < n) marker(lines(q)).filter(_.delimiter == first.delimiter) else None
           if (current.nonEmpty) k = q
       }
     }
@@ -249,7 +262,7 @@ private[markdown] object Blocks {
         val content =
           if (text.isEmpty || gap > 4) indent + mark.length + 1 else indent + mark.length + gap
         val body = if (gap > 4) " " * (gap - 1) + text else text
-        Marker(indent, ordered, number, body, content)
+        Marker(indent, ordered, mark.last, number, body, content)
       }
 
   /** Whether `line` starts a block that ends a paragraph above it. A numbered item

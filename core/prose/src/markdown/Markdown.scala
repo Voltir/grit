@@ -22,7 +22,9 @@ object Markdown {
 
   /** `doc` as markdown that [[parse]] reads back as `doc`, for a doc [[parse]] makes: a code
     * span holding backticks fenced with one more, a character markdown would read as a
-    * marker escaped.
+    * marker escaped, adjacent lists of one kind under alternating markers. A doc it cannot
+    * make reads back as another: a marked span starting or ending in a space, say, or a
+    * span marked strong then one marked emphasis ending inside a word.
     */
   def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks).mkString("\n")
 
