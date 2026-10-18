@@ -150,7 +150,7 @@ object RehearsalRunnerTests extends TestSuite {
         Event.Ended(StepRecord("ask:0", None, None))
       )
       r.started(turn(3)) ==>
-        Left(InboxError.Invalid("the rehearsal stopped at the turn's own model call"))
+        Left(InboxError.Invalid("the rehearsal has stopped"))
     }
 
     test("a body that throws ends there, and the turns it started before still run") {

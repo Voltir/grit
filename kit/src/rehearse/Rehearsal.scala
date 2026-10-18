@@ -7,6 +7,7 @@ import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter, Unreadab
 import grit.core.id.WorkflowId
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.visibility.Subject
+import grit.turn.Turn
 
 /** A [[Durable]] that runs the body of workflow `workflowId` once, now, keeping each step's
   * output nowhere but in what it tells `told`: every body runs (nothing replays, and a run never
@@ -15,6 +16,8 @@ import grit.core.visibility.Subject
   * transaction cannot open or keep what it wrote; `patch` takes every new branch; a stream's
   * pieces are told and kept nowhere; `recv` answers `None` at once. A step whose output its
   * [[Journaled]] cannot read back throws [[UnreadableJournal]], as a run that records it does.
+  * The turn's [[grit.turn.Turn.Step.RecordSpeech]], which would post a draft, is never run:
+  * [[Stop]] is thrown in its place, before it is told.
   *
   * `told` hears each operation begin and end, in order, as a run on the engine would record
   * them: a taken patch as its marker, a `recv` as its two records. For seeing what a shipped
@@ -67,6 +70,7 @@ final class Rehearsal(workflowId: WorkflowId, writes: Jot^, told: Rehearsal.Told
 
   /** `body` run as the operation `name`, told as it begins and as it ends. */
   private def operation[A](name: String)(body: () => A)(using j: Journaled[A]): A = {
+    if (Turn.Step.family(name).contains(Turn.Step.RecordSpeech)) throw Stop(name)
     told(Event.Began(name))
     val encoded =
       try j.encode(body())

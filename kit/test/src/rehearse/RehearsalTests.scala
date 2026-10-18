@@ -77,6 +77,26 @@ object RehearsalTests extends TestSuite {
       )
     }
 
+    test(
+      "the turn's record-speech is not run: the rehearsal stops before it, the step untold and nothing written"
+    ) {
+      val writes = new Writes
+      val told = Vector.newBuilder[Event]
+      val rehearsal = new Rehearsal(WorkflowId("c:0"), writes, e => { told += e; () })
+      val subject = Subject.Conversation(grit.core.id.ConversationId("c1"))
+      val stopped =
+        try {
+          rehearsal.step("judge")(() => "passed")
+          rehearsal.transact(grit.turn.Turn.Step.RecordSpeech, subject)("posted")
+          None
+        } catch { case s: Stop => Some(s) }
+      (stopped, told.result(), writes.opened) ==> (
+        Some(Stop(grit.turn.Turn.Step.RecordSpeech)),
+        Vector(Event.Began("judge"), Event.Ended(StepRecord("judge", Some("passed"), None))),
+        Vector()
+      )
+    }
+
     test("transact runs its body in a transaction writes opens for its subject, kept") {
       val writes = new Writes
       val subject = Subject.Conversation(grit.core.id.ConversationId("c1"))

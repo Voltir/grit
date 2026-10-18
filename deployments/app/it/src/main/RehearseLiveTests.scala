@@ -8,22 +8,30 @@ import scala.util.Using
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, ClearedClassifier, Question}
 import grit.core.clock.SetClock
-import grit.core.id.SourceId
+import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
-import grit.core.period.LifecycleSettings
+import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.speech.{Reach, Speaking}
-import grit.core.spend.Budget
-import grit.core.store.{Origin, Tx}
+import grit.core.speech.{Limits, Reach, Speaking}
+import grit.core.spend.{Budget, DailyCap}
+import grit.core.store.{Origin, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
-import grit.kit.rehearse.{Answers as StandIns, Rehearse, Rehearsed, Situation, Taps}
+import grit.kit.rehearse.{
+  Answers as StandIns,
+  RehearsalRunner,
+  Rehearse,
+  Rehearsed,
+  Situation,
+  Taps
+}
 import grit.kit.run.Launch
 import grit.models.{KeptCatalog, StubClassifier, StubProvider}
-import grit.turn.{Turn, TurnLoop}
+import grit.turn.{Turn, TurnJudge, TurnLoop}
 
 import utest.*
 
@@ -42,7 +50,8 @@ object RehearseLiveTests extends TestSuite {
       None
     )
 
-  private val deployment: Deployment =
+  /** A deployment assembling by `assembly` and speaking unaddressed as `speaking`. */
+  private def deployed(assembly: Assembly, speaking: Speaking): Deployment =
     Deployment
       .of(
         edges = Vector.empty,
@@ -50,15 +59,65 @@ object RehearseLiveTests extends TestSuite {
         plugins = Vector.empty,
         policy = Policy.one(assigned, assigned, assigned, assigned),
         offer = Offer(Offered.Read, TurnLoop.Rounds.of(3).getOrElse(sys.error("rounds"))),
-        assembly = Assembly.Retrieval(Tokens(8000), Tokens(2000)),
+        assembly = assembly,
         topics = Topics.Stub,
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
-        speaking = Speaking.Off,
+        speaking = speaking,
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit
       )
       .fold(r => sys.error(r.message), identity)
+
+  private val deployment: Deployment =
+    deployed(Assembly.Retrieval(Tokens(8000), Tokens(2000)), Speaking.Off)
+
+  /** Drafting where it is not addressed, in shadow: a draft is judged and never posted. Its gate
+    * reads `gap` alone, which the stand-in answers `asks`; the stub answers every yes/no alike,
+    * so a message marked `~0.4` is not read as put to grit, and its draft is judged.
+    */
+  private val drafting: Deployment =
+    deployed(
+      Assembly.Linear(Tokens(4000)),
+      Speaking.Shadow(
+        Limits.suggested(
+          DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+          grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
+        )
+      )
+    )
+
+  /** In `origin`'s conversation, heard through `engine` at [[Now]]: a remark longer than the
+    * judge's thread shows, its period closed with a record, so the record is what a later turn
+    * recalls.
+    */
+  private def remarked(engine: Engine^, origin: Origin, config: DbConfig): Unit = {
+    def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
+    engine.inbox.hear(
+      origin,
+      SourceId("3.0:0"),
+      "morning " * (TurnJudge.ThreadChars / 8 + 1),
+      Account.Local,
+      Now,
+      Reach.Nowhere
+    ) ==> Right(())
+    within(() => settled(config)) ==> true
+    val c = right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
+      .getOrElse(sys.error("heard"))
+    val first = TurnRef(c.id, TurnSeq.First)
+    right(engine.jot.write(Subject.Public)(engine.periods.of(first))).foreach { p =>
+      right(
+        engine.jot.write(Subject.Public)(
+          engine.periods.seal(
+            CloseRef(p.ref, first.turnSeq, Now),
+            CloseReason.Lapsed,
+            TestClosings.prose("The refi page's byline moves to the bottom."),
+            Now
+          )
+        )
+      )
+    }
+  }
 
   /** The stub provider, keeping each request it is sent: the stand-in a dry rehearsal answers
     * with by default ([[StandIns.Stubbed]]), so the engine's chain of calls is the rehearsal's.
@@ -190,6 +249,55 @@ object RehearseLiveTests extends TestSuite {
           Vector()
         )
       } finally engine.close()
+    }
+
+    test(
+      "a heard message nobody addressed, its draft supplied, is judged, and the rehearsal stops before the draft is posted"
+    ) {
+      val config = TestPostgres.freshDatabase("rehearse_judged")
+      val origin = Origin.Slack("T1", "C1", "3.0")
+      val clock = new SetClock(Now)
+      val seed = Taps.seed(drafting.policy).fold(sys.error, identity)
+      val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
+      val shown =
+        try {
+          val cleared = ClearedClassifier.of(StubClassifier.Service, new Asked)
+          Launch.asking(
+            engine,
+            drafting,
+            Map.empty,
+            new Through(seed, engine, new Capturing),
+            cleared,
+            cleared,
+            _ => ()
+          )
+          remarked(engine, origin, config)
+          Rehearse
+            .dry(
+              config,
+              drafting,
+              Situation.Heard(
+                origin,
+                Account.Local,
+                "where does the refi page's byline go? ~0.4",
+                Reach(Some("C1/3.0/3.0:1"), Set.empty)
+              ),
+              StandIns.supplied(Map("ask:0" -> "At the bottom of the page.")),
+              clock
+            )
+            .fold(sys.error, identity)
+        } finally engine.close()
+      (
+        shown.calls.collect {
+          case Rehearsed.Call(Some(step), _, _, Rehearsed.Input.Classifier(_, _), _)
+              if step == Turn.Step.Judge =>
+            step
+        },
+        shown.workflows.lastOption.map(_.came)
+      ) ==> (
+        Vector(Turn.Step.Judge),
+        Some(RehearsalRunner.Came.Stopped(Turn.Step.RecordSpeech))
+      )
     }
   }
 }

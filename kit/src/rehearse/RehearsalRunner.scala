@@ -111,7 +111,7 @@ final class RehearsalRunner(
   }))
 
   def started(turn: TurnRef): Either[InboxError, Unit] = synchronized {
-    if (stopped) Left(InboxError.Invalid("the rehearsal stopped at the turn's own model call"))
+    if (stopped) Left(InboxError.Invalid("the rehearsal has stopped"))
     else Right(take(turn))
   }
 
@@ -145,7 +145,7 @@ object RehearsalRunner {
     /** It threw, `why`. */
     case Threw(why: String)
 
-    /** It was stopped at the turn's own model call, in the step `step`. */
+    /** It was stopped ([[Stop]]) at the step `step`. */
     case Stopped(step: String)
   }
 }

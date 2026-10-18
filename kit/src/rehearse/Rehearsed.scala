@@ -10,7 +10,7 @@ import grit.core.model.Pinned
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.visibility.Label
 import grit.models.JevJson
-import grit.turn.TurnRecord
+import grit.turn.{Turn, TurnRecord}
 
 /** What a dry rehearsal showed, in the order it happened: each workflow it ran, with how its
   * body ended, the steps it ran (as a recorded workflow's are read) and each call made in it.
@@ -256,7 +256,9 @@ object Rehearsed {
   private def ended(came: RehearsalRunner.Came): String = came match {
     case RehearsalRunner.Came.Returned(_) => "returned"
     case RehearsalRunner.Came.Threw(why) => s"threw: $why"
-    case RehearsalRunner.Came.Stopped(step) => s"stopped at the turn's own call, in $step"
+    case RehearsalRunner.Came.Stopped(step) if Turn.Step.answering(step) =>
+      s"stopped at the turn's own call, in $step"
+    case RehearsalRunner.Came.Stopped(step) => s"stopped before $step, which would post the draft"
   }
 
   private def labelled(label: Option[Label]): String =

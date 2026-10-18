@@ -23,7 +23,8 @@ object Taps {
   /** Models under the catalog in force over `seed` (a deployment's, [[Taps.seed]]): with every
     * setting kept in `settings` laid over it, read through `db` on each call
     * ([[KeptCatalog.read]]). A call made in the turn's own step
-    * ([[grit.turn.Turn.Step.answering]]) is kept unanswered and throws [[Stop]].
+    * ([[grit.turn.Turn.Step.answering]]) is answered only when `answers` supplies its step;
+    * otherwise it is kept unanswered and throws [[Stop]].
     */
   def models(
       seed: Catalog,
@@ -77,12 +78,13 @@ object Taps {
     def provider(pinned: Pinned): Provider^ = new Provider {
       def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
         val step = tape.step
+        val reply = answers.reply(step.getOrElse(""), request)
         step.filter(Turn.Step.answering) match {
-          case Some(own) =>
+          // The stub never stands in for the turn's own call: only a supplied answer does.
+          case Some(own) if reply.by != Answers.StandIn.Supplied =>
             tape.called(Tape.Call.Model(step, pinned, request, None))
             throw Stop(own)
-          case None =>
-            val reply = answers.reply(step.getOrElse(""), request)
+          case _ =>
             tape.called(Tape.Call.Model(step, pinned, request, Some(reply)))
             Right(reply.answer)
         }

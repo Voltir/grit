@@ -24,7 +24,9 @@ object Rehearse {
   /** `situation` run through `d`'s shipped workflow bodies over the database `config` names, as
     * it stands now, every model and classifier call answered by `answers` and none sent: each
     * workflow the situation starts runs in the order the engine starts it, until the turn's
-    * own model call ([[grit.turn.Turn.Step.answering]]), which is shown and never answered.
+    * own model call ([[grit.turn.Turn.Step.answering]]), shown and never answered, unless
+    * `answers` supplies its step: then the turn goes on with that reply, a heard message's
+    * draft judged, and stops before [[grit.turn.Turn.Step.RecordSpeech]] would post it.
     * The message and every workflow are dated by `clock`. Nothing written outlives it
     * ([[Rehearsing]]). `Left`, opening nothing, when `config`'s URL names no database
     * ([[Unnamed]]) or the one [[DbConfig.Local]] names, the operator's own ([[Mine]]); `Left`

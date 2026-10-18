@@ -64,6 +64,32 @@ object TapsTests extends TestSuite {
     }
 
     test(
+      "the turn's own call, its step supplied, is answered with the supplied text, kept, and goes on"
+    ) {
+      val tape = new Tape
+      val models = tapped(
+        Answers.supplied(Map("ask:0" -> "Try the noodle place.")),
+        tape,
+        new InMemoryModelSettingStore
+      )
+      val pinned = StubModels.Catalog.pin.turn.first
+      val d = new Rehearsal(WorkflowId("c:0"), new RehearsalTests.Writes, tape)
+      val said =
+        try {
+          d.step("ask:0")(() =>
+            models.provider(pinned).complete(request).fold(_.toString, _.blocks.toString)
+          )
+        } catch { case s: Stop => s.toString }
+      (
+        said,
+        tape.entries.collect { case Entry.Called(Call.Model(step, _, _, a)) => step -> a.map(_.by) }
+      ) ==> (
+        Vector(AssistantBlock.Text("Try the noodle place.")).toString,
+        Vector(Some("ask:0") -> Some(Answers.StandIn.Supplied))
+      )
+    }
+
+    test(
       "a model's call in any other step is answered by the stand-in for its step and kept with its pin and request"
     ) {
       val tape = new Tape
