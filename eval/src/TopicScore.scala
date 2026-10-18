@@ -1,14 +1,13 @@
-package grit.eval.harness.score
+package grit.eval
 
 import java.time.LocalDate
 
-import grit.eval.harness.stats.Proportion
-
 /** A topics run's placement of a room's openings set against the room's truth, by message ids.
   * Pairs are of openings with a truth topic (chatter belongs to none and pairs with nothing):
-  * `precision`, of the pairs sharing a topic the run wrote, those of one truth topic, clustered
-  * by the run's topic; `recall`, of the pairs of one truth topic, those sharing a topic the run
-  * wrote, clustered by truth topic. `splits`, the truth topics whose openings lie in two topics
+  * `precision`, each pair sharing a topic the run wrote, once per such topic, by that topic,
+  * and whether it is of one truth topic; `recall`, each pair of one truth topic, by that topic,
+  * and whether it shares a topic the run wrote: each the items of a proportion clustered by
+  * the topic named. `splits`, the truth topics whose openings lie in two topics
   * or more; `merges`, the run's topics holding openings of two truth topics or more;
   * `mergeable`, the pairs of the run's topics whose most-held truth topic is the same (the
   * greater name of two held as often), which one topic should have held; `crossDay`, the truth
@@ -17,8 +16,8 @@ import grit.eval.harness.stats.Proportion
   * topic in no topic of the run's.
   */
 final case class TopicScore(
-    precision: Proportion,
-    recall: Proportion,
+    precision: Vector[(String, Boolean)],
+    recall: Vector[(String, Boolean)],
     splits: Int,
     merges: Int,
     mergeable: Int,
@@ -42,14 +41,13 @@ object TopicScore {
     def pairsOf[A](as: Vector[A]): Vector[(A, A)] =
       as.zipWithIndex.flatMap((a, i) => as.drop(i + 1).map(a -> _))
     val pairs = pairsOf(topical)
-    val precision = Proportion.of(
-      pairs.flatMap((a, b) => (in(a._1) intersect in(b._1)).toVector.map(_ -> (a._2 == b._2)))
-    )
-    val recall = Proportion.of(
-      pairs.collect {
-        case (a, b) if a._2 == b._2 => a._2 -> (in(a._1) intersect in(b._1)).nonEmpty
-      }
-    )
+    val precision =
+      pairs.flatMap((a, b) =>
+        (in(a._1) intersect in(b._1)).toVector.sorted.map(_ -> (a._2 == b._2))
+      )
+    val recall = pairs.collect {
+      case (a, b) if a._2 == b._2 => a._2 -> (in(a._1) intersect in(b._1)).nonEmpty
+    }
     val byTruth = topical.groupBy(_._2)
     val splits = byTruth.count((_, os) => os.flatMap(o => in(o._1)).distinct.size > 1)
     val topics = topical.flatMap(o => in(o._1).toVector.map(_ -> o._2)).groupBy(_._1)

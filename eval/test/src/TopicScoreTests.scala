@@ -1,8 +1,8 @@
-package grit.eval.harness.score
+package grit.eval
 
 import java.time.LocalDate
 
-import grit.eval.harness.score.TopicScore.Truth
+import grit.eval.TopicScore.Truth
 
 import utest.*
 
@@ -17,8 +17,8 @@ object TopicScoreTests extends TestSuite {
     */
   private def counts(s: TopicScore) =
     (
-      (s.precision.hits, s.precision.n),
-      (s.recall.hits, s.recall.n),
+      (s.precision.count(_._2), s.precision.size),
+      (s.recall.count(_._2), s.recall.size),
       s.splits,
       s.merges,
       s.mergeable,
