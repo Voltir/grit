@@ -35,6 +35,7 @@ object TurnRecordLiveTests extends TestSuite {
           "stitched",
           "classify",
           "record-topic",
+          "ask:needs",
           "ask:query",
           "assemble",
           "record-window",
@@ -85,6 +86,7 @@ object TurnRecordLiveTests extends TestSuite {
         val _ = engine.awaitTurn(turn)
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
           Vector(
+            "ask:needs",
             "ask:query",
             "gate:0",
             "ask:0",

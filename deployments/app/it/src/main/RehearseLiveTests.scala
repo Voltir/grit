@@ -233,6 +233,7 @@ object RehearseLiveTests extends TestSuite {
           questions.filterNot(sent._2.contains)
         ) ==> (
           Vector(
+            (Some("ask:needs"), "Classifier"),
             (Some("ask:query"), "Model"),
             (Some("ask:relevance-0"), "Classifier"),
             (Some("ask:0"), "Model")
