@@ -5,6 +5,10 @@ summary with search terms and a pointer (ADR 0028) to the hosted call that reads
 window can show what a source holds without holding it. Names `grit.core` alone: a source is
 read through the MCP tools a deployment offers, never a client of its own.
 
+Strand documents: by a second plugin in the same module, one short document per strand of a
+room's threads (ADR 0023), summarised from what its members said, so a window and the
+relevance judge see a topic spread over threads as one thing.
+
 Packages, in one-way order (each names only those before it):
 
 - **`card`**: what a card is, whatever its source: a unit's key (the SHA-256 of its corpus and
@@ -35,9 +39,15 @@ Packages, in one-way order (each names only those before it):
   of the least label dominating what its listing was read at. A file's pointer is `drive_read`
   with its id; its card is written at when it last changed, titled with its name. Imports
   `card` and `sync`, never `github`.
+- **`strand`**: a strand's document (ADR 0042), one per strand root of three threads or more
+  with enough said, kept at its room's label: its key, text and data, and `Dream`, the
+  dreaming job `strands-dream`, which scans the strands of its run's rooms by ids and counts,
+  has core summarise each changed one from what its members said, and keeps or withdraws
+  their documents. Its code never holds a message's text. Imports `card`.
 - **`plugin`**: `Knowledge`, the plugin over a deployment's sources: its documents' terms, the
-  `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc). Imports
-  `github`, `drive` and `sync`.
+  `Sync` job, and each source's sync schedules (the keys in `Knowledge`'s doc); and
+  `StrandDocuments`, the strands plugin: the `Dream` job on a daily schedule per label it is
+  declared at, and its documents' terms. Imports `github`, `drive`, `sync` and `strand`.
 
 ## What a deployment declares
 

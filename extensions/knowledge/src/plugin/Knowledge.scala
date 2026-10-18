@@ -122,7 +122,7 @@ object Knowledge {
           for {
             done <- acc
             label <- labelled(c, Some(l), visibility)
-            more <- keyed(c, label, Some(Label.written(label).replace('+', '-')))
+            more <- keyed(c, label, Some(slug(label)))
           } yield done ++ more
         )
     }
@@ -173,6 +173,11 @@ object Knowledge {
       )
     else Right(at)
   }
+
+  /** `label`'s written form ([[Label.written]]) with `+` written `-`: how a schedule key names
+    * the label it is declared at.
+    */
+  private[plugin] def slug(label: Label): String = Label.written(label).replace('+', '-')
 
   /** Unit when no two of `declaring` share a key; else the two sources and the key. */
   private def keysOnce(declaring: Vector[Declaring]): Either[String, Unit] =

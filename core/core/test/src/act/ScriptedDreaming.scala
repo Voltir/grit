@@ -9,12 +9,11 @@ import grit.core.id.PluginName
 import grit.core.message.Message
 import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Clearance, Integrity, Label}
-import grit.dbos.sql.TestTx
+import grit.core.visibility.{Integrity, Label, Recorded}
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
   * `strands` beside its documents, and whose summaries read what a strand's members said
-  * through `excerpts`, in a transaction opened at `floor`, and ask it of `jsons` as one user
+  * through `excerpts`, in a transaction opened as its keeps' are, and ask it of `jsons` as one user
   * message after the summary's system text. Under the rules every [[Dreaming]] keeps, which
   * `grit.act.moves.MovesContract` holds it to beside the durable moves: a summary is an ask,
   * named and limited as one; one whose strand's messages changed since its scan asks nothing
@@ -31,7 +30,8 @@ final class ScriptedDreaming(
     jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]],
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
-    integrity: Integrity = Integrity.Authority
+    integrity: Integrity = Integrity.Authority,
+    rooms: Recorded = Recorded.Empty
 ) extends ScriptedKeeping(
       limits,
       floor,
@@ -42,7 +42,8 @@ final class ScriptedDreaming(
       jsons,
       documents = documents,
       at = at,
-      integrity = integrity
+      integrity = integrity,
+      rooms = rooms
     ),
       Dreaming {
 
@@ -57,7 +58,7 @@ final class ScriptedDreaming(
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Asked[T]]] = {
     val Dreaming.Summary(system, chars, reply) = Trusted.asIs(summary).extract
-    excerpts.excerpt(seen, chars)(using TestTx.fake(Clearance.of(floor))) match {
+    excerpts.excerpt(seen, chars)(using opened) match {
       case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
       case Right(None) => making(name, MoveKind.Ask, limits.asks)(Right(None))
       case Right(Some(shown)) =>

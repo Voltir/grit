@@ -31,31 +31,34 @@ object CardSummary {
   private def cut(text: String): String =
     "\\S+".r.findAllMatchIn(text).drop(Words - 1).nextOption().fold(text)(m => text.take(m.end))
 
-  /** The reply a summary ask takes: its schema (`summary` a string, `terms` an array of at
-    * most [[Terms]] strings), read as [[of]] reads it, refusing a blank summary and cutting
-    * one over [[Words]] words.
+  /** The reply a file's summary ask takes ([[replyOf]] with the file's descriptions). */
+  val Reply: Typed[CardSummary] = replyOf(
+    s"What the file is and what it holds, in at most $Words words.",
+    "Search terms, each one to three words, for what the file holds " +
+      "that the summary leaves out."
+  )
+
+  /** The reply a summary ask takes: its schema (`summary` a string, described to the model as
+    * `summary` says, `terms` an array of at most [[Terms]] strings, as `terms` says), read as
+    * [[of]] reads it, refusing a blank summary and cutting one over [[Words]] words.
     */
-  val Reply: Typed[CardSummary] = {
+  def replyOf(summary: String, terms: String): Typed[CardSummary] = {
     val schema = ujson.Obj(
       "type" -> "object",
       "properties" -> ujson.Obj(
-        "summary" -> ujson.Obj(
-          "type" -> "string",
-          "description" -> s"What the file is and what it holds, in at most $Words words."
-        ),
+        "summary" -> ujson.Obj("type" -> "string", "description" -> summary),
         "terms" -> ujson.Obj(
           "type" -> "array",
           "items" -> ujson.Obj("type" -> "string"),
           "maxItems" -> Terms,
-          "description" -> ("Search terms, each one to three words, for what the file holds " +
-            "that the summary leaves out.")
+          "description" -> terms
         )
       ),
       "required" -> ujson.Arr("summary", "terms"),
       "additionalProperties" -> false
     )
-    // A literal in JsonSchema's subset, read when the object is first used: every test of the
-    // reply throws here if not.
+    // A literal in JsonSchema's subset but for the descriptions, which are text: every test of
+    // a reply throws here if not.
     JsonSchema
       .read(schema)
       .fold(

@@ -12,12 +12,12 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Integrity, Label}
+import grit.core.visibility.{Clearance, Integrity, Label, Recorded, Visibility}
 import grit.dbos.sql.TestTx
 
 /** [[Keeping]] for a job's tests: [[ScriptedMoves]], scripted as it is, whose keeps write
-  * `plugin`'s documents in `documents` under `terms`, each in a transaction opened at `floor`,
-  * at `at`. Under the rules every [[Keeping]] keeps, which `grit.act.moves.MovesContract` holds
+  * `plugin`'s documents in `documents` under `terms`, each in a transaction opened at `floor`
+  * whose rooms are labelled as `rooms` records them, at `at`. Under the rules every [[Keeping]] keeps, which `grit.act.moves.MovesContract` holds
   * it to beside the durable moves: a keep whose body is `Left` keeps none of its writes, is
   * [[MoveError.Store]] in the durable moves' words, and its name is spent; a keep writes at no
   * less than `floor`, believed at no more than what it keeps from, and from what is believed
@@ -37,7 +37,8 @@ class ScriptedKeeping(
       Left(MoveError.Model("no judgment scripted")),
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
-    integrity: Integrity = Integrity.Authority
+    integrity: Integrity = Integrity.Authority,
+    rooms: Recorded = Recorded.Empty
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -50,7 +51,7 @@ class ScriptedKeeping(
     making(name, MoveKind.Keep, Int.MaxValue) {
       if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
       else {
-        given Tx = TestTx.fake(Clearance.of(floor))
+        given Tx = opened
         val kept = DocumentKeeper.believedAtMost(keeper, from.integrity)
         documents.savepoints
           .atomic(body(Trusted.asIs(from).extract, kept, at))
@@ -64,8 +65,11 @@ class ScriptedKeeping(
     */
   def kept: Vector[Document] =
     keeper
-      .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(floor)))
+      .newest(Int.MaxValue)(using opened)
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+
+  /** A transaction of a run at `floor`, its rooms labelled as `rooms` records them. */
+  protected def opened: Tx = TestTx.fake(Clearance.of(floor), Visibility.Shipped, rooms)
 
   /** A store's failure, in the durable moves' words. */
   protected def described(error: StoreError): String = error match {
