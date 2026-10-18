@@ -99,7 +99,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     if (n == 0) (Vector.empty, g)
     else {
       val summary = Dreaming.Summary(
-        TopicDream.AttachSystem,
+        TopicDream.attachSystem(scan.strands.size),
         TopicDream.AttachChars,
         TopicDream.LeadChars,
         TopicDream.AttachReply
@@ -288,19 +288,21 @@ object TopicDream {
           )
       )
 
-  /** What the attach ask is told, before what it is shown: no counts, since a document the
-    * ask cannot read is not shown.
+  /** What the attach ask is told, before what it is shown: how many discussions, all of which
+    * it is shown or it asks nothing, and no count of the topics or cards, since one it cannot
+    * read is not shown.
     */
-  private val AttachSystem: String =
+  private def attachSystem(strands: Int): String =
     "You sort a team's recent discussions and documents into topics: durable subjects the " +
-      "team comes back to across rooms and days. You are shown, in this order, the " +
-      "discussions, each a block of messages under their speakers' names, oldest first; then " +
-      "the topics, each under `topic:`, numbered from 1 in the order shown, how its text " +
+      s"team comes back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
+      "each a block of messages under their speakers' names, oldest first; then " + "the topics, each under `topic:`, numbered from 1 in the order shown, how its text " +
       "begins; then the cards, each a document describing a file, under its label. Reply " +
       "by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
       "and `cards`, one per card in the order shown, each the number of the topic it belongs " +
       "to, `new` when it opens a subject no topic shown covers that the team is likely to " +
       "come back to, or `none` when it is too slight to keep."
+
+  private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
   /** What a write ask is told, before what it is shown. */
   private def writeSystem(day: LocalDate): String =

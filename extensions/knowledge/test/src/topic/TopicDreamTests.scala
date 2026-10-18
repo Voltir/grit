@@ -307,7 +307,7 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a lead or card the attach ask cannot read is not shown or counted to it; the rest are placed as numbered in the order shown"
+      "a lead or card the attach ask cannot read is not shown or counted to it; the rest are placed as numbered in the order shown, and it is told how many discussions it is shown"
     ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
@@ -331,12 +331,12 @@ object TopicDreamTests extends TestSuite {
       (
         reply,
         counted(attach.shown),
-        "\\d+ (discussion|topic|card)s?\\b".r.findFirstIn(attach.system),
+        "\\d+ (discussion|topic|card)s?\\b".r.findAllIn(attach.system).toVector,
         runs.referring(Ref.Strand(c.id))
       ) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 1 left for the next run",
         (1, 1, 0),
-        None,
+        Vector("1 discussion"),
         Vector(key(a))
       )
     }
