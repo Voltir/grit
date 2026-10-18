@@ -83,7 +83,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   }
 
   /** The attach ask over `scan`'s strands and cards: the topics they go to, and `g` counting
-    * those set aside as unchanged and those it could not place as left.
+    * those set aside as unchanged, and those it could not place or was not shown as left.
     */
   private def attach(
       run: Trusted[JobRun[TopicParams]],
@@ -95,7 +95,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     if (n == 0) (Vector.empty, g)
     else {
       val summary = Dreaming.Summary(
-        TopicDream.attachSystem(scan.strands.size, scan.leads.size, scan.cards.size),
+        TopicDream.AttachSystem,
         TopicDream.AttachChars,
         TopicDream.LeadChars,
         TopicDream.AttachReply
@@ -151,8 +151,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                 }
               )
             val placed = strands ++ cardsPlaced
-            val aside = n - TopicDream.items(placed)
-            (placed, g.copy(unchanged = g.unchanged + aside))
+            val unshown = scan.cards.size - shownCards.size
+            val aside = n - unshown - TopicDream.items(placed)
+            (placed, g.copy(unchanged = g.unchanged + aside, left = g.left + unshown))
           }
       }
     }
@@ -256,14 +257,15 @@ object TopicDream {
           )
       )
 
-  /** What the attach ask is told, before what it is shown. */
-  private def attachSystem(strands: Int, topics: Int, cards: Int): String =
+  /** What the attach ask is told, before what it is shown: no counts, since a document the
+    * ask cannot read is not shown.
+    */
+  private val AttachSystem: String =
     "You sort a team's recent discussions and documents into topics: durable subjects the " +
-      "team comes back to across rooms and days. You are shown, in this order, " +
-      s"${count(strands, "discussion")}, each a block of messages under their speakers' " +
-      s"names, oldest first; then ${count(topics, "topic")}, each under `topic:`, numbered " +
-      "from 1 in the order shown, how its text begins; then " +
-      s"${count(cards, "card")}, each a document describing a file, under its label. Reply " +
+      "team comes back to across rooms and days. You are shown, in this order, the " +
+      "discussions, each a block of messages under their speakers' names, oldest first; then " +
+      "the topics, each under `topic:`, numbered from 1 in the order shown, how its text " +
+      "begins; then the cards, each a document describing a file, under its label. Reply " +
       "by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
       "and `cards`, one per card in the order shown, each the number of the topic it belongs " +
       "to, `new` when it opens a subject no topic shown covers that the team is likely to " +
@@ -281,8 +283,6 @@ object TopicDream {
       "add to it: what was decided, what is known and what is still open, naming people as " +
       s"the messages do. When the topic holds a passage for $day already, yours replaces it, " +
       "so keep what it says. Keep links to other topics (`topic:…`) and to files as written."
-
-  private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
   private val AttachReply: Typed[Placing] = {
     def placed(what: String) = ujson.Obj(

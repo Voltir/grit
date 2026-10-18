@@ -10,12 +10,14 @@ import grit.core.document.{
   DocText,
   DocWeight,
   Document,
+  DocumentSearch,
   DocumentTerms,
   InMemoryDocuments,
-  Pointer
+  Pointer,
+  Shelved
 }
 import grit.core.flow.TestTainted
-import grit.core.id.{ConversationId, CorpusName, DocKey, PluginName}
+import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersion, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.{Exported, Needs, PluginDocs, PluginReads}
@@ -30,10 +32,10 @@ import grit.knowledge.ref.{Ref, TopicKey}
 
 import utest.*
 
-/** What an ask of [[TopicDreamTests]]' runs was: `attach` or `write`, and the message it was
-  * shown.
+/** What an ask of [[TopicDreamTests]]' runs was: `attach` or `write`, what it was told, and the
+  * message it was shown.
   */
-private final case class Ask(kind: String, shown: String)
+private final case class Ask(kind: String, system: String, shown: String)
 
 /** The topics job's runs over rooms of threads in memory ([[StrandWorld]]) and cards kept by a
   * knowledge plugin beside it, their moves made by [[ScriptedDreaming]] over one document
@@ -88,7 +90,7 @@ object TopicDreamTests extends TestSuite {
 
     /** One run for `day`, made `now`, of `perRun`; its attach ask answered by `attach` of what
       * it was told and shown, its write asks by `write`; its rooms labelled as `rooms` records
-      * them: its reply.
+      * them; its asks reading no document `unread` holds to: its reply.
       */
     def run(
         perRun: Int = 10,
@@ -96,7 +98,8 @@ object TopicDreamTests extends TestSuite {
         now: Instant = Now,
         rooms: Recorded = Recorded.Empty,
         attach: (String, String) -> ujson.Value = everyNew,
-        write: String -> ujson.Value = _ => wrote(Lead, Passage)
+        write: String -> ujson.Value = _ => wrote(Lead, Passage),
+        unread: Document -> Boolean = _ => false
     ): String = {
       val dream = new TopicDream(10, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -108,7 +111,7 @@ object TopicDreamTests extends TestSuite {
         (system, messages) => {
           val shown = messages.collect { case Message.User(t) => t }.mkString
           val isAttach = system.startsWith("You sort")
-          heard.ask(Ask(if (isAttach) "attach" else "write", shown))
+          heard.ask(Ask(if (isAttach) "attach" else "write", system, shown))
           val reply = if (isAttach) attach(system, shown) else write(shown)
           Right(Asked(TestTainted.at(reply, Integrity.Authority), Label.Public))
         }
@@ -117,7 +120,7 @@ object TopicDreamTests extends TestSuite {
         Label.Public,
         Plugin,
         Terms,
-        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, documents),
+        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, reading(unread)),
         answer,
         documents = documents,
         at = now,
@@ -127,6 +130,23 @@ object TopicDreamTests extends TestSuite {
         TestTainted.trusted(JobRun(TopicParams(perRun, 2.days, 2.days, day), now, now)),
         moves
       )
+    }
+
+    /** [[documents]] as a summary reads them, but for those `unread` holds to. */
+    private def reading(unread: Document -> Boolean): DocumentSearch = new DocumentSearch {
+      def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
+        documents.declared()
+      def shelved(plugins: Vector[PluginName], at: Instant)(using
+          Tx^
+      ): Either[StoreError, Vector[Shelved]] = documents.shelved(plugins, at)
+      def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+        documents.search(shelves, query, limit, at)
+      def read(versions: Vector[DocumentVersion])(using
+          Tx^
+      ): Either[StoreError, Vector[Document]] =
+        documents.read(versions).map(_.filterNot(unread))
     }
 
     private given Tx = TestTx.fake
@@ -212,16 +232,26 @@ object TopicDreamTests extends TestSuite {
   private def wrote(lead: String, passage: String): ujson.Value =
     ujson.Obj("lead" -> lead, "passage" -> passage)
 
-  /** How many of `what` the attach ask was told it is shown. */
-  private def told(system: String, what: String): Int =
-    s"(\\d+) ${what}s?\\b".r.findFirstMatchIn(system).fold(0)(_.group(1).toInt)
+  /** How many discussions, topics and cards an attach ask's message shows: each discussion a
+    * block of lines before the first document, each document a block under its label.
+    */
+  private def counted(shown: String): (Int, Int, Int) = {
+    val blocks = shown.split("\n\n").toVector
+    (
+      blocks.takeWhile(b => !b.startsWith("topic:\n") && !b.startsWith("knowledge card:\n")).size,
+      blocks.count(_.startsWith("topic:\n")),
+      blocks.count(_.startsWith("knowledge card:\n"))
+    )
+  }
 
   /** Everything shown placed `place`. */
-  private def placing(place: String): (String, String) -> ujson.Value = (system, _) =>
+  private def placing(place: String): (String, String) -> ujson.Value = (_, shown) => {
+    val (discussions, _, cards) = counted(shown)
     ujson.Obj(
-      "discussions" -> ujson.Arr.from(Vector.fill(told(system, "discussion"))(ujson.Str(place))),
-      "cards" -> ujson.Arr.from(Vector.fill(told(system, "card"))(ujson.Str(place)))
+      "discussions" -> ujson.Arr.from(Vector.fill(discussions)(ujson.Str(place))),
+      "cards" -> ujson.Arr.from(Vector.fill(cards)(ujson.Str(place)))
     )
+  }
 
   private val everyNew: (String, String) -> ujson.Value = placing("new")
 
@@ -264,6 +294,41 @@ object TopicDreamTests extends TestSuite {
         Vector(key(a), key(c)).sorted,
         Vector(key(a)),
         Vector(key(c))
+      )
+    }
+
+    test(
+      "a lead or card the attach ask cannot read is not shown or counted to it; the rest are placed as numbered in the order shown"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val b = strand(w, "C2", "hiring plan", 100)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val _ = runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
+      val c = strand(w, "C3", "deploy rollback", 300)
+      // b's topic, the newest and so the first lead, and the card are not read: a's is topic 1.
+      val reply = runs.run(
+        now = Now.plusSeconds(600),
+        unread =
+          d => DocKey.value(d.key) == key(b) || DocText.value(d.text).contains("The deploy plan."),
+        attach = (_, shown) =>
+          ujson.Obj(
+            "discussions" -> ujson.Arr.from(Vector.fill(counted(shown)._1)(ujson.Str("1"))),
+            "cards" -> ujson.Arr.from(Vector.fill(counted(shown)._3)(ujson.Str("new")))
+          )
+      )
+      val attach = runs.asked.filter(_.kind == "attach").last
+      (
+        reply,
+        counted(attach.shown),
+        "\\d+ (discussion|topic|card)s?\\b".r.findFirstIn(attach.system),
+        runs.referring(Ref.Strand(c.id))
+      ) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 1 left for the next run",
+        (1, 1, 0),
+        None,
+        Vector(key(a))
       )
     }
 
