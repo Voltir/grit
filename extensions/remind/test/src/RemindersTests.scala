@@ -30,7 +30,8 @@ import grit.core.job.{
   SlotRule
 }
 import grit.core.message.AssistantBlock
-import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads, PluginTool}
+import grit.core.need.{Needs, PluginReads}
+import grit.core.plugin.{InMemoryPlugins, PluginTool}
 import grit.core.store.{Db, Origin, StoreError, Tx}
 import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{Integrity, Subject}

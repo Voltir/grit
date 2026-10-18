@@ -2,7 +2,8 @@ package grit.kit.deployment
 
 import grit.core.id.{JobName, PluginName}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
-import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
+import grit.core.need.{Needs, PluginReads, Unneeded}
+import grit.core.plugin.{Plugin, PluginRun, PluginTool}
 import grit.core.tool.{Hosted, Tool}
 
 /** A plugin's tool bound to its run: what it is, what a call does, and its plugin, whose jobs

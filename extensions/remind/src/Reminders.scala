@@ -9,7 +9,8 @@ import grit.core.clock.Utc
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDesk, When}
-import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
+import grit.core.need.{Needs, PluginReads, Unneeded}
+import grit.core.plugin.{Plugin, PluginRun, PluginTool}
 import grit.core.store.Reads
 import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
 import grit.core.visibility.Integrity

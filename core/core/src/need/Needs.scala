@@ -1,17 +1,12 @@
-package grit.core.plugin
+package grit.core.need
 
-import grit.core.document.DocumentShelf
 import grit.core.id.PluginName
 
-/** One plugin's own documents as its tools and its service read them: its cache documents of
-  * its cursor's generation, and its current documents.
+/** A plugin another may need: named `name`, it exports `S`, a service over its own documents,
+  * the only way a plugin reads another's (ADR 0027).
   */
-final case class PluginReads(cache: PluginDocs, documents: DocumentShelf)
-
-/** A plugin another may need: it exports `S`, a service over its own documents, the only way a
-  * plugin reads another's (ADR 0027).
-  */
-trait Exports[S <: caps.Pure] extends Plugin {
+trait Exported[S <: caps.Pure] {
+  def name: PluginName
 
   /** Its service, reading `own`. */
   def service(own: PluginReads): S
@@ -21,10 +16,10 @@ trait Exports[S <: caps.Pure] extends Plugin {
 trait Needs extends caps.Pure {
 
   /** `dependency`'s service; [[Unneeded]] when no plugin of its name is among the asking
-    * plugin's needs. Reached only in [[PluginTool.bind]], when a deployment is checked and
-    * when the engine starts, never on a call.
+    * plugin's needs. Reached only in [[grit.core.plugin.PluginTool.bind]], when a deployment is
+    * checked and when the engine starts, never on a call.
     */
-  def of[S <: caps.Pure](dependency: Exports[S]): Either[Unneeded, S]
+  def of[S <: caps.Pure](dependency: Exported[S]): Either[Unneeded, S]
 }
 
 object Needs {
@@ -34,7 +29,7 @@ object Needs {
     */
   def over(asker: PluginName, reads: Vector[(PluginName, PluginReads)]): Needs =
     new Needs {
-      def of[S <: caps.Pure](dependency: Exports[S]): Either[Unneeded, S] =
+      def of[S <: caps.Pure](dependency: Exported[S]): Either[Unneeded, S] =
         reads
           .collectFirst { case (n, own) if n == dependency.name => dependency.service(own) }
           .toRight(Unneeded(asker, dependency.name))

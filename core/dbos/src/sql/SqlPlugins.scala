@@ -4,8 +4,9 @@ import java.sql.ResultSet
 import java.time.Instant
 
 import grit.core.id.PluginName
+import grit.core.need.PluginDocs
 import grit.core.period.CloseOrdinal
-import grit.core.plugin.{CacheDocs, PluginCursors, PluginDocs}
+import grit.core.plugin.{CacheDocs, PluginCursors}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
 

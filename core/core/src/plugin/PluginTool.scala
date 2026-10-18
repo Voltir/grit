@@ -2,6 +2,7 @@ package grit.core.plugin
 
 import grit.core.id.CallSlot
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
+import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.store.Reads
 import grit.core.tool.{Hosted, Outcome}
 

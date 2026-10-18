@@ -22,6 +22,7 @@ object JobCaptureTests extends TestSuite {
       |import grit.core.id.*
       |import grit.core.flow.Trusted
       |import grit.core.job.*
+      |import grit.core.need.*
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*

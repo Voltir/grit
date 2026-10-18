@@ -23,7 +23,7 @@ trait Plugin extends caps.Pure {
     */
   def version: Int
 
-  /** The plugins its tools read, each through its service ([[Needs]]). A deployment is
+  /** The plugins its tools read, each through its service ([[grit.core.need.Needs]]). A deployment is
     * refused unless a plugin of each one's name is among its plugins.
     */
   def needs: Vector[Exports[?]] = Vector.empty
@@ -118,22 +118,6 @@ trait CacheDocs {
     * `DatabaseError` when the plugin's cursor was never started.
     */
   def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit]
-}
-
-/** One plugin's documents as its surfaces read them, only those its transaction reads (as
-  * [[grit.core.document.DocumentShelf]] reads documents). No other plugin's are reachable.
-  */
-trait PluginDocs {
-
-  /** The document under `key`, or `None` when there is none or its transaction does not read
-    * it.
-    */
-  def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]]
-
-  /** Its documents whose keys start with `prefix` that its transaction reads, greatest key
-    * first, at most `n`.
-    */
-  def newest(prefix: String, n: Int)(using Tx^): Either[StoreError, Vector[(String, ujson.Value)]]
 }
 
 /** How far each plugin has posted, in close order, and what is deleted of its documents. */

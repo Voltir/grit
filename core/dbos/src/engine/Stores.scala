@@ -5,7 +5,8 @@ import grit.core.edge.{EdgeDirectory, ToolRequests}
 import grit.core.id.{PluginName, TurnRef}
 import grit.core.identity.Principal
 import grit.core.job.ScheduleStore
-import grit.core.plugin.{CacheDocs, PluginCursors, PluginReads}
+import grit.core.need.PluginReads
+import grit.core.plugin.{CacheDocs, PluginCursors}
 import grit.core.speech.SpeechStore
 import grit.core.spend.Spending
 import grit.core.store.{

@@ -18,6 +18,7 @@ object PluginCaptureTests extends TestSuite {
       |import grit.core.document.*
       |import grit.core.id.{CallSlot, PluginName}
       |import grit.core.job.*
+      |import grit.core.need.*
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*

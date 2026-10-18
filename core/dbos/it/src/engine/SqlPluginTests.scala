@@ -3,8 +3,9 @@ package grit.dbos.engine
 import scala.util.Using
 
 import grit.core.id.PluginName
+import grit.core.need.PluginDocs
 import grit.core.period.CloseOrdinal
-import grit.core.plugin.{CacheDocs, PluginContract, PluginCursors, PluginDocs}
+import grit.core.plugin.{CacheDocs, PluginContract, PluginCursors}
 import grit.core.store.{Origin, Tombstones, Tx}
 import grit.core.visibility.Clearance
 import grit.dbos.sql.{

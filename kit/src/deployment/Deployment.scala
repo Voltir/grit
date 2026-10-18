@@ -20,10 +20,11 @@ import grit.core.identity.{Identities, Realm}
 import grit.core.job.{Declared, DreamingJob, Jobs, KeepingJob, NotOwn, Owned, PlainJob}
 import grit.core.message.Tokens
 import grit.core.model.Policy
+import grit.core.need.{PluginDocs, PluginReads, Unneeded}
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Place, Reaches, Service, WorksIn}
-import grit.core.plugin.{Plugin, PluginDocs, PluginReads, Unneeded}
+import grit.core.plugin.Plugin
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking

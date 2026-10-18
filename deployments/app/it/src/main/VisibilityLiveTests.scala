@@ -31,9 +31,10 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.need.Needs
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{DocumentPosting, Documents, Needs, Plugin}
+import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Entry, Nearby, Origin, Payload, Sealed, StoreError, Tx}

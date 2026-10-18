@@ -8,18 +8,10 @@ import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.id.{CallSlot, DocKey, PluginName}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
+import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.period.{CloseOrdinal, CloseReason}
 import grit.core.place.Place
-import grit.core.plugin.{
-  DocumentPosting,
-  Documents,
-  Exports,
-  Needs,
-  PluginReads,
-  PluginRun,
-  PluginTool,
-  Unneeded
-}
+import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginTool}
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Integrity

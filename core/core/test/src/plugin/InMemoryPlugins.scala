@@ -3,6 +3,7 @@ package grit.core.plugin
 import java.time.Instant
 
 import grit.core.id.PluginName
+import grit.core.need.PluginDocs
 import grit.core.period.CloseOrdinal
 import grit.core.place.Place
 import grit.core.retention.Target

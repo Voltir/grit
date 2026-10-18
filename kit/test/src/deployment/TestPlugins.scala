@@ -17,16 +17,8 @@ import grit.core.job.{
   PlainJob,
   ScheduleDesk
 }
-import grit.core.plugin.{
-  DocumentPosting,
-  Documents,
-  Exports,
-  Needs,
-  PluginReads,
-  PluginRun,
-  PluginTool,
-  Unneeded
-}
+import grit.core.need.{Needs, PluginReads, Unneeded}
+import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginTool}
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Compartment

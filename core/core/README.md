@@ -91,6 +91,9 @@ In dependency order, each with the core packages it imports:
   after the message's entry is gone (ADR 0022), and a word on a plugin's document, kept after
   its version is gone (ADR 0028). ← `id`, `identity`, `place`, `visibility`, `classify`,
   `store`, `speech`, `document`
+- **`need`**: what one plugin reads of documents: its own (`PluginReads`), and the services of
+  the plugins it needs (`Needs` over what each exports), the only way it reads another's. Below
+  `plugin`, so the moves a job is handed may name it. ← `id`, `document`, `store`
 - **`context`**: the `ContextAssembler` trait, and what the model is shown of a window. ← `id`,
   `place`, `message`, `period`, `store`, `document`
 - **`sanitise`**: the integrity tree (ADR 0036): what code flags in a text, what the classifier
@@ -109,7 +112,7 @@ In dependency order, each with the core packages it imports:
   `message`, `store`, `spend`, `triage`, `speech`, `approval`, `job`
 - **`plugin`**: features a deployment turns on (ADR 0027), each a pure bundle of contributions
   to core's points; one plugin reads another's documents only through what it exports. ← `id`,
-  `period`, `store`, `document`, `job`, `tool`
+  `period`, `store`, `document`, `need`, `job`, `tool`
 - **`admin`**: changes to who may see what, and to a room's baseline, that people make through
   grit, each kept with its audit row, under one rule over what a change raises, lowers and
   removes; a place a service shares is labelled from any room (`Command.At`), named as the

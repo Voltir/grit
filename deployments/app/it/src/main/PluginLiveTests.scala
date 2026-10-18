@@ -24,17 +24,10 @@ import grit.core.id.{
 import grit.core.identity.Account
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.need.Needs
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{
-  CacheDocs,
-  CachePosting,
-  DocumentPosting,
-  Documents,
-  Needs,
-  Plugin,
-  PostRef
-}
+import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}

@@ -1,6 +1,7 @@
 package grit.core.plugin
 
 import grit.core.id.PluginName
+import grit.core.need.PluginDocs
 import grit.core.period.CloseOrdinal
 import grit.core.store.{InMemoryTombstones, Origin, Tombstones, Tx}
 import grit.core.visibility.Clearance

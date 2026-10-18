@@ -15,10 +15,10 @@ import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
 import grit.core.model.{Catalog, ModelSettings, Pinned}
+import grit.core.need.Unneeded
 import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.persona.Persona
 import grit.core.place.Weight
-import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}

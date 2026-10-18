@@ -10,9 +10,10 @@ import grit.core.identity.Principal
 import grit.core.job.{InMemorySchedules, ScheduleDesk}
 import grit.core.message.AssistantBlock
 import grit.core.model.{ModelSetting, ModelSettings}
+import grit.core.need.PluginReads
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
-import grit.core.plugin.{InMemoryPlugins, PluginReads}
+import grit.core.plugin.InMemoryPlugins
 import grit.core.store.{Askers, Db, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.Subject

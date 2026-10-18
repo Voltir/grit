@@ -10,9 +10,10 @@ import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, TestCallSlots, ToolCallId}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.AssistantBlock
+import grit.core.need.{Needs, PluginReads}
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.{Directory, Place}
-import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
+import grit.core.plugin.InMemoryPlugins
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.Integrity
