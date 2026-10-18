@@ -266,7 +266,16 @@ object StandingDocumentsTests extends TestSuite {
       kept.post(
         closed(2, added(later), Vector(deploys, later), period = 2, outcome = "Hotfixes skip it.")
       )
-      kept.newest.filter(key(_) == "standing:c1/1").map(_.version) ==> first
+      (
+        kept.newest.filter(key(_) == "standing:c1/1").map(_.version),
+        kept.newest.map(d => (key(d), DocText.value(d.text))).sorted
+      ) ==> (
+        first,
+        Vector(
+          ("standing:c1/1", "Staging deploys from main.\n- Staging deploys from main"),
+          ("standing:c1/2", "Hotfixes skip it.\n- Hotfixes skip the freeze")
+        )
+      )
     }
 
     test("a period closed unearned, or a job's run, keeps nothing") {
