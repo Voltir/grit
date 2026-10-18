@@ -19,11 +19,14 @@ object GoldTests extends TestSuite {
         Vector.empty,
         ::("Start.command", Nil),
         ::("append-only", List("never edited")),
-        ::("the lead's row", Nil)
+        ::("the lead's row", Nil),
+        ::("nightly", List("every night"))
       )
+      // The last fact is held by its second alternative alone.
       g.matched(
-        "Double-click **`start.COMMAND`**; migrations are\n  append–only, and the lead’s  row stays."
-      ) ==> Gold.Matched(3, 3, 0)
+        "Double-click **`start.COMMAND`**; migrations are\n  append–only, and the lead’s  row stays. " +
+          "Backups run every night."
+      ) ==> Gold.Matched(4, 4, 0)
     }
 
     test("an alternative continued by a letter or digit is not held, and $ alone is held in $500") {
