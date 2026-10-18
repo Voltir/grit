@@ -340,6 +340,31 @@ object TurnJudgeTests extends TestSuite {
           .getOrElse("")
       )
     }
+    test("a thread whose only message is cut inside recalls the conversation's record") {
+      val all = Vector(
+        entry(0, Payload.Heard("freeze " * TurnJudge.ThreadChars)),
+        entry(
+          1,
+          Payload.Closed(
+            PeriodSeq.First,
+            CloseReason.Lapsed,
+            TestClosings.prose("The freeze moved.")
+          )
+        )
+      )
+      judging(
+        all,
+        Window(all.map(_.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "d"
+      ).recalled ==> Shown
+        .of(all(1), names)
+        .collect { case Message.User(text) => text }
+        .getOrElse("")
+    }
 
     test(
       "the judge is shown the heard message apart, and asks whether the draft is grounded in recalled or thread and answers the message"

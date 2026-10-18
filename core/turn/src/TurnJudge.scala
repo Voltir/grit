@@ -119,8 +119,8 @@ object TurnJudge {
     * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
     * then of each record among the window's entries whose earlier messages the thread does
-    * not show whole (some cut, or none in it), then each of the turn's own tool
-    * results but a failed one, under its call as a person is shown it: a strand is context,
+    * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
+    * tool results but a failed one, under its call as a person is shown it: a strand is context,
     * not recall.
     */
   private[turn] def state(
@@ -149,10 +149,10 @@ object TurnJudge {
       ThreadChars
     )
     // A record stands for what was said before it, so it is recall only when the thread does
-    // not show that whole: the thread holds none of it, or its cut, which always takes the
-    // first message, does.
+    // not show that whole: the thread holds none of it, or leaves a message out whole or cut
+    // inside (its shown messages are then not all of them as said).
     def unshown(record: Entry): Boolean =
-      thread.cut.nonEmpty || !lines.headOption.exists((seq, _) =>
+      thread.cut.nonEmpty || thread.shown != lines.map(_._2) || !lines.headOption.exists((seq, _) =>
         EntrySeq.value(seq) < EntrySeq.value(record.seq)
       )
     val sections = window.nearby
