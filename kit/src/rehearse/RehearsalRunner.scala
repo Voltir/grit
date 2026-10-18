@@ -29,7 +29,7 @@ final class RehearsalRunner(
   // Pure data only, and never a body: what keeps a body past `launched` would be a hole
   // capture checking does not close (a mutable collection is a pure type).
   private val arrival = mutable.ArrayBuffer[Either[InboxError, Starts]]()
-  private val record = mutable.ArrayBuffer[RehearsalRunner.Ran]()
+  private val record = mutable.ArrayBuffer[RehearsalRunner.Finished]()
   private val queued = mutable.Queue[TurnRef]()
   private val taken = mutable.Set[TurnRef]()
   private val placed = mutable.Map[Opening, Either[String, String]]()
@@ -38,7 +38,7 @@ final class RehearsalRunner(
   def arrived: Option[Either[InboxError, Starts]] = synchronized(arrival.headOption)
 
   /** Each workflow it ran, in the order run. */
-  def ran: Vector[RehearsalRunner.Ran] = synchronized(record.toVector)
+  def ran: Vector[RehearsalRunner.Finished] = synchronized(record.toVector)
 
   def launched(
       session: Rehearsing^,
@@ -69,7 +69,7 @@ final class RehearsalRunner(
           case Stop(step) => RehearsalRunner.Came.Stopped(step)
           case NonFatal(e) => RehearsalRunner.Came.Threw(e.toString)
         }
-      synchronized(record += RehearsalRunner.Ran(id, came))
+      synchronized(record += RehearsalRunner.Finished(id, came))
       came match {
         case RehearsalRunner.Came.Returned(result) => Some(result)
         case _ => None
@@ -134,7 +134,7 @@ final class RehearsalRunner(
 object RehearsalRunner {
 
   /** What the workflow `workflow` came to, run in a rehearsal. */
-  final case class Ran(workflow: WorkflowId, came: Came)
+  final case class Finished(workflow: WorkflowId, came: Came)
 
   /** How a rehearsed workflow's body ended. */
   enum Came {

@@ -26,7 +26,7 @@ import grit.dbos.engine.Starts
 
 import utest.*
 import Rehearsal.Event
-import RehearsalRunner.{Came, Ran}
+import RehearsalRunner.{Came, Finished}
 
 /** [[RehearsalRunner]]: what it runs of a situation, in what order, and what its placements
   * answer.
@@ -99,7 +99,7 @@ object RehearsalRunnerTests extends TestSuite {
         stitch = body()
       )
       val ids = Vector(o.ref.workflowId, heard.workflowId, turn(2).workflowId, turn(1).workflowId)
-      r.ran ==> ids.map(id => Ran(id, Came.Returned(WorkflowId.value(id))))
+      r.ran ==> ids.map(id => Finished(id, Came.Returned(WorkflowId.value(id))))
       seenPlaced.toVector ==> Vector(Right(WorkflowId.value(o.ref.workflowId)))
       begun(tape.toVector) ==> ids.map(id => s"step:${WorkflowId.value(id)}")
       r.arrived ==> Some(Right(Starts.Heard(Some(o), Some(heard))))
@@ -142,8 +142,8 @@ object RehearsalRunnerTests extends TestSuite {
         stitch = body()
       )
       r.ran ==> Vector(
-        Ran(heard.workflowId, Came.Returned(WorkflowId.value(heard.workflowId))),
-        Ran(turn(1).workflowId, Came.Stopped("ask:0"))
+        Finished(heard.workflowId, Came.Returned(WorkflowId.value(heard.workflowId))),
+        Finished(turn(1).workflowId, Came.Stopped("ask:0"))
       )
       tape.toVector.takeRight(2) ==> Vector(
         Event.Began("ask:0"),
@@ -163,8 +163,8 @@ object RehearsalRunnerTests extends TestSuite {
         stitch = body()
       )
       r.ran ==> Vector(
-        Ran(heard.workflowId, Came.Threw("java.lang.IllegalStateException: broke")),
-        Ran(turn(1).workflowId, Came.Returned(WorkflowId.value(turn(1).workflowId)))
+        Finished(heard.workflowId, Came.Threw("java.lang.IllegalStateException: broke")),
+        Finished(turn(1).workflowId, Came.Returned(WorkflowId.value(turn(1).workflowId)))
       )
     }
 

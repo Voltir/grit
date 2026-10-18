@@ -127,7 +127,7 @@ object RehearsedTests extends TestSuite {
           ),
           Entry.Told(Event.Ended(StepRecord("ask:triage", None, None)))
         ),
-        Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
+        Vector(RehearsalRunner.Finished(WorkflowId("t"), Came.Threw("broke")))
       )
       (
         shown.calls.flatMap(_.parts).drop(1).map(_.text),
@@ -158,7 +158,7 @@ object RehearsedTests extends TestSuite {
           Entry.Called(Call.Model(Some("ask:triage"), pinned, request, None)),
           Entry.Told(Event.Ended(StepRecord("ask:triage", None, None)))
         ),
-        Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
+        Vector(RehearsalRunner.Finished(WorkflowId("t"), Came.Threw("broke")))
       )
       elsewhere.calls.map(_.label) ==> Vector(None)
     }
@@ -190,7 +190,7 @@ object RehearsedTests extends TestSuite {
           Entry.Called(Call.Model(Some("ask:triage"), pinned, request, None)),
           Entry.Told(Event.Ended(StepRecord("ask:triage", None, None)))
         ),
-        Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
+        Vector(RehearsalRunner.Finished(WorkflowId("t"), Came.Threw("broke")))
       )
       val (_, judged) = rehearsed(StandIns.Stubbed)
       (

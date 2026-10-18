@@ -141,7 +141,7 @@ object Rehearsed {
   /** What `entries` kept of the workflows `ran`, in that order. */
   private[rehearse] def of(
       entries: Vector[Tape.Entry],
-      ran: Vector[RehearsalRunner.Ran]
+      ran: Vector[RehearsalRunner.Finished]
   ): Rehearsed = {
     // Each workflow's entries: those after the runner told it running, up to the next.
     val kept: Map[WorkflowId, Vector[Tape.Entry]] =
@@ -160,7 +160,7 @@ object Rehearsed {
   /** The workflow `r` ran, from what was kept while it ran: each call labelled by the record of
     * the ask it was made in ([[MovesJournal.askedAt]]), else by the turn's route record.
     */
-  private def workflow(r: RehearsalRunner.Ran, entries: Vector[Tape.Entry]): Ran = {
+  private def workflow(r: RehearsalRunner.Finished, entries: Vector[Tape.Entry]): Ran = {
     val steps = entries.collect { case Tape.Entry.Told(Rehearsal.Event.Ended(record)) => record }
     val routed = TurnRecord.routedAt(steps).toOption.flatten
     def asked(step: Option[String], after: Int): Option[Label] =
