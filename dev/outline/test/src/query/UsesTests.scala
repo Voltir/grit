@@ -563,6 +563,30 @@ object UsesTests extends TestSuite {
       )
     }
 
+    test(
+      "uses of two symbols, one of them unused, notes the unused one and lists the other's sites: Shelf,Labels.of"
+    ) {
+      val (answer, _) =
+        Query.uses(
+          root,
+          FixtureLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("grit.outline.fixture.typed.Shelf", "grit.outline.fixture.typed.Labels.of"),
+          Some("dev/outline/fixture/src"),
+          None,
+          80000
+        )
+      assert(answer.status == Status.Found)
+      val lines = answer.text.linesIterator.toVector
+      assert(
+        lines.filter(_.startsWith("-- no uses")) == Vector(
+          "-- no uses of grit.outline.fixture.typed.Labels.of"
+        )
+      )
+      assert(lines.exists(_.contains("final class Numbers extends Shelf[Int] {")))
+    }
+
     test("a type parameter written in a member's type is no reference: Shelf's A") {
       val shelfTasty = Locate.inPackageIn(
         root,

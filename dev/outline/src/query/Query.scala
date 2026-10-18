@@ -262,7 +262,7 @@ object Query {
   /** The shortest name `uses` searches for without a qualifier: a shorter bare name (`of`, `get`) is in so many files that a search for it reads most of the project. */
   val shortestBare: Int = 4
 
-  /** The `uses` answer: the direct references to `syms`, grouped by file and owner (a site inside a test call in a test source is owned by its test), filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class or an enum case, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming it. A name `X.unapply` that resolves to nothing, where `X` resolves to a class, an enum case or a trait, stands for `X`'s pattern sites: `case X(…)` for a case class or an enum case, and `case _: X`, under a note naming it. Where `X` resolves to something else, the answer is `NoMatch` under one note naming what `X` is. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
+  /** The `uses` answer: the direct references to `syms`, grouped by file and owner (a site inside a test call in a test source is owned by its test), filtered by `in` and `outside` path prefixes. A name `X.apply` or `X.new` that resolves to nothing, where `X` resolves to a class or an enum case, stands for `X`'s construction sites: calls to its synthetic `apply` and its `new`s, under a note naming it. A name `X.unapply` that resolves to nothing, where `X` resolves to a class, an enum case or a trait, stands for `X`'s pattern sites: `case X(…)` for a case class or an enum case, and `case _: X`, under a note naming it. Where `X` resolves to something else, the answer is `NoMatch` under one note naming what `X` is. Of several names, one whose definitions no kept site targets is noted `-- no uses of <name>`, as asked; when none has a site, the answer is `NoMatch`. A name with no qualifier shorter than `shortestBare` refuses the whole call, `NoMatch`, reading nothing: its note says to qualify the name with its owner and names the owners of that name among the definitions `roots` already holds for `root`, at most 10. */
   def uses(
       root: Root,
       layout: Layout,
@@ -295,6 +295,8 @@ object Query {
       val constructed = mutable.ListBuffer.empty[Defn]
       // The classes whose pattern sites a name like `X.unapply` asks for, when `X` has no unapply of its own in source.
       val matched = mutable.ListBuffer.empty[Defn]
+      // The full names each asked symbol resolved to, so that one of several with no use is said, never left out.
+      val namesOf = mutable.LinkedHashMap.empty[String, Set[String]]
       syms.foreach { sym =>
         Resolve.resolve(root, layout, config, Scope.WithTests, sym, state) match {
           case Left(message) => failure = Some(message)
@@ -318,11 +320,15 @@ object Query {
                 else
                   wanted match {
                     case Sites.Built =>
+                      namesOf(sym) = sited
+                        .flatMap(c => Vector(s"${c.fullName}.apply", s"${c.fullName}.<init>"))
+                        .toSet
                       constructed ++= sited
                       notes ++= sited.map(c =>
                         s"-- $sym is ${c.fullName}'s constructor: its apply and new sites"
                       )
                     case Sites.Matched =>
+                      namesOf(sym) = sited.map(c => s"${c.fullName}.unapply").toSet
                       matched ++= sited
                       notes ++= sited.map { c =>
                         val extractor =
@@ -335,6 +341,7 @@ object Query {
             }
           case Right(resolved) =>
             state = resolved.loaded
+            namesOf(sym) = resolved.defns.map(_.fullName).toSet
             targets ++= resolved.defns
             seen ++= resolved.seen
             notes ++= resolved.notes
@@ -373,6 +380,11 @@ object Query {
               )
               if (kept.isEmpty) Answer(s"no uses of ${syms.mkString(",")}", Status.NoMatch)
               else {
+                val found = kept.map(_.target).toSet
+                notes ++= namesOf.collect {
+                  case (sym, ns) if ns.nonEmpty && !ns.exists(found.contains) =>
+                    s"-- no uses of $sym"
+                }
                 val overloaded = targets
                   .groupBy(_.fullName)
                   .collect {
