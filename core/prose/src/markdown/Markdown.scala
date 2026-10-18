@@ -20,6 +20,12 @@ object Markdown {
     */
   def parsePrefix(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(held(text)), open = true))
 
+  /** `doc` as markdown that [[parse]] reads back as `doc`, for a doc [[parse]] makes: a code
+    * span holding backticks fenced with one more, a character markdown would read as a
+    * marker escaped.
+    */
+  def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks).mkString("\n")
+
   /** `text` split into lines, carriage returns dropped. */
   private def lines(text: String): Vector[String] =
     text.replace("\r", "").split("\n", -1).toVector

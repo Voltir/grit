@@ -70,7 +70,96 @@ object MarkdownTests extends TestSuite {
       |---
       |Done.""".stripMargin
 
+  /** Fragments a reply may end on, or be: unclosed, empty, or only markers. */
+  private val Nasty: Vector[String] = Vector(
+    "",
+    "\n",
+    "*",
+    "**",
+    "***",
+    "`",
+    "``",
+    "```",
+    "[",
+    "](",
+    "[a](",
+    "![",
+    "<",
+    "<http://",
+    "\\",
+    "# ",
+    "#",
+    "-",
+    "- ",
+    "1.",
+    "1. ",
+    ">",
+    "> >",
+    "|",
+    "|-|",
+    "| a |\n|-",
+    "\t- x",
+    "_ _ _",
+    "*a **b* c**",
+    "[a](b(c)",
+    "````\n```",
+    "\r\n\r\n",
+    "  \n  ",
+    "1)"
+  )
+
+  /** Text that reads as a marker unless escaped: at a line's start, beside a link, in a
+    * table's cell, between delimiters.
+    */
+  private val Escaped: Vector[String] = Vector(
+    "a\n\\- b\n\\1. c\n\\> d\n\\# e\n\\| f",
+    "a\n\\\nb",
+    "wow\\![x](y) and C\\# **in** __*all*__ **a**_b_",
+    "| `a\\|b` | c \\\\ |\n|-|-|\n| \\| |",
+    "# a \\#"
+  )
+
+  /** Every whole reply the tests below parse, [[Nasty]] and [[Escaped]]. */
+  private val Parsed: Vector[String] = Vector(
+    "one\ntwo\n\nthree",
+    "# Title\n### Minor ##\n#hashtag",
+    "a **b** *c* ***d*** `*e*` __f__ _g_",
+    "**a *b* c**",
+    "2 * 3 * 4",
+    "snake_case_name",
+    "a **b",
+    """\*not\* \`code\`""",
+    "see [the *docs*](https://x.io \"t\"), ![logo](l.png), <https://y.io>",
+    "[not a link] and [x]",
+    "```py\n  x = 1\n\n*y*\n```\n~~~\nz\n~~~",
+    "```\na\nb",
+    "- a\n  - b\n    - c\n- d\ncontinued\n\n3. x\n4. y",
+    "1. a\n  - b",
+    "It was\n2024. A year.",
+    "> # q\n> text\n\n---\n* * *\n___",
+    "| a | b |\n|:--|--:|\n| `x` | y \\| z |\n| only |",
+    Sample
+  ) ++ Nasty ++ Escaped
+
   val tests = Tests {
+
+    test("write then parse gives back every doc the parser makes in these tests") {
+      // Every prefix of the sample too, read whole: parsePrefix keeps a trailing space parse
+      // never makes.
+      val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse)
+      val lost = docs.distinct.flatMap { d =>
+        val written = Markdown.write(d)
+        val read = Markdown.parse(written)
+        Option.when(read != d)(s"$d\n  written as ${written.replace("\n", "⏎")}\n  read as $read")
+      }
+      lost ==> Vector.empty
+    }
+
+    test("a code span holding backticks is fenced with one more") {
+      Markdown.write(
+        Doc(Vector(para(marked("a`b", Mark.Code), marked(" and "), marked("``", Mark.Code))))
+      ) ==> "``a`b`` and ``` `` ```"
+    }
 
     test("paragraphs, with the line breaks inside them kept") {
       Markdown.parse("one\ntwo\n\nthree") ==> Doc(
@@ -257,43 +346,7 @@ object MarkdownTests extends TestSuite {
     }
 
     test("any text at all is some prose: no input throws") {
-      val nasty = Vector(
-        "",
-        "\n",
-        "*",
-        "**",
-        "***",
-        "`",
-        "``",
-        "```",
-        "[",
-        "](",
-        "[a](",
-        "![",
-        "<",
-        "<http://",
-        "\\",
-        "# ",
-        "#",
-        "-",
-        "- ",
-        "1.",
-        "1. ",
-        ">",
-        "> >",
-        "|",
-        "|-|",
-        "| a |\n|-",
-        "\t- x",
-        "_ _ _",
-        "*a **b* c**",
-        "[a](b(c)",
-        "````\n```",
-        "\r\n\r\n",
-        "  \n  ",
-        "1)"
-      )
-      for (s <- nasty) {
+      for (s <- Nasty) {
         Markdown.parse(s)
         Markdown.parsePrefix(s)
       }

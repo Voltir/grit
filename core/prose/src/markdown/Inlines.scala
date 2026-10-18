@@ -243,4 +243,87 @@ private[markdown] object Inlines {
 
   private def isPunct(c: Char): Boolean =
     c < 128 && "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(c)
+
+  /** `t` as inline markdown that [[parse]] reads back as `t`, for text [[parse]] makes, the
+    * first character starting a line: a `'\n'` is written as itself, and a character that
+    * could start a block at a line's start is escaped there. A `|` is left as it is, for a
+    * table's cells to escape. `heading` escapes every `#`, which could close a heading.
+    */
+  def write(t: Text[Nothing], heading: Boolean): String = {
+    val spans = t.spans
+    val out = new StringBuilder
+    // The marks open around the text so far, innermost first, each with its closer.
+    var open = List.empty[(Mark, String)]
+    def extent(i: Int, m: Mark): Int = spans.drop(i).takeWhile(_.marks(m)).size
+    def rank(m: Mark): Int = m match {
+      case Mark.Link(_) => 0
+      case Mark.Strong => 1
+      case _ => 2
+    }
+    // A delimiter beside another of its character would read as one run: `_` after a `*`.
+    def delimiters(m: Mark): (String, String) = {
+      val alt = out.lastOption.contains('*')
+      m match {
+        case Mark.Link(href) => ("[", s"]($href)")
+        case Mark.Strong => if (alt) ("__", "__") else ("**", "**")
+        case _ => if (alt) ("_", "_") else ("*", "*")
+      }
+    }
+    spans.indices.foreach { i =>
+      val s = spans(i)
+      val want = s.marks - Mark.Code
+      val kept = open.reverse.takeWhile((m, _) => want(m)).size
+      open.take(open.size - kept).foreach((_, closer) => out ++= closer)
+      open = open.drop(open.size - kept)
+      val held = open.map(_._1).toSet
+      (want -- held).toVector.sortBy(m => (-extent(i, m), rank(m))).foreach { m =>
+        val (opener, closer) = delimiters(m)
+        out ++= opener
+        open = (m, closer) :: open
+      }
+      if (s.marks(Mark.Code)) out ++= code(s.text)
+      else out ++= literal(s.text, out.isEmpty || out.lastOption.contains('\n'), heading)
+    }
+    open.foreach((_, closer) => out ++= closer)
+    out.toString
+  }
+
+  /** A code span reading as `t`: fenced with one more backtick than its longest run, and
+    * padded with a space each side where the reader would otherwise trim or extend.
+    */
+  private def code(t: String): String = {
+    val fence = "`" * (t.split("[^`]+").map(_.length).maxOption.getOrElse(0) + 1)
+    val padded =
+      t.startsWith("`") || t.endsWith("`") ||
+        (t.startsWith(" ") && t.endsWith(" ") && t.exists(_ != ' '))
+    if (padded) s"$fence $t $fence" else s"$fence$t$fence"
+  }
+
+  /** `s` with each character escaped that would otherwise read as a marker: `\`, backticks,
+    * brackets and `<` always, `*` unless between spaces, `_` unless inside a word, a `!` that
+    * a link may follow, and at a line's start (`lineStart` for the first) a block marker.
+    */
+  private def literal(s: String, lineStart: Boolean, heading: Boolean): String = {
+    val out = new StringBuilder
+    var start = lineStart
+    var digits = if (lineStart) 0 else -1
+    def at(k: Int): Option[Char] = Option.when(k >= 0 && k < s.length)(s.charAt(k))
+    s.indices.foreach { k =>
+      val c = s.charAt(k)
+      val escaped =
+        "\\`[]<".contains(c) ||
+          (start && "#>-+*~:|=".contains(c)) ||
+          (c == '#' && heading) ||
+          ((c == '.' || c == ')') && digits > 0) ||
+          (c == '*' && !(at(k - 1).exists(_ == ' ') && at(k + 1).exists(_ == ' '))) ||
+          (c == '_' && !(at(k - 1)
+            .exists(_.isLetterOrDigit) && at(k + 1).exists(_.isLetterOrDigit))) ||
+          (c == '!' && k == s.length - 1)
+      if (escaped) out += '\\'
+      out += c
+      start = c == '\n'
+      digits = if (c == '\n') 0 else if (c.isDigit && digits >= 0 && digits < 9) digits + 1 else -1
+    }
+    out.toString
+  }
 }

@@ -88,6 +88,58 @@ private[markdown] object Blocks {
     out.result()
   }
 
+  /** `blocks` as markdown lines that [[parse]] reads back as `blocks`, for blocks [[parse]]
+    * makes: a blank line between blocks, an item's lines under its marker's text, a quote's
+    * behind `> `.
+    */
+  def write(blocks: Vector[Block[Nothing]]): Vector[String] =
+    blocks.map(write).reduceOption(_ ++ Vector("") ++ _).getOrElse(Vector.empty)
+
+  private def write(b: Block[Nothing]): Vector[String] = b match {
+    // An empty line inside a paragraph is a lone backslash, which the reader strips.
+    case Block.Paragraph(t) =>
+      Inlines
+        .write(t, heading = false)
+        .split("\n", -1)
+        .toVector
+        .map(l => if (l.isEmpty) "\\" else l)
+    case Block.Heading(level, t) =>
+      val text = Inlines.write(t, heading = true)
+      Vector("#" * level.value + (if (text.isEmpty) "" else " " + text))
+    case Block.Bullets(items) => items.flatMap(item("-", _))
+    case Block.Numbered(start, items) =>
+      items.zipWithIndex.flatMap { (i, k) =>
+        val n = if (start.toLong + k <= 999999999L) start + k else start
+        item(s"$n.", i)
+      }
+    case Block.Quote(bs) =>
+      val inner = write(bs)
+      if (inner.isEmpty) Vector(">") else inner.map(l => if (l.isEmpty) ">" else "> " + l)
+    case Block.Code(language, lines) =>
+      val fence =
+        "`" * math.max(3, lines.flatMap(_.split("[^`]+").map(_.length)).maxOption.getOrElse(0) + 1)
+      (fence + language.getOrElse("")) +: lines :+ fence
+    case Block.Table(header, rows) =>
+      def row(cells: Vector[Text[Nothing]]): String =
+        cells
+          .map(c => Inlines.write(c, heading = false).replace("|", "\\|"))
+          .mkString("| ", " | ", " |")
+      row(header) +: header.map(_ => "---").mkString("|", "|", "|") +: rows.map(row)
+    // Not `---`, which after an item's marker would read as a rule rather than the item's.
+    case Block.Rule => Vector("***")
+  }
+
+  /** An item under `marker`, its lines after the first indented to the marker's text. */
+  private def item(marker: String, i: Item[Nothing]): Vector[String] = {
+    val lines = write(i.blocks)
+    val indent = " " * (marker.length + 1)
+    lines.headOption match {
+      case None => Vector(marker)
+      case Some(first) =>
+        (marker + " " + first) +: lines.drop(1).map(l => if (l.isEmpty) "" else indent + l)
+    }
+  }
+
   /** A list item's marker line: where the marker starts, whether it counts, its number,
     * and the text after it and the column that text starts at.
     */
