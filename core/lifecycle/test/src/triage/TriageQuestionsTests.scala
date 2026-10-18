@@ -263,12 +263,20 @@ object TriageQuestionsTests extends TestSuite {
         "source:github",
         "source:conversations"
       )
-      // open, to-grit and durable keep v4's words: an answer under their names means what it did.
-      Vector("open", "to-grit", "durable").map(q => asked.get(n(q)) == v4.get(n(q))) ==>
-        Vector(true, true, true)
+      // to-grit and durable keep v4's words: an answer under their names means what it did.
+      Vector("to-grit", "durable").map(q => asked.get(n(q)) == v4.get(n(q))) ==>
+        Vector(true, true)
+      // gap, open and to read the earlier exchange too: their answers depend on what came before.
+      asked.get(n("open")) ==> Some(
+        yesNo(
+          "Read new_message, thread and earlier_exchange (when present). Is what new_message " +
+            "asks for still unanswered in the thread or earlier_exchange?"
+        )
+      )
       asked.get(n("gap")) ==> Question
         .choice(
-          "Read new_message, said by author, and its thread. What does new_message leave open?",
+          "Read new_message, said by author, thread and earlier_exchange (when present). What " +
+            "does new_message leave open?",
           Question.Key(
             "asks",
             Some("it asks for information, a document, or for something to be done, of anyone")
@@ -284,10 +292,10 @@ object TriageQuestionsTests extends TestSuite {
         .toOption
       asked.get(n("to")) ==> Some(
         yesNo(
-          "Read new_message and thread. Is new_message directed at a particular person rather " +
-            "than at the room, by naming them or by answering what they said in thread? " +
-            "Mentioning someone, or writing in a thread they wrote in, does not by itself " +
-            "direct it at them."
+          "Read new_message, thread and earlier_exchange (when present). Is new_message directed " +
+            "at a particular person rather than at the room, by naming them or by answering " +
+            "what they said in thread or earlier_exchange? Mentioning someone, or writing in a " +
+            "thread they wrote in, does not by itself direct it at them."
         )
       )
       asked.get(n("anchor-record")) ==> Some(

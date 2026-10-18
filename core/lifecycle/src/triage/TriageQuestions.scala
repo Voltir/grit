@@ -273,7 +273,7 @@ object TriageQuestions {
       Tags.V4.drafts
     )
 
-  /** v2's to v5's `open`. */
+  /** v2's to v4's `open`; v5 words its own. */
   private def StillOpen: Item.One = Item.One(
     Tags.V2.open,
     Question.YesNo(
@@ -308,7 +308,8 @@ object TriageQuestions {
     val built = for {
       gapQuestion <- Question
         .choice(
-          "Read new_message, said by author, and its thread. What does new_message leave open?",
+          "Read new_message, said by author, thread and earlier_exchange (when present). What " +
+            "does new_message leave open?",
           key(
             "asks",
             "it asks for information, a document, or for something to be done, of anyone"
@@ -326,14 +327,20 @@ object TriageQuestions {
       set <- of(
         Item.One(gap, gapQuestion),
         Vector(
-          StillOpen,
+          Item.One(
+            Tags.V2.open,
+            yesNo(
+              "Read new_message, thread and earlier_exchange (when present). Is what " +
+                "new_message asks for still unanswered in the thread or earlier_exchange?"
+            )
+          ),
           Item.One(
             to,
             yesNo(
-              "Read new_message and thread. Is new_message directed at a particular person " +
-                "rather than at the room, by naming them or by answering what they said in " +
-                "thread? Mentioning someone, or writing in a thread they wrote in, does not by " +
-                "itself direct it at them."
+              "Read new_message, thread and earlier_exchange (when present). Is new_message " +
+                "directed at a particular person rather than at the room, by naming them or by " +
+                "answering what they said in thread or earlier_exchange? Mentioning someone, or " +
+                "writing in a thread they wrote in, does not by itself direct it at them."
             )
           ),
           toGrit(persona),
