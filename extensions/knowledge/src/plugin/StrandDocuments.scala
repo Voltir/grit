@@ -9,9 +9,9 @@ import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, Job, SlotRule}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.visibility.{Label, Visibility}
-import grit.knowledge.strand.{Dream, DreamParams}
+import grit.knowledge.strand.{DreamParams, StrandDream}
 
-/** The strands plugin: one document per strand of its rooms, by its job [[Dream]], daily at
+/** The strands plugin: one document per strand of its rooms, by its job [[StrandDream]], daily at
   * `at` in `zone`, on a schedule per label in `labels`, keyed `strands-dream-{label}` with the
   * label's written form, `+` written `-`, and declared at that label, each run summarising at
   * most [[StrandDocuments.PerRun]] strands spoken in within [[StrandDocuments.Reach]] or
@@ -31,7 +31,7 @@ final class StrandDocuments private (
 
   val version: Int = 1
 
-  private val dream = new Dream(StrandDocuments.PerRun, labels)
+  private val dream = new StrandDream(StrandDocuments.PerRun, labels)
 
   override val documents: Option[Documents] = {
     val kept = terms

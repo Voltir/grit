@@ -21,10 +21,10 @@ import grit.knowledge.card.CardSummary
 final case class DreamParams(perRun: Int, reach: FiniteDuration) extends caps.Pure
 
 /** The job `strands-dream`, version 1, of a plugin whose schedules are declared at `labels`.
-  * A run keeps, at its floor, one document per strand of [[Dream.Members]] or more members
-  * and [[Dream.Least]] or more characters of their messages, in a room whose label in force
+  * A run keeps, at its floor, one document per strand of [[StrandDream.Members]] or more members
+  * and [[StrandDream.Least]] or more characters of their messages, in a room whose label in force
   * is its floor, keyed `strand:{root}`: [[StrandDocument.text]] of one summary
-  * ([[CardSummary]]) of what they said, their latest [[Dream.Chars]] characters as an excerpt
+  * ([[CardSummary]]) of what they said, their latest [[StrandDream.Chars]] characters as an excerpt
   * shows them. A strand whose messages are unchanged since its document was written asks
   * nothing. It withdraws its floor's document of a strand under either least since, whose
   * members' messages are gone, or whose room is at another label now. It summarises at most
@@ -35,9 +35,9 @@ final case class DreamParams(perRun: Int, reach: FiniteDuration) extends caps.Pu
   * or unread, or a keep the store refused), or why it stopped (the scan refused, naming
   * why). Its `limits`: asks, `perRunMost`; no calls or judgments.
   */
-final class Dream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[DreamParams] {
+final class StrandDream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[DreamParams] {
 
-  val name: JobName = Dream.Name
+  val name: JobName = StrandDream.Name
 
   val version: Int = 1
 
@@ -69,24 +69,24 @@ final class Dream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[Dr
 
   def run(run: Trusted[JobRun[DreamParams]], moves: Dreaming^): String = {
     val most = run.extract.params.perRun.min(limits.asks)
-    moves.scan(Dream.Scan, run.tainted.map(_.params))((params, keeper, strands, _, at) =>
-      Dream.scanned(params.reach, most, labels, keeper, strands, at)
+    moves.scan(StrandDream.Scan, run.tainted.map(_.params))((params, keeper, strands, _, at) =>
+      StrandDream.scanned(params.reach, most, labels, keeper, strands, at)
     ) match {
       case Left(e) => Dreamt.stopped(s"scanning its strands: ${MoveError.said(e)}").line
       case Right(scan) =>
         scan.due.zipWithIndex
           .foldLeft(Dreamt.of(scan)) { case (done, (seen, i)) =>
             moves.summarise(
-              Dream.move("summary", i),
+              StrandDream.move("summary", i),
               Vector(seen),
               Vector.empty,
-              run.tainted.map(_ => Dream.Asked)
+              run.tainted.map(_ => StrandDream.Asked)
             ) match {
               case Left(e) => done.unwritten(seen.root, MoveError.said(e))
               case Right(None) => done.changed
               case Right(Some(summarised)) =>
-                moves.keep(Dream.move("write", i), summarised.asked.reply)((summary, keeper, at) =>
-                  Dream.written(seen, summary, keeper, at)
+                moves.keep(StrandDream.move("write", i), summarised.asked.reply)(
+                  (summary, keeper, at) => StrandDream.written(seen, summary, keeper, at)
                 ) match {
                   case Left(e) => done.unwritten(seen.root, MoveError.said(e))
                   case Right(_) => done.wrote
@@ -98,7 +98,7 @@ final class Dream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[Dr
   }
 }
 
-object Dream {
+object StrandDream {
 
   val Name: JobName =
     JobName.of("strands-dream").fold(e => throw new IllegalStateException(e), identity)

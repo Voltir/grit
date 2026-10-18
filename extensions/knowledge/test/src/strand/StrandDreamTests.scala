@@ -23,7 +23,7 @@ import utest.*
   * [[ScriptedDreaming]] over one document store, so a second run reads what the first kept.
   * Every summary is answered [[Summary]] with [[Terms]], unless a test says.
   */
-object DreamTests extends TestSuite {
+object StrandDreamTests extends TestSuite {
 
   private val Plugin: PluginName = PluginName.of("strands").fold(sys.error, identity)
 
@@ -74,7 +74,7 @@ object DreamTests extends TestSuite {
         labels: Vector[Label] = Vector(floor),
         answer: Int -> Either[MoveError, ujson.Value] = _ => Right(Answered)
     ): String = {
-      val dream = new Dream(5, labels)
+      val dream = new StrandDream(5, labels)
       heard.run()
       val needs = Needs.over(Plugin, Vector.empty)
       val moves = new ScriptedDreaming(
@@ -300,7 +300,7 @@ object DreamTests extends TestSuite {
     test(
       "its parameters read back as written; a reach that is no positive duration does not read"
     ) {
-      val dream = new Dream(5, Vector(Label.Public))
+      val dream = new StrandDream(5, Vector(Label.Public))
       val params = DreamParams(3, 2.days)
       (
         dream.write(params),

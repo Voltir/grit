@@ -46,7 +46,7 @@ Packages, in one-way order (each names only those before it):
   with its id; its card is written at when it last changed, titled with its name. Imports
   `ref`, `card` and `sync`, never `github`.
 - **`strand`**: a strand's document (ADR 0042), one per strand root of three threads or more
-  with enough said, kept at its room's label: its key, text and data, and `Dream`, the
+  with enough said, kept at its room's label: its key, text and data, and `StrandDream`, the
   dreaming job `strands-dream`, which scans the strands of its run's rooms by ids and counts,
   has core summarise each changed one from what its members said, and keeps or withdraws
   their documents. Its code never holds a message's text. Imports `card`.
@@ -58,7 +58,7 @@ Packages, in one-way order (each names only those before it):
   `ref` and `grit.prose`; never `strand`, `sync` or a source.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
   documents' terms, the `Sync` job, each source's sync schedules (the keys in `Knowledge`'s
-  doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the `Dream` job
+  doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the `StrandDream` job
   on a daily schedule per label it is declared at, and its documents' terms; and
   `StandingDocuments`, a plugin of its own over `standing`. Each is its own plugin because a
   plugin's documents share one label and one bound, and a sync holds every current document
