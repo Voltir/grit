@@ -38,7 +38,6 @@ import grit.eval.harness.capture.{
   Digest,
   Dump,
   Ended,
-  Fields,
   KnowledgeJson,
   Live,
   Manifest,

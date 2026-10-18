@@ -8,7 +8,7 @@ import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.store.{StoreError, Tx}
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{Capture, Fields}
+import grit.eval.harness.capture.Capture
 
 /** The turns a database recorded in a window, read for the lost-tool measure through
   * `grit.dbos`'s `Reader` and the turn's own reading of its records, never through SQL of its
