@@ -50,7 +50,7 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
-import grit.knowledge.plugin.{CardSource, Knowledge}
+import grit.knowledge.plugin.{CardSource, Knowledge, StrandDocuments}
 import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, KeyFiles, McpServer}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest, DriveTools}
@@ -558,8 +558,9 @@ object Main {
   private val PluginsVar = "GRIT_PLUGINS"
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
-    * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]) and `knowledge`
-    * ([[knowledge]], under `visibility`, its days beginning in `zone`).
+    * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
+    * ([[knowledge]], under `visibility`, its days beginning in `zone`) and `strands`
+    * ([[strands]], likewise).
     */
   private[main] def pluginChoice(
       env: Map[String, String],
@@ -578,12 +579,48 @@ object Main {
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
+              case "strands" =>
+                strands(name, env, visibility, zone)
+                  .map(done :+ _)
+                  .left
+                  .map(why => s"$PluginsVar: $why")
               case other =>
-                Left(s"$PluginsVar: no plugin $other; there are digest, remind and knowledge")
+                Left(
+                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge and strands"
+                )
             }
           }
         }
       }
+
+  /** The labels the strands plugin's schedules are declared at, written forms, comma-separated.
+    */
+  private val StrandLabelsVar = "GRIT_STRAND_LABELS"
+
+  /** The strands plugin `name` ([[StrandDocuments]]), its runs daily at 04:30 in `zone`, one
+    * schedule at each label [[StrandLabelsVar]] names; or why not: the variable unset, blank,
+    * or naming no label, or [[StrandDocuments.of]]'s refusal under `visibility`.
+    */
+  private[main] def strands(
+      name: PluginName,
+      env: Map[String, String],
+      visibility: Visibility,
+      zone: java.time.ZoneId
+  ): Either[String, StrandDocuments] =
+    for {
+      written <- Some(csv(env, StrandLabelsVar))
+        .filter(_.nonEmpty)
+        .toRight(
+          s"strands keeps documents at the labels $StrandLabelsVar names, and it is unset or blank"
+        )
+      labels <- written.foldLeft[Either[String, Vector[Label]]](Right(Vector.empty))((acc, w) =>
+        acc.flatMap(done => Label.read(w).map(done :+ _).left.map(why => s"$StrandLabelsVar: $why"))
+      )
+      plugin <- StrandDocuments
+        .of(name, labels, java.time.LocalTime.of(4, 30), zone, visibility)
+        .left
+        .map(why => s"strands: $why")
+    } yield plugin
 
   /** The variable naming the owner of the repository the knowledge plugin reads. */
   private val GithubOwnerVar = "GRIT_GITHUB_OWNER"

@@ -109,7 +109,7 @@ object PluginChoiceTests extends TestSuite {
 
     test("a plugin grit does not have, or a name no plugin could have, is refused") {
       choice(Map("GRIT_PLUGINS" -> "digest,wiki")) ==>
-        Left("GRIT_PLUGINS: no plugin wiki; there are digest, remind and knowledge")
+        Left("GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge and strands")
       choice(Map("GRIT_PLUGINS" -> "Digest")) ==> Left(
         "GRIT_PLUGINS: a plugin's name is lowercase letters, digits and dashes, starting with a letter"
       )
@@ -138,6 +138,48 @@ object PluginChoiceTests extends TestSuite {
             )
           )
         )
+      )
+    }
+
+    test(
+      "strands, at the labels GRIT_STRAND_LABELS names, dreams daily at 04:30 at each, keyed by its label"
+    ) {
+      val env = Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> "public, internal")
+      (names(env), scheduled(env)) ==> (
+        Right(Vector(("StrandDocuments", "strands"))),
+        Right(
+          Vector(
+            (
+              "strands-dream-public",
+              SlotRule.Daily(LocalTime.of(4, 30), zone),
+              ujson.Obj("perRun" -> 5, "reach" -> "PT48H"),
+              Label.Public
+            ),
+            (
+              "strands-dream-internal",
+              SlotRule.Daily(LocalTime.of(4, 30), zone),
+              ujson.Obj("perRun" -> 5, "reach" -> "PT48H"),
+              Label.at(Level.Internal)
+            )
+          )
+        )
+      )
+    }
+
+    test("strands with no label, or a label that does not read, is refused, naming its variable") {
+      (
+        choice(Map("GRIT_PLUGINS" -> "strands")),
+        choice(Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> " , ")),
+        choice(Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> "loud")).left
+          .map(_.startsWith("GRIT_PLUGINS: GRIT_STRAND_LABELS: loud"))
+      ) ==> (
+        Left(
+          "GRIT_PLUGINS: strands keeps documents at the labels GRIT_STRAND_LABELS names, and it is unset or blank"
+        ),
+        Left(
+          "GRIT_PLUGINS: strands keeps documents at the labels GRIT_STRAND_LABELS names, and it is unset or blank"
+        ),
+        Left(true)
       )
     }
 

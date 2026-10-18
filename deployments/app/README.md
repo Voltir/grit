@@ -61,8 +61,9 @@ In dependency order:
     serve` serves, and over Drive's shared drives when `GRIT_DRIVE_SA_KEY` is set, carded at
     each label `GRIT_DRIVE_CARD_LABELS` lists (written forms, comma-separated, none below
     internal), synced through the Drive edge; refused at start with neither, or with a part
-    of either unset; `Main.knowledge`); then the chat TUI, or with arguments each answered as
-    a message.
+    of either unset; `Main.knowledge`; `strands`, one document per strand of a room, dreamed
+    daily at 04:30 at each label `GRIT_STRAND_LABELS` lists, refused at start without one;
+    `Main.strands`); then the chat TUI, or with arguments each answered as a message.
 
   `PromoteModelSettings` prints the seed catalog with every approved setting laid over it, for a
   reviewed commit. ← `config`, `look`, `chat`
