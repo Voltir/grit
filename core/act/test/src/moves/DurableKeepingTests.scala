@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.act.MovesFixtures.Answering
 import grit.core.act.{Keeping, MoveError, MoveLimits}
-import grit.core.document.{DocText, DocumentKeeper, Pointer, Written}
+import grit.core.document.{DocRef, DocText, DocumentKeeper, Pointer, Written}
 import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.DocKey
 import grit.core.place.Place
@@ -34,7 +34,7 @@ object DurableKeepingTests extends TestSuite {
 
   /** A keeper that writes as `inner` does, counting its writes. */
   private final class Counting(inner: DocumentKeeper) extends DocumentKeeper {
-    export inner.{current, newest, withdraw}
+    export inner.{current, newest, referring, withdraw}
     // A counter only the test's assertions read; the keeper's writes bump it on the test's thread.
     @caps.unsafe.untrackedCaptures
     var writes = 0
@@ -46,10 +46,11 @@ object DurableKeepingTests extends TestSuite {
         t: DocText,
         data: ujson.Value,
         pointer: Option[Pointer],
-        at: Instant
+        at: Instant,
+        refs: Set[DocRef]
     )(using Tx^): Either[StoreError, Written] = {
       writes += 1
-      inner.write(k, label, integrity, place, t, data, pointer, at)
+      inner.write(k, label, integrity, place, t, data, pointer, at, refs)
     }
   }
 

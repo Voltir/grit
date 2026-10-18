@@ -63,7 +63,7 @@ final case class Document(
   */
 enum Written {
 
-  /** The current version already held the same place, text, data, pointer and integrity:
+  /** The current version already held the same place, text, data, pointer, integrity and refs:
     * nothing was written.
     */
   case Unchanged(current: DocumentVersion, kept: Label)

@@ -1,6 +1,6 @@
 # 0028. A ledger document is versioned, kept at a label, scoped to a place, ranked beside entries, and counted when placed
 
-Status: accepted (2026-10-05); revised (2026-10-16)
+Status: accepted (2026-10-05); revised (2026-10-18)
 
 Context: ADR 0011 gives a plugin cache and ledger documents. A knowledge index needs the
 ledger: short documents (a summary pointing to where the full text lives, a topic, a rule)
@@ -37,6 +37,11 @@ Decision:
   server's prefix), so a window shows the line only to a turn offered that name, and a call
   follows it when it names that tool and holds each of its arguments unchanged, more besides. Its arguments never name a destination (ADR 0031): a
   pointer names a read.
+- **A version may hold references** (`DocRef`, `grit.document_refs`): what it refers to
+  outside it, in its plugin's own terms, at most `DocRef.Most`, none on a withdrawal. Core keeps
+  them with the version, a write differing only in them being a new version, and finds a
+  plugin's current documents by one (`DocumentShelf.referring`), since a plugin runs no SQL;
+  what a reference means is the plugin's.
 - **Core counts placement and follows.** The step that records a window records each document
   it holds by version and, in the same transaction, each one's placement count and last
   placement. The step that appends a turn's reply, or its draft, counts in its own

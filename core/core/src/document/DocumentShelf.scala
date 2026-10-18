@@ -10,7 +10,8 @@ import grit.core.visibility.{Integrity, Label}
 /** One plugin's documents as it reads them: the current ones, withdrawals left out, and only
   * those its transaction reads ([[grit.core.store.Tx.clearance]]): a document kept in the
   * transaction's own room up to that room's label, any other up to
-  * [[grit.core.store.Tx.cleared]]. No other plugin's are reachable.
+  * [[grit.core.store.Tx.cleared]]. Another plugin's are reached only through the service it
+  * exports ([[grit.core.plugin.Needs]]).
   */
 trait DocumentShelf {
 
@@ -24,12 +25,17 @@ trait DocumentShelf {
     * written first, at most `n`; none when `n` is not positive.
     */
   def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]]
+
+  /** Its current documents this transaction reads that hold `ref`, most recently written first,
+    * at most `n`; none when `n` is not positive.
+    */
+  def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]]
 }
 
 /** One plugin's documents as it writes them, under the terms it declared. */
 trait DocumentKeeper extends DocumentShelf {
 
-  /** Makes `text`, `data` and `pointer`, at `place`, the current document under `key` at `label`
+  /** Makes `text`, `data`, `pointer` and `refs`, at `place`, the current document under `key` at `label`
     * joined with its transaction's floor ([[grit.core.visibility.Clearance.floor]]), written `at`:
     * never below what its writer could read. It is believed at `integrity`, as given. It is kept in the transaction's own room, or in none
     * when it has none, never a room the writer names. [[Written.kept]] says which label it was kept
@@ -38,7 +44,8 @@ trait DocumentKeeper extends DocumentShelf {
     * write above what it reads back. The version before under that key and label, if any, stops
     * being current and is marked for deletion ([[grit.core.retention.Target.Document]]); a document
     * under the key at another label is untouched. [[Written.Unchanged]] when the current version
-    * there holds the same place, text, data, pointer and integrity. Past the bound, counted over every label,
+    * there holds the same place, text, data, pointer, integrity and refs; [[StoreError.Invalid]],
+    * writing nothing, for more than [[DocRef.Most]] refs. Past the bound, counted over every label,
     * the current documents placed least recently (ties by key, then label in its written form,
     * bytewise) are withdrawn as [[withdraw]] does, never the one written: a high variant few
     * readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at
@@ -53,11 +60,12 @@ trait DocumentKeeper extends DocumentShelf {
       text: DocText,
       data: ujson.Value,
       pointer: Option[Pointer],
-      at: Instant
+      at: Instant,
+      refs: Set[DocRef] = Set.empty
   )(using Tx^): Either[StoreError, Written]
 
   /** Withdraws the current document under `key` at exactly `label`, at `at`: a version holding
-    * nothing, kept at that label and in that document's room and believed as it was, becomes
+    * nothing and no refs, kept at that label and in that document's room and believed as it was, becomes
     * current there, and both
     * are marked for deletion. The withdrawal's version, or `None` when `key` had no current
     * document at `label`.
@@ -81,6 +89,9 @@ object DocumentKeeper {
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
 
+    def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
+      keeper.referring(ref, n)
+
     def write(
         key: DocKey,
         label: Label,
@@ -89,9 +100,10 @@ object DocumentKeeper {
         text: DocText,
         data: ujson.Value,
         pointer: Option[Pointer],
-        at: Instant
+        at: Instant,
+        refs: Set[DocRef]
     )(using Tx^): Either[StoreError, Written] =
-      keeper.write(key, label, integrity.meet(most), place, text, data, pointer, at)
+      keeper.write(key, label, integrity.meet(most), place, text, data, pointer, at, refs)
 
     def withdraw(key: DocKey, label: Label, at: Instant)(using
         Tx^

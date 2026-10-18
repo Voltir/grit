@@ -5,6 +5,7 @@ import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import grit.core.document.{
   DocLabel,
+  DocRef,
   DocText,
   DocWeight,
   Document,
@@ -321,6 +322,24 @@ private[sql] object SqlDocuments {
           ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
           ps.setInt(SqlClearance.Params + 2, n)
         }(document)
+
+    def referring(ref: DocRef, n: Int)(using tx: Tx^): Either[StoreError, Vector[Document]] =
+      if (n <= 0) Right(Vector.empty)
+      else
+        cleared(
+          s"""WITH ${SqlClearance.With}
+             |SELECT $Columns FROM $Labelled d
+             | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
+             |   AND ${SqlClearance.kept("d")}
+             |   AND EXISTS (SELECT 1 FROM grit.document_refs r
+             |                WHERE r.version = d.version AND r.kind = ? AND r.ref = ?)
+             | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
+        ) { ps =>
+          ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+          ps.setString(SqlClearance.Params + 2, ref.kind)
+          ps.setString(SqlClearance.Params + 3, ref.ref)
+          ps.setInt(SqlClearance.Params + 4, n)
+        }(document)
   }
 
   /** `plugin`'s documents as it writes them under `terms`, marking in `tombstones` each
@@ -338,73 +357,98 @@ private[sql] object SqlDocuments {
         text: DocText,
         data: ujson.Value,
         pointer: Option[Pointer],
-        at: Instant
+        at: Instant,
+        refs: Set[DocRef]
     )(using tx: Tx^): Either[StoreError, Written] = {
       val clearance: Clearance = Tx.clearance(tx)
       val kept = label.join(clearance.floor)
       val room =
         ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
-      SqlLabels.intern(kept).flatMap { id =>
-        rows(
-          s"""SELECT version,
+      val held = refsJson(refs)
+      if (refs.size > DocRef.Most)
+        Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs, not ${refs.size}"))
+      else
+        SqlLabels.intern(kept).flatMap { id =>
+          rows(
+            s"""SELECT version,
             |       (body IS NOT DISTINCT FROM ?
             |        AND place = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
             |        AND data = ?::jsonb
             |        AND pointer IS NOT DISTINCT FROM ?::jsonb
-            |        AND integrity_id = ${SqlIntegrity.Interned}) AS same
-            |  FROM grit.documents
+            |        AND integrity_id = ${SqlIntegrity.Interned}
+            |        AND (SELECT count(*) FROM grit.document_refs x
+            |              WHERE x.version = d.version) = ?
+            |        AND NOT EXISTS (
+            |              SELECT 1 FROM grit.document_refs x
+            |               WHERE x.version = d.version
+            |                 AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS r(kind text, ref text)
+            |                                  WHERE r.kind = x.kind AND r.ref = x.ref))) AS same
+            |  FROM grit.documents d
             | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
             |   FOR UPDATE""".stripMargin
-        ) { ps =>
-          ps.setString(1, DocText.value(text))
-          ps.setString(2, path(place).render())
-          ps.setString(3, data.render())
-          ps.setString(4, pointer.map(pointerJson).orNull)
-          SqlIntegrity.bind(ps, 5, integrity)
-          ps.setString(7, PluginName.value(plugin))
-          ps.setString(8, DocKey.value(key))
-          ps.setInt(9, id)
-        }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
-          // The parameter's type written out: inferred, it is Vector's array-holding refinement.
-          (head: Vector[(DocumentVersion, Boolean)]) =>
-            head match {
-              case Vector((current, true)) => Right(Written.Unchanged(current, kept))
-              case before =>
-                for {
-                  _ <- before.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (v, _)) =>
-                    acc.flatMap(_ => supersede(v, at))
-                  }
-                  written <- rows(
-                    s"""INSERT INTO grit.documents
+          ) { ps =>
+            ps.setString(1, DocText.value(text))
+            ps.setString(2, path(place).render())
+            ps.setString(3, data.render())
+            ps.setString(4, pointer.map(pointerJson).orNull)
+            SqlIntegrity.bind(ps, 5, integrity)
+            ps.setInt(7, refs.size)
+            ps.setString(8, held)
+            ps.setString(9, PluginName.value(plugin))
+            ps.setString(10, DocKey.value(key))
+            ps.setInt(11, id)
+          }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
+            // The parameter's type written out: inferred, it is Vector's array-holding refinement.
+            (head: Vector[(DocumentVersion, Boolean)]) =>
+              head match {
+                case Vector((current, true)) => Right(Written.Unchanged(current, kept))
+                case before =>
+                  for {
+                    _ <- before.foldLeft[Either[StoreError, Unit]](Right(())) {
+                      case (acc, (v, _)) =>
+                        acc.flatMap(_ => supersede(v, at))
+                    }
+                    written <- rows(
+                      s"""INSERT INTO grit.documents
                       |       (plugin, key, place, body, data, pointer, written_at, last_placed,
                       |        classification_id, room_id, integrity_id)
                       |VALUES (?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?::jsonb,
                       |        ?::jsonb, ?, ?, ?, $RoomId, ${SqlIntegrity.Interned})
                       |RETURNING version""".stripMargin
-                  ) { ps =>
-                    ps.setString(1, PluginName.value(plugin))
-                    ps.setString(2, DocKey.value(key))
-                    ps.setString(3, path(place).render())
-                    ps.setString(4, DocText.value(text))
-                    ps.setString(5, data.render())
-                    ps.setString(6, pointer.map(pointerJson).orNull)
-                    ps.setObject(7, utc(at))
-                    ps.setObject(8, utc(at))
-                    ps.setInt(9, id)
-                    ps.setString(10, room)
-                    SqlIntegrity.bind(ps, 11, integrity)
-                  }(versionOf)
-                  version <- written.headOption.toRight(
-                    StoreError.Invalid("a write returned no version")
-                  )
-                  gone <- excess(key, id)
-                  _ <- gone.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, g) =>
-                    acc.flatMap(_ => withdrawn(g._1, g._3, at).map(_ => ()))
-                  }
-                } yield Written.Versioned(version, kept, gone.map(g => (g._1, g._2)))
-            }
+                    ) { ps =>
+                      ps.setString(1, PluginName.value(plugin))
+                      ps.setString(2, DocKey.value(key))
+                      ps.setString(3, path(place).render())
+                      ps.setString(4, DocText.value(text))
+                      ps.setString(5, data.render())
+                      ps.setString(6, pointer.map(pointerJson).orNull)
+                      ps.setObject(7, utc(at))
+                      ps.setObject(8, utc(at))
+                      ps.setInt(9, id)
+                      ps.setString(10, room)
+                      SqlIntegrity.bind(ps, 11, integrity)
+                    }(versionOf)
+                    version <- written.headOption.toRight(
+                      StoreError.Invalid("a write returned no version")
+                    )
+                    _ <-
+                      if (refs.isEmpty) Right(0)
+                      else
+                        update(
+                          """INSERT INTO grit.document_refs (version, kind, ref)
+                          |SELECT ?, r.kind, r.ref FROM jsonb_to_recordset(?::jsonb) AS r(kind text, ref text)""".stripMargin
+                        ) { ps =>
+                          ps.setLong(1, DocumentVersion.value(version))
+                          ps.setString(2, held)
+                        }
+                    gone <- excess(key, id)
+                    _ <- gone.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, g) =>
+                      acc.flatMap(_ => withdrawn(g._1, g._3, at).map(_ => ()))
+                    }
+                  } yield Written.Versioned(version, kept, gone.map(g => (g._1, g._2)))
+              }
+          }
         }
-      }
     }
 
     def withdraw(key: DocKey, label: Label, at: Instant)(using
@@ -495,6 +539,12 @@ private[sql] object SqlDocuments {
           .map(k => (k, SqlLabels.read(rs), rs.getInt("classification_id")))
       )
   }
+
+  /** `refs` as a JSON array of `{"kind":…,"ref":…}`, for `jsonb_to_recordset`. */
+  def refsJson(refs: Set[DocRef]): String =
+    ujson.Arr
+      .from(refs.toVector.map(r => ujson.Obj("kind" -> r.kind, "ref" -> r.ref)))
+      .render()
 
   def versionOf(rs: ResultSet): Either[String, DocumentVersion] =
     DocumentVersion.of(rs.getLong("version")).toRight("a document's version")

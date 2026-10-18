@@ -59,14 +59,17 @@ final class InMemoryDocuments extends DocumentStore {
           text: DocText,
           data: ujson.Value,
           pointer: Option[Pointer],
-          at: Instant
+          at: Instant,
+          refs: Set[DocRef]
       )(using tx: Tx^): Either[StoreError, Written] = {
         val clearance = Tx.clearance(tx)
         val kept = label.join(clearance.floor)
         head(plugin, key, kept) match {
+          case _ if refs.size > DocRef.Most =>
+            Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs"))
           case Some((v, r))
               if r.text.contains(text) && r.place == place && r.data == data &&
-                r.pointer == pointer && r.integrity == integrity =>
+                r.pointer == pointer && r.integrity == integrity && r.refs == refs =>
             Right(Written.Unchanged(version(v), kept))
           case before =>
             for {
@@ -85,7 +88,8 @@ final class InMemoryDocuments extends DocumentStore {
                   at,
                   None,
                   Placement(0, at),
-                  None
+                  None,
+                  refs
                 )
               )
               over = holding(plugin).filterNot((_, r) => r.key == key && r.label == kept)
@@ -118,7 +122,8 @@ final class InMemoryDocuments extends DocumentStore {
                   written = at,
                   superseded = None,
                   placement = Placement(0, at),
-                  following = None
+                  following = None,
+                  refs = Set.empty
                 )
               )
               _ <- tombstones.write(Target.Document(version(w)), at)
@@ -164,7 +169,7 @@ final class InMemoryDocuments extends DocumentStore {
       else
         rows.toVector
           .collect {
-            case (v, r @ Row(plugin, _, _, _, _, place, Some(text), _, _, _, _, _, _))
+            case (v, r @ Row(plugin, _, _, _, _, place, Some(text), _, _, _, _, _, _, _))
                 if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
               val found = InMemoryDocuments.words(DocText.value(text))
               val score = words.map(w => found.count(_ == w)).sum.toDouble
@@ -255,6 +260,16 @@ final class InMemoryDocuments extends DocumentStore {
           .take(n max 0)
           .flatMap((v, r) => r.text.map(document(v, r, _)))
       )
+
+    def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
+      Right(
+        holding(plugin)
+          .filter((_, r) => reads(r) && r.refs.contains(ref))
+          .sortBy((v, r) => (r.written, v))
+          .reverse
+          .take(n max 0)
+          .flatMap((v, r) => r.text.map(document(v, r, _)))
+      )
   }
 
   /** `plugin`'s current version under `key` at `label`, holding something or a withdrawal. */
@@ -315,7 +330,8 @@ object InMemoryDocuments {
       written: Instant,
       superseded: Option[Instant],
       placement: Placement,
-      following: Option[Following]
+      following: Option[Following],
+      refs: Set[DocRef]
   )
 
   /** `text`'s words, lower case. */

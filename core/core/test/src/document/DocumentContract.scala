@@ -58,6 +58,7 @@ abstract class DocumentContract extends TestSuite {
 
   private def name(s: String): PluginName = got(PluginName.of(s))
   private def key(s: String): DocKey = got(DocKey.of(s))
+  private def ref(kind: String, s: String): DocRef = got(DocRef.of(kind, s))
   private def text(s: String): DocText = got(DocText.of(s))
   private def place(s: String): Place = Place.under(Namespace.Task, Vector("documents", s))
 
@@ -87,11 +88,22 @@ abstract class DocumentContract extends TestSuite {
       m: Int,
       where: Place = place("here"),
       data: ujson.Value = Empty,
-      pointer: Option[Pointer] = None
+      pointer: Option[Pointer] = None,
+      refs: Set[DocRef] = Set.empty
   ): DocumentVersion =
     transaction(
       ok(
-        k.write(key(name), Label.Public, Integrity.Member, where, text(body), data, pointer, at(m))
+        k.write(
+          key(name),
+          Label.Public,
+          Integrity.Member,
+          where,
+          text(body),
+          data,
+          pointer,
+          at(m),
+          refs
+        )
       )
     ) match {
       case Written.Versioned(v, _, _) => v
@@ -863,6 +875,125 @@ abstract class DocumentContract extends TestSuite {
       put(kq, "k", "words", 1)
       transaction(ok(kq.withdraw(key("k"), Label.Public, at(2))))
       transaction(ok(store.kept())).filter(Set(p, q, r)).toSet ==> Set(p, q)
+    }
+
+    test(
+      "referring finds a plugin's own current documents holding a reference, latest written first, at most n"
+    ) {
+      val (p, q) = (name("doc-refs-p"), name("doc-refs-q"))
+      val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))
+      val (a, b) = (ref("strand", "s-1"), ref("strand", "s-2"))
+      put(kp, "one", "first", 1, refs = Set(a))
+      put(kp, "two", "second", 2, refs = Set(a, b))
+      put(kp, "three", "third", 3)
+      put(kp, "four", "fourth", 4, refs = Set(a))
+      put(kp, "four", "fourth again", 5, refs = Set(b))
+      put(kq, "theirs", "theirs", 6, refs = Set(a))
+      def referring(of: DocRef, n: Int) = transaction(keys(ok(shelf(p).referring(of, n))))
+      (
+        referring(a, 10),
+        referring(b, 10),
+        referring(a, 1),
+        referring(a, 0),
+        referring(ref("strand", "s-3"), 10),
+        transaction(keys(ok(shelf(q).referring(a, 10))))
+      ) ==> (
+        Vector("two", "one"),
+        Vector("four", "two"),
+        Vector("two"),
+        Vector(),
+        Vector(),
+        Vector("theirs")
+      )
+    }
+
+    test("a document holding a reference above Tx.cleared is not found by it") {
+      val p = name("doc-refs-above")
+      val k = keeper(p, terms())
+      val a = ref("card", "c-1")
+      put(k, "low", "low", 1, refs = Set(a))
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("high"),
+            Empty,
+            None,
+            at(2),
+            Set(a)
+          )
+        )
+      )
+      (
+        transaction(keys(ok(shelf(p).referring(a, 10)))),
+        opened(Clearance.of(TestLabels.Trial))(keys(ok(shelf(p).referring(a, 10))))
+      ) ==> (Vector("low"), Vector("high", "low"))
+    }
+
+    test(
+      "a write differing only in its references is a new version; the same references, in any order, are Unchanged"
+    ) {
+      val p = name("doc-refs-unchanged")
+      val k = keeper(p, terms())
+      val (a, b) = (ref("topic", "t-1"), ref("mention", "m-1"))
+      def write(refs: Set[DocRef], m: Int) = transaction(
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("words"),
+            Empty,
+            None,
+            at(m),
+            refs
+          )
+        )
+      )
+      val first = put(k, "k", "words", 1, refs = Set(a, b))
+      val again = write(Set(b, a), 2)
+      val fewer = write(Set(a), 3)
+      val none = write(Set.empty, 4)
+      assertMatch((again, fewer, none)) {
+        case (
+              Written.Unchanged(`first`, _),
+              Written.Versioned(_, _, _),
+              Written.Versioned(_, _, _)
+            ) =>
+      }
+      transaction(keys(ok(shelf(p).referring(a, 10)))) ==> Vector()
+    }
+
+    test("a write holding more than DocRef.Most references is refused, writing nothing") {
+      val p = name("doc-refs-most")
+      val k = keeper(p, terms())
+      val most = (0 until DocRef.Most).map(i => ref("strand", s"s-$i")).toSet
+      val over = ref("strand", "s-over")
+      val many = most + over
+      val refused = transaction(
+        k.write(
+          key("k"),
+          Label.Public,
+          Integrity.Member,
+          place("here"),
+          text("words"),
+          Empty,
+          None,
+          at(1),
+          many
+        )
+      )
+      put(k, "j", "most", 2, refs = most)
+      assertMatch(refused) { case Left(StoreError.Invalid(_)) => }
+      (
+        transaction(ok(shelf(p).current(key("k"), Label.Public))),
+        transaction(keys(ok(shelf(p).referring(ref("strand", "s-0"), 10)))),
+        transaction(keys(ok(shelf(p).referring(over, 10))))
+      ) ==> (None, Vector("j"), Vector())
     }
   }
 }

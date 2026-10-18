@@ -2,7 +2,7 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.document.{Document, DocumentShelf}
+import grit.core.document.{DocRef, Document, DocumentShelf}
 import grit.core.edge.ServedEdge
 import grit.core.id.{
   AttesterName,
@@ -674,6 +674,8 @@ object Deployment {
       def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
         Right(None)
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
+      def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
+        Right(Vector.empty)
     }
   )
 

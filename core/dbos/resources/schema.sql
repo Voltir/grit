@@ -1054,6 +1054,17 @@ CREATE INDEX IF NOT EXISTS idx_documents_plugin ON grit.documents (plugin, writt
 CREATE INDEX IF NOT EXISTS idx_documents_bm25 ON grit.documents
     USING bm25 (body) WITH (text_config = 'english');
 
+-- What a document version refers to outside it (DocRef), in its plugin's own terms; read by
+-- DocumentShelf.referring. At most 256 per version. A withdrawal holds none.
+-- Retention: ledger: with its version (Target.Document), by cascade.
+CREATE TABLE IF NOT EXISTS grit.document_refs (
+    version BIGINT NOT NULL REFERENCES grit.documents(version) ON DELETE CASCADE,
+    kind    TEXT NOT NULL CHECK (kind ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    ref     TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 512),
+    PRIMARY KEY (version, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, ref);
+
 -- The terms each plugin declared for its documents (DocumentTerms), written at every engine
 -- start: `enabled` for the plugins that start enabled, false for one declared before and not
 -- now; the newest start wins. Not versioned: readers use the terms in force.
