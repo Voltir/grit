@@ -134,6 +134,8 @@ object AsOf {
 
   private def before(t: Instant, at: Instant): Boolean = t.isBefore(at)
 
+  private def earlier(until: Instant, at: Instant): Instant = if (until.isBefore(at)) until else at
+
   private final class Settled(under: LifecycleStore, settings: LifecycleSettings)
       extends LifecycleStore {
     def current()(using Tx^): Either[StoreError, LifecycleSettings] = Right(settings)
@@ -318,15 +320,13 @@ object AsOf {
       under.declared()
     def shelved(plugins: Vector[PluginName], at: Instant)(using
         Tx^
-    ): Either[StoreError, Vector[Shelved]] = under.shelved(plugins, earlier(at))
+    ): Either[StoreError, Vector[Shelved]] = under.shelved(plugins, earlier(at, this.at))
     def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] =
-      under.search(shelves, query, limit, earlier(at))
+      under.search(shelves, query, limit, earlier(at, this.at))
     def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions).map(_.filter(d => before(d.written, at)))
-
-    private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
   }
 
   /** `under`'s documents, each read asked for as of any moment read as of `at` ([[documentsAtEnd]]). */
@@ -351,10 +351,10 @@ object AsOf {
     def placed(root: EntryId)(using Tx^): Either[StoreError, Option[Placed]] = under.placed(root)
     def spokenIn(room: Place, from: Instant, until: Instant)(using
         Tx^
-    ): Either[StoreError, Vector[Said]] = under.spokenIn(room, from, earlier(until))
+    ): Either[StoreError, Vector[Said]] = under.spokenIn(room, from, earlier(until, at))
     def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using
         Tx^
-    ): Either[StoreError, Vector[Said]] = under.said(conversations, from, earlier(until))
+    ): Either[StoreError, Vector[Said]] = under.said(conversations, from, earlier(until, at))
     def openings(conversations: Vector[ConversationId])(using
         Tx^
     ): Either[StoreError, Vector[Said]] =
@@ -362,7 +362,7 @@ object AsOf {
     def links(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Link]] =
       under.links(conversations).flatMap(begun)
     def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]] =
-      under.touched(from, earlier(until)).flatMap(begun)
+      under.touched(from, earlier(until, at)).flatMap(begun)
 
     /** The `links` whose follower was begun before the instant. */
     private def begun(links: Vector[Link])(using Tx^): Either[StoreError, Vector[Link]] =
@@ -371,7 +371,5 @@ object AsOf {
           .get(l.conversation)
           .map(_.filter(c => before(c.createdAt, at)).map(_ => l))
       ).map(_.flatten)
-
-    private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
   }
 }
