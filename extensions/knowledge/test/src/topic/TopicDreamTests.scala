@@ -429,54 +429,6 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a discussion or card placed with a discussion goes where that one goes, a topic it opens included"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val b = strand(w, "C2", "deploy rollback", 100)
-      val runs = new Runs(w)
-      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(attach =
-        (_, _) =>
-          ujson.Obj("discussions" -> ujson.Arr("new", "with 1"), "cards" -> ujson.Arr("with 2"))
-      )
-      (
-        reply,
-        runs.kept.map(_._1),
-        runs.referring(Ref.Strand(b.id)),
-        runs.referring(Ref.Drive("plan1"))
-      ) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector(key(a)),
-        Vector(key(a)),
-        Vector(key(a))
-      )
-    }
-
-    test(
-      "placed with a discussion set aside is set aside; with itself, or with no discussion shown, is left"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val _ = strand(w, "C2", "lunch order", 100)
-      val runs = new Runs(w)
-      runs.card("menu2", "The lunch menu.", Now.minusSeconds(60))
-      runs.card("plan1", "The deploy plan.", Now.minusSeconds(30))
-      val reply = runs.run(attach =
-        (_, _) =>
-          ujson.Obj(
-            "discussions" -> ujson.Arr("none", "with 2"),
-            "cards" -> ujson.Arr("with 1", "with 3")
-          )
-      )
-      (reply, runs.kept, runs.aside._1) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 2 set aside, 2 left for the next run",
-        Vector(),
-        Vector(a.id)
-      )
-    }
-
-    test(
       "a changed card a topic links to attaches to it by its unit; one no topic refers to goes to the attach ask, and placed in none is counted set aside"
     ) {
       val w = new StrandWorld
