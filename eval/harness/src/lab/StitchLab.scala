@@ -148,7 +148,7 @@ object StitchLab {
           .map(_.isDefined)
       )
       _ <- Either.cond(!already, (), "the room is in the database already: build it afresh")
-      heardAll <- every(room.messages) { m =>
+      done <- every(room.messages) { m =>
         for {
           by <- Account.read(s"slack:${room.team}/U${m.who.toUpperCase}")
           _ <- engine.jot.write(Subject.Public)(engine.principals.name(by, m.who)).left.map(said)
@@ -166,7 +166,7 @@ object StitchLab {
             .map((e: InboxError) => s"${m.id}: not heard: $e")
         } yield ()
       }
-    } yield ()
+    } yield done
   }
 
   private def place(
