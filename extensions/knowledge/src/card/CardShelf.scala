@@ -2,7 +2,7 @@ package grit.knowledge.card
 
 import java.time.Instant
 
-import grit.core.document.DocumentShelf
+import grit.core.document.{Document, DocumentShelf}
 import grit.core.id.{DocKey, DocumentVersion}
 import grit.core.store.{StoreError, Tx}
 import grit.knowledge.ref.{CardKey, Ref}
@@ -28,21 +28,30 @@ object CardShelf {
 
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
-    def changed(since: Instant, n: Int)(using Tx^): Either[StoreError, Vector[Seen]] =
-      // Newest first, so the first `n` written since are among the newest `n`.
-      documents
-        .newest(n)
-        .map(_.filterNot(_.written.isBefore(since)).flatMap { d =>
-          for {
-            key <- CardKey.parse(DocKey.value(d.key)).toOption
-            o <- d.data.objOpt
-            path <- o.get("path").flatMap(_.strOpt)
-          } yield Seen(
-            d.version,
-            key,
-            o.get("title").flatMap(_.strOpt).getOrElse(path),
-            d.pointer.flatMap(Ref.ofPointer)
-          )
-        })
+    def changed(since: Instant, n: Int)(using Tx^): Either[StoreError, Vector[Seen]] = {
+      // The newest `k` documents, `k` doubled until they hold `n` cards written since, reach one
+      // written before it (every later one is older), or are all there are.
+      def from(k: Int): Either[StoreError, Vector[Seen]] =
+        documents.newest(k).flatMap { ds =>
+          val seen = ds.filterNot(_.written.isBefore(since)).flatMap(card)
+          val done =
+            seen.size >= n || ds.size < k || ds.lastOption.exists(_.written.isBefore(since))
+          if (done || k > Int.MaxValue / 2) Right(seen.take(n)) else from(k * 2)
+        }
+      if (n <= 0) Right(Vector.empty) else from(n)
+    }
   }
+
+  /** `d` as a card seen, or `None` when it is no card. */
+  private def card(d: Document): Option[Seen] =
+    for {
+      key <- CardKey.parse(DocKey.value(d.key)).toOption
+      o <- d.data.objOpt
+      path <- o.get("path").flatMap(_.strOpt)
+    } yield Seen(
+      d.version,
+      key,
+      o.get("title").flatMap(_.strOpt).getOrElse(path),
+      d.pointer.flatMap(Ref.ofPointer)
+    )
 }

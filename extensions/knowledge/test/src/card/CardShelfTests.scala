@@ -91,6 +91,48 @@ object CardShelfTests extends TestSuite {
         Right(Vector(versions(1)))
     }
 
+    test("n cards written since are seen past newer documents that are no cards and older cards") {
+      val docs = new InMemoryDocuments
+      val keeper = docs.keeper(name, terms)
+      def put(c: Card, t: Instant) =
+        keeper.write(
+          c.docKey,
+          Label.Public,
+          Integrity.Member,
+          Place.Everywhere,
+          c.text,
+          c.data,
+          Some(c.pointer),
+          t
+        )
+      val old = card("f0", None)
+      val a = card("f1", None)
+      val b = card("f2", None)
+      assert(put(old, at(1)).isRight, put(a, at(5)).isRight, put(b, at(6)).isRight)
+      (1 to 3).foreach(i =>
+        assert(
+          keeper
+            .write(
+              right(DocKey.of(s"note-$i")),
+              Label.Public,
+              Integrity.Member,
+              Place.Everywhere,
+              right(DocText.of("x")),
+              ujson.Obj(),
+              None,
+              at(10 + i)
+            )
+            .isRight
+        )
+      )
+      CardShelf.over(docs.shelf(name)).changed(at(5), 2).map(_.map(_.key)) ==> Right(
+        Vector(b.key, a.key)
+      )
+      CardShelf.over(docs.shelf(name)).changed(at(5), 5).map(_.map(_.key)) ==> Right(
+        Vector(b.key, a.key)
+      )
+    }
+
     test("a document of the plugin that is no card is not seen") {
       val docs = new InMemoryDocuments
       right(
