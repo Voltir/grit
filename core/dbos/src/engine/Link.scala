@@ -96,7 +96,7 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   val acknowledgements: grit.core.edge.Acknowledgements
 
   /** The review prompts an edge posts, and the labels their rater gives. */
-  val reviews: grit.core.review.Reviews
+  val reviews: grit.core.review.Reviews[grit.core.review.Prompt, grit.core.review.Verdict]
 
   /** Short read transactions. */
   val db: Db
@@ -285,7 +285,8 @@ private[engine] final class Attached(
 
   val acknowledgements: grit.core.edge.Acknowledgements = new grit.dbos.sql.SqlAcknowledgements()
 
-  val reviews: grit.core.review.Reviews = new grit.dbos.sql.SqlReviews
+  val reviews: grit.core.review.Reviews[grit.core.review.Prompt, grit.core.review.Verdict] =
+    new grit.dbos.sql.SqlReviews
 
   private val opener = new Opener(visibility)
 

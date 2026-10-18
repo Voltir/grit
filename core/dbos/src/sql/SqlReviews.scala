@@ -85,7 +85,7 @@ final class SqlReviews extends ReviewStore {
     }.flatMap(collected)
   }
 
-  def posted(entry: EntryId, address: String, at: Instant)(using
+  def posted(subject: Prompt, address: String, at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Boolean] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -100,14 +100,14 @@ final class SqlReviews extends ReviewStore {
       ) { ps =>
         ps.setString(1, address)
         ps.setObject(2, at.atOffset(ZoneOffset.UTC))
-        ps.setString(3, EntryId.value(entry))
+        ps.setString(3, EntryId.value(subject.entry))
         ps.setString(4, address)
         ps.executeUpdate() == 1
       }
     }
   }
 
-  def dropped(entry: EntryId, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] = {
+  def dropped(subject: Prompt, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
       Using.resource(
@@ -118,7 +118,7 @@ final class SqlReviews extends ReviewStore {
         )
       ) { ps =>
         ps.setObject(1, at.atOffset(ZoneOffset.UTC))
-        ps.setString(2, EntryId.value(entry))
+        ps.setString(2, EntryId.value(subject.entry))
         ps.executeUpdate() == 1
       }
     }

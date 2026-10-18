@@ -176,6 +176,12 @@ abstract class ReviewContract extends TestSuite {
       Candidate(id, c, At.plusSeconds(i.toLong), below, shadow, answers)
     }
 
+  /** `c`'s prompt as the store names one, by its entry alone ([[ReviewStore]]): the rest is
+    * whatever it would be offered as.
+    */
+  private def prompt(c: Candidate): Prompt =
+    Prompt(c.entry, Origin.Task("contract", "prompt"), c.shadow, Reason.Both, c.live, c.answers)
+
   private def mine(c: ConversationId): Vector[Reviewed] =
     transaction(right(reviews.reviewed(Instant.EPOCH))).filter(_.conversation == c)
 
@@ -335,14 +341,14 @@ abstract class ReviewContract extends TestSuite {
         right(reviews.considered(b, Considered.Picked(Reason.ShadowOnly), At.plusSeconds(1)))
         right(reviews.considered(d, Considered.Passed(Reason.Neither), At))
         right(reviews.considered(e, Considered.Picked(Reason.Both), At.plusSeconds(2)))
-        right(reviews.posted(e.entry, "rv-dropped/e", At))
+        right(reviews.posted(prompt(e), "rv-dropped/e", At))
       }
       Vector(
-        transaction(reviews.dropped(d.entry, At)),
-        transaction(reviews.dropped(a.entry, At)),
-        transaction(reviews.dropped(a.entry, At)),
-        transaction(reviews.dropped(e.entry, At)),
-        transaction(reviews.posted(a.entry, "rv-dropped/a", At))
+        transaction(reviews.dropped(prompt(d), At)),
+        transaction(reviews.dropped(prompt(a), At)),
+        transaction(reviews.dropped(prompt(a), At)),
+        transaction(reviews.dropped(prompt(e), At)),
+        transaction(reviews.posted(prompt(a), "rv-dropped/a", At))
       ) ==> Vector(Right(false), Right(true), Right(false), Right(false), Right(false))
       unposted(c) ==> Vector(b.entry)
     }
@@ -366,13 +372,13 @@ abstract class ReviewContract extends TestSuite {
         Prompt(a.entry, origin, shadow, Reason.LiveOnly, below, answers)
       )
       Vector(
-        transaction(reviews.posted(d.entry, "rv-posted/d", At)),
-        transaction(reviews.posted(b.entry, "rv-posted/1", At)),
-        transaction(reviews.posted(b.entry, "rv-posted/2", At)),
-        transaction(reviews.posted(a.entry, "rv-posted/1", At))
+        transaction(reviews.posted(prompt(d), "rv-posted/d", At)),
+        transaction(reviews.posted(prompt(b), "rv-posted/1", At)),
+        transaction(reviews.posted(prompt(b), "rv-posted/2", At)),
+        transaction(reviews.posted(prompt(a), "rv-posted/1", At))
       ) ==> Vector(Right(false), Right(true), Right(false), Right(false))
       val before = unposted(c)
-      transaction(reviews.posted(a.entry, "rv-posted/2", At)) ==> Right(true)
+      transaction(reviews.posted(prompt(a), "rv-posted/2", At)) ==> Right(true)
       (before, unposted(c)) ==> (Vector(a.entry), Vector.empty)
     }
 
@@ -385,7 +391,7 @@ abstract class ReviewContract extends TestSuite {
       val Vector(a) = candidates(c, "rv-reacted", shadow, 1): @unchecked
       transaction {
         right(reviews.considered(a, Considered.Picked(Reason.Both), At))
-        right(reviews.posted(a.entry, "rv-reacted/1", At))
+        right(reviews.posted(prompt(a), "rv-reacted/1", At))
       }
       Vector(
         transaction(reviews.reacted("rv-reacted/none", rater, Verdict.Welcome, At)),
@@ -402,7 +408,7 @@ abstract class ReviewContract extends TestSuite {
       val address = "rv-unreacted/1"
       transaction {
         right(reviews.considered(a, Considered.Picked(Reason.Both), At))
-        right(reviews.posted(a.entry, address, At))
+        right(reviews.posted(prompt(a), address, At))
         right(reviews.reacted(address, rater, Verdict.Welcome, At))
       }
       val refused = Vector(
@@ -429,7 +435,7 @@ abstract class ReviewContract extends TestSuite {
       transaction {
         right(reviews.considered(a, Considered.Picked(Reason.Both), At))
         right(reviews.considered(b, Considered.Picked(Reason.ShadowOnly), At))
-        right(reviews.posted(b.entry, "rv-retention/1", At))
+        right(reviews.posted(prompt(b), "rv-retention/1", At))
         right(reviews.reacted("rv-retention/1", rater, Verdict.Interruption, At))
       }
       val offered = unposted(c)

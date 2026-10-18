@@ -892,7 +892,7 @@ final class SlackEdge(
     val of = s"slack: the review prompt of ${EntryId.value(p.entry)}"
     slack.permalink(channel, ts) match {
       case Left(SlackError.MessageGone) =>
-        stores.jot.write(Subject.Public)(stores.reviews.dropped(p.entry, clock.now())) match {
+        stores.jot.write(Subject.Public)(stores.reviews.dropped(p, clock.now())) match {
           case Right(true) => said(s"$of: its message is gone from Slack, so it is dropped")
           case Right(false) => ()
           case Left(e) => said(s"$of: its message is gone from Slack, but its drop is not kept: $e")
@@ -930,7 +930,7 @@ final class SlackEdge(
       when <- Events.time(Ts.value(at)).toRight(s"posted at ${Ts.value(at)}, which names no time")
       kept <- stores.jot
         .write(Subject.Public)(
-          stores.reviews.posted(p.entry, PromptAt(r.channel, at).written, when)
+          stores.reviews.posted(p, PromptAt(r.channel, at).written, when)
         )
         .left
         .map(e => s"posted at ${Ts.value(at)} but not kept, so it is posted again: $e")

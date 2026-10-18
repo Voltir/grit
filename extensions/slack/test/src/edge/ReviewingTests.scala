@@ -57,7 +57,7 @@ object ReviewingTests extends TestSuite {
     * reactions on Slack are at that moment, and fails, as a crash before it would, while
     * `crash` is set.
     */
-  private final class Watched(under: Reviews) extends Reviews {
+  private final class Watched(under: Reviews[Prompt, Verdict]) extends Reviews[Prompt, Verdict] {
     // Set once, by the world that made this fake, before any edge call reads it; it reads a
     // fake Slack that dies with that world.
     @caps.unsafe.untrackedCaptures
@@ -78,15 +78,15 @@ object ReviewingTests extends TestSuite {
       askedFor = askedFor :+ to
       under.unposted(to)
     }
-    def posted(entry: EntryId, address: String, at: Instant)(using
+    def posted(subject: Prompt, address: String, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = {
       reactionsWhenKept = reactionsWhenKept :+ reactions()
       if (crash) Left(StoreError.DatabaseError("crashed"))
-      else under.posted(entry, address, at)
+      else under.posted(subject, address, at)
     }
-    def dropped(entry: EntryId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
-      under.dropped(entry, at)
+    def dropped(subject: Prompt, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+      under.dropped(subject, at)
     def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = under.reacted(address, rater, verdict, at)

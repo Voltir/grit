@@ -7,7 +7,7 @@ import grit.core.clock.Clock
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
-import grit.core.review.Reviews
+import grit.core.review.{Prompt, Reviews, Verdict}
 import grit.core.spend.Spending
 import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
@@ -29,7 +29,7 @@ final case class EdgeStores(
     deliveries: Deliveries,
     spending: Spending,
     acknowledgements: Acknowledgements,
-    reviews: Reviews,
+    reviews: Reviews[Prompt, Verdict],
     jot: Jot,
     desks: Desks^,
     attesting: Attesting^

@@ -59,10 +59,11 @@ final class InMemoryReviews(
         }
     }
 
-  def posted(entry: EntryId, address: String, at: Instant)(using
+  def posted(subject: Prompt, address: String, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean] =
     kept.map { all =>
+      val entry = subject.entry
       val taken = all.exists((_, r) => r.fate.exists(postedTo(address)))
       all.find(_._1 == entry) match {
         case Some((_, row @ Row(_, _, _, Considered.Picked(_), None, _))) if !taken =>
@@ -72,10 +73,10 @@ final class InMemoryReviews(
       }
     }
 
-  def dropped(entry: EntryId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+  def dropped(subject: Prompt, at: Instant)(using Tx^): Either[StoreError, Boolean] =
     kept.map { all =>
-      all.find(_._1 == entry) match {
-        case Some((_, row @ Row(_, _, _, Considered.Picked(_), None, _))) =>
+      all.find(_._1 == subject.entry) match {
+        case Some((entry, row @ Row(_, _, _, Considered.Picked(_), None, _))) =>
           rows = rows.updated(entry, row.copy(fate = Some(Fate.Dropped(at))))
           true
         case _ => false
