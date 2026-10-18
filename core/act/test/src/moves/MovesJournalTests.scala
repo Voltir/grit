@@ -394,7 +394,7 @@ object MovesJournalTests extends TestSuite {
         .read("0123456789abcdef")
         .fold(e => throw new java.lang.AssertionError(e), identity)
       val at = java.time.Instant.parse("2026-10-12T09:10:00Z")
-      val seen = Strand.Seen(
+      val seen = Strand.Digested(
         Place.under(Namespace.Task, Vector("room")),
         Label.Public,
         ConversationId("c1"),

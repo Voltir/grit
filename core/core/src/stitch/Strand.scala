@@ -58,7 +58,7 @@ object Strand {
     * reader is shown, at most [[Stitching.MessageChars]] of each (`chars`); when the first and
     * last were said; and their [[StrandDigest]].
     */
-  final case class Seen(
+  final case class Digested(
       room: Place,
       roomLabel: Label,
       root: ConversationId,
@@ -71,13 +71,13 @@ object Strand {
       asOf: Instant
   ) extends caps.Pure
 
-  object Seen {
+  object Digested {
 
     /** `seen` as a step records it: `{"room", "roomLabel", "root", "members": [...], "said",
       * "chars", "since", "touched", "digest", "asOf"}`, a place and a label in their written
       * forms, instants ISO-8601. Ids and counts alone: no message's text.
       */
-    def write(seen: Seen): ujson.Value = ujson.Obj(
+    def write(seen: Digested): ujson.Value = ujson.Obj(
       "room" -> seen.room.written,
       "roomLabel" -> Label.written(seen.roomLabel),
       "root" -> ConversationId.value(seen.root),
@@ -91,7 +91,7 @@ object Strand {
     )
 
     /** A strand [[write]] wrote, or why `v` is not one. */
-    def read(v: ujson.Value): Either[String, Seen] = {
+    def read(v: ujson.Value): Either[String, Digested] = {
       def field(key: String): Either[String, ujson.Value] =
         v.objOpt.flatMap(_.get(key)).toRight(s"a strand has no '$key'")
       def text(key: String): Either[String, String] =
@@ -117,7 +117,7 @@ object Strand {
         touched <- instant("touched")
         digest <- text("digest").flatMap(StrandDigest.read)
         asOf <- instant("asOf")
-      } yield Seen(
+      } yield Digested(
         room,
         label,
         ConversationId(root),

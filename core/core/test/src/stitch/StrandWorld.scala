@@ -83,7 +83,7 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
     right(stitches.record(first.id, placed, first.createdAt)(using TestTx.fake))
   }
 
-  def of(root: Conversation, asOf: Instant)(using Tx): Vector[Strand.Seen] =
+  def of(root: Conversation, asOf: Instant)(using Tx): Vector[Strand.Digested] =
     right(shelf.of(Vector(root.id), asOf))
 }
 

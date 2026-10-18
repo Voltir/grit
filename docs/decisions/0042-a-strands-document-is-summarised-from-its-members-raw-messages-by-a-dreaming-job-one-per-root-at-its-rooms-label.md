@@ -18,7 +18,7 @@ Decision:
 
 - **A dreaming job is a third kind of plugin job** (`DreamingJob`, handed `Dreaming`). Its
   keeps may also read the strands of the rooms its transaction reads, by ids, counts and a
-  content digest of their messages (`StrandShelf`, `Strand.Seen`): nothing a model would read
+  content digest of their messages (`StrandShelf`, `Strand.Digested`): nothing a model would read
   leaves a scan.
 - **Core summarises a strand for it.** `Dreaming.summarise` is an ask whose step reads the
   members' messages itself (`StrandExcerpts`), shows them as a reader's excerpt within the
@@ -42,6 +42,6 @@ Consequences:
   below its room's: the keeper joins with the floor, and the run reads no room above it.
 - A strand that goes quiet past the stitch's horizon keeps its document until its members age
   out, and is found by search, not by the stitch.
-- Enforced by the types (only `Dreaming` offers `scan` and `summarise`; `Strand.Seen` has no
+- Enforced by the types (only `Dreaming` offers `scan` and `summarise`; `Strand.Digested` has no
   text) and capture probes (`ActCaptureTests`), and by `MovesContract` against the moves and
   their fake.

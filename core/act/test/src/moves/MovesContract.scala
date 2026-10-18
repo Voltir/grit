@@ -671,7 +671,7 @@ object MovesContract {
   def summarised(
       m: Dreaming^,
       n: String,
-      seen: Vector[Strand.Seen],
+      seen: Vector[Strand.Digested],
       believed: Integrity = Believed
   ): Either[MoveError, String] =
     seen.headOption

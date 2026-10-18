@@ -96,7 +96,7 @@ object DurableMoves {
 
     def summarise[T](
         name: MoveName,
-        seen: Strand.Seen,
+        seen: Strand.Digested,
         summary: Tainted[Dreaming.Summary[T]]
     ): Either[MoveError, Option[Asked[T]]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>

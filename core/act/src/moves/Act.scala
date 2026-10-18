@@ -122,7 +122,7 @@ private[moves] object Act {
   final case class Summary[T](
       name: MoveName,
       acting: Acting,
-      seen: Strand.Seen,
+      seen: Strand.Digested,
       system: String,
       chars: Int,
       reply: Typed[T],

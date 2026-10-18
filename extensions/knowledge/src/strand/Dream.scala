@@ -144,7 +144,7 @@ object Dream {
     MoveName.of(name).fold(e => throw new IllegalStateException(e), identity)
 
   /** Whether `seen` is big enough to hold a document, in a room at `floor`. */
-  private def holds(seen: Strand.Seen, floor: Label): Boolean =
+  private def holds(seen: Strand.Digested, floor: Label): Boolean =
     seen.members.size >= Members && seen.chars >= Least && seen.roomLabel == floor
 
   /** The scan: its floor's documents read; each withdrawn whose strand no longer holds one
@@ -192,7 +192,7 @@ object Dream {
 
   /** `summary` of `seen` kept as its document, at the floor, in its room. */
   private def written(
-      seen: Strand.Seen,
+      seen: Strand.Digested,
       summary: CardSummary,
       keeper: DocumentKeeper,
       at: Instant
@@ -216,7 +216,7 @@ object Dream {
   * and how many rooms it read at a label no schedule of its plugin is declared at.
   */
 private[strand] final case class Scanned(
-    due: Vector[Strand.Seen],
+    due: Vector[Strand.Digested],
     unchanged: Int,
     withdrew: Int,
     left: Int,
@@ -226,12 +226,12 @@ private[strand] final case class Scanned(
 private[strand] object Scanned {
 
   /** Its record: `{"due": [...], "unchanged", "withdrew", "left", "undeclared"}`, each strand
-    * as [[Strand.Seen.write]] writes it.
+    * as [[Strand.Digested.write]] writes it.
     */
   given Journaled[Scanned] = Journaled.json(
     s =>
       ujson.Obj(
-        "due" -> ujson.Arr.from(s.due.map(Strand.Seen.write)),
+        "due" -> ujson.Arr.from(s.due.map(Strand.Digested.write)),
         "unchanged" -> s.unchanged,
         "withdrew" -> s.withdrew,
         "left" -> s.left,
@@ -249,8 +249,8 @@ private[strand] object Scanned {
           .flatMap(_.get("due"))
           .flatMap(_.arrOpt)
           .toRight("a dream's scan holds no strands")
-          .flatMap(_.toVector.foldLeft[Either[String, Vector[Strand.Seen]]](Right(Vector())) {
-            (acc, s) => acc.flatMap(done => Strand.Seen.read(s).map(done :+ _))
+          .flatMap(_.toVector.foldLeft[Either[String, Vector[Strand.Digested]]](Right(Vector())) {
+            (acc, s) => acc.flatMap(done => Strand.Digested.read(s).map(done :+ _))
           })
         unchanged <- count("unchanged")
         withdrew <- count("withdrew")

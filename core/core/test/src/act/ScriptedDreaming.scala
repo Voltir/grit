@@ -54,7 +54,7 @@ final class ScriptedDreaming(
 
   def summarise[T](
       name: MoveName,
-      seen: Strand.Seen,
+      seen: Strand.Digested,
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Asked[T]]] = {
     val Dreaming.Summary(system, chars, reply) = Trusted.asIs(summary).extract

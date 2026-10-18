@@ -129,8 +129,8 @@ object StrandShelfTests extends TestSuite {
       w.say(a, "the deploy is stuck", 0)
       w.follow(w.say(b, "still stuck?", 60), a)
       val seen = w.of(a, at(600))(using TestTx.fake)
-      val written = seen.map(Strand.Seen.write)
-      written.map(Strand.Seen.read) ==> seen.map(Right(_))
+      val written = seen.map(Strand.Digested.write)
+      written.map(Strand.Digested.read) ==> seen.map(Right(_))
       assert(written.forall(v => !ujson.write(v).contains("stuck")))
     }
   }

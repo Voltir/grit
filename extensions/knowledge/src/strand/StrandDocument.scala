@@ -24,7 +24,7 @@ object StrandDocument {
     * thread" and "1 message" in the singular), a blank line, the summary, then after a blank
     * line `Terms: ` and its terms separated by `, ` when it has any.
     */
-  def text(seen: Strand.Seen, summary: CardSummary): DocText = {
+  def text(seen: Strand.Digested, summary: CardSummary): DocText = {
     val head = s"${counted(seen.members.size, "thread")} in this room, " +
       s"${counted(seen.said, "message")}, from ${day(seen.since)} to ${day(seen.touched)}."
     val terms = Option.when(summary.terms.nonEmpty)(s"Terms: ${summary.terms.mkString(", ")}")
@@ -37,7 +37,7 @@ object StrandDocument {
   /** `{"root", "room", "members": [...], "digest", "said", "since", "touched"}`: the place in its
     * written form, at most [[MostMembers]] members, instants ISO-8601.
     */
-  def data(seen: Strand.Seen): ujson.Obj = ujson.Obj(
+  def data(seen: Strand.Digested): ujson.Obj = ujson.Obj(
     "root" -> ConversationId.value(seen.root),
     "room" -> seen.room.written,
     "members" -> ujson.Arr.from(seen.members.take(MostMembers).map(ConversationId.value)),

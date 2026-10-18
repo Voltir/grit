@@ -210,7 +210,7 @@ object MovesJournal {
     * `asOf`, as `seen` holds them; `chars`; the system text; and the schema as [[json]] writes
     * it. What its members said is not in it: the strand's digest stands for that.
     */
-  def strand(seen: Strand.Seen, system: String, chars: Int, schema: JsonSchema): String =
+  def strand(seen: Strand.Digested, system: String, chars: Int, schema: JsonSchema): String =
     v1(strandForm(seen, system, chars, schema))
 
   /** The digest of a judgment of `request`, v1: its state, each object's keys in the order
@@ -247,7 +247,7 @@ object MovesJournal {
   /** As [[sameAsk]], for a strand's summary. */
   def sameStrand(
       recorded: String,
-      seen: Strand.Seen,
+      seen: Strand.Digested,
       system: String,
       chars: Int,
       schema: JsonSchema
@@ -292,7 +292,7 @@ object MovesJournal {
 
   /** v1's canonical form of a strand's summary, which [[strand]] hashes. */
   private[moves] def strandForm(
-      seen: Strand.Seen,
+      seen: Strand.Digested,
       system: String,
       chars: Int,
       schema: JsonSchema

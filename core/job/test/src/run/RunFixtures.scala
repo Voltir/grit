@@ -216,16 +216,16 @@ object RunFixtures {
   /** What [[Dreamer]] asks of a strand: its answer, within 1,000 characters. */
   def Summarised: Dreaming.Summary[String] = Dreaming.Summary("Summarise.", 1000, Answered)
 
-  /** The strands a scan read, as it records them ([[Strand.Seen.write]]). */
-  final case class Scanned(seen: Vector[Strand.Seen]) extends caps.Pure
+  /** The strands a scan read, as it records them ([[Strand.Digested.write]]). */
+  final case class Scanned(seen: Vector[Strand.Digested]) extends caps.Pure
   object Scanned {
     given Journaled[Scanned] = Journaled.json(
-      s => ujson.Arr.from(s.seen.map(Strand.Seen.write)),
+      s => ujson.Arr.from(s.seen.map(Strand.Digested.write)),
       v =>
         v.arrOpt
           .toRight("no strands")
-          .flatMap(_.toVector.foldLeft[Either[String, Vector[Strand.Seen]]](Right(Vector())) {
-            (acc, x) => acc.flatMap(done => Strand.Seen.read(x).map(done :+ _))
+          .flatMap(_.toVector.foldLeft[Either[String, Vector[Strand.Digested]]](Right(Vector())) {
+            (acc, x) => acc.flatMap(done => Strand.Digested.read(x).map(done :+ _))
           })
           .map(Scanned(_))
     )

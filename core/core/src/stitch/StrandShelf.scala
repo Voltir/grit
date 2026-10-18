@@ -6,7 +6,7 @@ import grit.core.id.ConversationId
 import grit.core.message.Cut
 import grit.core.store.{ConversationStore, StoreError, Tx}
 
-/** The strands of the rooms a transaction reads ([[Strand.Seen]]). Each read takes each
+/** The strands of the rooms a transaction reads ([[Strand.Digested]]). Each read takes each
   * strand's messages once, text and all, and keeps only their ids, count and lengths.
   */
 trait StrandShelf {
@@ -14,19 +14,19 @@ trait StrandShelf {
   /** Each strand with at least one follower, a member of which had a message said from `from`
     * until before `until`, as it stood at `until`; oldest touched first.
     */
-  def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Seen]]
+  def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Digested]]
 
   /** [[touched]], only the strands whose room's label in force is the transaction's floor
     * ([[grit.core.store.Tx.floor]]): what a run kept at one label reads.
     */
-  def atFloor(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Seen]]
+  def atFloor(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Digested]]
 
   /** Each of `roots`' strands as it stood at `asOf`, in `roots`' order; a root none of whose
     * members holds a message kept and read is left out.
     */
   def of(roots: Vector[ConversationId], asOf: Instant)(using
       Tx^
-  ): Either[StoreError, Vector[Strand.Seen]]
+  ): Either[StoreError, Vector[Strand.Digested]]
 }
 
 object StrandShelf {
@@ -38,7 +38,7 @@ object StrandShelf {
     new Over(stitches, conversations)
 
   /** What `root`'s strand said before `asOf`: the root's messages and its followers', oldest
-    * first. The one read both a [[Strand.Seen]] and a [[StrandExcerpts]] read are made of.
+    * first. The one read both a [[Strand.Digested]] and a [[StrandExcerpts]] read are made of.
     */
   private[stitch] def saidIn(stitches: StitchStore, root: ConversationId, asOf: Instant)(using
       Tx^
@@ -53,7 +53,7 @@ object StrandShelf {
 
     def touched(from: Instant, until: Instant)(using
         Tx^
-    ): Either[StoreError, Vector[Strand.Seen]] =
+    ): Either[StoreError, Vector[Strand.Digested]] =
       stitches
         .touched(from, until)
         .flatMap(links => of(links.map(_.root).distinct, until))
@@ -61,19 +61,19 @@ object StrandShelf {
 
     def atFloor(from: Instant, until: Instant)(using
         tx: Tx^
-    ): Either[StoreError, Vector[Strand.Seen]] =
+    ): Either[StoreError, Vector[Strand.Digested]] =
       touched(from, until).map(_.filter(_.roomLabel == Tx.floor(tx)))
 
     def of(roots: Vector[ConversationId], asOf: Instant)(using
         Tx^
-    ): Either[StoreError, Vector[Strand.Seen]] =
-      roots.foldLeft[Either[StoreError, Vector[Strand.Seen]]](Right(Vector.empty)) { (acc, root) =>
+    ): Either[StoreError, Vector[Strand.Digested]] =
+      roots.foldLeft[Either[StoreError, Vector[Strand.Digested]]](Right(Vector.empty)) { (acc, root) =>
         acc.flatMap(done => seen(root, asOf).map(done ++ _))
       }
 
     private def seen(root: ConversationId, asOf: Instant)(using
         Tx^
-    ): Either[StoreError, Option[Strand.Seen]] =
+    ): Either[StoreError, Option[Strand.Digested]] =
       for {
         conversation <- conversations.get(root)
         said <- saidIn(stitches, root, asOf)
@@ -85,7 +85,7 @@ object StrandShelf {
         } yield {
           val room = c.origin.room
           val heard = said.map(_.conversation).distinct
-          Strand.Seen(
+          Strand.Digested(
             room,
             Tx.roomLabel(room),
             root,
