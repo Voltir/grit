@@ -14,9 +14,9 @@ relevance judge see a topic spread over threads as one thing.
 Packages, in one-way order (each names only those before it):
 
 - **`ref`**: the names knowledge refers by: `Ref` (a strand, a topic, a Drive file, a GitHub
-  path or any other link, an `Href`), `CardKey`, a unit's key (the SHA-256 of its corpus and path), and
-  `TopicKey`, kept as core's `DocRef`; and the unit a link or a card's pointer names. Names
-  core alone.
+  path or any other link, an `Href`), `CardKey`, a unit's key (the SHA-256 of its corpus and
+  path), and `TopicKey`, kept as core's `DocRef`; and the unit a link or a card's pointer
+  names. Names core alone.
 - **`card`**: what a card is, whatever its source: its version (a git SHA, or when a file last
   changed), its title, its summary, and its document's key, text and data; the names of a
   sync run's moves (`{phase}/{key}`, `held`, `drop`); and `CardShelf`, cards as another plugin
