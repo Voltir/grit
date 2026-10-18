@@ -5,8 +5,10 @@ import scala.concurrent.duration.*
 import grit.core.document.{DocLabel, DocWeight, Document, DocumentTerms}
 import grit.core.id.{CorpusName, PluginName, ScheduleKey}
 import grit.core.job.{Declared, Job}
-import grit.core.plugin.{DocumentPosting, Documents, Plugin}
+import grit.core.need.PluginReads
+import grit.core.plugin.{DocumentPosting, Documents, Exports}
 import grit.core.visibility.{Label, Party, Room, Visibility}
+import grit.knowledge.card.CardShelf
 import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
 
 /** The knowledge plugin: one card per unit of each of its sources, by its job [[Sync]] on each
@@ -18,14 +20,14 @@ import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
   * current, bounded at the sum of each GitHub source's `maxUnits` and each Drive source's
   * `maxUnits` times its labels; at each start, a card of a corpus none of its sources has, or
   * at a label its source's schedules are not declared at, is withdrawn ([[Documents.sweep]]);
-  * it posts nothing.
+  * it posts nothing. It exports its cards ([[CardShelf]]).
   */
 final class Knowledge private (
     val name: PluginName,
     sources: Vector[Source[?]],
     declaring: Vector[Knowledge.Declaring],
     terms: DocumentTerms
-) extends Plugin {
+) extends Exports[CardShelf] {
 
   val version: Int = 1
 
@@ -51,6 +53,8 @@ final class Knowledge private (
   }
 
   override val jobs: Vector[Job[?]] = Vector(sync)
+
+  def service(own: PluginReads): CardShelf = CardShelf.over(own.documents)
 
   override val schedules: Vector[Declared[?]] =
     declaring.map(d =>
