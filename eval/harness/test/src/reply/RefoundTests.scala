@@ -45,8 +45,8 @@ object RefoundTests extends TestSuite {
     )
 
   private val github = "service:github"
-  private val Github = Source.Service(got(Service.of("github")))
-  private val Drive = Source.Service(got(Service.of("drive")))
+  private val Github = KeptAt.Service(got(Service.of("github")))
+  private val Drive = KeptAt.Service(got(Service.of("drive")))
 
   val tests = Tests {
     test(
@@ -113,14 +113,14 @@ object RefoundTests extends TestSuite {
         )
     }
     test("a source is the place's service, else its namespace, else everywhere") {
-      Source.of(got(Place.read("service:drive"))) ==> Drive
-      Source.of(got(Place.read("slack:T1/C1"))) ==> Source.Namespace(Namespace.Slack)
-      Source.of(Place.Everywhere) ==> Source.Everywhere
+      KeptAt.of(got(Place.read("service:drive"))) ==> Drive
+      KeptAt.of(got(Place.read("slack:T1/C1"))) ==> KeptAt.Namespace(Namespace.Slack)
+      KeptAt.of(Place.Everywhere) ==> KeptAt.Everywhere
     }
     test(
       "recall at a cut counts each ranked or missed document ranked at or above it, by source and over all, clustered by turn"
     ) {
-      def kept(s: Source, recorded: Option[Int], r: Rank) =
+      def kept(s: KeptAt, recorded: Option[Int], r: Rank) =
         Followed(version(1), Found.Kept(s, recorded, r))
       val turns = Vector(
         WorkflowId("w1:0") -> Vector(

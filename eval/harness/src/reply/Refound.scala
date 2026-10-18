@@ -16,7 +16,7 @@ import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 
 /** What kept a document, to split recall by. */
-enum Source {
+enum KeptAt {
   case Service(service: grit.core.place.Service)
   case Namespace(namespace: grit.core.place.Namespace)
   case Everywhere
@@ -29,18 +29,18 @@ enum Source {
   }
 }
 
-object Source {
+object KeptAt {
 
   /** The service `place` is ([[Place.service]]), else the namespace it lies under, else
     * `Everywhere`.
     */
-  def of(place: Place): Source = place.service match {
+  def of(place: Place): KeptAt = place.service match {
     case Some(s) => Service(s)
     case None =>
       place.segments.headOption.flatMap(grit.core.place.Namespace.of).fold(Everywhere)(Namespace(_))
   }
 
-  given Ordering[Source] = Ordering.by(_.written)
+  given Ordering[KeptAt] = Ordering.by(_.written)
 }
 
 /** The documents recorded turns followed, found again: each turn's recorded query searched
@@ -78,7 +78,7 @@ object Refound {
     * be read.
     */
   enum Found {
-    case Kept(source: Source, recorded: Option[Int], now: Rank)
+    case Kept(source: KeptAt, recorded: Option[Int], now: Rank)
     case Forgotten
   }
 
@@ -112,7 +112,7 @@ object Refound {
           case None => Found.Forgotten
           case Some(d) =>
             Found.Kept(
-              Source.of(d.place),
+              KeptAt.of(d.place),
               was.get(v),
               current.byKey.get((d.plugin, d.key)) match {
                 case None => Rank.Gone
@@ -200,14 +200,14 @@ object Refound {
     */
   final case class Summary(
       all: At,
-      bySource: VectorMap[Source, At],
+      bySource: VectorMap[KeptAt, At],
       gone: Int,
       forgotten: Int,
       turns: Int
   )
 
   /** A kept followed document with a current version, as [[summary]] counts it. */
-  private final case class Item(turn: WorkflowId, source: Source, recorded: Option[Int], now: Rank)
+  private final case class Item(turn: WorkflowId, source: KeptAt, recorded: Option[Int], now: Rank)
 
   /** The summary of each turn's followed versions. */
   def summary(turns: Vector[(WorkflowId, Vector[Followed])]): Summary = {

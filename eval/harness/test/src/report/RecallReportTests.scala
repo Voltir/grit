@@ -2,7 +2,7 @@ package grit.eval.harness.report
 
 import grit.core.id.{DocumentVersion, WorkflowId}
 import grit.core.place.Service
-import grit.eval.harness.reply.{Refound, Source}
+import grit.eval.harness.reply.{Refound, KeptAt}
 
 import utest.*
 
@@ -13,7 +13,7 @@ object RecallReportTests extends TestSuite {
   private def version(n: Long): DocumentVersion =
     DocumentVersion.of(n).getOrElse(throw new java.lang.AssertionError("version"))
   private val github =
-    Source.Service(
+    KeptAt.Service(
       Service.of("github").fold(why => throw new java.lang.AssertionError(why), identity)
     )
 
