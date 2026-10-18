@@ -36,7 +36,8 @@ object RoomPlacing {
 /** A room's placings set against its truth ([[Room.truth]]), each proportion clustered by the
   * opening's topic (chatter its own cluster). An opening is `right` when it should begin and
   * began or was offered nothing, or should follow and followed an exchange whose root is of its
-  * topic. Skipped openings are counted in `skipped` and nowhere else.
+  * topic. Skipped openings are counted in `skipped` and nowhere else; ambiguous ones in
+  * `ambiguous`, and in the strands they chain into.
   *
   * @param recall
   *   of the openings that should follow, those offered an exchange whose root is of their topic
@@ -48,6 +49,12 @@ object RoomPlacing {
   *   each (whether it should follow, what it got) pair's count, those that should follow first
   * @param wrongFollows
   *   openings that followed an exchange whose root is not of their topic, chatter's included
+  * @param downstream
+  *   of the wrong follows, those whose strand, as placings chained, an ambiguous opening had
+  *   joined (or began) before it; none placing against the truth's strands
+  * @param ambiguous
+  *   each ambiguous opening placed, with what it got, in the order placed: scored apart, in no
+  *   proportion, confusion, wrong follow or burst
   * @param bursts
   *   each opening in a burst ([[Room.Burst]]), in the order said
   * @param split
@@ -67,6 +74,8 @@ final case class RoomScore(
     chosen: Proportion,
     confusion: Vector[((Boolean, RoomScore.Got), Int)],
     wrongFollows: Vector[String],
+    downstream: Vector[String],
+    ambiguous: Vector[(String, RoomScore.Got)],
     bursts: Vector[RoomScore.Burst],
     split: Vector[(String, Int)],
     mixed: Vector[(String, Vector[String])],
@@ -137,7 +146,9 @@ object RoomScore {
       case _ => false
     }
 
-    val follows = placed.filter((_, t) => t.follows.isDefined)
+    // Ambiguous openings are scored apart; they still chain into the strands others join.
+    val judged = placed.filterNot((_, t) => t.opening.ambiguous)
+    val follows = judged.filter((_, t) => t.follows.isDefined)
     val offered = follows.filter((p, t) => p.offered.exists(o => ofTopic(o.root, t.opening.topic)))
 
     // The strand each follower ended in, by its root: as placings chained, or as the truth has it.
@@ -152,7 +163,7 @@ object RoomScore {
         }
       case Against.Truth => truths.toVector.flatMap((id, t) => t.follows.map(id -> _)).toMap
     }
-    val bursts = placed.flatMap((p, t) =>
+    val bursts = judged.flatMap((p, t) =>
       t.burst.map { b =>
         val strand = rootOf.getOrElse(b.previous, b.previous)
         Burst(
@@ -168,6 +179,30 @@ object RoomScore {
         )
       }
     )
+
+    // As placings chained: each strand's root, and whether an ambiguous opening is in it yet.
+    val downstream = against match {
+      case Against.Truth => Vector.empty
+      case Against.Placings =>
+        placed
+          .foldLeft((Map.empty[String, String], Set.empty[String], Vector.empty[String])) {
+            case ((roots, unsure, found), (p, t)) =>
+              val strand = p.made match {
+                case RoomPlacing.Made.Follows(root, _) => roots.getOrElse(root, root)
+                case _ => p.id
+              }
+              val wrong = !t.opening.ambiguous && made(p, t) == Got.FollowsWrong
+              (
+                p.made match {
+                  case RoomPlacing.Made.Follows(_, _) => roots.updated(p.id, strand)
+                  case _ => roots
+                },
+                if (t.opening.ambiguous) unsure + strand else unsure,
+                if (wrong && unsure.contains(strand)) found :+ p.id else found
+              )
+          }
+          ._3
+    }
 
     val strandOf: Map[String, String] =
       strands.flatMap(s => s.headOption.toVector.flatMap(root => s.map(_ -> root))).toMap
@@ -186,17 +221,19 @@ object RoomScore {
     RoomScore(
       scored.size,
       scored.size - placed.size,
-      Proportion.of(placed.map((p, t) => cluster(t) -> right(p, t))),
+      Proportion.of(judged.map((p, t) => cluster(t) -> right(p, t))),
       Proportion.of(follows.map((p, t) => cluster(t) -> offered.exists(_._1 == p))),
       Proportion.of(
         follows.map((p, t) => cluster(t) -> t.follows.exists(r => p.offered.exists(_.root == r)))
       ),
       Proportion.of(offered.map((p, t) => cluster(t) -> (made(p, t) == Got.FollowsRight))),
-      placed
+      judged
         .groupMapReduce((p, t) => (t.follows.isDefined, made(p, t)))(_ => 1)(_ + _)
         .toVector
         .sortBy((k, _) => (!k._1, k._2.ordinal)),
-      placed.collect { case (p, t) if made(p, t) == Got.FollowsWrong => p.id },
+      judged.collect { case (p, t) if made(p, t) == Got.FollowsWrong => p.id },
+      downstream,
+      placed.collect { case (p, t) if t.opening.ambiguous => p.id -> made(p, t) },
       bursts,
       split,
       mixed,

@@ -76,7 +76,16 @@ private[report] object RoomLines {
       s"- strict recall (its topic's first opening offered): ${rate(score.strict)}",
       s"- Jev given offered (followed its topic): ${rate(score.chosen)}",
       s"- wrong follows: ${score.wrongFollows.size}" +
-        (if (score.wrongFollows.isEmpty) "" else score.wrongFollows.mkString(" (", ", ", ")")),
+        (if (score.wrongFollows.isEmpty) "" else score.wrongFollows.mkString(" (", ", ", ")")) +
+        (run.against match {
+          case Against.Truth => ""
+          case Against.Placings =>
+            s"; downstream of an ambiguous opening ${score.downstream.size}" +
+              (if (score.downstream.isEmpty) "" else score.downstream.mkString(" (", ", ", ")"))
+        }),
+      s"- ambiguous, scored apart: ${score.ambiguous.size}" +
+        (if (score.ambiguous.isEmpty) ""
+         else score.ambiguous.map((id, got) => s"$id ${got.label}").mkString(" (", ", ", ")")),
       "",
       "### confusion",
       "",
@@ -119,6 +128,7 @@ private[report] object RoomLines {
       truths.get(p.id).map { t =>
         val ok = score.got.find(_._1 == p.id).fold("-") {
           case (_, RoomScore.Got.Skipped, _) => "-"
+          case _ if t.opening.ambiguous => "??"
           case (_, _, right) => if (right) "ok" else "XX"
         }
         val should = t.follows.fold("begin")(r => s"follow $r")

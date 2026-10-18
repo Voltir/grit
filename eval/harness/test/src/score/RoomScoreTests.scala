@@ -51,6 +51,41 @@ object RoomScoreTests extends TestSuite {
       ) ==> Vector(Some(true), Some(false))
     }
 
+    test(
+      "an ambiguous opening is scored apart: in no proportion or wrong follow, listed with what it got"
+    ) {
+      val unsure = roomOf(
+        message("m1", 0, "Ana", Some("ci")),
+        message("m3", 1, "Ana", Some("ci")),
+        message("m2", 10, "Ben", Some("csv")),
+        message("m4", 11, "Ben", Some("lunch"), ambiguous = true),
+        message("m5", 20, "Dev", Some("csv"))
+      )
+      val s = RoomScore.of(unsure, placings, strands, Against.Placings)
+      (counts(s.right), s.wrongFollows, s.ambiguous, s.bursts.map(_.id)) ==>
+        ((3L, 4L), Vector.empty, Vector("m4" -> RoomScore.Got.FollowsWrong), Vector("m3"))
+    }
+
+    test(
+      "a wrong follow into a strand an ambiguous opening joined is downstream of it, only cascading"
+    ) {
+      // m3 (ambiguous) joined m1's strand; m5 (csv) then follows m1, wrongly; m4's wrong follow
+      // is into m2's strand, which holds nothing ambiguous.
+      val unsure = roomOf(
+        message("m1", 0, "Ana", Some("ci")),
+        message("m3", 1, "Ana", Some("ci"), ambiguous = true),
+        message("m2", 10, "Ben", Some("csv")),
+        message("m4", 11, "Ben", Some("lunch")),
+        message("m5", 20, "Dev", Some("csv"))
+      )
+      val wrong = placings.dropRight(1) :+
+        RoomPlacing("m5", RoomPlacing.Made.Follows("m1", 0.7), Vector(offer("m1", 0.7)))
+      Vector(Against.Placings, Against.Truth).map { a =>
+        val s = RoomScore.of(unsure, wrong, strands, a)
+        (s.wrongFollows, s.downstream)
+      } ==> Vector((Vector("m4", "m5"), Vector("m5")), (Vector("m4", "m5"), Vector.empty))
+    }
+
     test("a topic in two strands is split; a strand of two topics is mixed") {
       val s = RoomScore.of(room, placings, strands, Against.Placings)
       (s.split, s.mixed) ==> (Vector("csv" -> 2), Vector("m2" -> Vector("csv", "lunch")))

@@ -24,8 +24,9 @@ object RoomRepeats {
 
   /** Each measure of `scores`, the same room's repeats placed `against` the same strands, in
     * the order a report gives them: right, offer recall, strict recall, Jev given offered, the
-    * wrong follows, the topics split and the strands mixed (only against [[Against.Placings]]:
-    * the truth's strands are neither), and the bursts Jev placed right; none when `scores` is
+    * wrong follows, and only against [[Against.Placings]] (the truth's strands cascade nothing
+    * and are never split or mixed) those of them downstream of an ambiguous opening, the topics
+    * split and the strands mixed; then the bursts Jev placed right; none when `scores` is
     * empty.
     */
   def of(scores: Vector[RoomScore], against: Against): Vector[RoomMeasure] = {
@@ -41,6 +42,7 @@ object RoomRepeats {
       proportion("strict recall", _.strict),
       proportion("Jev given offered", _.chosen),
       count("wrong follows", _.wrongFollows.size),
+      count("wrong follows downstream of an ambiguous", _.downstream.size).filter(_ => strands),
       count("topics split", _.split.size).filter(_ => strands),
       count("strands mixed", _.mixed.size).filter(_ => strands),
       ranged(_.bursts.count(_.right).toDouble).map(c =>
