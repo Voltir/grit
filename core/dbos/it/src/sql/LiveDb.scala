@@ -118,20 +118,9 @@ object LiveDb {
       } yield ()
     }.fold(e => sys.error(s"asking: $e"), identity)
 
-  /** Records that the inbound entry `id` was written through `by`, as the inbox does: `by`
-    * kept first, as a new person's one account when not seen before.
-    */
-  def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] =
-    SqlIdentities.enroll(Set(by)).map { _ =>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")
-      ) { ps =>
-        ps.setString(1, EntryId.value(id))
-        ps.setString(2, Account.written(by))
-        val _ = ps.executeUpdate()
-      }
-    }
+  /** Records that the inbound entry `id` was written through `by`, as the inbox does. */
+  def authored(id: EntryId, by: Account)(using Tx^): Either[StoreError, Unit] =
+    grit.dbos.engine.Recorder.authored(id, by)
 
   /** The principal `account` is linked to now; throws when it was never seen. */
   def principal(config: DbConfig, account: Account): PrincipalId =

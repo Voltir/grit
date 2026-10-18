@@ -2,8 +2,6 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import scala.util.Using
-
 import grit.core.id.{EntryId, SourceId, TriageRef, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError}
@@ -226,24 +224,18 @@ private[engine] final class Recorder(
     SqlIdentities.person(by).map(_.fold(Integrity.Outside)(Tx.integrityOf(_)))
 }
 
-private object Recorder {
+private[dbos] object Recorder {
 
   /** Records that the inbound entry `id` was written through `by`, kept as a new person's one
     * account when not seen before.
     */
-  private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+  private[dbos] def authored(id: EntryId, by: Account)(using Tx^): Either[StoreError, Unit] =
     SqlIdentities.enroll(Set(by)).flatMap { _ =>
-      SqlStatements.attempt {
-        Using.resource(
-          conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")
-        ) { ps =>
+      SqlStatements
+        .update("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)") { ps =>
           ps.setString(1, EntryId.value(id))
           ps.setString(2, SqlIdentities.written(by))
-          ps.executeUpdate()
-          ()
         }
-      }
+        .map(_ => ())
     }
-  }
 }
