@@ -63,7 +63,13 @@ object TurnRouteTests extends TestSuite {
   /** The turn's ladder is the open pair, then flash; summary and query the open pair alone. */
   private val catalog: Catalog =
     Catalog.of(
-      Policy(ladder(open, flash), ladder(summarising), ladder(open), ladder(summarising)),
+      Policy(
+        ladder(open, flash),
+        ladder(summarising),
+        ladder(open),
+        ladder(summarising),
+        ladder(summarising)
+      ),
       Vector.empty
     )
 
@@ -152,7 +158,10 @@ object TurnRouteTests extends TestSuite {
 
   /** The turn's ladder `turn`; summary and query the open pair, uncleared at internal. */
   private def gradedCatalog(turn: Ladder): Catalog =
-    Catalog.of(Policy(turn, ladder(summarising), ladder(open), ladder(summarising)), Vector.empty)
+    Catalog.of(
+      Policy(turn, ladder(summarising), ladder(open), ladder(summarising), ladder(summarising)),
+      Vector.empty
+    )
 
   private val twoGrades = gradedCatalog(
     graded(
@@ -361,6 +370,7 @@ object TurnRouteTests extends TestSuite {
             (Grade.Standard, bare, Some(Effort.Minimal))
           ),
           graded((Grade.Light, bare, Some(Effort.Low)), (Grade.Strong, mighty, Some(Effort.Low))),
+          graded((Grade.Standard, bare, None)),
           graded((Grade.Standard, bare, None))
         ),
         Vector.empty
@@ -442,6 +452,7 @@ object TurnRouteTests extends TestSuite {
             (Grade.Standard, bare, Some(Effort.Low)),
             (Grade.Strong, mighty, Some(Effort.Minimal))
           ),
+          graded((Grade.Standard, bare, Some(Effort.Minimal))),
           graded((Grade.Standard, bare, Some(Effort.Minimal)))
         ),
         Vector.empty
@@ -655,7 +666,8 @@ object TurnRouteTests extends TestSuite {
           graded(Grade.Strong, flash, 100),
           graded(Grade.Light, flash, 200),
           ladder(open),
-          ladder(flash)
+          ladder(flash),
+          graded(Grade.Light, flash, 200)
         ),
         Vector.empty
       )

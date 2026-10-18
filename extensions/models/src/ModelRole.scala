@@ -21,15 +21,22 @@ enum ModelRole(prefix: String) {
   /** Writes the closing of a period grit only heard ([[Policy]]'s `heard`). */
   case Heard extends ModelRole("GRIT_HEARD_")
 
-  /** `GRIT_MODEL`, `GRIT_SUMMARY_MODEL`, `GRIT_QUERY_MODEL`, `GRIT_HEARD_MODEL`. */
+  /** Writes a dreaming job's summaries ([[Policy]]'s `dream`). */
+  case Dream extends ModelRole("GRIT_DREAM_")
+
+  /** `GRIT_MODEL`, `GRIT_SUMMARY_MODEL`, `GRIT_QUERY_MODEL`, `GRIT_HEARD_MODEL`,
+    * `GRIT_DREAM_MODEL`.
+    */
   def modelVar: String = s"${prefix}MODEL"
 
   /** `GRIT_MAX_TOKENS`, `GRIT_SUMMARY_MAX_TOKENS`, `GRIT_QUERY_MAX_TOKENS`,
-    * `GRIT_HEARD_MAX_TOKENS`.
+    * `GRIT_HEARD_MAX_TOKENS`, `GRIT_DREAM_MAX_TOKENS`.
     */
   def maxTokensVar: String = s"${prefix}MAX_TOKENS"
 
-  /** `GRIT_PROVIDER`, `GRIT_SUMMARY_PROVIDER`, `GRIT_QUERY_PROVIDER`, `GRIT_HEARD_PROVIDER`. */
+  /** `GRIT_PROVIDER`, `GRIT_SUMMARY_PROVIDER`, `GRIT_QUERY_PROVIDER`, `GRIT_HEARD_PROVIDER`,
+    * `GRIT_DREAM_PROVIDER`.
+    */
   def upstreamVar: String = s"${prefix}PROVIDER"
 
   /** The variable naming this role's model at `grade`: `GRIT_STRONG_MODEL`,
@@ -54,6 +61,7 @@ enum ModelRole(prefix: String) {
     case Summary => policy.summary
     case Query => policy.query
     case Heard => policy.heard
+    case Dream => policy.dream
   }
 
   /** This role's pins in `catalog`, for a call starting now. */
@@ -62,5 +70,6 @@ enum ModelRole(prefix: String) {
     case Summary => catalog.pin.summary
     case Query => catalog.pin.query
     case Heard => catalog.heard
+    case Dream => catalog.dream
   }
 }

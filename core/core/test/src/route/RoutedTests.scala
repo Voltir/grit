@@ -32,7 +32,7 @@ object RoutedTests extends TestSuite {
         Vector(open, flash, strong).map(r => Rung(Grade.Standard, Assignment(r, 100, None)))
       )
       .getOrElse(throw new java.lang.AssertionError())
-    Catalog.of(Policy(ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+    Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
   }
 
   /** Flash cleared for internal, the strong pair for restricted. */

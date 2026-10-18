@@ -157,6 +157,26 @@ object CatalogTests extends TestSuite {
       assert(catalog.withPolicy(policy.copy(heard = policy.summary)).version != catalog.version)
     }
 
+    test(
+      "the dream role pins its own ladder; stored only when it is not the summary's, and read as the summary's when absent"
+    ) {
+      val dreaming = catalog.withPolicy(policy.copy(dream = Ladder.one(queryAssigned)))
+      val stored = CatalogJson.write(dreaming)
+      (
+        dreaming.dream.first.assignment,
+        CatalogJson.read(stored).map(_.policy.dream),
+        catalog.dream.first.assignment,
+        CatalogJson.write(catalog).obj("policy").obj.contains("dream"),
+        CatalogJson.read(CatalogJson.write(catalog)).map(_.version)
+      ) ==> (
+        queryAssigned,
+        Right(Ladder.one(queryAssigned)),
+        summaryAssigned,
+        false,
+        Right(catalog.version)
+      )
+    }
+
     test("stored form: a catalog") {
       val one = Catalog.of(
         Policy.one(
@@ -272,6 +292,7 @@ object CatalogTests extends TestSuite {
           Ladder
             .of(Vector(Rung(Grade.Light, Assignment(ossOpen, 1, None))))
             .getOrElse(throw new java.lang.AssertionError("ladder")),
+          Ladder.one(summaryAssigned),
           Ladder.one(summaryAssigned)
         ),
         Vector.empty

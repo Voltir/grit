@@ -29,6 +29,9 @@ Decision:
   schedule's clearance), writes only for rooms whose label in force is its floor, and
   withdraws a document whose room has moved to another; a deployment declares one schedule per
   label. A room at a label no schedule declares has none.
+- **Summaries are asked of the policy's `dream` ladder**, a role of its own, so the nightly
+  passes may run on a stronger pair than a turn's summary; a catalog naming none uses the
+  summary's. The job's other asks stay on the summary's.
 - **Summaries are infrequent**: at most once a run for a strand whose member set changed and
   passed the run's floor, never per heard message; an unchanged member set asks nothing.
 - **Members are read as raw messages until they age out**; a strand whose members' entries are

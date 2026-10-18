@@ -195,13 +195,28 @@ object OpenRouterConfigTests extends TestSuite {
       overlay("GRIT_MODEL" -> "x/y", "GRIT_HEARD_PROVIDER" -> "groq")
         .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("small/one", "groq")))
     }
+    test(
+      "policy: the dream role reads its own variables; naming neither, it follows the summary's"
+    ) {
+      overlay(
+        "GRIT_DREAM_MODEL" -> "d/m",
+        "GRIT_DREAM_PROVIDER" -> "groq",
+        "GRIT_DREAM_MAX_TOKENS" -> "900"
+      )
+        .map(p => one(p.dream)) ==> Right(Some(Assignment(ref("d/m", "groq"), 900, None)))
+      overlay("GRIT_SUMMARY_MODEL" -> "s/m", "GRIT_SUMMARY_PROVIDER" -> "groq")
+        .map(p => one(p.dream).map(_.ref)) ==> Right(Some(ref("s/m", "groq")))
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "cerebras").map(p => one(p.dream)) ==>
+        Right(Some(Assignment(ref("x/y", "cerebras"), 1024, None)))
+    }
     test("forRole: each role runs on its own variables, over the seed's budgets") {
       val env = Map(
         "OPENROUTER_API_KEY" -> "k",
         "GRIT_MODEL" -> "t/m",
         "GRIT_SUMMARY_MODEL" -> "s/m",
         "GRIT_QUERY_MODEL" -> "q/m",
-        "GRIT_HEARD_MODEL" -> "h/m"
+        "GRIT_HEARD_MODEL" -> "h/m",
+        "GRIT_DREAM_MODEL" -> "d/m"
       )
       ModelRole.values.toSeq.map(role =>
         OpenRouterConfig.forRole(env, role).map(c => (c.model, c.maxTokens, c.upstream))
@@ -209,7 +224,8 @@ object OpenRouterConfigTests extends TestSuite {
         Right(("t/m", 4096, None)),
         Right(("s/m", 4096, None)),
         Right(("q/m", 1024, None)),
-        Right(("h/m", 4096, None))
+        Right(("h/m", 4096, None)),
+        Right(("d/m", 4096, None))
       )
       // With nothing set but the key, the query runs on the seed's own budget.
       OpenRouterConfig

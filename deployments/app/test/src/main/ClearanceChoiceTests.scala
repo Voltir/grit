@@ -40,6 +40,17 @@ object ClearanceChoiceTests extends TestSuite {
       )
     }
 
+    test("a pair only the dream role names an upstream for is cleared at the top label") {
+      val acme = Upstream.of("acme").getOrElse(throw new java.lang.AssertionError("acme"))
+      val dreaming = OpenRouterConfig
+        .policy(Map("GRIT_DREAM_MODEL" -> "d/m", "GRIT_DREAM_PROVIDER" -> "acme"), seed)
+        .fold(e => throw new java.lang.AssertionError(e.message), identity)
+      Main.cleared(dreaming) ==> Cleared(
+        Party.Model(dreaming.dream.first.assignment.ref.model, acme),
+        top
+      ) +: always
+    }
+
     test(
       "serve's visibility carries the clearances of the policy its environment names, with administrators named or not"
     ) {
@@ -79,6 +90,8 @@ object ClearanceChoiceTests extends TestSuite {
         "GRIT_QUERY_PROVIDER is unset: the query's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
         "GRIT_HEARD_PROVIDER is unset: the heard closing's first model, whose upstream OpenRouter picks, is " +
+          "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
+        "GRIT_DREAM_PROVIDER is unset: the dream summary's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label"
       )
     }

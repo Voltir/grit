@@ -997,7 +997,7 @@ object Main {
     * that order. A pair whose upstream OpenRouter picks is cleared for public alone.
     */
   private[main] def cleared(policy: Policy): Vector[Cleared] = {
-    val pinned = Vector(policy.turn, policy.summary, policy.query, policy.heard)
+    val pinned = policy.ladders
       .flatMap(_.rungs)
       .flatMap(r => Party.of(r.assignment.ref))
     val always = Party.of(StubModels.Ref).toVector ++ Vector(
@@ -1019,6 +1019,7 @@ object Main {
       case ModelRole.Summary => "summary"
       case ModelRole.Query => "query"
       case ModelRole.Heard => "heard closing"
+      case ModelRole.Dream => "dream summary"
     }
     ModelRole.values.toVector.collect {
       case role if routed(role.in(policy)) =>

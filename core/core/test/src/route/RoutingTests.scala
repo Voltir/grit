@@ -34,14 +34,14 @@ object RoutingTests extends TestSuite {
         )
       )
       .getOrElse(throw new java.lang.AssertionError())
-    Catalog.of(Policy(ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+    Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
   }
 
   private def pinsOf(rungs: (Grade, ModelRef)*): Pins = {
     val ladder = Ladder
       .of(rungs.toVector.map((g, r) => Rung(g, Assignment(r, 100, None))))
       .getOrElse(throw new java.lang.AssertionError())
-    Catalog.of(Policy(ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+    Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
   }
 
   private val clearances = Clearances

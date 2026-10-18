@@ -13,7 +13,9 @@ object CatalogJson {
   /** The catalog's form, as the seed file holds it. */
   def write(c: Catalog): ujson.Value = content(c.policy, c.profiles)
 
-  /** The catalog `v` encodes, or the first thing wrong with it, named by its path. */
+  /** The catalog `v` encodes, or the first thing wrong with it, named by its path. Its policy's
+    * `dream`, when absent, is `summary`'s ladder.
+    */
   def read(v: ujson.Value): Either[String, Catalog] =
     for {
       o <- obj(v, "catalog")
@@ -94,16 +96,21 @@ object CatalogJson {
       query <- field(o, "query", "turn profile").flatMap(readPins(_, "query"))
     } yield TurnProfile.of(turn, summary, query)
 
-  private[model] def content(policy: Policy, profiles: Vector[Profile]): ujson.Value =
+  /** `dream` is written only when it is not the summary's ladder, so a catalog stored before
+    * the role existed keeps its form and its version.
+    */
+  private[model] def content(policy: Policy, profiles: Vector[Profile]): ujson.Value = {
+    val roles = Vector(
+      "turn" -> ladder(policy.turn),
+      "summary" -> ladder(policy.summary),
+      "query" -> ladder(policy.query),
+      "heard" -> ladder(policy.heard)
+    ) ++ Option.when(policy.dream != policy.summary)("dream" -> ladder(policy.dream))
     ujson.Obj(
-      "policy" -> ujson.Obj(
-        "turn" -> ladder(policy.turn),
-        "summary" -> ladder(policy.summary),
-        "query" -> ladder(policy.query),
-        "heard" -> ladder(policy.heard)
-      ),
+      "policy" -> ujson.Obj.from(roles),
       "profiles" -> ujson.Arr.from(profiles.map(profile))
     )
+  }
 
   private[model] def profilePins(turn: Pins, summary: Pins, query: Pins): ujson.Value =
     ujson.Obj("turn" -> pins(turn), "summary" -> pins(summary), "query" -> pins(query))
@@ -348,7 +355,8 @@ object CatalogJson {
       summary <- field(o, "summary", "policy").flatMap(readLadder(_, "policy.summary"))
       query <- field(o, "query", "policy").flatMap(readLadder(_, "policy.query"))
       heard <- field(o, "heard", "policy").flatMap(readLadder(_, "policy.heard"))
-    } yield Policy(turn, summary, query, heard)
+      dream <- o.get("dream").fold(Right(summary))(readLadder(_, "policy.dream"))
+    } yield Policy(turn, summary, query, heard, dream)
 
   private def readRepairs(v: ujson.Value, at: String): Either[String, Set[ArgRepair]] =
     v.arrOpt

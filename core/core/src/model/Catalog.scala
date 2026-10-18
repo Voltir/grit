@@ -46,16 +46,34 @@ object Ladder {
 }
 
 /** Which pairs do each job: answering the turn, summarising it, writing its search query,
-  * and writing the closing of a period grit only heard (`heard`: nothing in it was said to
-  * grit). A person's decision; a probe proposes settings of pairs, never an assignment.
+  * writing the closing of a period grit only heard (`heard`: nothing in it was said to grit),
+  * and the nightly passes that keep documents from strands and other documents (`dream`:
+  * every [[grit.core.act.Dreaming.summarise]]). A person's decision; a probe proposes
+  * settings of pairs, never an assignment.
   */
-final case class Policy(turn: Ladder, summary: Ladder, query: Ladder, heard: Ladder)
+final case class Policy(
+    turn: Ladder,
+    summary: Ladder,
+    query: Ladder,
+    heard: Ladder,
+    dream: Ladder
+) {
+
+  /** Every role's ladder, in the order of its fields. */
+  def ladders: Vector[Ladder] = Vector(turn, summary, query, heard, dream)
+}
 
 object Policy {
 
-  /** Each role assigned one pair ([[Ladder.one]]). */
+  /** Each role assigned one pair ([[Ladder.one]]), `dream` the summary's. */
   def one(turn: Assignment, summary: Assignment, query: Assignment, heard: Assignment): Policy =
-    Policy(Ladder.one(turn), Ladder.one(summary), Ladder.one(query), Ladder.one(heard))
+    Policy(
+      Ladder.one(turn),
+      Ladder.one(summary),
+      Ladder.one(query),
+      Ladder.one(heard),
+      Ladder.one(summary)
+    )
 }
 
 /** A catalog's content hash: equal content, equal version. */
@@ -83,6 +101,11 @@ final case class Catalog private (
     * role. No turn's call, so no [[TurnProfile]] holds it.
     */
   def heard: Pins = pins(policy.heard)
+
+  /** What a dreaming job's summaries are asked under: the policy's `dream` role. No turn's
+    * call, so no [[TurnProfile]] holds it.
+    */
+  def dream: Pins = pins(policy.dream)
 
   private def pins(ladder: Ladder): Pins = {
     def pinned(r: Rung) =

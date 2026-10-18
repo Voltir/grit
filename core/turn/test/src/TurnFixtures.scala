@@ -1316,6 +1316,7 @@ object TurnFixtures {
         ladder(RoutedOpen, RoutedFlash),
         ladder(RoutedSummary),
         ladder(RoutedQuery),
+        ladder(RoutedSummary),
         ladder(RoutedSummary)
       ),
       Vector.empty

@@ -5,7 +5,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.flow.Trusted
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy, Upstream}
+import grit.core.model.{Assignment, Catalog, Ladder, ModelId, ModelRef, Pinned, Policy, Upstream}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator, ToolUse}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Recorded, Subject, Visibility}
@@ -29,7 +29,7 @@ object MovesFixtures {
   def replied[R](asked: Asked[R]): R = Trusted.asIs(asked.reply).extract
 
   /** Models whose every provider answers `answer`, at a priced cost, counting its calls and
-    * keeping each request in [[requests]]; required to call a tool, it calls the request's first
+    * keeping each request in [[requests]] and the pair it was pinned to in [[pairs]]; required to call a tool, it calls the request's first
     * tool `calling` times (answering `answer` in text when that is 0, as a model may), each
     * call's arguments the next of `shapes` (the last again once they run out;
     * `{"answer": answer}` when there are none), the `i`th call of its `n`th answer `call-{n}`,
@@ -49,6 +49,8 @@ object MovesFixtures {
     @caps.unsafe.untrackedCaptures
     var requests: Vector[ModelRequest] = Vector()
     @caps.unsafe.untrackedCaptures
+    var pairs: Vector[ModelRef] = Vector()
+    @caps.unsafe.untrackedCaptures
     private var armed = crash
     @caps.unsafe.untrackedCaptures
     private var shaped = 0
@@ -57,6 +59,7 @@ object MovesFixtures {
       def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
         calls += 1
         requests = requests :+ r
+        pairs = pairs :+ pinned.assignment.ref
         if (armed) { armed = false; throw new InMemoryDurable.Crash }
         val (blocks, stop) = r.use match {
           case ToolUse.Required if calling > 0 =>
@@ -138,7 +141,18 @@ object MovesFixtures {
       Upstream.of("test")
     )
 
-  /** Each role pinned to `test/<role>`, 1024 tokens out, the summaries to [[Summary]]. */
+  /** A dreaming job's summaries' pair, `test/dream` served by `test` alone: a party a world
+    * clears.
+    */
+  val Dream: ModelRef =
+    ModelRef(
+      ModelId.of("test/dream").getOrElse(throw new java.lang.AssertionError("dream")),
+      Upstream.of("test")
+    )
+
+  /** Each role pinned to `test/<role>`, 1024 tokens out, the summaries to [[Summary]] and a
+    * dreaming job's to [[Dream]].
+    */
   val TestCatalog: Catalog = {
     def role(name: String) =
       Assignment(
@@ -150,7 +164,8 @@ object MovesFixtures {
         None
       )
     val summary = Assignment(Summary, 1024, None)
-    Catalog.of(Policy.one(role("turn"), summary, role("query"), summary), Vector.empty)
+    val policy = Policy.one(role("turn"), summary, role("query"), summary)
+    Catalog.of(policy.copy(dream = Ladder.one(Assignment(Dream, 1024, None))), Vector.empty)
   }
 
   /** A token for each character of a message's or prompt's written form. */

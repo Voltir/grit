@@ -2,7 +2,15 @@ package grit.act.moves
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar, Summary}
+import grit.core.act.MovesFixtures.{
+  Answering,
+  Dream,
+  FakeDb,
+  Judged as Spent,
+  Judging,
+  PerChar,
+  Summary
+}
 import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates, Keeping, MoveLimits, Moves}
 import grit.core.classify.{Answer as Judged, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.SetClock
@@ -125,6 +133,7 @@ final class MovesWorld(
           Cleared(Party.Service(Probe), floor),
           // The world's summary model is cleared for what it knows.
           Cleared(Party.of(Summary).getOrElse(sys.error("no upstream")), floor),
+          Cleared(Party.of(Dream).getOrElse(sys.error("no upstream")), floor),
           // The world's classifier is cleared for what it knows.
           Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
         ),

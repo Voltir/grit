@@ -3,11 +3,12 @@ package grit.act.moves
 import java.time.Instant
 
 import grit.core.act.MovesFixtures.Answering
-import grit.core.act.{Keeping, MoveError, MoveLimits}
+import grit.core.act.{Keeping, MoveError, MoveLimits, MovesFixtures}
 import grit.core.document.{DocRef, DocText, DocumentKeeper, Pointer, Written}
 import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.DocKey
 import grit.core.place.Place
+import grit.core.stitch.StrandWorld
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
@@ -84,6 +85,25 @@ object DurableKeepingTests extends TestSuite {
         Right(Label.written(floor)),
         0
       )
+    }
+
+    test("a strand's summary is asked of the dream role's pair, a JSON ask of the summary's") {
+      val w = new MovesWorld(broken = false, MovesContract.Floor)
+      val (strands, root) = MovesContract.strand()
+      val seen = StrandWorld.right(
+        strands.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)
+      )
+      val models = new Answering(MovesContract.Answer)
+      val dreams = MovesWorld.dreams(w.acting, MovesContract.limits(2, 0), w.keeper, strands)(m =>
+        MovesContract.Seen(
+          Vector(MovesContract.summarised(m, "s", seen), MovesContract.shaped(m, "j"))
+        )
+      )
+      w.durable.run(Turn.workflowId) { _ =>
+        val _ = Flows.run(dreams, w.env(models), ()).merge
+        "done"
+      }
+      models.pairs ==> Vector(MovesFixtures.Dream, MovesFixtures.Summary)
     }
   }
 

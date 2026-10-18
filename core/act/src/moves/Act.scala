@@ -22,7 +22,7 @@ import grit.core.edge.{Permit, ToolRequests}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{NameRepair, Pinned}
+import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
@@ -175,7 +175,7 @@ private[moves] object Act {
     import MovesJournal.given
     Step[MovesEnv, Text, AskMade](Asks.move)(env =>
       t =>
-        admitted(env.records, env.models, env.db, env.clock, t.acting, t.digest) match {
+        admitted(env.records, env.models, env.db, env.clock, t.acting, Summaries, t.digest) match {
           case Left(refusal) => refusal
           case Right((at, pin)) =>
             Asking.reply(env.models.provider(pin), t.request, Hearing.silent(), env.clock) match {
@@ -191,13 +191,23 @@ private[moves] object Act {
   def json[T]: Step[MovesEnv, Json[T], AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Json[T], AskMade](Asks.move)(env =>
-      j => shaping(env, j.acting, j.system, j.messages, j.reply, j.digest, j.acting.integrity)
+      j =>
+        shaping(
+          env,
+          j.acting,
+          Summaries,
+          j.system,
+          j.messages,
+          j.reply,
+          j.digest,
+          j.acting.integrity
+        )
     )
   }
 
   /** A strand's summary's `ask:{n}`: its strand's messages read for its acting's subject, then,
-    * when they are the ones its scan digested, asked as a JSON ask of one user message, their
-    * excerpt, its `level` the acting's integrity met with theirs.
+    * when they are the ones its scan digested, asked of the dream role's pins as a JSON ask of
+    * one user message, their excerpt, its `level` the acting's integrity met with theirs.
     */
   def summary[T]: Step[MovesEnv, Summary[T], AskMade] = {
     import MovesJournal.given
@@ -209,24 +219,25 @@ private[moves] object Act {
           case Right(Some(shown)) =>
             val messages = Vector(Message.User(shown.excerpt.text))
             val level = s.acting.integrity.meet(shown.integrity)
-            shaping(env, s.acting, s.system, messages, s.reply, s.digest, level)
+            shaping(env, s.acting, Dreams, s.system, messages, s.reply, s.digest, level)
         }
     )
   }
 
-  /** A JSON ask of `system` then `messages` for `acting`, under `digest`: admitted, then the
-    * model's reply, shaped and repaired, recorded at `level`.
+  /** A JSON ask of `system` then `messages` for `acting`, under `digest`: admitted to `role`'s
+    * pins, then the model's reply, shaped and repaired, recorded at `level`.
     */
   private def shaping[T](
       env: MovesEnv^,
       acting: Acting,
+      role: Catalog -> Pins,
       system: String,
       messages: Vector[Message],
       reply: Typed[T],
       digest: String,
       level: Integrity
   ): AskMade =
-    admitted(env.records, env.models, env.db, env.clock, acting, digest) match {
+    admitted(env.records, env.models, env.db, env.clock, acting, role, digest) match {
       case Left(refusal) => refusal
       case Right((at, pin)) =>
         val settings = pin.settings
@@ -451,8 +462,14 @@ private[moves] object Act {
     )
   }
 
+  /** The pins a move's ask is made under: the summary role's ([[Summaries]]) for every ask but
+    * a dreaming job's summary, which is the dream role's ([[Dreams]]).
+    */
+  private val Summaries: Catalog -> Pins = _.pin.summary
+  private val Dreams: Catalog -> Pins = _.dream
+
   /** Whether an ask may be made, read in one transaction for `acting`'s subject: the label
-    * what it is made from may hold, and the first of the catalog's pins for summaries cleared
+    * what it is made from may hold, and the first of the catalog's pins for `role` cleared
     * for what that read knew; or its refusal, under `digest`, when [[admits]] refuses it, no
     * catalog reads, or no pin is cleared.
     */
@@ -462,6 +479,7 @@ private[moves] object Act {
       db: Db^,
       clock: Clock^,
       acting: Acting,
+      role: Catalog -> Pins,
       digest: String
   ): Either[AskMade, (Label, Pinned)] =
     admits(records, db, clock, acting, digest).flatMap { (at, routed) =>
@@ -470,7 +488,7 @@ private[moves] object Act {
           Left(AskMade.Refused(AskMade.Kind.Model, s"no model catalog: $why", digest))
         case Right(catalog) =>
           routed
-            .cleared(catalog.pin.summary)
+            .cleared(role(catalog))
             .map(pins => (at, pins.first))
             .toRight(uncleared(Uncleared(routed.classification.label), "no model", digest))
       }
