@@ -15,7 +15,8 @@ Decision: each Standing line records its ground: `Person`, `Tool` or `Claimed`.
 
 - **The writer cites labels.** Its transcript labels every line it is shown (`u` a person's
   words to grit, `h` a person heard where grit listens, `a` the assistant's, `t` a tool call
-  and its result, clipped to one line), and it cites the labels that established each Standing
+  and its result on one line: up to 4,000 characters when it can ground, else 120, and cut back
+  to 120 before an earlier line is dropped from what the writer is shown), and it cites the labels that established each Standing
   item. grit maps the citation to the ground (`Labelled.ground`): a person's line wins, then a
   tool line whose result succeeded, otherwise `Claimed`. A tool line whose result is an error
   (failed, declined, interrupted, gone) grounds nothing, and the writer is told to cite where

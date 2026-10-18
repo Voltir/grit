@@ -29,7 +29,7 @@ object LabelledTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "the writer's transcript labels each line, a tool call as one clipped line with its result"
+      "the writer's transcript labels each line, a tool call as one line with its result"
     ) {
       TestTranscripts.labelled(period*).text ==>
         Vector(
@@ -41,9 +41,41 @@ object LabelledTests extends TestSuite {
           "[u6] User: We decided the api stays on 3000.",
           "[a7] Assistant: The api uses port 3000."
         ).mkString("\n\n")
-      val long = TestTranscripts.labelled(result(0, "read big.txt", "x " * 250)).text
-      long.length ==> PeriodTranscript.ToolChars
-      long ==> ("[t1] read big.txt → " + Vector.fill(50)("x").mkString(" ") + "…")
+    }
+
+    test(
+      "a tool line that can ground shows its result up to 4,000 chars; an error, or one below Outside, one line of 120"
+    ) {
+      def shown(e: Entry) = TestTranscripts.labelled(e).text
+      def xs(n: Int) = Vector.fill(n)("x").mkString(" ")
+      val big = "x " * 2500
+      (
+        shown(result(0, "read big.txt", big)),
+        shown(result(0, "read big.txt", big).copy(integrity = Integrity.Outside)),
+        shown(result(0, "read big.txt", big, error = true)),
+        shown(result(0, "read big.txt", big).copy(integrity = Integrity.Untrusted))
+      ) ==> (
+        "[t1] read big.txt → " + xs(1990) + "…",
+        "[t1] read big.txt → " + xs(1990) + "…",
+        "[t1] read big.txt → failed: " + xs(46) + "…",
+        "[t1] read big.txt → " + xs(50) + "…"
+      )
+    }
+
+    test("a long tool line is cut back to one line before an earlier line is dropped") {
+      val t = TestTranscripts.labelled(
+        said(0, "What does big.txt hold?"),
+        result(1, "read big.txt", "x " * 1000),
+        replied(2, "Only x.")
+      )
+      (t.within(500).text, t.within(500).ground(Vector("u1"))) ==> (
+        Vector(
+          "[u1] User: What does big.txt hold?",
+          "[t2] read big.txt → " + Vector.fill(50)("x").mkString(" ") + "…",
+          "[a3] Assistant: Only x."
+        ).mkString("\n\n"),
+        Some(Ground.Person)
+      )
     }
 
     test(

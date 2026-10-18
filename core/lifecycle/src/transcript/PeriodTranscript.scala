@@ -101,14 +101,22 @@ object PeriodTranscript {
       case _ => false
     })
 
-  /** The most characters a tool line holds, its label and an ending "…" included. */
+  /** The most characters a tool line holds that grounds nothing (an error, or one below
+    * Outside), its label and an ending "…" included.
+    */
   val ToolChars = 120
+
+  /** The most characters a tool line holds that can ground ([[Labelled.supports]]), its label
+    * and an ending "…" included: enough of a result to show what it established.
+    */
+  val GroundingToolChars = 4000
 
   /** `entries` as [[Labelled]]: each person's message (`u` to grit, `h` heard) and reply
     * text as [[of]] renders it with `speakers`, but a person's message mentioning the
     * assistant, which presents as `persona`, as their words to it (`[h1] Ana, to the
     * assistant: …`, the mention taken out); and each tool result as its call as shown, " → ",
-    * and its content on one line, "failed: " first when it failed, clipped to [[ToolChars]];
+    * and its content on one line, "failed: " first when it failed, clipped to
+    * [[GroundingToolChars]] when it can ground ([[Labelled.supports]]), else to [[ToolChars]];
     * each line knows the entry it was rendered from, and a tool line the name its call among
     * `entries` gave.
     */
@@ -147,7 +155,11 @@ object PeriodTranscript {
       val label = s"$letter${i + 1}"
       val rendered = s"[$label] $text"
       val clipped = source match {
-        case Labelled.Source.Tool(_, _) => Cut.head(rendered, ToolChars)
+        case Labelled.Source.Tool(_, _) =>
+          Cut.head(
+            rendered,
+            if (Labelled.supports(source, e.integrity)) GroundingToolChars else ToolChars
+          )
         case _ => rendered
       }
       Labelled.Line(label, e.id, source, clipped, e.integrity)

@@ -1,6 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.id.EntryId
+import grit.core.message.Cut
 import grit.core.period.{Cited, Ground}
 import grit.core.visibility.Integrity
 
@@ -10,9 +11,22 @@ import grit.core.visibility.Integrity
   */
 final case class Labelled private (lines: Vector[Labelled.Line]) {
 
-  /** Its last lines, whole, that fit in `chars` characters as [[text]] renders them. */
+  /** Its lines that fit in `chars` characters as [[text]] renders them: while they do not, each
+    * tool line longer than [[PeriodTranscript.ToolChars]] cut back to that, earliest first; then
+    * its last lines, whole, that fit. So a long result is cut before an earlier line is dropped.
+    */
   def within(chars: Int): Labelled = {
-    val kept = lines.reverseIterator
+    val size = lines.map(_.rendered.length).sum + 2 * (lines.size - 1).max(0)
+    val (cut, _) = lines.foldLeft((Vector.empty[Labelled.Line], size - chars)) {
+      case ((done, over), l) =>
+        val short = Cut.head(l.rendered, PeriodTranscript.ToolChars)
+        l.source match {
+          case Labelled.Source.Tool(_, _) if over > 0 && short.length < l.rendered.length =>
+            (done :+ l.copy(rendered = short), over - (l.rendered.length - short.length))
+          case _ => (done :+ l, over)
+        }
+    }
+    val kept = cut.reverseIterator
       .scanLeft((0, Option.empty[Labelled.Line])) { case ((used, _), l) =>
         // Each line after the first costs the blank line before it.
         (used + l.rendered.length + 2, Some(l))
@@ -42,12 +56,7 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
       .map(_.source)
     if (sources.nonEmpty && supporting.isEmpty) None
     else if (supporting.contains(Labelled.Source.Person)) Some(Ground.Person)
-    else if (
-      supporting.exists {
-        case Labelled.Source.Tool(succeeded, _) => succeeded
-        case _ => false
-      }
-    ) Some(Ground.Tool)
+    else if (sources.exists(l => Labelled.supports(l.source, l.integrity))) Some(Ground.Tool)
     else Some(Ground.Claimed)
   }
 
@@ -95,6 +104,15 @@ object Labelled {
       rendered: String,
       integrity: Integrity
   )
+
+  /** Whether a tool line from `source`, believed at `integrity`, is one [[Labelled.ground]]
+    * counts as a tool's support: its result succeeded, and it is believed at Outside or above.
+    * False for every other line.
+    */
+  def supports(source: Source, integrity: Integrity): Boolean = source match {
+    case Source.Tool(succeeded, _) => succeeded && !integrity.belowOutside
+    case _ => false
+  }
 
   /** The transcript of `lines`, in order. */
   private[transcript] def of(lines: Vector[Line]): Labelled = Labelled(lines)
