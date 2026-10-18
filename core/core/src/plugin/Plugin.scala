@@ -11,7 +11,8 @@ import grit.core.visibility.Compartment
 
 /** A feature a deployment turns on (ADR 0027): a name, a version, the plugins it reads, and
   * the contributions it makes to core's points, each none unless it says otherwise. Built
-  * from closed periods alone: it never sees a raw entry.
+  * from closed periods, and by a dreaming job from strands by id and count, core summarising
+  * their messages for it ([[grit.core.act.Dreaming]]): it never holds a raw entry.
   */
 trait Plugin extends caps.Pure {
   def name: PluginName

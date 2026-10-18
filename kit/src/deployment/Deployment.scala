@@ -17,7 +17,7 @@ import grit.core.id.{
   ShadowName
 }
 import grit.core.identity.{Identities, Realm}
-import grit.core.job.{Declared, Jobs, KeepingJob, NotOwn, Owned, PlainJob}
+import grit.core.job.{Declared, DreamingJob, Jobs, KeepingJob, NotOwn, Owned, PlainJob}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -212,7 +212,7 @@ enum DeploymentRefusal {
   /** A tool of `plugin` books `job`, which is not among `plugin`'s jobs. */
   case JobUnowned(plugin: PluginName, job: JobName)
 
-  /** `plugin`'s keeping job `job` would keep documents `plugin` does not have. */
+  /** `plugin`'s keeping or dreaming job `job` would keep documents `plugin` does not have. */
   case KeepsUnshelved(plugin: PluginName, job: JobName)
 
   /** Two of the jobs, every plugin's and the deployment's own, are named `name`: a run names
@@ -473,7 +473,8 @@ object Deployment {
           },
           _ => Right(())
         )
-      // A keeping job keeps under its plugin's terms: with none, it would have nothing to keep.
+      // A keeping or dreaming job keeps under its plugin's terms: with none, it would have
+      // nothing to keep.
       owned <- plugins
         .flatMap(p =>
           p.jobs.map {
@@ -481,6 +482,10 @@ object Deployment {
             case k: KeepingJob[?] =>
               p.documents
                 .map(d => Owned.Keeps(p.name, d.terms, k))
+                .toRight(DeploymentRefusal.KeepsUnshelved(p.name, k.name))
+            case k: DreamingJob[?] =>
+              p.documents
+                .map(d => Owned.Dreams(p.name, d.terms, k))
                 .toRight(DeploymentRefusal.KeepsUnshelved(p.name, k.name))
           }
         )

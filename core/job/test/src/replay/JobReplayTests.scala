@@ -29,6 +29,7 @@ object JobReplayTests extends TestSuite {
     "call:expire" -> 64, // the wait's state when given up
     "call:abandon" -> 64, // the wait's state when given up
     "keep" -> 64, // what was kept
+    "keep:scan" -> 1024, // the strands a dreaming run scanned, by ids and counts
     "DBOS.recv" -> 64, // an edge's ring
     "DBOS.sleep" -> 64, // when the wait ends
     "reply" -> 256 // the run's reply
@@ -52,6 +53,14 @@ object JobReplayTests extends TestSuite {
     * which a step renamed since must still replay.
     */
   private def kept(history: History): Boolean = history.steps.exists(_.name == "keep:note")
+
+  /** Whether `history` dreamed: it holds [[Dreamer]]'s scan, by the name it was recorded under.
+    */
+  private def dreamed(history: History): Boolean = history.steps.exists(_.name == "keep:scan")
+
+  /** A step's family as [[Budgets]] holds it: a dreaming run's scan apart from other keeps. */
+  private def family(name: String): String =
+    if (name == "keep:scan") name else RecordedSizes.familyOf(name)
 
   /** What [[probes]] at version 1 replies when `history` is replayed under today's body, or why
     * the replay failed: a move whose input's digest no longer matches the one recorded replies
@@ -91,7 +100,8 @@ object JobReplayTests extends TestSuite {
       "each run history of the previous epoch names its steps as its scenario's in this one"
     ) {
       val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
-      (before.size, before == after) ==> (19, true)
+      // A shape new to this epoch has no scenario in the previous one.
+      (before.size, before == after.filter((path, _) => before.contains(path))) ==> (19, true)
     }
 
     test("the current epoch has run histories to replay, redeployed ones and moves among them") {
@@ -111,7 +121,8 @@ object JobReplayTests extends TestSuite {
         "run-capped",
         "run-redeployed-before-moves",
         "run-moved-then-redeployed",
-        "run-kept"
+        "run-kept",
+        "run-dreamed"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
     }
@@ -121,7 +132,7 @@ object JobReplayTests extends TestSuite {
     ) {
       val read = histories.collect { case (path, Right(h)) => path -> h }
       assert(read.size == histories.size)
-      RecordedSizes.breaches(read, RecordedSizes.familyOf, Budgets, Whole) ==> Vector.empty
+      RecordedSizes.breaches(read, family, Budgets, Whole) ==> Vector.empty
     }
 
     test("every run history that made no move replays under today's body, at a later version") {
@@ -131,7 +142,7 @@ object JobReplayTests extends TestSuite {
     }
 
     test("every run history that asked or called replays under today's body, at its own version") {
-      failing(h => moved(h) && !kept(h), jobsOf(probing(1))) ==> Vector()
+      failing(h => moved(h) && !kept(h) && !dreamed(h), jobsOf(probing(1))) ==> Vector()
     }
 
     test("every run history that kept replays under today's body, its keeping job at its version") {
@@ -139,10 +150,17 @@ object JobReplayTests extends TestSuite {
     }
 
     test(
+      "every run history that dreamed replays under today's body, its dreaming job at its version"
+    ) {
+      failing(dreamed, dreamingJobs(new Dreamer(1))) ==> Vector()
+    }
+
+    test(
       "every run history that asked or called, and replied, replies under today's body as it recorded"
     ) {
       val replied = histories.collect {
-        case (path, Right(h)) if moved(h) && !kept(h) && recorded(h).nonEmpty => (path, h)
+        case (path, Right(h)) if moved(h) && !kept(h) && !dreamed(h) && recorded(h).nonEmpty =>
+          (path, h)
       }
       // Every one that recorded a reply is compared: one whose reply no longer parses would
       // otherwise drop out of the gate unseen.

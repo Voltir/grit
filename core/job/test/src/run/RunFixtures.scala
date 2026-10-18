@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar, replied, shown}
-import grit.core.act.{Asked, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
+import grit.core.act.{Asked, Dreaming, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
 import grit.core.classify.{Answers, Ask, ClassifierError, Criterion, Decision, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, InMemoryDocuments}
@@ -41,13 +41,25 @@ import grit.core.identity.{Principal, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
-import grit.core.job.{Declared, JobRun, Jobs, KeepingJob, Owned, PlainJob, Schedule, SlotRule, When}
+import grit.core.job.{
+  Declared,
+  DreamingJob,
+  JobRun,
+  Jobs,
+  KeepingJob,
+  Owned,
+  PlainJob,
+  Schedule,
+  SlotRule,
+  When
+}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.spend.{Budget, DailyCap}
+import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{
   Askers,
   InMemoryToolSets,
@@ -141,6 +153,84 @@ object RunFixtures {
         .fold(_.toString, _.label)
   }
 
+  /** The deployment of `job`, [[Notes]]' dreaming job. */
+  def dreamingJobs(job: DreamingJob[?]): Jobs =
+    Jobs
+      .of(Vector(Owned.Dreams(Notes, NotesTerms, job)))
+      .fold(n => sys.error(s"two jobs named $n"), identity)
+
+  /** `remind` at `version` as [[Notes]]' dreaming job: its run scans, in its keep `scan`, the
+    * strands spoken in before it started; summarises the first, as [[Summarised]] asks it, in
+    * its ask `summary`; and keeps the answer under the key `dreamt`, publicly, in its keep
+    * `dreamt`; it replies the label kept at, or why it stopped.
+    */
+  final class Dreamer(val version: Int) extends DreamingJob[Count] {
+    val name = remind.name
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+    override def limits: MoveLimits = MoveLimits.of(1, 0).fold(sys.error, identity)
+    def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      moves
+        .scan(move("scan"), run.tainted)((_, _, strands, at) =>
+          strands.touched(Instant.EPOCH, at).map(Scanned(_))
+        )
+        .left
+        .map(_.toString)
+        .flatMap(_.seen.headOption.toRight("no strand"))
+        .flatMap(seen =>
+          moves
+            .summarise(move("summary"), seen, run.tainted.map(_ => Summarised))
+            .left
+            .map(_.toString)
+            .flatMap(_.toRight("its strand changed"))
+        )
+        .flatMap(asked =>
+          moves
+            .keep(move("dreamt"), asked.reply) { (answer, keeper, at) =>
+              (for {
+                key <- DocKey.of("dreamt")
+                text <- DocText.of(answer)
+              } yield (key, text)) match {
+                case Left(why) => Left(StoreError.Invalid(why))
+                case Right((key, text)) =>
+                  keeper
+                    .write(
+                      key,
+                      Label.Public,
+                      Integrity.Member,
+                      Place.under(Namespace.Task, Vector("notes")),
+                      text,
+                      ujson.Obj(),
+                      None,
+                      at
+                    )
+                    .map(w => Noted(Label.written(w.kept)))
+              }
+            }
+            .left
+            .map(_.toString)
+        )
+        .fold(identity, _.label)
+  }
+
+  /** What [[Dreamer]] asks of a strand: its answer, within 1,000 characters. */
+  def Summarised: Dreaming.Summary[String] = Dreaming.Summary("Summarise.", 1000, Answered)
+
+  /** The strands a scan read, as it records them ([[Strand.Seen.write]]). */
+  final case class Scanned(seen: Vector[Strand.Seen]) extends caps.Pure
+  object Scanned {
+    given Journaled[Scanned] = Journaled.json(
+      s => ujson.Arr.from(s.seen.map(Strand.Seen.write)),
+      v =>
+        v.arrOpt
+          .toRight("no strands")
+          .flatMap(_.toVector.foldLeft[Either[String, Vector[Strand.Seen]]](Right(Vector())) {
+            (acc, x) => acc.flatMap(done => Strand.Seen.read(x).map(done :+ _))
+          })
+          .map(Scanned(_))
+    )
+  }
+
   /** The label a keep was kept at, in its written form. */
   final case class Noted(label: String) extends caps.Pure
   object Noted {
@@ -221,6 +311,19 @@ object RunFixtures {
     val edges: InMemoryEdges = new InMemoryEdges
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
+
+    /** Its rooms' strands, which a dreaming job reads. */
+    val strands: StrandWorld = new StrandWorld(Due.minusSeconds(3600))
+
+    /** A strand of two threads in room `C1`, said an hour before [[Due]]: "the deploy is
+      * stuck", then "still stuck?" a minute later.
+      */
+    def strand(): Unit = {
+      val a = strands.thread("C1", "1.0")
+      val b = strands.thread("C1", "2.0")
+      val _ = strands.say(a, "the deploy is stuck", 0)
+      strands.follow(strands.say(b, "still stuck?", 60), a)
+    }
     val models: Answering = new Answering(Answer, crashModel, shapes, calling, upstream)
     val classifier: Judging = new Judging(judged)
 
@@ -282,7 +385,9 @@ object RunFixtures {
           clock
         ),
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
-        (plugin, terms) => documents.keeper(plugin, terms)
+        (plugin, terms) => documents.keeper(plugin, terms),
+        strands.shelf,
+        strands.excerpts
       )
 
     /** The requests written, in order. */

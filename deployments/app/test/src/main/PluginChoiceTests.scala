@@ -5,7 +5,7 @@ import java.time.{Instant, LocalTime, ZoneId}
 import grit.core.act.{Called, MoveError, ScriptedKeeping}
 import grit.core.flow.TestTainted
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Declared, JobRun, KeepingJob, PlainJob, SlotRule}
+import grit.core.job.{Declared, DreamingJob, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.place.Service
 import grit.core.plugin.Plugin
 import grit.core.visibility.{
@@ -91,7 +91,7 @@ object PluginChoiceTests extends TestSuite {
             )
           )
         }
-      case _: PlainJob[P] => "not a keeping job"
+      case _: PlainJob[P] | _: DreamingJob[P] => "not a keeping job"
     }
 
   val tests = Tests {

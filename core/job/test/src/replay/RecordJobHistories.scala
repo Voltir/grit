@@ -137,6 +137,12 @@ object RecordJobHistories {
         d.run(turn.workflowId)(Run.body(w.env(), keepingJobs(new Noting(1))))
         turn.workflowId
       },
+      record("run-dreamed") { (w, d) =>
+        w.strand()
+        val turn = w.started(w.declared("dream", 1))
+        d.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Dreamer(1))))
+        turn.workflowId
+      },
       // The process died recording the ask's cost: its model call is recorded, its record not.
       // Coming back at another version, the run's reply step meets that move.
       record("run-moved-then-redeployed", crashRecord = true) { (w, d) =>

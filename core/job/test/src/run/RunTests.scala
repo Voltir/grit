@@ -38,7 +38,7 @@ object RunTests extends TestSuite {
     test("a job's program lists the extraction and the tree, within moves") {
       val env = new World().env()
       Flows
-        .downgrades(Run.flow(jobs(1), env.budget, env.keepers))
+        .downgrades(Run.flow(jobs(1), env.budget, env.keepers, env.strands, env.excerpts))
         .map(d => (d.at.name, d.sits, d.node)) ==> Vector(
         ("moves", Flows.Sits.Within, Extraction.Node),
         ("moves", Flows.Sits.Within, IntegrityTree.Node)
@@ -509,6 +509,33 @@ object RunTests extends TestSuite {
       catch { case _: InMemoryDurable.Crash => "crashed" }
       w.durable.run(turn.workflowId)(Run.body(w.env(), jobsOf(asking(1000))))
       w.ledger.rows.map(_._5) ==> Vector(PerChar.request(request(1)))
+    }
+
+    test(
+      "a plugin's dreaming job scans in a keep, summarises a strand in an ask of what it said, and keeps the reply"
+    ) {
+      val w = new World()
+      w.strand()
+      val turn = w.started(w.declared("standup", 3))
+      w.durable.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Dreamer(1))))
+      val kept = w.documents
+        .keeper(Notes, NotesTerms)
+        .newest(10)(using TestTx.fake)
+        .fold(e => sys.error(s"$e"), _.map(d => grit.core.document.DocText.value(d.text)))
+      val shown = w.models.requests.map(_.messages.collect { case Message.User(t) => t })
+      (w.reply(turn), kept, shown, w.durable.recordedSteps(turn.workflowId)) ==> (
+        Some("public"),
+        Vector(Answer),
+        Vector(Vector("Someone: the deploy is stuck\nSomeone: still stuck?")),
+        Vector(
+          Run.Step.ReadSlot,
+          "keep:scan",
+          "ask:summary",
+          "ask:summary:record",
+          "keep:dreamt",
+          Run.Step.Reply
+        )
+      )
     }
 
     test(

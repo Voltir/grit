@@ -27,9 +27,10 @@ object ActCaptureTests extends TestSuite {
       |import grit.core.durable.*
       |import grit.core.id.*
       |import grit.core.flow.{Tainted, Trusted}
-      |import grit.core.job.{JobRun, KeepingJob, PlainJob}
+      |import grit.core.job.{DreamingJob, JobRun, KeepingJob, PlainJob}
       |import grit.core.message.*
       |import grit.core.provider.*
+      |import grit.core.stitch.*
       |import grit.core.store.*
       |import grit.core.visibility.*
       |
@@ -46,6 +47,7 @@ object ActCaptureTests extends TestSuite {
       |}
       |abstract class Counted extends PlainJob[Count], Counts
       |abstract class Tallied extends KeepingJob[Count], Counts
+      |abstract class Dreamt extends DreamingJob[Count], Counts
       |object Text {
       |  given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
       |}
@@ -139,6 +141,49 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** 9. A dreaming job whose scan's body makes a move. */
+  private val scanAsks =
+    """final class ScanAsks extends Dreamt {
+      |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) =>
+      |      val _ = moves.ask(Names.of("inner"), run.tainted.map(_ => Posed.Text(Names.request)))
+      |      Right(Count(1))
+      |    }.fold(_.toString, _.toString)
+      |}
+      |""".stripMargin
+
+  /** 10. A dreaming job whose scan's body returns a read of its strand shelf for later. */
+  private val scanReturnsShelf =
+    """given anyJournaled[A]: Journaled[A] = new Journaled[A] {
+      |  def encode(a: A): String = ""
+      |  def decode(s: String): Either[String, A] = Left("never read")
+      |}
+      |final class Later(roots: Vector[ConversationId]) extends Dreamt {
+      |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      |    moves.scan(Names.of("later"), run.tainted) { (_, keeper, strands, at) => Right(() => strands.of(roots, at)) }
+      |      .fold(_.toString, _ => "later")
+      |}
+      |""".stripMargin
+
+  /** 11. A dreaming job that keeps the moves it is handed in a field. */
+  private val dreamKeepsMoves =
+    """final class DreamKeeps extends Dreamt {
+      |  var kept: Option[Dreaming^] = None
+      |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String = { kept = Some(moves); "kept" }
+      |}
+      |""".stripMargin
+
+  /** 12. A keeping job asking its moves for a strand read: a plain type error, so that widening
+    * [[Keeping]] to read strands is a decision, not an accident.
+    */
+  private val keepScans =
+    """final class Scans extends Tallied {
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) => Right(Count(1)) }
+      |      .fold(_.toString, _.toString)
+      |}
+      |""".stripMargin
+
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
@@ -150,7 +195,9 @@ object ActCaptureTests extends TestSuite {
       jobHoldsProvider,
       readerAsks,
       judgmentReaderClassifies,
-      jobHoldsClassifier
+      jobHoldsClassifier,
+      scanAsks,
+      dreamKeepsMoves
     )
 
   private val usesMoves =
@@ -162,6 +209,14 @@ object ActCaptureTests extends TestSuite {
       |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
       |    moves.keep(Names.of("count"), run.tainted) { (_, keeper, at) => keeper.current(key, label).map(d => Count(d.fold(0)(_ => 1))) }
       |      .fold(_.toString, _.toString)
+      |}
+      |""".stripMargin
+
+  private val dreams =
+    """final class Dreams(summary: Dreaming.Summary[String]) extends Dreamt {
+      |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) => strands.atFloor(at, at).map(s => Count(s.size)) }
+      |      .fold(_.toString, c => moves.summarise(Names.of("one"), ???, run.tainted.map(_ => summary)).fold(_.toString, _.fold("none")(a => Names.open(a.reply))))
       |}
       |""".stripMargin
 
@@ -202,7 +257,16 @@ object ActCaptureTests extends TestSuite {
 
   private lazy val compiled = Probes.batch(
     prelude,
-    breaches.toList ++ List(keepReturnsRead, usesMoves, readsJson, judges, actingPure)
+    breaches.toList ++ List(
+      keepReturnsRead,
+      scanReturnsShelf,
+      keepScans,
+      usesMoves,
+      dreams,
+      readsJson,
+      judges,
+      actingPure
+    )
   )
 
   val tests = Tests {
@@ -219,6 +283,33 @@ object ActCaptureTests extends TestSuite {
     ) {
       val errs = errors(usesMoves)
       assert(errs.isEmpty)
+    }
+
+    test("a dreaming job scanning its strands, then summarising one, compiles") {
+      val errs = errors(dreams)
+      assert(errs.isEmpty)
+    }
+
+    test("a dreaming job whose scan's body makes a move is rejected") {
+      assert(flowsInto("{}")(errors(scanAsks)))
+    }
+
+    test(
+      "a dreaming job whose scan's body returns its strand shelf for later is rejected by its bound"
+    ) {
+      val errs = errors(scanReturnsShelf)
+      assert(
+        errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
+      )
+    }
+
+    test("a dreaming job that keeps its moves in a field is rejected") {
+      assert(flowsInto("{any}")(errors(dreamKeepsMoves)))
+    }
+
+    test("a keeping job's moves offer no strand read") {
+      val errs = errors(keepScans)
+      assert(errs.exists(_.contains("value scan is not a member of grit.core.act.Keeping")))
     }
 
     test("a job asking for JSON its pure reader reads, beside asks it makes itself, compiles") {

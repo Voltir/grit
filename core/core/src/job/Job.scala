@@ -2,14 +2,14 @@ package grit.core.job
 
 import java.time.Instant
 
-import grit.core.act.{Keeping, MoveLimits, Moves}
+import grit.core.act.{Dreaming, Keeping, MoveLimits, Moves}
 import grit.core.document.DocumentTerms
 import grit.core.flow.Trusted
 import grit.core.id.{JobName, PluginName}
 
 /** A job (ADRs 0021, 0029): versioned code each slot of its schedules runs, as a turn of the
   * slot's own conversation at `task:{name}`, closed like any other. A plugin contributes it, or
-  * a deployment declares it. A [[PlainJob]] or a [[KeepingJob]].
+  * a deployment declares it. A [[PlainJob]], a [[KeepingJob]] or a [[DreamingJob]].
   */
 sealed trait Job[P <: caps.Pure] extends caps.Pure {
   def name: JobName
@@ -52,6 +52,15 @@ trait KeepingJob[P <: caps.Pure] extends Job[P] {
   def run(run: Trusted[JobRun[P]], moves: Keeping^): String
 }
 
+/** A plugin's job whose runs keep its documents from the strands of the rooms they read
+  * ([[grit.core.act.Dreaming]]). A deployment is refused one whose plugin keeps no documents.
+  */
+trait DreamingJob[P <: caps.Pure] extends Job[P] {
+
+  /** As [[PlainJob.run]], its moves also keeping its plugin's documents and reading strands. */
+  def run(run: Trusted[JobRun[P]], moves: Dreaming^): String
+}
+
 /** One run as its job sees it: its parameters, its slot's instant, and when it started (after
   * `nominal`, late, when grit was down).
   */
@@ -65,10 +74,14 @@ enum Owned {
   /** `plugin`'s keeping job, its documents kept under `terms`. */
   case Keeps(plugin: PluginName, terms: DocumentTerms, keeping: KeepingJob[?])
 
+  /** `plugin`'s dreaming job, its documents kept under `terms`. */
+  case Dreams(plugin: PluginName, terms: DocumentTerms, dreaming: DreamingJob[?])
+
   def job: Job[?] = this match {
     case Deployments(j) => j
     case Plugins(_, j) => j
     case Keeps(_, _, j) => j
+    case Dreams(_, _, j) => j
   }
 }
 

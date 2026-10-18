@@ -1,6 +1,6 @@
 # 0027. A plugin is a bundle of contributions to core's points, and reaches another only through a service it exports
 
-Status: accepted (2026-10-05); revised (2026-10-16)
+Status: accepted (2026-10-05); revised (2026-10-18, proposed with ADR 0042)
 
 Context: a plugin is posted each closed period and keeps cache documents (ADR 0011); anything
 more was the kit's, which offered Digest's `recent_activity` because it recognised Digest by
@@ -17,7 +17,9 @@ Decision:
   fragments for the windows of the places it scopes; and jobs (ADR 0029). A plugin whose tool
   must touch a workspace or a service contributes a `Hosted` description, and an edge runs it
   (ADR 0017). The kit wires every plugin's contributions the same way and names no plugin.
-- **What a plugin derives is built only from closings** (ADR 0011). Posting runs in a
+- **What a plugin derives is built only from closings** (ADR 0011), **or by a dreaming job
+  from the strands of the rooms its run reads**, which it sees by id and count while core
+  summarises their messages for it (ADR 0042): its code never holds a message's text. Posting runs in a
   durable workflow of its own, triggered by a close, outside the turn's steps, so a plugin
   can be swapped, disabled or rebuilt without a patch or an epoch. Its documents are either
   a cache, made from one closing, rebuilt from closings and dropped with them, or a ledger's,

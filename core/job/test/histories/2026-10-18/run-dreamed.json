@@ -1,0 +1,32 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:dream@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":1,\"report\":{\"kind\":\"kept\"},\"integrity\":\"authority+unmapped\"}"
+    },
+    {
+      "name": "keep:scan",
+      "output": "{\"kept\":\"[{\\\"room\\\":\\\"slack:T/C1\\\",\\\"roomLabel\\\":\\\"public\\\",\\\"root\\\":\\\"c1\\\",\\\"members\\\":[\\\"c1\\\",\\\"c2\\\"],\\\"said\\\":2,\\\"chars\\\":31,\\\"since\\\":\\\"2026-10-07T08:00:00Z\\\",\\\"touched\\\":\\\"2026-10-07T08:01:00Z\\\",\\\"digest\\\":\\\"29a8a5cb27f0f8e0\\\",\\\"asOf\\\":\\\"2026-10-07T09:00:30Z\\\"}]\"}"
+    },
+    {
+      "name": "ask:summary",
+      "output": "{\"shaped\":{\"digest\":\"v1:fc32d95a5031502bdc3065d5d0e70b0a1b46b2f21a19a5070e96c64690c4614b\",\"reply\":{\"answer\":\"hello\"},\"at\":\"public\",\"level\":\"member\",\"calls\":[{\"model\":\"test/summary\",\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"estimate\":225}]}}"
+    },
+    {
+      "name": "ask:summary:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "keep:dreamt",
+      "output": "{\"kept\":\"\\\"public\\\"\"}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"public\"}"
+    }
+  ]
+}

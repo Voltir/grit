@@ -6,7 +6,17 @@ import grit.core.act.{Keeping, Moves}
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName}
-import grit.core.job.{Declared, Job, JobRun, KeepingJob, NotOwn, OwnJobs, PlainJob, ScheduleDesk}
+import grit.core.job.{
+  Declared,
+  DreamingJob,
+  Job,
+  JobRun,
+  KeepingJob,
+  NotOwn,
+  OwnJobs,
+  PlainJob,
+  ScheduleDesk
+}
 import grit.core.plugin.{
   DocumentPosting,
   Documents,
@@ -104,6 +114,15 @@ object TestPlugins {
     def write(params: Named.None.type): ujson.Value = ujson.Obj()
     def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
     def run(run: Trusted[JobRun[Named.None.type]], moves: Keeping^): String = called
+  }
+
+  /** A dreaming job named `called`, with no parameters, replying its name and keeping nothing. */
+  final class Dreaming(called: String) extends DreamingJob[Named.None.type] {
+    val name: JobName = JobName.of(called).fold(e => sys.error(e), identity)
+    val version: Int = 1
+    def write(params: Named.None.type): ujson.Value = ujson.Obj()
+    def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
+    def run(run: Trusted[JobRun[Named.None.type]], moves: grit.core.act.Dreaming^): String = called
   }
 
   /** Documents labelled "tallies", which nothing posts. */
