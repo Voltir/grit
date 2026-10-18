@@ -63,7 +63,9 @@ In dependency order:
     internal), synced through the Drive edge; refused at start with neither, or with a part
     of either unset; `Main.knowledge`; `strands`, one document per strand of a room, dreamed
     daily at 04:30 at each label `GRIT_STRAND_LABELS` lists, refused at start without one;
-    `Main.strands`; `standing`, the person- and tool-established Standing lines of each close, but
+    `Main.strands`; `topics`, one document per subject found across strands and cards,
+    dreamed daily at 05:00 at each label `GRIT_TOPIC_LABELS` lists, reading the knowledge
+    plugin's cards when `knowledge` is listed before it; `Main.topics`; `standing`, the person- and tool-established Standing lines of each close, but
     a reminder tool's, kept as one document); then the chat TUI, or with arguments each answered
     as a message.
 

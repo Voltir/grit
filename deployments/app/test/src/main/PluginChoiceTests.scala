@@ -133,7 +133,7 @@ object PluginChoiceTests extends TestSuite {
     test("a plugin grit does not have, or a name no plugin could have, is refused") {
       choice(Map("GRIT_PLUGINS" -> "digest,wiki")) ==>
         Left(
-          "GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge, strands and standing"
+          "GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge, strands, topics and standing"
         )
       choice(Map("GRIT_PLUGINS" -> "Digest")) ==> Left(
         "GRIT_PLUGINS: a plugin's name is lowercase letters, digits and dashes, starting with a letter"
@@ -187,6 +187,51 @@ object PluginChoiceTests extends TestSuite {
               Label.at(Level.Internal)
             )
           )
+        )
+      )
+    }
+
+    test(
+      "topics, at the labels GRIT_TOPIC_LABELS names, dreams daily at 05:00 at each, needing knowledge when it is listed"
+    ) {
+      val env = github + ("GRIT_PLUGINS" -> "knowledge, topics") + ("GRIT_TOPIC_LABELS" -> "public")
+      val alone = Map("GRIT_PLUGINS" -> "topics", "GRIT_TOPIC_LABELS" -> "public")
+      def needs(env: Map[String, String]) =
+        choice(env).map(
+          _.map(p => (PluginName.value(p.name), p.needs.map(n => PluginName.value(n.name))))
+        )
+      val topics = scheduled(env).map((all: Vector[(String, SlotRule, ujson.Value, Label)]) =>
+        all.filter(_._1.startsWith("topics"))
+      )
+      (names(env), topics, needs(env), needs(alone)) ==> (
+        Right(Vector(("Knowledge", "knowledge"), ("TopicDocuments", "topics"))),
+        Right(
+          Vector(
+            (
+              "topics-dream-public",
+              SlotRule.Daily(LocalTime.of(5, 0), zone),
+              ujson.Obj("perRun" -> 10, "recent" -> "PT48H", "cardRecent" -> "PT48H"),
+              Label.Public
+            )
+          )
+        ),
+        Right(Vector(("knowledge", Vector()), ("topics", Vector("knowledge")))),
+        Right(Vector(("topics", Vector())))
+      )
+    }
+
+    test(
+      "topics with no label, or listed before knowledge, is refused, naming what to change"
+    ) {
+      (
+        choice(Map("GRIT_PLUGINS" -> "topics")),
+        choice(github + ("GRIT_PLUGINS" -> "topics, knowledge") + ("GRIT_TOPIC_LABELS" -> "public"))
+      ) ==> (
+        Left(
+          "GRIT_PLUGINS: topics keeps documents at the labels GRIT_TOPIC_LABELS names, and it is unset or blank"
+        ),
+        Left(
+          "GRIT_PLUGINS: topics reads the knowledge plugin's cards, so knowledge comes before it"
         )
       )
     }

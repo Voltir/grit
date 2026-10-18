@@ -50,7 +50,13 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
-import grit.knowledge.plugin.{CardSource, Knowledge, StandingDocuments, StrandDocuments}
+import grit.knowledge.plugin.{
+  CardSource,
+  Knowledge,
+  StandingDocuments,
+  StrandDocuments,
+  TopicDocuments
+}
 import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, KeyFiles, McpServer}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest, DriveTools}
@@ -561,7 +567,8 @@ object Main {
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
     * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
     * ([[knowledge]], under `visibility`, its days beginning in `zone`), `strands`
-    * ([[strands]], likewise) and `standing` ([[StandingDocuments]], leaving out what a reminder
+    * ([[strands]], likewise), `topics` ([[topics]], likewise, reading the knowledge plugin's
+    * cards when it is listed, which it must be before `topics`) and `standing` ([[StandingDocuments]], leaving out what a reminder
     * tool's result established).
     */
   private[main] def pluginChoice(
@@ -586,6 +593,17 @@ object Main {
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
+              case "topics" =>
+                val cards = done.collectFirst { case k: Knowledge => k }
+                if (cards.isEmpty && csv(env, PluginsVar).contains("knowledge"))
+                  Left(
+                    s"$PluginsVar: topics reads the knowledge plugin's cards, so knowledge comes before it"
+                  )
+                else
+                  topics(name, env, visibility, zone, cards)
+                    .map(done :+ _)
+                    .left
+                    .map(why => s"$PluginsVar: $why")
               case "standing" =>
                 // A reminder's line goes stale at its date, and the reminders keep it: left out
                 // whether or not they are on, since a closing can carry one from when they were.
@@ -597,7 +615,7 @@ object Main {
                 )
               case other =>
                 Left(
-                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, strands and standing"
+                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, strands, topics and standing"
                 )
             }
           }
@@ -619,19 +637,53 @@ object Main {
       zone: java.time.ZoneId
   ): Either[String, StrandDocuments] =
     for {
-      written <- Some(csv(env, StrandLabelsVar))
-        .filter(_.nonEmpty)
-        .toRight(
-          s"strands keeps documents at the labels $StrandLabelsVar names, and it is unset or blank"
-        )
-      labels <- written.foldLeft[Either[String, Vector[Label]]](Right(Vector.empty))((acc, w) =>
-        acc.flatMap(done => Label.read(w).map(done :+ _).left.map(why => s"$StrandLabelsVar: $why"))
-      )
+      labels <- labelsOf(env, StrandLabelsVar, "strands")
       plugin <- StrandDocuments
         .of(name, labels, java.time.LocalTime.of(4, 30), zone, visibility)
         .left
         .map(why => s"strands: $why")
     } yield plugin
+
+  /** The labels the topics plugin's schedules are declared at, written forms, comma-separated.
+    */
+  private val TopicLabelsVar = "GRIT_TOPIC_LABELS"
+
+  /** The topics plugin `name` ([[TopicDocuments]]), its runs daily at 05:00 in `zone`, after
+    * the knowledge plugin's syncs and the strands', one schedule at each label
+    * [[TopicLabelsVar]] names, reading `cards`' cards when given; or why not: the variable
+    * unset, blank, or naming no label, or [[TopicDocuments.of]]'s refusal under `visibility`.
+    */
+  private[main] def topics(
+      name: PluginName,
+      env: Map[String, String],
+      visibility: Visibility,
+      zone: java.time.ZoneId,
+      cards: Option[Knowledge]
+  ): Either[String, TopicDocuments] =
+    for {
+      labels <- labelsOf(env, TopicLabelsVar, "topics")
+      plugin <- TopicDocuments
+        .of(name, labels, java.time.LocalTime.of(5, 0), zone, visibility, cards)
+        .left
+        .map(why => s"topics: $why")
+    } yield plugin
+
+  /** The labels `variable` names, for the plugin `what`; or why not: unset, blank, or a label
+    * that does not read.
+    */
+  private def labelsOf(
+      env: Map[String, String],
+      variable: String,
+      what: String
+  ): Either[String, Vector[Label]] =
+    Some(csv(env, variable))
+      .filter(_.nonEmpty)
+      .toRight(s"$what keeps documents at the labels $variable names, and it is unset or blank")
+      .flatMap(
+        _.foldLeft[Either[String, Vector[Label]]](Right(Vector.empty))((acc, w) =>
+          acc.flatMap(done => Label.read(w).map(done :+ _).left.map(why => s"$variable: $why"))
+        )
+      )
 
   /** The variable naming the owner of the repository the knowledge plugin reads. */
   private val GithubOwnerVar = "GRIT_GITHUB_OWNER"

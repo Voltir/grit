@@ -4,10 +4,10 @@ import java.time.{LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocLabel, DocWeight, Document, DocumentTerms}
+import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, Job, SlotRule}
-import grit.core.plugin.{DocumentPosting, Documents, Plugin}
+import grit.core.plugin.{Documents, Plugin}
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.strand.{DreamParams, StrandDream}
 
@@ -33,16 +33,7 @@ final class StrandDocuments private (
 
   private val dream = new StrandDream(StrandDocuments.PerRun, labels)
 
-  override val documents: Option[Documents] = {
-    val kept = terms
-    Some(new Documents {
-      val terms: DocumentTerms = kept
-      val posting: Option[DocumentPosting] = None
-
-      /** A document at a label no schedule is declared at: no run reads it as its own. */
-      override def undeclared(document: Document): Boolean = !labels.contains(document.label)
-    })
-  }
+  override val documents: Option[Documents] = Some(DreamSchedules.documents(terms, labels))
 
   override val jobs: Vector[Job[?]] = Vector(dream)
 
@@ -76,31 +67,7 @@ object StrandDocuments {
       visibility: Visibility
   ): Either[String, StrandDocuments] =
     for {
-      _ <- Either.cond(labels.nonEmpty, (), "the strands plugin is declared at a label at least")
-      _ <- labels
-        .diff(labels.distinct)
-        .headOption
-        .toLeft(())
-        .left
-        .map(l => s"the strands plugin is declared at ${Label.written(l)} twice")
-      _ <- labels
-        .flatMap(l => visibility.compartments.undeclared(l).map(_ => l))
-        .headOption
-        .toLeft(())
-        .left
-        .map(l =>
-          s"the strands plugin's label ${Label.written(l)} holds a compartment not declared"
-        )
-      keyed <- labels.foldLeft[Either[String, Vector[(ScheduleKey, Label)]]](Right(Vector()))(
-        (acc, l) =>
-          acc.flatMap(done =>
-            ScheduleKey
-              .of(s"strands-dream-${Knowledge.slug(l)}")
-              .left
-              .map(why => s"the strands plugin's label ${Label.written(l)} makes no key: $why")
-              .map(k => done :+ (k, l))
-          )
-      )
+      keyed <- DreamSchedules.keyed("strands", "strands-dream", labels, visibility)
       terms <- DocLabel
         .of("room discussion")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))

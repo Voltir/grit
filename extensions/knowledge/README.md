@@ -62,8 +62,10 @@ Packages, in one-way order (each names only those before it):
   `sync` or a source.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
   documents' terms, the `Sync` job, each source's sync schedules (the keys in `Knowledge`'s
-  doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the `StrandDream` job
-  on a daily schedule per label it is declared at, and its documents' terms; and
+  doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the
+  `StrandDream` job on a daily schedule per label it is declared at, and its documents' terms;
+  `TopicDocuments`, the topics plugin, the same for `TopicDream`, needing the plugin that
+  exports its cards when given one (`DreamSchedules` holds what the two share); and
   `StandingDocuments`, a plugin of its own over `standing`. Each is its own plugin because a
   plugin's documents share one label and one bound, and a sync holds every current document
   to be a card. Imports every package above.
