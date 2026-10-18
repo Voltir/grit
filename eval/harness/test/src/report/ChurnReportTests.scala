@@ -49,7 +49,8 @@ object ChurnReportTests extends TestSuite {
   )
 
   // q1: before right after 3 calls, after right after 1, echoed; q2: before no reply, after
-  // wrong having read (one fact of two, and a never-string).
+  // right having read. Better, clean over q2 (1) and a made-up second question (-1): mean 0,
+  // se 1 on 1 df.
   private val graded = churn.copy(
     pairs = Vector(
       Churn.Pair(
@@ -75,18 +76,18 @@ object ChurnReportTests extends TestSuite {
           "a2",
           Reads.Read(1, followed = false, None),
           calls = 2,
-          grade = Churn.Grade.Graded(gold.matched("daily, $5"))
+          grade = Churn.Grade.Graded(gold.matched("24 hours, daily"))
         )
       )
     ),
     correctness = Some(
       Churn.Correctness(
         Proportion.of(Vector("q1" -> true, "q2" -> false)),
-        Proportion.of(Vector("q1" -> true, "q2" -> false)),
+        Proportion.of(Vector("q1" -> true, "q2" -> true)),
         None,
-        Estimate.clustered(Vector("q1" -> 1.0, "q2" -> 0.0)),
+        Estimate.clustered(Vector("q1" -> 0.0, "q2" -> 1.0)),
         None,
-        None
+        Estimate.clustered(Vector("q2" -> 1.0, "q8" -> -1.0))
       )
     )
   )
@@ -123,19 +124,19 @@ object ChurnReportTests extends TestSuite {
       lines.filter(l => l.startsWith("pairs: ") || l.startsWith("correct: ")) ==> Vector(
         "pairs: 2; confounded turns: 0; echoed turns: 1 (a1:0)",
         "correct: before 0.500 (1/2 in 2 questions) too few questions for an interval; " +
-          "after 0.500 (1/2 in 2 questions) too few questions for an interval"
+          "after 1.000 (2/2 in 2 questions) too few questions for an interval"
       )
-      // Better over q1 (1) and q2 (0): mean 0.5, se 0.5 on 1 df.
+      // Better over q1 (0) and q2 (1): mean 0.5, se 0.5 on 1 df.
       lines.filter(l => l.startsWith("| to correct") || l.startsWith("| better")) ==> Vector(
         "| to correct | — | — | — | — |",
         "| better | 2 | 0.500 | [-5.853, 6.853] | 7.041 |",
         "| to correct, clean | — | — | — | — |",
-        "| better, clean | — | — | — | — |"
+        "| better, clean | 2 | 0.000 | [-12.706, 12.706] | 14.083 |"
       )
       lines.dropWhile(_ != "## Pairs").drop(4) ==> Vector(
         "| q1 | b1:0 2, useful 3; 3 calls, right (facts 2/2, never 0) | " +
           "a1:0 0 followed, useful 0 (echoed); 1 calls, right (facts 2/2, never 0) |",
-        "| q2 | b2:0 unread; 0 calls, no reply | a2:0 1, useful never; 2 calls, wrong (facts 1/2, never 1) |"
+        "| q2 | b2:0 unread; 0 calls, no reply | a2:0 1, useful never; 2 calls, right (facts 2/2, never 0) |"
       )
     }
   }
