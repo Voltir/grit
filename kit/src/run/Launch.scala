@@ -7,6 +7,7 @@ import grit.act.phase.Placing
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.act.Dreaming
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
@@ -349,11 +350,13 @@ private[grit] object Launch {
           moves,
           d.budget,
           runtime.keeper,
-          StrandShelf.over(runtime.stitches, runtime.conversations),
-          // A dreaming job's plugin is always among the deployment's: none other is asked.
-          plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
-          StrandExcerpts.over(runtime.stitches, runtime.principals),
-          runtime.documents
+          Dreaming.Reads(
+            StrandShelf.over(runtime.stitches, runtime.conversations),
+            // A dreaming job's plugin is always among the deployment's: none other is asked.
+            plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
+            StrandExcerpts.over(runtime.stitches, runtime.principals),
+            runtime.documents
+          )
         ),
         d.allJobs
       )

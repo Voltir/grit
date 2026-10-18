@@ -17,7 +17,7 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
-import grit.core.document.{DocumentKeeper, DocumentSearch}
+import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.{CallSlot, DocumentVersion, PluginName}
@@ -28,7 +28,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
-import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
+import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -66,43 +66,37 @@ object DurableMoves {
   )(using steps: Steps[MovesEnv]^): A =
     body(new Kept(acting, limits, keeper))
 
-  /** As [[keeping]], `plugin`'s, its moves also reading `strands` and `needs` ([[Dreaming]]),
-    * a summary reading its strands' messages through `excerpts` and its documents through
-    * `documents` (`plugin`'s own and its needs' alone) in its own step: recorded as an
-    * `ask:{name}` in a JSON ask's form, under its own digest ([[MovesJournal.strands]]).
+  /** As [[keeping]], `plugin`'s, its moves also reading `reads` ([[Dreaming]]), its scans
+    * `plugin`'s needs; a summary reading the documents of `plugin` and its needs alone, in its
+    * own step: recorded as an `ask:{name}` in a JSON ask's form, under its own digest
+    * ([[MovesJournal.strands]]).
     */
   def dreaming[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
-      strands: StrandShelf,
-      needs: Needs,
-      excerpts: StrandExcerpts,
-      documents: DocumentSearch
+      reads: Dreaming.Reads
   )(body: Dreaming^ => A)(using steps: Steps[MovesEnv]^): A =
-    body(new Dreamt(acting, limits, plugin, keeper, strands, needs, excerpts, documents))
+    body(new Dreamt(acting, limits, plugin, keeper, reads))
 
-  /** One run's moves, its keeps over `keeper`, its scans over `strands` and `needs`, and its
-    * summaries over `excerpts` and the documents of `plugin` and its needs in `documents`.
-    */
+  /** One run's moves, its keeps over `keeper`, the rest over `reads` as [[dreaming]] says. */
   private final class Dreamt(
       acting: Acting,
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
-      strands: StrandShelf,
-      needs: Needs,
-      excerpts: StrandExcerpts,
-      documents: DocumentSearch
+      reads: Dreaming.Reads
   )(using steps: Steps[MovesEnv]^)
       extends Kept(acting, limits, keeper),
         Dreaming {
 
+    private val needs = reads.needs(plugin)
+
     def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
         body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
     ): Either[MoveError, A] =
-      keep(name, from)((i, kept, at) => body(i, kept, strands, needs, at))
+      keep(name, from)((i, kept, at) => body(i, kept, reads.strands, needs, at))
 
     def summarise[T](
         name: MoveName,
@@ -126,8 +120,8 @@ object DurableMoves {
             chars,
             documentChars,
             reply,
-            excerpts,
-            documents,
+            reads.excerpts,
+            reads.documents,
             readable,
             digest
           )

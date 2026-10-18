@@ -505,10 +505,12 @@ object RunFixtures {
         ),
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
         (plugin, terms) => documents.keeper(plugin, terms),
-        strands.shelf,
-        plugin => Needs.over(plugin, Vector.empty),
-        strands.excerpts,
-        documents
+        Dreaming.Reads(
+          strands.shelf,
+          plugin => Needs.over(plugin, Vector.empty),
+          strands.excerpts,
+          documents
+        )
       )
 
     /** The requests written, in order. */

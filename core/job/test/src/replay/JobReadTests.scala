@@ -56,15 +56,7 @@ object JobReadTests extends TestSuite {
   /** Where `history` reads otherwise than as its run recorded it, over `jobs`' flow. */
   private def misread(history: History, unended: Boolean): Vector[String] = {
     val world = new World().env()
-    val flow = Run.flow(
-      jobsFor(history),
-      world.budget,
-      world.keepers,
-      world.strands,
-      world.needs,
-      world.excerpts,
-      world.documents
-    )
+    val flow = Run.flow(jobsFor(history), world.budget, world.keepers, world.reads)
     val records = history.steps.map(FlowFixtures.recorded)
     val prefixes = records.indices.toVector.flatMap { k =>
       Flows.read(flow, history.id, records.take(k)).map(_.at) match {

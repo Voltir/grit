@@ -56,9 +56,7 @@ object ScriptedMovesTests extends MovesContract {
       Floor,
       MovesWorld.Notes,
       MovesWorld.NotesTerms,
-      world.shelf,
-      shelves.needs,
-      world.excerpts,
+      Dreaming.Reads(world.shelf, _ => shelves.needs, world.excerpts, shelves.documents),
       (system, messages) => {
         shown.add(system, messages.collect { case Message.User(t) => t })
         Right(Asked(TestTainted.at(Answered, Believed), Floor))

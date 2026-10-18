@@ -9,13 +9,13 @@ import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.id.{DocumentVersion, PluginName}
 import grit.core.message.Message
 import grit.core.need.Needs
-import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
+import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Recorded}
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
-  * `strands` and `needs` beside its documents, and whose summaries read what strands' members
-  * said through `excerpts` and the documents shown in `documents` (`plugin`'s and its needs'),
+  * `reads`' strands and `plugin`'s needs beside its documents, and whose summaries read what
+  * strands' members said and the documents shown (`plugin`'s and its needs') through `reads`,
   * in a transaction opened as its keeps' are, and ask it of `jsons` as one user message
   * ([[Dreaming.shown]]) after the summary's system text. Under the rules every [[Dreaming]]
   * keeps, which `grit.act.moves.MovesContract` holds it to beside the durable moves: a summary
@@ -28,9 +28,7 @@ final class ScriptedDreaming(
     floor: Label,
     plugin: PluginName,
     terms: DocumentTerms,
-    strands: StrandShelf,
-    needs: Needs,
-    excerpts: StrandExcerpts,
+    reads: Dreaming.Reads,
     jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]],
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
@@ -51,10 +49,12 @@ final class ScriptedDreaming(
     ),
       Dreaming {
 
+  private val needs = reads.needs(plugin)
+
   def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
       body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A] =
-    keep(name, from)((i, kept, now) => body(i, kept, strands, needs, now))
+    keep(name, from)((i, kept, now) => body(i, kept, reads.strands, needs, now))
 
   def summarise[T](
       name: MoveName,
@@ -65,8 +65,8 @@ final class ScriptedDreaming(
     val Dreaming.Summary(system, chars, documentChars, reply) = Trusted.asIs(summary).extract
     val readable = plugin +: needs.plugins
     val read = for {
-      excerpts <- sequence(seen.map(s => excerpts.excerpt(s, chars)(using opened)))
-      docs <- documents.labelled(shown)(using opened)
+      excerpts <- sequence(seen.map(s => reads.excerpts.excerpt(s, chars)(using opened)))
+      docs <- reads.documents.labelled(shown)(using opened)
     } yield (
       sequence(excerpts.map(_.toRight(()))).toOption,
       docs.filter((d, _) => readable.contains(d.plugin))

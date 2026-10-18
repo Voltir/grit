@@ -299,10 +299,7 @@ object MovesWorld {
           limits,
           Notes,
           keeper,
-          world.shelf,
-          needs,
-          world.excerpts,
-          documents
+          Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents)
         )(use)(using steps)
     )
 

@@ -3,17 +3,17 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.classify.{Ask, Request, StateJson}
-import grit.core.document.{DocLabel, DocText, DocumentKeeper}
+import grit.core.document.{DocLabel, DocText, DocumentKeeper, DocumentSearch}
 import grit.core.durable.Journaled
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
-import grit.core.id.DocumentVersion
+import grit.core.id.{DocumentVersion, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
-import grit.core.stitch.{Strand, StrandShelf}
+import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.Label
@@ -262,6 +262,17 @@ trait Dreaming extends Keeping {
 }
 
 object Dreaming {
+
+  /** What a dreaming run reads: its scans, `strands` and, given its plugin, that plugin's
+    * `needs`; its summaries, their strands' messages through `excerpts` and their documents
+    * through `documents`.
+    */
+  final case class Reads(
+      strands: StrandShelf,
+      needs: PluginName -> Needs,
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch
+  )
 
   /** A summary's reply, and the versions of `shown` it was shown, in their order. */
   final case class Summarised[T](asked: Asked[T], shown: Vector[DocumentVersion])
