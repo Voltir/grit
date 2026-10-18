@@ -930,42 +930,46 @@ private[turn] object TurnJournal {
     */
   given verdicts: Journaled[Vector[(Retrieved, TurnRelevance.Verdict)]] =
     Journaled.json[Vector[(Retrieved, TurnRelevance.Verdict)]](
-      vs =>
-        ujson.Arr.from(vs.map { (f, verdict) =>
-          writeFound(
-            f,
-            verdict match {
-              case TurnRelevance.Verdict.Passed(p) => "passed" -> ujson.Num(Probability.value(p))
-              case TurnRelevance.Verdict.Rejected(p) =>
-                "rejected" -> ujson.Num(Probability.value(p))
-              case TurnRelevance.Verdict.Unjudged(why) => "unjudged" -> ujson.Str(why)
-            }
-          )
-        }),
+      vs => ujson.Arr.from(vs.map((f, verdict) => writeFound(f, writeVerdict(verdict)))),
       v =>
         v.arrOpt
           .toRight("verdicts: expected an array")
           .flatMap(items =>
             sequence(items.toVector.map { item =>
-              val o = item.objOpt.getOrElse(ujson.Obj().value)
-              def p(key: String) = o
-                .get(key)
-                .flatMap(_.numOpt)
-                .flatMap(Probability.of)
-                .toRight(s"verdicts: $key is not a probability")
-              val verdict =
-                if (o.contains("passed")) p("passed").map(TurnRelevance.Verdict.Passed(_))
-                else if (o.contains("rejected"))
-                  p("rejected").map(TurnRelevance.Verdict.Rejected(_))
-                else
-                  o.get("unjudged")
-                    .flatMap(_.strOpt)
-                    .toRight("verdicts: expected a verdict")
-                    .map(TurnRelevance.Verdict.Unjudged(_))
-              readFound(item).flatMap(f => verdict.map(f -> _))
+              readFound(item)
+                .flatMap(f => readVerdict(item).left.map(why => s"verdicts: $why").map(f -> _))
             })
           )
     )
+
+  /** An `ask:needs` step's verdict: `{"passed": p}`, `{"rejected": p}` or `{"unjudged": why}`,
+    * the fields each of [[verdicts]]' carries.
+    */
+  given verdict: Journaled[TurnRelevance.Verdict] =
+    Journaled.json[TurnRelevance.Verdict](
+      v => ujson.Obj(writeVerdict(v)),
+      v => readVerdict(v).left.map(why => s"verdict: $why")
+    )
+
+  private def writeVerdict(verdict: TurnRelevance.Verdict): (String, ujson.Value) =
+    verdict match {
+      case TurnRelevance.Verdict.Passed(p) => "passed" -> ujson.Num(Probability.value(p))
+      case TurnRelevance.Verdict.Rejected(p) => "rejected" -> ujson.Num(Probability.value(p))
+      case TurnRelevance.Verdict.Unjudged(why) => "unjudged" -> ujson.Str(why)
+    }
+
+  private def readVerdict(v: ujson.Value): Either[String, TurnRelevance.Verdict] = {
+    val o = v.objOpt.getOrElse(ujson.Obj().value)
+    def p(key: String) =
+      o.get(key).flatMap(_.numOpt).flatMap(Probability.of).toRight(s"$key is not a probability")
+    if (o.contains("passed")) p("passed").map(TurnRelevance.Verdict.Passed(_))
+    else if (o.contains("rejected")) p("rejected").map(TurnRelevance.Verdict.Rejected(_))
+    else
+      o.get("unjudged")
+        .flatMap(_.strOpt)
+        .toRight("expected a verdict")
+        .map(TurnRelevance.Verdict.Unjudged(_))
+  }
 
   /** A found candidate as an object's fields, then `more`: `{"own": seq}`, `{"near":
     * conversation, "turn": seq}`, `{"closed": conversation}` or `{"doc": version}`.

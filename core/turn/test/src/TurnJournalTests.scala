@@ -533,6 +533,24 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "the needs gate's verdict reads back as written, in the fields a batch's verdict carries"
+    ) {
+      val gate = summon[Journaled[TurnRelevance.Verdict]]
+      val verdicts = Vector(
+        TurnRelevance.Verdict.Passed(Probability.clamped(0.75)),
+        TurnRelevance.Verdict.Rejected(Probability.clamped(0.125)),
+        TurnRelevance.Verdict.Unjudged(TurnNeeds.NothingToSearch)
+      )
+      verdicts.map(v => gate.decode(gate.encode(v))) ==> verdicts.map(Right(_))
+      verdicts.map(gate.encode) ==> Vector(
+        """{"passed":0.75}""",
+        """{"rejected":0.125}""",
+        """{"unjudged":"nothing to search"}"""
+      )
+      gate.decode("""{"passed":2}""") ==> Left("verdict: passed is not a probability")
+    }
+
+    test(
       "a query step's outcome reads back as written: drawn with its notes, or written with its note"
     ) {
       val queried = TurnFixtures.queried

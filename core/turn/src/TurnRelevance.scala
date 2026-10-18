@@ -29,17 +29,27 @@ object TurnRelevance {
   /** Why a candidate found by the search, but gone before it was briefed, is unjudged. */
   val Gone = "gone before it was briefed"
 
-  /** What a candidate was judged. */
+  /** What a candidate was judged, or what the needs gate judged a turn's message
+    * ([[TurnNeeds]]), against its pass mark ([[Pass]], [[TurnNeeds.Pass]]).
+    */
   enum Verdict {
 
-    /** Relevant, at `p`, [[Pass]] or more. */
+    /** Yes, at `p`, the pass mark or more. */
     case Passed(p: Probability)
 
-    /** Not relevant: `p`, under [[Pass]]. */
+    /** No: `p`, under the pass mark. */
     case Rejected(p: Probability)
 
-    /** Not judged, for `why`: the classifier's failure as it said it, or [[Gone]]. */
+    /** Not judged, for `why`: the classifier's failure as it said it, [[Gone]], or why the gate
+      * asked nothing ([[TurnNeeds.NothingToSearch]]).
+      */
     case Unjudged(why: String)
+  }
+
+  object Verdict {
+
+    /** `p` read against the pass mark `pass`: passed at it or more, else rejected. */
+    def of(p: Probability, pass: Probability): Verdict = if (p >= pass) Passed(p) else Rejected(p)
   }
 
   /** What one call is shown: `{"message": ..., "candidates": [...]}`, the turn's own messages
@@ -89,9 +99,7 @@ object TurnRelevance {
         briefs.found
           .map(_._1)
           .zip(a.value)
-          .map((r: Retrieved, p: Probability) =>
-            r -> (if (p >= Pass) Verdict.Passed(p) else Verdict.Rejected(p))
-          )
+          .map((r: Retrieved, p: Probability) => r -> Verdict.of(p, Pass))
           .toMap
     }
     batch.map(r => r -> judged.getOrElse(r, Verdict.Unjudged(Gone)))

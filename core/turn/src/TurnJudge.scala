@@ -112,14 +112,10 @@ object TurnJudge {
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
     * `showing` what the turn's request over `window` was shown ([[TurnShown.shown]]), `strand`
-    * what its strand said, and `speakers` who wrote `all` and the strand: the message is the
-    * heard message, the turn's own first message under its speaker's name, empty when it has
-    * none; the thread is the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then
-    * each person's message and each reply so far within [[ThreadChars]] altogether
-    * ([[Stitching.fit]]), one per line under its speaker's name ("Assistant" for grit's). The
-    * heard message is left out of the thread, so it is read once, under the message; the thread
-    * holds what came before it and every reply after it. Recalled is what the model was shown
-    * ([[Shown]]) of each other
+    * what its strand said, and `speakers` who wrote `all` and the strand: the message and the
+    * thread are [[told]]'s, so the heard message is read once, under the message, and the
+    * thread holds what came before it and every reply after it. Recalled is what the model was
+    * shown ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
     * then of each record among the window's entries whose earlier messages the thread does
     * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
@@ -135,38 +131,12 @@ object TurnJudge {
       speakers: Speakers,
       draft: String
   ): State = {
-    val lines = all.flatMap { e =>
-      def line(speaker: String, text: String) = Stitching.Line(speaker, text, e.createdAt)
-      (e.payload match {
-        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-          val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-          Option.when(said.nonEmpty)(line("Assistant", said))
-        case Payload.Posted(text) => Option.when(text.nonEmpty)(line("Assistant", text))
-        case p => p.said.map(line(speakers.of(e.id).getOrElse("Someone"), _))
-      }).map(e.seq -> _)
-    }
-    // The heard message is the turn's own first message; it is read once, under `message`, so
-    // the thread leaves it out. It counts as shown, as `message` shows it whole.
-    val heard = showing.mine
-      .sortBy(e => EntrySeq.value(e.seq))
-      .flatMap(e =>
-        e.payload.said.map(said =>
-          e.seq -> Stitching.Line(speakers.of(e.id).getOrElse("Someone"), said, e.createdAt)
-        )
-      )
-      .headOption
-    val others = lines.filterNot((seq, _) => heard.exists((h, _) => h == seq)).map(_._2)
-    val thread = Stitching.fit(
-      Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
-      others,
-      "\n",
-      ThreadChars
-    )
+    val Told(message, said, others, thread) = told(all, showing.mine, strand, strandChars, speakers)
     // A record stands for what was said before it, so it is recall only when the thread does
     // not show that whole: the thread holds none of it, or leaves a message out whole or cut
     // inside (its shown messages are then not all of them as said).
     def unshown(record: Entry): Boolean =
-      thread.cut.nonEmpty || thread.shown != others || !lines.headOption.exists((seq, _) =>
+      thread.cut.nonEmpty || thread.shown != others || !said.headOption.exists(seq =>
         EntrySeq.value(seq) < EntrySeq.value(record.seq)
       )
     val sections = window.nearby
@@ -194,11 +164,60 @@ object TurnJudge {
     }
     val recalled =
       (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
-    State(
-      heard.fold("")((_, line) => line.shown),
-      thread.text,
-      draft,
-      recalled.mkString("\n\n")
+    State(message, thread.text, draft, recalled.mkString("\n\n"))
+  }
+
+  /** The heard message and the thread around it, as the judge and the needs gate
+    * ([[TurnNeeds]]) are shown them: `message`, the turn's own first message (of `mine`) under
+    * its speaker's name, empty when it has none; `thread`, the strand's excerpt within
+    * `strandChars`, then every other message of `all` within [[ThreadChars]] altogether, one
+    * per line under its speaker's name ("Assistant" for grit's); `said`, the seq of each
+    * message of `all`, in order, and `others`, the lines of those but the heard one.
+    */
+  private[turn] final case class Told(
+      message: String,
+      said: Vector[EntrySeq],
+      others: Vector[Stitching.Line],
+      thread: Stitching.Fitted
+  )
+
+  /** [[Told]] of `all` of a conversation's entries so far, the turn's own `mine`, its strand's
+    * `strand` and `speakers` who wrote them.
+    */
+  private[turn] def told(
+      all: Vector[Entry],
+      mine: Vector[Entry],
+      strand: Strand.Read,
+      strandChars: Int,
+      speakers: Speakers
+  ): Told = {
+    val lines = all.flatMap { e =>
+      def line(speaker: String, text: String) = Stitching.Line(speaker, text, e.createdAt)
+      (e.payload match {
+        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
+          val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+          Option.when(said.nonEmpty)(line("Assistant", said))
+        case Payload.Posted(text) => Option.when(text.nonEmpty)(line("Assistant", text))
+        case p => p.said.map(line(speakers.of(e.id).getOrElse("Someone"), _))
+      }).map(e.seq -> _)
+    }
+    // The heard message is the turn's own first message; it is read once, under `message`, so
+    // the thread leaves it out. It counts as shown, as `message` shows it whole.
+    val heard = mine
+      .sortBy(e => EntrySeq.value(e.seq))
+      .flatMap(e =>
+        e.payload.said.map(said =>
+          e.seq -> Stitching.Line(speakers.of(e.id).getOrElse("Someone"), said, e.createdAt)
+        )
+      )
+      .headOption
+    val others = lines.filterNot((seq, _) => heard.exists((h, _) => h == seq)).map(_._2)
+    val thread = Stitching.fit(
+      Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
+      others,
+      "\n",
+      ThreadChars
     )
+    Told(heard.fold("")((_, line) => line.shown), lines.map(_._1), others, thread)
   }
 }
