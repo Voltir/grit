@@ -185,6 +185,22 @@
 #       .local/eval/reports/churn-<date>.md and printed. Text-free; reads no database. Refused,
 #       naming the question, when no turn answers one side of a pair.
 #
+#   scripts/eval recall <yyyymmdd> [--until <instant>]
+#       The recall replay: each turn grit_eval_<date> recorded before its dump (and started
+#       before <instant>, to replay an earlier capture's turns over a later one's index) that
+#       recorded its search and followed a document has its recorded query searched again by the
+#       shipped assembler over the database as it stood at the dump, its documents too (not as of
+#       the turn's root, where a turn draws them), every row read whatever the turn was cleared
+#       for, no model asked; each document it followed is ranked by its current version, matched
+#       by plugin and key, among all the search ranked. Written to
+#       .local/eval/reports/recall-<date>.md and printed: the share ranked at or above 5, 10 and
+#       the judged cut, ranked at all, and ranked by the turn's own search when it ran (the rest
+#       reached its window otherwise, such as placed at its room), over all and by source (a
+#       service, else a place's namespace), clustered by turn; documents gone (no current
+#       version) and forgotten (the version followed no longer kept) apart; then one line a turn
+#       by workflow, each document's rank then and now. A miss is not by itself a regression: a
+#       card a later document absorbed is missed too. Text-free.
+#
 #   scripts/eval rebuild <yyyymmdd> --spend <usd> [--window <tokens>] [--tail <tokens>]
 #                        [--judged <n>] [--pass <p>]
 #       Every turn grit_eval_<date> recorded, its window rebuilt by the shipped retrieval
@@ -497,6 +513,24 @@ churn() {
   harness churn --eval "$main/.local/eval" --capture "$capture" --pairs "$pairs"
 }
 
+recall() {
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
+  shift
+  local until=()
+  case $# in
+    0) ;;
+    2) [ "$1" = --until ] || usage; until=(--until "$2") ;;
+    *) usage ;;
+  esac
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness recall --eval "$main/.local/eval" --capture "$capture" \
+    --url "jdbc:postgresql://localhost:5432/$restored" "${until[@]}"
+}
+
 rebuild() {
   local capture=${1:-}
   [[ $capture =~ ^[0-9]{8}$ ]] || usage
@@ -577,6 +611,7 @@ case $1 in
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;
   churn) shift; churn "$@" ;;
+  recall) shift; recall "$@" ;;
   rebuild) shift; rebuild "$@" ;;
   recipes) shift; recipes "$@" ;;
   reference-build) shift; reference_build "$@" ;;

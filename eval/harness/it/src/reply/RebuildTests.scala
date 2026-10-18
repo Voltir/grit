@@ -419,6 +419,43 @@ object RebuildTests extends TestSuite {
     } finally engine.close()
   }
 
+  /** A turn at task "late" asking the Falcon budget, then a document kept there that tells it;
+    * a moment between the two; and the document's version.
+    */
+  private lazy val late: (Reader, Instant, DocumentVersion) = {
+    val config = TestPostgres.freshDatabase("harness_refound_late")
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      launch(engine)
+      val notes = right(PluginName.of("notes"))
+      val terms =
+        right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
+      right(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
+      val _ = ask(engine, "late", "what is the Falcon budget?")
+      val between = now()
+      val version = right(
+        engine.jot.write(Subject.Public)(
+          engine
+            .keeper(notes, terms)
+            .write(
+              right(DocKey.of("falcon")),
+              grit.core.visibility.Label.Public,
+              Integrity.Member,
+              Origin.Task("rebuild", "late").room,
+              right(DocText.of("the Falcon budget is 4200")),
+              ujson.Obj(),
+              None,
+              now()
+            )
+        )
+      ) match {
+        case Written.Versioned(v, _, _) => v
+        case other => throw new java.lang.AssertionError(s"not written: $other")
+      }
+      (Reader.open(config), between, version)
+    } finally engine.close()
+  }
+
   /** Two task conversations told the Falcon budget, the second as a rumour, then a third asking
     * it, its turn judged by a [[Sceptic]]; the two told, that turn's window rebuilt, what its
     * search recorded, and how many searches the rebuild made.
@@ -532,6 +569,7 @@ object RebuildTests extends TestSuite {
     world._1.close()
     documented._1.close()
     judged._1.close()
+    late._1.close()
   }
 
   val tests = Tests {
@@ -573,6 +611,37 @@ object RebuildTests extends TestSuite {
       val (_, _, _, r, retrieval, searches) = judged
       (searches, r.rebuilt.notes.collect { case q: AssemblyNote.Queried => q.query }) ==>
         (0, Vector(retrieval.written.text))
+    }
+    test(
+      "documents read at the end find one kept after the moment a read asks for; as of that moment, none"
+    ) {
+      val (reader, between, version) = late
+      val end = now()
+      def found(view: AsOf) = right(reader.all.read {
+        for {
+          plugins <- view.documents.declared()
+          shelves <- view.documents.shelved(plugins.map(_._1), between)
+          hits <- view.documents.search(shelves, "Falcon budget", 10, between)
+        } yield hits.map(_.document.version)
+      })
+      (found(AsOf(reader, end).documentsAtEnd), found(AsOf(reader, end))) ==>
+        (Vector(version), Vector.empty)
+    }
+    test(
+      "a turn that followed no document is left out of the recall replay, whether or not it searched"
+    ) {
+      val (reader, _, _, _, _, _) = judged
+      val turns = right(reader.turns(now()))
+      val current = Refound.Current.of(right(reader.all.read(reader.current())))
+      val searched =
+        turns.count((w, _) => right(reader.steps(w).map(TurnRecord.retrieval)).exists(_.isDefined))
+      // The asking turn searched; whether a turn telling the budget did depends on what was
+      // said before it, so only "some turn searched" is pinned.
+      (
+        turns.size,
+        searched > 0,
+        turns.map((w, _) => Refound.of(reader, w, Assembled.Shipped, now(), current))
+      ) ==> (3, true, Vector.fill(3)(Right(None)))
     }
 
     test("a message said elsewhere after a turn's assembly is absent from its rebuild") {

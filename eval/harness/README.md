@@ -68,8 +68,12 @@ Packages, each importing only those above it:
   document its judge rejected and the call that reads it, is the eval's alone: nothing shipped
   shows a rejected candidate. Turn variants apply a `TurnRecipe` as a deployment declaring it would; a
   variant past the reply model's context is refused. The reference judges builds by ids alone,
-  from reply labels, a hand-written file and `grit.eval`'s synthetic cases. ← `capture`,
-  `label`, `log`, `jev`
+  from reply labels, a hand-written file and `grit.eval`'s synthetic cases. The recall replay
+  searches a turn's recorded query again over the database as it stood at the dump, its
+  documents too (a turn draws them as of its root, which would hide every document written
+  since), and ranks each document the turn followed by its current version, matched by plugin
+  and key, since a resync supersedes every version it rewrites. It reads every row: a restored
+  database records no deployment's groups, so it cannot read as the turn was cleared to. ← `stats`, `capture`, `label`, `log`, `jev`
 - **`run`**: a run's calls asked of Jev through the shipped calls, answered from the cache when
   it holds them, else asked, timed and kept, within the cap. ← `capture`, `log`, `jev`
 - **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered

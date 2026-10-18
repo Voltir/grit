@@ -90,6 +90,23 @@ final class AsOf private (
       documents,
       stitches
     )
+
+  /** These stores, but every document read as current at `at`, whatever earlier moment a read
+    * asks for: a turn draws its documents as of its root, and this draws them as they stood at
+    * `at` instead, so a turn recorded before a document was written can find it.
+    */
+  def documentsAtEnd: AsOf =
+    new AsOf(
+      at,
+      entries,
+      conversations,
+      periods,
+      principals,
+      lifecycle,
+      search,
+      new AsOf.AtEnd(documents, at),
+      stitches
+    )
 }
 
 object AsOf {
@@ -309,6 +326,20 @@ object AsOf {
       under.read(versions).map(_.filter(d => before(d.written, at)))
 
     private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
+  }
+
+  /** `under`'s documents, each read asked for as of any moment read as of `at` ([[documentsAtEnd]]). */
+  private final class AtEnd(under: DocumentSearch, at: Instant) extends DocumentSearch {
+    def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
+      under.declared()
+    def shelved(plugins: Vector[PluginName], asked: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[Shelved]] = under.shelved(plugins, at)
+    def search(shelves: Vector[Shelved], query: String, limit: Int, asked: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] = under.search(shelves, query, limit, at)
+    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+      under.read(versions)
   }
 
   private final class Stitches(under: StitchStore, conversations: ConversationStore, at: Instant)

@@ -3,7 +3,7 @@ package grit.eval.harness.report
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{QuestionName, ShadowName}
+import grit.core.id.{QuestionName, ShadowName, WorkflowId}
 import grit.core.message.Cost as MessageCost
 import grit.core.period.Probability
 import grit.core.store.Focus
@@ -162,6 +162,23 @@ object Report {
     */
   def churn(capture: String, churn: grit.eval.harness.score.Churn): String =
     ChurnLines.of(capture, churn)
+
+  /** The recall replay over `capture` ([[grit.eval.harness.reply.Refound]]), as markdown,
+    * text-free: a note that matching by plugin and key cannot tell a card crowded out from one
+    * a later document absorbed, so a miss is not by itself a regression; then over all and by
+    * source, each cut's share, the share ranked at all and the share the turn's own search
+    * ranked when it ran, each with its interval (a point estimate under
+    * [[Proportion.MinClusters]] turns); the documents gone and forgotten; one line a turn, by
+    * workflow, with each followed version's source, its rank then and its rank now; and the
+    * turns not replayed and why, by workflow.
+    */
+  def recall(
+      capture: String,
+      replayed: Vector[
+        (WorkflowId, Either[String, Vector[grit.eval.harness.reply.Refound.Followed]])
+      ]
+  ): String =
+    RecallLines.of(capture, replayed)
 
   /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
     * before shapes and with no offer; their weigh steps by what each recorded, failures by

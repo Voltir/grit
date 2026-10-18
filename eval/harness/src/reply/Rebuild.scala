@@ -87,7 +87,7 @@ object Rebuild {
       .map(unbuilt(turn))
 
   /** The shipped [[RetrievalAssembler]], built as `assembled` says over `view`. */
-  private def shipped(view: AsOf, assembled: Assembled): RetrievalAssembler =
+  private[reply] def shipped(view: AsOf, assembled: Assembled): RetrievalAssembler =
     new RetrievalAssembler(
       view.entries,
       view.conversations,

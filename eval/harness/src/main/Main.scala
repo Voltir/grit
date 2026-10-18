@@ -82,6 +82,7 @@ import grit.eval.harness.reply.{
   Queries,
   Rebuild,
   Reference,
+  Refound,
   ReplyReview,
   Synthetic,
   TurnAnswers,
@@ -158,6 +159,7 @@ object Main {
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
       case "churn" :: rest => exit(flags(rest).flatMap(churn))
+      case "recall" :: rest => exit(flags(rest).flatMap(recall))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
@@ -175,7 +177,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns|rebuild|recipes|reference-build|synthetic|" +
+              "replies|reply-labels|turns|churn|recall|rebuild|recipes|reference-build|synthetic|" +
               "integrity-loss (scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )
@@ -355,6 +357,53 @@ object Main {
       pairs <- need(f, "pairs").map(Path.of(_)).flatMap(read).flatMap(ChurnPairs.read)
       measured <- Churn.of(captured, pairs)
       _ <- publish(dir, s"churn-$capture", Report.churn(capture, measured))
+    } yield ()
+
+  /** `recall --eval <dir> --capture <yyyymmdd> --url <jdbc> [--until <instant>]`: every turn the
+    * restored database at `<jdbc>` recorded before its dump, and before `--until` when given,
+    * its followed documents found again ([[Refound.of]]) over the database as it stood at the
+    * dump, every current document read once ([[Refound.Current]]); written to
+    * `<dir>/reports/recall-<yyyymmdd>.md` and printed ([[Report.recall]]). A turn that recorded no
+    * search or followed nothing is left out. The database's login from `GRIT_DATABASE_USER` and
+    * `_PASSWORD`. No model is asked.
+    */
+  private def recall(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
+      url <- need(f, "url")
+      manifest <- read(dir.resolve("capture").resolve(capture).resolve("capture.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
+      )
+      dumped = manifest.dump.at
+      until <- f
+        .get("until")
+        .fold(Right(dumped))(v =>
+          Try(Instant.parse(v)).toOption.toRight(s"--until $v: not an instant")
+        )
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      replayed <- opened(config) { reader =>
+        for {
+          workflows <- reader.turns(dumped).left.map(_ => "turn workflows unread")
+          current <- reader.all
+            .read(reader.current())
+            .left
+            .map(e => s"the current documents unread: ${Capture.kind(e)}")
+            .map(Refound.Current.of)
+        } yield workflows
+          .filter(_._2.created.isBefore(until))
+          .flatMap((w, _) =>
+            Refound.of(reader, w, Assembled.Shipped, dumped, current) match {
+              case Right(None) => None
+              case Right(Some(fs)) => Some(w -> Right(fs))
+              case Left(why) => Some(w -> Left(why))
+            }
+          )
+      }
+      _ <- publish(dir, s"recall-$capture", Report.recall(capture, replayed))
     } yield ()
 
   /** `rebuild --capture <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]
