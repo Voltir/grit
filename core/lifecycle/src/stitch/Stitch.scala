@@ -15,7 +15,7 @@ import grit.core.visibility.Subject
   * output is recorded, so a placement resumed after a crash never asks the classifier twice.
   *
   *   1. `ask:stitch` — where the opening goes among its room's exchanges
-  *      ([[Stitching.place]]), a move ([[grit.act.moves.Judging]]): admitted against the day's
+  *      ([[Stitching.placing]]), a move ([[grit.act.moves.Judging]]): admitted against the day's
   *      cap, so one over it is unread; nothing is asked when it is not an opening, is gone, is
   *      placed already, or nothing is offered. `ask:stitch:record` — when the classifier
   *      replied, its cost in the ledger, charged to the opening's turn; a store that fails it
@@ -50,17 +50,16 @@ object Stitch {
     def unread(e: StoreError) = Judging.Pose.Made(Left(s"room unread: ${describe(e)}"))
     Routed
       .reading(env.db.as(subject(ref))) { (routed, bounded) =>
-        Stitching.unplaced(env.reads, bounded, ref.turn, env.tuning) match {
+        Stitching.placing(env.reads, bounded, ref.turn, env.tuning)(
+          (first, placed) => Judging.Pose.Made(Right(Some(first -> placed))),
+          (first, q) =>
+            Judging.Pose.asking(env.moves.classifier, routed, q.state, q.choice)((a, _) =>
+              Right(Some(first -> q.placed(a)))
+            )
+        ) match {
           case Left(e) => unread(e)
           case Right(None) => Judging.Pose.Made(Right(None))
-          case Right(Some((first, offer))) =>
-            Stitching.question(offer, env.tuning) match {
-              case Left(placed) => Judging.Pose.Made(Right(Some(first -> placed)))
-              case Right(q) =>
-                Judging.Pose.asking(env.moves.classifier, routed, q.state, q.choice)((a, _) =>
-                  Right(Some(first -> q.placed(a)))
-                )
-            }
+          case Right(Some(pose)) => pose
         }
       }
       .fold(unread, identity)

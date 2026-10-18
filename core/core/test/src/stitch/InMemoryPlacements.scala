@@ -12,8 +12,7 @@ import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 /** [[Placements]] over in-memory stores: each opening placed at once, as its own workflow
-  * places it ([[Stitching.unplaced]], then [[Stitching.place]], under what its read was
-  * routed for, kept in `reads`' stitches at `at`), the first time it
+  * places it ([[Stitching.placing]], asked under what its read was routed for, kept in `reads`' stitches at `at`), the first time it
   * is waited for, so a bounded wait never runs out; every opening waited for kept in
   * [[waited]].
   */
@@ -44,13 +43,10 @@ final class InMemoryPlacements(
       val cleared = TestClassifiers.cleared(classifier)
       Routed
         .reading(db.as(Subject.Conversation(opening.ref.turn.conversationId)))((routed, bounded) =>
-          Stitching
-            .unplaced(reads, bounded, opening.ref.turn, tuning)
-            .map(
-              _.map((first, offer) =>
-                first -> Stitching.place(cleared.asking(routed), offer, tuning)
-              )
-            )
+          Stitching.placing(reads, bounded, opening.ref.turn, tuning)(
+            (first, placed) => first -> placed,
+            (first, q) => first -> q.placed(cleared.asking(routed).ask(q.state, q.choice))
+          )
         )
         .flatten match {
         case Left(e) => Left(e.toString)

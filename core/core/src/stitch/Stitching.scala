@@ -110,6 +110,23 @@ object Stitching {
   ): Either[StoreError, Option[(EntryId, Offer)]] =
     opening(reads, db, turn, tuning, keptAsks = false)
 
+  /** Where `turn`'s message is placed, read through `db` from `reads` under `tuning`, when it is
+    * an [[Opening]] with no placement kept for it ([[unplaced]]): `made` of its entry and the
+    * placement [[question]] makes asking nothing, else `asking` of its entry and the question.
+    * `None`, neither called, when it is not one, a placement is kept for it, or nothing is
+    * offered; `Left` when the store fails. The stitch workflow's ask, and the eval's.
+    */
+  def placing[B](reads: StitchReads, db: Reads^, turn: TurnRef, tuning: Tuning)(
+      made: (EntryId, Placed) => B,
+      asking: (EntryId, Question) => B
+  ): Either[StoreError, Option[B]] =
+    unplaced(reads, db, turn, tuning).map(_.map { (first, offer) =>
+      question(offer, tuning) match {
+        case Left(placed) => made(first, placed)
+        case Right(q) => asking(first, q)
+      }
+    })
+
   /** `turn`'s message, when it is an [[Opening]], and what it is offered; a message with a
     * placement kept for it is offered nothing unless `keptAsks`.
     */
