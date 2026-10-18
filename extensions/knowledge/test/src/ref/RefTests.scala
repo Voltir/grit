@@ -23,6 +23,10 @@ object RefTests extends TestSuite {
 
   private val hex = "ab" * 32
 
+  /** The other link `text` names. */
+  private def url(text: String): Ref =
+    Ref.Url(Href.of(text).getOrElse(throw new java.lang.AssertionError(text)))
+
   /** The repository `octocat/Hello-World` as a card source, its server named `github`. */
   private val repository: GitHubCards = {
     val service = right(Service.of("github"))
@@ -68,15 +72,15 @@ object RefTests extends TestSuite {
       Ref.ofLink("https://github.com/octocat/Hello-World") ==>
         Some(Ref.GitHub("octocat", "Hello-World", "/"))
       Ref.ofLink("https://github.com/octocat/Hello-World/pull/7") ==>
-        Some(Ref.Url("https://github.com/octocat/Hello-World/pull/7"))
+        Some(url("https://github.com/octocat/Hello-World/pull/7"))
     }
 
     test("another link is a Url, its scheme and host lower-cased and its fragment dropped") {
       Ref.ofLink("HTTPS://Example.COM/Path/A?q=B#Part") ==> Some(
-        Ref.Url("https://example.com/Path/A?q=B")
+        url("https://example.com/Path/A?q=B")
       )
       Ref.ofLink("https://drive.google.com/drive/folders/1F") ==>
-        Some(Ref.Url("https://drive.google.com/drive/folders/1F"))
+        Some(url("https://drive.google.com/drive/folders/1F"))
     }
 
     test("text with no scheme and host is no link") {
@@ -114,11 +118,18 @@ object RefTests extends TestSuite {
         Ref.Drive("1AbC"),
         Ref.GitHub("octocat", "Hello-World", "/"),
         Ref.GitHub("octocat", "Hello-World", "docs/a/b.md"),
-        Ref.Url("https://example.com/a")
+        url("https://example.com/a")
       )
       refs.map(r => right(Ref.written(r)).kind) ==>
         Vector("strand", "topic", "drive", "github", "github", "url")
       refs.map(r => Ref.read(right(Ref.written(r)))) ==> refs.map(Some(_))
+    }
+
+    test("a link's reference reads back normalised, and one holding no link as None") {
+      Ref.read(right(DocRef.of("url", "HTTPS://Example.COM/a#f"))) ==> Some(
+        url("https://example.com/a")
+      )
+      Ref.read(right(DocRef.of("url", "example.com/a"))) ==> None
     }
 
     test("a reference of a kind knowledge does not keep reads as None") {
@@ -127,7 +138,7 @@ object RefTests extends TestSuite {
     }
 
     test("a ref over what a reference holds is refused, naming why") {
-      assert(Ref.written(Ref.Url("https://example.com/" + "a" * 600)).isLeft)
+      assert(Ref.written(url("https://example.com/" + "a" * 600)).isLeft)
     }
 
     test("a topic key is opened by a strand or a card and read back from its document's key") {
