@@ -27,6 +27,48 @@ object TopicScoreTests extends TestSuite {
     )
 
   val tests = Tests {
+    test("a room's truth holds its openings, then its cards, each dated in the zone given") {
+      val room = Room
+        .read(
+          "r",
+          ujson
+            .Obj(
+              "team" -> "T",
+              "channel" -> "C",
+              "messages" -> ujson.Arr(
+                ujson.Obj(
+                  "id" -> "m1",
+                  "at" -> "2026-10-12T23:30:00Z",
+                  "who" -> "Ana",
+                  "text" -> "a",
+                  "topic" -> "ci"
+                ),
+                ujson.Obj(
+                  "id" -> "r1",
+                  "at" -> "2026-10-12T23:40:00Z",
+                  "who" -> "Ben",
+                  "text" -> "b",
+                  "thread" -> "m1"
+                )
+              ),
+              "cards" -> ujson.Arr(
+                ujson.Obj(
+                  "id" -> "c1",
+                  "at" -> "2026-10-12T10:00:00Z",
+                  "title" -> "Plan",
+                  "text" -> "c"
+                )
+              )
+            )
+            .render()
+        )
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      TopicScore.truth(room, java.time.ZoneOffset.ofHours(2)) ==> Vector(
+        Truth("m1", Some("ci"), Day2),
+        Truth("c1", None, Day1)
+      )
+    }
+
     test(
       "pairwise precision and recall, splits, merges and mergeable pairs, over a hand-made placement"
     ) {

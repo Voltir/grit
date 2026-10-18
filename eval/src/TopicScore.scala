@@ -1,6 +1,6 @@
 package grit.eval
 
-import java.time.LocalDate
+import java.time.{LocalDate, ZoneId}
 
 /** A topics run's placement of a room's openings set against the room's truth, by message ids.
   * Pairs are of openings with a truth topic (chatter belongs to none and pairs with nothing):
@@ -27,10 +27,17 @@ final case class TopicScore(
 
 object TopicScore {
 
-  /** An opening as the truth has it: its `id`, its `topic` (`None` for chatter), and the `day`
-    * it was said.
+  /** An opening or a card as the truth has it: its `id`, its `topic` (`None` for chatter, or a
+    * card of none), and the `day` it was said or written.
     */
   final case class Truth(id: String, topic: Option[String], day: LocalDate)
+
+  /** `room`'s truth: each of its openings, then each of its cards, in their order, its day the
+    * one in `zone` it was said or written.
+    */
+  def truth(room: Room, zone: ZoneId): Vector[Truth] =
+    room.openings.map(m => Truth(m.id, m.topic, LocalDate.ofInstant(m.at, zone))) ++
+      room.cards.map(c => Truth(c.id, c.topic, LocalDate.ofInstant(c.at, zone)))
 
   /** `truth`'s openings placed as `placed` says: each opening's id with the run's topics that
     * hold it (an opening it names in none, or does not name, is in none).

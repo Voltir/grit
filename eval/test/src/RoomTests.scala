@@ -41,7 +41,50 @@ object RoomTests extends TestSuite {
       .fold(e => throw new java.lang.AssertionError(e), Room.truth)
       .map(t => t.opening.id -> t.follows)
 
+  private def card(id: String, minute: Int, topic: Option[String] = None): ujson.Value = {
+    val c = ujson.Obj(
+      "id" -> id,
+      "at" -> f"2026-10-12T10:$minute%02d:00Z",
+      "title" -> s"File $id",
+      "text" -> s"text of $id"
+    )
+    topic.foreach(t => c("topic") = t)
+    c
+  }
+
+  private def carded(cards: ujson.Value*): Either[String, Room] =
+    Room.read(
+      "r",
+      ujson
+        .Obj(
+          "team" -> "T",
+          "channel" -> "C",
+          "messages" -> ujson.Arr(message("m1", 0, "Ana", Some("ci"))),
+          "cards" -> ujson.Arr(cards*)
+        )
+        .render()
+    )
+
   val tests = Tests {
+    test("a room's cards are read in the order written, each with its topic or none") {
+      (
+        carded(card("c2", 20), card("c1", 10, Some("ci"))).map(
+          _.cards.map(c => (c.id, c.title, c.topic))
+        ),
+        room(message("m1", 0, "Ana")).map(_.cards)
+      ) ==> (
+        Right(Vector(("c1", "File c1", Some("ci")), ("c2", "File c2", None))),
+        Right(Vector())
+      )
+    }
+
+    test("a card whose id is a message's, or another card's, is refused") {
+      (
+        carded(card("m1", 10)),
+        carded(card("c1", 10), card("c1", 20))
+      ) ==> (Left("r: id m1 repeats"), Left("r: id c1 repeats"))
+    }
+
     test("a topic's later openings follow its first; chatter and a topic's first begin") {
       truth(
         message("m3", 20, "Ana", Some("ci")),
