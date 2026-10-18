@@ -101,6 +101,14 @@ object Clipped {
     }
   }
 
+  /** The start of `s` in at most `max` bytes of UTF-8, ending on a character. */
+  def prefix(s: String, max: Int): String = {
+    val b = s.getBytes(UTF_8)
+    var end = b.length.min(max.max(0))
+    while (end > 0 && end < b.length && (b(end) & 0xc0) == 0x80) end -= 1
+    new String(b, 0, end, UTF_8)
+  }
+
   /** The end of `s` in at most `max` bytes of UTF-8, starting on a character. */
   private def endBytes(s: String, max: Int): String = {
     val b = s.getBytes(UTF_8)

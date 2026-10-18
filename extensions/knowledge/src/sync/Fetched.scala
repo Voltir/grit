@@ -1,7 +1,6 @@
 package grit.knowledge.sync
 
-import scala.annotation.tailrec
-
+import grit.core.host.Clipped
 import grit.knowledge.card.UnitVersion
 
 /** A file as a read of it answers it. */
@@ -22,14 +21,5 @@ object Fetched {
   /** `text`'s first [[HeadBytes]] bytes in UTF-8, never splitting a character: what of a file
     * its summary is asked of.
     */
-  def head(text: String): String = {
-    @tailrec def go(i: Int, bytes: Int): Int =
-      if (i >= text.length) i
-      else {
-        val cp = text.codePointAt(i)
-        val size = if (cp < 0x80) 1 else if (cp < 0x800) 2 else if (cp < 0x10000) 3 else 4
-        if (bytes + size > HeadBytes) i else go(i + Character.charCount(cp), bytes + size)
-      }
-    text.substring(0, go(0, 0))
-  }
+  def head(text: String): String = Clipped.prefix(text, HeadBytes)
 }

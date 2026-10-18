@@ -1,6 +1,6 @@
 package grit.edge
 
-import grit.core.host.InstructionFile
+import grit.core.host.{Clipped, InstructionFile}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.provider.TokenEstimator
@@ -28,7 +28,7 @@ object PlaceFragments {
     val bounded = files.zipWithIndex.map { (f, i) =>
       if (i == nearest) f
       else {
-        val kept = within(f.text, AncestorBytes)
+        val kept = Clipped.prefix(f.text, AncestorBytes)
         f.copy(text = kept, cut = f.cut || kept.length < f.text.length)
       }
     }
@@ -57,25 +57,6 @@ object PlaceFragments {
     val said = text.trim
     if (said.isEmpty) Left(s"the instructions declared for ${place.written} are blank")
     else Right(Fragment(Layer.Place, place.written, s"Instructions for ${place.written}:\n\n$said"))
-  }
-
-  /** The longest prefix of `text` whose UTF-8 is at most `max` bytes, never splitting a
-    * character.
-    */
-  private def within(text: String, max: Int): String = {
-    var bytes = 0
-    var end = 0
-    var over = false
-    while (end < text.length && !over) {
-      val cp = text.codePointAt(end)
-      val size = if (cp < 0x80) 1 else if (cp < 0x800) 2 else if (cp < 0x10000) 3 else 4
-      if (bytes + size > max) over = true
-      else {
-        bytes += size
-        end += Character.charCount(cp)
-      }
-    }
-    text.take(end)
   }
 
   /** `file` as its fragment: its text under a heading naming it. */

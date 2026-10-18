@@ -109,6 +109,23 @@ object HostTests extends TestSuite {
         Clipped.lines("a\n\n") ==> Vector("a", "")
         Clipped.lines("") ==> Vector()
       }
+      test("prefix keeps the whole characters that fit the bytes, never part of one") {
+        val s = "aé€😀" // 1, 2, 3 and 4 bytes of UTF-8
+        (0 to 11).map(Clipped.prefix(s, _)) ==> Vector(
+          "",
+          "a",
+          "a",
+          "aé",
+          "aé",
+          "aé",
+          "aé€",
+          "aé€",
+          "aé€",
+          "aé€",
+          s,
+          s
+        )
+      }
     }
 
     test("Replace.onto") {
