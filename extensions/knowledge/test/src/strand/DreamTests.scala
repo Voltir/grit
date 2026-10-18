@@ -252,13 +252,13 @@ object DreamTests extends TestSuite {
 
     test("past perRun, strands are left for the next run, oldest touched first summarised") {
       val w = new StrandWorld
-      val first = strand(w, "C1", members = 3, rootSays = 3)
-      val _ = strand(w, "C2", members = 3, rootSays = 3)
-      w.say(w.thread("C2", "2.0"), "and more", 200)
+      val _ = strand(w, "C1", members = 3, rootSays = 3)
+      val older = strand(w, "C2", members = 3, rootSays = 3)
+      w.say(w.thread("C1", "2.0"), "and more", 200)
       val runs = new Runs(w)
       (runs.run(perRun = 1), runs.kept.map(_._1)) ==> (
         "strands: 1 written, 0 withdrawn, 0 unchanged, 1 left for the next run",
-        Vector(s"strand:${ConversationId.value(first.id)}")
+        Vector(s"strand:${ConversationId.value(older.id)}")
       )
     }
 
@@ -266,9 +266,9 @@ object DreamTests extends TestSuite {
       "a summary refused leaves its strand unwritten, naming why, and the next is still summarised"
     ) {
       val w = new StrandWorld
-      val first = strand(w, "C1", members = 3, rootSays = 3)
-      val second = strand(w, "C2", members = 3, rootSays = 3)
-      w.say(w.thread("C2", "2.0"), "and more", 200)
+      val second = strand(w, "C1", members = 3, rootSays = 3)
+      val first = strand(w, "C2", members = 3, rootSays = 3)
+      w.say(w.thread("C1", "2.0"), "and more", 200)
       val runs = new Runs(w)
       val reply =
         runs.run(answer = i => if (i == 0) Left(MoveError.Model("busy")) else Right(Answered))
