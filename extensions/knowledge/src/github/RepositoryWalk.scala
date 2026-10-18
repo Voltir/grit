@@ -40,7 +40,7 @@ object RepositoryWalk {
     */
   def start(cards: GitHubCards, perRun: Int, floor: Label, held: Vector[Held]): Walk[Listing] =
     Walking.start(
-      Walking.Agenda[Listing, Task, Own](cards, take(cards, _, _), left(cards, _, _), drops),
+      Walking.Routine[Listing, Task, Own](cards, take(cards, _, _), left(cards, _, _), drops),
       perRun,
       Holding(floor, held),
       if (cards.include.isEmpty) Nil else List(Task.Pass(Root)),

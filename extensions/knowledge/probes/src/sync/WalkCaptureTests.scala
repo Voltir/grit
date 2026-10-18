@@ -6,7 +6,7 @@ import grit.core.durable.Probes.{classpath, erased, flowsInto, heldImpure, optio
 import utest.*
 
 /** What capture checking rejects about the walk: it is data, so it holds no move, and neither
-  * the planner nor a source's agenda can make one. Pinned by compiling probe sources against knowledge with its own
+  * the planner nor a source's routine can make one. Pinned by compiling probe sources against knowledge with its own
   * flags; `assertCompileError` cannot see capture errors (docs/capture-checking.md).
   */
 object WalkCaptureTests extends TestSuite {
@@ -20,10 +20,10 @@ object WalkCaptureTests extends TestSuite {
       |import grit.knowledge.sync.*
       |""".stripMargin
 
-  /** An agenda whose `take` makes the moves of the run it plans. */
-  private val agendaTakesMoves =
-    """def agenda(cards: GitHubCards, moves: Keeping^): Walking.Agenda[Listing, Way, Way] =
-      |  Walking.Agenda(cards, (_, w) => { val m = moves; w }, (_, _) => false, _ => Vector.empty)
+  /** A routine whose `take` makes the moves of the run it plans. */
+  private val routineTakesMoves =
+    """def routine(cards: GitHubCards, moves: Keeping^): Walking.Routine[Listing, Way, Way] =
+      |  Walking.Routine(cards, (_, w) => { val m = moves; w }, (_, _) => false, _ => Vector.empty)
       |""".stripMargin
 
   /** A walk of `Walk`'s shape, declared as `Walk` is, holding the moves of the run it plans. */
@@ -42,7 +42,7 @@ object WalkCaptureTests extends TestSuite {
       |""".stripMargin
 
   private lazy val compiled =
-    Probes.batch(prelude, List(walkIsPure, walkHoldsMoves, agendaTakesMoves))
+    Probes.batch(prelude, List(walkIsPure, walkHoldsMoves, routineTakesMoves))
 
   private val unchecked = options.filterNot(_.startsWith("-language:experimental."))
 
@@ -51,7 +51,7 @@ object WalkCaptureTests extends TestSuite {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
-    test("one compile answers every probe: the walks' purity, held moves, an agenda's moves") {
+    test("one compile answers every probe: the walks' purity, held moves, a routine's moves") {
       compiled.runs ==> 1
     }
 
@@ -67,13 +67,13 @@ object WalkCaptureTests extends TestSuite {
       assert(Probes.errors(erased(prelude + walkHoldsMoves), unchecked).isEmpty)
     }
 
-    test("an agenda whose take makes its run's moves is rejected") {
-      val errs = compiled.errors(agendaTakesMoves)
+    test("a routine whose take makes its run's moves is rejected") {
+      val errs = compiled.errors(routineTakesMoves)
       assert(flowsInto("{}")(errs))
     }
 
-    test("capture checking is what rejects the agenda") {
-      assert(Probes.errors(erased(prelude + agendaTakesMoves), unchecked).isEmpty)
+    test("capture checking is what rejects the routine") {
+      assert(Probes.errors(erased(prelude + routineTakesMoves), unchecked).isEmpty)
     }
   }
 }

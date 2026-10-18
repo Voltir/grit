@@ -22,21 +22,21 @@ Packages, in one-way order (each names only those before it):
   `Walk`, the run's plan, which is pure: from the cards a run holds and each step's outcome, the
   next step (list, read, summarise, write, relabel, and a last drop). `Walking` is every
   source's walk: it reads, summarises, writes, relabels, tallies and ends, while a source's
-  `Walking.Agenda` says what each of its tasks does, which tasks left untaken count, and what
+  `Walking.Routine` says what each of its tasks does, which tasks left untaken count, and what
   it drops. `Sync`, the keeping job `knowledge-sync`, makes each step as a move: a call, a
   summary ask, a check, or a keep; a card held at another label is withdrawn in the keep that
   replaces it. A listing or a file answered
   below `Outside` is checked by the integrity tree before anything is made from it (ADR 0036),
   since a card is kept only from `Outside` or above. Imports `card`.
 - **`github`**: a repository as a card source, read through GitHub's MCP server's
-  `get_file_contents`, and its walk (a `Walking` agenda), depth first from the repository's
+  `get_file_contents`, and its walk (a `Walking.Routine`), depth first from the repository's
   root. A unit's pointer is `{server}_get_file_contents` with `owner`, `repo` and `path` and no
   `ref`. A file's card is written only at its blob SHA; a file answered without one is not
   carded. Imports `card` and `sync`; another source is a package beside it, and neither names
   the other.
 - **`drive`**: Drive's shared drives as a card source, read through grit's own Drive tools
   (`drive_list`, `drive_read`) by the facts their answers carry, which it decodes itself since
-  it may not name grit.mcp; and its walk (a `Walking` agenda), the drives, each drive and the
+  it may not name grit.mcp; and its walk (a `Walking.Routine`), the drives, each drive and the
   folders directly in it. A source declares a chain of labels, one run per label, and a file is carded by the run
   of the least label dominating what its listing was read at. A file's pointer is `drive_read`
   with its id; its card is written at when it last changed, titled with its name. Imports

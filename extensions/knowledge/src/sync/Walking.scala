@@ -7,24 +7,24 @@ import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
 
 /** A step-at-a-time reconciliation of the cards a run holds against a source's listings: one
-  * run's [[Walk]] of a source listing as `L`, taking its [[Walking.Agenda]]'s tasks `T` off a
-  * stack, the last pushed first, until one makes a step, the agenda keeping its own record `S`.
+  * run's [[Walk]] of a source listing as `L`, taking its [[Walking.Routine]]'s tasks `T` off a
+  * stack, the last pushed first, until one makes a step, the routine keeping its own record `S`.
   *
   * A file read is summarised from its first 8 KB and its card written at the version its read
   * gave; a blank text's card says `An empty file.`, with no ask. A write withdraws, in its keep,
   * the copy [[Holding.replacing]] names. A list or a read that came to [[Outcome.NotTaken]], and
-  * a read with no version, are [[Unwritten]], saying why. When no task is left, or the agenda
-  * [[end]]s it, its last step is a [[Step.Drop]] of the agenda's `drops` but each copy a write or
+  * a read with no version, are [[Unwritten]], saying why. When no task is left, or the routine
+  * [[end]]s it, its last step is a [[Step.Drop]] of the routine's `drops` but each copy a write or
   * relabel of this walk withdrew, when any are left. A step that came to [[Outcome.Stopped]], or
   * to an outcome not of its kind, ends it at once with no drop, saying why. Ended either way,
-  * each task still stacked that the agenda's `left` holds is counted left.
+  * each task still stacked that the routine's `left` holds is counted left.
   */
 private[knowledge] final case class Walking[
     L <: caps.Pure,
     T <: caps.Pure,
     S <: caps.Pure
 ] private (
-    private val agenda: Walking.Agenda[L, T, S],
+    private val routine: Walking.Routine[L, T, S],
     private val perRun: Int,
     holding: Holding,
     private val stack: List[T],
@@ -74,7 +74,7 @@ private[knowledge] final case class Walking[
     case (waiting, other) => halt(s"${Walking.expected(waiting)} came to ${Walking.kind(other)}")
   }
 
-  /** This walk, its agenda's record now `own`. */
+  /** This walk, its routine's record now `own`. */
   def recording(own: S): Walking[L, T, S] = copy(own = own)
 
   /** This walk with `tasks` stacked before those it has, the first taken first. */
@@ -98,7 +98,7 @@ private[knowledge] final case class Walking[
     * those this walk wrote new.
     */
   def full(key: CardKey): Boolean =
-    holding.isNew(key) && holding.units + fresh >= agenda.source.maxUnits
+    holding.isNew(key) && holding.units + fresh >= routine.source.maxUnits
 
   /** Whether it has read `perRun` files. */
   def spent: Boolean = reads >= perRun
@@ -118,7 +118,7 @@ private[knowledge] final case class Walking[
   ): Vector[Held] = {
     val dropped = gone.toSet
     val kept = holding.held.filterNot(dropped).map(_.path).distinct
-    val room = math.max(agenda.source.maxUnits - fresh, 0)
+    val room = math.max(routine.source.maxUnits - fresh, 0)
     val last = kept.sortBy(parts)(using Ordering.Implicits.seqOrdering).drop(room)
     val over = (last ++ last.flatMap(above)).toSet
     holding.held.filter(h => dropped(h) || over(h.path))
@@ -137,10 +137,10 @@ private[knowledge] final case class Walking[
   def read(path: String, way: Way, subject: String)(
       card: (UnitVersion, CardSummary, Pointer) -> Card
   ): Walking[L, T, S] =
-    if (full(CardKey.of(agenda.source.corpus, path))) refuse
+    if (full(CardKey.of(routine.source.corpus, path))) refuse
     else if (spent) leave
     else
-      agenda.source.pointer(path) match {
+      routine.source.pointer(path) match {
         case Left(why) => unwritten(path, why)
         case Right(pointer) =>
           copy(reads = reads + 1).step(
@@ -160,7 +160,7 @@ private[knowledge] final case class Walking[
   /** This walk ended here: no task more is taken. */
   def end: Walking[L, T, S] = {
     val ended = unstacked(None)
-    val gone = agenda.drops(ended).filterNot(ended.replaced)
+    val gone = routine.drops(ended).filterNot(ended.replaced)
     if (gone.isEmpty) ended.done else ended.step(Step.Drop(gone), Waiting.Dropped(gone.size))
   }
 
@@ -168,7 +168,7 @@ private[knowledge] final case class Walking[
 
   private def unstacked(stopped: Option[String]): Walking[L, T, S] = copy(
     stack = Nil,
-    tally = tally.copy(left = tally.left + stack.count(agenda.left(_, this)), stopped = stopped)
+    tally = tally.copy(left = tally.left + stack.count(routine.left(_, this)), stopped = stopped)
   )
 
   private def done: Walking[L, T, S] = copy(next = Left(tally), waiting = Waiting.Done())
@@ -184,27 +184,27 @@ private[knowledge] object Walking {
     * [[Walking.end]]ed, or neither, and the next task is taken. `left` says whether a task the
     * walk never took counts as left; `drops` is what it withdraws at its end.
     */
-  final case class Agenda[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
+  final case class Routine[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
       source: Source[L],
       take: (T, Walking[L, T, S]) -> Walking[L, T, S],
       left: (T, Walking[L, T, S]) -> Boolean,
       drops: Walking[L, T, S] -> Vector[Held]
   ) extends caps.Pure
 
-  /** The walk of `agenda` for a run reading at most `perRun` files, holding `holding`, its first
+  /** The walk of `routine` for a run reading at most `perRun` files, holding `holding`, its first
     * tasks `tasks` and its record `own`: its first step made, or its end.
     */
   def start[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
-      agenda: Agenda[L, T, S],
+      routine: Routine[L, T, S],
       perRun: Int,
       holding: Holding,
       tasks: List[T],
       own: S
   ): Walking[L, T, S] = {
-    val none = Synced(agenda.source.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+    val none = Synced(routine.source.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
     advance(
       Walking(
-        agenda,
+        routine,
         perRun,
         holding,
         tasks,
@@ -242,7 +242,7 @@ private[knowledge] object Walking {
   ): Walking[L, T, S] = w.stack match {
     case Nil => w.end
     case task :: rest =>
-      val taken = w.agenda.take(task, w.copy(stack = rest, waiting = Waiting.Idle()))
+      val taken = w.routine.take(task, w.copy(stack = rest, waiting = Waiting.Idle()))
       taken.waiting match {
         case Waiting.Idle() => advance(taken)
         case _ => taken

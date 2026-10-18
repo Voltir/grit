@@ -41,7 +41,7 @@ object DriveWalk {
   ): Walk[DriveListing] =
     Walking.start(
       Walking
-        .Agenda[DriveListing, Task, Own](
+        .Routine[DriveListing, Task, Own](
           cards,
           take(cards, turn, _, _),
           (t, _) => left(t),
