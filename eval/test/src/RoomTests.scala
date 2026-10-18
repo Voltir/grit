@@ -86,13 +86,13 @@ object RoomTests extends TestSuite {
     }
 
     test("every room the eval holds reads, each with openings that follow and that begin") {
-      val read = Vector("room-a").map { name =>
+      val read = Vector("room-a", "room-b").map { name =>
         val text = Using.resource(Source.fromResource(s"rooms/$name.json"))(_.mkString)
         name -> Room.read(name, text).map(Room.truth).map { t =>
           (t.exists(_.follows.isDefined), t.exists(_.follows.isEmpty))
         }
       }
-      read ==> Vector("room-a" -> Right((true, true)))
+      read ==> Vector("room-a" -> Right((true, true)), "room-b" -> Right((true, true)))
     }
   }
 }
