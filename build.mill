@@ -535,6 +535,11 @@ object grit extends Module {
   object prose extends GritPublished with Placed {
     def folder = os.sub / "core" / "prose"
     object test extends GritTests
+
+    /* That a doc's notes are pure: no capability rides in prose. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
   }
 
   /* Tooling for working on grit, not a product module: nothing depends on it and it is not
