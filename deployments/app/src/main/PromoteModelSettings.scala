@@ -1,13 +1,12 @@
 package grit.app.main
 
 import grit.core.clock.Clock
-import grit.core.model.{Catalog, CatalogJson, Profile}
-import grit.core.visibility.Subject
+import grit.core.model.{Catalog, CatalogJson}
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Offered
 import grit.kit.environment.DotEnv
 import grit.kit.run.Kit
-import grit.models.Seed
+import grit.models.{KeptCatalog, Seed}
 
 /** Prints the seed catalog with every model setting approved at runtime laid over it, in the seed's
   * form, for a person to put in `extensions/models/resources/catalog.json` and commit. The settings
@@ -18,11 +17,9 @@ import grit.models.Seed
   */
 object PromoteModelSettings {
 
-  /** `seed` with `approved` laid over it, oldest first, as the seed file holds a catalog;
-    * ends with a newline.
-    */
-  def render(seed: Catalog, approved: Vector[Profile]): String =
-    ujson.write(CatalogJson.write(seed.overlaid(approved)), indent = 2) + "\n"
+  /** `catalog` as the seed file holds one; ends with a newline. */
+  def render(catalog: Catalog): String =
+    ujson.write(CatalogJson.write(catalog), indent = 2) + "\n"
 
   def main(args: Array[String]): Unit = {
     val _ = args
@@ -46,11 +43,7 @@ object PromoteModelSettings {
       case Right(open) => open
       case Left(refused) => fail(refused.message(clock.now()))
     }
-    try
-      engine.db.read(Subject.Public)(engine.modelSettings.all()) match {
-        case Right(kept) => print(render(seed, kept.map(_.settings)))
-        case Left(e) => fail(s"the approved model settings cannot be read: $e")
-      }
+    try KeptCatalog.read(seed, engine.db, engine.modelSettings).fold(fail, c => print(render(c)))
     finally engine.close()
   }
 

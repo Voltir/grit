@@ -12,9 +12,7 @@ object PromoteModelSettingsTests extends TestSuite {
   private val seed = Seed.catalog.getOrElse(sys.error("the seed"))
 
   val tests = Tests {
-    test(
-      "the promoted seed is the seed with every approved model setting laid over it, in the seed's form"
-    ) {
+    test("a promoted catalog is written in the seed's form, read back as it was, ending a line") {
       val pair = seed.policy.turn.first.assignment.ref
       val approved = Profile(
         pair,
@@ -23,13 +21,13 @@ object PromoteModelSettingsTests extends TestSuite {
           Source.Measured("probe_pair", LocalDate.of(2026, 9, 25), 3, 3)
         )
       )
-      val text = PromoteModelSettings.render(seed, Vector(approved))
+      val text = PromoteModelSettings.render(seed.overlaid(Vector(approved)))
       val back = CatalogJson.read(ujson.read(text))
       back.map(_.version) ==> Right(seed.overlaid(Vector(approved)).version)
       back.map(c => Settings.of(c.profile(pair)).names) ==> Right(NameRepair.AsSent)
       // Nothing approved: the seed as it is.
       CatalogJson
-        .read(ujson.read(PromoteModelSettings.render(seed, Vector.empty)))
+        .read(ujson.read(PromoteModelSettings.render(seed)))
         .map(_.version) ==> Right(seed.version)
       assert(text.endsWith("\n"))
     }
