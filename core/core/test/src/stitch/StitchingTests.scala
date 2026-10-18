@@ -271,7 +271,7 @@ object StitchingTests extends TestSuite {
       Vector(
         placed(Some(engine.conversation), prior),
         placed(Some(lunch.conversation), prior),
-        placed(Some(engine.conversation), Tuning.Default)
+        placed(Some(engine.conversation), Tuning.Default.copy(burst = None))
       ) ==> Vector(Some(engine.conversation -> p(0.35)), None, None)
     }
 

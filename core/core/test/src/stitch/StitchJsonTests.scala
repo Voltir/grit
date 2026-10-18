@@ -32,7 +32,7 @@ object StitchJsonTests extends TestSuite {
     Stitching.place(
       new Scripted(answer),
       Offer(heard("real", "real?", 0), "David", es, Speakers.none),
-      Tuning.Default.copy(recent = 1, lexical = 3)
+      Tuning.Default.copy(recent = 1, lexical = 3, burst = None)
     )
   }
 
@@ -48,8 +48,8 @@ object StitchJsonTests extends TestSuite {
 
     test("a burst prior reads back and is written as stored; a tuning with none stores none") {
       import scala.concurrent.duration.*
-      val shipped = placedWith(Some(chose("exchange 1", "exchange 1" -> 0.8, "exchange 2" -> 0.2)))
-      val json = StitchJson.write(shipped)
+      val noPrior = placedWith(Some(chose("exchange 1", "exchange 1" -> 0.8, "exchange 2" -> 0.2)))
+      val json = StitchJson.write(noPrior)
       val stored = ujson.copy(json)
       stored("seen")("tuning").obj("burst") = ujson.Obj("follows_at" -> 0.3, "gap_seconds" -> 120)
       val read = StitchJson.read(stored)

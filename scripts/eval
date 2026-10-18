@@ -285,12 +285,13 @@
 #
 #   scripts/eval lab stitch --room <name | file> [--spend <usd>] [--follows-at <p>]
 #                           [--lexical <n>] [--recent <n>] [--repeats <n>]
-#                           [--burst-prior <p> --burst-gap <seconds>]
+#                           [--burst-prior <p> --burst-gap <seconds> | --burst none]
 #       A synthetic room (eval/resources/rooms/<name>.json, or a file) heard into
 #       grit_eval_lab, created afresh and dropped after, through an engine opened on it; then
 #       each opening placed in the order said through the shipped stitch ask, under shipped
 #       tuning but for the knobs named (--burst-prior: a follow of the strand the author
-#       opened a conversation of within --burst-gap before passes at <p>), Jev asked through .local/eval/cache/, so an unchanged
+#       opened a conversation of within --burst-gap before passes at <p>; --burst none: no
+#       burst prior, the baseline before the prior shipped), Jev asked through .local/eval/cache/, so an unchanged
 #       room and tuning rerun at no cost. --repeats runs it that many times (default 1), each
 #       a copy of the room in its own channel and Jev's repeat of the same index, so a repeat
 #       asks Jev afresh once and is free after; and as many times again against the truth's
@@ -647,7 +648,7 @@ lab() {
     case $1 in
       --room) [ $# -ge 2 ] || usage; room=$2; shift 2 ;;
       --spend) [ $# -ge 2 ] || usage; spend=$2; shift 2 ;;
-      --follows-at | --lexical | --recent | --repeats | --burst-prior | --burst-gap) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
+      --follows-at | --lexical | --recent | --repeats | --burst | --burst-prior | --burst-gap) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
       *) usage ;;
     esac
   done

@@ -914,14 +914,15 @@ object Main {
 
   /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
     * [--follows-at <p>] [--lexical <n>] [--recent <n>] [--repeats <n>] [--burst-prior <p>
-    * --burst-gap <seconds>]`: the room written at
+    * --burst-gap <seconds> | --burst none]`: the room written at
     * `<file>` ([[Room.read]], named for its file less `.json`) placed by the stitch lab
     * ([[StitchLab.run]]) `--repeats` times (1 when not given) against the strands its placings
     * make and as often against the truth's ([[Against]]), repeat `r` as Jev's repeat `r`, each
     * run in a channel of its own, in the database at `<jdbc>`, which must
     * be `grit_eval_lab` and hold nothing of the room, through an engine opened on it for the
     * purpose; under shipped tuning but for the knobs named (a burst prior, [[StitchTuning.burst]],
-    * needs both of its flags); Jev asked through the cache at
+    * needs both of its flags; `--burst none` is the no-prior baseline, and the shipped run keeps
+    * [[StitchTuning.Default]]'s prior); Jev asked through the cache at
     * `<dir>` within `--spend` USD over all the runs. Each run scored ([[RoomScore.of]]) and all
     * written to `<out>/lab-stitch-<room>.md` ([[Report.lab]]); printed up to the first run's
     * section, before any of the room's text. Jev's key and the database's login
@@ -945,14 +946,16 @@ object Main {
       followsAt <- f
         .get("follows-at")
         .fold(Right(StitchTuning.Default.followsAt))(chance("follows-at"))
-      burst <- (f.get("burst-prior"), f.get("burst-gap")) match {
-        case (None, None) => Right(None)
-        case (Some(p), Some(gap)) =>
+      burst <- (f.get("burst"), f.get("burst-prior"), f.get("burst-gap")) match {
+        case (None, None, None) => Right(StitchTuning.Default.burst)
+        case (Some("none"), None, None) => Right(None)
+        case (None, Some(p), Some(gap)) =>
           for {
             at <- chance("burst-prior")(p)
             seconds <- count("burst-gap")(gap)
           } yield Some(StitchTuning.Burst(at, seconds.seconds))
-        case _ => Left("--burst-prior and --burst-gap go together")
+        case (Some(other), None, None) => Left(s"--burst takes none, not $other")
+        case _ => Left("--burst-prior and --burst-gap go together, and not with --burst")
       }
       lexical <- f.get("lexical").fold(Right(StitchTuning.Default.lexical))(count("lexical"))
       recent <- f.get("recent").fold(Right(StitchTuning.Default.recent))(count("recent"))

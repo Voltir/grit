@@ -24,8 +24,8 @@ import grit.core.period.Probability
   *   a burst prior: when set, a message the classifier does not place in an exchange at
   *   `followsAt` follows the strand its author's previous opening in its room is in, when that
   *   opening was said at most the burst's gap before and that strand is given at least the
-  *   burst's own least probability, whatever the classifier's top choice; `None`, as shipped,
-  *   follows the top choice at `followsAt` alone
+  *   burst's own least probability, whatever the classifier's top choice; `None` follows the
+  *   top choice at `followsAt` alone
   */
 final case class Tuning(
     horizon: FiniteDuration,
@@ -44,13 +44,16 @@ object Tuning {
     */
   final case class Burst(followsAt: Probability, gap: FiniteDuration)
 
-  /** A week; 2 recent and 2 lexical; 0.6; 1,500 tokens; 800 characters; no burst prior. */
+  /** A week; 2 recent and 2 lexical; 0.6; 1,500 tokens; 800 characters; a burst prior at 0.3
+    * over 120 seconds.
+    */
   val Default: Tuning = Tuning(
     7.days,
     2,
     2,
     Probability.clamped(0.6),
     Tokens(1_500),
-    800
+    800,
+    Some(Burst(Probability.clamped(0.3), 120.seconds))
   )
 }
