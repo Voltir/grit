@@ -1,6 +1,6 @@
 # 0042. A strand's document is summarised from its members' raw messages by a dreaming job, one per root at its room's label
 
-Status: proposed (2026-10-18)
+Status: accepted (2026-10-18)
 
 Context: a room's topic is scattered over the threads ADR 0023 stitches into a strand, and a
 turn's window ranks those threads one by one. A document per strand, a short summary with
@@ -29,6 +29,8 @@ Decision:
   schedule's clearance), writes only for rooms whose label in force is its floor, and
   withdraws a document whose room has moved to another; a deployment declares one schedule per
   label. A room at a label no schedule declares has none.
+- **Summaries are infrequent**: at most once a run for a strand whose member set changed and
+  passed the run's floor, never per heard message; an unchanged member set asks nothing.
 - **Members are read as raw messages until they age out**; a strand whose members' entries are
   purged loses its document. Nothing re-links strands: membership stays the stitch's.
 

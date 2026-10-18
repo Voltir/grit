@@ -1,6 +1,6 @@
 # 0034. Turns and jobs act through three moves, ask, call and keep, made under an acting value
 
-Status: accepted (2026-10-08); revised (2026-10-18, proposed with ADR 0042)
+Status: accepted (2026-10-08); revised (2026-10-18)
 
 Context: the turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps. A job's run (ADR 0029)
@@ -49,9 +49,8 @@ Decision:
   abort the transaction its output is recorded in, and DBOS keeps a thrown step as the run's
   permanent result.
 - **Whose a job is says what it may do**: a plain job asks and calls; a plugin's keeping job
-  also keeps, under its plugin's document terms; its dreaming job's keeps may also read strands
-  by id and count, and its asks may summarise one, its messages read in the ask's own step
-  (ADR 0042). A deployment is refused either whose plugin declares no documents.
+  also keeps, under its plugin's document terms; a dreaming job's keeps may also read strands
+  by id and count, and core summarises one for its asks (ADR 0042). A deployment is refused either whose plugin declares no documents.
 - **Every result carries a bound on its content's label**: for now, its actor's floor. A label
   below it is a declassification (ADR 0036's `Downgrade`).
 
