@@ -193,8 +193,10 @@ commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
   breach ([`docs/capture-checking.md`](docs/capture-checking.md)). It has a **Sharing
   section**: for each new type, trait or function, the existing one it reuses or the second
   caller it serves, and each near-copy of existing code the change would add, folded into one
-  place instead. Of two designs that pass the elision test, the one that shares more code wins:
-  one implementation that a turn, a job and a rehearsal all run beats two kept alike by hand.
+  place instead. A new type's name is searched for its synonyms in the codebase: where one
+  names a kin idea, the plan says why grit needs two, or uses the one it has. Of two designs
+  that pass the elision test, the one that shares more code wins: one implementation that a
+  turn, a job and a rehearsal all run beats two kept alike by hand.
   Mechanical edits, doc corrections and small fixes inside an agreed plan need none of these.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a
