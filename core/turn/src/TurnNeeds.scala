@@ -10,8 +10,10 @@ import grit.core.period.Probability
   */
 object TurnNeeds {
 
-  /** The probability of yes at or above which a turn searches. */
-  val Pass: Probability = Probability.clamped(0.3)
+  /** The probability of yes at or above which a turn searches: low, so a message is searched
+    * for unless the classifier is nearly sure it needs nothing, as a "no" ends a heard turn.
+    */
+  val Pass: Probability = Probability.clamped(0.2)
 
   /** What the call is shown: `{"message": ..., "thread": ...}`, as the judge is shown them
     * ([[TurnJudge.State]]): the heard message under its speaker's name, its first
