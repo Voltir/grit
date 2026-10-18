@@ -98,6 +98,32 @@ object RunTests extends TestSuite {
         Spend.estimate(Run.body(Model, calls(2).request))
     }
 
+    test("asked: what its asker made, with the row and budget a run makes; again, from the cache") {
+      val cache = Cache.at[Vector[Weights]](Files.createTempDirectory("grit-run-test"))
+      val c = call(1)
+      def asked(jev: Classifier^) =
+        Run.asked(Suite.Triage, c.id, 0, Some(Focus.Open), jev, Model, cache, budget(1), ticking())(
+          classifier => classifier.answers(c.request).map(_.answers.size)
+        )
+      val first = Charged()
+      val made = asked(first.classifier)
+      val ran = Run(Vector(c), Charged().classifier, Model, Cache.off, budget(1), ticking())
+      (made.made, made.row, made.budget) ==> (
+        Right(c.request.questions.size),
+        ran.rows.headOption,
+        ran.budget
+      )
+      val again = Charged()
+      val rerun = asked(again.classifier)
+      (first.asked, again.asked, rerun.budget.spent) ==> (1, 0, BigDecimal(0))
+      rerun.row.map(_.cached) ==> Some(true)
+      Run
+        .asked(Suite.Triage, c.id, 0, None, first.classifier, Model, cache, budget(1), ticking())(
+          _ => 7
+        )
+        .row ==> None
+    }
+
     test("the cap stops before the call that would cross it, and every call after is skipped") {
       // The third is long: after the first two, it does not fit, and the fourth alone would.
       val calls = Vector(call(1), call(2), call(3, thread = "words " * 400), call(4))

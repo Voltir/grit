@@ -26,6 +26,11 @@ final case class Call(
 /** What a run made: a row per call, in order, and what it spent. */
 final case class Ran(rows: Vector[Row[Vector[Weights]]], budget: Budget)
 
+/** What one call made ([[Run.asked]]): what its asker `made`, the `row` of the last request it
+  * sent (`None`: it sent none), and the `budget` left.
+  */
+final case class Asked[A](made: A, row: Option[Row[Vector[Weights]]], budget: Budget)
+
 /** A run's calls, asked of Jev. */
 object Run {
 
@@ -65,77 +70,11 @@ object Run {
   ): Ran = {
     val state = new State(budget)
     val rows: Vector[Row[Vector[Weights]]] = calls.map { call =>
-      state.made = None
-      val around = Classifier.around(jev)((request, ask) => {
-        val wire = body(model, request)
-        val key = CacheKey.of(Provider, wire, call.repeat)
-        def row(
-            outcome: Outcome[Vector[Weights]],
-            reported: Option[String],
-            usage: Usage,
-            latency: FiniteDuration,
-            cached: Boolean
-        ): Unit = state.made = Some(
-          Row(
-            call.suite,
-            call.id,
-            call.repeat,
-            Digest.request(request),
-            key,
-            model,
-            reported,
-            outcome,
-            usage,
-            latency,
-            cached,
-            call.focus
-          )
+      val (_, made) =
+        one(state, call.suite, call.id, call.repeat, call.focus, jev, model, cache, clock)(
+          Asking.ask(call.asking, _)
         )
-        val hit = cache
-          .get(key)
-          .toOption
-          .flatten
-          .flatMap(c => answers(request, c).map(c -> _))
-        hit match {
-          case Some((c, answered)) =>
-            row(Outcome.Answered(c.answer), Some(c.reported), c.usage, c.latency, cached = true)
-            Right(answered)
-          case None =>
-            val estimate = Spend.estimate(wire)
-            if (state.stopped || !state.left.allows(estimate)) {
-              state.stopped = true
-              row(Outcome.Skipped, None, Usage.Zero, Duration.Zero, cached = false)
-              Left(ClassifierError.Unavailable("skipped at the spend cap"))
-            } else {
-              val start = clock.millis()
-              val result = ask()
-              val latency = (clock.millis() - start).millis
-              result match {
-                case Right(a) =>
-                  state.left = state.left.spend(a.usage.costUsd.getOrElse(estimate))
-                  weights(request, a) match {
-                    case Some(ws) =>
-                      // A cache write that fails costs a later run this call, nothing more.
-                      val _ = cache.put(key, Cached(ws, a.usage, a.model, latency))
-                      row(Outcome.Answered(ws), Some(a.model), a.usage, latency, cached = false)
-                    case None =>
-                      row(
-                        Outcome.Failed(Failure.Unreadable),
-                        None,
-                        a.usage,
-                        latency,
-                        cached = false
-                      )
-                  }
-                case Left(e) =>
-                  row(Outcome.Failed(Failure.of(e)), None, Usage.Zero, latency, cached = false)
-              }
-              result
-            }
-        }
-      })
-      Asking.ask(call.asking, around)
-      state.made.getOrElse(
+      made.getOrElse(
         // The shipped call sent nothing: its question repeats a key.
         Row(
           call.suite,
@@ -156,13 +95,124 @@ object Run {
     Ran(rows, state.left)
   }
 
-  /** What one [[apply]] has spent, whether it has stopped at the cap, and the row its current
-    * call made.
+  /** One call asked as [[apply]] asks each, for the case `id` of `suite`, repeat `repeat`, its
+    * row at `focus`: `asks` handed a classifier that answers each request from `cache` when it
+    * holds the request's key, else, when `budget` allows its estimate, asks `jev`, keeps the
+    * answer and spends its cost, else is `Unavailable` ("skipped at the spend cap"). What
+    * `asks` made, beside the row of the last request it sent (`None`: it sent none) and the
+    * budget left.
+    */
+  def asked[A](
+      suite: Suite,
+      id: CaseId,
+      repeat: Int,
+      focus: Option[Focus],
+      jev: Classifier^,
+      model: String,
+      cache: Cache[Vector[Weights]]^,
+      budget: Budget,
+      clock: Clock^
+  )(asks: Classifier^ => A): Asked[A] = {
+    val state = new State(budget)
+    val (made, row) = one(state, suite, id, repeat, focus, jev, model, cache, clock)(asks)
+    Asked(made, row, state.left)
+  }
+
+  /** `asks` handed `jev` answered through `cache` under `state`, as [[asked]] says; what it
+    * made and the row of the last request it sent.
+    */
+  private def one[A](
+      state: State,
+      suite: Suite,
+      id: CaseId,
+      repeat: Int,
+      focus: Option[Focus],
+      jev: Classifier^,
+      model: String,
+      cache: Cache[Vector[Weights]]^,
+      clock: Clock^
+  )(asks: Classifier^ => A): (A, Option[Row[Vector[Weights]]]) = {
+    state.made = None
+    val around = Classifier.around(jev)((request, ask) => {
+      val wire = body(model, request)
+      val key = CacheKey.of(Provider, wire, repeat)
+      def row(
+          outcome: Outcome[Vector[Weights]],
+          reported: Option[String],
+          usage: Usage,
+          latency: FiniteDuration,
+          cached: Boolean
+      ): Unit = state.made = Some(
+        Row(
+          suite,
+          id,
+          repeat,
+          Digest.request(request),
+          key,
+          model,
+          reported,
+          outcome,
+          usage,
+          latency,
+          cached,
+          focus
+        )
+      )
+      val hit = cache
+        .get(key)
+        .toOption
+        .flatten
+        .flatMap(c => answers(request, c).map(c -> _))
+      hit match {
+        case Some((c, answered)) =>
+          row(Outcome.Answered(c.answer), Some(c.reported), c.usage, c.latency, cached = true)
+          Right(answered)
+        case None =>
+          val estimate = Spend.estimate(wire)
+          if (state.stopped || !state.left.allows(estimate)) {
+            state.stopped = true
+            row(Outcome.Skipped, None, Usage.Zero, Duration.Zero, cached = false)
+            Left(ClassifierError.Unavailable("skipped at the spend cap"))
+          } else {
+            val start = clock.millis()
+            val result = ask()
+            val latency = (clock.millis() - start).millis
+            result match {
+              case Right(a) =>
+                state.left = state.left.spend(a.usage.costUsd.getOrElse(estimate))
+                weights(request, a) match {
+                  case Some(ws) =>
+                    // A cache write that fails costs a later run this call, nothing more.
+                    val _ = cache.put(key, Cached(ws, a.usage, a.model, latency))
+                    row(Outcome.Answered(ws), Some(a.model), a.usage, latency, cached = false)
+                  case None =>
+                    row(
+                      Outcome.Failed(Failure.Unreadable),
+                      None,
+                      a.usage,
+                      latency,
+                      cached = false
+                    )
+                }
+              case Left(e) =>
+                row(Outcome.Failed(Failure.of(e)), None, Usage.Zero, latency, cached = false)
+            }
+            result
+          }
+      }
+    })
+    val made = asks(around)
+    (made, state.made)
+  }
+
+  /** What one [[apply]] or [[asked]] has spent, whether it has stopped at the cap, and the row
+    * its current call made.
     */
   private final class State(start: Budget) {
-    // Each holds immutable values, only replaced. One `apply` makes the State and drops it
-    // before returning; the classifiers built around it are asked only inside that call, one
-    // at a time, so no other code can observe the replacements.
+    // Each holds immutable values, only replaced. One `apply` or `asked` makes the State, reads
+    // it last as it returns, and drops it; the classifiers built around it are asked one at a
+    // time, and one an `asks` kept and asked after `asked` returned would replace values in a
+    // State nothing reads again, so no other code can observe the replacements.
     @caps.unsafe.untrackedCaptures
     var left: Budget = start
     @caps.unsafe.untrackedCaptures
