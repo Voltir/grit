@@ -148,7 +148,7 @@ private[engine] final class Recorder(
 
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
     * as the period it opens is, its conversation created at `label` if it is new, believed at
-    * `believed`, else at what `by` is believed at ([[authored]]): its existing turn when `source`
+    * `believed`, else at what `by` is believed at ([[integrityOf]]): its existing turn when `source`
     * was recorded before, else, when `capped`, refused over the cap of the day `at` falls on,
     * else a new turn.
     */
@@ -182,7 +182,7 @@ private[engine] final class Recorder(
         case (None, None) =>
           (for {
             _ <- periods.openFor(conversation.id, next.turnSeq, at)
-            integrity <- believed.fold(authored(by))(Right(_))
+            integrity <- believed.fold(integrityOf(by))(Right(_))
           } yield integrity).flatMap { integrity =>
             entries
               .insert(
@@ -222,7 +222,7 @@ private[engine] final class Recorder(
     * ([[Tx.integrityOf]] of whom it is linked to now); an account never seen is
     * [[Integrity.Outside]], anyone else's.
     */
-  private def authored(by: Account)(using Tx^): Either[StoreError, Integrity] =
+  private def integrityOf(by: Account)(using Tx^): Either[StoreError, Integrity] =
     SqlIdentities.person(by).map(_.fold(Integrity.Outside)(Tx.integrityOf(_)))
 }
 
