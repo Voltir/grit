@@ -1,5 +1,7 @@
 package grit.eval
 
+import java.nio.file.{Files, Paths}
+
 import scala.concurrent.duration.*
 import scala.io.Source
 import scala.util.Using
@@ -57,14 +59,21 @@ object RoomTests extends TestSuite {
       )
     }
 
-    test("a burst is its author's previous opening within two minutes, continuing on its topic") {
+    test(
+      "a burst is its author's own previous opening within two minutes, two minutes exactly included, continuing on its topic"
+    ) {
       val bursts = room(
         message("m1", 0, "Ana", Some("ci")),
         message("m2", 1, "Ana", Some("ci")),
         message("m3", 2, "Ana", Some("csv"), second = 30),
         message("m4", 5, "Ana", Some("csv")),
         message("m5", 6, "Ana"),
-        message("m6", 7, "Ana")
+        message("m6", 7, "Ana"),
+        message("m7", 10, "Ana"),
+        message("b1", 10, "Ben", second = 30),
+        message("m8", 11, "Ana"),
+        message("m9", 13, "Ana"),
+        message("m10", 15, "Ana", second = 1)
       ).fold(e => throw new java.lang.AssertionError(e), Room.truth)
         .map(t => t.opening.id -> t.burst)
       bursts ==> Vector(
@@ -73,7 +82,12 @@ object RoomTests extends TestSuite {
         "m3" -> Some(Room.Burst("m2", 90.seconds, continues = false)),
         "m4" -> None,
         "m5" -> Some(Room.Burst("m4", 1.minute, continues = false)),
-        "m6" -> Some(Room.Burst("m5", 1.minute, continues = false))
+        "m6" -> Some(Room.Burst("m5", 1.minute, continues = false)),
+        "m7" -> None,
+        "b1" -> None,
+        "m8" -> Some(Room.Burst("m7", 1.minute, continues = false)),
+        "m9" -> Some(Room.Burst("m8", Room.BurstGap, continues = false)),
+        "m10" -> None
       )
     }
 
@@ -86,13 +100,18 @@ object RoomTests extends TestSuite {
     }
 
     test("every room the eval holds reads, each with openings that follow and that begin") {
-      val read = Vector("room-a", "room-b").map { name =>
+      val names = Option(getClass.getResource("/rooms"))
+        .map(u => Using.resource(Files.list(Paths.get(u.toURI)))(_.toArray.toVector))
+        .getOrElse(Vector.empty)
+        .map(_.toString.split('/').last.stripSuffix(".json"))
+        .sorted
+      val read = names.map { name =>
         val text = Using.resource(Source.fromResource(s"rooms/$name.json"))(_.mkString)
         name -> Room.read(name, text).map(Room.truth).map { t =>
           (t.exists(_.follows.isDefined), t.exists(_.follows.isEmpty))
         }
       }
-      read ==> Vector("room-a" -> Right((true, true)), "room-b" -> Right((true, true)))
+      (names.size >= 2, read.filterNot(_._2 == Right((true, true)))) ==> (true, Vector())
     }
   }
 }
