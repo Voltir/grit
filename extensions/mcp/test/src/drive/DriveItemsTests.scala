@@ -314,10 +314,13 @@ object DriveItemsTests extends TestSuite {
       "a long read is cut to its leading whole lines, saying how many, so its part is kept when fitted"
     ) {
       val line = "text text text text text text text text"
+      // A change time whose name line leaves the text's own cut short of the room after the
+      // head: the read must still say it was cut.
+      val changed = doc.copy(changed = Some(java.time.Instant.parse("2026-09-08T10:00:00Z")))
       val items = right(
         DriveItems.items(
           reading,
-          DriveCalled.Read(doc, None, Vector.fill(5000)(line).mkString("\n"))
+          DriveCalled.Read(changed, None, Vector.fill(5000)(line).mkString("\n"))
         )
       )
       val fitted = Trimmed.of(items.head, items.parts)

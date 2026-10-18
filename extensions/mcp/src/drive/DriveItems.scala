@@ -268,8 +268,10 @@ object DriveItems {
           _ => Clipped.cutHint(Option.when(k < lines.size)(Kept(k, lines.size, partial = false)))
         )
         .show
+    // The whole text is asked of unclipped: `kept` of every line cuts it with no hint when it
+    // is too long alone, and that cut may still fit after `head`.
     val k =
-      if (Clipped.fits(s"$head\n${kept(lines.size)}")) lines.size
+      if (Clipped.fits((head +: named +: lines).mkString("\n"))) lines.size
       else Clipped.most(lines.size - 1)(k => s"$head\n${kept(k)}")
     (kept(k), DriveFacts.Opened(entry, lines.take(k).mkString("\n"), k == lines.size))
   }
