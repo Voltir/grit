@@ -182,24 +182,22 @@ object Report {
   ): String =
     RecallLines.of(capture, replayed)
 
-  /** The stitch lab's run over `room`: `model` and `tuning`, the `calls` asked (`cached` of them
-    * answered from the cache) and what was `spent`; `score`'s proportions, each with its interval
-    * (a point estimate under [[Proportion.MinClusters]] topics), the wrong follows, the confusion,
-    * the bursts and the strands split and mixed; then one row an opening of `placings`, with its
-    * truth, what it got, what it was offered, and the start of its text: the room's own
-    * synthetic text, the one place a report prints a message's words.
+  /** The stitch lab's `runs` over `room`, under `model` and `tuning`: the calls asked over all
+    * of them (how many answered from the cache) and what was spent; each measure's mean and
+    * range over the runs ([[grit.eval.harness.score.RoomRepeats]]); then each run under its
+    * label: its proportions, each with its interval (a point estimate under
+    * [[Proportion.MinClusters]] topics), the wrong follows, the confusion, the bursts and the
+    * strands split and mixed, and one row an opening, with its truth, what it got, what it was
+    * offered, and the start of its text: the room's own synthetic text, the one place a report
+    * prints a message's words. Everything before the first run's section holds no room text.
     */
-  def room(
+  def lab(
       room: grit.eval.Room,
-      placings: Vector[grit.eval.harness.score.RoomPlacing],
-      score: grit.eval.harness.score.RoomScore,
       model: String,
       tuning: grit.core.stitch.Tuning,
-      calls: Int,
-      cached: Int,
-      spent: BigDecimal
+      runs: Vector[LabRun]
   ): String =
-    RoomLines.of(room, placings, score, model, tuning, calls, cached, spent)
+    RoomLines.lab(room, model, tuning, runs)
 
   /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
     * before shapes and with no offer; their weigh steps by what each recorded, failures by

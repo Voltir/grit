@@ -37,9 +37,11 @@ final case class Lab(
   */
 object StitchLab {
 
-  /** `room` heard into `engine`'s database, which must hold none of it, each message through the
-    * inbox as an edge hears it, its author named; then each opening placed under `tuning`, Jev
-    * asked as `model` through `cache` within `budget` ([[Run.asked]]), each call timed by
+  /** `room` heard into `engine`'s database as said in `channel` in place of its own, which the
+    * database must hold none of, each message through the inbox as an edge hears it, its author
+    * named; then each opening placed under `tuning`, Jev asked as `model` through `cache` within
+    * `budget` as repeat `repeat` ([[Run.asked]]: the same question asked again under another
+    * repeat is asked afresh, under the same one answered from the cache), each call timed by
     * `clock`, and the placement kept, dated when the opening was said. Once a call is skipped at
     * the cap, it and every opening after it that would ask are `Skipped`, keeping nothing. The
     * strands are read as they stand after the last placement. `Left` when the room is seeded
@@ -53,9 +55,11 @@ object StitchLab {
       cache: Cache[Vector[Weights]]^,
       budget: Budget,
       tuning: Tuning,
-      clock: Clock^
+      clock: Clock^,
+      repeat: Int,
+      channel: String
   ): Either[String, Lab] = {
-    val heard = Heard(room)
+    val heard = Heard(room, channel)
     val reads = StitchReads(
       engine.entries,
       engine.conversations,
@@ -83,7 +87,8 @@ object StitchLab {
             model,
             cache,
             tuning,
-            clock
+            clock,
+            repeat
           )
         )
       }
@@ -106,17 +111,17 @@ object StitchLab {
     )
   }
 
-  /** Each message of `room` as Slack would carry it: its ts (its second, then its place in the
-    * room for uniqueness), and its conversation's origin, the thread it is in.
+  /** Each message of `room` as Slack would carry it in `channel`: its ts (its second, then its
+    * place in the room for uniqueness), and its conversation's origin, the thread it is in.
     */
-  private final case class Heard(room: Room) {
+  private final case class Heard(room: Room, channel: String) {
     private val ts: Map[String, String] =
       room.messages.zipWithIndex
         .map((m, i) => m.id -> f"${m.at.getEpochSecond}%d.${i + 1}%06d")
         .toMap
     def tsOf(id: String): String = ts.getOrElse(id, id)
     def origin(m: Room.Message): Origin =
-      Origin.Slack(room.team, room.channel, tsOf(m.thread.getOrElse(m.id)))
+      Origin.Slack(room.team, channel, tsOf(m.thread.getOrElse(m.id)))
   }
 
   /** An opening to place: its message, conversation and origin. */
@@ -160,7 +165,7 @@ object StitchLab {
               m.text,
               by,
               m.at,
-              Reach(Some(s"${room.channel}/$root/${heard.tsOf(m.id)}"), Set.empty)
+              Reach(Some(s"${heard.channel}/$root/${heard.tsOf(m.id)}"), Set.empty)
             )
             .left
             .map((e: InboxError) => s"${m.id}: not heard: $e")
@@ -180,7 +185,8 @@ object StitchLab {
       model: String,
       cache: Cache[Vector[Weights]]^,
       tuning: Tuning,
-      clock: Clock^
+      clock: Clock^,
+      repeat: Int
   ): Either[String, Placings] = {
     def id(of: ConversationId): String = idOf.getOrElse(of, ConversationId.value(of))
     def placing(made: RoomPlacing.Made, p: Option[Placed]): RoomPlacing = RoomPlacing(
@@ -236,7 +242,7 @@ object StitchLab {
               val asked = Run.asked(
                 Suite.Stitch,
                 caseId,
-                0,
+                repeat,
                 None,
                 jev,
                 model,

@@ -4,7 +4,7 @@ import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.stitch.Tuning
 import grit.eval.Room
-import grit.eval.harness.score.{RoomPlacing, RoomScore}
+import grit.eval.harness.score.{Ranged, RoomPlacing, RoomRepeats, RoomScore}
 import grit.eval.harness.stats.Proportion
 
 /** [[Report.room]]'s sections. */
@@ -13,16 +13,31 @@ private[report] object RoomLines {
   /** How many characters of an opening's text its row shows. */
   private val TextChars = 72
 
-  def of(
-      room: Room,
-      placings: Vector[RoomPlacing],
-      score: RoomScore,
-      model: String,
-      tuning: Tuning,
-      calls: Int,
-      cached: Int,
-      spent: BigDecimal
-  ): String = {
+  def lab(room: Room, model: String, tuning: Tuning, runs: Vector[LabRun]): String = {
+    def ranged(r: Ranged): String =
+      if (r.min == r.max) f"${r.mean}%.0f" else f"${r.mean}%.1f [${r.min}%.0f, ${r.max}%.0f]"
+    val head = Vector(
+      s"# stitch lab: ${room.name}",
+      "",
+      s"model $model; horizon ${tuning.horizon}, recent ${tuning.recent}, lexical " +
+        s"${tuning.lexical}, followsAt ${Probability.value(tuning.followsAt)}",
+      s"runs: ${runs.size}; calls: ${runs.map(_.calls).sum} (cached ${runs.map(_.cached).sum}); " +
+        s"spent ${Cost.cents(runs.map(_.spent).sum)}",
+      "",
+      s"## over ${runs.size} runs (mean [least, most])",
+      "",
+      "| measure | count | of |",
+      "|---|---|---|"
+    ) ++ RoomRepeats
+      .of(runs.map(_.score))
+      .map(m => s"| ${m.name} | ${ranged(m.count)} | ${m.of.fold("")(ranged)} |")
+    (head ++ runs.flatMap(r => "" +: of(room, r))).mkString("", "\n", "\n")
+  }
+
+  /** One run's section, under its label. */
+  private def of(room: Room, run: LabRun): Vector[String] = {
+    val placings = run.placings
+    val score = run.score
     val truths = Room.truth(room).map(t => t.opening.id -> t).toMap
     val topic = room.openings.map(m => m.id -> m.topic).toMap
     def topicOf(id: String): String = topic.get(id).flatten.getOrElse("-")
@@ -44,12 +59,10 @@ private[report] object RoomLines {
       s"${o.root}(${topicOf(o.root)}, ${if (o.recent) "recent" else "lexical"}" +
         o.p.fold(")")(p => f" $p%.2f)")
     val b = score.bursts
-    val lines = Vector(
-      s"# stitch lab: ${room.name}",
+    Vector(
+      s"## ${run.label}",
       "",
-      s"model $model; horizon ${tuning.horizon}, recent ${tuning.recent}, lexical " +
-        s"${tuning.lexical}, followsAt ${Probability.value(tuning.followsAt)}",
-      s"calls: $calls (cached $cached); spent ${Cost.cents(spent)}",
+      s"calls: ${run.calls} (cached ${run.cached}); spent ${Cost.cents(run.spent)}",
       s"openings: ${score.openings}, skipped at the cap ${score.skipped}",
       "",
       s"- right: ${rate(score.right)}",
@@ -59,7 +72,7 @@ private[report] object RoomLines {
       s"- wrong follows: ${score.wrongFollows.size}" +
         (if (score.wrongFollows.isEmpty) "" else score.wrongFollows.mkString(" (", ", ", ")")),
       "",
-      "## confusion",
+      "### confusion",
       "",
       "| truth | got | n |",
       "|---|---|---|"
@@ -67,7 +80,7 @@ private[report] object RoomLines {
       s"| ${if (follows) "follows" else "begins"} | ${got.label} | $n |"
     } ++ Vector(
       "",
-      s"## bursts (same author, at most ${Room.BurstGap.toSeconds} s)",
+      s"### bursts (same author, at most ${Room.BurstGap.toSeconds} s)",
       "",
       s"${b.size} bursts: the rule (follow the previous) right ${b.count(_.continues)}, Jev right " +
         s"${b.count(_.right)}, Jev agrees with the rule ${b.count(_.agrees)}",
@@ -78,7 +91,7 @@ private[report] object RoomLines {
       s"| ${x.id} | ${x.previous} | ${x.gapSeconds} | ${x.continues} | ${x.right} | ${x.agrees} |"
     ) ++ Vector(
       "",
-      "## strands",
+      "### strands",
       "",
       "split topics: " +
         (if (score.split.isEmpty) "none"
@@ -87,7 +100,7 @@ private[report] object RoomLines {
         (if (score.mixed.isEmpty) "none"
          else score.mixed.map(m => s"${m._1} (${m._2.mkString(", ")})").mkString("; ")),
       "",
-      "## openings (the room's own synthetic text)",
+      "### openings (the room's own synthetic text)",
       "",
       "| ok | opening | who | topic | should | got | offered | text |",
       "|---|---|---|---|---|---|---|---|"
@@ -103,6 +116,5 @@ private[report] object RoomLines {
           s"${p.offered.map(offered).mkString(", ")} | $text |"
       }
     )
-    lines.mkString("", "\n", "\n")
   }
 }

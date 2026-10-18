@@ -94,7 +94,7 @@ import grit.eval.harness.reply.{
   TurnVariant,
   WindowOnly
 }
-import grit.eval.harness.report.{CaseJudged, Report, Scored, Varied}
+import grit.eval.harness.report.{CaseJudged, LabRun, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Churn,
@@ -911,13 +911,15 @@ object Main {
     }
 
   /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
-    * [--follows-at <p>] [--lexical <n>] [--recent <n>]`: the room written at `<file>`
-    * ([[Room.read]], named for its file less `.json`) placed by the stitch lab ([[StitchLab.run]])
-    * in the database at `<jdbc>`, which must be `grit_eval_lab` and hold nothing of the room,
-    * through an engine opened on it for the purpose; under shipped tuning but for the knobs
-    * named; Jev asked through the cache at `<dir>` within `--spend` USD. Scored
-    * ([[RoomScore.of]]) and written to `<out>/lab-stitch-<room>.md` ([[Report.room]]); printed
-    * but for its openings' rows, which hold the room's text. Jev's key and the database's login
+    * [--follows-at <p>] [--lexical <n>] [--recent <n>] [--repeats <n>]`: the room written at
+    * `<file>` ([[Room.read]], named for its file less `.json`) placed by the stitch lab
+    * ([[StitchLab.run]]) `--repeats` times (1 when not given), repeat `r` as Jev's repeat `r`,
+    * each in a channel of its own (`<channel>-r<r>`), in the database at `<jdbc>`, which must
+    * be `grit_eval_lab` and hold nothing of the room, through an engine opened on it for the
+    * purpose; under shipped tuning but for the knobs named; Jev asked through the cache at
+    * `<dir>` within `--spend` USD over all the runs. Each run scored ([[RoomScore.of]]) and all
+    * written to `<out>/lab-stitch-<room>.md` ([[Report.lab]]); printed up to the first run's
+    * section, before any of the room's text. Jev's key and the database's login
     * come from the environment over `GRIT_ENV_FILE` (`.env` when unset); each call is timed by
     * `clock`.
     */
@@ -945,39 +947,54 @@ object Main {
         )
       lexical <- f.get("lexical").fold(Right(StitchTuning.Default.lexical))(count("lexical"))
       recent <- f.get("recent").fold(Right(StitchTuning.Default.recent))(count("recent"))
+      repeats <- f.get("repeats").fold(Right(1))(count("repeats"))
       tuning = StitchTuning.Default.copy(followsAt = followsAt, lexical = lexical, recent = recent)
       env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
       jev <- JevConfig.fromEnv(env).left.map(_.message)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       budget <- Budget.of(cap, BigDecimal(0)).left.map(refused)
-      lab <- withEngine(config, clock)(engine =>
-        StitchLab.run(
-          room,
-          engine,
-          JevClassifier(jev),
-          jev.model,
-          Cache.at[Vector[Weights]](cacheDir),
-          budget,
-          tuning,
-          clock
-        )
-      )
-      score = RoomScore.of(room, lab.placings, lab.strands)
-      report = Report.room(
-        room,
-        lab.placings,
-        score,
-        jev.model,
-        tuning,
-        lab.rows.size,
-        lab.rows.count(_.cached),
-        lab.budget.spent
-      )
+      runs <- withEngine(config, clock) { engine =>
+        val classifier = JevClassifier(jev)
+        val cache = Cache.at[Vector[Weights]](cacheDir)
+        (0 until repeats).foldLeft[Either[String, (Vector[LabRun], Budget)]](
+          Right((Vector.empty, budget))
+        ) { (acc: Either[String, (Vector[LabRun], Budget)], r: Int) =>
+          acc.flatMap { (done: Vector[LabRun], left: Budget) =>
+            StitchLab
+              .run(
+                room,
+                engine,
+                classifier,
+                jev.model,
+                cache,
+                left,
+                tuning,
+                clock,
+                r,
+                s"${room.channel}-r$r"
+              )
+              .map { lab =>
+                val run = LabRun(
+                  s"repeat $r",
+                  lab.placings,
+                  RoomScore.of(room, lab.placings, lab.strands),
+                  lab.rows.size,
+                  lab.rows.count(_.cached),
+                  lab.budget.spent - left.spent
+                )
+                (done :+ run, lab.budget)
+              }
+          }
+        }
+      }
+      report = Report.lab(room, jev.model, tuning, runs._1)
       _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
       file = out.resolve(s"lab-stitch-${room.name}.md")
       _ <- write(file, report)
     } yield {
-      report.linesIterator.takeWhile(!_.startsWith("## openings")).foreach(println)
+      report.linesIterator
+        .takeWhile(l => !runs._1.exists(r => l == s"## ${r.label}"))
+        .foreach(println)
       println(s"report: $file")
     }
 
