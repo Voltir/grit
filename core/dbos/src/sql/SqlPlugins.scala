@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.ResultSet
 import java.time.Instant
 
-import scala.util.Using
-
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.plugin.{CacheDocs, PluginCursors, PluginDocs}
@@ -91,45 +89,38 @@ final class SqlPluginCursors(tombstones: Tombstones) extends PluginCursors {
   def start(plugin: PluginName, version: Int, at: Instant)(using
       tx: Tx^
   ): Either[StoreError, CloseOrdinal] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    val stored = SqlStatements.attempt {
-      Using.resource(
-        conn.prepareStatement(
-          "SELECT version, ordinal FROM grit.plugin_cursors WHERE plugin = ? FOR UPDATE"
-        )
-      ) { ps =>
-        ps.setString(1, PluginName.value(plugin))
-        Using.resource(ps.executeQuery()) { rs =>
-          if (rs.next()) Some((rs.getInt("version"), rs.getLong("ordinal"))) else None
-        }
-      }
-    }
-    stored.flatMap {
-      case Some((v, ordinal)) if v == version =>
-        CloseOrdinal
-          .of(ordinal)
-          .toRight(StoreError.Invalid(s"plugin cursor ${PluginName.value(plugin)}: $ordinal"))
-      case Some(_) =>
-        for {
-          _ <- update(
-            """UPDATE grit.plugin_cursors SET version = ?, ordinal = ?, generation = generation + 1
+    SqlStatements
+      .one(
+        "SELECT version, ordinal FROM grit.plugin_cursors WHERE plugin = ? FOR UPDATE"
+      )(_.setString(1, PluginName.value(plugin)))(rs =>
+        (rs.getInt("version"), rs.getLong("ordinal"))
+      )
+      .flatMap {
+        case Some((v, ordinal)) if v == version =>
+          CloseOrdinal
+            .of(ordinal)
+            .toRight(StoreError.Invalid(s"plugin cursor ${PluginName.value(plugin)}: $ordinal"))
+        case Some(_) =>
+          for {
+            _ <- update(
+              """UPDATE grit.plugin_cursors SET version = ?, ordinal = ?, generation = generation + 1
               | WHERE plugin = ?""".stripMargin
+            ) { ps =>
+              ps.setInt(1, version)
+              ps.setLong(2, CloseOrdinal.value(CloseOrdinal.Start))
+              ps.setString(3, PluginName.value(plugin))
+            }
+            _ <- tombstones.write(Target.Restarted(plugin), at)
+          } yield CloseOrdinal.Start
+        case None =>
+          update(
+            "INSERT INTO grit.plugin_cursors (plugin, version, ordinal, generation) VALUES (?, ?, ?, 1)"
           ) { ps =>
-            ps.setInt(1, version)
-            ps.setLong(2, CloseOrdinal.value(CloseOrdinal.Start))
-            ps.setString(3, PluginName.value(plugin))
-          }
-          _ <- tombstones.write(Target.Restarted(plugin), at)
-        } yield CloseOrdinal.Start
-      case None =>
-        update(
-          "INSERT INTO grit.plugin_cursors (plugin, version, ordinal, generation) VALUES (?, ?, ?, 1)"
-        ) { ps =>
-          ps.setString(1, PluginName.value(plugin))
-          ps.setInt(2, version)
-          ps.setLong(3, CloseOrdinal.value(CloseOrdinal.Start))
-        }.map(_ => CloseOrdinal.Start)
-    }
+            ps.setString(1, PluginName.value(plugin))
+            ps.setInt(2, version)
+            ps.setLong(3, CloseOrdinal.value(CloseOrdinal.Start))
+          }.map(_ => CloseOrdinal.Start)
+      }
   }
 
   def advance(plugin: PluginName, version: Int, to: CloseOrdinal)(using
@@ -144,31 +135,12 @@ final class SqlPluginCursors(tombstones: Tombstones) extends PluginCursors {
       ps.setLong(3, CloseOrdinal.value(to))
     }.map(_ => ())
 
-  def stored()(using tx: Tx^): Either[StoreError, Vector[(PluginName, Int)]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+  def stored()(using tx: Tx^): Either[StoreError, Vector[(PluginName, Int)]] =
     SqlStatements
-      .attempt {
-        Using.resource(
-          conn.prepareStatement(
-            "SELECT plugin, version FROM grit.plugin_cursors ORDER BY plugin COLLATE \"C\""
-          )
-        ) { ps =>
-          Using.resource(ps.executeQuery()) { rs =>
-            val rows = Vector.newBuilder[(String, Int)]
-            while (rs.next()) rows += ((rs.getString("plugin"), rs.getInt("version")))
-            rows.result()
-          }
-        }
-      }
-      .flatMap(rows =>
-        rows.foldLeft[Either[StoreError, Vector[(PluginName, Int)]]](Right(Vector.empty)) {
-          case (acc, (p, v)) =>
-            acc.flatMap(done =>
-              PluginName.of(p).map(n => done :+ (n, v)).left.map(StoreError.Invalid(_))
-            )
-        }
-      )
-  }
+      .many("SELECT plugin, version FROM grit.plugin_cursors ORDER BY plugin COLLATE \"C\"")(_ =>
+        ()
+      )(rs => PluginName.of(rs.getString("plugin")).map(_ -> rs.getInt("version")))
+      .flatMap(SqlStatements.valid)
 
   def forgetPosted(order: CloseOrdinal)(using tx: Tx^): Either[StoreError, Unit] =
     update("DELETE FROM grit.plugin_docs WHERE source = ?")(

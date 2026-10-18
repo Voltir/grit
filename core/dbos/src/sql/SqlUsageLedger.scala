@@ -31,23 +31,15 @@ final class SqlUsageLedger extends UsageLedger, Spending {
     */
   private def spent(where: String)(bind: java.sql.PreparedStatement => Unit)(using
       tx: Tx^
-  ): Either[StoreError, Spend] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    try {
-      Using.resource(
-        conn.prepareStatement(
-          s"SELECT count(*), count(cost_usd), coalesce(sum(cost_usd), 0) FROM grit.usage_ledger WHERE $where"
-        )
-      ) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val _ = rs.next()
-          val (calls, priced, usd) = (rs.getInt(1), rs.getInt(2), BigDecimal(rs.getBigDecimal(3)))
-          Right(Spend(calls, if (priced == calls) Cost.Exact(usd) else Cost.AtLeast(usd)))
-        }
+  ): Either[StoreError, Spend] =
+    SqlStatements
+      .one(
+        s"SELECT count(*), count(cost_usd), coalesce(sum(cost_usd), 0) FROM grit.usage_ledger WHERE $where"
+      )(bind) { rs =>
+        val (calls, priced, usd) = (rs.getInt(1), rs.getInt(2), BigDecimal(rs.getBigDecimal(3)))
+        Spend(calls, if (priced == calls) Cost.Exact(usd) else Cost.AtLeast(usd))
       }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
-  }
+      .map(_.getOrElse(Spend(0, Cost.Exact(BigDecimal(0)))))
 
   def record(
       entry: EntryId,
@@ -95,64 +87,47 @@ final class SqlUsageLedger extends UsageLedger, Spending {
     }
   }
 
-  def of(workflow: WorkflowId)(using tx: Tx^): Either[StoreError, Vector[UsageLedger.Row]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    try {
-      Using.resource(
-        conn.prepareStatement(
-          """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |       estimated_input_tokens, upstream, grade
-            |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
+  def of(workflow: WorkflowId)(using tx: Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
+    SqlStatements
+      .many(
+        """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
+          |       estimated_input_tokens, upstream, grade
+          |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
+      )(_.setString(1, WorkflowId.value(workflow))) { rs =>
+        val word = Option(rs.getString(9))
+        val grade = word.flatMap(w => Grade.values.find(_.word == w))
+        val usage = Usage(
+          Tokens(rs.getLong(3)),
+          Tokens(rs.getLong(4)),
+          Tokens(rs.getLong(5)),
+          Option(rs.getBigDecimal(6)).map(BigDecimal(_))
         )
-      ) { ps =>
-        ps.setString(1, WorkflowId.value(workflow))
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[UsageLedger.Row]
-          var unknown = Option.empty[String]
-          while (rs.next()) {
-            val word = Option(rs.getString(9))
-            val grade = word.flatMap(w => Grade.values.find(_.word == w))
-            if (grade.isEmpty) unknown = unknown.orElse(word)
-            val usage = Usage(
-              Tokens(rs.getLong(3)),
-              Tokens(rs.getLong(4)),
-              Tokens(rs.getLong(5)),
-              Option(rs.getBigDecimal(6)).map(BigDecimal(_))
-            )
-            rows += UsageLedger.Row(
-              EntryId(rs.getString(1)),
-              rs.getString(2),
-              Option(rs.getString(8)),
-              grade,
-              usage,
-              Tokens(rs.getLong(7))
-            )
-          }
-          unknown.fold(Right(rows.result()))(w =>
-            Left(StoreError.Invalid(s"a ledger row's grade is '$w', which names no grade"))
-          )
-        }
+        val row = UsageLedger.Row(
+          EntryId(rs.getString(1)),
+          rs.getString(2),
+          Option(rs.getString(8)),
+          grade,
+          usage,
+          Tokens(rs.getLong(7))
+        )
+        word
+          .filter(_ => grade.isEmpty)
+          .map(w => s"a ledger row's grade is '$w', which names no grade")
+          .toLeft(row)
       }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
-  }
+      .flatMap(SqlStatements.valid)
 
   def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
       tx: Tx^
-  ): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    try {
-      Using.resource(
-        conn.prepareStatement(
-          """DELETE FROM grit.usage_ledger
-            | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
-        )
+  ): Either[StoreError, Unit] =
+    SqlStatements
+      .update(
+        """DELETE FROM grit.usage_ledger
+          | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
       ) { ps =>
         ps.setString(1, ConversationId.value(conversation))
         ps.setLong(2, TurnSeq.value(from))
         ps.setLong(3, TurnSeq.value(to))
-        ps.executeUpdate()
       }
-      Right(())
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
-  }
+      .map(_ => ())
 }

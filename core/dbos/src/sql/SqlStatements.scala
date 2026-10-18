@@ -40,6 +40,12 @@ private[dbos] object SqlStatements {
   ): Either[StoreError, Option[A]] =
     many(sql)(bind)(read).map(_.headOption)
 
+  /** Every row of `found`, or the first one's `Left` as [[StoreError.Invalid]]. */
+  def valid[A](found: Vector[Either[String, A]]): Either[StoreError, Vector[A]] =
+    found.foldLeft[Either[StoreError, Vector[A]]](Right(Vector.empty)) { (acc, row) =>
+      acc.flatMap(done => row.map(done :+ _).left.map(StoreError.Invalid(_)))
+    }
+
   /** The number of rows `sql`, bound by `bind`, changed; or the database's error. */
   def update(sql: String)(bind: PreparedStatement => Unit)(using
       tx: Tx^

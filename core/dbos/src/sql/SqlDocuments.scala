@@ -3,8 +3,6 @@ package grit.dbos.sql
 import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
-import scala.util.Using
-
 import grit.core.document.{
   DocLabel,
   DocText,
@@ -273,17 +271,7 @@ private[sql] object SqlDocuments {
         .flatMap(last => Following.of(rs.getLong("followed"), last.toInstant))
     )
 
-  def update(sql: String)(bind: PreparedStatement => Unit)(using
-      tx: Tx^
-  ): Either[StoreError, Int] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlStatements.attempt {
-      Using.resource(conn.prepareStatement(sql)) { ps =>
-        bind(ps)
-        ps.executeUpdate()
-      }
-    }
-  }
+  export SqlStatements.update
 
   /** As [[rows]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
     * parameters are set first, to the transaction's, then `bind`'s.
@@ -292,36 +280,16 @@ private[sql] object SqlDocuments {
       sql: String
   )(bind: PreparedStatement => Unit)(read: ResultSet => Either[String, A])(using
       tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val clearance = Tx.clearance(tx)
-    rows(sql) { ps =>
-      SqlClearance.bind(ps, 1, clearance)
-      bind(ps)
-    }(read)
-  }
+  ): Either[StoreError, Vector[A]] =
+    SqlStatements.cleared(sql)(bind)(read).flatMap(SqlStatements.valid)
 
   /** What `sql`, its parameters set by `bind`, selects, each row read by `read`; a row it
     * cannot read is `Invalid`.
     */
   def rows[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => Either[String, A])(
       using tx: Tx^
-  ): Either[StoreError, Vector[A]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlStatements
-      .attempt {
-        Using.resource(conn.prepareStatement(sql)) { ps =>
-          bind(ps)
-          Using.resource(ps.executeQuery()) { rs =>
-            val found = Vector.newBuilder[Either[String, A]]
-            while (rs.next()) found += read(rs)
-            found.result()
-          }
-        }
-      }
-      .flatMap(_.foldLeft[Either[StoreError, Vector[A]]](Right(Vector.empty)) { (acc, row) =>
-        acc.flatMap(done => row.map(done :+ _).left.map(StoreError.Invalid(_)))
-      })
-  }
+  ): Either[StoreError, Vector[A]] =
+    SqlStatements.many(sql)(bind)(read).flatMap(SqlStatements.valid)
 
   /** One plugin's current documents, as it reads them. */
   class Shelf(plugin: PluginName) extends DocumentShelf {
