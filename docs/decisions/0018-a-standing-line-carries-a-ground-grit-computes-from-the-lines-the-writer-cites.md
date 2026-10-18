@@ -47,6 +47,6 @@ the person's word and answers "by person" can still over-ground an item; so can 
 but empty result cited "by tool". Citations alone, without the answer, graded most unconfirmed
 claims as confirmed. Labels are grit's structure, not text: a message that forges a label is
 still one person or tool line, so forgery never raises a ground above what the period's real
-lines offer. Open lines and topics carry no ground; upgrading on a touch, and evicting
+lines offer. Open lines and agenda lines carry no ground; upgrading on a touch, and evicting
 `Claimed` first, are deferred. Enforced by the types (`Line.of` refuses a Standing line without
 a ground, or another with one) and by `ClosingTests` and `ClosingSummaryTests`.

@@ -11,7 +11,7 @@ that are expected to be replaced. The choices:
   same origin, was turned down: the place (a thread, a session) would then have no row of its
   own to carry locality and labels.
 - **What the next period starts from.** The last few per-period summaries were run first: an
-  item left open dropped out of view while still open, topic state was lost with the raw
+  item left open dropped out of view while still open, agenda state was lost with the raw
   entries, and a summary of summaries compounded their loss. A cumulative summary rewritten
   at each close compounds it faster; tiered rollups re-summarise at every tier.
 - **What derived data is built from.** The raw log, each consumer able to hold back deletion
@@ -26,7 +26,7 @@ Decision:
   next period, which starts from the previous closing entry.
 - **A closing entry has flows and a balance.** The *flows* are what happened in its own
   period. The *balance* is the conversation's state after it: open items, standing decisions
-  and topics, as keyed lines, each recording the period that added it and the last that
+  and the agenda, as keyed lines, each recording the period that added it and the last that
   touched it.
 - **The balance changes only by edits.** The closing writer sees the previous balance as
   already known, proposes adds, resolves, drops and touches, and never rewrites a line. A line
@@ -59,7 +59,7 @@ heard period that earned nothing closes the same way (`CloseReason.Unearned`, AD
 
 Consequences:
 
-- An open item stays in view until it is resolved or evicted, and topic state outlives the
+- An open item stays in view until it is resolved or evicted, and agenda state outlives the
   purge. A carried line reads the same in its fortieth period as in its first.
 - Storage is bounded: close rate × window × (cap + flows), plus one closing per live
   conversation. Only open periods and kept closings need migrating.

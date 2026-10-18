@@ -26,7 +26,7 @@ In dependency order:
   store has it, so replies to any turn appear, recovered ones included (ADR 0002). It paints at
   once, while the engine opens. `ChatHost` is its engine side: it opens the engine off the
   screen's thread, then polls the conversation's entries and each open turn's status. The
-  panel's tabs (ctrl-t, or a click on a pill) show the turn, the session so far, and its topics.
+  panel's tabs (ctrl-t, or a click on a pill) show the turn, the session so far, and its agenda.
   `Commands` is the one table of slash commands: what the palette (`/` in an empty prompt, or
   ctrl-p) lists, what `/help` describes, and what a submitted `/` draft runs. Such a draft never
   reaches the model; one starting `//` does, one slash taken off. A `/set` of a lifecycle

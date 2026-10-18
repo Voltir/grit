@@ -125,7 +125,7 @@ in for. The `test-janitor` agent reviews test files against these rules.
 ## Build and format
 
 Build, test and gate with `scripts/check`: a suite or module while iterating
-(`scripts/check grit.core.topic.TopicsTests`), bare once at a commit; `./mill grit.<module>.compile`
+(`scripts/check grit.core.agenda.AgendaTests`), bare once at a commit; `./mill grit.<module>.compile`
 for whether it type-checks; format with `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll
 __.sources`. Everything else, and the procedure: the `grit-test-cycle` and `grit-local-db` skills.
 

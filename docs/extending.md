@@ -44,7 +44,7 @@ shipped implementations, by the kit's enums.
 | `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
-| `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
+| `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Placer` chooses |
 | `ContextAssembler` (`grit.core.context`), `TokenEstimator` (`grit.core.provider`) | `LinearAssembler`, `RetrievalAssembler`, `CharEstimate` | no: the kit's `Assembly` chooses; the assemblers are core (`core/assembly`), so a new one is a change to core |
 | `Workspace`, `Edits`, `Shell`, `Instructions` (`grit.core.host`) | `grit.host`'s `Local*` | no: the kit and `grit.app` use `grit.host` |
 

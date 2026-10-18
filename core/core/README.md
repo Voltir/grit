@@ -37,13 +37,14 @@ In dependency order, each with the core packages it imports:
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`
 - **`schema`**: the JSON Schemas a reply is held to, in the subset every provider's strict mode
   accepts. ← `model`
-- **`topic`**: a conversation's topics as recorded events and the pure fold over them. ← `id`
+- **`agenda`**: a conversation's agenda (what it is about, item by item) as recorded events and
+  the pure fold over them. ← `id`
 - **`period`**: a conversation's time as periods that close (ADRs 0011, 0012, 0018): the one
   definition of each deadline, and the closing a closed period leaves. ← `id`
 - **`retention`**: what grit deletes, and when (ADR 0014). ← `id`, `period`
 - **`store`**: what is kept, and the transaction it is kept under: `Tx` is opened for a subject,
   at the clearance it resolves to (ADRs 0030, 0031); the stores, each a trait `grit.dbos`
-  implements. ← `id`, `place`, `identity`, `visibility`, `message`, `topic`, `model`, `period`,
+  implements. ← `id`, `place`, `identity`, `visibility`, `message`, `agenda`, `model`, `period`,
   `retention`, `prompt`
 - **`route`**: which of a role's pairs a call is made with (ADR 0031): the pins cleared for what
   a transaction knows, the pin a wanted grade picks among them, the narrowing to a day's ceiling
