@@ -359,15 +359,17 @@ object AsOf {
     ): Either[StoreError, Vector[Said]] =
       under.openings(conversations).map(_.filter(s => before(s.entry.createdAt, at)))
     def links(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Link]] =
-      under
-        .links(conversations)
-        .flatMap(links =>
-          each(links)(l =>
-            this.conversations
-              .get(l.conversation)
-              .map(_.filter(c => before(c.createdAt, at)).map(_ => l))
-          ).map(_.flatten)
-        )
+      under.links(conversations).flatMap(begun)
+    def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]] =
+      under.touched(from, earlier(until)).flatMap(begun)
+
+    /** The `links` whose follower was begun before the instant. */
+    private def begun(links: Vector[Link])(using Tx^): Either[StoreError, Vector[Link]] =
+      each(links)(l =>
+        conversations
+          .get(l.conversation)
+          .map(_.filter(c => before(c.createdAt, at)).map(_ => l))
+      ).map(_.flatten)
 
     private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
   }

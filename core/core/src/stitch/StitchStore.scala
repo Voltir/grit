@@ -46,4 +46,10 @@ trait StitchStore {
 
   /** Every link begun by, or naming as its root, any of `conversations`. */
   def links(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Link]]
+
+  /** Every link whose conversation, or whose root, had a message said from `from` until before
+    * `until` that its transaction reads, each once, oldest placed first. "Said" as [[said]]
+    * reads it: people's messages, grit's replies and posts.
+    */
+  def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]]
 }

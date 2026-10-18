@@ -145,6 +145,25 @@ final class SqlStitchStore extends StitchStore {
         ps.setString(2, ids(conversations))
       }(rs => Link(ConversationId(rs.getString(1)), ConversationId(rs.getString(2))))
 
+  def touched(from: Instant, until: Instant)(using tx: Tx^): Either[StoreError, Vector[Link]] =
+    cleared(
+      s"""WITH ${SqlClearance.With},
+         |spoken AS (
+         |  SELECT DISTINCT e.conversation_id
+         |    FROM grit.entries e
+         |   WHERE e.created_at >= ? AND e.created_at < ?
+         |     AND $Spoken AND ${SqlClearance.entry("e")}
+         |)
+         |SELECT s.conversation_id, s.root FROM grit.stitches s
+         | WHERE s.kind = 'follows'
+         |   AND (s.conversation_id IN (SELECT conversation_id FROM spoken)
+         |        OR s.root IN (SELECT conversation_id FROM spoken))
+         | ORDER BY s.at, s.entry_id""".stripMargin
+    ) { ps =>
+      ps.setObject(SqlClearance.Params + 1, from.atOffset(ZoneOffset.UTC))
+      ps.setObject(SqlClearance.Params + 2, until.atOffset(ZoneOffset.UTC))
+    }(rs => Link(ConversationId(rs.getString(1)), ConversationId(rs.getString(2))))
+
 }
 
 private object SqlStitchStore {

@@ -183,6 +183,29 @@ abstract class StitchContract extends TestSuite {
       transaction(stitches.links(Vector(c))) ==> Right(Vector.empty)
     }
 
+    test("touched: a link whose follower or root had a message in range, not one outside it") {
+      val root = thread("touched", "1.0")
+      val b = thread("touched", "2.0")
+      val c = thread("touched", "3.0")
+      val s = thread("touched", "4.0")
+      val d = thread("touched", "5.0")
+      val bFirst = say(b, Payload.Heard("the deploy?"), 20)
+      say(root, Payload.Heard("the deploy is stuck"), 10)
+      val cFirst = say(c, Payload.Heard("still stuck?"), 30)
+      say(s, Payload.Heard("lunch at noon"), 40)
+      val dFirst = say(d, Payload.Heard("noon works"), 50)
+      right(transaction(stitches.record(bFirst.id, follows(root), At)))
+      right(transaction(stitches.record(cFirst.id, follows(root), At.plusSeconds(1))))
+      right(transaction(stitches.record(dFirst.id, follows(s), At.plusSeconds(2))))
+      say(c, Payload.Heard("yes, still"), 200)
+      say(s, Payload.Heard("moved to one"), 250)
+      say(b, Payload.Heard("fixed now"), 300)
+      transaction(stitches.touched(At.plusSeconds(100), At.plusSeconds(300))) ==>
+        Right(Vector(Link(c, root), Link(d, s)))
+      transaction(stitches.touched(At.plusSeconds(100), At.plusSeconds(301))) ==>
+        Right(Vector(Link(b, root), Link(c, root), Link(d, s)))
+    }
+
     test("a placement goes with its root entry: a purged one is neither kept nor a link") {
       val root = thread("purged", "1.0")
       val b = thread("purged", "2.0")

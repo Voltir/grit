@@ -277,6 +277,8 @@ object PoolReadTests extends TestSuite {
           Tx^
       ): Either[StoreError, Vector[Link]] =
         Left(error)
+      def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]] =
+        Left(error)
     }
   }
 }

@@ -78,6 +78,16 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
         .filter(l => conversations.contains(l.conversation) || conversations.contains(l.root))
     )
 
+  def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]] = {
+    val spoken = inRange(from, until).filter(message).map(_.conversationId).toSet
+    Right(
+      kept
+        .flatMap((_, c, p) => Placed.link(c, p))
+        .filter(l => spoken.contains(l.conversation) || spoken.contains(l.root))
+        .distinct
+    )
+  }
+
   /** The rows whose root entry is still kept. */
   private def kept: Vector[(EntryId, ConversationId, Placed)] =
     rows.filter((id, _, _) => entries.everything.exists(_.id == id))
