@@ -44,8 +44,14 @@ trait Source[L <: caps.Pure] extends caps.Pure {
   /** The pointer of its unit at `path`, the one that unit's card records, or why there is none. */
   def pointer(path: String): Either[String, Pointer]
 
-  /** The most calls a run asking for `perRun` summaries makes. */
-  def calls(perRun: Int): Int
+  /** The most calls a run asking for `perRun` summaries makes: those, [[maxUnits]] listings, its
+    * first listing and [[besides]], at most `Int.MaxValue`.
+    */
+  def calls(perRun: Int): Int =
+    (perRun.toLong + maxUnits + 1 + besides).min(Int.MaxValue.toLong).toInt
+
+  /** The most listings a run makes besides its first and one for each unit. */
+  def besides: Int
 
   /** This run's walk, keeping at `floor`, holding `held`, its cards as [[Held.read]] reads
     * them, asking for at most `perRun` summaries, its slot due at `due`

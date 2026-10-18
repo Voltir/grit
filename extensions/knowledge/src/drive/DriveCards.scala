@@ -71,11 +71,8 @@ final case class DriveCards private (
     */
   def checked(listing: DriveListing): String = listing.entries.flatMap(_.name).mkString("\n")
 
-  /** `perRun` (the most files a run reads), plus [[maxUnits]] (the most folders it lists), plus the shared drives' listing
-    * and its most drives, at most `Int.MaxValue`.
-    */
-  def calls(perRun: Int): Int =
-    (perRun.toLong + maxUnits + 1 + DriveCards.DrivesMost).min(Int.MaxValue.toLong).toInt
+  /** Its most shared drives, each listed after the shared drives' listing, its first. */
+  def besides: Int = DriveCards.DrivesMost
 
   /** [[DriveWalk.start]] at the [[turn]] of `due`. */
   def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[DriveListing] =
