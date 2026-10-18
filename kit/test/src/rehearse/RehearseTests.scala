@@ -3,8 +3,12 @@ package grit.kit.rehearse
 import java.time.Instant
 
 import grit.core.classify.ClearedClassifier
+import grit.core.clock.SetClock
 import grit.core.id.ShadowName
+import grit.core.identity.Account
 import grit.core.spend.DailyCap
+import grit.core.store.Origin
+import grit.dbos.sql.DbConfig
 import grit.kit.deployment.{Deployments, Topics}
 import grit.lifecycle.shadow.{ShadowAsking, ShadowVariant}
 import grit.lifecycle.triage.TriageQuestions
@@ -25,6 +29,35 @@ object RehearseTests extends TestSuite {
     )
 
   val tests = Tests {
+    test(
+      "a dry rehearsal refuses the operator's own database and one its URL does not name, before opening either"
+    ) {
+      def dry(url: String) =
+        Deployments
+          .of()
+          .left
+          .map(_.message)
+          .flatMap(d =>
+            Rehearse.dry(
+              DbConfig(url, "nobody", "none"),
+              d,
+              Situation.Said(Origin.Slack("T1", "C1", "1.0"), Account.Local, "lunch?"),
+              Answers.Stubbed,
+              new SetClock(Instant.EPOCH)
+            )
+          )
+          .map(_ => "rehearsed")
+      (
+        dry(DbConfig.Local.jdbcUrl),
+        dry("jdbc:postgresql://elsewhere:5432/grit?ssl=true"),
+        dry("jdbc:postgresql://localhost:5432/")
+      ) ==> (
+        Left(Rehearse.Mine),
+        Left(Rehearse.Mine),
+        Left(Rehearse.Unnamed)
+      )
+    }
+
     test(
       "each shadow asks the rehearsal's classifier, of the model it names, else its topics' classifier's own: Jev's default or the stub's"
     ) {
