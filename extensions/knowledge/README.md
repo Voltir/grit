@@ -2,7 +2,8 @@
 
 Cards: one short document per unit of a source (a repository's files and directories), each a
 summary with search terms and a pointer (ADR 0028) to the hosted call that reads the unit, so a
-window can show what a source holds without holding it. Names `grit.core` alone: a source is
+window can show what a source holds without holding it. Names `grit.core` and `grit.prose`
+alone: a source is
 read through the MCP tools a deployment offers, never a client of its own. Beside the cards, a
 second plugin keeps what each closed conversation settled as a document
 (`StandingDocuments`, in `plugin`).

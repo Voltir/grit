@@ -353,12 +353,12 @@ object grit extends Module {
   }
 
   /* Knowledge: one card per unit of a source (a repository's files and directories), each a
-   * short summary pointing at the call that reads it. Names only core: GitHub is reached
-   * through the MCP tools a deployment offers, never a client of its own.
+   * short summary pointing at the call that reads it. Names only core and prose: GitHub is
+   * reached through the MCP tools a deployment offers, never a client of its own.
    * extensions/knowledge/README.md. */
   object knowledge extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "knowledge"
-    def moduleDeps = Seq(core)
+    def moduleDeps = Seq(core, prose)
 
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)

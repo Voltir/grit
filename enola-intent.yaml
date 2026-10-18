@@ -13,7 +13,7 @@
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #   6. grit.act names core alone: the turn, a job's moves and the lifecycle's asks share its
 #      phases (ADR 0034)
-#   7. grit.knowledge names grit.core alone, its card package names nothing of GitHub's, its
+#   7. grit.knowledge names grit.core and grit.prose alone, its card package names nothing of GitHub's, its
 #      sync package names no source's package, and a source's package names no other source's
 #      (extensions/knowledge/README.md)
 #
@@ -783,12 +783,12 @@ rules:
     mode: strict
     because: "extensions/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github and Drive's REST client grit.mcp.drive, which a deployment names and they never do"
 
-  - id: knowledge-names-core-alone
+  - id: knowledge-names-core-and-prose
     allow: knowledge-code
-    only: [core-code, knowledge-code]
+    only: [core-code, prose-code, knowledge-code]
     via: imports
     mode: strict
-    because: "extensions/knowledge/README.md: a source is read through the MCP tools a deployment offers, as core's moves call them, never through grit.mcp or a client of its own"
+    because: "extensions/knowledge/README.md: a source is read through the MCP tools a deployment offers, as core's moves call them, never through grit.mcp or a client of its own; a topic's text is prose, which names nothing of grit"
 
   - id: knowledge-github-only-in-github
     allow: knowledge-card
