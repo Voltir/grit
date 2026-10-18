@@ -588,6 +588,26 @@ object QueryTests extends TestSuite {
       assert(!lines.exists(l => l.startsWith("## tests") || l.contains("SampleTests: ")))
     }
 
+    test("show's tests line counts a test naming the symbol only as a type: Shelf in ShelfTests") {
+      val (answer, _) =
+        Query.show(
+          root,
+          FixtureSuitesLayout,
+          Config.empty,
+          Roots.empty(6000),
+          Vector("grit.outline.fixture.typed.Shelf"),
+          0,
+          Set.empty,
+          false,
+          80000
+        )
+      assert(
+        answer.text.linesIterator.filter(_.startsWith("-- tests")).toVector == Vector(
+          "-- tests of Shelf: 1 in 1 suite (nearest: ShelfTests); --tests to list"
+        )
+      )
+    }
+
     test(
       "the nearest suites are those in the symbol's own module first, then those holding the most references"
     ) {

@@ -54,7 +54,9 @@ says what it is and names the `show` and `uses` for it.
 
     scripts/outline family Trait [--member m] [--body] [--max-kb N] [--root DIR]
 
-**uses**: To find who calls or names a definition before changing it. `--in` and `--outside`
+**uses**: To find who calls or names a definition before changing it. A type is named wherever it
+is written: a parent, a parameter's or a result's type, a type argument, a typed pattern; a type the
+compiler inferred is no site. `--in` and `--outside`
 filter by path prefix. `X.apply` (or `X.new`), for a class or enum case with no `apply` in source, finds its
 construction sites: `X(…)` and `new X(…)`. `X.unapply`, for a class or enum case with no `unapply` in source, finds
 its pattern sites: `case X(…)` and `case _: X` (for a trait or a plain class, `case _: X` alone). `uses X` includes

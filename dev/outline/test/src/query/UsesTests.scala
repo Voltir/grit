@@ -540,5 +540,38 @@ object UsesTests extends TestSuite {
         )
       )
     }
+
+    test(
+      "a trait named only in types is used where it is written: a parent, a parameter's type, a type argument and a typed pattern"
+    ) {
+      val (answer, _) =
+        uses("grit.outline.fixture.typed.Shelf", in = Some("dev/outline/fixture/src"))
+      assert(answer.status == Status.Found)
+      val sites = answer.text.linesIterator.map(_.trim).toVector
+      assert(sites.contains("11  final class Numbers extends Shelf[Int] {"))
+      assert(sites.contains("22  def one(s: Shelf[?]): Vector[Shelf[?]] = Vector(s)"))
+      assert(sites.contains("26  case s: Shelf[?] => s.first.isEmpty || s.first.nonEmpty"))
+    }
+
+    test("a type selection is a use of the type it selects: Shelves.Label in Labels.of") {
+      val (answer, _) = uses("grit.outline.fixture.typed.Shelves.Label")
+      assert(answer.status == Status.Found)
+      assert(
+        answer.text.linesIterator
+          .map(_.trim)
+          .contains("35  def of(l: Shelves.Label): Shelves.Label = l")
+      )
+    }
+
+    test("a type parameter written in a member's type is no reference: Shelf's A") {
+      val shelfTasty = Locate.inPackageIn(
+        root,
+        FixtureLayout.classesDirs(root),
+        os.RelPath("dev/outline/fixture/src/typed/Shelf.scala")
+      )
+      val (refs, _, _) = loadedUses(shelfTasty, Loaded.empty)
+      assert(refs.exists(_.target == "grit.outline.fixture.typed.Shelf"))
+      assert(!refs.exists(_.target.endsWith(".A")))
+    }
   }
 }

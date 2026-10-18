@@ -605,7 +605,7 @@ object Read {
                 val path = ref.pos.sourceFile.path
                 // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
                 val line = ref match {
-                  case _: Select => ref.pos.endLine + 1
+                  case _: Select | _: TypeSelect => ref.pos.endLine + 1
                   case _ => ref.pos.startLine + 1
                 }
                 found += Use(
@@ -624,6 +624,9 @@ object Read {
               case d @ (_: DefDef | _: ValDef)
                   if d.symbol.flags.is(Flags.Synthetic) && d.symbol.maybeOwner.isClassDef =>
                 ()
+              // An object's value, `val O: O.type = new O.type()`, is the compiler's: its type names the object where no
+              // source does.
+              case v: ValDef if v.symbol.flags.is(Flags.Module) => ()
               // An object's self, `_: O.type`, is the compiler's: its type names the object where no source does.
               case c @ ClassDef(_, constructor, parents, _, body)
                   if named(c.symbol) && c.symbol.flags.is(Flags.Module) =>
@@ -639,15 +642,22 @@ object Read {
               case ref @ (_: Ident | _: Select) =>
                 record(ref)
                 super.traverseTree(tree)(owner)
+              // A type a person wrote, `X` or `p.X`: a parent, a parameter's or a result's type, a type argument. A type the
+              // compiler inferred is an `Inferred` tree, not one of these, so it is no site; nor is a type parameter.
+              case ref @ (_: TypeIdent | _: TypeSelect) =>
+                if (!ref.symbol.isTypeParam) record(ref)
+                super.traverseTree(tree)(owner)
               case CaseDef(pattern, guard, rhs) =>
                 inPattern = true
                 traverseTree(pattern)(owner)
                 inPattern = false
                 guard.foreach(traverseTree(_)(owner))
                 traverseTree(rhs)(owner)
-              // A typed pattern, `case _: X`, is a pattern site of X, kept as X.unapply's as an extractor's is.
+              // A typed pattern, `case _: X`, is a pattern site of X, kept as X.unapply's as an extractor's is, and names X
+              // as any written type does.
               case TypedOrTest(inner, tpt) if inPattern =>
                 recordAs(tpt, tpt.tpe.typeSymbol, ".unapply")
+                traverseTree(tpt)(owner)
                 traverseTree(inner)(owner)
               case _ => super.traverseTree(tree)(owner)
             }
