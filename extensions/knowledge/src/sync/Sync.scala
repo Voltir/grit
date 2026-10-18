@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.annotation.tailrec
 
-import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, MoveName, Posed}
+import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}

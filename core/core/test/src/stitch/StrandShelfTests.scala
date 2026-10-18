@@ -1,23 +1,7 @@
 package grit.core.stitch
 
-import java.time.Instant
-
-import grit.core.id.{ConversationId, EntryId}
-import grit.core.identity.TestAccounts
-import grit.core.message.{Tokens, Usage}
-import grit.core.period.Probability
-import grit.core.store.{
-  Conversation,
-  Entry,
-  InMemoryConversationStore,
-  InMemoryEntryStore,
-  InMemoryPeriodStore,
-  InMemoryPrincipals,
-  Origin,
-  Payload,
-  StoreError,
-  Tx
-}
+import grit.core.id.EntryId
+import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, Recorded, TestLabels}
 import grit.dbos.sql.TestTx
 
