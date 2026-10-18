@@ -13,9 +13,8 @@ object Claimed {
     * none when it is unset or blank. Why not, naming the variable and the first domain refused.
     */
   def fromEnv(env: Map[String, String]): Either[String, Set[Domain]] =
-    env
-      .get(DomainsVar)
-      .fold(Vector.empty[String])(_.split(",").toVector.map(_.trim).filter(_.nonEmpty))
+    Listed
+      .csv(env, DomainsVar)
       .foldLeft[Either[String, Set[Domain]]](Right(Set.empty)) { (so, raw) =>
         so.flatMap(domains => Domain.of(raw).map(domains + _).left.map(why => s"$DomainsVar: $why"))
       }

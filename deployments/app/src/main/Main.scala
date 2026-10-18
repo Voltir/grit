@@ -3,6 +3,7 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
+import grit.app.config.Listed.csv
 import grit.app.config.{Budgets, Claimed, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
@@ -565,10 +566,7 @@ object Main {
       visibility: Visibility,
       zone: java.time.ZoneId
   ): Either[String, Vector[Plugin]] =
-    env
-      .get(PluginsVar)
-      .map(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).distinct)
-      .getOrElse(Vector.empty)
+    csv(env, PluginsVar).distinct
       .foldLeft[Either[String, Vector[Plugin]]](Right(Vector.empty)) { (acc, raw) =>
         acc.flatMap { done =>
           PluginName.of(raw).left.map(why => s"$PluginsVar: $why").flatMap { name =>
@@ -682,9 +680,7 @@ object Main {
       daily: SyncSchedule
   ): Either[String, CardSource] =
     for {
-      written <- env
-        .get(DriveCardLabelsVar)
-        .map(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+      written <- Some(csv(env, DriveCardLabelsVar))
         .filter(_.nonEmpty)
         .toRight(
           s"knowledge reads Drive at the labels $DriveCardLabelsVar names, and it is unset or blank"
@@ -853,10 +849,7 @@ object Main {
     * naming the variable, at the first that is not a Slack user's id (`U…` or `W…`).
     */
   private[main] def admins(env: Map[String, String]): Either[String, Vector[UserId]] =
-    env
-      .get(AdminsVar)
-      .toVector
-      .flatMap(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+    csv(env, AdminsVar)
       .foldLeft[Either[String, Vector[UserId]]](Right(Vector.empty)) { (acc, raw) =>
         acc.flatMap(ids =>
           Either.cond(
@@ -938,9 +931,7 @@ object Main {
   private[main] def caps(env: Map[String, String]): Either[String, Vector[Cap]] =
     for {
       github <- Service.of("github")
-      members <- env
-        .get(GithubMemberReposVar)
-        .fold(Vector.empty[String])(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+      members <- csv(env, GithubMemberReposVar)
         .foldLeft[Either[String, Vector[Place]]](Right(Vector.empty))((kept, name) =>
           kept.flatMap(ps => GitHubItems.repository(github, name).map(ps :+ _))
         )
@@ -1040,9 +1031,8 @@ object Main {
     * takes or the list names no tool.
     */
   private[main] def githubServer(env: Map[String, String]): Either[String, McpServer] = {
-    val allow = env
-      .get(GithubToolsVar)
-      .fold(GithubTools)(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).toSet)
+    val allow =
+      if (env.contains(GithubToolsVar)) csv(env, GithubToolsVar).toSet else GithubTools
     for {
       _ <- Either.cond(allow.nonEmpty, (), s"$GithubToolsVar names no tool")
       github <- Service.of("github")
@@ -1147,9 +1137,7 @@ object Main {
           .flatMap(Domain.of)
           .left
           .map(why => s"$DriveDomainVar: $why")
-        writers <- env
-          .get(DriveWritersVar)
-          .fold(Vector.empty[String])(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+        writers <- csv(env, DriveWritersVar)
           .foldLeft[Either[String, Vector[Email]]](Right(Vector.empty))((kept, w) =>
             kept.flatMap(ws => Email.of(w).map(ws :+ _))
           )
