@@ -107,9 +107,21 @@ object PluginChoiceTests extends TestSuite {
       )
     }
 
+    test("GRIT_PLUGINS: standing turns on each settled line's document, beside digest or alone") {
+      (
+        names(Map("GRIT_PLUGINS" -> "standing")),
+        names(Map("GRIT_PLUGINS" -> "digest,standing"))
+      ) ==> (
+        Right(Vector(("StandingDocuments", "standing"))),
+        Right(Vector(("Digest", "digest"), ("StandingDocuments", "standing")))
+      )
+    }
+
     test("a plugin grit does not have, or a name no plugin could have, is refused") {
       choice(Map("GRIT_PLUGINS" -> "digest,wiki")) ==>
-        Left("GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge and strands")
+        Left(
+          "GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge, strands and standing"
+        )
       choice(Map("GRIT_PLUGINS" -> "Digest")) ==> Left(
         "GRIT_PLUGINS: a plugin's name is lowercase letters, digits and dashes, starting with a letter"
       )

@@ -50,7 +50,7 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
-import grit.knowledge.plugin.{CardSource, Knowledge, StrandDocuments}
+import grit.knowledge.plugin.{CardSource, Knowledge, StandingDocuments, StrandDocuments}
 import grit.knowledge.sync.SyncSchedule
 import grit.mcp.client.{Credential, KeyFiles, McpServer}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest, DriveTools}
@@ -105,7 +105,8 @@ import grit.turn.TurnLoop
   * `remind_me`, `reminders` and `cancel_reminder`; with knowledge on, a card of each Markdown
   * file, and of each directory holding one, of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
   * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
-  * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]). When a period is asked about
+  * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]; with standing on, a
+  * document of each Standing line a close settles). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
@@ -559,8 +560,8 @@ object Main {
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
     * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
-    * ([[knowledge]], under `visibility`, its days beginning in `zone`) and `strands`
-    * ([[strands]], likewise).
+    * ([[knowledge]], under `visibility`, its days beginning in `zone`), `strands`
+    * ([[strands]], likewise) and `standing` ([[StandingDocuments]]).
     */
   private[main] def pluginChoice(
       env: Map[String, String],
@@ -584,9 +585,10 @@ object Main {
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
+              case "standing" => Right(done :+ new StandingDocuments(name))
               case other =>
                 Left(
-                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge and strands"
+                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, strands and standing"
                 )
             }
           }
