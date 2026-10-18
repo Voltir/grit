@@ -56,5 +56,20 @@ object RoomFixtures {
 
   val strands: Vector[Vector[String]] = Vector(Vector("m1", "m3"), Vector("m2", "m4"))
 
+  /** [[room]] and [[placings]] with m6 (30, Dev, ci) after them, offered only m3, a later
+    * opening of its topic, and begun.
+    */
+  val later: (Room, Vector[RoomPlacing]) = (
+    roomOf(
+      message("m1", 0, "Ana", Some("ci")),
+      message("m3", 1, "Ana", Some("ci")),
+      message("m2", 10, "Ben", Some("csv")),
+      message("m4", 11, "Ben", Some("lunch")),
+      message("m5", 20, "Dev", Some("csv")),
+      message("m6", 30, "Dev", Some("ci"))
+    ),
+    placings :+ RoomPlacing("m6", RoomPlacing.Made.Begins(0.3), Vector(offer("m3", 0.3)))
+  )
+
   def counts(p: grit.eval.harness.stats.Proportion): (Long, Long) = (p.hits, p.n)
 }

@@ -13,6 +13,14 @@ object RoomScoreTests extends TestSuite {
         ((3L, 5L), (2L, 2L), (2L, 2L), (1L, 2L))
     }
 
+    test(
+      "an opening offered a later opening of its topic, not its first, is a recall hit and a strict miss"
+    ) {
+      val (room, placings) = later
+      val s = RoomScore.of(room, placings, strands, Against.Placings)
+      (counts(s.recall), counts(s.strict)) ==> ((3L, 3L), (2L, 3L))
+    }
+
     test("a follow of another topic is a wrong follow, not a begin, in the confusion") {
       val s = RoomScore.of(room, placings, strands, Against.Placings)
       s.wrongFollows ==> Vector("m4")
