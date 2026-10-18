@@ -50,6 +50,12 @@ object TurnRelevance {
 
     /** `p` read against the pass mark `pass`: passed at it or more, else rejected. */
     def of(p: Probability, pass: Probability): Verdict = if (p >= pass) Passed(p) else Rejected(p)
+
+    /** `answered` read as [[of]] reads it against `pass`; unjudged, with the classifier's failure
+      * as it said it, when there is no answer.
+      */
+    def read(answered: Either[ClassifierError, Probability], pass: Probability): Verdict =
+      answered.fold(e => Unjudged(e.said), of(_, pass))
   }
 
   /** What one call is shown: `{"message": ..., "candidates": [...]}`, the turn's own messages
@@ -93,15 +99,10 @@ object TurnRelevance {
       briefs: Briefs,
       answered: Either[ClassifierError, Answered[Vector[Probability]]]
   ): Vector[(Retrieved, Verdict)] = {
-    val judged: Map[Retrieved, Verdict] = answered match {
-      case Left(error) => briefs.found.map(_._1 -> Verdict.Unjudged(error.said)).toMap
-      case Right(a) =>
-        briefs.found
-          .map(_._1)
-          .zip(a.value)
-          .map((r: Retrieved, p: Probability) => r -> Verdict.of(p, Pass))
-          .toMap
-    }
+    val each: Vector[Either[ClassifierError, Probability]] =
+      answered.fold(e => briefs.found.map(_ => Left(e)), _.value.map(Right(_)))
+    val judged: Map[Retrieved, Verdict] =
+      briefs.found.map(_._1).zip(each).map((r, p) => r -> Verdict.read(p, Pass)).toMap
     batch.map(r => r -> judged.getOrElse(r, Verdict.Unjudged(Gone)))
   }
 

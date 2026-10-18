@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.classify.{Answered, Ask, ClassifierError, StateJson}
+import grit.core.classify.{Ask, StateJson}
 import grit.core.period.Probability
 
 /** Whether a turn's message needs anything recalled before its window is drawn (ADR 0040), the
@@ -46,15 +46,6 @@ object TurnNeeds {
         None
       )
       .map(Probability.clamped)
-
-  /** `answered` read as a verdict: passed at [[Pass]] or more, else rejected; unjudged, with the
-    * classifier's failure as it said it, when there is no answer.
-    */
-  def verdict(answered: Either[ClassifierError, Answered[Probability]]): TurnRelevance.Verdict =
-    answered.fold(
-      e => TurnRelevance.Verdict.Unjudged(e.said),
-      a => TurnRelevance.Verdict.of(a.value, Pass)
-    )
 
   /** Why a turn the gate rejected draws its window with no search: its window's note, after
     * "no query: ".

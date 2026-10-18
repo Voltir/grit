@@ -212,7 +212,7 @@ private[turn] object TurnAssembly {
                       routed,
                       state,
                       TurnNeeds.ask
-                    )((answered, _) => TurnNeeds.verdict(answered))
+                    )((answered, _) => Verdict.read(answered.map(_.value), TurnNeeds.Pass))
                 }
               }
               .fold(e => unjudged(TurnFailure.describe(e)), identity)

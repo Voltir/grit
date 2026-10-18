@@ -2,9 +2,8 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.core.classify.{Answered, ClassifierError, StateJson}
+import grit.core.classify.{ClassifierError, StateJson}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
-import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.stitch.{Said, Strand}
@@ -16,9 +15,6 @@ import utest.*
 object TurnNeedsTests extends TestSuite {
   import TurnRelevance.Verdict
   import TurnOffer.Root
-
-  private def answered(p: Double): Either[ClassifierError, Answered[Probability]] =
-    Right(Answered(Probability.clamped(p), Usage(Tokens(40), Tokens(2), Tokens.Zero, None), "j"))
 
   private def entry(n: Long, payload: Payload): Entry =
     Entry(
@@ -38,9 +34,9 @@ object TurnNeedsTests extends TestSuite {
     ) {
       val at = Probability.value(TurnNeeds.Pass)
       (
-        TurnNeeds.verdict(answered(at)),
-        TurnNeeds.verdict(answered(at - 0.01)),
-        TurnNeeds.verdict(Left(ClassifierError.Unavailable("no service")))
+        Verdict.read(Right(TurnNeeds.Pass), TurnNeeds.Pass),
+        Verdict.read(Right(Probability.clamped(at - 0.01)), TurnNeeds.Pass),
+        Verdict.read(Left(ClassifierError.Unavailable("no service")), TurnNeeds.Pass)
       ) ==> (
         Verdict.Passed(TurnNeeds.Pass),
         Verdict.Rejected(Probability.clamped(at - 0.01)),
