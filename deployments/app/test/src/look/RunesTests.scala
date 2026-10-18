@@ -9,6 +9,8 @@ object RunesTests extends TestSuite {
 
     test("the assembly's steps say they search, sift and record, a batch by its family") {
       Vector(
+        "ask:needs",
+        "ask:needs:record",
         "ask:query",
         "search",
         "ask:relevance-0",
@@ -17,6 +19,8 @@ object RunesTests extends TestSuite {
         "ask:relevance-1:record",
         "assemble"
       ).map(Look.Runes.step) ==> Vector(
+        "ᛟ asking whether to search",
+        "ᛃ recording",
         "ᛟ searching",
         "ᛟ searching",
         "ᛟ sifting what it found",

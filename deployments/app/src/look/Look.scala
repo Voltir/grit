@@ -251,7 +251,8 @@ object Look {
     def futhark(tick: Long): Char = Futhark(math.floorMod(tick, Futhark.length).toInt)
 
     /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
-      * the inheritance, while memory is searched, sifted and assembled; Algiz, the ward, while what a round shows
+      * the inheritance, while it asks whether to search memory, and while memory is searched,
+      * sifted and assembled; Algiz, the ward, while what a round shows
       * is weighed against the tools it offers; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
       * summarised; Tiwaz while a tool runs, or asks you first; Mannaz, you, while it waits for
@@ -260,13 +261,14 @@ object Look {
       */
     def step(name: String): String = Step.family(name).getOrElse(name) match {
       case Step.Classify => "ᛈ placing"
+      case Step.Needs => "ᛟ asking whether to search"
       case Step.Query | Step.Search => "ᛟ searching"
       case Step.Relevance => "ᛟ sifting what it found"
       case Step.Assemble => "ᛟ assembling"
       case Step.Ask => "ᚨ answering"
       case Step.Gate => "ᛉ weighing what it read"
       case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.Record | Step.Append |
-          Step.AppendSummary | Step.QueryRecord | Step.RelevanceRecord =>
+          Step.AppendSummary | Step.NeedsRecord | Step.QueryRecord | Step.RelevanceRecord =>
         "ᛃ recording"
       case Step.Call => s"$Tool using a tool"
       case Step.Approve => s"$Tool asking you"

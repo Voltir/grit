@@ -5,7 +5,7 @@ import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.eval.harness.capture.{Drafted, Ended, Part}
 import grit.eval.harness.stats.Proportion
-import grit.turn.TurnOffer
+import grit.turn.{TurnOffer, TurnRecord}
 
 import utest.*
 
@@ -137,6 +137,16 @@ object StructureTests extends TestSuite {
           Some((2, 1.625, 1.25, 2.0))
         )
       )
+    }
+
+    test(
+      "the needs gate's ledger row is paid for as the gate, apart from relevance and the query"
+    ) {
+      Vector(
+        Some(TurnRecord.Role.Needs),
+        Some(TurnRecord.Role.Relevance(0)),
+        Some(TurnRecord.Role.Query)
+      ).map(Paid.of) ==> Vector(Paid.Needs, Paid.Relevance, Paid.Query)
     }
 
     test("cost per turn by what it paid for, 0 in a turn without it, and unpriced rows counted") {

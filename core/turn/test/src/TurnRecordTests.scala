@@ -219,17 +219,34 @@ object TurnRecordTests extends TestSuite {
       val other = TurnRef(ConversationId("c1"), TurnSeq(4))
       val (mine, theirs) = (WorkflowId.value(turn.workflowId), WorkflowId.value(other.workflowId))
       Vector(
+        s"move:$mine:needs",
         s"move:$mine:query",
         s"move:$mine:relevance-0",
         s"move:$mine:relevance-2",
         s"move:$mine:relevance-x",
-        s"move:$theirs:relevance-0"
+        s"move:$theirs:relevance-0",
+        s"move:$theirs:needs"
       ).map(id => TurnRecord.role(turn, EntryId(id))) ==> Vector(
+        Some(TurnRecord.Role.Needs),
         Some(TurnRecord.Role.Query),
         Some(TurnRecord.Role.Relevance(0)),
         Some(TurnRecord.Role.Relevance(2)),
         None,
+        None,
         None
+      )
+    }
+
+    test(
+      "the needs gate's verdict reads from its step: passed, rejected, or unjudged when it asked nothing; none for a turn that ended before it"
+    ) {
+      Vector("queried", "heard-unneeded", "replied", "uncleared-said").map(name =>
+        TurnRecord.needs(steps(name))
+      ) ==> Vector(
+        Right(Some(TurnRelevance.Verdict.Passed(grit.core.period.Probability.clamped(0.9)))),
+        Right(Some(TurnRelevance.Verdict.Rejected(grit.core.period.Probability.clamped(0.1)))),
+        Right(Some(TurnRelevance.Verdict.Unjudged(TurnNeeds.NothingToSearch))),
+        Right(None)
       )
     }
 

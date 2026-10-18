@@ -231,6 +231,7 @@ object TurnRecord {
         .contains(entry)
     ) Some(Role.Topic)
     else if ((0 +: last.toVector).exists(i => Turn.queryId(turn, i) == entry)) Some(Role.Query)
+    else if (id == s"${moves}needs") Some(Role.Needs)
     else if (id == s"${moves}query") Some(Role.Query)
     else if (id.startsWith(s"${moves}relevance-"))
       id.stripPrefix(s"${moves}relevance-").toIntOption.filter(_ >= 0).map(Role.Relevance(_))
@@ -239,6 +240,9 @@ object TurnRecord {
 
   /** What a model call of a turn was for. */
   enum Role {
+
+    /** The classifier call judging whether the turn's message needs a search ([[TurnNeeds]]). */
+    case Needs
 
     /** Assembly's search query. */
     case Query
@@ -291,12 +295,6 @@ object TurnRecord {
     * not read.
     */
   def retrieval(steps: Vector[StepRecord]): Either[String, Option[Retrieval]] = {
-    def made[A](s: StepRecord)(using grit.core.durable.Journaled[A]): Either[String, A] =
-      s.output
-        .toRight("no output")
-        .flatMap(Judging.made[A](_))
-        .left
-        .map(why => s"${s.name}: $why")
     for {
       queried <- steps.find(_.name == Turn.Step.Query) match {
         case None => Right(None)
@@ -315,12 +313,31 @@ object TurnRecord {
     }
   }
 
+  /** What the `ask:needs` step `steps` recorded: the needs gate's verdict, unjudged when it
+    * asked nothing; `None` when the turn ended before it. `Left` when its output does not read.
+    */
+  def needs(steps: Vector[StepRecord]): Either[String, Option[TurnRelevance.Verdict]] =
+    steps.find(_.name == Turn.Step.Needs) match {
+      case None => Right(None)
+      case Some(s) => made[TurnRelevance.Verdict](s)(using TurnJournal.verdict).map(Some(_))
+    }
+
   /** The document versions the turn's reply or draft counted as followed; `None` when `append`
     * is not recorded, or recorded a failure. `Left` when its output does not read.
     */
   def followed(steps: Vector[StepRecord]): Either[String, Option[Vector[DocumentVersion]]] =
     read[Either[TurnFailure, TurnSteps.Appended]](steps, Turn.Step.Append)
       .map(_.flatMap(_.toOption).map(_.followed))
+
+  /** What a judgment's recorded `ask:{name}` step `s` made; `Left`, naming it, when it does not
+    * read.
+    */
+  private def made[A](s: StepRecord)(using grit.core.durable.Journaled[A]): Either[String, A] =
+    s.output
+      .toRight("no output")
+      .flatMap(Judging.made[A](_))
+      .left
+      .map(why => s"${s.name}: $why")
 
   private def read[A](steps: Vector[StepRecord], name: String)(using
       journal: grit.core.durable.Journaled[A]
