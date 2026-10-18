@@ -103,11 +103,18 @@ object RoomScore {
       agrees: Boolean
   )
 
-  /** `placings` of `room`'s openings, in the order placed, against its truth; `strands`, each
-    * strand of two openings or more by its openings' ids, its root first, as they stood after
-    * the last placing. A placing of no opening of `room` is ignored.
+  /** `placings` of `room`'s openings, in the order placed `against` the strands named, against
+    * its truth; `strands`, each strand of two openings or more by its openings' ids, its root
+    * first, as they stood after the last placing. The strand an opening ended in, which a
+    * burst's agreement reads, is its placings' chain under [[Against.Placings]], its truth's
+    * under [[Against.Truth]]. A placing of no opening of `room` is ignored.
     */
-  def of(room: Room, placings: Vector[RoomPlacing], strands: Vector[Vector[String]]): RoomScore = {
+  def of(
+      room: Room,
+      placings: Vector[RoomPlacing],
+      strands: Vector[Vector[String]],
+      against: Against
+  ): RoomScore = {
     val truths = Room.truth(room).map(t => t.opening.id -> t).toMap
     val topic: Map[String, Option[String]] = room.openings.map(m => m.id -> m.topic).toMap
     def ofTopic(root: String, t: Option[String]): Boolean =
@@ -133,12 +140,17 @@ object RoomScore {
     val follows = placed.filter((_, t) => t.follows.isDefined)
     val offered = follows.filter((p, t) => p.offered.exists(o => ofTopic(o.root, t.opening.topic)))
 
-    // The strand each opening ended in, as placings chained: a follower's root's.
-    val rootOf = placed.foldLeft(Map.empty[String, String]) { case (roots, (p, _)) =>
-      p.made match {
-        case RoomPlacing.Made.Follows(root, _) => roots.updated(p.id, roots.getOrElse(root, root))
-        case _ => roots
-      }
+    // The strand each follower ended in, by its root: as placings chained, or as the truth has it.
+    val rootOf: Map[String, String] = against match {
+      case Against.Placings =>
+        placed.foldLeft(Map.empty[String, String]) { case (roots, (p, _)) =>
+          p.made match {
+            case RoomPlacing.Made.Follows(root, _) =>
+              roots.updated(p.id, roots.getOrElse(root, root))
+            case _ => roots
+          }
+        }
+      case Against.Truth => truths.toVector.flatMap((id, t) => t.follows.map(id -> _)).toMap
     }
     val bursts = placed.flatMap((p, t) =>
       t.burst.map { b =>

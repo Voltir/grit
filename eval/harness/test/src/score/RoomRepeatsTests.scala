@@ -12,7 +12,11 @@ object RoomRepeatsTests extends TestSuite {
       val second = placings.dropRight(1) :+
         RoomPlacing("m5", RoomPlacing.Made.Follows("m2", 0.7), Vector(offer("m2", 0.7)))
       val measures = RoomRepeats.of(
-        Vector(RoomScore.of(room, placings, strands), RoomScore.of(room, second, strands))
+        Vector(
+          RoomScore.of(room, placings, strands, Against.Placings),
+          RoomScore.of(room, second, strands, Against.Placings)
+        ),
+        Against.Placings
       )
       measures.map(m => (m.name, m.count, m.of)).take(5) ==> Vector(
         ("right", Ranged(3.5, 3, 4), Some(Ranged(5, 5, 5))),
@@ -24,7 +28,7 @@ object RoomRepeatsTests extends TestSuite {
     }
 
     test("no repeats have no measures") {
-      RoomRepeats.of(Vector.empty) ==> Vector.empty
+      RoomRepeats.of(Vector.empty, Against.Placings) ==> Vector.empty
     }
   }
 }

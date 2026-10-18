@@ -97,6 +97,7 @@ import grit.eval.harness.reply.{
 import grit.eval.harness.report.{CaseJudged, LabRun, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
+  Against,
   Churn,
   Decision,
   Drafting,
@@ -913,8 +914,9 @@ object Main {
   /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
     * [--follows-at <p>] [--lexical <n>] [--recent <n>] [--repeats <n>]`: the room written at
     * `<file>` ([[Room.read]], named for its file less `.json`) placed by the stitch lab
-    * ([[StitchLab.run]]) `--repeats` times (1 when not given), repeat `r` as Jev's repeat `r`,
-    * each in a channel of its own (`<channel>-r<r>`), in the database at `<jdbc>`, which must
+    * ([[StitchLab.run]]) `--repeats` times (1 when not given) against the strands its placings
+    * make and as often against the truth's ([[Against]]), repeat `r` as Jev's repeat `r`, each
+    * run in a channel of its own, in the database at `<jdbc>`, which must
     * be `grit_eval_lab` and hold nothing of the room, through an engine opened on it for the
     * purpose; under shipped tuning but for the knobs named; Jev asked through the cache at
     * `<dir>` within `--spend` USD over all the runs. Each run scored ([[RoomScore.of]]) and all
@@ -956,9 +958,12 @@ object Main {
       runs <- withEngine(config, clock) { engine =>
         val classifier = JevClassifier(jev)
         val cache = Cache.at[Vector[Weights]](cacheDir)
-        (0 until repeats).foldLeft[Either[String, (Vector[LabRun], Budget)]](
+        val each: Vector[(Against, Int)] =
+          Vector(Against.Placings, Against.Truth).flatMap(a => (0 until repeats).map(a -> _))
+        each.foldLeft[Either[String, (Vector[LabRun], Budget)]](
           Right((Vector.empty, budget))
-        ) { (acc: Either[String, (Vector[LabRun], Budget)], r: Int) =>
+        ) { (acc: Either[String, (Vector[LabRun], Budget)], ar: (Against, Int)) =>
+          val (against, r) = ar
           acc.flatMap { (done: Vector[LabRun], left: Budget) =>
             StitchLab
               .run(
@@ -971,13 +976,15 @@ object Main {
                 tuning,
                 clock,
                 r,
-                s"${room.channel}-r$r"
+                s"${room.channel}-${against.ordinal}r$r",
+                against
               )
               .map { lab =>
                 val run = LabRun(
-                  s"repeat $r",
+                  against,
+                  s"${against.label}, repeat $r",
                   lab.placings,
-                  RoomScore.of(room, lab.placings, lab.strands),
+                  RoomScore.of(room, lab.placings, lab.strands, against),
                   lab.rows.size,
                   lab.rows.count(_.cached),
                   lab.budget.spent - left.spent

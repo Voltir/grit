@@ -4,7 +4,7 @@ import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.stitch.Tuning
 import grit.eval.Room
-import grit.eval.harness.score.{Ranged, RoomPlacing, RoomRepeats, RoomScore}
+import grit.eval.harness.score.{Against, Ranged, RoomPlacing, RoomRepeats, RoomScore}
 import grit.eval.harness.stats.Proportion
 
 /** [[Report.room]]'s sections. */
@@ -22,15 +22,21 @@ private[report] object RoomLines {
       s"model $model; horizon ${tuning.horizon}, recent ${tuning.recent}, lexical " +
         s"${tuning.lexical}, followsAt ${Probability.value(tuning.followsAt)}",
       s"runs: ${runs.size}; calls: ${runs.map(_.calls).sum} (cached ${runs.map(_.cached).sum}); " +
-        s"spent ${Cost.cents(runs.map(_.spent).sum)}",
-      "",
-      s"## over ${runs.size} runs (mean [least, most])",
-      "",
-      "| measure | count | of |",
-      "|---|---|---|"
-    ) ++ RoomRepeats
-      .of(runs.map(_.score))
-      .map(m => s"| ${m.name} | ${ranged(m.count)} | ${m.of.fold("")(ranged)} |")
+        s"spent ${Cost.cents(runs.map(_.spent).sum)}"
+    ) ++ Against.values.toVector.flatMap { a =>
+      val these = runs.filter(_.against == a)
+      if (these.isEmpty) Vector.empty
+      else
+        Vector(
+          "",
+          s"## ${a.label}, over ${these.size} runs (mean [least, most])",
+          "",
+          "| measure | count | of |",
+          "|---|---|---|"
+        ) ++ RoomRepeats
+          .of(these.map(_.score), a)
+          .map(m => s"| ${m.name} | ${ranged(m.count)} | ${m.of.fold("")(ranged)} |")
+    }
     (head ++ runs.flatMap(r => "" +: of(room, r))).mkString("", "\n", "\n")
   }
 
@@ -89,16 +95,21 @@ private[report] object RoomLines {
       "|---|---|---|---|---|---|"
     ) ++ b.map(x =>
       s"| ${x.id} | ${x.previous} | ${x.gapSeconds} | ${x.continues} | ${x.right} | ${x.agrees} |"
-    ) ++ Vector(
-      "",
-      "### strands",
-      "",
-      "split topics: " +
-        (if (score.split.isEmpty) "none"
-         else score.split.map((t, n) => s"$t in $n").mkString(", ")),
-      "mixed strands: " +
-        (if (score.mixed.isEmpty) "none"
-         else score.mixed.map(m => s"${m._1} (${m._2.mkString(", ")})").mkString("; ")),
+    ) ++ (run.against match {
+      case Against.Truth => Vector.empty
+      case Against.Placings =>
+        Vector(
+          "",
+          "### strands",
+          "",
+          "split topics: " +
+            (if (score.split.isEmpty) "none"
+             else score.split.map((t, n) => s"$t in $n").mkString(", ")),
+          "mixed strands: " +
+            (if (score.mixed.isEmpty) "none"
+             else score.mixed.map(m => s"${m._1} (${m._2.mkString(", ")})").mkString("; "))
+        )
+    }) ++ Vector(
       "",
       "### openings (the room's own synthetic text)",
       "",

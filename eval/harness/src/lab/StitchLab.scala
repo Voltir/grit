@@ -18,7 +18,7 @@ import grit.eval.harness.capture.CaseId
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.log.{Cache, Outcome, Row, Suite, Weights}
 import grit.eval.harness.run.Run
-import grit.eval.harness.score.RoomPlacing
+import grit.eval.harness.score.{Against, RoomPlacing}
 
 /** A room placed through the shipped stitch ask: what each opening made, in the order said; the
   * strands they ended in, each by its openings' ids, root first; the rows of the calls asked;
@@ -42,7 +42,9 @@ object StitchLab {
     * named; then each opening placed under `tuning`, Jev asked as `model` through `cache` within
     * `budget` as repeat `repeat` ([[Run.asked]]: the same question asked again under another
     * repeat is asked afresh, under the same one answered from the cache), each call timed by
-    * `clock`, and the placement kept, dated when the opening was said. Once a call is skipped at
+    * `clock`, and, placing `against` [[Against.Placings]], the placement kept, dated when the
+    * opening was said; against [[Against.Truth]], the truth's kept in its place ([[Told]]), so
+    * the next opening is offered the strands the truth makes. Once a call is skipped at
     * the cap, it and every opening after it that would ask are `Skipped`, keeping nothing. The
     * strands are read as they stand after the last placement. `Left` when the room is seeded
     * already, a message is refused, or a store fails.
@@ -57,7 +59,8 @@ object StitchLab {
       tuning: Tuning,
       clock: Clock^,
       repeat: Int,
-      channel: String
+      channel: String,
+      against: Against
   ): Either[String, Lab] = {
     val heard = Heard(room, channel)
     val reads = StitchReads(
@@ -78,17 +81,26 @@ object StitchLab {
           .flatMap(_.map(c => m -> c.id).toRight(s"${m.id}: no conversation was made"))
       )
       idOf = convs.map((m, c) => c -> m.id).toMap
+      convOf = convs.map((m, c) => m.id -> c).toMap
+      truthOf = Room.truth(room).map(t => t.opening.id -> t.follows.flatMap(convOf.get)).toMap
       placed <- convs.foldLeft[Either[String, Placings]](
         Right(Placings(Vector.empty, Vector.empty, budget, stopped = false))
       ) { case (acc, (m, c)) =>
         acc.flatMap(done =>
-          place(Opening(m, c, heard.origin(m)), done, reads, engine, idOf)(
+          place(
+            Opening(m, c, heard.origin(m), truthOf.getOrElse(m.id, None)),
+            done,
+            reads,
+            engine,
+            idOf
+          )(
             jev,
             model,
             cache,
             tuning,
             clock,
-            repeat
+            repeat,
+            against
           )
         )
       }
@@ -124,8 +136,15 @@ object StitchLab {
       Origin.Slack(room.team, channel, tsOf(m.thread.getOrElse(m.id)))
   }
 
-  /** An opening to place: its message, conversation and origin. */
-  private final case class Opening(m: Room.Message, c: ConversationId, origin: Origin)
+  /** An opening to place: its message, conversation and origin, and the conversation its
+    * truth says it follows (`None`: it begins).
+    */
+  private final case class Opening(
+      m: Room.Message,
+      c: ConversationId,
+      origin: Origin,
+      truth: Option[ConversationId]
+  )
 
   /** What the placings so far made, and whether a call was skipped at the cap. */
   private final case class Placings(
@@ -186,7 +205,8 @@ object StitchLab {
       cache: Cache[Vector[Weights]]^,
       tuning: Tuning,
       clock: Clock^,
-      repeat: Int
+      repeat: Int,
+      against: Against
   ): Either[String, Placings] = {
     def id(of: ConversationId): String = idOf.getOrElse(of, ConversationId.value(of))
     def placing(made: RoomPlacing.Made, p: Option[Placed]): RoomPlacing = RoomPlacing(
@@ -206,20 +226,27 @@ object StitchLab {
         )
     )
     def keep(root: EntryId, p: Placed): Either[String, RoomPlacing] =
-      engine.jot
-        .write(Subject.Conversation(o.c))(engine.stitches.record(root, p, o.m.at))
-        .left
-        .map(said)
-        .map(_ =>
-          placing(
-            p match {
-              case f: Placed.Follows => RoomPlacing.Made.Follows(id(f.root), Probability.value(f.p))
-              case b: Placed.Begins => RoomPlacing.Made.Begins(Probability.value(b.p))
-              case u: Placed.Unread => RoomPlacing.Made.Unread(u.why)
-            },
-            Some(p)
-          )
+      (against match {
+        case Against.Placings => Right(Some(p))
+        case Against.Truth => Told.placement(o.truth, p).left.map(e => s"${o.m.id}: $e")
+      }).flatMap(
+        _.fold[Either[String, Unit]](Right(()))(k =>
+          engine.jot
+            .write(Subject.Conversation(o.c))(engine.stitches.record(root, k, o.m.at))
+            .left
+            .map(said)
+            .map(_ => ())
         )
+      ).map(_ =>
+        placing(
+          p match {
+            case f: Placed.Follows => RoomPlacing.Made.Follows(id(f.root), Probability.value(f.p))
+            case b: Placed.Begins => RoomPlacing.Made.Begins(Probability.value(b.p))
+            case u: Placed.Unread => RoomPlacing.Made.Unread(u.why)
+          },
+          Some(p)
+        )
+      )
     val skipped = done.copy(placings = done.placings :+ placing(RoomPlacing.Made.Skipped, None))
     for {
       first <- engine.db

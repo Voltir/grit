@@ -22,11 +22,14 @@ final case class RoomMeasure(name: String, count: Ranged, of: Option[Ranged])
 
 object RoomRepeats {
 
-  /** Each measure of `scores`, the same room's repeats, in the order a report gives them: right,
-    * offer recall, strict recall, Jev given offered, the wrong follows, the topics split, the
-    * strands mixed, and the bursts Jev placed right; none when `scores` is empty.
+  /** Each measure of `scores`, the same room's repeats placed `against` the same strands, in
+    * the order a report gives them: right, offer recall, strict recall, Jev given offered, the
+    * wrong follows, the topics split and the strands mixed (only against [[Against.Placings]]:
+    * the truth's strands are neither), and the bursts Jev placed right; none when `scores` is
+    * empty.
     */
-  def of(scores: Vector[RoomScore]): Vector[RoomMeasure] = {
+  def of(scores: Vector[RoomScore], against: Against): Vector[RoomMeasure] = {
+    val strands = against == Against.Placings
     def ranged(f: RoomScore => Double): Option[Ranged] = Ranged.of(scores.map(f))
     def proportion(name: String, p: RoomScore => Proportion): Option[RoomMeasure] =
       ranged(s => p(s).hits.toDouble).map(c => RoomMeasure(name, c, ranged(s => p(s).n.toDouble)))
@@ -38,8 +41,8 @@ object RoomRepeats {
       proportion("strict recall", _.strict),
       proportion("Jev given offered", _.chosen),
       count("wrong follows", _.wrongFollows.size),
-      count("topics split", _.split.size),
-      count("strands mixed", _.mixed.size),
+      count("topics split", _.split.size).filter(_ => strands),
+      count("strands mixed", _.mixed.size).filter(_ => strands),
       ranged(_.bursts.count(_.right).toDouble).map(c =>
         RoomMeasure("bursts Jev right", c, ranged(_.bursts.size.toDouble))
       )

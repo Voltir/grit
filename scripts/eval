@@ -291,7 +291,9 @@
 #       tuning but for the knobs named, Jev asked through .local/eval/cache/, so an unchanged
 #       room and tuning rerun at no cost. --repeats runs it that many times (default 1), each
 #       a copy of the room in its own channel and Jev's repeat of the same index, so a repeat
-#       asks Jev afresh once and is free after. --spend is a hard cap in USD over every run
+#       asks Jev afresh once and is free after; and as many times again against the truth's
+#       strands, each opening offered the strands the room's topics make rather than those
+#       Jev's earlier placings made, so one misplacing does not change what later ones see. --spend is a hard cap in USD over every run
 #       (default 0.01): the call that would cross it, and every opening after that would ask,
 #       is skipped. Scored against the room's topics (offer recall, Jev given offered, the
 #       confusion, bursts, wrong follows, strands split and mixed), each measure's mean and
