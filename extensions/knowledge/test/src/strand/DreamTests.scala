@@ -304,9 +304,16 @@ object DreamTests extends TestSuite {
       (
         dream.write(params),
         dream.read(dream.write(params)),
-        dream.read(ujson.Obj("perRun" -> 3, "reach" -> "PT0S")).isLeft,
+        dream.read(ujson.Obj("perRun" -> 3, "reach" -> "PT0S")),
         dream.limits.asks
-      ) ==> (ujson.Obj("perRun" -> 3, "reach" -> "PT48H"), Right(params), true, 5)
+      ) ==> (
+        ujson.Obj("perRun" -> 3, "reach" -> "PT48H"),
+        Right(params),
+        Left(
+          """a dream's parameters hold reach, a positive ISO-8601 duration: {"perRun":3,"reach":"PT0S"}"""
+        ),
+        5
+      )
     }
 
     test("a document's text says one thread and one message in the singular") {
