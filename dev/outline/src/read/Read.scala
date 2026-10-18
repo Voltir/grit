@@ -591,32 +591,37 @@ object Read {
             private def record(ref: Tree): Unit = recordAs(ref, ref.symbol, "")
 
             // A site of `sym` at `ref`'s position, its target `sym`'s full name and `suffix`.
-            private def recordAs(ref: Tree, sym: Symbol, suffix: String): Unit = {
-              val name = cleanFullName(sym.fullName) + suffix
-              val ownName = sym.pos.exists(p =>
-                p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
-              )
+            // The tests that need no name run first: most references are to the library (`String`, `Vector`), and
+            // building each one's full name only to drop it was most of what a read allocates for them.
+            private def recordAs(ref: Tree, sym: Symbol, suffix: String): Unit =
               if (
-                keep(name) && ref.pos.startLine >= 0 && !ownName && ref.pos.sourceFile.path
-                  .startsWith(prefix) &&
+                ref.pos.startLine >= 0 && (sym.maybeOwner.isClassDef || sym.maybeOwner.isPackageDef) &&
                 sym.pos.exists(_.sourceFile.path.startsWith(prefix)) &&
-                (sym.maybeOwner.isClassDef || sym.maybeOwner.isPackageDef)
+                ref.pos.sourceFile.path.startsWith(prefix)
               ) {
-                val path = ref.pos.sourceFile.path
-                // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
-                val line = ref match {
-                  case _: Select | _: TypeSelect => ref.pos.endLine + 1
-                  case _ => ref.pos.startLine + 1
-                }
-                found += Use(
-                  target = one(name),
-                  targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
-                  file = one(path.stripPrefix(prefix)),
-                  line = line,
-                  enclosing = enclosing.headOption.getOrElse(""),
-                  text = one(sourceText(path).line(line).trim)
+                val name = cleanFullName(sym.fullName) + suffix
+                val ownName = sym.pos.exists(p =>
+                  p.start == ref.pos.start && p.sourceFile.path == ref.pos.sourceFile.path
                 )
+                if (keep(name) && !ownName) recordNamed(ref, sym, name)
               }
+
+            // A site of `sym`, whose full name is `name`, at `ref`'s position.
+            private def recordNamed(ref: Tree, sym: Symbol, name: String): Unit = {
+              val path = ref.pos.sourceFile.path
+              // A Select starts at its qualifier, so its line is the one holding its name, the position's last character.
+              val line = ref match {
+                case _: Select | _: TypeSelect => ref.pos.endLine + 1
+                case _ => ref.pos.startLine + 1
+              }
+              found += Use(
+                target = one(name),
+                targetLine = sym.pos.map(_.startLine + 1).getOrElse(0),
+                file = one(path.stripPrefix(prefix)),
+                line = line,
+                enclosing = enclosing.headOption.getOrElse(""),
+                text = one(sourceText(path).line(line).trim)
+              )
             }
 
             override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match {
