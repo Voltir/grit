@@ -173,17 +173,23 @@
 #       every turn, by root and by where said; then one line a turn by workflow, most costly
 #       first, with its top 3 parts by support. Text-free; reads no database.
 #
-#   scripts/eval churn <yyyymmdd> <pairs file>
-#       The capture's recorded turns' churn over the questions <pairs file> pairs
-#       ({"<question id>": {"before": "<case id>", "after": "<case id>"}}, ids alone; the
-#       questions' words stay in a file of their own): per turn, its hosted calls before its
+#   scripts/eval churn <yyyymmdd> <questions file> <before round> <after round> [--no-gold]
+#       The capture's recorded turns' churn over the questions <questions file> holds
+#       ({"<question id>": {"gold": {"facts": [["<alternative>", ...], ...], "never": [...]},
+#       "asked": {"<round>": "<case id>", ...}}}, ids and gold alone; the questions' words stay
+#       in a file of their own), paired by the two rounds: per turn, its hosted calls before its
 #       first read through a document's pointer and before its first useful one (the reply's
 #       support in the result at 0.3 or over), a turn that never reads counted apart; per pair
 #       the before-turn's less the after-turn's, clustered by question, over every pair and
-#       over those neither of whose turns held a part of another paired thread; and the share
-#       of after-turns whose first read followed a card. Written to
-#       .local/eval/reports/churn-<date>.md and printed. Text-free; reads no database. Refused,
-#       naming the question, when no turn answers one side of a pair.
+#       over the clean ones: neither turn's window holding a part of another paired thread
+#       (confounded) nor of another asking of its own question (echoed). Unless --no-gold, each
+#       reply is read from grit_eval_<date> and matched against its question's gold (every fact,
+#       no never-string; counts kept, never words), giving the share right by side, calls to
+#       correct (before less after, both right), and better (+1, -1 or 0 a pair: right after
+#       fewer calls above right after more, above wrong having read, above wrong never having
+#       read). Written to .local/eval/reports/churn-<date>-<before>-<after>.md and printed.
+#       Text-free. Refused, naming the round, the question or the message, when no question was
+#       asked in both rounds or no turn answers one side of a pair.
 #
 #   scripts/eval recall <yyyymmdd> [--until <instant>]
 #       The recall replay: each turn grit_eval_<date> recorded before its dump (and started
@@ -503,14 +509,29 @@ turns() {
 }
 
 churn() {
-  local capture=${1:-} pairs=${2:-}
-  [[ $capture =~ ^[0-9]{8}$ ]] && [ $# -eq 2 ] || usage
+  local capture=${1:-} questions=${2:-} before=${3:-} after=${4:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] && [ -n "$after" ] || usage
+  shift 4
+  local gold=1
+  case $# in
+    0) ;;
+    1) [ "$1" = --no-gold ] || usage; gold= ;;
+    *) usage ;;
+  esac
   [ -f "$main/.local/eval/capture/$capture/turns.jsonl" ] ||
     { echo "eval: no turns in $main/.local/eval/capture/$capture; capture again" >&2; exit 1; }
   # The script runs from its checkout: a relative path is the caller's.
-  case $pairs in /*) ;; *) pairs="$OLDPWD/$pairs" ;; esac
-  [ -f "$pairs" ] || { echo "eval: no pairs file $pairs" >&2; exit 1; }
-  harness churn --eval "$main/.local/eval" --capture "$capture" --pairs "$pairs"
+  case $questions in /*) ;; *) questions="$OLDPWD/$questions" ;; esac
+  [ -f "$questions" ] || { echo "eval: no questions file $questions" >&2; exit 1; }
+  local url=()
+  if [ -n "$gold" ]; then
+    local restored="grit_eval_$capture"
+    exists "$restored" || { echo "eval: $restored is gone; capture again, or --no-gold" >&2; exit 1; }
+    export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+    url=(--url "jdbc:postgresql://localhost:5432/$restored")
+  fi
+  harness churn --eval "$main/.local/eval" --capture "$capture" --questions "$questions" \
+    --before "$before" --after "$after" "${url[@]}"
 }
 
 recall() {

@@ -59,7 +59,7 @@ import grit.eval.harness.jev.{
   Variant,
   Variants
 }
-import grit.eval.harness.label.{ChurnPairs, Labels, ReplyLabels, Verdicts}
+import grit.eval.harness.label.{ChurnQuestions, Labels, ReplyLabels, Verdicts}
 import grit.eval.harness.log.{
   Cache,
   Cached,
@@ -344,19 +344,49 @@ object Main {
       _ <- publish(dir, s"turns-$capture", Report.turns(capture, captured, standing))
     } yield ()
 
-  /** `churn --eval <dir> --capture <yyyymmdd> --pairs <file>`: the capture's recorded turns'
-    * churn over the questions `<file>` pairs ([[ChurnPairs]]), written to
-    * `<dir>/reports/churn-<yyyymmdd>.md` and printed; refused, naming the question and the
-    * message, when no turn answers one side of a pair.
+  /** `churn --eval <dir> --capture <yyyymmdd> --questions <file> --before <round> --after
+    * <round> [--url <jdbc>]`: the capture's recorded turns' churn over the questions `<file>`
+    * holds ([[ChurnQuestions]]) asked in both rounds ([[Churn.of]]), written to
+    * `<dir>/reports/churn-<yyyymmdd>-<before>-<after>.md` and printed. With `--url`, the restored database there,
+    * each paired turn's reply is read from it and matched against its question's gold, only the
+    * counts kept ([[Gold.matched]]); the database's login from `GRIT_DATABASE_USER` and
+    * `_PASSWORD`. Refused as [[Churn.of]] refuses, or naming what could not be read.
     */
   private def churn(f: Map[String, String]): Either[String, Unit] =
     for {
       dir <- need(f, "eval").map(Path.of(_))
       capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
       captured <- readTurns(dir.resolve("capture").resolve(capture))
-      pairs <- need(f, "pairs").map(Path.of(_)).flatMap(read).flatMap(ChurnPairs.read)
-      measured <- Churn.of(captured, pairs)
-      _ <- publish(dir, s"churn-$capture", Report.churn(capture, measured))
+      questions <- need(f, "questions").map(Path.of(_)).flatMap(read).flatMap(ChurnQuestions.read)
+      before <- need(f, "before")
+      after <- need(f, "after")
+      graded <- f.get("url").fold(Right(None)) { url =>
+        // Every asking's turn with a reply, by its question's gold.
+        val replied = questions.questions.toVector.flatMap((_, c) =>
+          c.asked.values.toVector
+            .flatMap(Churn.answering(captured, _))
+            .filter(ReplyReview.reviewable)
+            .map(c.gold -> _)
+        )
+        for {
+          env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+          config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+          matched <- opened(config) { reader =>
+            Fields.each(replied) { (gold, t) =>
+              ReplyReview.read(reader, t, records = false).map { r =>
+                // The reply's text is matched here and dropped: only the counts leave.
+                val text = r.reply match {
+                  case ReplyReview.Reply.Replied(text) => text
+                  case ReplyReview.Reply.Draft(text, _) => text
+                }
+                t.workflow -> gold.matched(text)
+              }
+            }
+          }
+        } yield Some(matched.toMap)
+      }
+      measured <- Churn.of(captured, questions, before, after, graded)
+      _ <- publish(dir, s"churn-$capture-$before-$after", Report.churn(capture, measured))
     } yield ()
 
   /** `recall --eval <dir> --capture <yyyymmdd> --url <jdbc> [--until <instant>]`: every turn the

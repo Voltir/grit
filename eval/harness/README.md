@@ -41,7 +41,7 @@ Packages, each importing only those above it:
   `capture`, whose readers keep numbers, never text. ← `stats`, `capture`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn
-  pairs by id. Labels judge the inputs a call was given, verdicts the speech decision at its
+  questions by id: each its gold (strings a right reply holds) and its asking in each round. Labels judge the inputs a call was given, verdicts the speech decision at its
   moment: the two are reported side by side, never merged. ← `capture`
 - **`log`**: a run's log, text-free, a classifier's answers by position, never by key; and the
   cache of answers under their request's key, so an unchanged request is never paid for twice.

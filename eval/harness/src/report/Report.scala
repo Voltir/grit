@@ -154,11 +154,13 @@ object Report {
     TurnLines.of(capture, turns, verdicts)
 
   /** A churn comparison over `capture` ([[grit.eval.harness.score.Churn]]), as markdown,
-    * text-free: the pairs and the turns confounded, by workflow; then each difference in calls
-    * before the first read (indexed and useful, all pairs and the unconfounded) with its pairs,
+    * text-free: the pairs and the turns confounded and echoed, by workflow; then each difference
+    * in calls before the first read (indexed and useful, all pairs and the clean) with its pairs,
     * interval and MDE, `—` under two questions; the turns that never read or never usefully, by
-    * side; the after-turns whose first read followed a card; and one line a question, each turn
-    * by workflow with its reads.
+    * side; the after-turns whose first read followed a card; when graded, the share correct by
+    * side, and calls to correct and better (all pairs and the clean) as the differences are; and
+    * one line a question, each turn by workflow with its reads and, when graded, its calls and
+    * its facts found of all and never-strings held: counts, never a reply's or a gold's words.
     */
   def churn(capture: String, churn: grit.eval.harness.score.Churn): String =
     ChurnLines.of(capture, churn)
