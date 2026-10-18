@@ -14,7 +14,9 @@ trait StrandExcerpts {
     * latest), believed at the meet of every message read; `None` when those messages are not
     * the ones `seen` digested (one was removed or said since).
     */
-  def excerpt(seen: Strand.Digested, chars: Int)(using Tx^): Either[StoreError, Option[Strand.Shown]]
+  def excerpt(seen: Strand.Digested, chars: Int)(using
+      Tx^
+  ): Either[StoreError, Option[Strand.Shown]]
 }
 
 object StrandExcerpts {

@@ -102,8 +102,8 @@ object Synthetic {
   ): Either[String, Built] = {
     val terms = Load.terms(DocWeight.Unscaled)
     for {
-      layouts <- Traversal.traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _)))((c, v) =>
-        Layout.of(c, v)
+      layouts <- Traversal.traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _)))(
+        (c, v) => Layout.of(c, v)
       )
       _ <- jot
         .write(Subject.Public)(documents.declare(Vector(Load.Plugin -> terms)))

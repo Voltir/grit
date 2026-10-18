@@ -2,7 +2,7 @@ package grit.eval.harness.report
 
 import grit.core.id.{DocumentVersion, WorkflowId}
 import grit.core.place.Service
-import grit.eval.harness.reply.{Refound, KeptAt}
+import grit.eval.harness.reply.{KeptAt, Refound}
 
 import utest.*
 

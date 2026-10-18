@@ -102,14 +102,18 @@ object LogJson {
             for {
               position <- f.num("score")
               ps <- f.arr("levels")
-              probabilities <- traverse(ps)(_.numOpt.toRight("answer: a probability is not a number"))
+              probabilities <- traverse(ps)(
+                _.numOpt.toRight("answer: a probability is not a number")
+              )
               confidence <- f.num("confidence")
             } yield Weights.Score(position, probabilities, confidence)
           else
             for {
               chosen <- f.int("chosen")
               ps <- f.arr("probabilities")
-              probabilities <- traverse(ps)(_.numOpt.toRight("answer: a probability is not a number"))
+              probabilities <- traverse(ps)(
+                _.numOpt.toRight("answer: a probability is not a number")
+              )
               confidence <- f.num("confidence")
             } yield Weights.Choice(chosen, probabilities, confidence)
         }

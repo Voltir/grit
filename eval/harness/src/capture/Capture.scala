@@ -52,7 +52,9 @@ object Capture {
       tagged <- read("tags")(reader.triage.tagged(Instant.EPOCH, dump.at))
       starts <- reader.starts().left.map(e => s"engine starts unread: ${kind(e)}")
       settings <- read("settings")(reader.lifecycle.current())
-      placed <- traverse(tagged)(t => read("placement")(reader.stitches.placed(t.entry)).map(t -> _))
+      placed <- traverse(tagged)(t =>
+        read("placement")(reader.stitches.placed(t.entry)).map(t -> _)
+      )
       tunings = placed.flatMap(_._2.map(_.seen.tuning))
       tuning = tunings.distinct
         .sortBy(t => (-tunings.count(_ == t), t.toString))

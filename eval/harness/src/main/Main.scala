@@ -1099,7 +1099,9 @@ object Main {
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       cases = first.fold(all)(n => all.sortBy(c => byTs(c)).take(n))
       rebuilt <- opened(config)(reader =>
-        Traversal.traverse(cases)(c => Inputs.rebuild(reader, c, variant, manifest.tuning).map(c -> _))
+        Traversal.traverse(cases)(c =>
+          Inputs.rebuild(reader, c, variant, manifest.tuning).map(c -> _)
+        )
       )
       model = Variant.model(variant)
       calls = rebuilt.flatMap { (c, r) =>

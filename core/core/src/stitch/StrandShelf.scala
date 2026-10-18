@@ -67,8 +67,9 @@ object StrandShelf {
     def of(roots: Vector[ConversationId], asOf: Instant)(using
         Tx^
     ): Either[StoreError, Vector[Strand.Digested]] =
-      roots.foldLeft[Either[StoreError, Vector[Strand.Digested]]](Right(Vector.empty)) { (acc, root) =>
-        acc.flatMap(done => seen(root, asOf).map(done ++ _))
+      roots.foldLeft[Either[StoreError, Vector[Strand.Digested]]](Right(Vector.empty)) {
+        (acc, root) =>
+          acc.flatMap(done => seen(root, asOf).map(done ++ _))
       }
 
     private def seen(root: ConversationId, asOf: Instant)(using
