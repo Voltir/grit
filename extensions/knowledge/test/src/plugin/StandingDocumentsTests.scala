@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.context.Shown
 import grit.core.document.{DocText, Document, DocumentKeeper, InMemoryDocuments}
-import grit.core.id.{ConversationId, DocKey, LineId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.id.{ConversationId, DocKey, EntryId, LineId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{
   Change,
@@ -20,6 +20,7 @@ import grit.core.period.{
   TestClosings
 }
 import grit.core.store.{ClosedPeriod, Origin}
+import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.dbos.sql.TestTx
 
@@ -67,13 +68,15 @@ object StandingDocumentsTests extends TestSuite {
       Integrity.Outside
     )
 
-  /** A fresh plugin's documents, and its keeper over them. */
-  private final class Kept {
+  /** A fresh plugin's documents, leaving out lines whose add names a tool of `leftOut`, and
+    * its keeper over them.
+    */
+  private final class Kept(leftOut: Set[ToolName] = Set.empty) {
     val docs = new InMemoryDocuments
     val keeper: DocumentKeeper = docs.keeper(name, StandingDocuments.Terms)
 
     def post(p: ClosedPeriod, label: Label = Label.Public): Unit =
-      new StandingDocuments(name).documents
+      new StandingDocuments(name, leftOut).documents
         .flatMap(_.posting)
         .fold(Right(()))(
           _.post(p, keeper)(using TestTx.fake(Clearance.inRoom(p.origin.room, label, label)))
@@ -218,6 +221,24 @@ object StandingDocumentsTests extends TestSuite {
         ),
         Vector()
       )
+    }
+
+    test(
+      "a line whose add names a left-out tool is left out; a person-grounded line of the same closing is kept"
+    ) {
+      val kept = new Kept(Set(ToolName("remind_me"), ToolName("reminders")))
+      val reminder = standing("Ana is reminded at 09:00 on Friday", 1, Ground.Tool)
+      kept.post(
+        closed(
+          1,
+          Vector(
+            Change.Added(reminder, Cited.of(Vector(EntryId("e3")), Set("remind_me"))),
+            Change.Added(deploys, Cited.of(Vector(EntryId("e1")), Set("read_file")))
+          ),
+          Vector(reminder, deploys)
+        )
+      )
+      kept.texts ==> Vector("Staging deploys from main.\n- Staging deploys from main")
     }
 
     test("a line added and refused at once, or added in another section, keeps nothing") {

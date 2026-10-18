@@ -121,7 +121,7 @@ object RehearseLiveTests extends TestSuite {
     deployed(
       Assembly.Retrieval(Tokens(8000), Tokens(2000)),
       Speaking.Off,
-      Vector(new StandingDocuments(PluginName.of("standing").fold(sys.error, identity)))
+      Vector(new StandingDocuments(PluginName.of("standing").fold(sys.error, identity), Set.empty))
     )
 
   /** In `origin`'s conversation, heard through `engine` at [[Now]] and closed resolved, its

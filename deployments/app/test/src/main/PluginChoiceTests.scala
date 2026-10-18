@@ -8,6 +8,7 @@ import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, DreamingJob, JobRun, KeepingJob, PlainJob, SlotRule}
 import grit.core.place.Service
 import grit.core.plugin.Plugin
+import grit.core.tool.ToolName
 import grit.core.visibility.{
   Cleared,
   Compartments,
@@ -18,6 +19,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
+import grit.knowledge.plugin.StandingDocuments
 
 import utest.*
 
@@ -114,6 +116,17 @@ object PluginChoiceTests extends TestSuite {
       ) ==> (
         Right(Vector(("StandingDocuments", "standing"))),
         Right(Vector(("Digest", "digest"), ("StandingDocuments", "standing")))
+      )
+    }
+
+    test("standing leaves out the reminders' tools, with remind on and with it off") {
+      def leftOut(plugins: String) =
+        choice(Map("GRIT_PLUGINS" -> plugins)).map(_.collect { case s: StandingDocuments =>
+          s.leftOut.map(ToolName.value)
+        })
+      (leftOut("standing"), leftOut("remind,standing")) ==> (
+        Right(Vector(Set("remind_me", "reminders", "cancel_reminder"))),
+        Right(Vector(Set("remind_me", "reminders", "cancel_reminder")))
       )
     }
 

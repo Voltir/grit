@@ -9,24 +9,26 @@ import grit.core.id.{ConversationId, DocKey, LineId, PeriodSeq, PluginName}
 import grit.core.period.{Change, Ground, Line, Section}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
+import grit.core.tool.ToolName
 import grit.core.visibility.Label
 
 /** What each earned closing ([[grit.core.period.CloseReason.shownElsewhere]]) of a conversation
   * settled, kept as one document (ADR 0028) so a window elsewhere can find it once the
   * conversation is done: the closing's headline ([[grit.core.period.Closing.headline]]), then
-  * each Standing line it added on a person's or a tool's ground; a closing adding none keeps
-  * nothing. At the closed conversation's label, believed at its closing's integrity, placed at
+  * each Standing line it added on a person's or a tool's ground whose add
+  * ([[grit.core.period.Change.Added]]) names none of the tools in `leftOut`; a closing adding
+  * none keeps nothing. At the closed conversation's label, believed at its closing's integrity, placed at
   * its conversation, written at that close. When a later closing of the conversation, earned or
   * not, resolves, drops or evicts one of its lines, the document is written again at that close
   * without it, at the integrity it had, or withdrawn when none of its lines is left; a line
   * carried unchanged writes nothing. A closing purged before the plugin was first posted keeps
   * nothing. No model call.
   */
-final class StandingDocuments(val name: PluginName) extends Plugin {
+final class StandingDocuments(val name: PluginName, val leftOut: Set[ToolName]) extends Plugin {
 
   val version: Int = 1
 
-  override val documents: Option[Documents] = Some(StandingDocuments.Kept)
+  override val documents: Option[Documents] = Some(StandingDocuments.kept(leftOut))
 }
 
 object StandingDocuments {
@@ -44,16 +46,16 @@ object StandingDocuments {
       terms <- DocumentTerms.of(label, DocWeight.Unscaled, 30.days, 1000)
     } yield terms).fold(why => throw new IllegalStateException(why), identity)
 
-  /** Its documents, under [[Terms]], posted [[Posted]]. */
-  private object Kept extends Documents {
+  /** Its documents, under [[Terms]], posted [[Posted]] leaving out `leftOut`'s lines. */
+  private def kept(leftOut: Set[ToolName]): Documents = new Documents {
     val terms: DocumentTerms = Terms
-    val posting: Option[DocumentPosting] = Some(Posted)
+    val posting: Option[DocumentPosting] = Some(new Posted(leftOut.map(ToolName.value)))
   }
 
-  /** Each closing's kept lines, written; each document a closing takes a line from, written
-    * again without it.
+  /** Each closing's kept lines, but those whose add names one of the tools `leftOut`, written;
+    * each document a closing takes a line from, written again without it.
     */
-  private object Posted extends DocumentPosting {
+  private final class Posted(leftOut: Set[String]) extends DocumentPosting {
     def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
         tx: Tx^
     ): Either[StoreError, Unit] = {
@@ -64,7 +66,9 @@ object StandingDocuments {
       // An Added line the cap then refused is not in the balance: never written.
       val added =
         if (closed.reason.shownElsewhere) closed.closing.flows.changes.collect {
-          case Change.Added(l, _) if inBalance(l.id) && kept(l) => l
+          case Change.Added(l, cited)
+              if inBalance(l.id) && grounded(l) && !cited.tools.exists(leftOut) =>
+            l
         }
         else Vector.empty
       val gone = closed.closing.flows.changes.collect {
@@ -141,7 +145,7 @@ object StandingDocuments {
     }
 
   /** Whether `l` is one a document keeps: a Standing line a person or a tool established. */
-  private def kept(l: Line): Boolean =
+  private def grounded(l: Line): Boolean =
     l.section == Section.Standing && l.ground.exists(g => g == Ground.Person || g == Ground.Tool)
 
   /** A document as made: what the closing of `conversation`'s `period`, on `day`, came to, and

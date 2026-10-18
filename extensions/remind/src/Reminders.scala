@@ -30,8 +30,7 @@ final class Reminders(val name: PluginName) extends Plugin {
 
   override val jobs: Vector[Job[?]] = Vector(Reminders.Remind)
 
-  override val tools: Vector[PluginTool[?]] =
-    Vector(Reminders.RemindMe, Reminders.List, Reminders.Cancel)
+  override val tools: Vector[PluginTool[?]] = Reminders.tools
 }
 
 /** A reminder's text: not blank, and at most [[Reminders.MaxText]] characters. */
@@ -51,6 +50,9 @@ object Reminder {
 // constant here is set, so no order of these members can build a description or a schema
 // from a constant still 0 or null.
 object Reminders {
+
+  /** Its tools: [[RemindMe]], [[List]] and [[Cancel]]. */
+  def tools: Vector[PluginTool[?]] = Vector(RemindMe, List, Cancel)
 
   /** How late a reminder may run after its time before it is missed: 1 h. */
   val Grace: Grace =

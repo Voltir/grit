@@ -106,7 +106,7 @@ import grit.turn.TurnLoop
   * file, and of each directory holding one, of the GitHub repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO` at
   * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
   * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]; with standing on, one
-  * document of each close's person- and tool-established Standing lines). When a period is asked about
+  * document of each close's person- and tool-established Standing lines but reminders'). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
@@ -561,7 +561,8 @@ object Main {
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
     * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
     * ([[knowledge]], under `visibility`, its days beginning in `zone`), `strands`
-    * ([[strands]], likewise) and `standing` ([[StandingDocuments]]).
+    * ([[strands]], likewise) and `standing` ([[StandingDocuments]], leaving out what a reminder
+    * tool's result established).
     */
   private[main] def pluginChoice(
       env: Map[String, String],
@@ -585,7 +586,15 @@ object Main {
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
-              case "standing" => Right(done :+ new StandingDocuments(name))
+              case "standing" =>
+                // A reminder's line goes stale at its date, and the reminders keep it: left out
+                // whether or not they are on, since a closing can carry one from when they were.
+                Right(
+                  done :+ new StandingDocuments(
+                    name,
+                    Reminders.tools.map(_.described.spec.name).toSet
+                  )
+                )
               case other =>
                 Left(
                   s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, strands and standing"
