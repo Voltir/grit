@@ -37,6 +37,17 @@ object StrandShelf {
   def over(stitches: StitchStore, conversations: ConversationStore): StrandShelf =
     new Over(stitches, conversations)
 
+  /** What `root`'s strand said before `asOf`: the root's messages and its followers', oldest
+    * first. The one read both a [[Strand.Seen]] and a [[StrandExcerpts]] read are made of.
+    */
+  private[stitch] def saidIn(stitches: StitchStore, root: ConversationId, asOf: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[Said]] =
+    stitches
+      .links(Vector(root))
+      .map(_.filter(_.root == root).map(_.conversation).distinct)
+      .flatMap(followers => stitches.said(root +: followers, Instant.EPOCH, asOf))
+
   private final class Over(stitches: StitchStore, conversations: ConversationStore)
       extends StrandShelf {
 
@@ -65,9 +76,7 @@ object StrandShelf {
     ): Either[StoreError, Option[Strand.Seen]] =
       for {
         conversation <- conversations.get(root)
-        links <- stitches.links(Vector(root))
-        followers = links.filter(_.root == root).map(_.conversation).distinct
-        said <- stitches.said(root +: followers, Instant.EPOCH, asOf)
+        said <- saidIn(stitches, root, asOf)
       } yield
         for {
           c <- conversation

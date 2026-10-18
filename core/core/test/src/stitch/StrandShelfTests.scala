@@ -12,6 +12,7 @@ import grit.core.store.{
   InMemoryConversationStore,
   InMemoryEntryStore,
   InMemoryPeriodStore,
+  InMemoryPrincipals,
   Origin,
   Payload,
   StoreError,
@@ -25,68 +26,11 @@ import utest.*
 /** [[StrandShelf]]: a room's strands by ids, counts and a digest. */
 object StrandShelfTests extends TestSuite {
 
-  private val At = Instant.parse("2026-10-12T09:00:00Z")
-
-  private def at(seconds: Long): Instant = At.plusSeconds(seconds)
-
-  private def right[A](e: Either[StoreError, A]): A =
-    e.fold(x => throw new java.lang.AssertionError(s"store failed: $x"), identity)
-
-  private final class World {
-    val entries = new InMemoryEntryStore
-    val conversations = new InMemoryConversationStore(Some(entries))
-    private def originOf(c: ConversationId): Origin =
-      conversations.all
-        .find(_.id == c)
-        .fold(Origin.Task("none", ConversationId.value(c)))(_.origin)
-    val periods = new InMemoryPeriodStore(entries, originOf)
-    val stitches = new InMemoryStitchStore(entries, originOf)
-    val shelf: StrandShelf = StrandShelf.over(stitches, conversations)
-
-    def thread(channel: String, ts: String): Conversation = right(
-      conversations.findOrCreate(
-        Origin.Slack("T", channel, ts),
-        TestAccounts.account("slack:T/U1"),
-        Label.Public
-      )(using TestTx.fake)
-    )
-
-    def say(c: Conversation, text: String, seconds: Long): Entry = {
-      given Tx = TestTx.fake
-      val next = right(entries.lockNext(c.id))
-      right(periods.openFor(c.id, next.turnSeq, at(seconds)))
-      val e = Entry(
-        EntryId(s"${ConversationId.value(c.id)}:${next.seq}"),
-        c.id,
-        next.turnSeq,
-        None,
-        next.seq,
-        Payload.Heard(text),
-        at(seconds),
-        Integrity.Member
-      )
-      right(entries.insert(e))
-      e
-    }
-
-    def follow(first: Entry, root: Conversation): Unit = {
-      val placed = Placed.Follows(
-        root.id,
-        Probability.clamped(0.9),
-        Seen(ujson.Obj(), Vector.empty, Tuning.Default),
-        "jev",
-        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None)
-      )
-      right(stitches.record(first.id, placed, first.createdAt)(using TestTx.fake))
-    }
-
-    def of(root: Conversation, asOf: Instant)(using Tx): Vector[Strand.Seen] =
-      right(shelf.of(Vector(root.id), asOf))
-  }
+  import StrandWorld.{at, right}
 
   val tests = Tests {
     test("the same messages give the same digest; one more message another") {
-      val w = new World
+      val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
       w.say(a, "the deploy is stuck", 0)
@@ -108,7 +52,7 @@ object StrandShelfTests extends TestSuite {
     }
 
     test("a strand is its root then its followers by first message, said and chars counted") {
-      val w = new World
+      val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
       val c = w.thread("C1", "3.0")
@@ -123,7 +67,7 @@ object StrandShelfTests extends TestSuite {
     }
 
     test("a member with nothing said before asOf is no member; a root with nothing is left out") {
-      val w = new World
+      val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
       w.say(a, "the deploy is stuck", 0)
@@ -134,7 +78,7 @@ object StrandShelfTests extends TestSuite {
     }
 
     test("touched: the strands spoken in over a range, as they stood at its end, oldest first") {
-      val w = new World
+      val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
       val s = w.thread("C1", "3.0")
@@ -155,7 +99,7 @@ object StrandShelfTests extends TestSuite {
     }
 
     test("a strand's room label is the one in force; atFloor keeps the floor's strands alone") {
-      val w = new World
+      val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
       val s = w.thread("C2", "1.0")
@@ -176,6 +120,34 @@ object StrandShelfTests extends TestSuite {
       right(w.shelf.touched(at(0), at(100))).map(x => (x.root, x.roomLabel)) ==>
         Vector((a.id, Label.Public), (s.id, TestLabels.Trial))
       right(w.shelf.atFloor(at(0), at(100))).map(_.root) ==> Vector(s.id)
+    }
+
+    test(
+      "an excerpt is the root's opening then the rest, believed at its least message; none once one is said since its scan"
+    ) {
+      val w = new StrandWorld
+      val a = w.thread("C1", "1.0")
+      val b = w.thread("C1", "2.0")
+      w.say(a, "the deploy is stuck", 0)
+      w.follow(w.say(b, "still stuck?", 60, Integrity.Outside), a)
+      given Tx = TestTx.fake
+      val seen = w.of(a, at(600))
+      seen.map(s => right(w.excerpts.excerpt(s, 1000)).map(x => (x.excerpt.text, x.integrity))) ==>
+        Vector(Some(("Someone: the deploy is stuck\nSomeone: still stuck?", Integrity.Outside)))
+      w.say(b, "yes", 120)
+      seen.map(s => right(w.excerpts.excerpt(s, 1000))) ==> Vector(None)
+    }
+
+    test("a strand reads back as a step records it, which holds none of its messages' text") {
+      val w = new StrandWorld
+      val a = w.thread("C1", "1.0")
+      val b = w.thread("C1", "2.0")
+      w.say(a, "the deploy is stuck", 0)
+      w.follow(w.say(b, "still stuck?", 60), a)
+      val seen = w.of(a, at(600))(using TestTx.fake)
+      val written = seen.map(Strand.Seen.write)
+      written.map(Strand.Seen.read) ==> seen.map(Right(_))
+      assert(written.forall(v => !ujson.write(v).contains("stuck")))
     }
   }
 }

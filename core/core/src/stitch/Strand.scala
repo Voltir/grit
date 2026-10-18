@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.ConversationId
 import grit.core.place.Place
 import grit.core.store.Entry
-import grit.core.visibility.Label
+import grit.core.visibility.{Integrity, Label}
 
 /** `conversation`'s first message continues the exchange `root` began. */
 final case class Link(conversation: ConversationId, root: ConversationId)
@@ -70,4 +70,70 @@ object Strand {
       digest: StrandDigest,
       asOf: Instant
   ) extends caps.Pure
+
+  object Seen {
+
+    /** `seen` as a step records it: `{"room", "roomLabel", "root", "members": [...], "said",
+      * "chars", "since", "touched", "digest", "asOf"}`, a place and a label in their written
+      * forms, instants ISO-8601. Ids and counts alone: no message's text.
+      */
+    def write(seen: Seen): ujson.Value = ujson.Obj(
+      "room" -> seen.room.written,
+      "roomLabel" -> Label.written(seen.roomLabel),
+      "root" -> ConversationId.value(seen.root),
+      "members" -> ujson.Arr.from(seen.members.map(ConversationId.value)),
+      "said" -> seen.said,
+      "chars" -> seen.chars,
+      "since" -> seen.since.toString,
+      "touched" -> seen.touched.toString,
+      "digest" -> StrandDigest.value(seen.digest),
+      "asOf" -> seen.asOf.toString
+    )
+
+    /** A strand [[write]] wrote, or why `v` is not one. */
+    def read(v: ujson.Value): Either[String, Seen] = {
+      def field(key: String): Either[String, ujson.Value] =
+        v.objOpt.flatMap(_.get(key)).toRight(s"a strand has no '$key'")
+      def text(key: String): Either[String, String] =
+        field(key).flatMap(_.strOpt.toRight(s"a strand's '$key' is not text"))
+      def count(key: String): Either[String, Int] =
+        field(key).flatMap(_.numOpt.map(_.toInt).toRight(s"a strand's '$key' is not a number"))
+      def instant(key: String): Either[String, Instant] =
+        text(key).flatMap(t =>
+          scala.util.Try(Instant.parse(t)).toOption.toRight(s"a strand's '$key' is no instant")
+        )
+      for {
+        room <- text("room").flatMap(Place.read)
+        label <- text("roomLabel").flatMap(Label.read)
+        root <- text("root")
+        members <- field("members").flatMap(
+          _.arrOpt
+            .flatMap(a => Option.when(a.forall(_.strOpt.nonEmpty))(a.toVector.flatMap(_.strOpt)))
+            .toRight("a strand's 'members' are not text")
+        )
+        said <- count("said")
+        chars <- count("chars")
+        since <- instant("since")
+        touched <- instant("touched")
+        digest <- text("digest").flatMap(StrandDigest.read)
+        asOf <- instant("asOf")
+      } yield Seen(
+        room,
+        label,
+        ConversationId(root),
+        members.map(ConversationId(_)),
+        said,
+        chars,
+        since,
+        touched,
+        digest,
+        asOf
+      )
+    }
+  }
+
+  /** A strand's messages as an excerpt shows them, and the integrity they are believed at
+    * together ([[StrandExcerpts]]).
+    */
+  final case class Shown(excerpt: Stitching.Excerpt, integrity: Integrity)
 }
