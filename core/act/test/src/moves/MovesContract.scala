@@ -6,6 +6,7 @@ import grit.core.act.MovesFixtures.{replied, shown}
 import grit.core.act.{
   Asked,
   Called,
+  Dreaming,
   Keeping,
   MoveError,
   MoveKind,
@@ -23,11 +24,13 @@ import grit.core.id.DocKey
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
-import grit.core.schema.JsonSchema
+import grit.core.schema.{JsonSchema, Typed}
+import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -64,6 +67,15 @@ abstract class MovesContract extends TestSuite {
     * afterwards, as a run at [[Floor]] reads them, most recently written first.
     */
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document])
+
+  /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose scans read
+    * `world`'s strands and whose summaries read its messages, a JSON ask's model replying
+    * [[Answered]]; and each JSON ask's system text and user messages, as the model was shown
+    * them, in order.
+    */
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+      use: Dreaming^ -> A
+  ): (A, Vector[(String, Vector[String])])
 
   val tests = Tests {
     test(
@@ -328,6 +340,64 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a strand's summary asks nothing when its messages changed since its scan, and its name is spent"
+    ) {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val (got, shown) = dreaming(limits(2, 0), w) { m =>
+        w.say(w.thread("C1", "2.0"), "yes", 120)
+        Seen(
+          Vector(
+            summarised(m, "s", seen),
+            summarised(m, "s", seen),
+            summarised(m, "t", seen),
+            summarised(m, "u", seen)
+          )
+        )
+      }
+      (got, shown) ==> (
+        Seen(
+          Vector(
+            Right("none"),
+            Left(MoveError.Repeated(name("s"))),
+            Right("none"),
+            Left(MoveError.OverLimit(MoveKind.Ask, 2))
+          )
+        ),
+        Vector()
+      )
+    }
+
+    test(
+      "a strand's summary is asked of its system text then its excerpt, its reply believed at the meet of the summary and every message read"
+    ) {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val (got, shown) = dreaming(limits(1, 0), w)(m => Seen(Vector(summarised(m, "s", seen))))
+      (got, shown) ==> (
+        Seen(Vector(Right(s"$Shaped at outside"))),
+        Vector((SummarySystem, Vector("Someone: the deploy is stuck\nSomeone: still stuck?")))
+      )
+    }
+
+    test("a scan's body reads its transaction's strands beside its documents, and spends no ask") {
+      val (w, root) = strand()
+      val (got, _) = dreaming(MoveLimits.Zero, w) { m =>
+        Seen(
+          Vector(
+            m.scan(name("scan"), From)((_, keeper, strands, at) =>
+              for {
+                kept <- write(keeper, "k", Label.Public, at)
+                seen <- strands.of(Vector(root), StrandWorld.at(600))
+              } yield Kept(s"${kept.label} ${seen.map(_.said).mkString(",")}")
+            ).map(_.label)
+          )
+        )
+      }
+      got ==> Seen(Vector(Right(s"${Label.written(Floor)} 2")))
+    }
+
+    test(
       "a keep whose body is Left keeps none of its writes, is Store in its words, and its name is spent"
     ) {
       val (got, docs) = keeping(MoveLimits.Zero) { m =>
@@ -557,6 +627,39 @@ object MovesContract {
         at
       )
       .map(w => Kept(Label.written(w.kept)))
+
+  /** A strand of two threads in room `C1` of `w`: the root said "the deploy is stuck", and
+    * its follower, a guest, "still stuck?" a minute after; and its root.
+    */
+  def strand(): (StrandWorld, grit.core.id.ConversationId) = {
+    val w = new StrandWorld
+    val a = w.thread("C1", "1.0")
+    val b = w.thread("C1", "2.0")
+    w.say(a, "the deploy is stuck", 0)
+    w.follow(w.say(b, "still stuck?", 60, Integrity.Outside), a)
+    (w, a.id)
+  }
+
+  /** What every strand's summary in the contract is asked under. */
+  val SummarySystem = "Summarise the strand."
+
+  /** The summary `n` of `seen` through `m`, believed at [[Believed]], held to
+    * [[AnswerSchema]]: its conforming JSON's text and what it is believed at, or "none" when
+    * nothing was asked.
+    */
+  def summarised(m: Dreaming^, n: String, seen: Vector[Strand.Seen]): Either[MoveError, String] =
+    seen.headOption
+      .toRight(MoveError.Store("no strand"))
+      .flatMap(s =>
+        m.summarise(
+          name(n),
+          s,
+          TestTainted.at(Dreaming.Summary(SummarySystem, 1000, Typed.json(AnswerSchema)), Believed)
+        )
+      )
+      .map(
+        _.fold("none")(a => s"${replied(a).text} at ${Integrity.written(a.reply.integrity)}")
+      )
 
   /** Limits of no asks or calls and `n` judgments. */
   def judgments(n: Int): MoveLimits =

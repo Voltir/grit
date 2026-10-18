@@ -5,10 +5,12 @@ import java.time.Instant
 import grit.core.act.{
   Asked,
   Called,
+  Dreaming,
   Keeping,
   MoveError,
   MoveLimits,
   Moves,
+  ScriptedDreaming,
   ScriptedKeeping,
   ScriptedMoves
 }
@@ -16,6 +18,7 @@ import grit.core.classify.{Answer as Judged, ClassifierError}
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.flow.TestTainted
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.stitch.StrandWorld
 import grit.core.tool.Outcome
 import grit.core.visibility.Integrity
 
@@ -37,6 +40,25 @@ object ScriptedMovesTests extends MovesContract {
     val moves =
       scripted(limits, broken = false, Vector(), Right(Judged.YesNo(Yes)), Integrity.Authority)
     (use(moves), moves.kept)
+  }
+
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+      use: Dreaming^ -> A
+  ): (A, Vector[(String, Vector[String])]) = {
+    val shown = new Shown
+    val moves = new ScriptedDreaming(
+      limits,
+      Floor,
+      MovesWorld.Notes,
+      MovesWorld.NotesTerms,
+      world.shelf,
+      world.excerpts,
+      (system, messages) => {
+        shown.add(system, messages.collect { case Message.User(t) => t })
+        Right(Asked(TestTainted.at(Answered, Believed), Floor))
+      }
+    )
+    (use(moves), shown.all)
   }
 
   /** Keeping within `limits` whose keeps keep [[MovesWorld.Notes]]' documents at
@@ -90,6 +112,15 @@ object ScriptedMovesTests extends MovesContract {
   /** Each of `shapes` in turn, the last again once they run out; [[MovesContract.Answered]]
     * when there are none.
     */
+  /** Each JSON ask's system text and user messages, in order. */
+  private final class Shown {
+    // Appended to by the fake's JSON script; one test's, read on its one thread.
+    @caps.unsafe.untrackedCaptures
+    var all: Vector[(String, Vector[String])] = Vector.empty
+
+    def add(system: String, users: Vector[String]): Unit = all = all :+ (system, users)
+  }
+
   private final class Replies(shapes: Vector[ujson.Value]) {
     // Counts the replies given; one test's, read on its one thread, so no other reader sees
     // it change.

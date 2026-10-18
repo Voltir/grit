@@ -6,10 +6,12 @@ import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
+import grit.core.id.ConversationId
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
+import grit.core.stitch.{Strand, StrandDigest}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.{Facts, Integrity, Label}
@@ -30,15 +32,17 @@ private[moves] enum AskMade extends Asked {
   case Made(digest: String, message: Message.Assistant, at: Label, estimate: Tokens)
 
   /** No answer, `why`: the allowance did not admit it, no catalog read or the provider failed,
-    * nothing it could go to was cleared for `at`, or the store failed. `at` is `Some` for an
+    * nothing it could go to was cleared for `at`, the store failed, or a strand's summary found
+    * its strand's messages changed. `at` is `Some` for an
     * uncleared refusal alone.
     */
   case Refused(kind: AskMade.Kind, why: String, digest: String, at: Option[Label] = None)
 
   /** A JSON ask's reply conformed and read: `reply`, its conforming JSON written compactly;
     * what it was asked held nothing above `at`; `level`, the integrity of the acting that posed
-    * it, which an extraction of the reply is trusted at ([[grit.core.act.Extraction.Node]]);
-    * `calls`, its model calls in order.
+    * it (a strand's summary's met with every message it read), which an extraction of the
+    * reply is trusted at ([[grit.core.act.Extraction.Node]]); `calls`, its model calls in
+    * order.
     */
   case Shaped(
       digest: String,
@@ -89,6 +93,11 @@ private[moves] object AskMade {
     case Model extends Kind("model")
     case Store extends Kind("store")
     case Uncleared extends Kind("uncleared")
+
+    /** A strand's summary found its strand's messages changed since its scan: nothing was
+      * asked.
+      */
+    case Changed extends Kind("changed")
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at
@@ -139,14 +148,17 @@ private[moves] object CallMade {
   * added to.
   *   - an ask's `ask:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
   *     as an entry holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form, `e`
-  *     its request's estimated tokens; or `{"refused":"capped"|"model"|"store","why":w,"digest":d}`,
-  *     or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
+  *     its request's estimated tokens; or
+  *     `{"refused":"capped"|"model"|"store"|"changed","why":w,"digest":d}` (`changed` a
+  *     strand's summary's alone), or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
   *     classifier it could go to was cleared for;
   *   - a JSON ask's `ask:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"level":i,"calls":[c…]}}`,
   *     `j` its conforming JSON, `i` an [[grit.core.visibility.Integrity.written]], or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
   *     above; each `c` is `{"model":m,"usage":u,"estimate":e}`, `u` a usage as an entry holds
   *     it ([[grit.core.store.PayloadJson.writeUsage]]), then `"upstream":p` when who served it
   *     was reported;
+  *   - a strand's summary's `ask:{n}`: a JSON ask's, under its [[strand]] digest, or
+  *     `{"refused":"changed","why":w,"digest":d}` when its strand's messages changed;
   *   - a judgment's `ask:{n}`:
   *     `{"judged":{"digest":d,"answers":[a…],"model":m,"usage":u,"estimate":e,"at":l}}` (its
   *     call's `"upstream":p` before `at` when reported), each `a`
@@ -194,6 +206,13 @@ object MovesJournal {
   def json(system: String, messages: Vector[Message], schema: JsonSchema): String =
     v1(jsonForm(system, messages, schema))
 
+  /** The digest of a strand's summary, v1: its root, its [[grit.core.stitch.StrandDigest]] and
+    * `asOf`, as `seen` holds them; `chars`; the system text; and the schema as [[json]] writes
+    * it. What its members said is not in it: the strand's digest stands for that.
+    */
+  def strand(seen: Strand.Seen, system: String, chars: Int, schema: JsonSchema): String =
+    v1(strandForm(seen, system, chars, schema))
+
   /** The digest of a judgment of `request`, v1: its state, each object's keys in the order
     * written; then each question in order, its kind, instructions, and its keys with their
     * descriptions, its levels, or what yes and no mean: everything the classifier is sent.
@@ -222,6 +241,18 @@ object MovesJournal {
       schema: JsonSchema
   ): Boolean = recorded match {
     case s"v1:$_" => recorded == json(system, messages, schema)
+    case _ => false
+  }
+
+  /** As [[sameAsk]], for a strand's summary. */
+  def sameStrand(
+      recorded: String,
+      seen: Strand.Seen,
+      system: String,
+      chars: Int,
+      schema: JsonSchema
+  ): Boolean = recorded match {
+    case s"v1:$_" => recorded == strand(seen, system, chars, schema)
     case _ => false
   }
 
@@ -258,6 +289,16 @@ object MovesJournal {
   ): String =
     "json" + text(system) + count(messages.size) + messages.map(message).mkString +
       text(ujson.write(schema.json))
+
+  /** v1's canonical form of a strand's summary, which [[strand]] hashes. */
+  private[moves] def strandForm(
+      seen: Strand.Seen,
+      system: String,
+      chars: Int,
+      schema: JsonSchema
+  ): String =
+    "strand" + text(ConversationId.value(seen.root)) + text(StrandDigest.value(seen.digest)) +
+      text(seen.asOf.toString) + count(chars) + text(system) + text(ujson.write(schema.json))
 
   /** v1's canonical form of a judgment, which [[judgment]] hashes. */
   private[moves] def judgmentForm(request: Request): String =

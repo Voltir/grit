@@ -6,11 +6,12 @@ import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.flow.{TestTainted, Trusted}
-import grit.core.id.ToolCallId
+import grit.core.id.{ConversationId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.place.Service
+import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
+import grit.core.stitch.{Strand, StrandDigest, StrandWorld}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.{Facts, Integrity, Label, Level, Provenance, Readers, ResultPart}
@@ -376,6 +377,77 @@ object MovesJournalTests extends TestSuite {
 
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside
     // grit (`printf '%s' '<form>' | sha256sum`).
+    test(
+      "a strand's summary's v1 digest is of its root, its strand's digest, asOf, chars, system text and schema, and a changed strand is refused so"
+    ) {
+      val schema = JsonSchema
+        .read(
+          ujson.Obj(
+            "type" -> "object",
+            "properties" -> ujson.Obj("summary" -> ujson.Obj("type" -> "string")),
+            "required" -> ujson.Arr("summary"),
+            "additionalProperties" -> false
+          )
+        )
+        .fold(e => throw new java.lang.AssertionError(e.message), identity)
+      val digest = StrandDigest
+        .read("0123456789abcdef")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val at = java.time.Instant.parse("2026-10-12T09:10:00Z")
+      val seen = Strand.Seen(
+        Place.under(Namespace.Task, Vector("room")),
+        Label.Public,
+        ConversationId("c1"),
+        Vector(ConversationId("c1")),
+        2,
+        40,
+        at,
+        at,
+        digest,
+        at
+      )
+      // strand2:c116:0123456789abcdef20:2026-10-12T09:10:00Z1000;10:Summarise.112:{…}
+      MovesJournal.strand(seen, "Summarise.", 1000, schema) ==>
+        "v1:124bfd546ae887abb0a8afdd91774f22a6644f51e5bf01855aeb4789971ae667"
+      assert(
+        MovesJournal.sameStrand(
+          MovesJournal.strand(seen, "Summarise.", 1000, schema),
+          seen,
+          "Summarise.",
+          1000,
+          schema
+        ),
+        !MovesJournal.sameStrand(
+          MovesJournal.strand(seen, "Summarise.", 999, schema),
+          seen,
+          "Summarise.",
+          1000,
+          schema
+        )
+      )
+      pinned[AskMade](
+        AskMade.Refused(AskMade.Kind.Changed, "moved", "v1:ab"),
+        """{"refused":"changed","why":"moved","digest":"v1:ab"}"""
+      )
+    }
+
+    test("a strand's summary records none of what its members said, and its reply's level") {
+      val (world, root) = MovesContract.strand()
+      val seen = StrandWorld.right(
+        world.shelf.of(Vector(root), StrandWorld.at(600))(using grit.dbos.sql.TestTx.fake)
+      )
+      val w = new MovesWorld(broken = false, MovesContract.Floor)
+      val _ = w.dreaming(MovesContract.limits(1, 0), world)(m =>
+        MovesContract.Seen(Vector(MovesContract.summarised(m, "s", seen)))
+      )
+      val outputs = w.durable.history(MovesWorld.Turn.workflowId).map(_.toString)
+      assert(
+        outputs.nonEmpty,
+        outputs.forall(o => !o.contains("deploy") && !o.contains("stuck")),
+        outputs.exists(_.contains("\"level\":\"outside\""))
+      )
+    }
+
     test("an ask's v1 digest is of its system text, messages, tools' names and tool use") {
       // ask10:Say hello.1;u2:hi0;4:auto
       MovesJournal.ask(ModelRequest("Say hello.", Vector(Message.User("hi")))) ==>

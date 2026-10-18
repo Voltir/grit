@@ -27,6 +27,7 @@ import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
+import grit.core.stitch.{Strand, StrandExcerpts}
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Label, Subject}
@@ -115,6 +116,20 @@ private[moves] object Act {
       digest: String
   ) extends Acted
 
+  /** The summary `name` of `seen`, its messages read through `excerpts` and shown within
+    * `chars` after `system`, its reply read by `reply`, under `digest`.
+    */
+  final case class Summary[T](
+      name: MoveName,
+      acting: Acting,
+      seen: Strand.Seen,
+      system: String,
+      chars: Int,
+      reply: Typed[T],
+      excerpts: StrandExcerpts,
+      digest: String
+  ) extends Acted
+
   /** The judgment `name` of `request`, its answers read by `questions`, under `digest`. */
   final case class Judgment[T](
       name: MoveName,
@@ -176,49 +191,74 @@ private[moves] object Act {
   def json[T]: Step[MovesEnv, Json[T], AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Json[T], AskMade](Asks.move)(env =>
-      j =>
-        admitted(env.records, env.models, env.db, env.clock, j.acting, j.digest) match {
-          case Left(refusal) => refusal
-          case Right((at, pin)) =>
-            val settings = pin.settings
-            val request =
-              Shaping.request(
-                j.system,
-                j.messages,
-                Posed.ReplyTool,
-                j.reply.schema,
-                settings.strict
-              )
-            val estimator = env.records.estimator
-            def costs(calls: Vector[Shaped.Call]): Vector[AskMade.Call] =
-              calls.map(c =>
-                AskMade.Call(
-                  c.answer.model,
-                  c.answer.usage,
-                  estimator.request(c.sent),
-                  c.answer.upstream
-                )
-              )
-            Shaping.shaped(
-              env.models.provider(pin),
-              request,
-              Posed.ReplyTool,
-              j.reply,
-              settings.names,
-              settings.repairs,
-              Posed.Json.Repairs,
-              env.clock
-            ) match {
-              case Shaped.Read(conforming, _, calls) =>
-                AskMade.Shaped(j.digest, conforming.text, at, j.acting.integrity, costs(calls))
-              case Shaped.Unread(why, calls) => AskMade.Unshaped(j.digest, why, costs(calls))
-              case Shaped.Failed(why, Vector()) =>
-                AskMade.Refused(AskMade.Kind.Model, why, j.digest)
-              case Shaped.Failed(why, calls) => AskMade.Unshaped(j.digest, why, costs(calls))
-            }
+      j => shaping(env, j.acting, j.system, j.messages, j.reply, j.digest, j.acting.integrity)
+    )
+  }
+
+  /** A strand's summary's `ask:{n}`: its strand's messages read for its acting's subject, then,
+    * when they are the ones its scan digested, asked as a JSON ask of one user message, their
+    * excerpt, its `level` the acting's integrity met with theirs.
+    */
+  def summary[T]: Step[MovesEnv, Summary[T], AskMade] = {
+    import MovesJournal.given
+    Step[MovesEnv, Summary[T], AskMade](Asks.move)(env =>
+      s =>
+        env.db.read(s.acting.subject)(s.excerpts.excerpt(s.seen, s.chars)) match {
+          case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest)
+          case Right(None) => AskMade.Refused(AskMade.Kind.Changed, Changed, s.digest)
+          case Right(Some(shown)) =>
+            val messages = Vector(Message.User(shown.excerpt.text))
+            val level = s.acting.integrity.meet(shown.integrity)
+            shaping(env, s.acting, s.system, messages, s.reply, s.digest, level)
         }
     )
   }
+
+  /** A JSON ask of `system` then `messages` for `acting`, under `digest`: admitted, then the
+    * model's reply, shaped and repaired, recorded at `level`.
+    */
+  private def shaping[T](
+      env: MovesEnv^,
+      acting: Acting,
+      system: String,
+      messages: Vector[Message],
+      reply: Typed[T],
+      digest: String,
+      level: Integrity
+  ): AskMade =
+    admitted(env.records, env.models, env.db, env.clock, acting, digest) match {
+      case Left(refusal) => refusal
+      case Right((at, pin)) =>
+        val settings = pin.settings
+        val request =
+          Shaping.request(system, messages, Posed.ReplyTool, reply.schema, settings.strict)
+        val estimator = env.records.estimator
+        def costs(calls: Vector[Shaped.Call]): Vector[AskMade.Call] =
+          calls.map(c =>
+            AskMade.Call(
+              c.answer.model,
+              c.answer.usage,
+              estimator.request(c.sent),
+              c.answer.upstream
+            )
+          )
+        Shaping.shaped(
+          env.models.provider(pin),
+          request,
+          Posed.ReplyTool,
+          reply,
+          settings.names,
+          settings.repairs,
+          Posed.Json.Repairs,
+          env.clock
+        ) match {
+          case Shaped.Read(conforming, _, calls) =>
+            AskMade.Shaped(digest, conforming.text, at, level, costs(calls))
+          case Shaped.Unread(why, calls) => AskMade.Unshaped(digest, why, costs(calls))
+          case Shaped.Failed(why, Vector()) => AskMade.Refused(AskMade.Kind.Model, why, digest)
+          case Shaped.Failed(why, calls) => AskMade.Unshaped(digest, why, costs(calls))
+        }
+    }
 
   /** The judgment's `ask:{n}`: admitted, then the classifier's answers, asked only when its
     * service is cleared for what the admitting read knew.
@@ -626,6 +666,8 @@ private[moves] object Act {
     s"${service.name} does not offer ${ToolName.value(tool)}, so this call did not run."
 
   private val Nobody = "There is nobody to make this call for, so it did not run."
+
+  private val Changed = "its strand's messages changed since its scan"
 
   private[moves] val Capped = "The day's spend reached its cap, so no model was asked."
 

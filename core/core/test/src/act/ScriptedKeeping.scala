@@ -24,7 +24,7 @@ import grit.dbos.sql.TestTx
   * less than `Outside` is [[MoveError.Below]] and writes nothing; keeps are not limited. Its documents keep `documents`' rules: two of
   * these over one `documents` are two runs of a plugin, the second reading what the first kept.
   */
-final class ScriptedKeeping(
+class ScriptedKeeping(
     limits: MoveLimits,
     floor: Label,
     plugin: PluginName,
@@ -68,7 +68,7 @@ final class ScriptedKeeping(
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 
   /** A store's failure, in the durable moves' words. */
-  private def described(error: StoreError): String = error match {
+  protected def described(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
     case StoreError.DatabaseError(cause) => cause
     case StoreError.Invalid(cause) => cause

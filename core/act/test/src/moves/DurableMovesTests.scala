@@ -3,7 +3,7 @@ package grit.act.moves
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.act.MovesFixtures.{Answering, FakeDb, Judged as Spent, Judging, PerChar, Summary}
-import grit.core.act.{Acting, ActsFor, Allowance, Gates, Keeping, MoveLimits, Moves}
+import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates, Keeping, MoveLimits, Moves}
 import grit.core.classify.{Answer as Judged, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.SetClock
 import grit.core.document.{
@@ -27,9 +27,11 @@ import grit.core.edge.{
 import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
+import grit.core.message.Message
 import grit.core.place.Place
-import grit.core.provider.Models
+import grit.core.provider.{ModelRequest, Models}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
+import grit.core.stitch.StrandWorld
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 import grit.core.visibility.{
@@ -79,6 +81,14 @@ object DurableMovesTests extends MovesContract {
       .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
     (got, docs)
+  }
+
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+      use: Dreaming^ -> A
+  ): (A, Vector[(String, Vector[String])]) = {
+    val w = new MovesWorld(broken = false, MovesContract.Floor)
+    val (got, requests) = w.dreaming(limits, world)(use)
+    (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
 }
 
@@ -230,9 +240,37 @@ final class MovesWorld(
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
   }
+
+  /** As [[keeping]], its moves also scanning `world`'s strands and summarising what they
+    * said; and every request its model was sent, in order.
+    */
+  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+      use: Dreaming^ -> A
+  ): (A, Vector[ModelRequest]) = {
+    val models = new Answering(Answer)
+    val dreams = MovesWorld.dreams(acting, limits, keeper, world)(use)
+    var out: Option[A] = None
+    durable.run(Turn.workflowId) { _ =>
+      out = Some(Flows.run(dreams, env(models), ()).merge)
+      "done"
+    }
+    (out.getOrElse(throw new java.lang.AssertionError("the workflow did not run")), models.requests)
+  }
 }
 
 object MovesWorld {
+
+  /** As [[keeps]], its moves also scanning `world`'s strands and summarising what they said. */
+  def dreams[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      world: StrandWorld
+  )(use: Dreaming^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
+    Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
+      _ =>
+        DurableMoves.dreaming(acting, limits, keeper, world.shelf, world.excerpts)(use)(using steps)
+    )
 
   /** What `use` returns over the moves of `acting` within `limits`, as a job's program makes
     * them, declaring `declared`.

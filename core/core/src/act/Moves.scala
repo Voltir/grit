@@ -11,6 +11,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
+import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.Label
@@ -218,4 +219,38 @@ trait Keeping extends Moves {
   def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
       body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
+}
+
+/** [[Keeping]], and the strands of the rooms its run reads, by ids and counts: what a
+  * [[grit.core.job.DreamingJob]]'s run is handed. Their messages' text reaches a model only
+  * through [[summarise]], read in its own step, and never the job's code.
+  */
+trait Dreaming extends Keeping {
+
+  /** As [[keep]], `body` also reading `strands` in the keep's transaction. */
+  def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
+      body: (I, DocumentKeeper, StrandShelf, Instant) -> Tx^ ?-> Either[StoreError, A]
+  ): Either[MoveError, A]
+
+  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text then one user message: what
+    * `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]] shows
+    * them within `summary`'s `chars` (the root's first message, then the latest), read in this
+    * move's own step, so only the ask's record is kept. Its reply is believed at the meet of
+    * `summary` and every message read: a guest's message caps it. `Right(None)`, asking
+    * nothing, when those messages are not the ones `seen` digested (one was removed or said
+    * since its scan); the move counts as made either way.
+    */
+  def summarise[T](
+      name: MoveName,
+      seen: Strand.Seen,
+      summary: Tainted[Dreaming.Summary[T]]
+  ): Either[MoveError, Option[Asked[T]]]
+}
+
+object Dreaming {
+
+  /** A strand summary's ask: `system`, the most characters of the strand shown (`chars`), and
+    * the reply it reads as.
+    */
+  final case class Summary[T](system: String, chars: Int, reply: Typed[T])
 }

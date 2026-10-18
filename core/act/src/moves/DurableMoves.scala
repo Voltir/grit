@@ -6,6 +6,7 @@ import grit.core.act.{
   Acting,
   Asked,
   Called,
+  Dreaming,
   Extraction,
   Keeping,
   MoveError,
@@ -26,6 +27,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
+import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -63,8 +65,65 @@ object DurableMoves {
   )(using steps: Steps[MovesEnv]^): A =
     body(new Kept(acting, limits, keeper))
 
+  /** As [[keeping]], its moves also reading `strands` ([[Dreaming]]), a strand's summary reading
+    * its messages through `excerpts` in its own step: recorded as an `ask:{name}` in a JSON
+    * ask's form, under its own digest ([[MovesJournal.strand]]).
+    */
+  def dreaming[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      strands: StrandShelf,
+      excerpts: StrandExcerpts
+  )(body: Dreaming^ => A)(using steps: Steps[MovesEnv]^): A =
+    body(new Dreamt(acting, limits, keeper, strands, excerpts))
+
+  /** One run's moves, its keeps over `keeper`, and its scans over `strands`. */
+  private final class Dreamt(
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      strands: StrandShelf,
+      excerpts: StrandExcerpts
+  )(using steps: Steps[MovesEnv]^)
+      extends Kept(acting, limits, keeper),
+        Dreaming {
+
+    def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
+        body: (I, DocumentKeeper, StrandShelf, Instant) -> Tx^ ?-> Either[StoreError, A]
+    ): Either[MoveError, A] =
+      keep(name, from)((i, kept, at) => body(i, kept, strands, at))
+
+    def summarise[T](
+        name: MoveName,
+        seen: Strand.Seen,
+        summary: Tainted[Dreaming.Summary[T]]
+    ): Either[MoveError, Option[Asked[T]]] =
+      refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
+        val Dreaming.Summary(system, chars, reply) = Trusted.asIs(summary).extract
+        val digest = MovesJournal.strand(seen, system, chars, reply.schema)
+        val asked = made(
+          Act.ask(Act.summary[T]),
+          Act.Summary(name, acting, seen, system, chars, reply, excerpts, digest)
+        )
+        val same = MovesJournal.sameStrand(asked.made.digest, seen, system, chars, reply.schema)
+        asked.made match {
+          case AskMade.Refused(AskMade.Kind.Changed, _, _, _) if same => Right(None)
+          case _ =>
+            settled(name, asked, same) {
+              case AskMade.Shaped(_, written, at, level, _) =>
+                Some(
+                  readBack(reply, written)
+                    .map(r => Asked(Mint.tainted(r, summary.integrity.meet(level)), at))
+                )
+              case _ => None
+            }.map(Some(_))
+        }
+      }
+  }
+
   /** One run's moves, and its keeps over `keeper`. */
-  private final class Kept(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(using
+  private class Kept(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(using
       steps: Steps[MovesEnv]^
   ) extends Run(acting, limits),
         Keeping {
@@ -89,8 +148,8 @@ object DurableMoves {
   private class Run(acting: Acting, limits: MoveLimits)(using steps: Steps[MovesEnv]^)
       extends Moves {
 
-    // caps.unsafe: each holds an immutable value. The object is made inside `plain` or
-    // `keeping`, per run, and never leaves its `body` (whose result is pure, so it cannot carry
+    // caps.unsafe: each holds an immutable value. The object is made inside `plain`,
+    // `keeping` or `dreaming`, per run, and never leaves its `body` (whose result is pure, so it cannot carry
     // it out); every update is on the run's one thread, between steps; only this class's own
     // methods read them. A read of the run's history runs the same code over the same step
     // results, so it makes the same updates.
@@ -230,7 +289,7 @@ object DurableMoves {
       * [[MoveError.Model]], or `read` of what it made (`None`: a record of another shape, which
       * diverges).
       */
-    private def settled[R](name: MoveName, asked: Act.Settling, same: Boolean)(
+    protected def settled[R](name: MoveName, asked: Act.Settling, same: Boolean)(
         read: AskMade -> Option[Either[MoveError, Asked[R]]]
     ): Either[MoveError, Asked[R]] =
       if (!same) Left(diverge(name))
