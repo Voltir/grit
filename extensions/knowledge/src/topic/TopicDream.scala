@@ -15,31 +15,32 @@ import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
 
-/** The job `topics-dream`, version 1, its days reckoned in `zone`, its cards through `cards`
-  * when its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at
-  * its floor, reading strands as they stood at that day's end (or now, if sooner) and the cards
-  * written by then: scans its topics, the strands of rooms at its floor spoken in within `recent`,
-  * and the cards changed within `cardRecent`; withdraws from a topic each passage naming a
-  * strand it no longer reads at its floor (its room at another label now, or its messages
-  * gone), the topic itself when none is left; attaches each strand or card a topic already
-  * refers to (a card by the unit its pointer reads, which a topic refers to when it was written
-  * from that card or links it), and asks once (`attach`) where each other one goes, at most
-  * `perRun` strands and `perRun` cards: to one of the topics shown (those attached to, and at
-  * most [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
-  * [[TopicDream.LeadChars]]), to a new topic of its own, with a discussion shown (where that one
-  * goes, a topic it opens included; left when it names none, or a loop), or to none: set aside (`aside`), in a
-  * document of its floor under `topic:aside` holding no topic, while within `recent` or
-  * `cardRecent` at the digest or version set aside; then, for each topic touched, at most `perRun` and at most
-  * `perRunMost`, new topics first, asks once (`write-{i}`) for its new lead and the day's
-  * passage, from the strands and cards attached and its current text, and keeps it
-  * (`keep-{i}`): the day's passage replacing one the topic holds for that day, its lineage
-  * joined. A topic's version refers to each strand it was written from, each card's unit, each
-  * topic it links and the unit of each other link; a ref [[Ref.written]] refuses is left out
-  * and counted. It puts up at most [[TopicDream.Reviewed]] of the topics it writes for review,
-  * new first. A strand or card already in a topic's lineage or set aside at the same digest or
-  * version touches nothing. Replies [[Gathered.line]], which holds no cost: its asks' cost is
-  * read from the spend ledger ([[grit.core.store.UsageLedger]]), each recorded under its run's
-  * workflow. Its `limits`: asks `1 + perRunMost`; no calls or judgments.
+/** The job `topics-dream`, version 1, its days reckoned in `zone`, its cards through `cards` when
+  * its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its
+  * floor, reading strands as they stood at that day's end (or now, if sooner) and the cards written
+  * by then: scans its topics, the strands of rooms at its floor spoken in within `recent`, and the
+  * cards changed within `cardRecent`; withdraws from a topic each passage naming a strand it no
+  * longer reads at its floor (its room at another label now, or its messages gone), the topic
+  * itself when none is left; attaches each strand or card a topic already refers to (a card by the
+  * unit its pointer reads, which a topic refers to when it was written from that card or links it),
+  * and asks (`attach`) where each other one goes, at most `perRun` strands and `perRun` cards: to
+  * one of the topics shown (those attached to, and at most [[TopicScan.Leads]] more, newest first,
+  * each by its lead, its text's head within [[TopicDream.LeadChars]]), to a new topic of its own,
+  * with a discussion shown (where that one goes, a topic it opens included; left when it names
+  * none, or a loop), or to none: set aside (`aside`), in a document of its floor under
+  * `topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or version
+  * set aside. A reply placing a different number than shown is asked once more (`attach-again`),
+  * and when that one does too, all are left. Then, for each topic touched, at most `perRun` and at
+  * most `perRunMost`, new topics first, asks once (`write-{i}`) for its new lead and the day's
+  * passage, from the strands and cards attached and its current text, and keeps it (`keep-{i}`):
+  * the day's passage replacing one the topic holds for that day, its lineage joined. A topic's
+  * version refers to each strand it was written from, each card's unit, each topic it links and the
+  * unit of each other link; a ref [[Ref.written]] refuses is left out and counted. It puts up at
+  * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. A strand or card
+  * already in a topic's lineage or set aside at the same digest or version touches nothing. Replies
+  * [[Gathered.line]], which holds no cost: its asks' cost is read from the spend ledger
+  * ([[grit.core.store.UsageLedger]]), each recorded under its run's workflow. Its `limits`: asks
+  * `2 + perRunMost`; no calls or judgments.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
@@ -53,7 +54,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   def read(params: ujson.Value): Either[String, TopicParams] = TopicParams.read(params)
 
   override val limits: MoveLimits =
-    MoveLimits.of(1 + perRunMost.max(0), 0).getOrElse(MoveLimits.Zero)
+    MoveLimits.of(2 + perRunMost.max(0), 0).getOrElse(MoveLimits.Zero)
 
   def run(run: Trusted[JobRun[TopicParams]], moves: Dreaming^): String = {
     val params = run.extract.params
@@ -100,18 +101,34 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     val n = scan.strands.size + scan.cards.size
     if (n == 0) (Vector.empty, g)
     else {
-      val summary = Dreaming.Summary(
-        TopicDream.attachSystem(scan.strands.size, scan.leads.nonEmpty, scan.cards.nonEmpty),
-        TopicDream.AttachChars,
-        TopicDream.LeadChars,
-        TopicDream.AttachReply
-      )
-      moves.summarise(
-        TopicDream.Attach,
-        scan.strands,
-        scan.leads.map(_._2) ++ scan.cards.map(_.version),
-        run.tainted.map(_ => summary)
-      ) match {
+      val system =
+        TopicDream.attachSystem(scan.strands.size, scan.leads.nonEmpty, scan.cards.nonEmpty)
+      def asked(name: MoveName, system: String) = {
+        val summary = Dreaming.Summary(
+          system,
+          TopicDream.AttachChars,
+          TopicDream.LeadChars,
+          TopicDream.AttachReply
+        )
+        moves.summarise(
+          name,
+          scan.strands,
+          scan.leads.map(_._2) ++ scan.cards.map(_.version),
+          run.tainted.map(_ => summary)
+        )
+      }
+      // Whether `s` places as many discussions and cards as it was shown; read as the placing
+      // below is.
+      def fits(s: Dreaming.Summarised[Placing]): Boolean = {
+        val placing = Trusted.asIs(s.asked.reply).extract
+        placing.strands.size == scan.strands.size &&
+        placing.cards.size == scan.cards.count(c => s.shown.contains(c.version))
+      }
+      (asked(TopicDream.Attach, system) match {
+        case Right(Some(s)) if !fits(s) =>
+          asked(TopicDream.AttachAgain, system + " " + TopicDream.Again)
+        case other => other
+      }) match {
         case Left(e) =>
           (
             Vector.empty,
@@ -277,6 +294,14 @@ object TopicDream {
   private val Scan: MoveName = move("scan")
 
   private val Attach: MoveName = move("attach")
+
+  /** The attach ask again, made only when its reply placed a different number than shown. */
+  private val AttachAgain: MoveName = move("attach-again")
+
+  /** What the attach ask asked again is told besides. */
+  private val Again: String =
+    "Your previous reply placed a different number of discussions or cards than shown: give " +
+      "exactly one entry per discussion and one per card shown."
 
   private val SetAside: MoveName = move("aside")
 

@@ -88,12 +88,13 @@ object TopicDreamTests extends TestSuite {
 
     def asked: Vector[Ask] = heard.asked
 
-    /** One run for `day`, made `now`, of `perRun`; its attach ask answered by `attach` of what
+    /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`; its attach ask answered by `attach` of what
       * it was told and shown, its write asks by `write`; its rooms labelled as `rooms` records
       * them; its asks reading no document `unread` holds to: its reply.
       */
     def run(
         perRun: Int = 10,
+        most: Int = 10,
         day: Option[LocalDate] = Some(Day),
         now: Instant = Now,
         rooms: Recorded = Recorded.Empty,
@@ -101,7 +102,7 @@ object TopicDreamTests extends TestSuite {
         write: String -> ujson.Value = _ => wrote(Lead, Passage),
         unread: Document -> Boolean = _ => false
     ): String = {
-      val dream = new TopicDream(10, ZoneOffset.UTC, Some(Cards))
+      val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
       val needs = Needs.over(
         Plugin,
@@ -357,6 +358,40 @@ object TopicDreamTests extends TestSuite {
         "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         (1, 1, 0),
         Vector(key(a))
+      )
+    }
+
+    test(
+      "an attach reply placing a different number than shown is asked once more, and the second placed, within the job's limits"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val reply = runs.run(
+        most = 1,
+        attach = (system, shown) =>
+          if (system.contains("Your previous reply")) everyNew(system, shown)
+          else ujson.Obj("discussions" -> ujson.Arr("new", "new"), "cards" -> ujson.Arr())
+      )
+      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector("attach", "attach", "write"),
+        Vector(key(a))
+      )
+    }
+
+    test("an attach reply placing a different number than shown twice leaves all it was shown") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val reply = runs.run(attach =
+        (_, _) => ujson.Obj("discussions" -> ujson.Arr("none", "none"), "cards" -> ujson.Arr())
+      )
+      (reply, runs.asked.map(_.kind), runs.kept, runs.aside._1) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply placed a different number than shown)",
+        Vector("attach", "attach"),
+        Vector(),
+        Vector()
       )
     }
 

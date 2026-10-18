@@ -11,8 +11,8 @@ import grit.knowledge.ref.{CardKey, Ref}
 trait CardShelf extends caps.Pure {
 
   /** Every card its transaction reads written from `since` until `until`, both included, most
-    * recent first, at most `n`, each by its version, key, title and what its pointer reads ([[Ref.ofPointer]]): never its
-    * summary, which a model reads only as a document shown to
+    * recent first, at most `n`, each by its version, key, title and what its pointer reads
+    * ([[Ref.ofPointer]]): never its summary, which a model reads only as a document shown to
     * [[grit.core.act.Dreaming.summarise]].
     */
   def changed(since: Instant, until: Instant, n: Int)(using
