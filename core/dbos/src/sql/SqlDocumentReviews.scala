@@ -1,6 +1,5 @@
 package grit.dbos.sql
 
-import java.sql.Date
 import java.time.{Instant, LocalDate}
 
 import grit.core.id.{DocKey, PluginName}
@@ -30,7 +29,7 @@ final class SqlDocumentReviews extends DocumentReviews {
          | ORDER BY r.day, r.labelled_at, r.key COLLATE "C"""".stripMargin
     ) { ps =>
       ps.setString(1, PluginName.value(plugin))
-      ps.setDate(2, Date.valueOf(from))
+      ps.setObject(2, from)
     } { rs =>
       for {
         key <- DocKey.of(rs.getString("key"))
@@ -43,7 +42,7 @@ final class SqlDocumentReviews extends DocumentReviews {
       } yield DocumentLabel(
         key,
         SqlLabels.read(rs),
-        rs.getDate("day").toLocalDate,
+        rs.getObject("day", classOf[LocalDate]),
         version,
         verdict,
         rater,
@@ -80,7 +79,9 @@ final class SqlDocumentReviews extends DocumentReviews {
       } { rs =>
         SqlDocuments
           .document(rs)
-          .map(d => DocumentReview(plugin, d.key, d.label, rs.getDate("day").toLocalDate, d))
+          .map(d =>
+            DocumentReview(plugin, d.key, d.label, rs.getObject("day", classOf[LocalDate]), d)
+          )
       }
 
     def posted(subject: DocumentReview, address: String, at: Instant)(using
@@ -142,7 +143,7 @@ final class SqlDocumentReviews extends DocumentReviews {
       ps.setString(at, PluginName.value(plugin))
       ps.setString(at + 1, DocKey.value(subject.key))
       SqlLabels.bind(ps, at + 2, subject.label)
-      ps.setDate(at + 4, Date.valueOf(subject.day))
+      ps.setObject(at + 4, subject.day)
     }
   }
 }

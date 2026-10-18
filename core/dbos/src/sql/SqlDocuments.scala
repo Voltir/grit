@@ -474,7 +474,7 @@ private[sql] object SqlDocuments {
            |ON CONFLICT DO NOTHING""".stripMargin
       ) { ps =>
         SqlClearance.bind(ps, 1, clearance)
-        ps.setDate(SqlClearance.Params + 1, java.sql.Date.valueOf(day))
+        ps.setObject(SqlClearance.Params + 1, day)
         ps.setObject(SqlClearance.Params + 2, utc(at))
         ps.setLong(SqlClearance.Params + 3, DocumentVersion.value(version))
         ps.setString(SqlClearance.Params + 4, PluginName.value(plugin))
