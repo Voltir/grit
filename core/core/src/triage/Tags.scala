@@ -83,7 +83,9 @@ object Tags {
     */
   object V2 {
 
-    /** A choice of what its message leaves open: `asks`, `owes`, `closes` or `nothing`. */
+    /** A choice of what its message leaves open: `asks`, `owes`, `closes` or `nothing`, and
+      * since v5 [[V5.states]].
+      */
     val gap: QuestionName = named("gap")
     val open: QuestionName = named("open")
     val to: QuestionName = named("to")
@@ -182,5 +184,20 @@ object Tags {
       V2.stillOpen(half),
       Gate.either(V3.atGrit(half), notAnchoredRecord(half))
     )
+  }
+
+  /** v5, the question set triage asks since it replaced v4: [[V4]]'s names but `anchor`, with
+    * `gap`'s keys and `states`, a statement that asks nothing; the gate it drafts by.
+    */
+  object V5 {
+
+    /** `gap`'s key for a statement that asks nothing: a view, a plan or a report. Stored as a
+      * weight under this key: a pin of recorded answers.
+      */
+    val states: String = "states"
+
+    /** v5's draft gate, [[V4.drafts]]: a message whose `gap` weighs on [[states]] does not ask.
+      */
+    val drafts: Gate = V4.drafts
   }
 }

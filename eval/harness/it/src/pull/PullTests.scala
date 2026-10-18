@@ -271,9 +271,9 @@ object PullTests extends TestSuite {
           } finally reader.close()
         val ids = heard.map((_, ts) => right(CaseId.read(s"C1/$ts")))
         capture.cases.map(_.id) ==> ids.take(2)
-        val (v1Names, v4Names) = (
+        val (v1Names, v5Names) = (
           Vector("kind", "waiting", "durable", "helps").map(qn),
-          Vector("gap", "open", "to", "to-grit", "durable", "anchor", "anchor-record").map(qn)
+          Vector("gap", "open", "to", "to-grit", "durable", "anchor-record").map(qn)
         )
         (
           pulled.live.rows.map(r => (r.id, r.focus)),
@@ -287,7 +287,7 @@ object PullTests extends TestSuite {
           Some(v1Names),
           1,
           Vector(ids(1) -> Some(Focus.Focused)),
-          Some(v4Names),
+          Some(v5Names),
           0
         )
         (

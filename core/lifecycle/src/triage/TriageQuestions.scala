@@ -173,7 +173,7 @@ object TriageQuestions {
       record: Option[Item.One],
       speak: Gate
   ): TriageQuestions = {
-    import Tags.V2.{anchor, gap, open, sourcePrefix, to}
+    import Tags.V2.{anchor, gap, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
     val built = for {
@@ -193,13 +193,7 @@ object TriageQuestions {
       set <- of(
         Item.One(gap, gapQuestion),
         Vector(
-          Item.One(
-            open,
-            yesNo(
-              "Read new_message and thread. Is what new_message asks for still unanswered in " +
-                "the thread?"
-            )
-          ),
+          StillOpen,
           Item.One(
             to,
             yesNo(
@@ -209,15 +203,7 @@ object TriageQuestions {
             )
           )
         ) ++ directed ++ Vector(
-          Item.One(
-            Tags.V2.durable,
-            yesNo(
-              "Read new_message and thread. Does new_message state something worth keeping " +
-                "for later: a decision, a date, a name, a number, how something works, or an " +
-                "answer to a question? Greetings, thanks and small talk do not count. Count " +
-                "only what new_message itself states; the thread is only for reading it."
-            )
-          ),
+          Durable,
           Item.One(
             anchor,
             yesNo(
@@ -287,9 +273,98 @@ object TriageQuestions {
       Tags.V4.drafts
     )
 
-  /** The set live triage asks for a deployment presenting as `persona`: [[v4]]. */
-  def shipped(persona: Persona): TriageQuestions = v4(persona)
+  /** v2's to v5's `open`. */
+  private def StillOpen: Item.One = Item.One(
+    Tags.V2.open,
+    Question.YesNo(
+      "Read new_message and thread. Is what new_message asks for still unanswered in the thread?",
+      None,
+      None
+    )
+  )
 
-  /** The gate live triage's set drafts by, the same for every persona: [[Tags.V4.drafts]]. */
-  val ShippedSpeak: Gate = Tags.V4.drafts
+  /** v2's to v5's `durable`. */
+  private def Durable: Item.One = Item.One(
+    Tags.V2.durable,
+    Question.YesNo(
+      "Read new_message and thread. Does new_message state something worth keeping " +
+        "for later: a decision, a date, a name, a number, how something works, or an " +
+        "answer to a question? Greetings, thanks and small talk do not count. Count " +
+        "only what new_message itself states; the thread is only for reading it.",
+      None,
+      None
+    )
+  )
+
+  /** v5, the set that replaced [[v4]], worded with `persona`'s name: v4's questions in v4's
+    * order but `anchor`; `gap` with [[Tags.V5.states]], a statement that asks nothing, before
+    * `nothing`; `open`, `to-grit` and `durable` in v4's words, and `to`, `anchor-record` and
+    * each `source:<name>` in plainer ones; gated by [[Tags.V5.drafts]], whatever the name.
+    */
+  def v5(persona: Persona): TriageQuestions = {
+    import Tags.V2.{gap, sourcePrefix, to}
+    def yesNo(words: String) = Question.YesNo(words, None, None)
+    def key(name: String, means: String) = Question.Key(name, Some(means))
+    val built = for {
+      gapQuestion <- Question
+        .choice(
+          "Read new_message, said by author, and its thread. What does new_message leave open?",
+          key(
+            "asks",
+            "it asks for information, a document, or for something to be done, of anyone"
+          ),
+          key("owes", "its author commits to doing something"),
+          key("closes", "it answers or settles something asked earlier"),
+          key(
+            Tags.V5.states,
+            "it shares a view, a plan, a proposal or a report, and asks nothing of anyone"
+          ),
+          key("nothing", "greetings, thanks, reactions, or news with nothing asked")
+        )
+        .left
+        .map(d => s"gap repeats ${d.key}")
+      set <- of(
+        Item.One(gap, gapQuestion),
+        Vector(
+          StillOpen,
+          Item.One(
+            to,
+            yesNo(
+              "Read new_message and thread. Is new_message directed at a particular person " +
+                "rather than at the room, by naming them or by answering what they said in " +
+                "thread? Mentioning someone, or writing in a thread they wrote in, does not by " +
+                "itself direct it at them."
+            )
+          ),
+          toGrit(persona),
+          Durable,
+          Item.One(
+            Tags.V4.anchorRecord,
+            yesNo(
+              "Read new_message and thread. Is what new_message asks for something nobody " +
+                "could find in what the team has written down, such as an opinion, someone's " +
+                "current availability, their own plans or work, or a choice nobody has made " +
+                "yet? A fact asked of a particular person may still be written down somewhere."
+            )
+          ),
+          Item.PerSource(
+            sourcePrefix,
+            "Read new_message and thread. Could the source below supply what new_message " +
+              "asks for? The source is ",
+            "."
+          )
+        ),
+        Tags.V5.drafts
+      ).left.map(_.toString)
+    } yield set
+    // Its gap's keys are distinct, its names are distinct and every bound of its gate reads a
+    // One of its kind, so no Left is taken; TriageQuestionsTests builds it.
+    built.fold(why => throw new IllegalStateException(why), identity)
+  }
+
+  /** The set live triage asks for a deployment presenting as `persona`: [[v5]]. */
+  def shipped(persona: Persona): TriageQuestions = v5(persona)
+
+  /** The gate live triage's set drafts by, the same for every persona: [[Tags.V5.drafts]]. */
+  val ShippedSpeak: Gate = Tags.V5.drafts
 }

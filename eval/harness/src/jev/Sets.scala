@@ -33,12 +33,18 @@ object Sets {
     */
   val V3: QuestionSet = QuestionSet("v3", Tags.V3.drafts, Some(Earning.Durable), Some(Tags.V2.to))
 
-  /** v4's gate ([[Tags.V4.drafts]]), live triage's since it replaced v3, named `v4`, with its
-    * `durable` ([[Earning.Durable]]) and its `to`.
+  /** v4's gate ([[Tags.V4.drafts]]), live triage's from v4 until v5, named `v4`, with its
+    * `durable` ([[Earning.Durable]]) and its `to`. It reads only names v5 asks, so it reads
+    * v5's answers too.
     */
   val V4: QuestionSet = QuestionSet("v4", Tags.V4.drafts, Some(Earning.Durable), Some(Tags.V2.to))
 
-  val all: Vector[QuestionSet] = Vector(V1, V2, V3, V4)
+  /** v5's gate ([[Tags.V5.drafts]]), live triage's since it replaced v4, named `v5`, with its
+    * `durable` ([[Earning.Durable]]) and its `to`.
+    */
+  val V5: QuestionSet = QuestionSet("v5", Tags.V5.drafts, Some(Earning.Durable), Some(Tags.V2.to))
+
+  val all: Vector[QuestionSet] = Vector(V1, V2, V3, V4, V5)
 
   /** The set named `n`; `None` for no set's. */
   def named(n: String): Option[QuestionSet] = all.find(_.name == n)

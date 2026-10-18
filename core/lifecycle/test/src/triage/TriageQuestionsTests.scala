@@ -206,7 +206,7 @@ object TriageQuestionsTests extends TestSuite {
     }
 
     test(
-      "v4 asks v3's words with anchor-record after anchor, drafts by v4's gate, and is shipped"
+      "v4 asks v3's words with anchor-record after anchor, and drafts by v4's gate"
     ) {
       val pip = Persona.of("Pip").getOrElse(fail("a persona"))
       val set = TriageQuestions.v4(pip)
@@ -235,11 +235,85 @@ object TriageQuestionsTests extends TestSuite {
           None
         )
       )
-      (set.speak, TriageQuestions.v4(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
-        (Tags.V4.drafts, Tags.V4.drafts, Tags.V4.drafts)
+      (set.speak, TriageQuestions.v4(Persona.Grit).speak) ==> (Tags.V4.drafts, Tags.V4.drafts)
       (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V3.drafts, catalog)) ==>
         (None, None)
-      TriageQuestions.shipped(pip) ==> set
+    }
+
+    // The words are what the classifier is asked: pinned.
+    test(
+      "v5 asks v4's questions but anchor, gap with states, in plain words, and is shipped"
+    ) {
+      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
+      val set = TriageQuestions.shipped(pip)
+      val v4 = TriageQuestions.v4(pip).questions(catalog)
+      val asked = set.questions(catalog)
+      asked.keys.map(QuestionName.value).toVector ==> Vector(
+        "gap",
+        "open",
+        "to",
+        "to-grit",
+        "durable",
+        "anchor-record",
+        "source:github",
+        "source:conversations"
+      )
+      // open, to-grit and durable keep v4's words: an answer under their names means what it did.
+      Vector("open", "to-grit", "durable").map(q => asked.get(n(q)) == v4.get(n(q))) ==>
+        Vector(true, true, true)
+      asked.get(n("gap")) ==> Question
+        .choice(
+          "Read new_message, said by author, and its thread. What does new_message leave open?",
+          Question.Key(
+            "asks",
+            Some("it asks for information, a document, or for something to be done, of anyone")
+          ),
+          Question.Key("owes", Some("its author commits to doing something")),
+          Question.Key("closes", Some("it answers or settles something asked earlier")),
+          Question.Key(
+            "states",
+            Some("it shares a view, a plan, a proposal or a report, and asks nothing of anyone")
+          ),
+          Question.Key("nothing", Some("greetings, thanks, reactions, or news with nothing asked"))
+        )
+        .toOption
+      asked.get(n("to")) ==> Some(
+        yesNo(
+          "Read new_message and thread. Is new_message directed at a particular person rather " +
+            "than at the room, by naming them or by answering what they said in thread? " +
+            "Mentioning someone, or writing in a thread they wrote in, does not by itself " +
+            "direct it at them."
+        )
+      )
+      asked.get(n("anchor-record")) ==> Some(
+        yesNo(
+          "Read new_message and thread. Is what new_message asks for something nobody could " +
+            "find in what the team has written down, such as an opinion, someone's current " +
+            "availability, their own plans or work, or a choice nobody has made yet? A fact " +
+            "asked of a particular person may still be written down somewhere."
+        )
+      )
+      asked.collectFirst { case (q, y) if QuestionName.value(q) == "source:github" => y } ==> Some(
+        yesNo(
+          "Read new_message and thread. Could the source below supply what new_message asks " +
+            "for? The source is the team's GitHub repository: code, issues and pull requests."
+        )
+      )
+      // A message that states, asking nothing, is held: the gate reads gap's asks alone.
+      val states = VectorMap(
+        n("gap") -> Answer.Choice(
+          "states",
+          Vector(w("asks", 0.2), w("states", 0.8)),
+          Answer.confidence(Vector(0.2, 0.8))
+        ),
+        n("open") -> Answer.YesNo(0.9),
+        n("to-grit") -> Answer.YesNo(0.9),
+        n("anchor-record") -> Answer.YesNo(0.1)
+      )
+      (set.speak, TriageQuestions.ShippedSpeak, set.speak.drafts(states)) ==>
+        (Tags.V5.drafts, Tags.V5.drafts, Some(false))
+      (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V4.drafts, catalog)) ==>
+        (None, None)
     }
 
     test("V2 drafts at its bounds: 0.5 passes at least and fails below; a missing answer is None") {

@@ -626,7 +626,6 @@ object RebuildTests extends TestSuite {
             "to",
             "to-grit",
             "durable",
-            "anchor",
             "anchor-record",
             "source:tasks"
           ),
