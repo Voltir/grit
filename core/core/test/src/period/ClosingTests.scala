@@ -51,7 +51,9 @@ object ClosingTests extends TestSuite {
 
     // A pin of the stored form: every closing entry is written in it, and it outlives every
     // raw entry of its period, so a change that would make one unreadable fails here first.
-    test("a closing's stored form, version 3: each standing line with its ground") {
+    test(
+      "a closing's stored form, version 3: each standing line with its ground, an add citing nothing with no cited key"
+    ) {
       ClosingJson.write(full).render() ==>
         """{"v":3,"flows":{"prose":"We set up the staging deploy.","outcome":"staging deploys from main",""" +
         """"changes":[""" +
