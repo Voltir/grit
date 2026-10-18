@@ -107,6 +107,18 @@ object JevJsonTests extends TestSuite {
       assert(answers.map(_.usage.costUsd) == Right(Some(BigDecimal("0.000013356"))))
     }
 
+    test(
+      "answers: the docs' choice and noul answers as they write them, and a score response reads back"
+    ) {
+      val read = JevJson.response(department :+ urgent, ChoiceBody).map(_.answers)
+      val score = Answer.Score(1.05, Vector(0.0, 0.95, 0.05), 0.92)
+      val scored = ujson.Obj("answers" -> JevJson.answers(Vector(score)))
+      (
+        read.map(JevJson.answers),
+        JevJson.response(Vector(frustration), scored).map(_.answers)
+      ) ==> (ChoiceBody.obj.get("answers").toRight(()), Right(Vector(score)))
+    }
+
     test("response: a missing answer, or a choice outside the options, is Unreadable") {
       val missing = ujson.read("""{"model": "m", "answers": {}, "usage": {}}""")
       val outside = ujson.read("""{"model": "m", "answers": {"q1":

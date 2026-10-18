@@ -1,7 +1,7 @@
 package grit.kit.rehearse
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.classify.{Ask, StateJson}
+import grit.core.classify.{Ask, Question, StateJson}
 import grit.core.durable.{Durable, StepRecord}
 import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.inbox.InboxError
@@ -13,7 +13,7 @@ import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.Starts
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.Topics
-import grit.models.StubModels
+import grit.models.{StubClassifier, StubModels}
 
 import utest.*
 import Rehearsal.Event
@@ -83,7 +83,10 @@ object RehearsedTests extends TestSuite {
         Vector((turn.workflowId, Came.Stopped("ask:0")))
       shown.calls.map(c => (c.step, c.answered)) ==> Vector(
         (Some("ask:query"), Answered.StandIn(Answers.StandIn.Supplied, "lunch places")),
-        (Some("classify"), Answered.StandIn(Answers.StandIn.Stub, "yes/no: 0.9")),
+        (
+          Some("classify"),
+          Answered.StandIn(Answers.StandIn.Stub, """{"q1":{"type":"noul","noul":0.9}}""")
+        ),
         (Some("ask:0"), Answered.Unsent)
       )
     }
@@ -96,6 +99,49 @@ object RehearsedTests extends TestSuite {
         Vector(
           Part("system", "Be brief.", 9, CharEstimate.system("Be brief.")),
           Part("message 0, user", "lunch?", 6, CharEstimate.message(Message.User("lunch?")))
+        )
+      )
+    }
+
+    test(
+      "a classifier call's questions and answers are shown as the classifier's wire carries them"
+    ) {
+      val choice = Question
+        .choice("Which room?", Question.Key("here", None), Question.Key("there", None))
+        .fold(e => sys.error(e.toString), identity)
+      val questions = asked.questions :+ choice
+      val shown = Rehearsed.of(
+        Vector(
+          Entry.Told(Event.Running(WorkflowId("t"))),
+          Entry.Told(Event.Began("ask:triage")),
+          Entry.Called(
+            Call.Classifier(
+              Some("ask:triage"),
+              StubClassifier.Service,
+              ujson.Obj(),
+              questions,
+              Answers
+                .supplied(Map("ask:triage" -> "0.25;1,0"))
+                .judge("ask:triage", ujson.Obj(), questions)
+            )
+          ),
+          Entry.Told(Event.Ended(StepRecord("ask:triage", None, None)))
+        ),
+        Vector(RehearsalRunner.Ran(WorkflowId("t"), Came.Threw("broke")))
+      )
+      (
+        shown.calls.flatMap(_.parts).drop(1).map(_.text),
+        shown.calls.map(_.answered)
+      ) ==> (
+        Vector(
+          """{"type":"noul","instructions":"Is it about lunch?"}""",
+          """{"type":"choice","instructions":"Which room?","criteria":{"here":null,"there":null}}"""
+        ),
+        Vector(
+          Answered.StandIn(
+            Answers.StandIn.Supplied,
+            """{"q1":{"type":"noul","noul":0.25},"q2":{"type":"choice","choice":"here","probabilities":{"here":1,"there":0},"confidence":1}}"""
+          )
         )
       )
     }

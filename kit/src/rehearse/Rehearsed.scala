@@ -9,6 +9,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.model.Pinned
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.visibility.Label
+import grit.models.JevJson
 import grit.turn.TurnRecord
 
 /** What a dry rehearsal showed, in the order it happened: each workflow it ran, with how its
@@ -225,7 +226,7 @@ object Rehearsed {
     val written = ujson.write(state, indent = 2)
     Part("state", written, written.length, estimated(written)) +:
       questions.zipWithIndex.map { (q, i) =>
-        val text = q.toString
+        val text = ujson.write(JevJson.question(q))
         Part(s"question $i", text, text.length, estimated(text))
       }
   }
@@ -249,13 +250,7 @@ object Rehearsed {
       answer: Either[ClassifierError, grit.core.classify.Answers]
   ): String = answer match {
     case Left(error) => s"refused: $error"
-    case Right(answers) =>
-      answers.answers
-        .map {
-          case grit.core.classify.Answer.YesNo(yes) => s"yes/no: $yes"
-          case other => other.toString
-        }
-        .mkString("\n")
+    case Right(answers) => ujson.write(JevJson.answers(answers.answers))
   }
 
   private def ended(came: RehearsalRunner.Came): String = came match {

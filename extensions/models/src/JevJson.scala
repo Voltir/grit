@@ -29,7 +29,8 @@ object JevJson {
 
   private def id(i: Int): String = s"q${i + 1}"
 
-  private def question(q: Question): ujson.Value = q match {
+  /** `q` as [[request]] asks it, under its id. */
+  def question(q: Question): ujson.Value = q match {
     case c: Question.Choice =>
       ujson.Obj(
         "type" -> "choice",
@@ -90,6 +91,34 @@ object JevJson {
         root.get("model").flatMap(_.strOpt).getOrElse("unknown")
       )
     }
+
+  /** `answers` as a 200 response to a request of as many questions holds them, keyed as
+    * [[request]] keys its questions: what [[response]] reads back as `answers`.
+    */
+  def answers(answers: Vector[Answer]): ujson.Value =
+    ujson.Obj.from(answers.zipWithIndex.map { (a, i) =>
+      id(i) -> (a match {
+        case Answer.Choice(choice, probabilities, confidence) =>
+          ujson.Obj(
+            "type" -> "choice",
+            "choice" -> choice,
+            "probabilities" -> ujson.Obj.from(
+              probabilities.map(w => w.key -> ujson.Num(w.probability))
+            ),
+            "confidence" -> confidence
+          )
+        case Answer.Score(score, probabilities, confidence) =>
+          ujson.Obj(
+            "type" -> "score",
+            "score" -> score,
+            "probabilities" -> ujson.Obj.from(
+              probabilities.zipWithIndex.map((p, l) => l.toString -> ujson.Num(p))
+            ),
+            "confidence" -> confidence
+          )
+        case Answer.YesNo(yes) => ujson.Obj("type" -> "noul", "noul" -> yes)
+      })
+    })
 
   private def answer(
       name: String,
