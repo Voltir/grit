@@ -7,7 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.{ConversationId, EntryId, ShadowName, SourceId}
 import grit.core.identity.TestAccounts
 import grit.core.inbox.InboundId
-import grit.core.review.{Candidate, Considered, Reason, Settled, Verdict}
+import grit.core.review.{Candidate, Considered, Prompt, Reason, Settled, Verdict}
 import grit.core.speech.Outcome
 import grit.core.store.{Origin, StoreError}
 import grit.dbos.engine.LiveEngine
@@ -69,8 +69,17 @@ object PullVerdictsTests extends TestSuite {
             )
           )
           as match {
-            case Considered.Picked(_) =>
-              right(reviews.posted(entry, s"review/$ts", considered))
+            case Considered.Picked(reason) =>
+              // The store names a prompt by its entry alone.
+              val prompt = Prompt(
+                entry,
+                Origin.Task("pull-verdicts", ts),
+                shadow,
+                reason,
+                Settled.Drafted(Outcome.Passed),
+                VectorMap.empty
+              )
+              right(reviews.posted(prompt, s"review/$ts", considered))
               verdicts.zipWithIndex.foreach((v, i) =>
                 right(reviews.reacted(s"review/$ts", rater, v, considered.plusSeconds(i + 1L)))
               )
