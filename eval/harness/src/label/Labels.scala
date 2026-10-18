@@ -2,6 +2,7 @@ package grit.eval.harness.label
 
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.core.triage.Kind
 import grit.eval.harness.capture.{CaseId, Fields}
 
@@ -73,10 +74,10 @@ object Labels {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("labels.json: not JSON")
       cases <- Fields("labels.json", root).obj("cases")
-      read <- Fields.each(cases.obj.toVector) { (written, fields) =>
+      read <- Traversal.traverse(cases.obj.toVector) { (written, fields) =>
         for {
           id <- CaseId.read(written).left.map(why => s"labels.json: $why")
-          each <- Fields.each(fields.objOpt.fold(Vector.empty)(_.toVector)) { (name, v) =>
+          each <- Traversal.traverse(fields.objOpt.fold(Vector.empty)(_.toVector)) { (name, v) =>
             val at = Fields(s"labels.json: $written: $name", v)
             for {
               value <- at.field("value")

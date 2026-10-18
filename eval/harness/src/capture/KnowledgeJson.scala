@@ -2,6 +2,7 @@ package grit.eval.harness.capture
 
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 import grit.core.triage.{Corpora, Corpus}
@@ -21,7 +22,7 @@ object KnowledgeJson {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("knowledge: not JSON")
       all <- Fields("knowledge", root).arr("sources")
-      each <- Fields.each(all) { v =>
+      each <- Traversal.traverse(all) { v =>
         val f = Fields("knowledge: a source", v)
         for {
           name <- f.str("name").flatMap(CorpusName.of)

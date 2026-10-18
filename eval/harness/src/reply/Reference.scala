@@ -3,6 +3,7 @@ package grit.eval.harness.reply
 import scala.collection.immutable.VectorMap
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.core.place.Service
 import grit.eval.harness.capture.{Fields, Parts}
@@ -73,12 +74,12 @@ object Reference {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("reference: not JSON")
       turns <- Fields("reference", root).obj("turns")
-      each <- Fields.each(turns.obj.toVector) { (w, v) =>
+      each <- Traversal.traverse(turns.obj.toVector) { (w, v) =>
         val what = s"reference: $w"
         v.arrOpt
           .toRight("not a list")
           .flatMap(es =>
-            Fields.each(es.toVector) { e =>
+            Traversal.traverse(es.toVector) { e =>
               e.objOpt.map(_.toVector) match {
                 case Some(Vector(("holds", l))) => Locator.read(l).map(Expect.Holds(_))
                 case Some(Vector(("omits", l))) => Locator.read(l).map(Expect.Omits(_))

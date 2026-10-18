@@ -14,6 +14,7 @@ import scala.util.control.NonFatal
 import grit.core.classify.{Answer, Classifier}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
+import grit.core.either.Traversal
 import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.{Cost, Tokens}
@@ -379,7 +380,7 @@ object Main {
           env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
           config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
           matched <- opened(config) { reader =>
-            Fields.each(replied) { (gold, t) =>
+            Traversal.traverse(replied) { (gold, t) =>
               ReplyReview.read(reader, t, records = false).map { r =>
                 // The reply's text is matched here and dropped: only the counts leave.
                 val text = r.reply match {
@@ -497,7 +498,7 @@ object Main {
             w -> Rebuild.recorded(reader, w, assembled, admission, Width.Deployed)
           )
           only <- WindowOnly.all(reader, until)
-          asked <- Fields.each(only)(w =>
+          asked <- Traversal.traverse(only)(w =>
             WindowOnly.asked(reader, w, assembled, Width.Deployed).map(w -> _)
           )
           requests = asked.collect { case (_, WindowOnly.Query.Asked(Some(r))) => r }
@@ -598,7 +599,7 @@ object Main {
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
-      variants <- Fields.each(named)(TurnVariant.named(_, assembled))
+      variants <- Traversal.traverse(named)(TurnVariant.named(_, assembled))
       _ <- refuseWide(variants, limit)
       written <- f
         .get("reference")
@@ -650,7 +651,7 @@ object Main {
       text <- opened(config) { reader =>
         for {
           // The set each turn draws its tools from, by the id it recorded.
-          sets <- Fields.each(turns)(t => drawn(reader, t).map(t.workflow -> _))
+          sets <- Traversal.traverse(turns)(t => drawn(reader, t).map(t.workflow -> _))
           drawnSets = sets.toMap
           noCase = asking.filter(t =>
             t.said match {
@@ -835,7 +836,7 @@ object Main {
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
-      variants <- Fields.each(named)(TurnVariant.named(_, assembled))
+      variants <- Traversal.traverse(named)(TurnVariant.named(_, assembled))
       _ <- refuseWide(variants, limit)
       all <- Synthetic.cases
       config <- DbConfig
@@ -1052,7 +1053,7 @@ object Main {
   /** The turns of the capture in `dir`, from `turns.jsonl`. */
   private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =
     read(dir.resolve("turns.jsonl")).flatMap(text =>
-      Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
+      Traversal.traverse(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
         Try(ujson.read(l)).toOption
           .toRight("turns.jsonl: a line is not JSON")
           .flatMap(TurnJson.read)
@@ -1088,7 +1089,7 @@ object Main {
       manifest <- Try(ujson.read(manifestText)).toOption
         .toRight("capture.json: not JSON")
         .flatMap(CaptureJson.readManifest)
-      all <- Fields.each(casesText.linesIterator.filter(_.nonEmpty).toVector)(l =>
+      all <- Traversal.traverse(casesText.linesIterator.filter(_.nonEmpty).toVector)(l =>
         Try(ujson.read(l)).toOption
           .toRight("cases.jsonl: a line is not JSON")
           .flatMap(CaptureJson.readCase)
@@ -1098,7 +1099,7 @@ object Main {
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       cases = first.fold(all)(n => all.sortBy(c => byTs(c)).take(n))
       rebuilt <- opened(config)(reader =>
-        Fields.each(cases)(c => Inputs.rebuild(reader, c, variant, manifest.tuning).map(c -> _))
+        Traversal.traverse(cases)(c => Inputs.rebuild(reader, c, variant, manifest.tuning).map(c -> _))
       )
       model = Variant.model(variant)
       calls = rebuilt.flatMap { (c, r) =>
@@ -1287,7 +1288,7 @@ object Main {
       variant <- variantNamed(f.getOrElse("variant", Variant.name(Variant.Live)))
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       shown <- opened(config)(reader =>
-        Fields.each(cases)(c =>
+        Traversal.traverse(cases)(c =>
           Review.of(reader, c, manifest.tuning, Variant.recipe(variant), more).map(c -> _)
         )
       )
@@ -1536,7 +1537,7 @@ object Main {
       url <- need(f, "url")
       runs <- need(f, "runs").map(Path.of(_))
       names <- need(f, "shadows").flatMap(n =>
-        Fields.each(n.split(',').toVector.filter(_.nonEmpty))(x =>
+        Traversal.traverse(n.split(',').toVector.filter(_.nonEmpty))(x =>
           ShadowName.of(x).left.map(w => s"--shadows $x: $w")
         )
       )
@@ -1685,7 +1686,7 @@ object Main {
   /** The cases of the capture in `dir`. */
   private def readCases(dir: Path): Either[String, Vector[Case]] =
     read(dir.resolve("cases.jsonl")).flatMap(text =>
-      Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
+      Traversal.traverse(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
         Try(ujson.read(l)).toOption
           .toRight("cases.jsonl: a line is not JSON")
           .flatMap(CaptureJson.readCase)

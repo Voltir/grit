@@ -6,6 +6,7 @@ import scala.util.hashing.MurmurHash3
 
 import grit.core.clock.Fresh
 import grit.core.context.Shown
+import grit.core.either.Traversal
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, StoreError}
@@ -96,8 +97,8 @@ object ReplyReview {
         if (ids.isEmpty || ids.size > Cap) Left(s"name 1 to $Cap turns, not ${ids.size}")
         else if (ids.distinct.size != ids.size) Left("a turn is named twice")
         else
-          Fields
-            .each(ids)(named(turns, _))
+          Traversal
+            .traverse(ids)(named(turns, _))
             .flatMap(found =>
               Either.cond(
                 found.map(_.workflow).distinct.size == found.size,
@@ -327,7 +328,7 @@ object ReplyReview {
   def review(capture: String, picked: Picked, at: Instant)(
       read: TurnCase => Either[String, Reviewed]
   ): Either[String, Review] =
-    Fields.each(picked.turns)(read).map(Review(capture, picked.by, at, _))
+    Traversal.traverse(picked.turns)(read).map(Review(capture, picked.by, at, _))
 
   /** `r` as its file holds it, markdown for a person to read: a header naming the guide, then
     * each case under `## <workflow id>`, its words quoted line by line (`> `), its records
@@ -417,7 +418,7 @@ object ReplyReview {
         case None => Left("the file names no guide")
       }
       cases = split(body)
-      read <- Fields.each(cases)((w: String, ls: Vector[String]) => one(guide, w, ls))
+      read <- Traversal.traverse(cases)((w: String, ls: Vector[String]) => one(guide, w, ls))
     } yield read.flatten
   }
 
@@ -457,7 +458,7 @@ object ReplyReview {
         case _ => Left(err(s"$k: given twice"))
       }
     for {
-      locators <- Fields.each(located)((n, json) =>
+      locators <- Traversal.traverse(located)((n, json) =>
         scala.util
           .Try(ujson.read(json))
           .toOption
@@ -492,8 +493,8 @@ object ReplyReview {
   private def found(v: String, records: Map[Int, Locator]): Either[String, Found] =
     v.split("[\\s,]+").toList.filter(_.nonEmpty) match {
       case "shown" :: ns =>
-        Fields
-          .each(ns.toVector)(n =>
+        Traversal
+          .traverse(ns.toVector)(n =>
             n.toIntOption
               .flatMap(records.get)
               .toRight(s"answer: shown $n names no record shown")

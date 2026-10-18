@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
+import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -73,7 +74,7 @@ object StitchLab {
     )
     for {
       _ <- seed(heard, engine)
-      convs <- each(room.openings)(m =>
+      convs <- traverse(room.openings)(m =>
         engine.db
           .read(Subject.Public)(engine.conversations.find(heard.origin(m)))
           .left
@@ -172,7 +173,7 @@ object StitchLab {
           .map(_.isDefined)
       )
       _ <- Either.cond(!already, (), "the room is in the database already: build it afresh")
-      done <- every(room.messages) { m =>
+      _ <- traverse(room.messages) { m =>
         for {
           by <- Account.read(s"slack:${room.team}/U${m.who.toUpperCase}")
           _ <- engine.jot.write(Subject.Public)(engine.principals.name(by, m.who)).left.map(said)
@@ -189,8 +190,8 @@ object StitchLab {
             .left
             .map((e: InboxError) => s"${m.id}: not heard: $e")
         } yield ()
-      }
-    } yield done
+      }.map(_ => ()) // a bare Vector[Unit] binding holds Vector's Mutable prefix1
+    } yield ()
   }
 
   private def place(
@@ -297,14 +298,6 @@ object StitchLab {
       }
     } yield next
   }
-
-  private def every[A](as: Vector[A])(f: A => Either[String, Unit]): Either[String, Unit] =
-    as.foldLeft[Either[String, Unit]](Right(()))((acc, a) => acc.flatMap(_ => f(a)))
-
-  private def each[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
 
   private def said(e: StoreError): String = e match {
     case StoreError.DuplicateId(id) => s"duplicate id ${EntryId.value(id)}"

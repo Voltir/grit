@@ -5,6 +5,7 @@ import java.time.ZoneOffset
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentKeeper, DocumentTerms}
+import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, DocKey, LineId, PeriodSeq, PluginName}
 import grit.core.period.{Change, Ground, Line, Section}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
@@ -77,13 +78,13 @@ object StandingDocuments {
         case Change.Evicted(l) if l.section == Section.Standing => l
       }
       for {
-        _ <- each(gone.map(_.since).distinct)(since =>
+        _ <- traverse(gone.map(_.since).distinct)(since =>
           for {
             k <- key(closed, since)
             now <- keeper.current(k, label)
             _ <- now.fold(Right(()))(again(keeper, k, label, _, standing, closed))
           } yield ()
-        )
+        ).map(_ => ()) // a bare Vector[Unit] binding holds Vector's Mutable prefix1
         _ <-
           if (added.isEmpty) Right(())
           else {
@@ -212,9 +213,4 @@ object StandingDocuments {
       )
       .left
       .map(StoreError.Invalid(_))
-
-  private def each[A](as: Vector[A])(f: A => Either[StoreError, ?]): Either[StoreError, Unit] =
-    as.foldLeft[Either[StoreError, Unit]](Right(()))((done, a) =>
-      done.flatMap(_ => f(a).map(_ => ()))
-    )
 }

@@ -1,5 +1,6 @@
 package grit.eval.harness.score
 
+import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.eval.harness.capture.{Call, Called, CaseId, Fields, Reading, Said, TurnCase}
 import grit.eval.harness.label.{ChurnQuestions, Gold}
@@ -187,7 +188,7 @@ object Churn {
         .toRight(s"churn: question $question: no turn answers its $side message ${at.written}")
     for {
       pairs <- questions.paired(before, after)
-      found <- Fields.each(pairs) { (q, p) =>
+      found <- Traversal.traverse(pairs) { (q, p) =>
         for {
           b <- found(q, "before", p.before)
           a <- found(q, "after", p.after)

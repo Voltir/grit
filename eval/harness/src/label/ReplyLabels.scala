@@ -2,6 +2,7 @@ package grit.eval.harness.label
 
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, WorkflowId}
 import grit.eval.harness.capture.{Fields, Part, Parts}
 
@@ -118,7 +119,7 @@ object Locator {
         val f = Fields("locator: messages", v("messages"))
         for {
           of <- f.str("conversation")
-          seqs <- f.arr("seqs").flatMap(Fields.each(_)(seq))
+          seqs <- f.arr("seqs").flatMap(Traversal.traverse(_)(seq))
           some <- seqs.toList match {
             case first :: rest => Right(::(first, rest))
             case Nil => Left("locator: messages names no seq")
@@ -206,7 +207,7 @@ object ReplyLabels {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("reply labels: not JSON")
       turns <- Fields("reply labels", root).obj("turns")
-      each <- Fields.each(turns.obj.toVector) { (w, v) =>
+      each <- Traversal.traverse(turns.obj.toVector) { (w, v) =>
         val f = Fields(s"reply labels: $w", v)
         def err(why: String) = s"reply labels: $w: $why"
         for {
@@ -250,7 +251,7 @@ object ReplyLabels {
       case None =>
         for {
           at <- Fields("answer", v).arr("shown")
-          located <- Fields.each(at)(Locator.read)
+          located <- Traversal.traverse(at)(Locator.read)
           some <- located.toList match {
             case first :: rest => Right(Found.Shown(::(first, rest)))
             case Nil => Left("answer: shown names no record")

@@ -3,6 +3,7 @@ package grit.eval.harness.label
 import scala.collection.immutable.VectorMap
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.eval.harness.capture.{CaseId, Fields}
 
 /** One question asked twice as a new thread: the message that asked it `before` a change, and
@@ -53,7 +54,7 @@ object ChurnQuestions {
     for {
       json <- Try(ujson.read(text)).toOption.toRight("churn questions: not JSON")
       entries <- json.objOpt.map(_.toVector).toRight("churn questions: not an object")
-      read <- Fields.each(entries)((id, v) => question(id, v).map(id -> _))
+      read <- Traversal.traverse(entries)((id, v) => question(id, v).map(id -> _))
       cases = read.flatMap((_, q) => q.asked.values)
       checked <- cases.diff(cases.distinct).headOption match {
         case Some(c) => Left(s"churn questions: ${c.written} asks more than once")
@@ -63,7 +64,7 @@ object ChurnQuestions {
 
   private def question(id: String, v: ujson.Value): Either[String, ChurnQuestion] = {
     val what = s"churn questions: $id"
-    def strings(vs: Vector[ujson.Value]) = Fields.each(vs)(Fields.str(what, _))
+    def strings(vs: Vector[ujson.Value]) = Traversal.traverse(vs)(Fields.str(what, _))
     def nonEmpty[A](as: Vector[A], why: String): Either[String, ::[A]] = as.toList match {
       case first :: rest => Right(::(first, rest))
       case Nil => Left(s"$what: $why")
@@ -72,7 +73,7 @@ object ChurnQuestions {
     for {
       gold <- f.obj("gold").map(Fields(s"$what: gold", _))
       factsJson <- gold.arr("facts")
-      facts <- Fields.each(factsJson) { fact =>
+      facts <- Traversal.traverse(factsJson) { fact =>
         fact.arrOpt
           .map(_.toVector)
           .toRight(s"$what: a fact is not a list")
@@ -84,7 +85,7 @@ object ChurnQuestions {
       never <- gold.arr("never").flatMap(strings)
       askedJson <- f.obj("asked")
       rounds <- askedJson.objOpt.map(_.toVector).toRight(s"$what: asked is not an object")
-      asked <- Fields.each(rounds) { (round, c) =>
+      asked <- Traversal.traverse(rounds) { (round, c) =>
         Fields
           .str(s"$what: asked: $round", c)
           .flatMap(CaseId.read(_).left.map(why => s"$what: asked: $round: $why"))

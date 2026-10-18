@@ -3,6 +3,7 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.document.{Document, DocumentSearch, DocumentTerms, Shelved}
+import grit.core.either.Traversal.traverse
 import grit.core.id.{
   CallSlot,
   CloseRef,
@@ -210,7 +211,7 @@ object AsOf {
         since <- closedSince(CloseOrdinal.Start, Vector.empty)
         candidates = (now.map(_.conversation) ++ since.map(_.ref.conversationId)).distinct
           .filterNot(_ == conversation)
-        open <- each(candidates) { c =>
+        open <- traverse(candidates) { c =>
           for {
             began <- conversations.get(c)
             kept <- under.all(c)
@@ -234,7 +235,7 @@ object AsOf {
     ): Either[StoreError, Vector[ClosedElsewhere]] =
       for {
         now <- under.closedElsewhere(conversation)
-        kept <- each(now) { c =>
+        kept <- traverse(now) { c =>
           under.all(c.conversation).map { periods =>
             periods
               .flatMap(p =>
@@ -365,7 +366,7 @@ object AsOf {
 
     /** The `links` whose follower was begun before the instant. */
     private def begun(links: Vector[Link])(using Tx^): Either[StoreError, Vector[Link]] =
-      each(links)(l =>
+      traverse(links)(l =>
         conversations
           .get(l.conversation)
           .map(_.filter(c => before(c.createdAt, at)).map(_ => l))
@@ -373,11 +374,4 @@ object AsOf {
 
     private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
   }
-
-  private def each[A, B](
-      as: Vector[A]
-  )(f: A => Either[StoreError, B]): Either[StoreError, Vector[B]] =
-    as.foldLeft[Either[StoreError, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
 }

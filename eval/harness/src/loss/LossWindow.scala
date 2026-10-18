@@ -3,6 +3,7 @@ package grit.eval.harness.loss
 import java.time.Instant
 
 import grit.core.classify.{Classifier, ClassifierError}
+import grit.core.either.Traversal
 import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.store.{StoreError, Tx}
@@ -30,7 +31,7 @@ object LossWindow {
       window = workflows.collect {
         case (w, recorded) if !recorded.created.isBefore(since) => TurnRef.fromWorkflowId(w)
       }.flatten
-      gated <- Fields.each(window) { turn =>
+      gated <- Traversal.traverse(window) { turn =>
         val id = WorkflowId.value(turn.workflowId)
         reader
           .steps(turn.workflowId)
@@ -50,8 +51,8 @@ object LossWindow {
       reader: Reader^,
       turns: Vector[TurnRef]
   ): Either[String, Map[TurnRef, Either[String, String]]] =
-    Fields
-      .each(turns.map(_.conversationId).distinct) { conversation =>
+    Traversal
+      .traverse(turns.map(_.conversationId).distinct) { conversation =>
         reader.all
           .read((tx: Tx^) ?=> reader.entries.list(conversation))
           .left

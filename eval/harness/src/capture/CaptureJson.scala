@@ -3,6 +3,7 @@ package grit.eval.harness.capture
 import scala.util.Try
 
 import grit.core.classify.AnswersJson
+import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.period.Probability
@@ -11,7 +12,7 @@ import grit.core.triage.Kind
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
 
-import Fields.{each, opt}
+import Fields.opt
 
 /** A capture's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
   * `capture.json`. Each value is written with its fields in one fixed order, so equal values
@@ -236,7 +237,7 @@ object CaptureJson {
       rebuilt <- f
         .field("rebuilt")
         .flatMap(_.arrOpt.toRight("stitch: rebuilt is not an array"))
-        .flatMap(xs => each(xs.toVector)(readSlot))
+        .flatMap(xs => traverse(xs.toVector)(readSlot))
       seen <- f.field("seen").flatMap(readSeen)
       drift <- f.int("drift")
     } yield Stitched(placed, offered, input, rebuilt, seen, drift)
@@ -292,7 +293,7 @@ object CaptureJson {
         f.field("fields")
           .flatMap(_.arrOpt.toRight("seen: fields is not an array"))
           .flatMap(xs =>
-            each(xs.toVector)(x =>
+            traverse(xs.toVector)(x =>
               x.strOpt.flatMap(SeenCheck.Field.read).toRight(s"seen: no field ${x.render()}")
             )
           )
@@ -305,7 +306,7 @@ object CaptureJson {
           f.field("ranks")
             .flatMap(_.arrOpt.toRight("seen: ranks is not an array"))
             .flatMap(xs =>
-              each(xs.toVector)(x =>
+              traverse(xs.toVector)(x =>
                 x.numOpt.filter(_.isWhole).map(_.toInt).toRight("seen: a rank is not an integer")
               )
             )
@@ -317,7 +318,7 @@ object CaptureJson {
               .field("roots")
               .flatMap(_.arrOpt.toRight("seen: roots is not an array"))
               .flatMap(xs =>
-                each(xs.toVector)(x => Fields.str("seen: root", x).flatMap(CaseId.read))
+                traverse(xs.toVector)(x => Fields.str("seen: root", x).flatMap(CaseId.read))
               )
               .filterOrElse(_.nonEmpty, "seen: no root differs")
             fs <- fields

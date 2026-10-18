@@ -6,6 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyNote, Shown, Window}
 import grit.core.document.{DocLabel, Document, Pointer}
 import grit.core.durable.StepRecord
+import grit.core.either.Traversal
 import grit.core.id.{DocumentVersion, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
@@ -38,7 +39,7 @@ object TurnCapture {
       starts <- reader.starts().left.map(e => s"engine starts unread: ${Capture.kind(e)}")
       current <- read("current documents")(reader.current())
       pointers = current.flatMap(_.pointer)
-      cases <- Capture.each(workflows) { (workflow, recorded) =>
+      cases <- Traversal.traverse(workflows) { (workflow, recorded) =>
         TurnRef.fromWorkflowId(workflow) match {
           case None => Right(None)
           case Some(turn) =>

@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.context.Width
 import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTerms}
+import grit.core.either.Traversal
 import grit.core.id.{ConversationId, PluginName, TurnRef}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
@@ -48,17 +49,17 @@ object Synthetic {
     * be laid out, has no query, or a conversation of it is not in the database.
     */
   def found(reader: Reader^, cases: Vector[Case]): Either[String, Found] =
-    Fields
-      .each(cases.flatMap(c => Variant.values.toVector.map(c -> _))) { (c, v) =>
+    Traversal
+      .traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _))) { (c, v) =>
         val name = s"${c.name}/${v.label}"
         for {
           layout <- Layout.of(c, v)
           query <- c.query.toRight(s"$name has no query:")
           own <- conversation(reader, name, layout.own)
-          must <- Fields.each(layout.must)((o, seqs) =>
+          must <- Traversal.traverse(layout.must)((o, seqs) =>
             conversation(reader, name, o).map(id => Expect.Holds(Locator.Messages(id, seqs)))
           )
-          never <- Fields.each(layout.never)((o, seqs) =>
+          never <- Traversal.traverse(layout.never)((o, seqs) =>
             conversation(reader, name, o).map(id => Expect.Omits(Locator.Messages(id, seqs)))
           )
         } yield (must ++ never).toList match {
@@ -75,7 +76,7 @@ object Synthetic {
     * [[Cases.documented]]), read; `Left` naming the first that does not read.
     */
   def cases: Either[String, Vector[Case]] =
-    Fields.each(Cases.all ++ Cases.crossPlace ++ Cases.documented)((name, text) =>
+    Traversal.traverse(Cases.all ++ Cases.crossPlace ++ Cases.documented)((name, text) =>
       Case.parse(name, text)
     )
 
@@ -101,14 +102,14 @@ object Synthetic {
   ): Either[String, Built] = {
     val terms = Load.terms(DocWeight.Unscaled)
     for {
-      layouts <- Fields.each(cases.flatMap(c => Variant.values.toVector.map(c -> _)))((c, v) =>
+      layouts <- Traversal.traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _)))((c, v) =>
         Layout.of(c, v)
       )
       _ <- jot
         .write(Subject.Public)(documents.declare(Vector(Load.Plugin -> terms)))
         .left
         .map(e => s"the eval's document terms: $e")
-      written <- Fields.each(layouts)(l =>
+      written <- Traversal.traverse(layouts)(l =>
         Load
           .into(jot, conversations, entries, periods, keeper(Load.Plugin, terms))(l)
           .map(_ => l.entries.size)

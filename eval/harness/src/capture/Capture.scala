@@ -2,6 +2,7 @@ package grit.eval.harness.capture
 
 import java.time.Instant
 
+import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, TurnRef}
 import grit.core.stitch.{Placed, Seen, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
@@ -51,13 +52,13 @@ object Capture {
       tagged <- read("tags")(reader.triage.tagged(Instant.EPOCH, dump.at))
       starts <- reader.starts().left.map(e => s"engine starts unread: ${kind(e)}")
       settings <- read("settings")(reader.lifecycle.current())
-      placed <- each(tagged)(t => read("placement")(reader.stitches.placed(t.entry)).map(t -> _))
+      placed <- traverse(tagged)(t => read("placement")(reader.stitches.placed(t.entry)).map(t -> _))
       tunings = placed.flatMap(_._2.map(_.seen.tuning))
       tuning = tunings.distinct
         .sortBy(t => (-tunings.count(_ == t), t.toString))
         .headOption
         .getOrElse(Tuning.Default)
-      cases <- each(placed) { (t, live) =>
+      cases <- traverse(placed) { (t, live) =>
         val c = t.triage.period.conversationId
         originOf(c).flatMap {
           case None => Right(None)
@@ -168,12 +169,12 @@ object Capture {
         case b: Placed.Begins => Right(Placement.Begins(b.p))
         case u: Placed.Unread => Right(Placement.Unread(Failure.of(u.why)))
       }
-      offered <- each(live.seen.offered)(o => opening(o.root).map(Offering(_, o.why, o.p)))
+      offered <- traverse(live.seen.offered)(o => opening(o.root).map(Offering(_, o.why, o.p)))
       rebuilt = Stitching
         .offered(reads, reader.db.as(Subject.Conversation(turn.conversationId)), turn, tuning)
         .toOption
         .flatten
-      now <- each(rebuilt.fold(Vector.empty)(_.exchanges))(e =>
+      now <- traverse(rebuilt.fold(Vector.empty)(_.exchanges))(e =>
         opening(e.root).map(Slot(_, e.offered))
       )
     } yield {
@@ -201,11 +202,4 @@ object Capture {
     case StoreError.DatabaseError(_) => "database error"
     case StoreError.Invalid(_) => "invalid"
   }
-
-  private[capture] def each[A, B](
-      as: Vector[A]
-  )(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
 }

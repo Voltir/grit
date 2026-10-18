@@ -6,6 +6,7 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError, Question}
+import grit.core.either.Traversal.traverse
 import grit.core.id.{QuestionName, ShadowName, ShadowRef}
 import grit.core.message.Usage
 import grit.core.review.Considered
@@ -85,7 +86,7 @@ object Pull {
     val byId = cases.map(c => c.id -> c).toMap
     for {
       tagged <- read("tags")(reader.triage.tagged(since, at))
-      ids <- each(tagged)(t =>
+      ids <- traverse(tagged)(t =>
         read("conversation")(reader.conversations.get(t.triage.period.conversationId))
           .map(c =>
             t -> c.flatMap(c => CaseId.of(c.origin, t.entry).map(id => id -> focus(c.origin, id)))
@@ -96,7 +97,7 @@ object Pull {
         ids.collectFirst { case (t, Some((id, focus))) if id == c.id => (t, c, focus) }
       )
       built = inCapture.flatMap((t, c, focus) => c.asked.map(a => (t, c, a.input.request, focus)))
-      shadowed <- each(names)(n =>
+      shadowed <- traverse(names)(n =>
         read("shadows")(reader.shadows.of(n, tagged.map(_.entry))).map(n -> _)
       )
     } yield {
@@ -202,7 +203,7 @@ object Pull {
           case _ => None
         }
       )
-      named <- each(rated)((r, rated) =>
+      named <- traverse(rated)((r, rated) =>
         read("conversation")(reader.conversations.get(r.conversation))
           .map(c => (c.flatMap(c => CaseId.of(c.origin, r.entry)), rated))
       )
@@ -372,9 +373,4 @@ object Pull {
     * digest of what it holds.
     */
   private def digest(request: String): Digest = Digest.read(request).getOrElse(Digest.text(request))
-
-  private def each[A, B](xs: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    xs.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, x) =>
-      acc.flatMap(done => f(x).map(done :+ _))
-    )
 }

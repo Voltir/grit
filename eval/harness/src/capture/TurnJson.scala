@@ -3,6 +3,7 @@ package grit.eval.harness.capture
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
+import grit.core.either.Traversal.traverse
 import grit.core.id.{
   ConversationId,
   CorpusName,
@@ -23,7 +24,7 @@ import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
-import Fields.{each, opt}
+import Fields.opt
 
 /** A turn of a capture as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
   * so equal turns write equal bytes. A read is `Left` naming the first field missing or not of
@@ -97,10 +98,10 @@ object TurnJson {
       window <- f.optional("window").flatMap(opt(_)(readParts))
       rounds <- f
         .arr("rounds")
-        .flatMap(each(_)(r => r.arrOpt.toRight("turn: a round is not an array")))
-        .flatMap(each(_)(calls => each(calls.toVector)(readCall).map(Round(_))))
+        .flatMap(traverse(_)(r => r.arrOpt.toRight("turn: a round is not an array")))
+        .flatMap(traverse(_)(calls => traverse(calls.toVector)(readCall).map(Round(_))))
       ended <- f.obj("ended").flatMap(readEnded)
-      spend <- f.arr("spend").flatMap(each(_)(readSpent))
+      spend <- f.arr("spend").flatMap(traverse(_)(readSpent))
       speech <- f.optional("speech").flatMap(opt(_)(readDrafted))
     } yield TurnCase(
       WorkflowId(workflow),
@@ -147,13 +148,13 @@ object TurnJson {
     for {
       tools <- f
         .arr("tools")
-        .flatMap(each(_)(t => Fields.str("offered: a tool", t).flatMap(ToolName.of)))
+        .flatMap(traverse(_)(t => Fields.str("offered: a tool", t).flatMap(ToolName.of)))
       set <- f.str("set").flatMap(ToolSetId.of)
       schema <- f.long("schema").map(Tokens(_))
       prompt <- f
         .obj("prompt")
         .flatMap(p =>
-          each(p.obj.toVector) { (k, n) =>
+          traverse(p.obj.toVector) { (k, n) =>
             for {
               layer <- Layer.of(k).toRight(s"offered: no layer $k")
               count <- n.numOpt.filter(_.isWhole).toRight(s"offered: $k is not whole")
@@ -165,7 +166,7 @@ object TurnJson {
         .flatMap(opt(_)(w => Fields.str("offered: workspace", w).flatMap(Place.read)))
       reached <- f
         .arr("reached")
-        .flatMap(each(_)(r => Fields.str("offered: reached", r).flatMap(Place.read)))
+        .flatMap(traverse(_)(r => Fields.str("offered: reached", r).flatMap(Place.read)))
       shape <- f.optional("shape").flatMap(opt(_)(readShape))
     } yield Offered(tools, set, schema, VectorMap.from(prompt), workspace, reached, shape)
   }
@@ -211,7 +212,7 @@ object TurnJson {
         case _ => Left("shape: width is neither deployed nor {budget, hits}")
       }
       whole <- f.str("whole").flatMap(ToolSetId.of)
-      services <- f.arr("services").flatMap(each(_)(readTook))
+      services <- f.arr("services").flatMap(traverse(_)(readTook))
     } yield TurnShape(width, whole, services)
   }
 
@@ -226,10 +227,10 @@ object TurnJson {
         )
       tools <- f
         .arr("tools")
-        .flatMap(each(_)(t => Fields.str("shape: a tool", t).flatMap(ToolName.of)))
+        .flatMap(traverse(_)(t => Fields.str("shape: a tool", t).flatMap(ToolName.of)))
       sources <- f
         .arr("sources")
-        .flatMap(each(_)(n => Fields.str("shape: a source", n).flatMap(CorpusName.of)))
+        .flatMap(traverse(_)(n => Fields.str("shape: a source", n).flatMap(CorpusName.of)))
       verdict <- f.field("verdict").flatMap {
         case ujson.Str("ungated") => Right(ServiceOffer.Verdict.Ungated)
         case ujson.Str("unweighed") => Right(ServiceOffer.Verdict.Unweighed)
@@ -323,7 +324,7 @@ object TurnJson {
     for {
       parts <- f
         .arr("parts")
-        .flatMap(each(_) { p =>
+        .flatMap(traverse(_) { p =>
           val pf = Fields("window: part", p)
           for {
             kind <- pf.str("kind").flatMap(k => Part.Kind.read(k).toRight(s"window: no kind $k"))
@@ -331,7 +332,7 @@ object TurnJson {
             seqs <- pf
               .arr("seqs")
               .flatMap(
-                each(_)(s => s.numOpt.filter(_.isWhole).toRight("window: a seq is not whole"))
+                traverse(_)(s => s.numOpt.filter(_.isWhole).toRight("window: a seq is not whole"))
               )
             count <- pf.long("tokens")
             support <- pf
@@ -345,7 +346,7 @@ object TurnJson {
             support
           )
         })
-      documents <- f.arr("documents").flatMap(each(_)(readHeld))
+      documents <- f.arr("documents").flatMap(traverse(_)(readHeld))
       gaps <- f.long("gaps")
       own <- f.long("own")
     } yield Parts(parts, documents, Tokens(gaps), Tokens(own))

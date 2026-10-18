@@ -73,10 +73,4 @@ object Fields {
   def opt[A](o: Option[ujson.Value])(
       read: ujson.Value => Either[String, A]
   ): Either[String, Option[A]] = o.fold(Right(None))(read(_).map(Some(_)))
-
-  /** `f` of each of `as`, in order; the first `Left`. */
-  def each[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
 }

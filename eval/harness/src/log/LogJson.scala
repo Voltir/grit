@@ -4,11 +4,12 @@ import scala.collection.immutable.VectorMap
 import scala.util.Try
 
 import grit.core.classify.{Answer, Question}
+import grit.core.either.Traversal.traverse
 import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
-import grit.eval.harness.capture.Fields.{each, opt}
+import grit.eval.harness.capture.Fields.opt
 import grit.eval.harness.capture.{CaptureJson, CaseId, Digest, Failure, Fields}
 
 /** How a row's answer `A` is written in a run's log and its cache. */
@@ -94,21 +95,21 @@ object LogJson {
     })
     def read(v: ujson.Value): Either[String, Vector[Weights]] =
       v.arrOpt.toRight("answers: not an array").flatMap { xs =>
-        each(xs.toVector) { x =>
+        traverse(xs.toVector) { x =>
           val f = Fields("answer", x)
           if (x.objOpt.exists(_.contains("yes"))) f.num("yes").map(Weights.YesNo(_))
           else if (x.objOpt.exists(_.contains("score")))
             for {
               position <- f.num("score")
               ps <- f.arr("levels")
-              probabilities <- each(ps)(_.numOpt.toRight("answer: a probability is not a number"))
+              probabilities <- traverse(ps)(_.numOpt.toRight("answer: a probability is not a number"))
               confidence <- f.num("confidence")
             } yield Weights.Score(position, probabilities, confidence)
           else
             for {
               chosen <- f.int("chosen")
               ps <- f.arr("probabilities")
-              probabilities <- each(ps)(_.numOpt.toRight("answer: a probability is not a number"))
+              probabilities <- traverse(ps)(_.numOpt.toRight("answer: a probability is not a number"))
               confidence <- f.num("confidence")
             } yield Weights.Choice(chosen, probabilities, confidence)
         }
@@ -203,7 +204,7 @@ object LogJson {
         .flatMap(_.get("header"))
         .toRight("line 1: not a header")
         .flatMap(h => readHeader(h).left.map(e => s"line 1: $e"))
-      rest <- each(lines.indices.drop(1).toVector)(i =>
+      rest <- traverse(lines.indices.drop(1).toVector)(i =>
         parsed(i).flatMap { v =>
           val o = v.objOpt
           o.flatMap(_.get("row")) match {
@@ -243,7 +244,7 @@ object LogJson {
             v.arrOpt
               .toRight("header: questions is not an array")
               .flatMap(ns =>
-                each(ns.toVector)(n =>
+                traverse(ns.toVector)(n =>
                   Fields.str("header: a question", n).flatMap(QuestionName.read)
                 )
               )

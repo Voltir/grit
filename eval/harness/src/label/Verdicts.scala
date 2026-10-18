@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.util.Try
 
+import grit.core.either.Traversal
 import grit.core.id.ShadowName
 import grit.core.identity.Account
 import grit.core.review.{Reason, Verdict}
@@ -58,7 +59,7 @@ object Verdicts {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("verdicts: not JSON")
       cases <- Fields("verdicts", root).obj("cases")
-      each <- Fields.each(cases.obj.toVector) { (written, v) =>
+      each <- Traversal.traverse(cases.obj.toVector) { (written, v) =>
         val at = Fields(s"verdicts: $written", v)
         for {
           id <- CaseId.read(written).left.map(why => s"verdicts: $why")
