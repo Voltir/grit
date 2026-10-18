@@ -45,6 +45,10 @@ object UsesTests extends TestSuite {
       80000
     )
 
+  /** The site lines of a `uses` answer's `text`, each trimmed: a line number, then the line. */
+  private def sites(text: String): Vector[String] =
+    text.linesIterator.map(_.trim).filter(_.matches("""\d+  .*""")).toVector
+
   /** `Loaded.uses` over `tasty` from `in`; a failure throws, so the test shows it. */
   private def loadedUses(tasty: Vector[os.Path], in: Loaded): (Vector[Use], Loaded, Int) =
     Loaded.uses(root, FixtureLayout, tasty, in) match {
@@ -547,20 +551,19 @@ object UsesTests extends TestSuite {
       val (answer, _) =
         uses("grit.outline.fixture.typed.Shelf", in = Some("dev/outline/fixture/src"))
       assert(answer.status == Status.Found)
-      val sites = answer.text.linesIterator.map(_.trim).toVector
-      assert(sites.contains("11  final class Numbers extends Shelf[Int] {"))
-      assert(sites.contains("22  def one(s: Shelf[?]): Vector[Shelf[?]] = Vector(s)"))
-      assert(sites.contains("26  case s: Shelf[?] => s.first.isEmpty || s.first.nonEmpty"))
+      assert(
+        sites(answer.text) == Vector(
+          "11  final class Numbers extends Shelf[Int] {",
+          "22  def one(s: Shelf[?]): Vector[Shelf[?]] = Vector(s)",
+          "26  case s: Shelf[?] => s.first.isEmpty || s.first.nonEmpty"
+        )
+      )
     }
 
     test("a type selection is a use of the type it selects: Shelves.Label in Labels.of") {
       val (answer, _) = uses("grit.outline.fixture.typed.Shelves.Label")
       assert(answer.status == Status.Found)
-      assert(
-        answer.text.linesIterator
-          .map(_.trim)
-          .contains("35  def of(l: Shelves.Label): Shelves.Label = l")
-      )
+      assert(sites(answer.text) == Vector("35  def of(l: Shelves.Label): Shelves.Label = l"))
     }
 
     test(
