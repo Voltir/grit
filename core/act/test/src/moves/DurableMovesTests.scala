@@ -54,20 +54,22 @@ object DurableMovesTests extends MovesContract {
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged,
+      judgment: Either[ClassifierError, Judged],
       integrity: Integrity
   )(use: Moves^ -> A): A = {
     val w = new MovesWorld(broken, MovesContract.Floor, integrity)
     w.run(limits, shapes, new Each(judgment))(use)
   }
 
-  /** A classifier answering `judgment` to every question it is asked, at [[Spent]]'s cost. */
-  private final class Each(judgment: Judged) extends Classifier {
+  /** A classifier answering `judgment` to every question it is asked, at [[Spent]]'s cost, or
+    * failing with its `Left`.
+    */
+  private final class Each(judgment: Either[ClassifierError, Judged]) extends Classifier {
     protected def answer(
         state: ujson.Value,
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] =
-      Right(Answers(questions.map(_ => judgment), Spent, "test/judge"))
+      judgment.map(j => Answers(questions.map(_ => j), Spent, "test/judge"))
   }
 
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document]) = {

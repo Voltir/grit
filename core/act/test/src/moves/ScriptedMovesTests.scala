@@ -2,8 +2,17 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.core.act.{Asked, Called, Keeping, MoveError, MoveLimits, Moves, ScriptedKeeping}
-import grit.core.classify.Answer as Judged
+import grit.core.act.{
+  Asked,
+  Called,
+  Keeping,
+  MoveError,
+  MoveLimits,
+  Moves,
+  ScriptedKeeping,
+  ScriptedMoves
+}
+import grit.core.classify.{Answer as Judged, ClassifierError}
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.flow.TestTainted
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
@@ -20,12 +29,13 @@ object ScriptedMovesTests extends MovesContract {
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged,
+      judgment: Either[ClassifierError, Judged],
       integrity: Integrity
   )(use: Moves^ -> A): A = use(scripted(limits, broken, shapes, judgment, integrity))
 
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document]) = {
-    val moves = scripted(limits, broken = false, Vector(), Judged.YesNo(Yes), Integrity.Authority)
+    val moves =
+      scripted(limits, broken = false, Vector(), Right(Judged.YesNo(Yes)), Integrity.Authority)
     (use(moves), moves.kept)
   }
 
@@ -37,7 +47,7 @@ object ScriptedMovesTests extends MovesContract {
       limits: MoveLimits,
       broken: Boolean,
       shapes: Vector[ujson.Value],
-      judgment: Judged,
+      judgment: Either[ClassifierError, Judged],
       integrity: Integrity
   ): ScriptedKeeping = {
     val replies = new Replies(shapes)
@@ -66,7 +76,10 @@ object ScriptedMovesTests extends MovesContract {
       request =>
         if (broken) Left(MoveError.Store("down"))
         else
-          Right(Asked(TestTainted.authority(request.questions.map(_ => judgment)), Floor)),
+          judgment.fold(
+            e => Left(MoveError.Model(ScriptedMoves.unanswered(e))),
+            j => Right(Asked(TestTainted.authority(request.questions.map(_ => j)), Floor))
+          ),
       // Positional: a named argument here would bind the lambdas above to untyped temporaries.
       new InMemoryDocuments,
       Instant.EPOCH,

@@ -3,7 +3,7 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.classify.StateJson
-import grit.core.context.{Shown, Window}
+import grit.core.context.Window
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
 import grit.core.id.{
   ConversationId,
@@ -349,10 +349,7 @@ object TurnJudgeTests extends TestSuite {
       }
       (recalled("when is the freeze?"), recalled("freeze " * TurnJudge.ThreadChars)) ==> (
         "",
-        Shown
-          .of(closing(1), names)
-          .collect { case Message.User(text) => text }
-          .getOrElse("")
+        "[record] this conversation so far, written by grit (closed 1970-01-01): The freeze moved."
       )
     }
     test("a thread whose only message is cut inside recalls the conversation's record") {
@@ -375,10 +372,7 @@ object TurnJudgeTests extends TestSuite {
         800,
         names,
         "d"
-      ).recalled ==> Shown
-        .of(all(1), names)
-        .collect { case Message.User(text) => text }
-        .getOrElse("")
+      ).recalled ==> "[record] this conversation so far, written by grit (closed 1970-01-01): The freeze moved."
     }
 
     test(

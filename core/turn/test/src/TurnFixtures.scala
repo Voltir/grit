@@ -154,7 +154,6 @@ object TurnFixtures {
     TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, LocalAsker)
   }
 
-  /** Askers that resolve every turn to `asker`. */
   /** A fixture turn's env: [[TurnEnv]] with its moves' records drawn from `records`, `hosting`
     * and `routing`, so a move's ledger row lands in the turn's ledger and is admitted against
     * its routing's spend; no schedule or savepoint of theirs is ever read by the turn's moves.
@@ -199,6 +198,7 @@ object TurnFixtures {
       routing
     )
 
+  /** Askers that resolve every turn to `asker`. */
   def askedBy(asker: Option[Principal]): Askers = new Askers {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(asker)
   }

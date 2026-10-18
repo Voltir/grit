@@ -68,7 +68,7 @@ class ScriptedMoves(
           questions
             .read(Trusted.asIs(a.reply).extract)
             .left
-            .map(e => MoveError.Model(unanswered(e)))
+            .map(e => MoveError.Model(ScriptedMoves.unanswered(e)))
             .map(r => Asked(TestTainted.at(r, a.reply.integrity), a.at))
         })
     }
@@ -115,13 +115,6 @@ class ScriptedMoves(
 
   protected def tree: Option[IntegrityTree.Raising^] = Some(TestTainted.raise(IntegrityTree.Node))
 
-  /** Why a classifier's answers did not read, in the durable moves' words. */
-  private def unanswered(error: ClassifierError): String = error match {
-    case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"
-    case ClassifierError.Refused(cause) => s"the classifier refused the request: $cause"
-    case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
-  }
-
   protected def making[A](name: MoveName, kind: MoveKind, limit: Int)(
       answer: => Either[MoveError, A]
   ): Either[MoveError, A] = {
@@ -138,4 +131,17 @@ class ScriptedMoves(
   // As `made`: replaced whole by the test's own calls, on its one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   private var kinds: Map[MoveName, MoveKind] = Map.empty
+}
+
+object ScriptedMoves {
+
+  /** Why a classifier gave no answer that reads, in the durable moves' words: a `judgments`
+    * script failing as a classifier would gives `MoveError.Model` of this; `MovesContract`
+    * pins both wordings.
+    */
+  def unanswered(error: ClassifierError): String = error match {
+    case ClassifierError.Unavailable(cause) => s"the classifier is unavailable: $cause"
+    case ClassifierError.Refused(cause) => s"the classifier refused the request: $cause"
+    case ClassifierError.Unreadable(why) => s"the classifier's answers do not read: $why"
+  }
 }

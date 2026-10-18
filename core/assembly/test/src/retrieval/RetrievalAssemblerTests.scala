@@ -1044,7 +1044,8 @@ object RetrievalAssemblerTests extends TestSuite {
     ) {
       val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
       val search = new Scripted("t2:5", "t0:1")
-      search.scores = Vector(3.0, 1.5)
+      // Search returns t2 before t0, but scores t0 higher: the window's ranking puts it first.
+      search.scores = Vector(1.5, 3.0)
       val w = Weight.value(Locality.Default.weight)
       retrieval(entries, 80, search).search(
         AssemblyRequest(TurnRef(c1, TurnSeq(10))),
@@ -1052,7 +1053,7 @@ object RetrievalAssemblerTests extends TestSuite {
       )(using
         new FakeDb
       ) ==> Right(
-        Results(Vector(Retrieved.Own(TurnSeq(2)) -> 3.0 * w, Retrieved.Own(TurnSeq(0)) -> 1.5 * w))
+        Results(Vector(Retrieved.Own(TurnSeq(0)) -> 3.0 * w, Retrieved.Own(TurnSeq(2)) -> 1.5 * w))
       )
     }
 

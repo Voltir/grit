@@ -18,6 +18,14 @@ object CutTests extends TestSuite {
       Vector(Cut.head("unbelievably long", 6), Cut.head("ok 😀😀", 5), Cut.head("x", 0)) ==>
         Vector("unbel…", "ok…", "")
       (Cut.head("😀😀", 3), Cut.tail("😀😀", 3)) ==> ("😀…", "…😀")
+      // A budget whose room ends between a pair's two halves drops the pair whole.
+      Vector(
+        Cut.head("😀😀", 2),
+        Cut.head("😀😀😀", 4),
+        Cut.tail("😀😀", 2),
+        Cut.tail("😀😀😀", 4)
+      ) ==>
+        Vector("…", "😀…", "…", "…😀")
     }
 
     test("a text cut from its end starts at a word's start, after …") {

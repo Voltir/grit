@@ -95,11 +95,9 @@ object TurnRelevanceTests extends TestSuite {
       val split = TurnRelevance.batches(results)
       val empty = TurnRelevance.batches(Results.empty)
       (
-        TurnRelevance.Judged / TurnRelevance.PerCall,
         split.map((name, batch) => MoveName.value(name) -> batch),
         empty.map(_._2.size)
       ) ==> (
-        3,
         Vector(
           "relevance-0" -> results.ranked.slice(0, 10).map(_._1),
           "relevance-1" -> results.ranked.slice(10, 20).map(_._1),

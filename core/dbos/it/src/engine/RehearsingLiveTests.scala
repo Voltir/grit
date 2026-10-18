@@ -100,8 +100,10 @@ object RehearsingLiveTests extends TestSuite {
   private def connect(config: DbConfig): Connection =
     DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
 
-  /** Every table of the `grit` and `dbos` schemas, with its rows counted. */
-  private def counts(config: DbConfig): Map[String, Long] =
+  /** Every table of the `grit` and `dbos` schemas, with its rows counted and an md5 of their
+    * text in order, so a row rewritten in place shows as a change.
+    */
+  private def contents(config: DbConfig): Map[String, (Long, String)] =
     Using.resource(connect(config)) { c =>
       val tables = Using.resource(c.createStatement()) { s =>
         Using.resource(
@@ -113,9 +115,13 @@ object RehearsingLiveTests extends TestSuite {
       }
       tables.map { t =>
         t -> Using.resource(c.createStatement()) { s =>
-          Using.resource(s.executeQuery(s"SELECT count(*) FROM $t")) { rs =>
+          Using.resource(
+            s.executeQuery(
+              s"SELECT count(*), coalesce(md5(string_agg(r::text, E'\\n' ORDER BY r::text)), '') FROM $t AS r"
+            )
+          ) { rs =>
             rs.next()
-            rs.getLong(1)
+            (rs.getLong(1), rs.getString(2))
           }
         }
       }.toMap
@@ -162,7 +168,7 @@ object RehearsingLiveTests extends TestSuite {
     ) {
       val (config, engine, thread) = seeded("rehearsing_nothing")
       try {
-        val before = counts(config)
+        val before = contents(config)
         val said = Origin.Slack("T1", "C1", "2.0")
         val shown =
           Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), new Handed) {
@@ -189,7 +195,7 @@ object RehearsingLiveTests extends TestSuite {
             Some(Right(Vector(Payload.Message(Message.User("@grit lunch?")))))
           )
         )
-        counts(config) ==> before
+        contents(config) ==> before
       } finally engine.close()
     }
 
@@ -198,7 +204,7 @@ object RehearsingLiveTests extends TestSuite {
     ) {
       val (config, engine, thread) = seeded("rehearsing_runner")
       try {
-        val before = counts(config)
+        val before = contents(config)
         val runner = new Handed
         val turn = TurnRef(thread, TurnSeq(2))
         val shown =
@@ -222,7 +228,7 @@ object RehearsingLiveTests extends TestSuite {
           Vector.fill(8)(true),
           Vector(turn)
         )
-        counts(config) ==> before
+        contents(config) ==> before
       } finally engine.close()
     }
 

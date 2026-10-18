@@ -581,7 +581,9 @@ object TurnTests extends TestSuite {
       provider.requests.map(_.messages) ==> Vector(Vector.empty, Vector(Message.User("hello")))
     }
 
-    test("a written query is searched, judged in batches of ten and only what passed is packed") {
+    test(
+      "a written query is searched, judged in batches of ten and only what passed is handed to the packer"
+    ) {
       val entries = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
       val durable = new InMemoryDurable
