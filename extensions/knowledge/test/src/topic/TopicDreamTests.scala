@@ -156,7 +156,16 @@ object TopicDreamTests extends TestSuite {
       topics.map(d => (DocKey.value(d.key), DocText.value(d.text))).sortBy(_._1)
 
     def topics: Vector[Document] =
-      ok(documents.shelf(Plugin).newest(Int.MaxValue))
+      ok(documents.shelf(Plugin).newest(Int.MaxValue)).filter(d => TopicKey.read(d.key).nonEmpty)
+
+    /** The roots of the strands and the versions of the cards set aside at the public label. */
+    def aside: (Vector[ConversationId], Vector[DocumentVersion]) = {
+      val tags = ok(Aside.read(documents.keeper(Plugin, Terms), Label.Public)).tags
+      (
+        tags.collect { case Lineage.Tag.Strand(root, _, _) => root },
+        tags.collect { case Lineage.Tag.Card(v) => v }
+      )
+    }
 
     /** The keys of the topics that refer to `r`. */
     def referring(r: Ref): Vector[String] =
@@ -449,6 +458,38 @@ object TopicDreamTests extends TestSuite {
         "topics: 9 written (8 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         ((key(a) -> Day) +: roots.map(r => key(r) -> day2).toVector).sortBy(_._1)
       )
+    }
+
+    test(
+      "a strand or card set aside is not asked of again, until the strand has new messages"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val first = runs.run(attach = placing("none"))
+      val again = runs.run(now = Now.plusSeconds(600))
+      w.say(a, "the rollback works now", 700)
+      val changed = runs.run(now = Now.plusSeconds(1200), attach = placing("none"))
+      (first, again, changed, runs.asked.map(a => (a.kind, counted(a.shown)))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 2 set aside, 0 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
+        Vector(("attach", (1, 0, 1)), ("attach", (1, 0, 0)))
+      )
+    }
+
+    test("the aside keeps only the strands and cards still within a run's recent") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val _ = runs.run(attach = placing("none"))
+      val first = runs.aside
+      val b = strand(w, "C2", "lunch order", 3 * 86400)
+      val later = StrandWorld.at(3 * 86400 + 3600)
+      val _ = runs.run(day = Some(Day.plusDays(3)), now = later, attach = placing("none"))
+      (first._1, first._2.size, runs.aside) ==> (Vector(a.id), 1, (Vector(b.id), Vector()))
     }
 
     test("a rerun over the same digests asks nothing and counts them unchanged") {

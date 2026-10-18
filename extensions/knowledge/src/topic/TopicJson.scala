@@ -95,6 +95,19 @@ private object TopicJson {
       body <- o.get("body").toRight("a passage with no body").flatMap(readDoc)
     } yield Passage(day, from, body)
 
+  /** An aside's data ([[Aside]]): `{"v": 1, "aside": lineage}`. */
+  def aside(l: Lineage): ujson.Value = ujson.Obj("v" -> 1, "aside" -> lineage(l))
+
+  def readAside(v: ujson.Value): Read[Lineage] =
+    for {
+      o <- obj(v, "an aside")
+      _ <- o.get("v").flatMap(_.numOpt) match {
+        case Some(1) => Right(())
+        case other => Left(s"an aside of version ${other.fold("none")(_.toString)}")
+      }
+      l <- readLineage(o.get("aside"))
+    } yield l
+
   private def lineage(l: Lineage): ujson.Value =
     ujson.Arr.from(l.tags.map {
       case Lineage.Tag.Strand(root, room, digest) =>

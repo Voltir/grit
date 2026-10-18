@@ -2,7 +2,7 @@ package grit.knowledge.topic
 
 /** What a topics run came to: how many topics it `written`, of them how many it `opened`; how
   * many passages it `withdrawn`; how many strands and cards it found `unchanged` since the
-  * topic they are in was written, how many its attach ask placed in no topic (`aside`), and how
+  * topic they are in was written or they were set aside, how many its attach ask placed in no topic (`aside`), and how
   * many it `left` for the next run (past its most, not shown, or changed since its scan); how
   * many refs it `skipped` (too long to keep, their links still in the text); what it did not
   * write, each named, and why; and why it stopped, if it did. [[line]] is its reply.

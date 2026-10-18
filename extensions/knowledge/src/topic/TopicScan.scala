@@ -52,9 +52,10 @@ private[topic] object TopicScan {
     * from each, the passages naming a strand `strands` no longer reads at the floor (its room at
     * another label now, or its messages gone) withdrawn, the topic itself when none is left;
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
-    * changed within `cardRecent` before `at`: each already in a topic's lineage at its digest or
-    * version unchanged, each a topic refers to attached to it, and of the rest at most `most`
-    * strands and `most` cards to place, oldest first, the others left.
+    * changed within `cardRecent` before `at`: the floor's [[Aside]] kept to those among them at
+    * the digest or version set aside; each already in a topic's lineage or the aside at its
+    * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
+    * `most` strands and `most` cards to place, oldest first, the others left.
     */
   def scanned(
       params: TopicParams,
@@ -74,8 +75,10 @@ private[topic] object TopicScan {
           .flatMap((recent: Vector[Strand.Digested]) =>
             changed(cards, needs, at.minusSeconds(params.cardRecent.toSeconds))
               .flatMap((seen: Vector[CardShelf.Seen]) =>
-                placed(keeper, kept.flatMap(_.topic), recent, seen)
-                  .map((p: Placed) => gathered(most, kept, recent, seen, p))
+                aside(keeper, floor, recent, seen, at).flatMap((aside: Lineage) =>
+                  placed(keeper, kept.flatMap(_.topic), aside, recent, seen)
+                    .map((p: Placed) => gathered(most, kept, recent, seen, p))
+                )
               )
           )
       )
@@ -101,14 +104,14 @@ private[topic] object TopicScan {
       cards: Vector[(CardShelf.Seen, Option[TopicKey])]
   )
 
-  /** The floor's topics, one whose data does not read withdrawn. */
+  /** The floor's topics, one whose data does not read withdrawn; its [[Aside]] is none. */
   private def held(keeper: DocumentKeeper, floor: Label, at: Instant)(using
       Tx^
   ): Either[StoreError, Vector[Found]] =
     keeper.newest(Int.MaxValue).flatMap { (documents: Vector[Document]) =>
       val read: Vector[(Document, Either[String, (TopicKey, TopicWrite.Held)])] =
         documents
-          .filter(_.label == floor)
+          .filter(d => d.label == floor && d.key != Aside.Key)
           .map(d =>
             d -> TopicKey
               .read(d.key)
@@ -164,16 +167,36 @@ private[topic] object TopicScan {
   ): Either[StoreError, Vector[CardShelf.Seen]] =
     cards.flatMap(e => needs.of(e).toOption).fold(Right(Vector.empty))(_.changed(since, Cards))
 
-  /** Of `recent` and `seen`, those in no lineage of `topics`, each with the topic among them
-    * that refers to it.
+  /** The floor's aside, kept to the strands of `recent` and the cards of `seen` it holds at the
+    * digest or version they are now: the aside after.
+    */
+  private def aside(
+      keeper: DocumentKeeper,
+      floor: Label,
+      recent: Vector[Strand.Digested],
+      seen: Vector[CardShelf.Seen],
+      at: Instant
+  )(using Tx^): Either[StoreError, Lineage] =
+    Aside.read(keeper, floor).flatMap { (held: Lineage) =>
+      val now = Lineage.of(held.tags.filter {
+        case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))
+        case Lineage.Tag.Card(v) => seen.exists(_.version == v)
+        case Lineage.Tag.Topic(_) => false
+      })
+      if (now == held) Right(held) else Aside.kept(keeper, floor, now, at).map(_ => now)
+    }
+
+  /** Of `recent` and `seen`, those in no lineage of `topics` or `aside`, each with the topic
+    * among them that refers to it.
     */
   private def placed(
       keeper: DocumentKeeper,
       topics: Vector[(TopicKey, DocumentVersion, TopicWrite.Held)],
+      aside: Lineage,
       recent: Vector[Strand.Digested],
       seen: Vector[CardShelf.Seen]
   )(using Tx^): Either[StoreError, Placed] = {
-    val lineage = topics.flatMap(_._3.topic.passages.flatMap(_.from.tags)).toSet
+    val lineage = (topics.flatMap(_._3.topic.passages.flatMap(_.from.tags)) ++ aside.tags).toSet
     val held = topics.map(_._1).toSet
     val strands = recent.filterNot(s => lineage.exists(isStrand(s)))
     val cards = seen.filterNot(c => lineage.contains(Lineage.Tag.Card(c.version)))

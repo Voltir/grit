@@ -26,16 +26,17 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * from that card or links it), and asks once (`attach`) where each other one goes, at most
   * `perRun` strands and `perRun` cards: to one of the topics shown (those attached to, and at
   * most [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
-  * [[TopicDream.LeadChars]]), to a new topic of its own, or to none, set aside until it is asked
-  * of again by the next run; then, for each topic touched, at most `perRun` and at most
+  * [[TopicDream.LeadChars]]), to a new topic of its own, or to none: set aside (`aside`), in a
+  * document of its floor under `topic:aside` holding no topic, while within `recent` or
+  * `cardRecent` at the digest or version set aside; then, for each topic touched, at most `perRun` and at most
   * `perRunMost`, new topics first, asks once (`write-{i}`) for its new lead and the day's
   * passage, from the strands and cards attached and its current text, and keeps it
   * (`keep-{i}`): the day's passage replacing one the topic holds for that day, its lineage
   * joined. A topic's version refers to each strand it was written from, each card's unit, each
   * topic it links and the unit of each other link; a ref [[Ref.written]] refuses is left out
   * and counted. It puts up at most [[TopicDream.Reviewed]] of the topics it writes for review,
-  * new first. A strand or card already in a topic's lineage at the same digest or version
-  * touches nothing. Replies [[Gathered.line]]. Its `limits`: asks `1 + perRunMost`; no calls
+  * new first. A strand or card already in a topic's lineage or set aside at the same digest or
+  * version touches nothing. Replies [[Gathered.line]]. Its `limits`: asks `1 + perRunMost`; no calls
   * or judgments.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
@@ -82,9 +83,10 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     }
   }
 
-  /** The attach ask over `scan`'s strands and cards: the topics they go to, and `g` counting
-    * those set aside, those it could not place or was not shown as left, and each strand that
-    * could not open the topic it was placed in as not written.
+  /** The attach ask over `scan`'s strands and cards: the topics they go to, those it set aside
+    * joined to the floor's [[Aside]] (`aside`), and `g` counting those set aside, those it could
+    * not place or was not shown as left, and each strand that could not open the topic it was
+    * placed in as not written.
     */
   private def attach(
       run: Trusted[JobRun[TopicParams]],
@@ -153,14 +155,31 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                 }
               )
             val placed = strands.collect { case Right(t) => t } ++ cardsPlaced
-            val unshown = scan.cards.size - shownCards.size
-            val aside = n - unshown - unopened.size - TopicDream.items(placed)
+            val setAside =
+              scan.strands.zip(placing.strands).collect { case (st, Placing.Place.Aside) =>
+                Lineage.Tag.Strand(st.root, st.room, st.digest)
+              } ++ shownCards.zip(placing.cards).collect { case (c, Placing.Place.Aside) =>
+                Lineage.Tag.Card(c.version)
+              }
+            val kept =
+              if (setAside.isEmpty) Vector.empty
+              else
+                moves.keep(TopicDream.SetAside, s.asked.reply.map(_ => setAside))(
+                  (tags, keeper, at) => Aside.joined(keeper, tags, at)
+                ) match {
+                  case Left(e) => Vector(("aside", MoveError.said(e)))
+                  case Right(_) => Vector.empty
+                }
+            // Placed in no topic shown: left, and asked of again.
+            val unplaced =
+              n - (scan.cards.size - shownCards.size) - unopened.size - setAside.size -
+                TopicDream.items(placed)
             (
               placed,
               g.copy(
-                aside = g.aside + aside,
-                left = g.left + unshown,
-                unwritten = g.unwritten ++ unopened
+                aside = g.aside + setAside.size,
+                left = g.left + (scan.cards.size - shownCards.size) + unplaced,
+                unwritten = g.unwritten ++ unopened ++ kept
               )
             )
           }
@@ -240,6 +259,8 @@ object TopicDream {
   private val Scan: MoveName = move("scan")
 
   private val Attach: MoveName = move("attach")
+
+  private val SetAside: MoveName = move("aside")
 
   private def move(kind: String, i: Int): MoveName = move(s"$kind-$i")
 
