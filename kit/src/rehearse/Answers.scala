@@ -42,7 +42,11 @@ object Answers {
   /** The model id a supplied answer records. */
   val SuppliedModel: String = "grit/supplied"
 
-  /** Each call answered as grit.models' stub models answer it, under their model ids. */
+  /** Each call answered as grit.models' stub models answer it, under their model ids, but a
+    * classifier's choice: its first key at 0.9, the rest sharing 0.1 (the stub classifier's
+    * own takes the last), so triage's `gap` reads as asking; [[Rehearsed.StubJudge]] says what
+    * that does to the chain.
+    */
   val Stubbed: Answers = Supplying(Map.empty)
 
   /** Each call made in a step `byStep` names answered with its text, under the model id
@@ -73,9 +77,23 @@ object Answers {
         questions: Vector[Question]
     ): Reply[Either[ClassifierError, grit.core.classify.Answers]] =
       byStep.get(step) match {
-        case None => Reply(StandIn.Stub, Right(StubClassifier.answers(state, questions)))
+        case None => Reply(StandIn.Stub, Right(stubbed(state, questions)))
         case Some(text) => Reply(StandIn.Supplied, judged(text, questions))
       }
+  }
+
+  private def stubbed(
+      state: ujson.Value,
+      questions: Vector[Question]
+  ): grit.core.classify.Answers = {
+    val stub = StubClassifier.answers(state, questions)
+    stub.copy(answers = questions.zip(stub.answers).map {
+      case (c: Question.Choice, _) =>
+        val rest = 0.1 / (c.keys.size - 1)
+        val ps = c.keys.zipWithIndex.map((k, i) => Answer.Weight(k.name, if (i == 0) 0.9 else rest))
+        Answer.Choice(c.first.name, ps, Answer.confidence(ps.map(_.probability)))
+      case (_, answer) => answer
+    })
   }
 
   // The stub provider answers every request: this is never seen.

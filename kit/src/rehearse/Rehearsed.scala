@@ -76,9 +76,10 @@ object Rehearsed {
     * it does to the chain after it.
     */
   val StubJudge: String =
-    "The stub classifier answers every yes/no question yes at 0.9, so Jev always speaks and " +
-      "every candidate a search finds is admitted; supply a step's answer (ask:relevance-0=…) " +
-      "to see one dropped."
+    "The stub classifier answers every yes/no question yes at 0.9, every choice its first " +
+      "option and every score its last level, so triage's gate always passes and a reply is " +
+      "drafted, and every candidate a search finds is admitted; supply a step's answer " +
+      "(ask:relevance-0=…) to see one dropped."
 
   /** The workflow `workflow`, whose body ended as `came`, having run `steps`, in which the calls
     * `calls` were made.

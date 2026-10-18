@@ -63,10 +63,32 @@ object AnswersTests extends TestSuite {
       judged.answer ==> Left(ClassifierError.Unreadable("supplied 2 answers for 1 questions"))
     }
 
-    test("an unsupplied classifier call is answered as the stub classifier answers it") {
+    test("an unsupplied yes/no question is answered as the stub classifier answers it") {
       val judged = Answers.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo))
       assert(judged.by == Answers.StandIn.Stub)
       judged.answer ==> Right(StubClassifier.answers(ujson.Obj(), Vector(yesNo)))
+    }
+
+    test(
+      "an unsupplied choice is answered with its first key, and the stub judge's line says what the stub answers"
+    ) {
+      val score =
+        Question
+          .score("How hungry?", "not", "a little", "very")
+          .fold(e => sys.error(e.toString), identity)
+      val judged = Answers.Stubbed.judge("ask:triage", ujson.Obj(), Vector(yesNo, choice, score))
+      val answers =
+        judged.answer.fold(e => throw new java.lang.AssertionError(e.toString), _.answers)
+      (
+        answers.map {
+          case Answer.YesNo(yes) => s"yes $yes"
+          case Answer.Choice(key, _, _) => s"key $key"
+          case Answer.Score(_, ps, _) => s"level ${ps.indexOf(ps.max)}"
+        },
+        Rehearsed.StubJudge.contains("every yes/no question yes at 0.9"),
+        Rehearsed.StubJudge.contains("every choice its first option"),
+        Rehearsed.StubJudge.contains("every score its last level")
+      ) ==> (Vector("yes 0.9", "key here", "level 2"), true, true, true)
     }
   }
 }
