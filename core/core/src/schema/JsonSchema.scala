@@ -1,5 +1,6 @@
 package grit.core.schema
 
+import grit.core.message.Cut
 import grit.core.model.ArgRepair
 
 /** A JSON Schema in the subset every provider's strict mode accepts, so any upstream can be
@@ -135,11 +136,8 @@ object JsonSchema {
   /** The most characters of a JSON value a refusal or mismatch quotes. */
   private val Shown = 100
 
-  /** `v` written compactly, cut to [[Shown]] characters. */
-  private[schema] def shown(v: ujson.Value): String = {
-    val s = v.render()
-    if (s.length <= Shown) s else s"${s.take(Shown - 1)}…"
-  }
+  /** `v` written compactly, cut as [[Cut.head]] cuts to [[Shown]] characters. */
+  private[schema] def shown(v: ujson.Value): String = Cut.head(v.render(), Shown)
 
   /** A deep copy of `v`. */
   private[schema] def copy(v: ujson.Value): ujson.Value = ujson.read(v.render())
