@@ -94,5 +94,17 @@ object SlotRuleTests extends TestSuite {
       rule.after(at("2026-10-06T12:00:00Z")) ==> Some(at("2026-10-07T21:00:00Z"))
       rule.after(at("2026-10-07T21:00:00Z")) ==> Some(at("2026-10-14T21:00:00Z"))
     }
+
+    test("between is the slots after its start and at or before its end, in order") {
+      val nine = SlotRule.Daily(LocalTime.of(9, 0), ZoneId.of("UTC"))
+      nine.between(at("2026-10-07T09:00:00Z"), at("2026-10-10T09:00:00Z")).toVector ==> Vector(
+        at("2026-10-08T09:00:00Z"),
+        at("2026-10-09T09:00:00Z"),
+        at("2026-10-10T09:00:00Z")
+      )
+      val once = SlotRule.Once(at("2026-10-07T09:00:00Z"), Grace.Zero)
+      once.between(at("2026-10-07T08:00:00Z"), at("2026-10-08T09:00:00Z")).toVector ==>
+        Vector(at("2026-10-07T09:00:00Z"))
+    }
   }
 }

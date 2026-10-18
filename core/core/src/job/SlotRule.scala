@@ -15,6 +15,10 @@ enum SlotRule {
   case Weekdays(at: LocalTime, zone: ZoneId)
   case Weekly(day: DayOfWeek, at: LocalTime, zone: ZoneId)
 
+  /** Its slots after `from` and at or before `until`, in order. */
+  def between(from: Instant, until: Instant): Iterator[Instant] =
+    Iterator.iterate(after(from))(_.flatMap(after)).takeWhile(_.exists(!_.isAfter(until))).flatten
+
   /** Its first slot strictly after `instant`; `None` for a `Once` whose instant is not after
     * it.
     */

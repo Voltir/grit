@@ -82,13 +82,7 @@ final case class DriveCards private (
     * of two runs of its schedules, the later's is one more for each slot between them.
     */
   def turn(due: Instant): Long =
-    syncs.map { s =>
-      Iterator
-        .iterate(s.rule.after(DriveCards.TurnsFrom))(_.flatMap(s.rule.after))
-        .takeWhile(_.exists(!_.isAfter(due)))
-        .size
-        .toLong
-    }.sum
+    syncs.map(_.rule.between(DriveCards.TurnsFrom, due).size.toLong).sum
 
   /** The pointer of the file `id`: `read` with `file`; or why not: an id over
     * [[grit.core.document.Pointer.of]]'s 1000 characters of JSON.

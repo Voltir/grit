@@ -31,11 +31,7 @@ object Due {
           else Missed(next)
         case SlotRule.Daily(_, _) | SlotRule.Weekdays(_, _) | SlotRule.Weekly(_, _, _) =>
           val from = if (next.isBefore(now.minus(Lookback))) now.minus(Lookback) else next
-          val nominal = Iterator
-            .iterate(rule.after(from))(_.flatMap(rule.after))
-            .takeWhile(_.exists(!_.isAfter(now)))
-            .flatten
-            .foldLeft(next)((_, slot) => slot)
+          val nominal = rule.between(from, now).foldLeft(next)((_, slot) => slot)
           Run(nominal, rule.after(nominal))
       }
 }
