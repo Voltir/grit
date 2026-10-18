@@ -23,6 +23,7 @@ import grit.core.store.{ClosedPeriod, Origin}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.dbos.sql.TestTx
+import grit.knowledge.standing.Standing
 
 import utest.*
 
@@ -73,7 +74,7 @@ object StandingDocumentsTests extends TestSuite {
     */
   private final class Kept(leftOut: Set[ToolName] = Set.empty) {
     val docs = new InMemoryDocuments
-    val keeper: DocumentKeeper = docs.keeper(name, StandingDocuments.Terms)
+    val keeper: DocumentKeeper = docs.keeper(name, Standing.Terms)
 
     def post(p: ClosedPeriod, label: Label = Label.Public): Unit =
       new StandingDocuments(name, leftOut).documents
@@ -154,7 +155,7 @@ object StandingDocumentsTests extends TestSuite {
     test("a kept document is shown to a window under the plugin's label") {
       val kept = new Kept
       kept.post(closed(1, added(deploys), Vector(deploys)))
-      kept.newest.map(Shown.document(_, StandingDocuments.Terms.label)) ==> Vector(
+      kept.newest.map(Shown.document(_, Standing.Terms.label)) ==> Vector(
         Message.User(
           "[doc] what a conversation settled, at slack:T1/C1/1.0, 2026-10-01:\n" +
             "Staging deploys from main.\n- Staging deploys from main"
