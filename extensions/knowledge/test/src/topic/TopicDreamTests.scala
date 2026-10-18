@@ -217,13 +217,13 @@ object TopicDreamTests extends TestSuite {
     s"(\\d+) ${what}s?\\b".r.findFirstMatchIn(system).fold(0)(_.group(1).toInt)
 
   /** Everything shown placed `place`. */
-  private def placing(place: String)(system: String, shown: String): ujson.Value =
+  private def placing(place: String): (String, String) -> ujson.Value = (system, _) =>
     ujson.Obj(
       "discussions" -> ujson.Arr.from(Vector.fill(told(system, "discussion"))(ujson.Str(place))),
       "cards" -> ujson.Arr.from(Vector.fill(told(system, "card"))(ujson.Str(place)))
     )
 
-  private val everyNew: (String, String) -> ujson.Value = (s, m) => placing("new")(s, m)
+  private val everyNew: (String, String) -> ujson.Value = placing("new")
 
   /** Each of `channels` kept at `label`. */
   private def labelled(label: Label, channels: String*): Recorded =
@@ -246,7 +246,7 @@ object TopicDreamTests extends TestSuite {
       val c = strand(w, "C3", "lunch order", 200)
       val second = runs.run(
         now = Now.plusSeconds(600),
-        attach = (_, shown) =>
+        attach = (_, _) =>
           // Two discussions, then one topic: the first joins it, the second opens its own.
           ujson.Obj("discussions" -> ujson.Arr("1", "new"), "cards" -> ujson.Arr())
       )
