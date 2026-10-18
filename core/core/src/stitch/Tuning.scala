@@ -20,6 +20,12 @@ import grit.core.period.Probability
   *   the most a window's strand sections cost
   * @param strandChars
   *   the most of a strand triage's and the judge's thread show
+  * @param burst
+  *   a burst prior: when set, a message the classifier does not place in an exchange at
+  *   `followsAt` follows the strand its author's previous opening in its room is in, when that
+  *   opening was said at most the burst's gap before and that strand is given at least the
+  *   burst's own least probability, whatever the classifier's top choice; `None`, as shipped,
+  *   follows the top choice at `followsAt` alone
   */
 final case class Tuning(
     horizon: FiniteDuration,
@@ -27,12 +33,18 @@ final case class Tuning(
     lexical: Int,
     followsAt: Probability,
     windowTokens: Tokens,
-    strandChars: Int
+    strandChars: Int,
+    burst: Option[Tuning.Burst] = None
 )
 
 object Tuning {
 
-  /** A week; 2 recent and 2 lexical; 0.6; 1,500 tokens; 800 characters. */
+  /** The strand a message's author opened a conversation of at most `gap` before it is
+    * followed when given at least `followsAt`.
+    */
+  final case class Burst(followsAt: Probability, gap: FiniteDuration)
+
+  /** A week; 2 recent and 2 lexical; 0.6; 1,500 tokens; 800 characters; no burst prior. */
   val Default: Tuning = Tuning(
     7.days,
     2,

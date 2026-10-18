@@ -24,7 +24,8 @@ object CaptureJsonTests extends TestSuite {
   private val d1 = Digest.text("one")
   private val d2 = Digest.text("two")
 
-  private val odd = Tuning(36.hours, 3, 1, p(0.55), Tokens(900), 640)
+  private val odd =
+    Tuning(36.hours, 3, 1, p(0.55), Tokens(900), 640, Some(Tuning.Burst(p(0.3), 90.seconds)))
 
   /** Every optional part present, every choice its richer case. */
   private val full = Case(

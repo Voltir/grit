@@ -46,6 +46,24 @@ object StitchJsonTests extends TestSuite {
         Vector(Right(follows), Right(begins), Right(unread))
     }
 
+    test("a burst prior reads back and is written as stored; a tuning with none stores none") {
+      import scala.concurrent.duration.*
+      val shipped = placedWith(Some(chose("exchange 1", "exchange 1" -> 0.8, "exchange 2" -> 0.2)))
+      val json = StitchJson.write(shipped)
+      val stored = ujson.copy(json)
+      stored("seen")("tuning").obj("burst") = ujson.Obj("follows_at" -> 0.3, "gap_seconds" -> 120)
+      val read = StitchJson.read(stored)
+      (
+        read.map(_.seen.tuning.burst),
+        read.map(StitchJson.write),
+        json("seen")("tuning").obj.contains("burst")
+      ) ==> (
+        Right(Some(Tuning.Burst(grit.core.period.Probability.clamped(0.3), 120.seconds))),
+        Right(stored),
+        false
+      )
+    }
+
     test("the stored kinds are follows, begins and unread; an offer's why is recent or lexical") {
       // Stored names: rows and journals written under them must keep reading.
       val follows = placedWith(Some(chose("exchange 1", "exchange 1" -> 0.8, "exchange 2" -> 0.2)))

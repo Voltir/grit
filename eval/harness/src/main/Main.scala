@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
 import scala.collection.immutable.VectorMap
+import scala.concurrent.duration.DurationInt
 import scala.util.Try
 import scala.util.chaining.*
 import scala.util.control.NonFatal
@@ -912,13 +913,15 @@ object Main {
     }
 
   /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
-    * [--follows-at <p>] [--lexical <n>] [--recent <n>] [--repeats <n>]`: the room written at
+    * [--follows-at <p>] [--lexical <n>] [--recent <n>] [--repeats <n>] [--burst-prior <p>
+    * --burst-gap <seconds>]`: the room written at
     * `<file>` ([[Room.read]], named for its file less `.json`) placed by the stitch lab
     * ([[StitchLab.run]]) `--repeats` times (1 when not given) against the strands its placings
     * make and as often against the truth's ([[Against]]), repeat `r` as Jev's repeat `r`, each
     * run in a channel of its own, in the database at `<jdbc>`, which must
     * be `grit_eval_lab` and hold nothing of the room, through an engine opened on it for the
-    * purpose; under shipped tuning but for the knobs named; Jev asked through the cache at
+    * purpose; under shipped tuning but for the knobs named (a burst prior, [[StitchTuning.burst]],
+    * needs both of its flags); Jev asked through the cache at
     * `<dir>` within `--spend` USD over all the runs. Each run scored ([[RoomScore.of]]) and all
     * written to `<out>/lab-stitch-<room>.md` ([[Report.lab]]); printed up to the first run's
     * section, before any of the room's text. Jev's key and the database's login
@@ -941,16 +944,25 @@ object Main {
       room <- Room.read(path.getFileName.toString.stripSuffix(".json"), text)
       followsAt <- f
         .get("follows-at")
-        .fold(Right(StitchTuning.Default.followsAt))(v =>
-          v.toDoubleOption
-            .filter(p => p >= 0 && p <= 1)
-            .map(Probability.clamped)
-            .toRight(s"--follows-at $v: not a probability")
-        )
+        .fold(Right(StitchTuning.Default.followsAt))(chance("follows-at"))
+      burst <- (f.get("burst-prior"), f.get("burst-gap")) match {
+        case (None, None) => Right(None)
+        case (Some(p), Some(gap)) =>
+          for {
+            at <- chance("burst-prior")(p)
+            seconds <- count("burst-gap")(gap)
+          } yield Some(StitchTuning.Burst(at, seconds.seconds))
+        case _ => Left("--burst-prior and --burst-gap go together")
+      }
       lexical <- f.get("lexical").fold(Right(StitchTuning.Default.lexical))(count("lexical"))
       recent <- f.get("recent").fold(Right(StitchTuning.Default.recent))(count("recent"))
       repeats <- f.get("repeats").fold(Right(1))(count("repeats"))
-      tuning = StitchTuning.Default.copy(followsAt = followsAt, lexical = lexical, recent = recent)
+      tuning = StitchTuning.Default.copy(
+        followsAt = followsAt,
+        lexical = lexical,
+        recent = recent,
+        burst = burst
+      )
       env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
       jev <- JevConfig.fromEnv(env).left.map(_.message)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
@@ -1004,6 +1016,12 @@ object Main {
         .foreach(println)
       println(s"report: $file")
     }
+
+  private def chance(what: String)(v: String): Either[String, Probability] =
+    v.toDoubleOption
+      .filter(p => p >= 0 && p <= 1)
+      .map(Probability.clamped)
+      .toRight(s"--$what $v: not a probability")
 
   private def count(what: String)(v: String): Either[String, Int] =
     v.toIntOption.filter(_ >= 0).toRight(s"--$what $v: not a whole number")

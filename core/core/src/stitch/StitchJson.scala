@@ -148,14 +148,24 @@ object StitchJson {
         "p" -> o.p.fold[ujson.Value](ujson.Null)(p => ujson.Num(Probability.value(p)))
       )
     }),
-    "tuning" -> ujson.Obj(
-      "horizon_seconds" -> s.tuning.horizon.toSeconds.toDouble,
-      "recent" -> s.tuning.recent,
-      "lexical" -> s.tuning.lexical,
-      "follows_at" -> Probability.value(s.tuning.followsAt),
-      "window_tokens" -> Tokens.value(s.tuning.windowTokens).toDouble,
-      "strand_chars" -> s.tuning.strandChars
-    )
+    "tuning" -> {
+      val t = ujson.Obj(
+        "horizon_seconds" -> s.tuning.horizon.toSeconds.toDouble,
+        "recent" -> s.tuning.recent,
+        "lexical" -> s.tuning.lexical,
+        "follows_at" -> Probability.value(s.tuning.followsAt),
+        "window_tokens" -> Tokens.value(s.tuning.windowTokens).toDouble,
+        "strand_chars" -> s.tuning.strandChars
+      )
+      // Only when set, so a tuning with none is stored as it always was.
+      s.tuning.burst.foreach(b =>
+        t("burst") = ujson.Obj(
+          "follows_at" -> Probability.value(b.followsAt),
+          "gap_seconds" -> b.gap.toSeconds.toDouble
+        )
+      )
+      t
+    }
   )
 
   private def readSeen(v: ujson.Value): Either[String, Seen] =
@@ -176,10 +186,27 @@ object StitchJson {
       followsAt <- probability(t, "follows_at")
       window <- long(t, "window_tokens")
       chars <- long(t, "strand_chars")
+      burst <- t.get("burst") match {
+        case None => Right(None)
+        case Some(b) =>
+          for {
+            o <- obj(b)
+            p <- probability(o, "follows_at")
+            gap <- long(o, "gap_seconds")
+          } yield Some(Tuning.Burst(p, gap.seconds))
+      }
     } yield Seen(
       state,
       offered,
-      Tuning(horizon.seconds, recent.toInt, lexical.toInt, followsAt, Tokens(window), chars.toInt)
+      Tuning(
+        horizon.seconds,
+        recent.toInt,
+        lexical.toInt,
+        followsAt,
+        Tokens(window),
+        chars.toInt,
+        burst
+      )
     )
 
   private def readOffer(v: ujson.Value): Either[String, Seen.Offer] =

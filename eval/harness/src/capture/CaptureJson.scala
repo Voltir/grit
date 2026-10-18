@@ -337,7 +337,16 @@ object CaptureJson {
       followsAt <- f.probability("follows_at")
       window <- f.num("window_tokens").filterOrElse(_.isWhole, "tuning: window_tokens is not whole")
       strand <- f.int("strand_chars")
-    } yield Tuning(horizon, recent, lexical, followsAt, Tokens(window.toLong), strand)
+      burst <- f
+        .added("burst")
+        .flatMap(opt(_) { b =>
+          val g = Fields("burst", b)
+          for {
+            p <- g.probability("follows_at")
+            gap <- g.millis("gap_ms")
+          } yield Tuning.Burst(p, gap)
+        })
+    } yield Tuning(horizon, recent, lexical, followsAt, Tokens(window.toLong), strand, burst)
   }
 
   private def readSettings(v: ujson.Value): Either[String, Settings] = {
@@ -443,15 +452,24 @@ object CaptureJson {
   private def writeFields(fields: Set[SeenCheck.Field]): ujson.Value =
     ujson.Arr.from(SeenCheck.Field.values.filter(fields.contains).map(SeenCheck.Field.written))
 
-  /** Durations in milliseconds, and the window in tokens. */
-  def writeTuning(t: Tuning): ujson.Value = ujson.Obj(
-    "horizon_ms" -> t.horizon.toMillis.toDouble,
-    "recent" -> t.recent,
-    "lexical" -> t.lexical,
-    "follows_at" -> Probability.value(t.followsAt),
-    "window_tokens" -> Tokens.value(t.windowTokens).toDouble,
-    "strand_chars" -> t.strandChars
-  )
+  /** Durations in milliseconds, and the window in tokens; a burst prior only when set. */
+  def writeTuning(t: Tuning): ujson.Value = {
+    val o = ujson.Obj(
+      "horizon_ms" -> t.horizon.toMillis.toDouble,
+      "recent" -> t.recent,
+      "lexical" -> t.lexical,
+      "follows_at" -> Probability.value(t.followsAt),
+      "window_tokens" -> Tokens.value(t.windowTokens).toDouble,
+      "strand_chars" -> t.strandChars
+    )
+    t.burst.foreach(b =>
+      o("burst") = ujson.Obj(
+        "follows_at" -> Probability.value(b.followsAt),
+        "gap_ms" -> b.gap.toMillis.toDouble
+      )
+    )
+    o
+  }
 
   private def writeSettings(s: Settings): ujson.Value = ujson.Obj(
     "idle_ms" -> s.idle.toMillis.toDouble,

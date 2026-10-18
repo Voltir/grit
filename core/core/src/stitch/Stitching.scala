@@ -2,6 +2,8 @@ package grit.core.stitch
 
 import java.time.{Duration as JDuration, Instant}
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.core.classify.{
   Answered,
   Ask,
@@ -57,14 +59,17 @@ final case class StitchReads(
 )
 
 /** A first message as it is put to the classifier: the message, who said it, the exchanges
-  * it is offered, most recently spoken in first, and who said their messages. Only
+  * it is offered, most recently spoken in first, and who said their messages; and, under a
+  * burst prior ([[Tuning.burst]]), the root of the strand its author's previous opening in the
+  * room is in, when that was said within the prior's gap. Only
   * [[Stitching.offered]] makes one, with at least one exchange.
   */
 final case class Offer private[stitch] (
     first: Said,
     author: String,
     exchanges: Vector[Exchange],
-    speakers: Speakers
+    speakers: Speakers,
+    burst: Option[ConversationId] = None
 )
 
 /** Whether a stitchable conversation's first message continues an exchange in its room
@@ -190,25 +195,38 @@ object Stitching {
           .map(s => links.find(_.conversation == s.conversation).fold(s.conversation)(_.root))
           .distinct
         openings <- stitches.openings(roots)
-        speakers <- reads.principals.speakers(
-          (first +: (said ++ openings).map(_.entry)).map(_.id).distinct
+        // Under a burst prior, every conversation's opening, to find the author's last.
+        begun <- tuning.burst.fold(Right(Vector.empty))(_ =>
+          stitches.openings(said.map(_.conversation).distinct)
         )
-      } yield Room(said, hits, links, openings, speakers)
+        speakers <- reads.principals.speakers(
+          (first +: (said ++ openings ++ begun).map(_.entry)).map(_.id).distinct
+        )
+      } yield Room(said, hits, links, openings, begun, speakers)
     }.map { r =>
       val mine = Said(conversation.id, conversation.origin.place, first)
       val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, scope, tuning)
       Option.when(exchanges.nonEmpty)(
-        Offer(mine, r.speakers.of(first.id).getOrElse("Someone"), exchanges, r.speakers)
+        Offer(
+          mine,
+          r.speakers.of(first.id).getOrElse("Someone"),
+          exchanges,
+          r.speakers,
+          tuning.burst.flatMap(b => burstOf(mine, r.begun, r.links, r.speakers, b.gap))
+        )
       )
     }
   }
 
-  /** What [[room]] reads of a room. */
+  /** What [[room]] reads of a room: `begun`, every conversation's opening, only under a burst
+    * prior.
+    */
   private final case class Room(
       said: Vector[Said],
       hits: Vector[EntrySearch.Hit],
       links: Vector[Link],
       openings: Vector[Said],
+      begun: Vector[Said],
       speakers: Speakers
   )
 
@@ -373,8 +391,34 @@ object Stitching {
     }
   }
 
+  /** The root, by `links`, of the conversation `first`'s author (by their name in `speakers`)
+    * opened last before it, among `openings` (each conversation's first message), when that
+    * was said at most `gap` before `first`; `None` when it was earlier, the author has no name,
+    * or none of `openings` is theirs. `first`'s own conversation is never it.
+    */
+  private[stitch] def burstOf(
+      first: Said,
+      openings: Vector[Said],
+      links: Vector[Link],
+      speakers: Speakers,
+      gap: FiniteDuration
+  ): Option[ConversationId] = {
+    val at = first.entry.createdAt
+    val by = speakers.of(first.entry.id)
+    openings
+      .filter(o =>
+        o.conversation != first.conversation && o.entry.createdAt.isBefore(at) &&
+          by.isDefined && speakers.of(o.entry.id) == by
+      )
+      .maxByOption(_.entry.createdAt)
+      .filter(o => !o.entry.createdAt.isBefore(at.minusNanos(gap.toNanos)))
+      .map(o => links.find(_.conversation == o.conversation).fold(o.conversation)(_.root))
+  }
+
   /** Where `classifier` places `offer`'s message under `tuning`: [[Placed.Follows]] the top
-    * choice when it is an exchange at `tuning.followsAt` or above, else [[Placed.Begins]];
+    * choice when it is an exchange at `tuning.followsAt` or above; else, under a burst prior
+    * ([[Tuning.burst]]), [[Offer.burst]] when it is offered and given at least the prior's
+    * least, whatever the top choice; else [[Placed.Begins]];
     * [[Placed.Unread]] when the classifier fails or its answer does not read, and, asking
     * nothing, "nothing was said" when the message says nothing
     * ([[grit.core.store.Payload.saysNothing]]).
@@ -420,9 +464,17 @@ object Stitching {
               case Left(error) => Placed.Unread(error.said, seen(None))
               case Right(Answered(d, usage, model)) =>
                 val top = Probability.clamped(d.top)
-                d.choice match {
-                  case Some(root) if top >= tuning.followsAt =>
+                // Under a burst prior, the burst's strand at the prior's least, chosen or not.
+                val burst = for {
+                  prior <- tuning.burst
+                  root <- offer.burst.filter(r => offer.exchanges.exists(_.root == r))
+                  pb = Probability.clamped(d.probability(Some(root)))
+                  if pb >= prior.followsAt
+                } yield Placed.Follows(root, pb, seen(Some(d)), model, usage)
+                (d.choice, burst) match {
+                  case (Some(root), _) if top >= tuning.followsAt =>
                     Placed.Follows(root, top, seen(Some(d)), model, usage)
+                  case (_, Some(follows)) => follows
                   case _ =>
                     val likeliest = offer.exchanges
                       .map(e => d.probability(Some(e.root)))

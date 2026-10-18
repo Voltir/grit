@@ -20,7 +20,10 @@ private[report] object RoomLines {
       s"# stitch lab: ${room.name}",
       "",
       s"model $model; horizon ${tuning.horizon}, recent ${tuning.recent}, lexical " +
-        s"${tuning.lexical}, followsAt ${Probability.value(tuning.followsAt)}",
+        s"${tuning.lexical}, followsAt ${Probability.value(tuning.followsAt)}" +
+        tuning.burst.fold("")(b =>
+          s"; burst prior ${Probability.value(b.followsAt)} within ${b.gap.toSeconds} s"
+        ),
       s"runs: ${runs.size}; calls: ${runs.map(_.calls).sum} (cached ${runs.map(_.cached).sum}); " +
         s"spent ${Cost.cents(runs.map(_.spent).sum)}"
     ) ++ Against.values.toVector.flatMap { a =>

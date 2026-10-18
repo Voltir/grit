@@ -1,5 +1,7 @@
 package grit.core.stitch
 
+import scala.concurrent.duration.*
+
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, StitchRef, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Message
@@ -229,6 +231,77 @@ object StitchingTests extends TestSuite {
           )
         case other => throw new java.lang.AssertionError(s"not follows: $other")
       }
+    }
+
+    test(
+      "under a burst prior, the strand its author last opened is followed at the prior, chosen or not"
+    ) {
+      val engine = heard("engine", "the Engine contract term?", 30)
+      val lunch = heard("lunch", "lunch?", 60)
+      val first = heard("real", "Is this a real question", 0)
+      val es = Stitching.offer(
+        first,
+        room(),
+        Vector(lunch, engine),
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Scope.Room,
+        Tuning.Default
+      )
+      val prior = Tuning.Default.copy(burst = Some(Tuning.Burst(p(0.3), 120.seconds)))
+      def placed(burst: Option[ConversationId], tuning: Tuning) = Stitching.place(
+        new Scripted(
+          Some(
+            chose(
+              Stitching.NewKey,
+              Stitching.NewKey -> 0.5,
+              "exchange 1" -> 0.35,
+              "exchange 2" -> 0.15
+            )
+          )
+        ),
+        Offer(first, "David", es, Speakers.none, burst),
+        tuning
+      ) match {
+        case f: Placed.Follows => Some(f.root -> f.p)
+        case _ => None
+      }
+      // Something new is the top choice; the engine exchange, the burst's, is given 0.35.
+      Vector(
+        placed(Some(engine.conversation), prior),
+        placed(Some(lunch.conversation), prior),
+        placed(Some(engine.conversation), Tuning.Default)
+      ) ==> Vector(Some(engine.conversation -> p(0.35)), None, None)
+    }
+
+    test("a burst is the strand of the author's last opening within the gap, by its link") {
+      val first = heard("real", "Is this a real question", 0)
+      val engine = heard("engine", "the Engine contract term?", 30)
+      val lunch = heard("lunch", "lunch?", 60)
+      val older = heard("older", "earlier", 90)
+      val root = ConversationId("C1/root")
+      val speakers = Speakers(
+        Map(
+          first.entry.id -> "David",
+          engine.entry.id -> "Ana",
+          lunch.entry.id -> "David",
+          older.entry.id -> "David"
+        )
+      )
+      def burst(gap: Int) = Stitching.burstOf(
+        first,
+        Vector(older, engine, lunch, first),
+        Vector(Link(lunch.conversation, root)),
+        speakers,
+        gap.seconds
+      )
+      (
+        burst(120),
+        burst(59),
+        Stitching.burstOf(first, Vector(lunch), Vector.empty, Speakers.none, 120.seconds)
+      ) ==>
+        (Some(root), None, None)
     }
 
     test("a classifier that fails leaves the message unread, with what it was shown") {
