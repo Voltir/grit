@@ -101,7 +101,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     if (n == 0) (Vector.empty, g)
     else {
       val summary = Dreaming.Summary(
-        TopicDream.attachSystem(scan.strands.size),
+        TopicDream.attachSystem(scan.strands.size, scan.leads.nonEmpty, scan.cards.nonEmpty),
         TopicDream.AttachChars,
         TopicDream.LeadChars,
         TopicDream.AttachReply
@@ -317,15 +317,23 @@ object TopicDream {
       )
 
   /** What the attach ask is told, before what it is shown: how many discussions, all of which
-    * it is shown or it asks nothing, and no count of the topics or cards, since one it cannot
-    * read is not shown.
+    * it is shown or it asks nothing; that it is shown no topic or no card when the scan holds
+    * none (`topics`, `cards`), and otherwise no count of them, since one it cannot read is not
+    * shown.
     */
-  private def attachSystem(strands: Int): String =
+  private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String =
     "You sort a team's recent discussions and documents into topics: durable subjects the " +
       s"team comes back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
-      "each a block of messages under their speakers' names, oldest first; then " + "the topics, each under `topic:`, numbered from 1 in the order shown, how its text " +
-      "begins; then the cards, each a document describing a file, under its label. Reply " +
-      "by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
+      "each a block of messages under their speakers' names, oldest first" +
+      (if (topics)
+         "; then the topics, each under `topic:`, numbered from 1 in the order shown, how its " +
+           "text begins"
+       else "") +
+      (if (cards) "; then the cards, each a document describing a file, under its label. "
+       else ". ") +
+      (if (topics) "" else "No topic is shown yet, so none has a number. ") +
+      (if (cards) "" else "No card is shown: `cards` is an empty list. ") +
+      "Reply by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
       "and `cards`, one per card in the order shown, each the number of the topic it belongs " +
       "to, `new` when it opens a subject no topic shown covers that the team is likely to " +
       "come back to, `with N` when it belongs with the Nth discussion shown, wherever that one " +

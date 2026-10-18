@@ -360,6 +360,21 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("an attach ask whose scan holds no topic or no card is told it is shown none") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val _ = runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
+      val _ = strand(w, "C2", "deploy rollback", 100)
+      val _ = runs.run(now = Now.plusSeconds(600))
+      runs.asked
+        .filter(_.kind == "attach")
+        .map(a =>
+          (a.system.contains("No topic is shown yet"), a.system.contains("No card is shown"))
+        ) ==> Vector((true, true), (false, false))
+    }
+
     test("a strand a topic already refers to is attached to it without the attach ask") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
