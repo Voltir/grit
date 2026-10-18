@@ -2,16 +2,17 @@ package grit.knowledge.topic
 
 /** What a topics run came to: how many topics it `written`, of them how many it `opened`; how
   * many passages it `withdrawn`; how many strands and cards it found `unchanged` since the
-  * topic they are in was written, and how many it `left` for the next run (past its most, or
-  * changed since its scan); how many refs it `skipped` (too long to keep, their links still in
-  * the text); what it did not write, each named, and why; and why it stopped, if it did.
-  * [[line]] is its reply.
+  * topic they are in was written, how many its attach ask placed in no topic (`aside`), and how
+  * many it `left` for the next run (past its most, not shown, or changed since its scan); how
+  * many refs it `skipped` (too long to keep, their links still in the text); what it did not
+  * write, each named, and why; and why it stopped, if it did. [[line]] is its reply.
   */
 final case class Gathered(
     written: Int,
     opened: Int,
     withdrawn: Int,
     unchanged: Int,
+    aside: Int,
     left: Int,
     skipped: Int,
     unwritten: Vector[(String, String)],
@@ -19,14 +20,14 @@ final case class Gathered(
 ) extends caps.Pure {
 
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
-    * unchanged, {left} left for the next run`, then, when some were, `; {n} refs too long to
+    * unchanged, {aside} set aside, {left} left for the next run`, then, when some were, `; {n} refs too long to
     * keep`, then `; not written: {name} ({why})` for at most [[Gathered.Shown]] of them,
     * separated by `, `, and `and {n} more` for the rest; then, when it stopped, `; stopped:
     * {why}`.
     */
   def line: String = {
     val counts = s"topics: $written written ($opened opened), $withdrawn withdrawn, " +
-      s"$unchanged unchanged, $left left for the next run"
+      s"$unchanged unchanged, $aside set aside, $left left for the next run"
     val refs =
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"
@@ -47,5 +48,5 @@ object Gathered {
 
   /** A run that stopped before writing anything, and why. */
   private[topic] def stopped(why: String): Gathered =
-    Gathered(0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
+    Gathered(0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
 }

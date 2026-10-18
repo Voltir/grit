@@ -288,8 +288,8 @@ object TopicDreamTests extends TestSuite {
         runs.referring(Ref.Strand(b.id)),
         runs.referring(Ref.Strand(c.id))
       ) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
-        "topics: 2 written (1 opened), 0 withdrawn, 1 unchanged, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 2 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector("attach", "write", "attach", "write", "write"),
         Vector(key(a), key(c)).sorted,
         Vector(key(a)),
@@ -325,7 +325,7 @@ object TopicDreamTests extends TestSuite {
         "\\d+ (discussion|topic|card)s?\\b".r.findFirstIn(attach.system),
         runs.referring(Ref.Strand(c.id))
       ) ==> (
-        "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 1 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 1 left for the next run",
         (1, 1, 0),
         None,
         Vector(key(a))
@@ -344,14 +344,14 @@ object TopicDreamTests extends TestSuite {
         runs.asked.map(_.kind),
         runs.asked.last.shown.contains("the rollback works now")
       ) ==> (
-        "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector("attach", "write", "write"),
         true
       )
     }
 
     test(
-      "a changed card a topic links to attaches to it by its unit; one no topic refers to goes to the attach ask"
+      "a changed card a topic links to attaches to it by its unit; one no topic refers to goes to the attach ask, and placed in none is counted set aside"
     ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
@@ -369,7 +369,7 @@ object TopicDreamTests extends TestSuite {
         asks.map(a => (a.shown.contains("The deploy plan."), a.shown.contains("The lunch menu.")))
       ) ==> (
         // The strand, in the topic's lineage at its digest, and the card set aside.
-        "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 0 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
         Vector("attach", "write"),
         Vector((false, true), (true, false))
       )
@@ -384,7 +384,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val reply = runs.run()
       (reply, runs.asked.map(_.kind), runs.kept) ==> (
-        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector("attach", "write", "write"),
         Vector(key(a), key(b)).sorted.map(_ -> s"$Lead\n\n## 2026-10-12\n\n$Passage")
       )
@@ -417,9 +417,9 @@ object TopicDreamTests extends TestSuite {
         runs.kept
       ) ==> (
         Vector(2),
-        "topics: 0 written (0 opened), 1 withdrawn, 1 unchanged, 0 left for the next run",
+        "topics: 0 written (0 opened), 1 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector(key(a) -> s"$Lead\n\n## 2026-10-13\n\n$Passage"),
-        "topics: 0 written (0 opened), 1 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 0 written (0 opened), 1 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector()
       )
     }
@@ -430,7 +430,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val reply = runs.run(perRun = 2)
       (reply, runs.kept.size) ==> (
-        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 1 left for the next run",
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
         2
       )
     }
@@ -446,7 +446,7 @@ object TopicDreamTests extends TestSuite {
       val day2 = Day.plusDays(1)
       val reply = runs.run(day = Some(day2), now = StrandWorld.at(86400 + 3600))
       (reply, runs.reviewed.sortBy(_._1)) ==> (
-        "topics: 9 written (8 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 9 written (8 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         ((key(a) -> Day) +: roots.map(r => key(r) -> day2).toVector).sortBy(_._1)
       )
     }
@@ -458,8 +458,8 @@ object TopicDreamTests extends TestSuite {
       val first = runs.run()
       val again = runs.run()
       (first, again, runs.asked.size) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
-        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         2
       )
     }
@@ -475,7 +475,7 @@ object TopicDreamTests extends TestSuite {
         runs.asked.map(_.shown.contains("said the next day")),
         runs.kept.map(_._2.linesIterator.filter(_.startsWith("## ")).toVector)
       ) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector(false, false),
         Vector(Vector("## 2026-10-12"))
       )
@@ -488,7 +488,7 @@ object TopicDreamTests extends TestSuite {
       val long = "https://example.com/" + ("a" * 10000)
       val reply = runs.run(write = _ => wrote(Lead, s"See [the log]($long)."))
       (reply, runs.kept.map(_._2.contains(long))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 left for the next run; 1 ref too long to keep",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 ref too long to keep",
         Vector(true)
       )
     }
@@ -499,7 +499,7 @@ object TopicDreamTests extends TestSuite {
       val opened = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), Integrity.Outside)
       val reply = runs.run()
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector((opened, Integrity.Outside))
       )
     }

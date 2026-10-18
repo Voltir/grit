@@ -65,7 +65,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       case Left(e) => Gathered.stopped(s"scanning its topics: ${MoveError.said(e)}").line
       case Right(scan) =>
         val begun =
-          Gathered(0, 0, scan.withdrew, scan.unchanged, scan.left, 0, Vector.empty, None)
+          Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, Vector.empty, None)
         val (placed, done) = attach(run, moves, scan, begun)
         val touched = TopicDream.joined(scan.attached ++ placed)
         val ordered = touched.filter(_.opened) ++ touched.filterNot(_.opened)
@@ -83,7 +83,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   }
 
   /** The attach ask over `scan`'s strands and cards: the topics they go to, and `g` counting
-    * those set aside as unchanged, and those it could not place or was not shown as left.
+    * those set aside, those it could not place or was not shown as left, and each strand that
+    * could not open the topic it was placed in as not written.
     */
   private def attach(
       run: Trusted[JobRun[TopicParams]],
@@ -136,12 +137,13 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
             val strands = scan.strands
               .zip(placing.strands)
               .flatMap((st, p) =>
-                to(p).flatMap {
-                  case Right((k, v)) => Some(Touch(k, Some(v), Vector(st), Vector.empty))
+                to(p).map {
+                  case Right((k, v)) => Right(Touch(k, Some(v), Vector(st), Vector.empty))
                   case Left(()) =>
-                    TopicKey.strand(st.root).toOption.map(Touch(_, None, Vector(st), Vector.empty))
+                    TopicKey.strand(st.root).map(Touch(_, None, Vector(st), Vector.empty))
                 }
               )
+            val unopened = strands.collect { case Left(why) => ("a strand", why) }
             val cardsPlaced = shownCards
               .zip(placing.cards)
               .flatMap((c, p) =>
@@ -150,10 +152,17 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                   case Left(()) => Touch(TopicKey.card(c.key), None, Vector.empty, Vector(c))
                 }
               )
-            val placed = strands ++ cardsPlaced
+            val placed = strands.collect { case Right(t) => t } ++ cardsPlaced
             val unshown = scan.cards.size - shownCards.size
-            val aside = n - unshown - TopicDream.items(placed)
-            (placed, g.copy(unchanged = g.unchanged + aside, left = g.left + unshown))
+            val aside = n - unshown - unopened.size - TopicDream.items(placed)
+            (
+              placed,
+              g.copy(
+                aside = g.aside + aside,
+                left = g.left + unshown,
+                unwritten = g.unwritten ++ unopened
+              )
+            )
           }
       }
     }
