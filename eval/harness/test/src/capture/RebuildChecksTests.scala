@@ -2,7 +2,8 @@ package grit.eval.harness.capture
 
 import java.time.Instant
 
-import grit.core.stitch.Offered
+import grit.core.id.ConversationId
+import grit.core.stitch.{Offered, Seen, Tuning}
 import grit.dbos.engine.Build
 
 import utest.*
@@ -21,12 +22,20 @@ object RebuildChecksTests extends TestSuite {
   /** An exchange's state, its words named after its root, so a root's exchange looks the same
     * wherever it is offered.
     */
-  private def exchange(root: CaseId, latest: String = "ok", record: Option[String] = None) =
+  private def exchange(
+      root: CaseId,
+      latest: Option[String] = Some("ok"),
+      record: Option[String] = None
+  ) =
     ujson.Obj(
       "opening" -> said("Ann", s"opening of ${root.written}"),
-      "latest" -> ujson.Arr(said("Bo", latest)),
+      "latest" -> ujson.Arr.from(latest.map(said("Bo", _))),
       "record" -> record.fold[ujson.Value](ujson.Null)(ujson.Str(_))
     )
+
+  /** `e` in the later form, with no `latest` when it has none and no `record` when it has none. */
+  private def bare(e: ujson.Obj): ujson.Obj =
+    ujson.Obj.from(e.obj.filterNot((_, v) => v == ujson.Null || v == ujson.Arr()))
 
   private def state(message: String, exchanges: ujson.Value*): ujson.Value = ujson.Obj(
     "new_message" -> message,
@@ -38,6 +47,28 @@ object RebuildChecksTests extends TestSuite {
 
   private def slots(s: (CaseId, Offered)*): Vector[Slot] = s.toVector.map(Slot(_, _))
 
+  /** [[SeenCheck.compare]] of `rebuilt` against `live`, each shown with its slots. */
+  private def check(
+      live: ujson.Value,
+      liveSlots: Vector[Slot],
+      rebuilt: ujson.Value,
+      rebuiltSlots: Vector[Slot],
+      recent: Int
+  ): SeenCheck = {
+    def seen(state: ujson.Value, s: Vector[Slot]) = Seen(
+      state,
+      s.map(x => Seen.Offer(ConversationId(x.root.written), x.why, None)),
+      Tuning.Default
+    )
+    SeenCheck.compare(
+      seen(live, liveSlots),
+      liveSlots,
+      seen(rebuilt, rebuiltSlots),
+      rebuiltSlots,
+      recent
+    )
+  }
+
   /** Two recent slots, then one lexical, as the shipped tuning offers them. */
   private val live: Vector[Slot] =
     slots(a -> Offered.Recent(1), b -> Offered.Recent(2), c -> Offered.Lexical(3.0))
@@ -47,12 +78,12 @@ object RebuildChecksTests extends TestSuite {
     test("the same state offering the same roots matches, whatever the lexical scores") {
       val rescored =
         slots(a -> Offered.Recent(1), b -> Offered.Recent(2), c -> Offered.Lexical(2.0))
-      SeenCheck.compare(liveState, live, liveState, rescored, 2) ==> SeenCheck.Match
+      check(liveState, live, liveState, rescored, 2) ==> SeenCheck.Match
     }
 
     test("a recent slot holding another root differs in recent, naming its rank") {
       val rebuilt = slots(d -> Offered.Recent(1), b -> Offered.Recent(2), c -> Offered.Lexical(3.0))
-      SeenCheck.compare(
+      check(
         liveState,
         live,
         state("hi", exchange(d), exchange(b), exchange(c)),
@@ -63,7 +94,7 @@ object RebuildChecksTests extends TestSuite {
 
     test("a lexical slot holding another root differs in lexical slots alone") {
       val rebuilt = slots(a -> Offered.Recent(1), b -> Offered.Recent(2), d -> Offered.Lexical(3.0))
-      SeenCheck.compare(
+      check(
         liveState,
         live,
         state("hi", exchange(a), exchange(b), exchange(d)),
@@ -75,7 +106,7 @@ object RebuildChecksTests extends TestSuite {
     test("a slot ranked after the recent ones filled a lexical slot, so it may differ") {
       val filled = slots(a -> Offered.Recent(1), b -> Offered.Recent(2), c -> Offered.Recent(3))
       val other = slots(a -> Offered.Recent(1), b -> Offered.Recent(2), d -> Offered.Recent(3))
-      SeenCheck.compare(
+      check(
         liveState,
         filled,
         state("hi", exchange(a), exchange(b), exchange(d)),
@@ -85,19 +116,28 @@ object RebuildChecksTests extends TestSuite {
     }
 
     test("a root both sides offer, shown with other latest messages, differs as that root") {
-      SeenCheck.compare(
+      check(
         liveState,
         live,
-        state("hi", exchange(a), exchange(b, latest = "rolled back"), exchange(c)),
+        state("hi", exchange(a), exchange(b, latest = Some("rolled back")), exchange(c)),
         live,
         2
       ) ==> new SeenCheck.SameRootDiffers(Vector(b), Set(SeenCheck.Field.Latest))
     }
 
+    test(
+      "an exchange shown without latest messages or a record matches one shown with them empty, in either era's form"
+    ) {
+      val earlier = state("hi", exchange(a, latest = None), exchange(b), exchange(c))
+      val later = state("hi", bare(exchange(a, latest = None)), bare(exchange(b)), exchange(c))
+      check(earlier, live, later, live, 2) ==> SeenCheck.Match
+      check(later, live, later, live, 2) ==> SeenCheck.Match
+    }
+
     test("a root both sides offer at different places is compared as that root") {
       val was = slots(a -> Offered.Recent(1), c -> Offered.Lexical(3.0), b -> Offered.Lexical(2.0))
       val now = slots(a -> Offered.Recent(1), b -> Offered.Lexical(2.0), d -> Offered.Lexical(3.0))
-      SeenCheck.compare(
+      check(
         state("hi", exchange(a), exchange(c), exchange(b)),
         was,
         state("hi", exchange(a), exchange(b, record = Some("closed")), exchange(d)),
@@ -108,7 +148,7 @@ object RebuildChecksTests extends TestSuite {
 
     test("the message differing comes first of every kind") {
       val rebuilt = slots(d -> Offered.Recent(1), b -> Offered.Recent(2), c -> Offered.Lexical(3.0))
-      SeenCheck.compare(
+      check(
         liveState,
         live,
         state("hey", exchange(d), exchange(b), exchange(c)),

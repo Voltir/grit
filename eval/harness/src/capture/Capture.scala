@@ -3,7 +3,7 @@ package grit.eval.harness.capture
 import java.time.Instant
 
 import grit.core.id.{ConversationId, TurnRef}
-import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
+import grit.core.stitch.{Placed, Seen, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{Corpora, TriageStore}
 import grit.core.visibility.Subject
@@ -182,12 +182,14 @@ object Capture {
         case None => Stitched(placement, offered, None, Vector.empty, SeenCheck.Unbuilt, 0)
         case Some(offer) =>
           val shown = Stitching.shown(offer)
+          val seen =
+            Seen(shown, offer.exchanges.map(e => Seen.Offer(e.root, e.offered, None)), tuning)
           Stitched(
             placement,
             offered,
             Stitching.request(offer).map(r => Built(Digest.json(shown), Digest.request(r))),
             now,
-            SeenCheck.compare(live.seen.state, was, shown, now, tuning.recent),
+            SeenCheck.compare(live.seen, was, seen, now, tuning.recent),
             Stitched.drift(was, now)
           )
       }

@@ -7,7 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.id.{ConversationId, EntryId, QuestionName, WorkflowId}
 import grit.core.period.Probability
-import grit.core.stitch.{Offered, Tuning}
+import grit.core.stitch.{Offered, Seen, Tuning}
 import grit.core.triage.{Kind, Tags}
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
@@ -264,31 +264,33 @@ object SeenCheck {
     */
   final case class LexicalOnly private[capture] (fields: Set[Field]) extends SeenCheck
 
-  /** How `rebuilt`, the stitch question's state offering `rebuiltSlots`, differs from `live`,
-    * offering `liveSlots`, under a tuning of `recent` recent slots; each state's exchanges in
-    * its slots' order. When more than one kind holds, the first of `MessageDiffers`,
-    * `RecentDiffers`, `SameRootDiffers` and `LexicalOnly`. A field missing from either state
-    * differs.
+  /** How `rebuilt`, the stitch question shown with `rebuiltSlots`, differs from `live`, shown
+    * with `liveSlots`, under a tuning of `recent` recent slots; each state's exchanges in its
+    * slots' order. Exchanges are compared as [[Seen.exchanges]] reads them, so an exchange
+    * shown with no `latest` or `record` key equals one shown with them empty, and a state whose
+    * exchanges do not read shows none. When more than one kind holds, the first of
+    * `MessageDiffers`, `RecentDiffers`, `SameRootDiffers` and `LexicalOnly`. A message or author
+    * missing from either state differs.
     */
   def compare(
-      live: ujson.Value,
+      live: Seen,
       liveSlots: Vector[Slot],
-      rebuilt: ujson.Value,
+      rebuilt: Seen,
       rebuiltSlots: Vector[Slot],
       recent: Int
   ): SeenCheck = {
     def at(v: ujson.Value, k: String): Option[ujson.Value] = v.objOpt.flatMap(_.get(k))
-    def same(x: Option[ujson.Value], y: Option[ujson.Value]): Boolean = x.isDefined && x == y
-    def exchanges(v: ujson.Value): Vector[ujson.Value] =
-      at(v, "exchanges").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
-    val (was, now) = (exchanges(live), exchanges(rebuilt))
-    val shown =
-      Vector(Field.Opening -> "opening", Field.Latest -> "latest", Field.Record -> "record")
-    def differ(x: ujson.Value, y: ujson.Value): Set[Field] =
-      shown.collect { case (f, k) if !same(at(x, k), at(y, k)) => f }.toSet
+    def same(k: String): Boolean =
+      at(live.state, k).isDefined && at(live.state, k) == at(rebuilt.state, k)
+    val (was, now) = (live.exchanges, rebuilt.exchanges)
+    def differ(x: Seen.Exchange, y: Seen.Exchange): Set[Field] = Set(
+      Option.when(x.opening != y.opening)(Field.Opening),
+      Option.when(x.latest != y.latest)(Field.Latest),
+      Option.when(x.record != y.record)(Field.Record)
+    ).flatten
     val message = Set(
-      Option.when(!same(at(live, "new_message"), at(rebuilt, "new_message")))(Field.NewMessage),
-      Option.when(!same(at(live, "author"), at(rebuilt, "author")))(Field.Author)
+      Option.when(!same("new_message"))(Field.NewMessage),
+      Option.when(!same("author"))(Field.Author)
     ).flatten
     def recents(s: Vector[Slot]): Map[Int, CaseId] =
       s.collect { case Slot(root, Offered.Recent(rank)) if rank <= recent => rank -> root }.toMap
