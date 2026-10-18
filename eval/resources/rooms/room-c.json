@@ -1,0 +1,228 @@
+{
+  "team": "TROOMC",
+  "channel": "CTEAM",
+  "notes": "The team channel of a small software company over three working days: a release, a billing migration, a performance budget, hiring and an office move, with the files they share as cards, one of no topic, and chatter.",
+  "messages": [
+    {
+      "id": "m01",
+      "at": "2026-10-26T09:05:00Z",
+      "who": "Lena",
+      "text": "morning! coffee machine on 3 is fixed"
+    },
+    {
+      "id": "m02",
+      "at": "2026-10-26T09:20:00Z",
+      "who": "Raj",
+      "topic": "release",
+      "text": "Release 4.2 goes out Thursday. I put the checklist in the shared drive, please tick your items there."
+    },
+    {
+      "id": "r02a",
+      "at": "2026-10-26T09:24:00Z",
+      "who": "Mia",
+      "thread": "m02",
+      "text": "is the mobile build part of 4.2 or does it ship separately?"
+    },
+    {
+      "id": "r02b",
+      "at": "2026-10-26T09:26:00Z",
+      "who": "Raj",
+      "thread": "m02",
+      "text": "separately, next week"
+    },
+    {
+      "id": "m03",
+      "at": "2026-10-26T10:02:00Z",
+      "who": "Mia",
+      "topic": "billing",
+      "text": "Billing migration: we move the first 50 accounts to the new invoicing provider on Friday. Plan doc is up."
+    },
+    {
+      "id": "r03a",
+      "at": "2026-10-26T10:10:00Z",
+      "who": "Tom",
+      "thread": "m03",
+      "text": "do we freeze plan changes for those accounts during the move?"
+    },
+    {
+      "id": "r03b",
+      "at": "2026-10-26T10:12:00Z",
+      "who": "Mia",
+      "thread": "m03",
+      "text": "yes, from Thursday evening until Monday"
+    },
+    {
+      "id": "m04",
+      "at": "2026-10-26T11:30:00Z",
+      "who": "Tom",
+      "topic": "perf",
+      "text": "The search page is at 2.8s p95 on the staging dataset. Our budget says 1.5s."
+    },
+    {
+      "id": "m05",
+      "at": "2026-10-26T14:15:00Z",
+      "who": "Lena",
+      "topic": "office",
+      "text": "Office move: facilities sent the floor plan for the new space, desks are assigned by team."
+    },
+    {
+      "id": "m06",
+      "at": "2026-10-26T15:40:00Z",
+      "who": "Raj",
+      "topic": "release",
+      "text": "Release 4.2: the feature flag for bulk edit stays off until support has docs."
+    },
+    {
+      "id": "m07",
+      "at": "2026-10-26T16:55:00Z",
+      "who": "Mia",
+      "text": "anyone up for the climbing gym tonight?"
+    },
+    {
+      "id": "m08",
+      "at": "2026-10-27T09:10:00Z",
+      "who": "Tom",
+      "topic": "perf",
+      "text": "Search p95 down to 2.1s after adding the index on bookings.start_at. Still over the budget."
+    },
+    {
+      "id": "r08a",
+      "at": "2026-10-27T09:14:00Z",
+      "who": "Raj",
+      "thread": "m08",
+      "text": "is the remaining time in the query or in rendering?"
+    },
+    {
+      "id": "r08b",
+      "at": "2026-10-27T09:20:00Z",
+      "who": "Tom",
+      "thread": "m08",
+      "text": "about half rendering, the result cards re-render on every keystroke"
+    },
+    {
+      "id": "m09",
+      "at": "2026-10-27T10:05:00Z",
+      "who": "Lena",
+      "topic": "hiring",
+      "text": "Hiring: we have three onsite loops for the backend role next week. The interview rubric is in the drive, please read it before your slot."
+    },
+    {
+      "id": "m10",
+      "at": "2026-10-27T11:00:00Z",
+      "who": "Mia",
+      "topic": "billing",
+      "text": "Billing migration dry run on staging went through, 48 of 50 accounts matched. Two have prorated credits the new provider rounds differently."
+    },
+    {
+      "id": "r10a",
+      "at": "2026-10-27T11:06:00Z",
+      "who": "Tom",
+      "thread": "m10",
+      "text": "can we just pay out the rounding difference?"
+    },
+    {
+      "id": "r10b",
+      "at": "2026-10-27T11:09:00Z",
+      "who": "Mia",
+      "thread": "m10",
+      "text": "finance says yes, under a dollar each"
+    },
+    {
+      "id": "m11",
+      "at": "2026-10-27T13:30:00Z",
+      "who": "Raj",
+      "topic": "release",
+      "text": "Release 4.2 is blocked on the flaky checkout test, I am looking at it."
+    },
+    {
+      "id": "m12",
+      "at": "2026-10-27T15:00:00Z",
+      "who": "Lena",
+      "topic": "office",
+      "text": "Office move is the 9th. Pack your desk into the crates by the 8th at noon."
+    },
+    {
+      "id": "m13",
+      "at": "2026-10-27T16:20:00Z",
+      "who": "Tom",
+      "text": "lunch order for tomorrow is in the usual sheet"
+    },
+    {
+      "id": "m14",
+      "at": "2026-10-28T09:15:00Z",
+      "who": "Raj",
+      "topic": "release",
+      "text": "Release 4.2: the checkout test was a timezone bug in the fixture. Fixed, release is back on for Thursday."
+    },
+    {
+      "id": "m15",
+      "at": "2026-10-28T10:30:00Z",
+      "who": "Tom",
+      "topic": "perf",
+      "text": "Search p95 at 1.4s with debounced rendering. Under budget on staging; will check production numbers next week."
+    },
+    {
+      "id": "m16",
+      "at": "2026-10-28T11:45:00Z",
+      "who": "Mia",
+      "topic": "billing",
+      "text": "Billing migration starts Friday 8:00. I will post in here when each batch of ten is done."
+    },
+    {
+      "id": "m17",
+      "at": "2026-10-28T13:10:00Z",
+      "who": "Lena",
+      "topic": "hiring",
+      "text": "Hiring: the second onsite moved to Wednesday afternoon, rubric unchanged."
+    },
+    {
+      "id": "m18",
+      "at": "2026-10-28T15:30:00Z",
+      "who": "Lena",
+      "topic": "office",
+      "text": "Office move: the new space has no parking for bikes yet, facilities are on it."
+    },
+    {
+      "id": "m19",
+      "at": "2026-10-28T16:45:00Z",
+      "who": "Raj",
+      "text": "happy Wednesday, cake in the kitchen"
+    }
+  ],
+  "cards": [
+    {
+      "id": "file-release-checklist",
+      "at": "2026-10-26T09:18:00Z",
+      "title": "Release 4.2 checklist",
+      "topic": "release",
+      "text": "Checklist for release 4.2: freeze the branch Tuesday, run the full test suite, QA sign-off on checkout and bulk edit, support docs for bulk edit before its flag is turned on, release notes, deploy Thursday morning."
+    },
+    {
+      "id": "file-billing-plan",
+      "at": "2026-10-26T09:55:00Z",
+      "title": "Billing migration plan",
+      "topic": "billing",
+      "text": "Plan for moving accounts to the new invoicing provider: a staging dry run, plan changes frozen for the accounts moved, batches of ten starting with fifty accounts, reconciliation of prorated credits, rollback by re-pointing the account to the old provider."
+    },
+    {
+      "id": "file-floor-plan",
+      "at": "2026-10-26T14:00:00Z",
+      "title": "New office floor plan",
+      "topic": "office",
+      "text": "Floor plan of the new office on the 4th floor: desks grouped by team, two meeting rooms, a kitchen, crates for packing provided by facilities."
+    },
+    {
+      "id": "file-rubric",
+      "at": "2026-10-27T09:50:00Z",
+      "title": "Backend interview rubric",
+      "topic": "hiring",
+      "text": "Rubric for the backend onsite: system design, debugging a failing service, code review, and a values conversation, each scored from one to four with written evidence."
+    },
+    {
+      "id": "file-holidays",
+      "at": "2026-10-27T12:00:00Z",
+      "title": "Holiday calendar",
+      "text": "The company's public holidays for next year, by country, and the rule for swapping a holiday."
+    }
+  ]
+}
