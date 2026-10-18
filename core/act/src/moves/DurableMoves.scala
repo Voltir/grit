@@ -23,6 +23,7 @@ import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.CallSlot
 import grit.core.job.JobRun
 import grit.core.message.Message
+import grit.core.need.Needs
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
@@ -65,34 +66,36 @@ object DurableMoves {
   )(using steps: Steps[MovesEnv]^): A =
     body(new Kept(acting, limits, keeper))
 
-  /** As [[keeping]], its moves also reading `strands` ([[Dreaming]]), a strand's summary reading
-    * its messages through `excerpts` in its own step: recorded as an `ask:{name}` in a JSON
-    * ask's form, under its own digest ([[MovesJournal.strand]]).
+  /** As [[keeping]], its moves also reading `strands` and `needs` ([[Dreaming]]), a strand's
+    * summary reading its messages through `excerpts` in its own step: recorded as an
+    * `ask:{name}` in a JSON ask's form, under its own digest ([[MovesJournal.strand]]).
     */
   def dreaming[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
       keeper: DocumentKeeper,
       strands: StrandShelf,
+      needs: Needs,
       excerpts: StrandExcerpts
   )(body: Dreaming^ => A)(using steps: Steps[MovesEnv]^): A =
-    body(new Dreamt(acting, limits, keeper, strands, excerpts))
+    body(new Dreamt(acting, limits, keeper, strands, needs, excerpts))
 
-  /** One run's moves, its keeps over `keeper`, and its scans over `strands`. */
+  /** One run's moves, its keeps over `keeper`, and its scans over `strands` and `needs`. */
   private final class Dreamt(
       acting: Acting,
       limits: MoveLimits,
       keeper: DocumentKeeper,
       strands: StrandShelf,
+      needs: Needs,
       excerpts: StrandExcerpts
   )(using steps: Steps[MovesEnv]^)
       extends Kept(acting, limits, keeper),
         Dreaming {
 
     def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
-        body: (I, DocumentKeeper, StrandShelf, Instant) -> Tx^ ?-> Either[StoreError, A]
+        body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
     ): Either[MoveError, A] =
-      keep(name, from)((i, kept, at) => body(i, kept, strands, at))
+      keep(name, from)((i, kept, at) => body(i, kept, strands, needs, at))
 
     def summarise[T](
         name: MoveName,

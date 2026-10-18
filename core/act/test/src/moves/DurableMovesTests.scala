@@ -36,6 +36,7 @@ import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
 import grit.core.message.Message
+import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
@@ -91,11 +92,17 @@ object DurableMovesTests extends MovesContract {
     (got, docs)
   }
 
-  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld, integrity: Integrity)(
+  def dreaming[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      integrity: Integrity,
+      shelves: MovesContract.Shelves
+  )(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])]) = {
-    val w = new MovesWorld(broken = false, MovesContract.Floor, integrity)
-    val (got, requests) = w.dreaming(limits, world)(use)
+    val w =
+      new MovesWorld(broken = false, MovesContract.Floor, integrity, documents = shelves.documents)
+    val (got, requests) = w.dreaming(limits, world, shelves.needs)(use)
     (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
 }
@@ -117,7 +124,8 @@ final class MovesWorld(
     integrity: Integrity = Integrity.Authority,
     capped: Vector[Cap] = Vector(Cap(MovesContract.Probe.place, MovesContract.ProbeOutput)),
     answer: Outcome = Outcome.Done(MovesContract.Read),
-    rooms: RoomLabels = RoomLabels.Public
+    rooms: RoomLabels = RoomLabels.Public,
+    val documents: InMemoryDocuments = new InMemoryDocuments
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -142,7 +150,6 @@ final class MovesWorld(
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
   val durable: InMemoryDurable =
     new InMemoryDurable(resolve = _ => Clearance.of(floor), visibility = visibility)
-  val documents: InMemoryDocuments = new InMemoryDocuments
   val edges: InMemoryEdges = new InMemoryEdges
   val ledger: InMemoryUsageLedger = new InMemoryUsageLedger
   val toolSets: InMemoryToolSets = new InMemoryToolSets
@@ -250,14 +257,18 @@ final class MovesWorld(
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
   }
 
-  /** As [[keeping]], its moves also scanning `world`'s strands and summarising what they
-    * said; and every request its model was sent, in order.
+  /** As [[keeping]], its moves also scanning `world`'s strands and `needs` and summarising
+    * what they said; and every request its model was sent, in order.
     */
-  def dreaming[A <: caps.Pure](limits: MoveLimits, world: StrandWorld)(
+  def dreaming[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      needs: Needs = Needs.over(MovesWorld.Notes, Vector.empty)
+  )(
       use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
     val models = new Answering(Answer)
-    val dreams = MovesWorld.dreams(acting, limits, keeper, world)(use)
+    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(Flows.run(dreams, env(models), ()).merge)
@@ -269,16 +280,21 @@ final class MovesWorld(
 
 object MovesWorld {
 
-  /** As [[keeps]], its moves also scanning `world`'s strands and summarising what they said. */
+  /** As [[keeps]], its moves also scanning `world`'s strands and `needs` and summarising what
+    * they said.
+    */
   def dreams[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
       keeper: DocumentKeeper,
-      world: StrandWorld
+      world: StrandWorld,
+      needs: Needs = Needs.over(Notes, Vector.empty)
   )(use: Dreaming^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
     Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
       _ =>
-        DurableMoves.dreaming(acting, limits, keeper, world.shelf, world.excerpts)(use)(using steps)
+        DurableMoves.dreaming(acting, limits, keeper, world.shelf, needs, world.excerpts)(use)(using
+          steps
+        )
     )
 
   /** What `use` returns over the moves of `acting` within `limits`, as a job's program makes

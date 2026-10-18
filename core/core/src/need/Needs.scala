@@ -16,10 +16,13 @@ trait Exported[S <: caps.Pure] {
 trait Needs extends caps.Pure {
 
   /** `dependency`'s service; [[Unneeded]] when no plugin of its name is among the asking
-    * plugin's needs. Reached only in [[grit.core.plugin.PluginTool.bind]], when a deployment is
-    * checked and when the engine starts, never on a call.
+    * plugin's needs. Reached in [[grit.core.plugin.PluginTool.bind]], in a dreaming job's scans
+    * ([[grit.core.act.Dreaming.scan]]), when a deployment is checked and when the engine starts.
     */
   def of[S <: caps.Pure](dependency: Exported[S]): Either[Unneeded, S]
+
+  /** The plugins whose services it gives. */
+  def plugins: Vector[PluginName]
 }
 
 object Needs {
@@ -33,6 +36,7 @@ object Needs {
         reads
           .collectFirst { case (n, own) if n == dependency.name => dependency.service(own) }
           .toRight(Unneeded(asker, dependency.name))
+      def plugins: Vector[PluginName] = reads.map(_._1)
     }
 }
 

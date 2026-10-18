@@ -33,7 +33,8 @@ Decision:
   `moduleDeps`, which refuse a cycle), so a dependent is always built against its
   dependency's own version. It reaches the dependency at runtime only through a service value
   the dependency exports, a trait over its own documents, handed over when the deployment is
-  built. No plugin reads or writes another's documents directly.
+  built: to its tools, and to its dreaming jobs' scans, in the scan's transaction. No plugin
+  reads or writes another's documents directly.
 - **`Deployment.of` refuses a plugin whose dependency is not among the deployment's
   plugins** (`PluginUnmet`), naming both.
 - **A plugin never reads a dependency while posting**: each plugin's cursor moves on its own,

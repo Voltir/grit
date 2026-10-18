@@ -38,7 +38,9 @@ object RunTests extends TestSuite {
     test("a job's program lists the extraction and the tree, within moves") {
       val env = new World().env()
       Flows
-        .downgrades(Run.flow(jobs(1), env.budget, env.keepers, env.strands, env.excerpts))
+        .downgrades(
+          Run.flow(jobs(1), env.budget, env.keepers, env.strands, env.needs, env.excerpts)
+        )
         .map(d => (d.at.name, d.sits, d.node)) ==> Vector(
         ("moves", Flows.Sits.Within, Extraction.Node),
         ("moves", Flows.Sits.Within, IntegrityTree.Node)

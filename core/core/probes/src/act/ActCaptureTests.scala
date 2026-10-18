@@ -12,7 +12,8 @@ import utest.*
   * Pinned by compiling probe sources against core with core's own flags, as
   * `grit.core.job.JobCaptureTests` does; `assertCompileError` cannot see capture errors
   * (docs/capture-checking.md). The jobs are core's own, `PlainJob` and `KeepingJob`, and the
-  * keeps `Keeping.keep`. What a run's body may do with the moves `grit.act.moves.DurableMoves`
+  * keeps `Keeping.keep`, and a dreaming job's scans `Dreaming.scan`, over its strands and its
+  * plugin's needs. What a run's body may do with the moves `grit.act.moves.DurableMoves`
   * hands it is `grit.act.moves.MovesCaptureTests`'.
   */
 object ActCaptureTests extends TestSuite {
@@ -50,6 +51,14 @@ object ActCaptureTests extends TestSuite {
       |abstract class Dreamt extends DreamingJob[Count], Counts
       |object Text {
       |  given StateJson[String] = StateJson.instance(s => ujson.Obj("text" -> s))
+      |}
+      |final class Newest(shelf: DocumentShelf) extends caps.Pure {
+      |  def newest()(using Tx^): Either[StoreError, Vector[Document]] = shelf.newest(1)
+      |}
+      |object Newer extends grit.core.plugin.Exports[Newest] {
+      |  val name: PluginName = PluginName.of("newer").fold(sys.error, identity)
+      |  val version: Int = 1
+      |  def service(own: grit.core.need.PluginReads): Newest = Newest(own.documents)
       |}
       |object Names {
       |  def of(text: String): MoveName = MoveName.of(text).fold(sys.error, identity)
@@ -145,7 +154,7 @@ object ActCaptureTests extends TestSuite {
   private val scanAsks =
     """final class ScanAsks extends Dreamt {
       |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
-      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) =>
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, needs, at) =>
       |      val _ = moves.ask(Names.of("inner"), run.tainted.map(_ => Posed.Text(Names.request)))
       |      Right(Count(1))
       |    }.fold(_.toString, _.toString)
@@ -160,7 +169,22 @@ object ActCaptureTests extends TestSuite {
       |}
       |final class Later(roots: Vector[ConversationId]) extends Dreamt {
       |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
-      |    moves.scan(Names.of("later"), run.tainted) { (_, keeper, strands, at) => Right(() => strands.of(roots, at)) }
+      |    moves.scan(Names.of("later"), run.tainted) { (_, keeper, strands, needs, at) => Right(() => strands.of(roots, at)) }
+      |      .fold(_.toString, _ => "later")
+      |}
+      |""".stripMargin
+
+  /** 13. A dreaming job whose scan's body returns a read of a need's service for later, over
+    * the scan's transaction.
+    */
+  private val scanReturnsNeed =
+    """given anyJournaled[A]: Journaled[A] = new Journaled[A] {
+      |  def encode(a: A): String = ""
+      |  def decode(s: String): Either[String, A] = Left("never read")
+      |}
+      |final class NeedLater extends Dreamt {
+      |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
+      |    moves.scan(Names.of("need"), run.tainted) { (_, keeper, strands, needs, at) => Right(() => needs.of(Newer).map(_.newest())) }
       |      .fold(_.toString, _ => "later")
       |}
       |""".stripMargin
@@ -179,7 +203,7 @@ object ActCaptureTests extends TestSuite {
   private val keepScans =
     """final class Scans extends Tallied {
       |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
-      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) => Right(Count(1)) }
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, needs, at) => Right(Count(1)) }
       |      .fold(_.toString, _.toString)
       |}
       |""".stripMargin
@@ -215,7 +239,12 @@ object ActCaptureTests extends TestSuite {
   private val dreams =
     """final class Dreams(summary: Dreaming.Summary[String]) extends Dreamt {
       |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
-      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, at) => strands.atFloor(at, at).map(s => Count(s.size)) }
+      |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, needs, at) =>
+      |      for {
+      |        seen <- strands.atFloor(at, at)
+      |        newest <- needs.of(Newer).fold(_ => Right(Vector.empty), _.newest())
+      |      } yield Count(seen.size + newest.size)
+      |    }
       |      .fold(_.toString, c => moves.summarise(Names.of("one"), ???, run.tainted.map(_ => summary)).fold(_.toString, _.fold("none")(a => Names.open(a.reply))))
       |}
       |""".stripMargin
@@ -260,6 +289,7 @@ object ActCaptureTests extends TestSuite {
     breaches.toList ++ List(
       keepReturnsRead,
       scanReturnsShelf,
+      scanReturnsNeed,
       keepScans,
       usesMoves,
       dreams,
@@ -285,7 +315,18 @@ object ActCaptureTests extends TestSuite {
       assert(errs.isEmpty)
     }
 
-    test("a dreaming job scanning its strands, then summarising one, compiles") {
+    test(
+      "a dreaming job whose scan's body returns a read of a need's service for later is rejected by its bound"
+    ) {
+      val errs = errors(scanReturnsNeed)
+      assert(
+        errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
+      )
+    }
+
+    test(
+      "a dreaming job scanning its strands and a need's service, then summarising one, compiles"
+    ) {
       val errs = errors(dreams)
       assert(errs.isEmpty)
     }

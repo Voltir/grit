@@ -15,10 +15,11 @@ import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
 import grit.core.model.{Catalog, ModelSettings, Pinned}
-import grit.core.need.Unneeded
+import grit.core.need.{Needs, Unneeded}
 import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.persona.Persona
 import grit.core.place.Weight
+import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
@@ -331,6 +332,8 @@ private[grit] object Launch {
           d.budget
         )
       )
+    val needs: Map[PluginName, Needs] =
+      d.plugins.map(p => p.name -> Plugin.needsOf(p, runtime.reads)).toMap
     val runs: WorkflowId => Durable^ ?=> String =
       JobRun.body(
         RunEnv(
@@ -347,6 +350,8 @@ private[grit] object Launch {
           d.budget,
           runtime.keeper,
           StrandShelf.over(runtime.stitches, runtime.conversations),
+          // A dreaming job's plugin is always among the deployment's: none other is asked.
+          plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
           StrandExcerpts.over(runtime.stitches, runtime.principals)
         ),
         d.allJobs

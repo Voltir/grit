@@ -69,7 +69,7 @@ final class Dream(perRunMost: Int, labels: Vector[Label]) extends DreamingJob[Dr
 
   def run(run: Trusted[JobRun[DreamParams]], moves: Dreaming^): String = {
     val most = run.extract.params.perRun.min(limits.asks)
-    moves.scan(Dream.Scan, run.tainted.map(_.params))((params, keeper, strands, at) =>
+    moves.scan(Dream.Scan, run.tainted.map(_.params))((params, keeper, strands, _, at) =>
       Dream.scanned(params.reach, most, labels, keeper, strands, at)
     ) match {
       case Left(e) => Dreamt.stopped(s"scanning its strands: ${MoveError.said(e)}").line

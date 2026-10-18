@@ -7,12 +7,13 @@ import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.id.PluginName
 import grit.core.message.Message
+import grit.core.need.Needs
 import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Recorded}
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
-  * `strands` beside its documents, and whose summaries read what a strand's members said
+  * `strands` and `needs` beside its documents, and whose summaries read what a strand's members said
   * through `excerpts`, in a transaction opened as its keeps' are, and ask it of `jsons` as one user
   * message after the summary's system text. Under the rules every [[Dreaming]] keeps, which
   * `grit.act.moves.MovesContract` holds it to beside the durable moves: a summary is an ask,
@@ -26,6 +27,7 @@ final class ScriptedDreaming(
     plugin: PluginName,
     terms: DocumentTerms,
     strands: StrandShelf,
+    needs: Needs,
     excerpts: StrandExcerpts,
     jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]],
     documents: InMemoryDocuments = new InMemoryDocuments,
@@ -48,9 +50,9 @@ final class ScriptedDreaming(
       Dreaming {
 
   def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
-      body: (I, DocumentKeeper, StrandShelf, Instant) -> Tx^ ?-> Either[StoreError, A]
+      body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A] =
-    keep(name, from)((i, kept, now) => body(i, kept, strands, now))
+    keep(name, from)((i, kept, now) => body(i, kept, strands, needs, now))
 
   def summarise[T](
       name: MoveName,

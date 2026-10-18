@@ -7,6 +7,7 @@ import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.message.Message
+import grit.core.need.Needs
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
@@ -227,9 +228,14 @@ trait Keeping extends Moves {
   */
 trait Dreaming extends Keeping {
 
-  /** As [[keep]], `body` also reading `strands` in the keep's transaction. */
+  /** As [[keep]], `body` also reading `strands` and the services of its plugin's `needs`
+    * ([[grit.core.plugin.Plugin.needs]]), each over its plugin's documents, in the keep's
+    * transaction. What it returns is believed as `from` is, whatever it read: a shelf giving
+    * ids and counts alone ([[StrandShelf]], a need's text-free service) keeps every text a
+    * model is to read on [[summarise]]'s route, where its integrity is met.
+    */
   def scan[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
-      body: (I, DocumentKeeper, StrandShelf, Instant) -> Tx^ ?-> Either[StoreError, A]
+      body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
 
   /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text then one user message: what

@@ -10,6 +10,7 @@ import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, DocKey, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
+import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.stitch.StrandWorld
 import grit.core.store.Conversation
@@ -75,12 +76,14 @@ object DreamTests extends TestSuite {
     ): String = {
       val dream = new Dream(5, labels)
       heard.run()
+      val needs = Needs.over(Plugin, Vector.empty)
       val moves = new ScriptedDreaming(
         dream.limits,
         floor,
         Plugin,
         Terms,
         w.shelf,
+        needs,
         w.excerpts,
         (_, messages) =>
           answer(heard.ask(messages.collect { case Message.User(t) => t }))

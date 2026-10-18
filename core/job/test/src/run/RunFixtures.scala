@@ -55,6 +55,7 @@ import grit.core.job.{
 }
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.Grade
+import grit.core.need.Needs
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
@@ -171,7 +172,7 @@ object RunFixtures {
     override def limits: MoveLimits = MoveLimits.of(1, 0).fold(sys.error, identity)
     def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
       moves
-        .scan(move("scan"), run.tainted)((_, _, strands, at) =>
+        .scan(move("scan"), run.tainted)((_, _, strands, _, at) =>
           strands.touched(Instant.EPOCH, at).map(Scanned(_))
         )
         .left
@@ -387,6 +388,7 @@ object RunFixtures {
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
         (plugin, terms) => documents.keeper(plugin, terms),
         strands.shelf,
+        plugin => Needs.over(plugin, Vector.empty),
         strands.excerpts
       )
 

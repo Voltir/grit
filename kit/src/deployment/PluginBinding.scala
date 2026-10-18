@@ -44,7 +44,7 @@ private[kit] object PluginBinding {
   ): Either[Unneeded | NotOwn, Vector[BoundTool[?]]] =
     plugins.foldLeft[Either[Unneeded | NotOwn, Vector[BoundTool[?]]]](Right(Vector.empty)) {
       (acc, p) =>
-        val needs = Needs.over(p.name, p.needs.map(n => n.name -> reads(n.name)))
+        val needs = Plugin.needsOf(p, reads)
         val own = reads(p.name)
         val jobs = OwnJobs.over(p.name, p.jobs)
         p.tools.foldLeft(acc)((done, t) =>

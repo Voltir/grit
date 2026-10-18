@@ -17,12 +17,14 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer as Judged, Ask, ClassifierError, StateJson}
-import grit.core.document.{DocText, Document, DocumentKeeper}
+import grit.core.document.{DocText, Document, DocumentKeeper, DocumentShelf, InMemoryDocuments}
 import grit.core.durable.Journaled
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.DocKey
+import grit.core.id.{DocKey, PluginName}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.need.{Needs, PluginReads}
 import grit.core.place.{Namespace, Place, Service}
+import grit.core.plugin.{Exports, InMemoryPlugins}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.stitch.{Strand, StrandWorld}
@@ -68,15 +70,17 @@ abstract class MovesContract extends TestSuite {
     */
   def keeping[A <: caps.Pure](limits: MoveLimits)(use: Keeping^ -> A): (A, Vector[Document])
 
-  /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose scans read
-    * `world`'s strands and whose summaries read its messages, a JSON ask's model replying
+  /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose keeps keep their
+    * plugin's documents in `shelves`' store, whose scans read `world`'s strands and
+    * `shelves`' needs, and whose summaries read its messages, a JSON ask's model replying
     * [[Answered]]; and each JSON ask's system text and user messages, as the model was shown
     * them, in order. The run starts believed at `integrity`.
     */
   def dreaming[A <: caps.Pure](
       limits: MoveLimits,
       world: StrandWorld,
-      integrity: Integrity = Integrity.Authority
+      integrity: Integrity = Integrity.Authority,
+      shelves: Shelves = Shelves()
   )(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])])
@@ -403,7 +407,7 @@ abstract class MovesContract extends TestSuite {
       val (got, _) = dreaming(MoveLimits.Zero, w) { m =>
         Seen(
           Vector(
-            m.scan(name("scan"), From)((_, keeper, strands, at) =>
+            m.scan(name("scan"), From)((_, keeper, strands, _, at) =>
               for {
                 kept <- write(keeper, "k", Label.Public, at)
                 seen <- strands.of(Vector(root), StrandWorld.at(600))
@@ -413,6 +417,35 @@ abstract class MovesContract extends TestSuite {
         )
       }
       got ==> Seen(Vector(Right(s"${Label.written(Floor)} 2")))
+    }
+
+    test("a scan's body reads a needed plugin's service, over that plugin's documents") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val cards = shelves.documents.keeper(Cards.name, MovesWorld.NotesTerms)
+      val _ = write(cards, "card", Label.Public, Instant.EPOCH)(using
+        TestTx.fake(grit.core.visibility.Clearance.of(Floor))
+      )
+      val (got, _) = dreaming(MoveLimits.Zero, new StrandWorld, shelves = shelves) { m =>
+        Seen(
+          Vector(
+            m.scan(name("scan"), From)((_, _, _, needs, _) => through(needs, Cards)).map(_.label)
+          )
+        )
+      }
+      got ==> Seen(Vector(Right("card")))
+    }
+
+    test("a scan's body asking for a plugin not among its needs is Unneeded") {
+      val (got, _) =
+        dreaming(MoveLimits.Zero, new StrandWorld, shelves = Shelves(needed = Vector(Cards))) { m =>
+          Seen(
+            Vector(
+              m.scan(name("scan"), From)((_, _, _, needs, _) => through(needs, Others))
+                .map(_.label)
+            )
+          )
+        }
+      got ==> Seen(Vector(Right("unneeded others")))
     }
 
     test(
@@ -616,6 +649,49 @@ abstract class MovesContract extends TestSuite {
 }
 
 object MovesContract {
+
+  /** The documents a dreaming run's keeps keep its plugin's in, [[MovesWorld.Notes]], and
+    * where its `needs` read theirs.
+    */
+  final case class Shelves(
+      documents: InMemoryDocuments = new InMemoryDocuments,
+      needed: Vector[Exports[?]] = Vector.empty
+  ) {
+
+    /** [[MovesWorld.Notes]]' needs, each over its own documents in `documents`. */
+    def needs: Needs =
+      Needs.over(
+        MovesWorld.Notes,
+        needed.map(n =>
+          n.name -> PluginReads(new InMemoryPlugins().docs(n.name), documents.shelf(n.name))
+        )
+      )
+  }
+
+  /** A service listing the keys of its plugin's newest documents its transaction reads. */
+  final class Keys(shelf: DocumentShelf) extends caps.Pure {
+    def newest()(using Tx^): Either[StoreError, Vector[String]] =
+      shelf.newest(10).map(_.map(d => DocKey.value(d.key)))
+  }
+
+  /** A plugin exporting [[Keys]], named `n`. */
+  final class Exporting(n: String) extends Exports[Keys] {
+    val name: PluginName =
+      PluginName.of(n).fold(e => throw new java.lang.AssertionError(e), identity)
+    val version: Int = 1
+    def service(own: PluginReads): Keys = Keys(own.documents)
+  }
+
+  /** The plugin [[MovesWorld.Notes]] needs in the contract's dreaming runs, and one it does not. */
+  val Cards: Exporting = Exporting("cards")
+  val Others: Exporting = Exporting("others")
+
+  /** What `needs.of(of)` reads, as a keep's result: its keys, or the plugin it does not need. */
+  def through(needs: Needs, of: Exporting)(using Tx^): Either[StoreError, Kept] =
+    needs.of(of) match {
+      case Left(u) => Right(Kept(s"unneeded ${PluginName.value(u.dependency)}"))
+      case Right(keys) => keys.newest().map(ks => Kept(ks.mkString(",")))
+    }
 
   /** The label a keep wrote at, journaled as its written form. */
   final case class Kept(label: String) extends caps.Pure

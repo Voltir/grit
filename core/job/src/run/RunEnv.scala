@@ -6,6 +6,7 @@ import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.edge.Deliveries
 import grit.core.id.PluginName
 import grit.core.job.ScheduleStore
+import grit.core.need.Needs
 import grit.core.spend.Budget
 import grit.core.stitch.{StrandExcerpts, StrandShelf}
 import grit.core.store.{ConversationStore, Db, EntryStore, Jot}
@@ -24,8 +25,9 @@ final case class RunRecords(
   * outside a transaction; `jot`, whose one transaction holds its reply, the reply's await and
   * its slot marked replied; `clock`, which dates them; `moves`, what its job's moves are made
   * with; `budget`, which admits each of its asks against the day's spend; `keepers`, given
-  * a plugin and its terms, its documents as its keeping jobs write them; and `strands` and
-  * `excerpts`, what its dreaming jobs' scans read and their summaries are asked of.
+  * a plugin and its terms, its documents as its keeping jobs write them; `strands` and, given
+  * a plugin, its `needs`, what its dreaming jobs' scans read; and `excerpts`, what their
+  * summaries are asked of.
   */
 final case class RunEnv(
     records: RunRecords,
@@ -36,5 +38,6 @@ final case class RunEnv(
     budget: Budget,
     keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
     strands: StrandShelf,
+    needs: PluginName -> Needs,
     excerpts: StrandExcerpts
 )

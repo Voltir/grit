@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms}
 import grit.core.id.PluginName
 import grit.core.job.{Declared, Job}
+import grit.core.need.{Needs, PluginReads}
 import grit.core.period.CloseOrdinal
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 import grit.core.visibility.Compartment
@@ -23,7 +24,7 @@ trait Plugin extends caps.Pure {
     */
   def version: Int
 
-  /** The plugins its tools read, each through its service ([[grit.core.need.Needs]]). A deployment is
+  /** The plugins its tools and its dreaming jobs' scans read, each through its service ([[grit.core.need.Needs]]). A deployment is
     * refused unless a plugin of each one's name is among its plugins.
     */
   def needs: Vector[Exports[?]] = Vector.empty
@@ -56,6 +57,13 @@ trait Plugin extends caps.Pure {
 
   /** Whether it is posted closed periods: it has a cache or a posting to its documents. */
   final def posts: Boolean = cache.nonEmpty || documents.exists(_.posting.nonEmpty)
+}
+
+object Plugin {
+
+  /** `plugin`'s needs, each read through the documents `reads` gives by name. */
+  def needsOf(plugin: Plugin, reads: PluginName -> PluginReads): Needs =
+    Needs.over(plugin.name, plugin.needs.map(n => n.name -> reads(n.name)))
 }
 
 /** A plugin's posting to cache documents. */
