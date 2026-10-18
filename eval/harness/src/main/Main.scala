@@ -20,12 +20,14 @@ import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.Service
 import grit.core.provider.Provider
+import grit.core.stitch.Tuning as StitchTuning
 import grit.core.tool.ToolSet
 import grit.core.triage.Corpora
 import grit.core.visibility.Visibility
 import grit.dbos.engine.{Build, Engine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.DbConfig
+import grit.eval.Room
 import grit.eval.harness.capture.{
   Capture,
   CaptureJson,
@@ -59,6 +61,7 @@ import grit.eval.harness.jev.{
   Variant,
   Variants
 }
+import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.label.{ChurnQuestions, Labels, ReplyLabels, Verdicts}
 import grit.eval.harness.log.{
   Cache,
@@ -106,6 +109,7 @@ import grit.eval.harness.score.{
   Paired,
   Prices,
   Recipe,
+  RoomScore,
   Rule,
   Scoring,
   Shapes,
@@ -163,6 +167,7 @@ object Main {
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
+      case "lab-stitch" :: rest => exit(flags(rest).flatMap(labStitch(_, clock)))
       case "synthetic" :: rest => exit(flags(rest).flatMap(synthetic))
       case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
       case "compare" :: rest =>
@@ -177,7 +182,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns|churn|recall|rebuild|recipes|reference-build|synthetic|" +
+              "replies|reply-labels|turns|churn|recall|rebuild|recipes|reference-build|synthetic|lab-stitch|" +
               "integrity-loss (scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )
@@ -904,6 +909,80 @@ object Main {
     } catch {
       case NonFatal(e) => Left(s"the synthetic database was not written: ${e.getClass.getName}")
     }
+
+  /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
+    * [--follows-at <p>] [--lexical <n>] [--recent <n>]`: the room written at `<file>`
+    * ([[Room.read]], named for its file less `.json`) placed by the stitch lab ([[StitchLab.run]])
+    * in the database at `<jdbc>`, which must be `grit_eval_lab` and hold nothing of the room,
+    * through an engine opened on it for the purpose; under shipped tuning but for the knobs
+    * named; Jev asked through the cache at `<dir>` within `--spend` USD. Scored
+    * ([[RoomScore.of]]) and written to `<out>/lab-stitch-<room>.md` ([[Report.room]]); printed
+    * but for its openings' rows, which hold the room's text. Jev's key and the database's login
+    * come from the environment over `GRIT_ENV_FILE` (`.env` when unset); each call is timed by
+    * `clock`.
+    */
+  private def labStitch(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      path <- need(f, "room").map(Path.of(_))
+      url <- need(f, "url")
+      _ <- Either.cond(
+        url.endsWith("/grit_eval_lab"),
+        (),
+        s"the lab runs on grit_eval_lab alone, not $url"
+      )
+      cap <- need(f, "spend").flatMap(decimal("spend"))
+      cacheDir <- need(f, "cache").map(Path.of(_))
+      out <- need(f, "out").map(Path.of(_))
+      text <- read(path)
+      room <- Room.read(path.getFileName.toString.stripSuffix(".json"), text)
+      followsAt <- f
+        .get("follows-at")
+        .fold(Right(StitchTuning.Default.followsAt))(v =>
+          v.toDoubleOption
+            .filter(p => p >= 0 && p <= 1)
+            .map(Probability.clamped)
+            .toRight(s"--follows-at $v: not a probability")
+        )
+      lexical <- f.get("lexical").fold(Right(StitchTuning.Default.lexical))(count("lexical"))
+      recent <- f.get("recent").fold(Right(StitchTuning.Default.recent))(count("recent"))
+      tuning = StitchTuning.Default.copy(followsAt = followsAt, lexical = lexical, recent = recent)
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      jev <- JevConfig.fromEnv(env).left.map(_.message)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      budget <- Budget.of(cap, BigDecimal(0)).left.map(refused)
+      lab <- withEngine(config, clock)(engine =>
+        StitchLab.run(
+          room,
+          engine,
+          JevClassifier(jev),
+          jev.model,
+          Cache.at[Vector[Weights]](cacheDir),
+          budget,
+          tuning,
+          clock
+        )
+      )
+      score = RoomScore.of(room, lab.placings, lab.strands)
+      report = Report.room(
+        room,
+        lab.placings,
+        score,
+        jev.model,
+        tuning,
+        lab.rows.size,
+        lab.rows.count(_.cached),
+        lab.budget.spent
+      )
+      _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
+      file = out.resolve(s"lab-stitch-${room.name}.md")
+      _ <- write(file, report)
+    } yield {
+      report.linesIterator.takeWhile(!_.startsWith("## openings")).foreach(println)
+      println(s"report: $file")
+    }
+
+  private def count(what: String)(v: String): Either[String, Int] =
+    v.toIntOption.filter(_ >= 0).toRight(s"--$what $v: not a whole number")
 
   /** The process an engine opened only to write the synthetic reference's database says it
     * is: no edge attaches to that engine, so nothing need find this process by it.

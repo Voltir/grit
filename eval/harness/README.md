@@ -6,7 +6,7 @@ through `scripts/eval` and `scripts/integrity-loss`, never from a test or `scrip
 instrument, not a model.
 
 It names grit's code alone (core, `grit.dbos`'s `Reader`, and its `Engine` to write the
-synthetic reference's database alone, the turn's reading of its records,
+synthetic reference's database and the stitch lab's alone, the turn's reading of its records,
 the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, the
 models' Jev and OpenRouter clients, and `grit.eval`'s hand-written cases and their layout),
 but for the kit's `.env` loader (`DotEnv`), through which a run reads Jev's key, and a rebuild
@@ -14,7 +14,8 @@ OpenRouter's, as grit does.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but the
 files for a person to read: the review files `scripts/eval inputs` and `scripts/eval context`
-write under `.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
+write under `.local/eval/review/`, the stitch lab's report, whose rows of openings show a
+synthetic room's own text, and the reply reviews `scripts/eval replies` writes under
 `.local/eval/replies/`, which print only ids and counts unless asked to show the file; and
 the search queries a rebuild's window-only cases had written, each kept in the cache under
 its request's key and never printed. A capture's text stays in Postgres, in the database the
@@ -79,11 +80,17 @@ Packages, each importing only those above it:
 - **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered
   by exchange and by author, adoption rules written before the run they judge, draft and
   review comparisons, a capture's turns read structurally, turn variants against shipped, and
-  churn. grit records no price, so each model's rates are read by least squares from its priced
+  churn; and a synthetic room's placings against the truth its topics give. grit records no price, so each model's rates are read by least squares from its priced
   ledger rows. ← `stats`, `capture`, `label`, `log`
 - **`report`**: a run scored, or two compared, as markdown with every mean's and rate's interval;
   text-free. With no case labelled, only what needs no label. ← `stats`, `reply`, `capture`,
   `label`, `log`, `pull`, `score`
+- **`lab`**: the stitch lab: a synthetic room (`grit.eval`'s `Room`) heard through an engine's
+  inbox into its own database, which `scripts/eval lab stitch` creates and drops, then each
+  opening placed in the order said through the shipped stitch ask (`Stitching.placing`, the
+  workflow's own), Jev asked one call at a time through `run`'s cache and cap, and each
+  placement kept, so a later opening sees what an earlier one linked. ← `capture`, `log`,
+  `jev`, `run`, `score`
 - **`main`**: the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

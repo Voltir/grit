@@ -283,6 +283,19 @@
 #       variant's pass rate, clustered by case, and its failing turns by name. --context and the assembler's window
 #       and tail are as for recipes. Spends nothing; build the database first.
 #
+#   scripts/eval lab stitch --room <name | file> [--spend <usd>] [--follows-at <p>]
+#                           [--lexical <n>] [--recent <n>]
+#       A synthetic room (eval/resources/rooms/<name>.json, or a file) heard into
+#       grit_eval_lab, created afresh and dropped after, through an engine opened on it; then
+#       each opening placed in the order said through the shipped stitch ask, under shipped
+#       tuning but for the knobs named, Jev asked through .local/eval/cache/, so an unchanged
+#       room and tuning rerun at no cost. --spend is a hard cap in USD (default 0.01): the call
+#       that would cross it, and every opening after that would ask, is skipped. Scored against
+#       the room's topics (offer recall, Jev given offered, the confusion, bursts, wrong
+#       follows, strands split and mixed), written to
+#       .local/eval/reports/lab-stitch-<room>.md, whose rows of openings hold the room's own
+#       text, and printed but for those rows. Jev's key is JEV_API_KEY, as for run.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -619,6 +632,31 @@ synthetic() {
     --variants "$(IFS=,; echo "${variants[*]}")" "${rest[@]}"
 }
 
+lab() {
+  [ "${1:-}" = stitch ] || usage
+  shift
+  local room= spend=0.01 rest=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --room) [ $# -ge 2 ] || usage; room=$2; shift 2 ;;
+      --spend) [ $# -ge 2 ] || usage; spend=$2; shift 2 ;;
+      --follows-at | --lexical | --recent) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$room" ] || usage
+  [[ $room == */* || $room == *.json ]] || room="$here/eval/resources/rooms/$room.json"
+  [ -f "$room" ] || { echo "eval: no room at $room" >&2; exit 1; }
+  local db=grit_eval_lab
+  compose dropdb -U grit --if-exists "$db"
+  compose createdb -U grit "$db"
+  trap 'compose dropdb -U grit --if-exists grit_eval_lab' EXIT
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness lab-stitch --room "$(realpath "$room")" --url "jdbc:postgresql://localhost:5432/$db" \
+    --cache "$main/.local/eval/cache" --spend "$spend" --out "$main/.local/eval/reports" \
+    "${rest[@]}"
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -636,6 +674,7 @@ case $1 in
   rebuild) shift; rebuild "$@" ;;
   recipes) shift; recipes "$@" ;;
   reference-build) shift; reference_build "$@" ;;
+  lab) shift; lab "$@" ;;
   pull) shift; pull "$@" ;;
   order) shift; order "$@" ;;
   score) shift; score "$@" ;;
