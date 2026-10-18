@@ -512,11 +512,12 @@ object TurnJson {
     )
   }
 
-  /** A role's written name: `query`, `topic`, `round:<n>`, `reply`, `judge`, `summary`,
-    * `weigh` or `extract`.
+  /** A role's written name: `query`, `relevance:<batch>`, `topic`, `round:<n>`, `reply`,
+    * `judge`, `summary`, `weigh` or `extract`.
     */
   private def role(r: TurnRecord.Role): String = r match {
     case TurnRecord.Role.Round(n) => s"round:$n"
+    case TurnRecord.Role.Relevance(n) => s"relevance:$n"
     case other => other.toString.toLowerCase
   }
 
@@ -524,6 +525,11 @@ object TurnJson {
     name.split(':') match {
       case Array("round", n) =>
         n.toIntOption.filter(_ >= 0).map(TurnRecord.Role.Round(_)).toRight(s"spent: role $name")
+      case Array("relevance", n) =>
+        n.toIntOption
+          .filter(_ >= 0)
+          .map(TurnRecord.Role.Relevance(_))
+          .toRight(s"spent: role $name")
       case _ =>
         Vector(
           TurnRecord.Role.Query,

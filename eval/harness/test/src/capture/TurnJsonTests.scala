@@ -150,6 +150,7 @@ object TurnJsonTests extends TestSuite {
     Ended.Replied(4, passed = true),
     Vector(
       TurnRecord.Role.Query,
+      TurnRecord.Role.Relevance(2),
       TurnRecord.Role.Topic,
       TurnRecord.Role.Round(1),
       TurnRecord.Role.Reply,
