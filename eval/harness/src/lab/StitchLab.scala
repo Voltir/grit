@@ -44,7 +44,7 @@ object StitchLab {
     * `budget` as repeat `repeat` ([[Run.asked]]: the same question asked again under another
     * repeat is asked afresh, under the same one answered from the cache), each call timed by
     * `clock`, and, placing `against` [[Against.Placings]], the placement kept, dated when the
-    * opening was said; against [[Against.Truth]], the truth's kept in its place ([[Told]]), so
+    * opening was said; against [[Against.Truth]], the truth's kept in its place ([[TruthPlacement]]), so
     * the next opening is offered the strands the truth makes. Once a call is skipped at
     * the cap, it and every opening after it that would ask are `Skipped`, keeping nothing. The
     * strands are read as they stand after the last placement. `Left` when the room is seeded
@@ -229,7 +229,7 @@ object StitchLab {
     def keep(root: EntryId, p: Placed): Either[String, RoomPlacing] =
       (against match {
         case Against.Placings => Right(Some(p))
-        case Against.Truth => Told.placement(o.truth, p).left.map(e => s"${o.m.id}: $e")
+        case Against.Truth => TruthPlacement.of(o.truth, p).left.map(e => s"${o.m.id}: $e")
       }).flatMap(
         _.fold[Either[String, Unit]](Right(()))(k =>
           engine.jot

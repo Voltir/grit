@@ -6,8 +6,8 @@ import grit.core.stitch.{Placed, StitchJson}
 
 import utest.*
 
-/** [[Told]]: the placement a room's truth gives an opening, in place of Jev's. */
-object ToldTests extends TestSuite {
+/** [[TruthPlacement]]: the placement a room's truth gives an opening, in place of Jev's. */
+object TruthPlacementTests extends TestSuite {
 
   private val seen = ujson.Obj(
     "state" -> ujson.Obj("new_message" -> "shown"),
@@ -54,12 +54,12 @@ object ToldTests extends TestSuite {
       "an opening the truth says follows is kept following its root, by the truth, with what Jev was shown"
     ) {
       val root = ConversationId("c-root")
-      Vector(follows, begins, unread).map(p => Told.placement(Some(root), p).map(_.map(said))) ==>
+      Vector(follows, begins, unread).map(p => TruthPlacement.of(Some(root), p).map(_.map(said))) ==>
         Vector.fill(3)(Right(Some((Some(root), 1.0, "truth", seen("state")))))
     }
 
     test("an opening the truth says begins keeps nothing, so it links to no strand") {
-      Vector(follows, begins, unread).map(Told.placement(None, _)) ==> Vector.fill(3)(Right(None))
+      Vector(follows, begins, unread).map(TruthPlacement.of(None, _)) ==> Vector.fill(3)(Right(None))
     }
   }
 }
