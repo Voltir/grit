@@ -1,4 +1,4 @@
-package grit.knowledge.card
+package grit.knowledge.ref
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest

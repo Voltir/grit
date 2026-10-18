@@ -1,7 +1,8 @@
 package grit.knowledge.sync
 
 import grit.core.visibility.Label
-import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, UnitVersion}
+import grit.knowledge.ref.CardKey
 
 /** What a fetch's arguments are made from, and what its unit is believed at: [[Way.Run]],
   * everything the run read before it; [[Way.Through]], the listing at `listing` it was named in,

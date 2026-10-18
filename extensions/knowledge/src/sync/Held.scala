@@ -5,7 +5,8 @@ import grit.core.durable.Journaled
 import grit.core.id.{CorpusName, DocKey}
 import grit.core.place.Place
 import grit.core.visibility.Label
-import grit.knowledge.card.{CardKey, Scope, UnitVersion}
+import grit.knowledge.card.{Scope, UnitVersion}
+import grit.knowledge.ref.CardKey
 
 /** A card a run holds, as its `held` keep reads it: its key, its unit's path, the label it is
   * kept at, its unit's version, the scope a directory's card was made under, the path of the

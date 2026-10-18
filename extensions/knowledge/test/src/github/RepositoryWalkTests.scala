@@ -9,7 +9,8 @@ import grit.core.job.SlotRule
 import grit.core.place.Service
 import grit.core.triage.Corpus
 import grit.core.visibility.{Label, Level}
-import grit.knowledge.card.{Card, CardKey, CardSummary, Scope, UnitKind, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, Scope, UnitKind, UnitVersion}
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{
   Fetched,
   Held,

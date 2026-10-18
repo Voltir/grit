@@ -120,6 +120,8 @@ components:
   # grit.core alone, and what a card is names no source's answers.
   - {name: knowledge-code, kind: module, match: ["extensions/knowledge/src", "extensions/knowledge/src/**"]}
   - {name: knowledge-card, kind: module, match: ["extensions/knowledge/src/card", "extensions/knowledge/src/card/**"]}
+  # Its ref package, the names knowledge refers by, which card and every source import.
+  - {name: knowledge-ref, kind: module, match: ["extensions/knowledge/src/ref", "extensions/knowledge/src/ref/**"]}
   # Its sync package, a run over any source, and each source's package, for the rules that keep
   # the run source-neutral and the sources apart.
   - {name: knowledge-sync, kind: module, match: ["extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**"]}
@@ -790,28 +792,28 @@ rules:
 
   - id: knowledge-github-only-in-github
     allow: knowledge-card
-    only: [core-code, knowledge-card]
+    only: [core-code, knowledge-ref, knowledge-card]
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: a card is the same whatever its source; GitHub's answers, tool and arguments are its github package's, so another source is a package beside it and card never changes for one"
 
   - id: knowledge-sync-names-no-service
     allow: knowledge-sync
-    only: [core-code, knowledge-card, knowledge-sync]
+    only: [core-code, knowledge-ref, knowledge-card, knowledge-sync]
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: a sync run reads any source through its Source; each source's answers, tools and walk are its own package's, which names sync, never the other way"
 
   - id: knowledge-github-names-no-other-source
     allow: knowledge-github
-    only: [core-code, knowledge-card, knowledge-sync, knowledge-github]
+    only: [core-code, knowledge-ref, knowledge-card, knowledge-sync, knowledge-github]
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: each source is a package beside the others over card and sync; GitHub's names no other source's, nor the plugin that gathers them"
 
   - id: knowledge-drive-names-no-other-source
     allow: knowledge-drive
-    only: [core-code, knowledge-card, knowledge-sync, knowledge-drive]
+    only: [core-code, knowledge-ref, knowledge-card, knowledge-sync, knowledge-drive]
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: each source is a package beside the others over card and sync; Drive's names no other source's, nor the plugin that gathers them"

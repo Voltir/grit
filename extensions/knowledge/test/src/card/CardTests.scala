@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.document.{DocText, Pointer}
 import grit.core.id.{CorpusName, DocKey}
 import grit.core.tool.ToolName
+import grit.knowledge.ref.CardKey
 
 import utest.*
 

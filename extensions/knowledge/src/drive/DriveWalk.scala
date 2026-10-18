@@ -1,7 +1,8 @@
 package grit.knowledge.drive
 
 import grit.core.visibility.Label
-import grit.knowledge.card.{Card, CardKey, UnitVersion}
+import grit.knowledge.card.{Card, UnitVersion}
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
 
 /** One run's walk of a [[DriveCards]] source ([[Walking]]). It lists the shared drives first,

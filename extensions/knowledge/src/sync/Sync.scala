@@ -15,7 +15,8 @@ import grit.core.place.Place
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.knowledge.card.{Card, CardKey, CardMoves, CardSummary, Phase}
+import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase}
+import grit.knowledge.ref.CardKey
 
 /** The job `knowledge-sync`, version 5, over `sources`. A run, for the source its parameters
   * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;

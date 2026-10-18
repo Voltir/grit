@@ -4,7 +4,8 @@ import scala.annotation.tailrec
 
 import grit.core.document.Pointer
 import grit.core.visibility.Label
-import grit.knowledge.card.{Card, CardKey, CardSummary, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, UnitVersion}
+import grit.knowledge.ref.CardKey
 
 /** A step-at-a-time reconciliation of the cards a run holds against a source's listings: one
   * run's [[Walk]] of a source listing as `L`, taking its [[Walking.Routine]]'s tasks `T` off a

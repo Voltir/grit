@@ -1,7 +1,8 @@
 package grit.knowledge.github
 
 import grit.core.visibility.Label
-import grit.knowledge.card.{Card, CardKey, CardSummary, UnitKind, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, UnitKind, UnitVersion}
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
 
 /** One run's walk of a repository ([[Walking]]): depth first by path from the repository's root,

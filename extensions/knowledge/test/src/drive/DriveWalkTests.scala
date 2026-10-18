@@ -3,7 +3,8 @@ package grit.knowledge.drive
 import java.time.Instant
 
 import grit.core.visibility.Label
-import grit.knowledge.card.{CardKey, CardSummary, UnitVersion}
+import grit.knowledge.card.{CardSummary, UnitVersion}
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Outcome, Step, Synced, Walk, Way}
 
 import utest.*

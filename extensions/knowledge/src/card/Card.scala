@@ -4,6 +4,7 @@ import java.time.ZoneOffset
 
 import grit.core.document.{DocText, Pointer}
 import grit.core.id.{CorpusName, DocKey}
+import grit.knowledge.ref.CardKey
 
 /** What a unit of a source is. */
 enum UnitKind(val word: String) {

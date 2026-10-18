@@ -2,6 +2,7 @@ package grit.knowledge.card
 
 import grit.core.act.MoveName
 import grit.core.id.CorpusName
+import grit.knowledge.ref.CardKey
 
 import utest.*
 

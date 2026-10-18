@@ -1,6 +1,7 @@
 package grit.knowledge.card
 
 import grit.core.act.MoveName
+import grit.knowledge.ref.CardKey
 
 /** What a sync run's move does to one unit, by the word its name starts with. */
 enum Phase(val word: String) {
