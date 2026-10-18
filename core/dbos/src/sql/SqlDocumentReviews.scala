@@ -14,7 +14,7 @@ import grit.core.visibility.Label
   * [[SqlDocuments]] reads them. The rows are put up by [[SqlDocuments.Keeper.forReview]].
   */
 final class SqlDocumentReviews extends DocumentReviews {
-  import SqlDocuments.{Columns, LabelId, Labelled, cleared, instant, rows, update, utc}
+  import SqlDocuments.{Columns, LabelId, Labelled, cleared, instant, update, utc}
 
   def of(plugin: PluginName): Reviews[DocumentReview, ReviewWord] = new Of(plugin)
 
