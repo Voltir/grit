@@ -275,6 +275,43 @@ object StitchingTests extends TestSuite {
       ) ==> Vector(Some(engine.conversation -> p(0.35)), None, None)
     }
 
+    test(
+      "a top choice at followsAt is followed over a burst offered for another strand at the prior"
+    ) {
+      val engine = heard("engine", "the Engine contract term?", 30)
+      val lunch = heard("lunch", "lunch?", 60)
+      val first = heard("real", "Is this a real question", 0)
+      val es = Stitching.offer(
+        first,
+        room(),
+        Vector(lunch, engine),
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Scope.Room,
+        Tuning.Default
+      )
+      val tuning = Tuning.Default.copy(burst = Some(Tuning.Burst(p(0.3), 120.seconds)))
+      // The lunch exchange is the top choice at followsAt; the engine's, the burst's, is given 0.35.
+      Stitching.place(
+        new Scripted(
+          Some(
+            chose(
+              "exchange 2",
+              "exchange 2" -> Probability.value(tuning.followsAt),
+              "exchange 1" -> 0.35,
+              Stitching.NewKey -> 0.05
+            )
+          )
+        ),
+        Offer(first, "David", es, Speakers.none, Some(engine.conversation)),
+        tuning
+      ) match {
+        case f: Placed.Follows => (f.root, f.p) ==> (lunch.conversation, tuning.followsAt)
+        case other => throw new java.lang.AssertionError(s"not followed: $other")
+      }
+    }
+
     test("a burst is the strand of the author's last opening within the gap, by its link") {
       val first = heard("real", "Is this a real question", 0)
       val engine = heard("engine", "the Engine contract term?", 30)
