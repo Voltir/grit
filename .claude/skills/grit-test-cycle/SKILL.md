@@ -63,7 +63,8 @@ A module's `probes` tests compile probe sources against it, through `Probes.batc
 what capture and separation checking reject. The gate runs a module's probes when a change
 touches capture syntax (`^`, `caps.`, `SharedCapability`, `Pure`) or `private[grit]` in its main sources or a
 module it depends on (the probe modules: `grit.core.probes`, `grit.act.probes`,
-`grit.turn.probes`, `grit.tools.probes`, `grit.tui.probes`, `grit.kit.probes`), and every probe when `build.mill` or `.mill-version` changes. When a
+`grit.turn.probes`, `grit.edge.probes`, `grit.prose.probes`, `grit.knowledge.probes`,
+`grit.tools.probes`, `grit.tui.probes`, `grit.kit.probes`), and every probe when `build.mill` or `.mill-version` changes. When a
 plan's capture section names a probe, run its suite by name, red on its plant and green, and
 once more before the commit; `scripts/check --probes` runs them all.
 
