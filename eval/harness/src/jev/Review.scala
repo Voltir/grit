@@ -15,10 +15,10 @@ import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
   */
 object Review {
 
-  /** What triage's question left out of its thread: the `text`, and where in the state's
-    * thread it was cut from (`at`, a character index).
+  /** The messages triage's question left out of its thread, oldest first, each as the state
+    * shows a message ([[grit.core.stitch.Stitching.Line.json]]).
     */
-  final case class Cut(text: String, at: Int)
+  final case class Cut(messages: Vector[ujson.Value])
 
   /** Triage's question: the request the shipped builder makes, and what its thread left
     * out, when asked for.
@@ -45,7 +45,7 @@ object Review {
       ujson.Obj(
         "request" -> Request.json(t.request),
         "digest" -> t.request.digest,
-        "cut" -> t.cut.fold[ujson.Value](ujson.Null)(c => ujson.Obj("text" -> c.text, "at" -> c.at))
+        "cut" -> t.cut.fold[ujson.Value](ujson.Null)(c => ujson.Arr.from(c.messages))
       )
     ),
     "stitch" -> shown.stitch.fold[ujson.Value](ujson.Null)(s =>
@@ -115,7 +115,7 @@ object Review {
             Some(
               Triage(
                 TriageQuestions.V1.request(r.state, Corpora.Empty),
-                Option.when(more)(Cut(r.thread.cut, r.thread.at))
+                Option.when(more)(Cut(r.state.thread.cut.map(_.json(r.state.at))))
               )
             )
           }

@@ -51,7 +51,7 @@ final class Mentions(
         .flatMap(_.left.map(unweighed))
     } yield Tasking.Asked(
       answered.value,
-      read.thread.strand.nonEmpty,
+      read.state.thread.strand.text.nonEmpty,
       answered.model,
       answered.usage,
       estimator.system(Request.json(Request.of(read.state, TaskQuestions.Shipped)).render())

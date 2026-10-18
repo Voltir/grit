@@ -216,6 +216,23 @@ object TurnJudgeTests extends TestSuite {
       ).thread ==> "Assistant: The engine's open issues.\nNick: why this?"
     }
 
+    test("the judge's thread leaves its oldest messages out whole, a … line where they were") {
+      val all = Vector(
+        entry(0, Payload.Heard("x" * 3_000)),
+        entry(1, Payload.Heard("one two")),
+        entry(2, Payload.Heard("y" * 1_000))
+      )
+      judging(
+        all,
+        Window(all.map(_.seq)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "d"
+      ).thread ==> s"…\nAna: one two\nSomeone: ${"y" * 1_000}"
+    }
+
     test("an asked section is recalled: what grit was asked elsewhere grounds a draft") {
       val place = Place.read("slack:T1/C2/3.0").fold(e => sys.error(e), identity)
       val ask = Entry(

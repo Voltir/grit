@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
+import grit.core.stitch.Stitching
 import grit.core.store.Focus
 import grit.core.triage.Corpora
 import grit.eval.harness.capture.{CaseId, Digest, Failure}
@@ -27,7 +28,17 @@ object RunTests extends TestSuite {
   private def id(s: String): CaseId = CaseId.read(s).fold(sys.error, identity)
 
   private def call(n: Int, repeat: Int = 0, thread: String = "the thread before it"): Call = {
-    val state = TriageQuestion.State(s"~0.${n} message $n", "Ann", thread)
+    val state = TriageQuestion.State(
+      s"~0.${n} message $n",
+      "Ann",
+      Instant.EPOCH,
+      Stitching.fit(
+        Stitching.Excerpt.empty,
+        Vector(Stitching.Line("Ben", thread, Instant.EPOCH)),
+        "\n\n",
+        TriageQuestion.ThreadChars
+      )
+    )
     val wording = TriageQuestion.Wording.Shipped
     Call(
       Suite.Triage,

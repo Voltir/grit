@@ -143,16 +143,17 @@ object PeriodTranscript {
     * unnamed, speaking to grit; `Someone` for one unnamed and heard), a reply's or a post's
     * text under `Assistant`; `None` for a reply with no text and every other kind of entry.
     */
-  private def line(entry: Entry, speakers: Speakers): Option[Stitching.Line] = entry.payload match {
-    case Payload.Message(Message.User(text)) =>
-      Some(Stitching.Line(speakers.of(entry.id).getOrElse("User"), text))
-    case Payload.Heard(text) =>
-      Some(Stitching.Line(speakers.of(entry.id).getOrElse("Someone"), text))
-    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-      val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
-      Option.when(said.nonEmpty)(Stitching.Line("Assistant", said))
-    case Payload.Posted(text) =>
-      Option.when(text.trim.nonEmpty)(Stitching.Line("Assistant", text.trim))
-    case _ => None
+  private def line(entry: Entry, speakers: Speakers): Option[Stitching.Line] = {
+    def said(speaker: String, text: String) = Stitching.Line(speaker, text, entry.createdAt)
+    entry.payload match {
+      case Payload.Message(Message.User(text)) =>
+        Some(said(speakers.of(entry.id).getOrElse("User"), text))
+      case Payload.Heard(text) => Some(said(speakers.of(entry.id).getOrElse("Someone"), text))
+      case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
+        val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+        Option.when(text.nonEmpty)(said("Assistant", text))
+      case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(said("Assistant", text.trim))
+      case _ => None
+    }
   }
 }

@@ -14,23 +14,20 @@ import grit.lifecycle.transcript.PeriodTranscript
 object TriageInput {
 
   /** A person's message's question as [[read]] builds it: the message's entry, the
-    * [[TriageQuestion.State]] it is asked about, its thread by part (what it shows of the
-    * strand and of its conversation's messages, and the start of those it leaves out), whose
-    * text is the state's thread, the focus it was said at, whose pool the state's sections
-    * are, its conversation's place ([[grit.core.store.Origin.place]]; `None` when the
-    * conversation is not found), and whether it was `heard` ([[grit.core.store.Payload.Heard]]),
-    * not said to grit.
+    * [[TriageQuestion.State]] it is asked about, the focus it was said at, whose pool the
+    * state's sections are, its conversation's place ([[grit.core.store.Origin.place]]; `None`
+    * when the conversation is not found), and whether it was `heard`
+    * ([[grit.core.store.Payload.Heard]]), not said to grit.
     */
   final case class Read private[triage] (
       entry: EntryId,
       state: TriageQuestion.State,
-      thread: Stitching.Fitted,
       focus: Focus,
       place: Option[Place],
       heard: Boolean
   )
 
-  /** [[build]], with the state's thread by part and the message's focus. */
+  /** [[build]], with the message's focus, place and how it was said ([[Read]]). */
   def read(
       reads: StitchReads,
       rooms: RoomReads,
@@ -93,8 +90,13 @@ object TriageInput {
       )
       Read(
         heard.id,
-        TriageQuestion.State(text, names.of(heard.id).getOrElse("Someone"), thread.text, sections),
-        thread,
+        TriageQuestion.State(
+          text,
+          names.of(heard.id).getOrElse("Someone"),
+          heard.createdAt,
+          thread,
+          sections
+        ),
         focus,
         conversation.map(_.origin.place),
         heard.payload match {

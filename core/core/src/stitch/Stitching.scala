@@ -2,8 +2,6 @@ package grit.core.stitch
 
 import java.time.{Duration as JDuration, Instant}
 
-import scala.annotation.tailrec
-
 import grit.core.classify.{
   Answered,
   Ask,
@@ -206,69 +204,91 @@ object Stitching {
       scope: Scope
   )
 
-  /** A reader's thread of at most `chars`, by part: what it shows of the strand and of the
-    * conversation's own messages, and `cut`, the start of its own messages it leaves out
-    * (`cut` then `own` are all of them), and `named`, the `speaker: ` of the message `own`
-    * begins inside, empty when it begins a message. [[text]] is the thread, `named` then `…`
-    * before `own` when `cut` is not empty.
+  /** A reader's thread ([[fit]]): the `strand`'s excerpt, then the conversation's own messages,
+    * `cut` the oldest it leaves out whole and `shown` the rest. [[text]] is the thread as one
+    * string: the strand's [[Excerpt.text]], then a `…` line when `cut` is not empty and some
+    * are shown, then each shown message, `between` each two of those.
     */
   final case class Fitted private[stitch] (
-      strand: String,
-      cut: String,
-      named: String,
-      own: String
+      strand: Excerpt,
+      cut: Vector[Line],
+      shown: Vector[Line],
+      between: String
   ) {
     def text: String = {
-      val shown = if (cut.isEmpty || own.isEmpty) own else s"$named…$own"
-      if (strand.isEmpty) shown else if (shown.isEmpty) strand else s"$strand\n$shown"
-    }
-
-    /** Where in [[text]] the shown own messages begin, so where `cut` was taken from. */
-    def at: Int = text.length - own.length
-  }
-
-  /** [[thread]] by part ([[Fitted]]). A strand longer than `chars` loses its end, which `cut`
-    * does not hold.
-    */
-  def fit(strand: String, own: Vector[Line], between: String, chars: Int): Fitted = {
-    val shown = Cut.head(strand, chars)
-    val all = own.map(_.shown).mkString(between)
-    val room = if (shown.isEmpty) chars else chars - shown.length - 1
-    // Where each message begins in `all`, with the name it is read under.
-    val begins = own.scanLeft(0)(_ + _.shown.length + between.length).zip(own.map(_.speaker + ": "))
-    // The name to show before the `…`, and what is kept, cutting `all` within `budget`: shorter
-    // until a cut inside a message leaves its name whole and room for it.
-    @tailrec def kept(budget: Int): (String, String) = {
-      val tail = Cut.tail(all, budget).drop(1)
-      val from = all.length - tail.length
-      begins.findLast(_._1 <= from) match {
-        case Some((at, name)) if from > at && tail.nonEmpty =>
-          if (from - at < name.length) kept(math.min(budget - 1, all.length - at - name.length + 1))
-          else if (name.length + 1 + tail.length > room)
-            kept(math.min(budget - 1, room - name.length))
-          else if (from - at == name.length) ("", all.drop(at))
-          else (name, tail)
-        case _ => ("", tail)
-      }
-    }
-    if (all.length <= room) Fitted(shown, "", "", all)
-    else {
-      val (named, tail) = kept(room)
-      Fitted(shown, all.dropRight(tail.length), named, tail)
+      val own = (Option.when(cut.nonEmpty && shown.nonEmpty)("…").toVector ++ shown.map(_.shown))
+        .mkString(between)
+      Vector(strand.text, own).filter(_.nonEmpty).mkString("\n")
     }
   }
 
-  /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as
-    * much of `own` (the conversation's own messages, `between` each two) as fits, cut from its
-    * start; each cut at a word, `…` where text was left, a message cut inside keeping its
-    * speaker's name before the `…`. `own` alone when there is no strand.
+  /** A reader's thread whose [[Fitted.text]] is at most `chars`: `strand` within `chars`
+    * ([[Excerpt.within]]), then the newest of `own`, the conversation's own messages, while they
+    * fit. When the newest alone does not, it is cut from its start at a word, its text then
+    * beginning with `…`, keeping its speaker; it is cut whole when not even that fits.
     */
-  def thread(strand: String, own: Vector[Line], between: String, chars: Int): String =
-    fit(strand, own, between, chars).text
+  def fit(strand: Excerpt, own: Vector[Line], between: String, chars: Int): Fitted = {
+    val shown = strand.within(chars)
+    def fitted(newest: Int) = Fitted(shown, own.dropRight(newest), own.takeRight(newest), between)
+    // Each message more costs more than the `…` line it may drop: the first too long ends it.
+    (1 to own.size).iterator
+      .map(fitted)
+      .takeWhile(_.text.length <= chars)
+      .toVector
+      .lastOption
+      .getOrElse(own.lastOption.fold(fitted(0)) { newest =>
+        val bare = fitted(1).copy(shown = Vector(newest.copy(text = "")))
+        val room = chars - bare.text.length
+        if (room < 2) fitted(0)
+        else bare.copy(shown = Vector(newest.copy(text = Cut.tail(newest.text, room))))
+      })
+  }
 
-  /** One message of a thread: `text` under its `speaker`'s name, read as [[shown]]. */
-  final case class Line(speaker: String, text: String) {
+  /** One message of a thread: `text` under its `speaker`'s name, said `at`, read as [[shown]]. */
+  final case class Line(speaker: String, text: String, at: Instant) {
     def shown: String = s"$speaker: $text"
+
+    /** `{from, text, ago}`, `ago` how long before `now` it was said ([[ago]]). */
+    def json(now: Instant): ujson.Value =
+      ujson.Obj("from" -> speaker, "text" -> text, "ago" -> ago(at, now))
+  }
+
+  /** A strand as a reader shows it ([[excerpt]]): its `opening`, then `left` of its messages
+    * not shown, then its `latest`, in the order said. [[text]] is one line each, a `…` line for
+    * those not shown.
+    */
+  final case class Excerpt private[stitch] (
+      opening: Option[Line],
+      left: Int,
+      latest: Vector[Line]
+  ) {
+    def text: String =
+      (opening.map(_.shown).toVector ++ Option.when(left > 0)("…") ++ latest.map(_.shown))
+        .mkString("\n")
+
+    /** This with a [[text]] of at most `chars`: the newest of `latest` while they fit, the rest
+      * counted in `left`; when none fits, `opening` cut at a word with `…`, keeping its speaker;
+      * empty when not even that fits.
+      */
+    def within(chars: Int): Excerpt =
+      (latest.size to 0 by -1).iterator
+        .map(k => Excerpt(opening, left + latest.size - k, latest.takeRight(k)))
+        .find(_.text.length <= chars)
+        .getOrElse {
+          val bare = Excerpt(opening.map(_.copy(text = "")), left + latest.size, Vector.empty)
+          val room = chars - bare.text.length
+          opening
+            .filter(_ => room > 1)
+            .fold(Excerpt.empty)(o =>
+              bare.copy(opening = Some(o.copy(text = Cut.head(o.text, room))))
+            )
+        }
+  }
+
+  object Excerpt {
+
+    /** No strand. */
+    val empty: Excerpt = Excerpt(None, 0, Vector.empty)
   }
 
   /** The exchanges `first`, a stitchable conversation's first message in `room`, may continue,
@@ -442,29 +462,21 @@ object Stitching {
     }
   }
 
-  /** `strand` as a reader shows it within `chars`: `opening`, then the messages nearest the
-    * end, newest first while they fit, in the order said, a `…` line where any were left out;
-    * each message one line under its speaker's name (`speakers`; "Assistant" for grit's
-    * replies, "Someone" for a name not known), at most [[MessageChars]] of it, cut at a word
-    * with `…`. Empty when there is nothing to show.
+  /** `strand` as a reader shows it within `chars` ([[Excerpt.within]]): `opening`, then the rest
+    * in the order said; each message under its speaker's name (`speakers`; "Assistant" for
+    * grit's replies, "Someone" for a name not known), at most [[MessageChars]] of it, cut at a
+    * word with `…`. Empty when there is nothing to show.
     */
   def excerpt(
       opening: Option[Said],
       strand: Vector[Said],
       speakers: Speakers,
       chars: Int
-  ): String = {
-    val head = opening.flatMap(line(_, speakers)).toVector
+  ): Excerpt = {
     val rest = strand
       .filterNot(s => opening.exists(_.entry.id == s.entry.id))
       .sortBy(_.entry.createdAt)
-      .flatMap(line(_, speakers))
-    def shown(k: Int): String =
-      (head ++ Option.when(k < rest.size)("…").toVector ++ rest.takeRight(k)).mkString("\n")
-    (rest.size to 0 by -1).iterator
-      .map(shown)
-      .find(_.length <= chars)
-      .getOrElse(Cut.head(shown(0), chars))
+    Excerpt(opening.flatMap(line(_, speakers)), 0, rest.flatMap(line(_, speakers))).within(chars)
   }
 
   /** `s`'s words, when it is a message: a person's, grit's reply, or grit's post. */
@@ -483,8 +495,8 @@ object Stitching {
     case _ => speakers.of(s.entry.id).getOrElse("Someone")
   }
 
-  private def line(s: Said, speakers: Speakers): Option[String] =
-    spoken(s).map(t => Line(speaker(s, speakers), Cut.head(t, MessageChars)).shown)
+  private def line(s: Said, speakers: Speakers): Option[Line] =
+    spoken(s).map(t => Line(speaker(s, speakers), Cut.head(t, MessageChars), s.entry.createdAt))
 
   private val Instructions =
     "Read new_message, said by author at the top level of a team's channel, not in any " +
@@ -507,11 +519,8 @@ object Stitching {
   object State {
     given StateJson[State] = StateJson.instance { s =>
       val at = s.first.entry.createdAt
-      def said(m: Said): ujson.Value = ujson.Obj(
-        "from" -> speaker(m, s.speakers),
-        "text" -> Cut.head(spoken(m).getOrElse(""), MessageChars),
-        "ago" -> ago(m.entry.createdAt, at)
-      )
+      def said(m: Said): ujson.Value =
+        line(m, s.speakers).getOrElse(Line(speaker(m, s.speakers), "", m.entry.createdAt)).json(at)
       ujson.Obj(
         "new_message" -> Cut.head(spoken(s.first).getOrElse(""), MessageChars),
         "author" -> s.author,

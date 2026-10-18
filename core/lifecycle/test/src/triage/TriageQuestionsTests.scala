@@ -47,7 +47,12 @@ object TriageQuestionsTests extends TestSuite {
     .getOrElse(fail("gap"))
 
   private val state =
-    TriageQuestion.State("can someone send me the Q3 deck?", "ana", "bo: planning starts monday")
+    TriageQuestion.State(
+      "can someone send me the Q3 deck?",
+      "ana",
+      TriageFixtures.Start,
+      TriageFixtures.thread("bo" -> "planning starts monday")
+    )
 
   private def w(key: String, p: Double) = Answer.Weight(key, p)
 
@@ -172,7 +177,7 @@ object TriageQuestionsTests extends TestSuite {
       TriageQuestions.V2.questions(catalog).keys.map(QuestionName.value).toVector ==>
         Vector("gap", "open", "to", "durable", "anchor", "source:github", "source:conversations")
       // A pin of the digest a shadow row records for this state and catalog.
-      request.digest ==> "d04b85b3eadd8236c04209fe11c521cd34662f7023f5ffaa848809bf8efed88f"
+      request.digest ==> "1e4464d4a98fcdee710e13a41cfe19ec429d3acb0098b7460f0331032696e6a0"
     }
 
     test("v3 asks V2's words with to-grit after to, naming the persona, and drafts by v3's gate") {
@@ -354,10 +359,11 @@ object TriageQuestionsTests extends TestSuite {
       val fixed = TriageQuestion.State(
         "standup moves to 10:00 from Monday",
         "Ana",
-        "Ben: when is standup?"
+        TriageFixtures.Start,
+        TriageFixtures.thread("Ben" -> "when is standup?")
       )
       TriageQuestions.V1.request(fixed, catalog).digest ==>
-        "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
+        "73f2dce973db4214e0eae12e96acb6d42c96458954baa1cc914edcb666a32f10"
       TriageQuestions.V1.questions(catalog).keys.map(QuestionName.value).toVector ==>
         Vector("kind", "waiting", "durable", "helps")
       val reworded = TriageQuestion.Wording.Shipped.copy(
@@ -367,7 +373,7 @@ object TriageQuestionsTests extends TestSuite {
       // A rewording's request, as triage's question sent it in those words: pinned while the
       // two were compared, before the question was retired for the set.
       TriageQuestions.v1(reworded).request(fixed, catalog).digest ==>
-        "7592ee1c208b16e6c863dbd94e158c8c026de7fa6b1bcf5cb6439cc1b90c2e12"
+        "b6386789dc583e86bf8b0f3f216bf01ac46835994f768ffe10e9cc5c9912588c"
     }
 
     test(

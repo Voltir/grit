@@ -115,7 +115,7 @@ object TurnJudge {
     * turn's own first message under its speaker's name, empty when it has none; the thread is
     * the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's message
     * and each reply so far, the heard message and every reply after it included, within
-    * [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name
+    * [[ThreadChars]] altogether ([[Stitching.fit]]), one per line under its speaker's name
     * ("Assistant" for grit's); recalled is what the model was shown ([[Shown]]) of each other
     * conversation's section but its strand's, then of each document but its pointer's line,
     * then of each record among the window's entries whose earlier messages the thread does
@@ -133,12 +133,13 @@ object TurnJudge {
       draft: String
   ): State = {
     val lines = all.flatMap { e =>
+      def line(speaker: String, text: String) = Stitching.Line(speaker, text, e.createdAt)
       (e.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-          Option.when(said.nonEmpty)(Stitching.Line("Assistant", said))
-        case Payload.Posted(text) => Option.when(text.nonEmpty)(Stitching.Line("Assistant", text))
-        case p => p.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _))
+          Option.when(said.nonEmpty)(line("Assistant", said))
+        case Payload.Posted(text) => Option.when(text.nonEmpty)(line("Assistant", text))
+        case p => p.said.map(line(speakers.of(e.id).getOrElse("Someone"), _))
       }).map(e.seq -> _)
     }
     val thread = Stitching.fit(
@@ -181,7 +182,9 @@ object TurnJudge {
       (sections ++ documents ++ records).collect { case Message.User(text) => text } ++ read
     val message = showing.mine
       .sortBy(e => EntrySeq.value(e.seq))
-      .flatMap(e => e.payload.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _)))
+      .flatMap(e =>
+        e.payload.said.map(Stitching.Line(speakers.of(e.id).getOrElse("Someone"), _, e.createdAt))
+      )
       .headOption
       .fold("")(_.shown)
     State(

@@ -9,7 +9,12 @@ import utest.*
 object TaskQuestionsTests extends TestSuite {
 
   private val state =
-    TriageQuestion.State("why did signups drop in March?", "ana", "bo: the dashboard is up")
+    TriageQuestion.State(
+      "why did signups drop in March?",
+      "ana",
+      TriageFixtures.Start,
+      TriageFixtures.thread("bo" -> "the dashboard is up")
+    )
 
   private val lead =
     "Read new_message, which author sent to an AI assistant; thread is what came before it. "

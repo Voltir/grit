@@ -322,9 +322,9 @@ object StitchingTests extends TestSuite {
       val names = Speakers(strand.map(_.entry.id -> "David").toMap + (opening.entry.id -> "Nick"))
       val openLine = "Nick: where did we land on the Engine contract term?"
       val chars = openLine.length + 1 + 2 + "David: second reply".length + 1 + "David: lol".length
-      Stitching.excerpt(Some(opening), strand, names, chars) ==>
-        s"$openLine\n…\nDavid: second reply\nDavid: lol"
-      Stitching.excerpt(Some(opening), strand, names, 1_000) ==>
+      val cut = Stitching.excerpt(Some(opening), strand, names, chars)
+      (cut.left, cut.text) ==> (1, s"$openLine\n…\nDavid: second reply\nDavid: lol")
+      Stitching.excerpt(Some(opening), strand, names, 1_000).text ==>
         s"$openLine\nDavid: first reply here\nDavid: second reply\nDavid: lol"
     }
 
@@ -347,8 +347,10 @@ object StitchingTests extends TestSuite {
       )
       val state = Stitching.shown(Offer(opening, "Nick", es, Speakers.none))
       (state("new_message").str, state("exchanges")(0)("opening")("text").str) ==> (cut, cut)
-      Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 1_000) ==> s"Someone: $cut"
-      Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 20) ==> "Someone: word word…"
+      Stitching.excerpt(Some(engine), Vector.empty, Speakers.none, 1_000).text ==> s"Someone: $cut"
+      Stitching
+        .excerpt(Some(engine), Vector.empty, Speakers.none, 20)
+        .text ==> "Someone: word word…"
     }
 
     test("stitch asks whether the message replies to an exchange, each shown with what it has") {
@@ -411,12 +413,14 @@ object StitchingTests extends TestSuite {
         heardOpening.entry.copy(payload = Payload.Posted("The engine's open issues."))
       )
       val reply = heard("post", "why this?", 30, seq = 1)
-      Stitching.excerpt(
-        Some(opening),
-        Vector(reply),
-        Speakers(Map(reply.entry.id -> "Nick")),
-        1_000
-      ) ==> "Assistant: The engine's open issues.\nNick: why this?"
+      Stitching
+        .excerpt(
+          Some(opening),
+          Vector(reply),
+          Speakers(Map(reply.entry.id -> "Nick")),
+          1_000
+        )
+        .text ==> "Assistant: The engine's open issues.\nNick: why this?"
     }
   }
 }

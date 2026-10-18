@@ -16,7 +16,7 @@ import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
-import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
+import grit.lifecycle.triage.TriageQuestions
 
 /** What a deployment's database kept of the heard messages tagged since a time, as run logs
   * the scorers read beside offline runs: live triage's tags ([[Pull.Kept]]), and each named
@@ -247,7 +247,7 @@ object Pull {
     * how an answer is put by position.
     */
   private val Questions: Vector[Question] =
-    TriageQuestions.V1.request(TriageQuestion.State("", "", ""), Corpora.Empty).questions
+    TriageQuestions.V1.questions(Corpora.Empty).values.toVector
 
   /** A kept row of case `id`, said at `focus` and asked as `request`, from live triage's
     * `tags`, and its cost; with the names it answered under, `None` when it failed.

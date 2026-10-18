@@ -146,7 +146,7 @@ object Capture {
           Asked(
             Built(Digest.json(r.state), Digest.request(r)),
             state.message.length,
-            state.thread.length
+            state.thread.text.length
           )
         )
       }

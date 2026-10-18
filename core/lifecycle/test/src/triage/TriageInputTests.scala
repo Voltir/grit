@@ -33,8 +33,15 @@ object TriageInputTests extends TestSuite {
       .build(w.reads, w.rooms, FakeDb.as(Subject.Public), triage.message, tuning, recipe)
       .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
 
-  private def json(message: String, author: String, thread: String): String =
-    ujson.write(ujson.Obj("new_message" -> message, "author" -> author, "thread" -> thread))
+  /** A message as the state shows it: `text` under `from`, said `ago` before the message. */
+  private def said(from: String, text: String, ago: String): ujson.Value =
+    ujson.Obj("from" -> from, "text" -> text, "ago" -> ago)
+
+  /** The state of `message` by `author` with no strand and no message left out of `thread`. */
+  private def json(message: String, author: String, thread: ujson.Value*): String =
+    ujson.write(
+      ujson.Obj("new_message" -> message, "author" -> author, "thread" -> ujson.Arr(thread*))
+    )
 
   /** Thread b of channel C, its opening `opening` by David at minute `minutes`, stitched to c. */
   private def stitched(w: World, opening: String, minutes: Long) = {
@@ -65,7 +72,9 @@ object TriageInputTests extends TestSuite {
             TriageRecipe.Shipped
           )
           .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
-      state(said, s) ==> Right(json("is standup at 10:00?", "Ana", "Ben: when is standup?"))
+      state(said, s) ==> Right(
+        json("is standup at 10:00?", "Ana", this.said("Ben", "when is standup?", "1 minute"))
+      )
       state(said, s) ==> state(heard, h.message)
     }
 
@@ -75,19 +84,28 @@ object TriageInputTests extends TestSuite {
       w.say("unrelated", 1)
       val t = w.hear("standup moves to 10:00", "Ana", 2)
       sent(w, t) ==> Right(
-        """{"new_message":"standup moves to 10:00","author":"Ana",""" +
-          """"thread":"Ben: when is standup?\n\nUser: unrelated"}"""
+        """{"new_message":"standup moves to 10:00","author":"Ana","thread":[""" +
+          """{"from":"Ben","text":"when is standup?","ago":"2 minutes"},""" +
+          """{"from":"User","text":"unrelated","ago":"1 minute"}]}"""
       )
     }
 
-    test("with no strand, a thread over ThreadChars keeps its end, from a word's start after …") {
+    test("with no strand, a thread over ThreadChars leaves its oldest messages out, counted") {
       val w = new World
-      // Two lines of 1,000 characters and the blank line between: 2,002, two over. The first
-      // line's one word fits only without its speaker's name, which a cut keeps: it is left out.
+      // Two lines of 1,000 characters and the blank line between: 2,002, two over.
       w.hear("a" * 995, "Ben", 0)
       w.hear("b" * 995, "Ben", 1)
       val t = w.hear("the last", "Ana", 2)
-      sent(w, t) ==> Right(json("the last", "Ana", "…Ben: " + "b" * 995))
+      sent(w, t) ==> Right(
+        ujson.write(
+          ujson.Obj(
+            "new_message" -> "the last",
+            "author" -> "Ana",
+            "thread" -> ujson.Arr(said("Ben", "b" * 995, "1 minute")),
+            "thread_not_shown" -> 1
+          )
+        )
+      )
     }
 
     test("with a strand, the thread is its excerpt, then its conversation's messages") {
@@ -96,27 +114,46 @@ object TriageInputTests extends TestSuite {
       val b = stitched(w, "Is this a real question", 1)
       val t = w.hear("and another", "David", 3, in = b)
       sent(w, t) ==> Right(
-        json(
-          "and another",
-          "David",
-          "Nick: where did we land on the Engine contract term?\nDavid: Is this a real question"
+        ujson.write(
+          ujson.Obj(
+            "new_message" -> "and another",
+            "author" -> "David",
+            "earlier_exchange" -> ujson.Obj(
+              "opening" -> said(
+                "Nick",
+                "where did we land on the Engine contract term?",
+                "3 minutes"
+              )
+            ),
+            "thread" -> ujson.Arr(said("David", "Is this a real question", "2 minutes"))
+          )
         )
       )
     }
 
-    test("a strand over ThreadChars is cut at a word's end, then as much of the thread as fits") {
+    test("a strand over ThreadChars leaves out more of its latest, counted, then the thread") {
       val w = new World
       // Ten lines of "Nick: mN " and 291 x's, each 300 characters, the most a strand line shows.
       (0 until 10).foreach(i => w.hear(s"m$i " + "x" * 291, "Nick", i.toLong))
       val b = stitched(w, "Is this a real question", 11)
       val t = w.hear("and another", "David", 13, in = b)
       // Within 3,000 characters the strand shows its opening, a `…` line, then the last eight;
-      // within 2,000 it ends at the word before the eighth's x's, the opening said after it.
-      val line = (i: Int) => s"Nick: m$i " + "x" * 291
-      val shown = (Vector(line(0), "…") ++ (2 until 7).map(line) :+ "Nick: m7…" :+
-        "David: Is this a real question").mkString("\n")
-      sent(w, t, Tuning.Default.copy(strandChars = 3_000)) ==>
-        Right(json("and another", "David", shown))
+      // within 2,000, the last five.
+      val line = (i: Int) => said("Nick", s"m$i " + "x" * 291, s"${13 - i} minutes")
+      sent(w, t, Tuning.Default.copy(strandChars = 3_000)) ==> Right(
+        ujson.write(
+          ujson.Obj(
+            "new_message" -> "and another",
+            "author" -> "David",
+            "earlier_exchange" -> ujson.Obj(
+              "opening" -> line(0),
+              "latest" -> ujson.Arr.from((5 until 10).map(line)),
+              "not_shown" -> 4
+            ),
+            "thread" -> ujson.Arr(said("David", "Is this a real question", "2 minutes"))
+          )
+        )
+      )
     }
 
     test("a recipe whose sources find nothing outside the thread gives the shipped JSON") {
@@ -128,7 +165,12 @@ object TriageInputTests extends TestSuite {
         Pool(Vector(Source.Channel(1.hour, 5), Source.Author(1.hour, 5), Source.Exchanges), 600)
       sent(w, t, recipe = TriageRecipe(every, every)) ==> sent(w, t)
       sent(w, t) ==> Right(
-        json("standup moves to 10:00", "Ana", "Ben: when is standup?\n\nAna: I asked before")
+        json(
+          "standup moves to 10:00",
+          "Ana",
+          said("Ben", "when is standup?", "2 minutes"),
+          said("Ana", "I asked before", "1 minute")
+        )
       )
     }
 
@@ -136,11 +178,13 @@ object TriageInputTests extends TestSuite {
       val state = TriageQuestion.State(
         "standup moves to 10:00",
         "Ana",
-        "Ben: when is standup?",
+        Start,
+        thread("Ben" -> "when is standup?"),
         VectorMap(Section.Exchanges -> "", Section.Nearby -> "Cy, 5 minutes before: lunch?")
       )
       ujson.write(StateJson[TriageQuestion.State].json(state)) ==>
-        """{"new_message":"standup moves to 10:00","author":"Ana","thread":"Ben: when is standup?",""" +
+        """{"new_message":"standup moves to 10:00","author":"Ana",""" +
+        """"thread":[{"from":"Ben","text":"when is standup?","ago":"0 seconds"}],""" +
         """"nearby_in_channel":"Cy, 5 minutes before: lunch?"}"""
     }
 
@@ -155,7 +199,7 @@ object TriageInputTests extends TestSuite {
           ujson.Obj(
             "new_message" -> "standup moves to 10:00",
             "author" -> "Ana",
-            "thread" -> "",
+            "thread" -> ujson.Arr(),
             "nearby_in_channel" -> "Ben, 1 minute before: lunch?"
           )
         )

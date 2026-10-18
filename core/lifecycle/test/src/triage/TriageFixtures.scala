@@ -23,7 +23,7 @@ import grit.core.period.{CloseReason, TestClosings}
 import grit.core.recipe.InMemoryRoomReads
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.stitch.{InMemoryStitchStore, Opening, Placements, StitchReads, Tuning}
+import grit.core.stitch.{InMemoryStitchStore, Opening, Placements, StitchReads, Stitching, Tuning}
 import grit.core.store.{
   Db,
   Entry,
@@ -59,6 +59,16 @@ object TriageFixtures {
   val Start: Instant = Instant.parse("2026-09-28T10:00:00Z")
 
   def at(minutes: Long): Instant = Start.plusSeconds(minutes * 60)
+
+  /** A thread with no strand of `said`'s messages, each `(speaker, text)` said at [[Start]], as
+    * triage fits it.
+    */
+  def thread(said: (String, String)*): Stitching.Fitted = Stitching.fit(
+    Stitching.Excerpt.empty,
+    said.toVector.map((speaker, text) => Stitching.Line(speaker, text, Start)),
+    "\n\n",
+    TriageQuestion.ThreadChars
+  )
 
   /** The turn whose heard message `triage` asks about. */
   extension (triage: TriageRef) {

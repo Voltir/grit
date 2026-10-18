@@ -183,7 +183,7 @@ object TriageTests extends TestSuite {
       (other.calls, again.tags(t2)) ==> (0, Some(decision))
     }
 
-    test("a thread too long to show whole keeps what it cut, which joins what it shows") {
+    test("a thread too long to show whole leaves out its oldest messages, counted, whole") {
       val w = new World
       (0 until 40).foreach(i => w.hear(f"message $i%02d " + "x" * 80, "Ben", i.toLong))
       val t = w.hear("the last", "Ana", 41)
@@ -196,11 +196,11 @@ object TriageTests extends TestSuite {
           Tuning.Default,
           TriageRecipe.Shipped
         )
-      read.map(r => (r.state.thread.length, r.state.thread == r.thread.text, r.thread.at)) ==>
-        Right((1959, true, 1))
-      read.map(r => (r.thread.cut + r.thread.own).take(17)) ==> Right("Ben: message 00 x")
-      // Forty lines of "Ben: message nn " and 80 x's, a blank line between each two.
-      read.map(r => (r.thread.cut + r.thread.own).length) ==> Right(40 * 96 + 39 * 2)
+      // Forty lines of "Ben: message nn " and 80 x's, a blank line between each two: the `…`
+      // line and twenty fit in 2,000 characters.
+      read.map(r => (r.state.thread.cut.size, r.state.thread.text.length)) ==> Right((20, 1961))
+      read.map(r => (r.state.thread.cut ++ r.state.thread.shown).map(_.text.take(10))) ==>
+        Right((0 until 40).map(i => f"message $i%02d").toVector)
       read.map(r => (r.entry, r.state)) ==> TriageInput.build(
         w.reads,
         w.rooms,
@@ -223,7 +223,10 @@ object TriageTests extends TestSuite {
         ujson.Obj(
           "new_message" -> "standup moves to 10:00",
           "author" -> "Ana",
-          "thread" -> "Ben: when is standup?\n\nUser: unrelated"
+          "thread" -> ujson.Arr(
+            ujson.Obj("from" -> "Ben", "text" -> "when is standup?", "ago" -> "2 minutes"),
+            ujson.Obj("from" -> "User", "text" -> "unrelated", "ago" -> "1 minute")
+          )
         )
       )
     }
@@ -241,8 +244,8 @@ object TriageTests extends TestSuite {
       durable.run(t.workflowId)(w.body(classifier, 2))
       durable.recordedSteps(t.workflowId).take(2) ==> Vector("stitched", "ask:triage")
       w.awaited.map(_.ref.turn) ==> Vector(TurnRef(b, t.turn))
-      classifier.states.lastOption.map(_("thread").str) ==>
-        Some("Nick: where did we land on the Engine contract term?")
+      classifier.states.lastOption.map(_("earlier_exchange")("opening")("text").str) ==>
+        Some("where did we land on the Engine contract term?")
       w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
         Right(Vector(grit.core.stitch.Link(b, c)))
     }
