@@ -2,7 +2,17 @@ package grit.models
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.model.{Catalog, Known, NameRepair, Profile, Settings, Source}
+import grit.core.model.{
+  Assignment,
+  Catalog,
+  Known,
+  ModelId,
+  ModelRef,
+  NameRepair,
+  Profile,
+  Settings,
+  Source
+}
 import grit.core.store.{Db, InMemoryModelSettingStore, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -20,6 +30,17 @@ object OpenRouterModelsTests extends TestSuite {
   private val turnPair = seed.policy.turn.first.assignment.ref
 
   val tests = Tests {
+    test(
+      "the seed's dream role is its own rung, claude-haiku-5.5 at 4096 tokens, and part of its version"
+    ) {
+      val haiku = ModelId.of("anthropic/claude-haiku-5.5").map(ModelRef(_, None))
+      (
+        haiku.map(Assignment(_, 4096, None)),
+        seed.dream.first.assignment == seed.pin.summary.first.assignment,
+        seed.withPolicy(seed.policy.copy(dream = seed.policy.summary)).version == seed.version
+      ) ==> (Some(seed.dream.first.assignment), false, false)
+    }
+
     test(
       "the catalog in force is the seed with every kept model setting laid over it, in the order kept"
     ) {
