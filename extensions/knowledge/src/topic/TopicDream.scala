@@ -320,8 +320,10 @@ object TopicDream {
       "Reply by calling `reply` with `topics`, one entry per topic discussions or cards go to: " +
       "its `topic`, the number of a topic shown, or `new` for a new topic, one no topic shown " +
       "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
-      "go to it, by number. All that goes to one new topic goes in one `new` entry, a card " +
-      "with the discussions about it. Give `aside` the discussions and cards too slight to " +
+      "go to it, by number. Each entry is one topic, about one matter: a discussion of a " +
+      "matter no other shown is about gets a `new` entry of its own, however short. Put two " +
+      "in one `new` entry only when they are about the same matter, such as a card and the " +
+      "discussions about its file; never two different matters, even related ones. Give `aside` the discussions and cards too slight to " +
       "keep. Name each discussion and card shown exactly once."
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
