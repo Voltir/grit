@@ -1,11 +1,10 @@
 # 0030. Visibility is a Bell–LaPadula label lattice, and a turn reads for its room and its asker
 
-Status: accepted (2026-10-06); revised (2026-10-16)
+Status: accepted (2026-10-06); revised (2026-10-16, 2026-10-18)
 
 Context: grit first served several people with no visibility model: one database was one
 trust boundary, so everyone who could write to the conversations a database held could see
-everything it held, and `grit serve` ran on a database of its own for one workspace of
-trusted colleagues. Every room's closings, documents and plugin tools could reach every other
+everything it held. Every room's closings, documents and plugin tools could reach every other
 room's window. That boundary is superseded here; visibility narrows it and never widens it.
 Turned down:
 
@@ -14,8 +13,7 @@ Turned down:
   decides nothing: locality is not visibility), and a sharing set fits no place.
 - Reader sets: they go stale as membership changes.
 - A label stored as a set of atoms, so a deployment could insert a level: such a set has more
-  values than there are labels, and its join folds a malformed one into a valid one. The
-  levels are grit's, so a label is stored as the lattice's own level and compartments.
+  values than there are labels, and its join folds a malformed one into a valid one.
 
 Decision:
 
@@ -35,6 +33,11 @@ Decision:
   clearance dominates, and what it labels is kept at least at the subject's current level
   (`Clearance.floor`). Only `grit.dbos` opens a transaction as the trusted subject
   (`Maintenance`), for work that moves rows and derives nothing.
+- **An edge acting for a room with no conversation** (`Subject.Room`: a review's channel)
+  reads everywhere up to the label its place is written at outside grit (`Tx.writable`), and
+  public rows alone where nothing writes. It is no trusted subject: it reads no more than the
+  place may receive, and a post rechecks in its own transaction that the place still dominates
+  what it posts, since a place's label may fall in between.
 - **A room has one label in force**, set by one rule in core (ADR 0033). What is said in a
   room takes its label, so a reply is never above its room; a conversation keeps the label it
   was created at (strong tranquility).
@@ -50,9 +53,9 @@ Decision:
 - **Core owns the semantics**: labels, clearances, the filter, and the clearance every
   transaction carries. Edges and plugins map what they bring in onto labels, and own group
   memberships. The deployment owns its compartments.
-- **People decide rarely and in bulk.** A deterministic core, never bypassed and never
-  prompting, bounds the worst case; automated judges decide grey zones (an outbound call, a
-  lower-labelled summary); people set standing policies, add compartments and audit samples.
+- **People decide rarely and in bulk.** A deterministic core bounds the worst case; automated
+  judges decide grey zones (an outbound call, a lower-labelled summary); people set standing
+  policies, add compartments and audit samples.
 
 Consequences:
 

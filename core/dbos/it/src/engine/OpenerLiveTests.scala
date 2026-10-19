@@ -18,6 +18,7 @@ import grit.core.visibility.{
   Grant,
   Group,
   GroupName,
+  Item,
   Label,
   Labelled,
   Level,
@@ -66,6 +67,30 @@ object OpenerLiveTests extends TestSuite {
   }
 
   private val opener = new Opener(visibility)
+
+  private val finance: Compartment =
+    Compartment.of("finance").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  private val internal: Label = Label.at(Level.Internal)
+  private val confidentialTrial: DeclaredLabel = Label.at(Level.Confidential, trial)
+  private val confidentialFinance: DeclaredLabel = Label.at(Level.Confidential, finance)
+
+  private val board: Place =
+    Place.read("slack:T1/C-room-board").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** Opens under a labeller placing [[board]] at [[confidentialTrial]] and every other room,
+    * a direct message's included, at [[internal]].
+    */
+  private val rooms: Opener = new Opener(
+    (for {
+      labels <- RoomLabels
+        .of(Vector(board -> confidentialTrial), Labelled.Mapped(internal))
+        .left
+        .map(_.written)
+      compartments <- Compartments.of(Vector(trial, finance)).left.map(_.toString)
+      v <- Visibility.of(compartments, labels, Vector.empty, Vector.empty).left.map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+  )
 
   private def resolved(subject: Subject): Either[StoreError, Clearance] =
     LiveDb.connected(config)(opener.clearance(subject, _))
@@ -198,6 +223,29 @@ object OpenerLiveTests extends TestSuite {
 
     test("the public subject reads only what is public") {
       resolved(Subject.Public) ==> Right(Clearance.of(Label.Public))
+    }
+
+    test(
+      "a room's subject reads only what is public at a place nothing writes to, though its room's label is above"
+    ) {
+      val dm = Origin.Direct(TestAccounts.sourced("slack:T1/U-room-dm"), "1.0").room
+      Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+        conn =>
+          rooms
+            .open(Subject.Room(dm), conn)
+            .map(tx => (Tx.roomLabel(dm)(using tx).dominates(internal), Tx.clearance(tx)))
+      } ==> Right((true, Clearance.of(Label.Public)))
+    }
+
+    test(
+      "a room's subject reads everywhere up to its place's written label: internal and its own compartment's, never another's"
+    ) {
+      val read = Using.resource(
+        DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      )(conn => rooms.open(Subject.Room(board), conn).map(tx => Tx.clearance(tx)))
+      read.map(c =>
+        Vector(internal, confidentialTrial, confidentialFinance).map(c.reads(Item.Kept(None), _))
+      ) ==> Right(Vector(true, true, false))
     }
 
     test("a transaction it opens labels places as the deployment's visibility does") {

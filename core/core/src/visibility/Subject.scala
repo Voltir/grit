@@ -2,6 +2,7 @@ package grit.core.visibility
 
 import grit.core.id.ConversationId
 import grit.core.id.TurnRef
+import grit.core.place.Place
 
 /** Whom a database transaction is opened for, which decides its [[Clearance]] as it opens
   * (ADR 0030).
@@ -27,6 +28,13 @@ enum Subject {
     * clearance now.
     */
   case Conversation(id: ConversationId)
+
+  /** An edge acting for `place`, a room it posts to where no conversation is (a review's
+    * channel, say): everywhere, up to the label `place` is written at outside grit
+    * ([[grit.core.store.Tx.writable]]); public rows alone when nothing writes there (a place
+    * unmapped, quiet or a direct message's). It reads no more than may be written to `place`.
+    */
+  case Room(place: Place)
 
   /** Public rows alone, and what carries no label (settings, schedules, workflow state). */
   case Public

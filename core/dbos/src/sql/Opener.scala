@@ -90,6 +90,9 @@ private[dbos] final class Opener(visibility: Visibility) {
   private def resolved(subject: Subject)(using tx: Tx^): Either[StoreError, Clearance] =
     subject match {
       case Subject.Public => Right(Clearance.of(Label.Public))
+      // By what may be written to the place, never its room's label: what an edge reads for a
+      // room it then writes there, so it may read no more than the place may receive.
+      case Subject.Room(place) => Right(Clearance.of(Tx.writable(place).getOrElse(Label.Public)))
       case Subject.Conversation(id) =>
         named(id, None).flatMap(_.fold(Right(Clearance.of(Label.Public))) { n =>
           n.origin match {
