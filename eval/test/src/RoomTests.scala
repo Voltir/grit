@@ -146,7 +146,9 @@ object RoomTests extends TestSuite {
       val names = Option(getClass.getResource("/rooms"))
         .map(u => Using.resource(Files.list(Paths.get(u.toURI)))(_.toArray.toVector))
         .getOrElse(Vector.empty)
-        .map(_.toString.split('/').last.stripSuffix(".json"))
+        .map(_.toString.split('/').last)
+        // A room is a visible JSON file: a tool may leave a dotfile there mid-run.
+        .collect { case f if f.endsWith(".json") && !f.startsWith(".") => f.stripSuffix(".json") }
         .sorted
       val read = names.map { name =>
         val text = Using.resource(Source.fromResource(s"rooms/$name.json"))(_.mkString)
