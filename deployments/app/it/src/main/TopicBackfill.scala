@@ -5,7 +5,7 @@ import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset}
 import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Label, Subject, Visibility}
-import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment

@@ -640,7 +640,10 @@ object RebuildTests extends TestSuite {
           read <- view.documents.read(Vector(version))
         } yield (hits.map(_.document.version), read.map(_.version))
       })
-      (found(AsOf(reader, between).documentsAsOf(end)), found(AsOf(reader, between).documentsAtEnd)) ==>
+      (
+        found(AsOf(reader, between).documentsAsOf(end)),
+        found(AsOf(reader, between).documentsAtEnd)
+      ) ==>
         ((Vector(version), Vector(version)), (Vector.empty, Vector.empty))
     }
     test("a turn drawn again with documents as of now holds one kept after it ran") {

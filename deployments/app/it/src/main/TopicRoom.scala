@@ -5,31 +5,18 @@ import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocLabel, DocWeight, DocumentTerms, Pointer}
-import grit.core.id.{
-  ConversationId,
-  CorpusName,
-  Declarer,
-  DocumentVersion,
-  PluginName,
-  ScheduleId,
-  ScheduleKey
-}
-import grit.core.job.{Declared, Grace, Slot, SlotRule}
-import grit.core.message.{AssistantBlock, Message}
-import grit.core.need.PluginReads
+import grit.core.document.{DocumentTerms, Pointer}
+import grit.core.id.{ConversationId, CorpusName, DocumentVersion, PluginName, ScheduleKey}
 import grit.core.place.Place
-import grit.core.plugin.{DocumentPosting, Documents, Exports, Plugin}
 import grit.core.spend.DailyCap
 import grit.core.stitch.StrandShelf
-import grit.core.store.{Entry, Payload}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.DbConfig
 import grit.eval.{Room, TopicScore}
 import grit.kit.run.Launch
-import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
+import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.ref.{CardKey, Ref, TopicKey}
 import grit.knowledge.topic.{Aside, Lineage, Passage, Topic, TopicDream, TopicParams}

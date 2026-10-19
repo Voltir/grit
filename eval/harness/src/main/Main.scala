@@ -586,7 +586,8 @@ object Main {
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       counted <- opened(config) { reader =>
         val now = clock.now()
-        def unread(what: String)(e: grit.core.store.StoreError) = s"$what unread: ${Capture.kind(e)}"
+        def unread(what: String)(e: grit.core.store.StoreError) =
+          s"$what unread: ${Capture.kind(e)}"
         for {
           workflows <- reader.turns(manifest.dump.at).left.map(unread("turn workflows"))
           windows = workflows.map((w, _) =>
@@ -665,7 +666,8 @@ object Main {
               else OpenRouterConfig.key(env).left.map(_.message)
             answered = keyless.foldLeft((budget, Vector.empty[Answered])) { (done, c) =>
               val asking: Provider^ =
-                if (estimated == 0) Queries.unasked() else new OpenRouterProvider(c.copy(apiKey = key))
+                if (estimated == 0) Queries.unasked()
+                else new OpenRouterProvider(c.copy(apiKey = key))
               val a = Queries.answer(requests, c, store, asking, done._1, clock)
               (a.budget, done._2 :+ a)
             }

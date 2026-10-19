@@ -79,7 +79,10 @@ object DuplicationTests extends TestSuite {
     test("a Standing document of a member conversation counts") {
       val links = Vector(Link(ConversationId("f"), ConversationId("a")))
       Duplication.of(
-        Vector(w(1) -> Right(Vector(topic("a"), standing("f"))), w(2) -> Right(Vector(standing("f")))),
+        Vector(
+          w(1) -> Right(Vector(topic("a"), standing("f"))),
+          w(2) -> Right(Vector(standing("f")))
+        ),
         links
       ) ==> Duplicated(2, 1, 0, 1, Vector(w(1)), Vector.empty)
     }

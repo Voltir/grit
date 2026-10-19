@@ -20,7 +20,7 @@ import grit.core.triage.Weighing
 import grit.core.visibility.{Integrity, Label, Subject}
 
 import TurnRound.believedAt
-import TurnShown.{own, requestOf, shown}
+import TurnShown.{requestOf, shown}
 import TurnJournal.given
 
 /** The turn's steps besides its loop's ([[TurnRound]]), each a value: what it is recorded as,

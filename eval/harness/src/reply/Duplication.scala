@@ -40,8 +40,10 @@ object Duplication {
   /** `windows`, each turn's window's documents or why it was not drawn, counted: a strand's
     * conversations are those `links` name ([[Leaves.pairs]]).
     */
-  def of(windows: Vector[(WorkflowId, Either[String, Vector[Document]])], links: Vector[Link])
-      : Duplicated = {
+  def of(
+      windows: Vector[(WorkflowId, Either[String, Vector[Document]])],
+      links: Vector[Link]
+  ): Duplicated = {
     val drawn = windows.collect { case (w, Right(ds)) => (w, ds, Leaves.pairs(ds, links)) }
     def holding(kind: Leaves.Kind) = drawn.count(_._3.exists(_.kind == kind))
     Duplicated(
