@@ -23,13 +23,16 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * longer reads at its floor (its room at another label now, or its messages gone), the topic
   * itself when none is left; attaches each strand or card a topic already refers to (a card by the
   * unit its pointer reads, which a topic refers to when it was written from that card or links it),
-  * and asks (`attach`) where each other one goes, at most `perRun` strands and `perRun` cards: to
-  * one of the topics shown (those attached to, and at most [[TopicScan.Leads]] more, newest first,
-  * each by its lead, its text's head within [[TopicDream.LeadChars]]), to a new topic of its own,
-  * or to none: set aside (`aside`), in a document of its floor under `topic:aside` holding no
-  * topic, while within `recent` or `cardRecent` at the digest or version set aside. A reply placing
-  * a different number than shown is asked once more (`attach-again`), and when that one does too,
-  * all are left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
+  * and asks (`attach`) where the others go, at most `perRun` strands and `perRun` cards, each
+  * numbered in the order shown, as are the topics shown (those attached to, and at most
+  * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
+  * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
+  * one, keyed by the group's first strand, or its first card when it holds none; groups naming
+  * one topic are one. Those it puts in none are set aside (`aside`), in a document of its floor
+  * under `topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or
+  * version set aside. A reply not naming each strand and card shown exactly once, or naming a
+  * topic not shown, is asked once more (`attach-again`), and when that one does too, all are
+  * left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
   * topics first, asks once (`write-{i}`) for its new lead and the day's passage, from the strands
   * and cards attached and its current text, and keeps it (`keep-{i}`): the day's passage replacing
   * one the topic holds for that day, its lineage joined. A topic's version refers to each strand it
@@ -67,7 +70,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       case Left(e) => Gathered.stopped(s"scanning its topics: ${MoveError.said(e)}").line
       case Right(scan) =>
         val begun =
-          Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, Vector.empty, None)
+          Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, 0, Vector.empty, None)
         val (placed, done) = attach(run, moves, scan, begun)
         val touched = TopicDream.joined(scan.attached ++ placed)
         val ordered = touched.filter(_.opened) ++ touched.filterNot(_.opened)
@@ -114,92 +117,71 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           run.tainted.map(_ => summary)
         )
       }
-      // Whether `s` places as many discussions and cards as it was shown; read as the placing
-      // below is.
-      def fits(s: Dreaming.Summarised[Placing]): Boolean = {
-        val placing = Trusted.asIs(s.asked.reply).extract
-        placing.strands.size == scan.strands.size &&
-        placing.cards.size == scan.cards.count(c => s.shown.contains(c.version))
+      // `s`'s reply resolved over what it was shown; read as the placing below is.
+      def placed(s: Dreaming.Summarised[Placing]) =
+        Trusted
+          .asIs(s.asked.reply)
+          .extract
+          .placed(
+            scan.strands,
+            scan.cards.filter(c => s.shown.contains(c.version)),
+            s.shown.flatMap(v => scan.leads.find(_._2 == v))
+          )
+      val (answered, again) = asked(TopicDream.Attach, system) match {
+        case Right(Some(s)) if placed(s).isEmpty =>
+          (asked(TopicDream.AttachAgain, system + " " + TopicDream.Again), 1)
+        case first => (first, 0)
       }
-      (asked(TopicDream.Attach, system) match {
-        case Right(Some(s)) if !fits(s) =>
-          asked(TopicDream.AttachAgain, system + " " + TopicDream.Again)
-        case other => other
-      }) match {
+      // Where each goes decides only which topics are written; each written topic is believed
+      // as its own write ask's reply is, so the placing need not be checked.
+      answered.map(_.map(s => (s, placed(s)))) match {
         case Left(e) =>
           (
             Vector.empty,
             g.copy(left = g.left + n, unwritten = g.unwritten :+ ("attach", MoveError.said(e)))
           )
         case Right(None) => (Vector.empty, g.copy(left = g.left + n))
-        case Right(Some(s)) =>
-          // Where each goes decides only which topics are written; each written topic is
-          // believed as its own write ask's reply is, so the placing need not be checked.
-          val placing = Trusted.asIs(s.asked.reply).extract
-          val topics = s.shown.flatMap(v => scan.leads.find(_._2 == v))
-          val shownCards = scan.cards.filter(c => s.shown.contains(c.version))
-          def to(p: Placing.Place): Option[Either[Unit, (TopicKey, DocumentVersion)]] = p match {
-            case Placing.Place.In(k) => topics.lift(k - 1).map(Right(_))
-            case Placing.Place.New => Some(Left(()))
-            case Placing.Place.Aside => None
-          }
-          if (placing.strands.size != scan.strands.size || placing.cards.size != shownCards.size)
-            (
-              Vector.empty,
-              g.copy(
-                left = g.left + n,
-                unwritten =
-                  g.unwritten :+ ("attach", "its reply placed a different number than shown")
-              )
-            )
-          else {
-            val strands = scan.strands
-              .zip(placing.strands)
-              .flatMap((st, p) =>
-                to(p).map {
-                  case Right((k, v)) => Right(Touch(k, Some(v), Vector(st), Vector.empty))
-                  case Left(()) =>
-                    TopicKey.strand(st.root).map(Touch(_, None, Vector(st), Vector.empty))
-                }
-              )
-            val unopened = strands.collect { case Left(why) => ("a strand", why) }
-            val cardsPlaced = shownCards
-              .zip(placing.cards)
-              .flatMap((c, p) =>
-                to(p).map {
-                  case Right((k, v)) => Touch(k, Some(v), Vector.empty, Vector(c))
-                  case Left(()) => Touch(TopicKey.card(c.key), None, Vector.empty, Vector(c))
-                }
-              )
-            val placed = strands.collect { case Right(t) => t } ++ cardsPlaced
-            val setAside =
-              scan.strands.zip(placing.strands).collect { case (st, Placing.Place.Aside) =>
-                Lineage.Tag.Strand(st.root, st.room, st.digest)
-              } ++ shownCards.zip(placing.cards).collect { case (c, Placing.Place.Aside) =>
-                Lineage.Tag.Card(c.version)
+        case Right(Some((_, None))) =>
+          (
+            Vector.empty,
+            g.copy(left = g.left + n, unwritten = g.unwritten :+ ("attach", TopicDream.Uncovered))
+          )
+        case Right(Some((s, Some(p)))) =>
+          // A new topic is keyed by its first discussion, or its first card when it has none.
+          val touches = p.topics.flatMap(w =>
+            w.to match {
+              case _ if w.discussions.isEmpty && w.cards.isEmpty => None
+              case Some((k, v)) => Some(Right(Touch(k, Some(v), w.discussions, w.cards)))
+              case None =>
+                w.discussions.headOption
+                  .map(st => TopicKey.strand(st.root))
+                  .orElse(w.cards.headOption.map(c => Right(TopicKey.card(c.key))))
+                  .map(_.map(Touch(_, None, w.discussions, w.cards)))
+            }
+          )
+          val unopened = touches.collect { case Left(why) => ("a strand", why) }
+          val setAside =
+            p.asideDiscussions.map(st => Lineage.Tag.Strand(st.root, st.room, st.digest)) ++
+              p.asideCards.map(c => Lineage.Tag.Card(c.version))
+          val kept =
+            if (setAside.isEmpty) Vector.empty
+            else
+              moves.keep(TopicDream.SetAside, s.asked.reply.map(_ => setAside))(
+                (tags, keeper, at) => Aside.joined(keeper, tags, at)
+              ) match {
+                case Left(e) => Vector(("aside", MoveError.said(e)))
+                case Right(_) => Vector.empty
               }
-            val kept =
-              if (setAside.isEmpty) Vector.empty
-              else
-                moves.keep(TopicDream.SetAside, s.asked.reply.map(_ => setAside))(
-                  (tags, keeper, at) => Aside.joined(keeper, tags, at)
-                ) match {
-                  case Left(e) => Vector(("aside", MoveError.said(e)))
-                  case Right(_) => Vector.empty
-                }
-            // Placed in no topic shown: left, and asked of again.
-            val unplaced =
-              n - (scan.cards.size - shownCards.size) - unopened.size - setAside.size -
-                TopicDream.items(placed)
-            (
-              placed,
-              g.copy(
-                aside = g.aside + setAside.size,
-                left = g.left + (scan.cards.size - shownCards.size) + unplaced,
-                unwritten = g.unwritten ++ unopened ++ kept
-              )
+          (
+            touches.collect { case Right(t) => t },
+            g.copy(
+              aside = g.aside + setAside.size,
+              // Those not shown.
+              left = g.left + scan.cards.count(c => !s.shown.contains(c.version)),
+              again = g.again + again,
+              unwritten = g.unwritten ++ unopened ++ kept
             )
-          }
+          )
       }
     }
   }
@@ -277,13 +259,16 @@ object TopicDream {
 
   private val Attach: MoveName = move("attach")
 
-  /** The attach ask again, made only when its reply placed a different number than shown. */
+  /** The attach ask again, made only when its reply did not name each item shown once. */
   private val AttachAgain: MoveName = move("attach-again")
 
   /** What the attach ask asked again is told besides. */
   private val Again: String =
-    "Your previous reply placed a different number of discussions or cards than shown: give " +
-      "exactly one entry per discussion and one per card shown."
+    "Your previous reply did not name each discussion and card shown exactly once across " +
+      "`topics` and `aside`, or named a topic not shown: name each exactly once."
+
+  /** Why a run left all its attach ask was shown. */
+  private val Uncovered: String = "its reply did not name each discussion and card shown once"
 
   private val SetAside: MoveName = move("aside")
 
@@ -318,21 +303,26 @@ object TopicDream {
     * shown.
     */
   private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String =
-    "You sort a team's recent discussions and documents into topics: durable subjects the " +
-      s"team comes back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
-      "each a block of messages under their speakers' names, oldest first" +
+    "You sort a team's recent discussions and documents into topics: what the team comes " +
+      s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
+      "each a block of messages under their speakers' names, oldest first, numbered from 1 in " +
+      "the order shown" +
       (if (topics)
-         "; then the topics, each under `topic:`, numbered from 1 in the order shown, how its " +
-           "text begins"
+         "; then the topics, each under `topic:`, how its text begins, numbered from 1 in the " +
+           "order shown"
        else "") +
-      (if (cards) "; then the cards, each a document describing a file, under its label. "
+      (if (cards)
+         "; then the cards, each a document describing a file under its label, numbered from 1 " +
+           "in the order shown. "
        else ". ") +
       (if (topics) "" else "No topic is shown yet, so none has a number. ") +
-      (if (cards) "" else "No card is shown: `cards` is an empty list. ") +
-      "Reply by calling `reply` with `discussions`, one entry per discussion in the order shown, " +
-      "and `cards`, one per card in the order shown, each the number of the topic it belongs " +
-      "to, `new` when it opens a subject no topic shown covers that the team is likely to " +
-      "come back to, or `none` when it is too slight to keep."
+      (if (cards) "" else "No card is shown: every `cards` is an empty list. ") +
+      "Reply by calling `reply` with `topics`, one entry per topic discussions or cards go to: " +
+      "its `topic`, the number of a topic shown, or `new` for a new topic, one no topic shown " +
+      "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
+      "go to it, by number. All that goes to one new topic goes in one `new` entry, a card " +
+      "with the discussions about it. Give `aside` the discussions and cards too slight to " +
+      "keep. Name each discussion and card shown exactly once."
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
@@ -350,17 +340,39 @@ object TopicDream {
       "so keep what it says. Keep links to other topics (`topic:…`) and to files as written."
 
   private val AttachReply: Typed[Placing] = {
-    def placed(what: String) = ujson.Obj(
+    def numbers(what: String) = ujson.Obj(
       "type" -> "array",
-      "items" -> ujson.Obj("type" -> "string"),
-      "description" -> s"For each $what in the order shown: a topic's number, `new` or `none`."
+      "items" -> ujson.Obj("type" -> "integer", "minimum" -> 1),
+      "description" -> s"The numbers of the ${what}s, from 1 in the order shown."
     )
-    typed(
-      ujson.Obj(
+    def items(description: Option[String])(properties: (String, ujson.Value)*) = ujson.Obj.from(
+      Vector[(String, ujson.Value)](
         "type" -> "object",
-        "properties" -> ujson.Obj("discussions" -> placed("discussion"), "cards" -> placed("card")),
-        "required" -> ujson.Arr("discussions", "cards"),
+        "properties" -> ujson.Obj.from(properties),
+        "required" -> ujson.Arr.from(properties.map(_._1)),
         "additionalProperties" -> false
+      ) ++ description.map(d => "description" -> ujson.Str(d))
+    )
+    val discussions = "discussions" -> numbers("discussion")
+    val cards = "cards" -> numbers("card")
+    typed(
+      items(None)(
+        "topics" -> ujson.Obj(
+          "type" -> "array",
+          "items" -> items(None)(
+            "topic" -> ujson.Obj(
+              "type" -> "string",
+              "description" -> "The number of the topic shown these go to, or `new` for a new one."
+            ),
+            discussions,
+            cards
+          ),
+          "description" -> "One entry per topic its discussions and cards go to."
+        ),
+        "aside" -> items(Some("The discussions and cards too slight to keep, in no topic."))(
+          discussions,
+          cards
+        )
       ),
       Placing.read
     )
@@ -442,51 +454,138 @@ object TopicDream {
   }
 }
 
-/** Where the attach ask placed each strand and each card shown, in their order. */
-private[topic] final case class Placing(
-    strands: Vector[Placing.Place],
-    cards: Vector[Placing.Place]
-) extends caps.Pure
+/** The attach ask's reply as it gave it: the `topics` it put discussions and cards in, and those
+  * it set `aside`, each item by its number in the order shown, from 1.
+  */
+private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Placing.Items)
+    extends caps.Pure {
+
+  /** Where each of `discussions`, `cards` and `topics`, as numbered in their order, went: each
+    * group's topic (`None` for a new one) with its discussions and cards, then those set aside;
+    * `None` unless every discussion and card is named exactly once and nothing else is named,
+    * each topic named among `topics`.
+    */
+  def placed[S, C, T](
+      discussions: Vector[S],
+      cards: Vector[C],
+      topics: Vector[T]
+  ): Option[Placing.Placed[S, C, T]] = {
+    val items = this.topics.map(_.items) :+ aside
+    def once(named: Vector[Int], n: Int) = named.sorted == (1 to n).toVector
+    val groups = this.topics.map(g =>
+      (g.to match {
+        case Placing.To.In(k) => topics.lift(k - 1).map(Some(_))
+        case Placing.To.New => Some(None)
+      }).map(t =>
+        Placing.Went(
+          t,
+          g.items.discussions.flatMap(i => discussions.lift(i - 1)),
+          g.items.cards.flatMap(j => cards.lift(j - 1))
+        )
+      )
+    )
+    Option
+      .when(
+        once(items.flatMap(_.discussions), discussions.size) &&
+          once(items.flatMap(_.cards), cards.size) && groups.forall(_.nonEmpty)
+      )(
+        Placing.Placed(
+          groups.flatten,
+          aside.discussions.flatMap(i => discussions.lift(i - 1)),
+          aside.cards.flatMap(j => cards.lift(j - 1))
+        )
+      )
+  }
+}
 
 private[topic] object Placing {
 
-  enum Place extends caps.Pure {
+  /** Discussions and cards, by number. */
+  final case class Items(discussions: Vector[Int], cards: Vector[Int]) extends caps.Pure
 
-    /** In the `n`th topic shown, from 1. */
+  /** The items a reply puts in one topic. */
+  final case class Group(to: To, items: Items) extends caps.Pure
+
+  /** The topic a group goes to. */
+  enum To extends caps.Pure {
+
+    /** The `n`th topic shown, from 1. */
     case In(n: Int)
 
-    /** In a topic of its own. */
+    /** A new topic of its own. */
     case New
-
-    /** In none. */
-    case Aside
   }
 
+  /** What [[Placing.placed]] resolves a reply to. */
+  final case class Placed[S, C, T](
+      topics: Vector[Went[S, C, T]],
+      asideDiscussions: Vector[S],
+      asideCards: Vector[C]
+  )
+
+  /** The discussions and cards a group took to its topic, `None` for a new one. */
+  final case class Went[S, C, T](to: Option[T], discussions: Vector[S], cards: Vector[C])
+
   def read(v: ujson.Value): Either[String, Placing] = {
-    def places(key: String): Either[String, Vector[Place]] =
-      v.objOpt
+    def numbers(o: ujson.Value, key: String, where: String): Either[String, Vector[Int]] =
+      o.objOpt
         .flatMap(_.get(key))
         .flatMap(_.arrOpt)
-        .toRight(s"`$key` is a list")
+        .toRight(s"$where `$key` is a list")
         .flatMap(
-          _.toVector.foldLeft[Either[String, Vector[Place]]](Right(Vector.empty))((acc, e) =>
+          _.toVector.foldLeft[Either[String, Vector[Int]]](Right(Vector.empty))((acc, e) =>
             acc.flatMap(done =>
-              e.strOpt.map(_.trim.toLowerCase) match {
-                case Some("new") => Right(done :+ Place.New)
-                case Some("none") => Right(done :+ Place.Aside)
-                case Some(n) if n.nonEmpty && n.forall(_.isDigit) && n.length < 6 =>
-                  Right(done :+ Place.In(n.toInt))
-                case _ =>
-                  Left(s"each of `$key` is a topic's number, `new` or `none`: ${ujson.write(e)}")
-              }
+              number(e)
+                .map(done :+ _)
+                .toRight(s"each of $where `$key` is a number: ${ujson.write(e)}")
             )
           )
         )
+    def items(o: ujson.Value, where: String): Either[String, Items] =
+      for {
+        ds <- numbers(o, "discussions", where)
+        cs <- numbers(o, "cards", where)
+      } yield Items(ds, cs)
+    def group(o: ujson.Value): Either[String, Group] =
+      for {
+        to <- o.objOpt
+          .flatMap(_.get("topic"))
+          .flatMap(t =>
+            if (t.strOpt.exists(_.trim.toLowerCase == "new")) Some(To.New)
+            else number(t).map(To.In(_))
+          )
+          .toRight("each of `topics` holds `topic`, a topic's number or `new`")
+        is <- items(o, "a topic's")
+      } yield Group(to, is)
     for {
-      strands <- places("discussions")
-      cards <- places("cards")
-    } yield Placing(strands, cards)
+      groups <- v.objOpt
+        .flatMap(_.get("topics"))
+        .flatMap(_.arrOpt)
+        .toRight("`topics` is a list")
+        .flatMap(
+          _.toVector.foldLeft[Either[String, Vector[Group]]](Right(Vector.empty))((acc, g) =>
+            acc.flatMap(done => group(g).map(done :+ _))
+          )
+        )
+      aside <- v.objOpt
+        .flatMap(_.get("aside"))
+        .toRight("`aside` is an object")
+        .flatMap(items(_, "the aside's"))
+    } yield Placing(groups, aside)
   }
+
+  /** A whole number from 1, or a string of its digits. */
+  private def number(v: ujson.Value): Option[Int] =
+    v.numOpt
+      .filter(n => n.isWhole && n >= 1 && n < 100000)
+      .map(_.toInt)
+      .orElse(
+        v.strOpt
+          .map(_.trim)
+          .filter(n => n.nonEmpty && n.forall(_.isDigit) && n.length < 6)
+          .map(_.toInt)
+          .filter(_ >= 1)
+      )
 }
 
 /** A write ask's reply: the topic's new `lead` and the day's `passage`, in markdown. */

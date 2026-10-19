@@ -254,13 +254,43 @@ object TopicDreamTests extends TestSuite {
     )
   }
 
-  /** Everything shown placed `place`. */
+  /** A topic group of an attach reply: `topic`, a number or `new`, and the discussions and cards
+    * it holds, by number.
+    */
+  private def group(topic: String, discussions: Seq[Int], cards: Seq[Int] = Nil): ujson.Value =
+    ujson.Obj(
+      "topic" -> topic,
+      "discussions" -> ujson.Arr.from(discussions.map(ujson.Num(_))),
+      "cards" -> ujson.Arr.from(cards.map(ujson.Num(_)))
+    )
+
+  /** An attach reply of `groups`, with the discussions and cards it sets aside. */
+  private def placed(
+      groups: Seq[ujson.Value],
+      asideDiscussions: Seq[Int] = Nil,
+      asideCards: Seq[Int] = Nil
+  ): ujson.Value =
+    ujson.Obj(
+      "topics" -> ujson.Arr.from(groups),
+      "aside" -> ujson.Obj(
+        "discussions" -> ujson.Arr.from(asideDiscussions.map(ujson.Num(_))),
+        "cards" -> ujson.Arr.from(asideCards.map(ujson.Num(_)))
+      )
+    )
+
+  /** Everything shown placed `place`: each in a new topic of its own for `new`, set aside for
+    * `none`, else all in the topic of that number.
+    */
   private def placing(place: String): (String, String) -> ujson.Value = (_, shown) => {
     val (discussions, _, cards) = counted(shown)
-    ujson.Obj(
-      "discussions" -> ujson.Arr.from(Vector.fill(discussions)(ujson.Str(place))),
-      "cards" -> ujson.Arr.from(Vector.fill(cards)(ujson.Str(place)))
-    )
+    val ds = 1 to discussions
+    val cs = 1 to cards
+    place match {
+      case "new" =>
+        placed(ds.map(i => group("new", Seq(i))) ++ cs.map(j => group("new", Nil, Seq(j))))
+      case "none" => placed(Nil, ds, cs)
+      case n => placed(Seq(group(n, ds, cs)))
+    }
   }
 
   private val everyNew: (String, String) -> ujson.Value = placing("new")
@@ -288,7 +318,7 @@ object TopicDreamTests extends TestSuite {
         now = Now.plusSeconds(600),
         attach = (_, _) =>
           // Two discussions, then one topic: the first joins it, the second opens its own.
-          ujson.Obj("discussions" -> ujson.Arr("1", "new"), "cards" -> ujson.Arr())
+          placed(Seq(group("1", Seq(1)), group("new", Seq(2))))
       )
       (
         first,
@@ -323,9 +353,9 @@ object TopicDreamTests extends TestSuite {
         unread =
           d => DocKey.value(d.key) == key(b) || DocText.value(d.text).contains("The deploy plan."),
         attach = (_, shown) =>
-          ujson.Obj(
-            "discussions" -> ujson.Arr.from(Vector.fill(counted(shown)._1)(ujson.Str("1"))),
-            "cards" -> ujson.Arr.from(Vector.fill(counted(shown)._3)(ujson.Str("new")))
+          placed(
+            group("1", 1 to counted(shown)._1) +:
+              (1 to counted(shown)._3).map(j => group("new", Nil, Seq(j)))
           )
       )
       val attach = runs.asked.filter(_.kind == "attach").last
@@ -351,7 +381,7 @@ object TopicDreamTests extends TestSuite {
       val b = strand(w, "C2", "deploy rollback", 100)
       val reply = runs.run(
         now = Now.plusSeconds(600),
-        attach = (_, _) => ujson.Obj("discussions" -> ujson.Arr("1"), "cards" -> ujson.Arr())
+        attach = (_, _) => placed(Seq(group("1", Seq(1))))
       )
       val attach = runs.asked.filter(_.kind == "attach").last
       (reply, counted(attach.shown), runs.referring(Ref.Strand(b.id))) ==> (
@@ -362,33 +392,73 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "an attach reply placing a different number than shown is asked once more, and the second placed, within the job's limits"
+      "a discussion and a card one new topic group holds open one topic, written from both"
     ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
-      val reply = runs.run(
-        most = 1,
-        attach = (system, shown) =>
-          if (system.contains("Your previous reply")) everyNew(system, shown)
-          else ujson.Obj("discussions" -> ujson.Arr("new", "new"), "cards" -> ujson.Arr())
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      val lineage = runs.topics.flatMap(d =>
+        TopicKey
+          .read(d.key)
+          .toVector
+          .flatMap(k => TopicWrite.read(k, d.data).toOption.toVector)
+          .flatMap(_.topic.passages.flatMap(_.from.tags))
       )
-      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
+      (
+        reply,
+        runs.kept.map(_._1),
+        lineage.map {
+          case Lineage.Tag.Strand(root, _, _) => s"strand ${ConversationId.value(root)}"
+          case Lineage.Tag.Card(_) => "card"
+          case Lineage.Tag.Topic(_) => "topic"
+        }
+      ) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector("attach", "attach", "write"),
-        Vector(key(a))
+        Vector(key(a)),
+        Vector(s"strand ${a.id}", "card")
       )
     }
 
-    test("an attach reply placing a different number than shown twice leaves all it was shown") {
+    test(
+      "an attach reply omitting a card shown, or naming a discussion twice, is asked once more, the second placed and counted asked again, within the job's limits"
+    ) {
+      // A reply omitting card 1, then one naming discussion 1 twice.
+      val wrong = Seq(
+        placed(Seq(group("new", Seq(1)))),
+        placed(Seq(group("new", Seq(1), Seq(1))), asideDiscussions = Seq(1))
+      )
+      wrong.map { first =>
+        val w = new StrandWorld
+        val a = strand(w, "C1", "deploy pipeline")
+        val runs = new Runs(w)
+        val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+        val reply = runs.run(
+          most = 1,
+          attach = (system, _) =>
+            if (system.contains("Your previous reply")) placed(Seq(group("new", Seq(1), Seq(1))))
+            else first
+        )
+        (reply, runs.asked.map(_.kind), runs.kept.map(_._1) == Vector(key(a)))
+      } ==> Seq.fill(2)(
+        (
+          "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 asked again",
+          Vector("attach", "attach", "write"),
+          true
+        )
+      )
+    }
+
+    test(
+      "an attach reply not naming each discussion and card shown once, twice, leaves all it was shown"
+    ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
-      val reply = runs.run(attach =
-        (_, _) => ujson.Obj("discussions" -> ujson.Arr("none", "none"), "cards" -> ujson.Arr())
-      )
+      val reply = runs.run(attach = (_, _) => placed(Nil, asideDiscussions = Seq(1, 1)))
       (reply, runs.asked.map(_.kind), runs.kept, runs.aside._1) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply placed a different number than shown)",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply did not name each discussion and card shown once)",
         Vector("attach", "attach"),
         Vector(),
         Vector()
@@ -481,7 +551,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(
         day = day2,
         now = later,
-        attach = (_, _) => ujson.Obj("discussions" -> ujson.Arr("1"), "cards" -> ujson.Arr())
+        attach = (_, _) => placed(Seq(group("1", Seq(1))))
       )
       val joined = runs.kept
       val moved = runs.run(day = day2, now = later, rooms = labelled(Internal, "C1"))
