@@ -26,6 +26,22 @@ trait DocumentShelf {
     */
   def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]]
 
+  /** What `keep` reads of its [[newest]] documents, most recently written first, at most `n`,
+    * back no further than the first `past` holds to; none when `n` is not positive.
+    */
+  final def newestWhere[A](n: Int, past: Document => Boolean)(keep: Document => Option[A])(using
+      Tx^
+  ): Either[StoreError, Vector[A]] = {
+    // The newest `k`, `k` doubled until they hold `n` kept, reach one past, or are all.
+    def from(k: Int): Either[StoreError, Vector[A]] =
+      newest(k).flatMap { ds =>
+        val kept = ds.takeWhile(d => !past(d)).flatMap(keep(_))
+        val done = kept.size >= n || ds.size < k || ds.exists(past)
+        if (done || k > Int.MaxValue / 2) Right(kept.take(n)) else from(k * 2)
+      }
+    from(n)
+  }
+
   /** Its current documents this transaction reads that hold `ref`, most recently written first,
     * at most `n`; none when `n` is not positive.
     */

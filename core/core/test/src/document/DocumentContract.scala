@@ -498,6 +498,23 @@ abstract class DocumentContract extends TestSuite {
       transaction(ok(shelf(q).current(key("first"), Label.Public))) ==> None
     }
 
+    test(
+      "newestWhere reads back past the documents it passes over for n kept, and no further than past"
+    ) {
+      val p = name("doc-newest-where")
+      val k = keeper(p, terms())
+      (1 to 6).foreach(i => put(k, s"k$i", "words", i))
+      def where(n: Int, before: Int) =
+        transaction(
+          ok(
+            shelf(p).newestWhere(n, _.written.isBefore(at(before)))(d =>
+              Option.when(DocKey.value(d.key).last.asDigit % 2 == 0)(DocKey.value(d.key))
+            )
+          )
+        )
+      (where(2, 0), where(10, 5), where(0, 0)) ==> (Vector("k6", "k4"), Vector("k6"), Vector())
+    }
+
     test("each version that stops being current, and each withdrawal, is marked when it does") {
       val (p, q) = (name("doc-tombstone"), name("doc-tombstone-other"))
       val k = keeper(p, terms())

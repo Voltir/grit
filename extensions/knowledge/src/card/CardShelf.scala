@@ -46,39 +46,20 @@ object CardShelf {
     def changed(since: Instant, until: Instant, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
-      newest(since, until, n)(_ => true)
+      documents.newestWhere(n, _.written.isBefore(since))(card(until))
 
     def linked(units: Set[Ref], until: Instant, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
       if (units.isEmpty) Right(Vector.empty)
-      else newest(Instant.MIN, until, n)(_.unit.exists(units.contains))
-
-    /** The cards `keep` keeps among those written from `since` until `until`, most recent first,
-      * at most `n`.
-      */
-    private def newest(since: Instant, until: Instant, n: Int)(keep: Seen => Boolean)(using
-        Tx^
-    ): Either[StoreError, Vector[Seen]] = {
-      // The newest `k` documents, `k` doubled until they hold `n` cards kept, reach one written
-      // before `since` (every later one is older), or are all there are.
-      def from(k: Int): Either[StoreError, Vector[Seen]] =
-        documents.newest(k).flatMap { ds =>
-          val seen = ds
-            .filterNot(d => d.written.isBefore(since) || d.written.isAfter(until))
-            .flatMap(card)
-            .filter(keep)
-          val done =
-            seen.size >= n || ds.size < k || ds.lastOption.exists(_.written.isBefore(since))
-          if (done || k > Int.MaxValue / 2) Right(seen.take(n)) else from(k * 2)
-        }
-      if (n <= 0) Right(Vector.empty) else from(n)
-    }
+      else
+        documents.newestWhere(n, _ => false)(card(until)(_).filter(_.unit.exists(units.contains)))
   }
 
-  /** `d` as a card seen, or `None` when it is no card. */
-  private def card(d: Document): Option[Seen] =
+  /** `d` as a card seen, or `None` when it is no card or written after `until`. */
+  private def card(until: Instant)(d: Document): Option[Seen] =
     for {
+      _ <- Option.unless(d.written.isAfter(until))(())
       key <- CardKey.parse(DocKey.value(d.key)).toOption
       o <- d.data.objOpt
       path <- o.get("path").flatMap(_.strOpt)
