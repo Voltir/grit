@@ -38,7 +38,8 @@ import grit.knowledge.topic.{Aside, Lineage, Passage, Topic, TopicDream, TopicPa
   * day, scored against the room's truth: run by hand, never by the suites.
   *
   * Args: the room's JSON file, the day's cap in USD, then optionally the most topics a run
-  * writes (default [[TopicDocuments.PerRun]]). The database is `GRIT_DATABASE_*`'s, which must
+  * writes (default [[TopicDocuments.PerRun]]) and how many of the room's first days are run
+  * (default all; the score is then of what those days placed). The database is `GRIT_DATABASE_*`'s, which must
   * be empty and is left as the runs leave it; OpenRouter's key and the models' variables come
   * from the environment over `GRIT_ENV_FILE` (`.env` when unset). The room is moved whole days
   * so its last day is yesterday (UTC), its messages written as [[RoomRun.seeded]] writes them,
@@ -83,6 +84,11 @@ object TopicRoom {
         .fold(Right(TopicDocuments.PerRun))(n =>
           n.toIntOption.filter(_ > 0).toRight(s"no number of topics: $n")
         )
+      ran <- args
+        .lift(3)
+        .fold(Right(Int.MaxValue))(n =>
+          n.toIntOption.filter(_ > 0).toRight(s"no number of days: $n")
+        )
       env <- RoomRun.env
       config <- DbConfig.fromEnv(env).left.map(_.toString)
       room <- RoomRun.room(file)
@@ -108,7 +114,16 @@ object TopicRoom {
       day = (i: Int, at: Instant) =>
         RoomRun.deployment(
           env,
-          Vector(DayRun(topics, dream, i, at, params(days(i).plusDays(moved)))) ++ cards,
+          Vector(
+            new TopicRuns.DayRun(
+              topics,
+              dream,
+              key(i),
+              at,
+              params(days(i).plusDays(moved)),
+              Label.Public
+            )
+          ) ++ cards,
           cap
         )
       firstAt = Instant.now().plusSeconds(60)
@@ -126,7 +141,7 @@ object TopicRoom {
         Launch(engine, deployment, secrets, Launch.Run.Served, sweeping = true, println)
         cardsKept(engine, room, Duration.ofDays(moved))
         val terms = topics.documents.map(_.terms).getOrElse(sys.error("the topics' terms"))
-        days.indices.foreach { i =>
+        days.indices.take(ran).foreach { i =>
           val at = if (i == 0) firstAt else Instant.now().plusSeconds(60)
           val ran =
             if (i == 0) Right(deployment)
@@ -136,10 +151,11 @@ object TopicRoom {
             case Right(d) =>
               if (i > 0) right(Launch.reconcile(engine.schedules, engine.jot, d, Instant.now()))
               println(
-                s"day ${i + 1} (${days(i).plusDays(moved)}): ${waited(engine, i)}; " +
+                s"day ${i + 1} (${days(i).plusDays(moved)}): " +
+                  s"${TopicRuns.waited(engine, Topics, key(i), Longest, () => ())}; " +
                   s"${current(engine, terms).size} topics; spent ${RoomRun.spent(engine)}"
               )
-              println(s"  replied: ${replied(engine, i, at)}")
+              println(s"  replied: ${TopicRuns.replied(engine, Topics, key(i), at)}")
           }
         }
         val truth = TopicScore.truth(room, ZoneOffset.UTC)
@@ -157,43 +173,8 @@ object TopicRoom {
       } finally engine.close()
     }
 
-  /** The topics plugin, its one schedule `topics-room-{i}`, once `at`, with `params`. */
-  private final class DayRun(
-      topics: TopicDocuments,
-      dream: TopicDream,
-      i: Int,
-      at: Instant,
-      params: TopicParams
-  ) extends Plugin {
-    val name: PluginName = topics.name
-    val version: Int = topics.version
-    override val needs = topics.needs
-    override val documents: Option[Documents] = topics.documents
-    override val jobs = Vector(dream)
-    override val schedules: Vector[Declared[?]] = Vector(
-      Declared(
-        key(i),
-        dream,
-        SlotRule.Once(at, Grace.of(10.minutes).getOrElse(Grace.Zero)),
-        params,
-        Label.Public
-      )
-    )
-  }
-
   /** The cards' plugin: their documents, exported as the knowledge plugin exports its own. */
-  private object RoomCards extends Exports[CardShelf] {
-    val name: PluginName = Cards
-    val version: Int = 1
-    override val documents: Option[Documents] = Some(new Documents {
-      val terms: DocumentTerms = DocLabel
-        .of("knowledge card")
-        .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, 100))
-        .fold(sys.error, identity)
-      val posting: Option[DocumentPosting] = None
-    })
-    def service(own: PluginReads): CardShelf = CardShelf.over(own.documents)
-  }
+  private val RoomCards = new TopicRuns.Cards(Cards, TopicRuns.CardTerms)
 
   /** Each of `room`'s cards kept, `shift` later, as a Drive file's under its id. */
   private def cardsKept(engine: Engine^, room: Room, shift: Duration): Unit =
@@ -224,34 +205,10 @@ object TopicRoom {
       }
     }
 
-  /** How day `i`'s schedule ended, waited for at most [[Longest]]. */
-  private def waited(engine: Engine^, i: Int): String = {
-    val id = ScheduleId.declared(Declarer.Plugin(Topics), key(i))
-    val until = Instant.now().plus(Longest)
-    def ended = right(engine.db.read(Subject.Public)(engine.schedules.read(id))).flatMap(_.ended)
-    while ((ended.isEmpty || !engine.unfinished().contains(0)) && Instant.now().isBefore(until))
-      Thread.sleep(2000)
-    ended.fold("not ended")(e => s"ended ${e.word}")
-  }
-
   /** The topics current at public, by key. */
   private def current(engine: Engine^, terms: DocumentTerms): Vector[String] =
     right(engine.db.read(Subject.Public)(engine.keeper(Topics, terms).newest(Int.MaxValue)))
       .flatMap(d => TopicKey.read(d.key).map(TopicKey.value))
-
-  /** Day `i`'s run's reply, its schedule's once slot due `at`; or that it has none. */
-  private def replied(engine: Engine^, i: Int, at: Instant): String = {
-    val slot = Slot(ScheduleId.declared(Declarer.Plugin(Topics), key(i)), Slot.kept(at))
-    right(engine.db.read(Subject.Public) {
-      engine.conversations
-        .find(slot.origin(TopicDream.Name))
-        .flatMap(_.fold(Right(Vector.empty))(c => engine.entries.list(c.id)))
-    }).reverseIterator
-      .collectFirst { case Entry(_, _, _, _, _, Payload.Message(a: Message.Assistant), _, _) =>
-        a.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-      }
-      .getOrElse("no reply")
-  }
 
   /** Where a truth item went: an `opening` or a card, in `topics` (by key), and whether it is
     * in its floor's aside at any digest or version (`aside`).

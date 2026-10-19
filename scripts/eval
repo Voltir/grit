@@ -304,6 +304,19 @@
 #       rows of openings hold the room's own text, and printed up to the first run's rows.
 #       Jev's key is JEV_API_KEY, as for run.
 #
+#   scripts/eval backfill --capture <yyyymmdd> --spend <usd> [--per-run <n>] [--from <day>]
+#                         [--until <day>]
+#       grit_eval_<date> copied afresh to grit_eval_shadow, every workflow left pending or
+#       enqueued in the copy marked cancelled so its engine runs none, then the topics job
+#       run on it for each day (UTC) its entries were written, from --from until --until
+#       (yyyy-mm-dd, both included; default every one), oldest first, each twice
+#       (TopicBackfill): the second run of each day is to write nothing and spend nothing,
+#       and is printed `unchanged` when it does. At most --per-run topics a run (default 10).
+#       --spend is the engine's daily cap in USD. Prints by shape only. The copy is left for
+#       the next command (duplication), and dropped by the next backfill. OpenRouter's key and
+#       the models' variables are read from the environment over GRIT_ENV_FILE (the main
+#       checkout's .env when unset).
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -665,6 +678,40 @@ lab() {
     "${rest[@]}"
 }
 
+backfill() {
+  local date= spend= perRun=10 from=0001-01-01 until=9999-12-31
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --capture) [ $# -ge 2 ] || usage; date=$2; shift 2 ;;
+      --spend) [ $# -ge 2 ] || usage; spend=$2; shift 2 ;;
+      --per-run) [ $# -ge 2 ] || usage; perRun=$2; shift 2 ;;
+      --from) [ $# -ge 2 ] || usage; from=$2; shift 2 ;;
+      --until) [ $# -ge 2 ] || usage; until=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$date" ] && [ -n "$spend" ] || usage
+  [[ $date =~ ^[0-9]{8}$ ]] || { echo "eval: --capture is yyyymmdd" >&2; exit 2; }
+  [[ $from =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && $until =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+    { echo "eval: --from and --until are yyyy-mm-dd" >&2; exit 2; }
+  local source="grit_eval_$date" db=grit_eval_shadow
+  exists "$source" || { echo "eval: no capture $source" >&2; exit 1; }
+  compose dropdb -U grit --if-exists "$db"
+  compose createdb -U grit -T "$source" "$db"
+  local cancelled
+  cancelled=$(compose psql -U grit -d "$db" -Atc \
+    "WITH c AS (UPDATE dbos.workflow_status SET status = 'CANCELLED' WHERE status IN ('PENDING', 'ENQUEUED') RETURNING 1) SELECT count(*) FROM c")
+  echo "eval: $cancelled workflows left pending or enqueued in the copy, cancelled"
+  local days
+  days=$(compose psql -U grit -d "$db" -Atc \
+    "SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date FROM grit.entries WHERE (created_at AT TIME ZONE 'UTC')::date BETWEEN '$from' AND '$until' ORDER BY 1")
+  [ -n "$days" ] || { echo "eval: no entries between $from and $until" >&2; exit 1; }
+  # shellcheck disable=SC2086 # one argument a day
+  GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}" \
+    GRIT_DATABASE_URL="jdbc:postgresql://localhost:5432/$db" \
+    ./mill --ticker false grit.app.it.runMain grit.app.main.TopicBackfill "$spend" "$perRun" $days
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -674,6 +721,7 @@ reply_labels() {
 
 case $1 in
   capture) shift; capture "$@" ;;
+  backfill) shift; backfill "$@" ;;
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;
