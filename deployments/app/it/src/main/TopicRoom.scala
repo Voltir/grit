@@ -10,7 +10,6 @@ import grit.core.id.{
   ConversationId,
   CorpusName,
   Declarer,
-  DocKey,
   DocumentVersion,
   PluginName,
   ScheduleId,
@@ -33,7 +32,7 @@ import grit.kit.run.Launch
 import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.ref.{CardKey, Ref, TopicKey}
-import grit.knowledge.topic.{TopicDream, TopicParams}
+import grit.knowledge.topic.{Aside, Lineage, TopicDream, TopicParams}
 
 /** A real topics run over a room of the eval's shape (`eval/resources/rooms`), one run per past
   * day, scored against the room's truth: run by hand, never by the suites.
@@ -275,9 +274,6 @@ object TopicRoom {
     }
   }
 
-  /** The aside's key, as the topics plugin writes it; read here by its data alone. */
-  private val AsideKey: DocKey = DocKey.of("topic:aside").fold(sys.error, identity)
-
   /** Each opening, by id, in the topics referring to a strand holding its conversation; each
     * card in those referring to its file; each with whether the aside holds it.
     */
@@ -289,12 +285,10 @@ object TopicRoom {
   ): Map[String, Where] = {
     val now = Instant.now()
     val aside = right(
-      engine.db.read(Subject.Public)(engine.keeper(Topics, terms).current(AsideKey, Label.Public))
-    ).flatMap(_.data.objOpt).flatMap(_.get("aside")).flatMap(_.arrOpt).toVector.flatten
-    def asideHolds(key: String, value: ujson.Value) =
-      aside.exists(_.objOpt.flatMap(_.get(key)).contains(value))
+      engine.db.read(Subject.Public)(Aside.read(engine.keeper(Topics, terms), Label.Public))
+    ).tags
     val cardTerms = RoomCards.documents.map(_.terms).getOrElse(sys.error("the cards' terms"))
-    def cardVersion(id: String): Option[Long] =
+    def cardVersion(id: String): Option[DocumentVersion] =
       CorpusName
         .of("room")
         .toOption
@@ -307,7 +301,7 @@ object TopicRoom {
             )
           )
         )
-        .map(d => DocumentVersion.value(d.version))
+        .map(_.version)
     def referring(r: Ref): Set[String] =
       Ref
         .written(r)
@@ -331,14 +325,19 @@ object TopicRoom {
       id -> Where(
         true,
         holding.flatMap(_._2).toSet,
-        holding.exists((s, _) => asideHolds("strand", ujson.Str(ConversationId.value(s.root))))
+        holding.exists((s, _) =>
+          aside.exists {
+            case Lineage.Tag.Strand(root, _, _) => root == s.root
+            case _ => false
+          }
+        )
       )
     }
     openings ++ room.cards.map(c =>
       c.id -> Where(
         false,
         referring(Ref.Drive(c.id)),
-        cardVersion(c.id).exists(v => asideHolds("card", ujson.Num(v.toDouble)))
+        cardVersion(c.id).exists(v => aside.contains(Lineage.Tag.Card(v)))
       )
     )
   }

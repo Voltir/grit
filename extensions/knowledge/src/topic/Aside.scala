@@ -13,10 +13,10 @@ import grit.knowledge.topic.TopicWrite.Kept
   * topic, at the digest or version it was shown at, so no later run asks of it again until it
   * changes. One document per label, under [[Key]], which is no topic's ([[TopicKey.read]]).
   */
-private[topic] object Aside {
+object Aside {
 
   /** `topic:aside`. */
-  val Key: DocKey =
+  private[topic] val Key: DocKey =
     // Lower case letters and one `:`: DocKey.of never refuses them.
     DocKey.of("topic:aside").fold(e => throw new IllegalStateException(e), identity)
 
@@ -33,7 +33,7 @@ private[topic] object Aside {
       .map(_.flatMap(d => TopicJson.readAside(d.data).toOption).getOrElse(Lineage.of(Vector.empty)))
 
   /** `tags` joined to the aside at its transaction's floor ([[Tx.floor]]), as [[kept]]. */
-  def joined(keeper: DocumentKeeper, tags: Vector[Lineage.Tag], at: Instant)(using
+  private[topic] def joined(keeper: DocumentKeeper, tags: Vector[Lineage.Tag], at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Kept] = {
     val floor = Tx.floor(tx)
@@ -44,7 +44,7 @@ private[topic] object Aside {
     * withdrawn when it holds nothing; `Kept(None, 0)` when nothing was written, it being so
     * already.
     */
-  def kept(keeper: DocumentKeeper, floor: Label, aside: Lineage, at: Instant)(using
+  private[topic] def kept(keeper: DocumentKeeper, floor: Label, aside: Lineage, at: Instant)(using
       Tx^
   ): Either[StoreError, Kept] =
     if (aside.tags.isEmpty)
