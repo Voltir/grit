@@ -9,7 +9,7 @@ import grit.core.need.{Exported, Needs}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
-import grit.knowledge.card.CardShelf
+import grit.knowledge.card.{CardShelf, UnitKind}
 import grit.knowledge.ref.{CardKey, Ref, TopicKey}
 
 /** A topics run's scan: by ids alone, what its asks are made of. */
@@ -302,7 +302,10 @@ private[topic] object TopicScan {
     )
     val strands = p.strands.collect { case (s, None) => s }
     // Most recent first as the shelf gives them: placed oldest first, as strands are.
-    val cards = p.cards.collect { case (c, None) if !paired.contains(c.version) => c }.reverse
+    // A directory's card describes a container, not a matter: it attaches only by ref or a link.
+    val cards = p.cards.collect {
+      case (c, None) if !paired.contains(c.version) && c.kind == UnitKind.File => c
+    }.reverse
     val byRef = attached.flatMap(t => t.version.map(t.key -> _))
     val leads = byRef ++ topics
       .sortBy((_, v, _) => -DocumentVersion.value(v))
@@ -433,7 +436,8 @@ private[topic] object TopicScan {
     val o = ujson.Obj(
       "version" -> DocumentVersion.value(c.version).toDouble,
       "key" -> CardKey.value(c.key),
-      "title" -> c.title
+      "title" -> c.title,
+      "kind" -> c.kind.word
     )
     c.unit.flatMap(u => Ref.written(u).toOption).foreach(r => o("unit") = refJson(r))
     o
@@ -453,7 +457,9 @@ private[topic] object TopicScan {
       version,
       key,
       title,
-      o.get("unit").flatMap(readRef)
+      o.get("unit").flatMap(readRef),
+      // A card seen before its kind was recorded reads as a file's.
+      UnitKind.of(o.get("kind").flatMap(_.strOpt))
     )
 
   private def lead(k: TopicKey, v: DocumentVersion): ujson.Value =

@@ -79,8 +79,8 @@ object CardShelfTests extends TestSuite {
       val (docs, versions) = kept(Vector(a -> at(1), b -> at(2), c -> at(3)))
       CardShelf.over(docs.shelf(name)).changed(at(2), at(100), 10) ==> Right(
         Vector(
-          CardShelf.Seen(versions(2), c.key, "Notes", Some(Ref.Drive("f3"))),
-          CardShelf.Seen(versions(1), b.key, "f2", Some(Ref.Drive("f2")))
+          CardShelf.Seen(versions(2), c.key, "Notes", Some(Ref.Drive("f3")), UnitKind.File),
+          CardShelf.Seen(versions(1), b.key, "f2", Some(Ref.Drive("f2")), UnitKind.File)
         )
       )
     }

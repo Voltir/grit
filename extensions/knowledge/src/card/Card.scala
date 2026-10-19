@@ -12,6 +12,13 @@ enum UnitKind(val word: String) {
   case Directory extends UnitKind("directory")
 }
 
+object UnitKind {
+
+  /** The kind whose [[UnitKind.word]] is `word`; a file's for any other or none. */
+  def of(word: Option[String]): UnitKind =
+    if (word.contains(Directory.word)) Directory else File
+}
+
 /** A unit's card: its key, its path in its source, its kind and version, the scope a
   * directory's card was made under (none for a file's), its summary, the call that reads it, and
   * its title, the unit's name as its source shows it, when it gave one; the path of the listing

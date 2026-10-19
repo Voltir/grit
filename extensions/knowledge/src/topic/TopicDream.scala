@@ -25,7 +25,8 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * unit its pointer reads, which a topic refers to when it was written from that card, links it,
   * or a strand of it links it); pairs each card a strand it takes up links ([[TopicScan.Linked]],
   * read whatever its age or whether it was set aside) with that strand, to go wherever the strand
-  * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others go, at most `perRun` strands and `perRun` cards, each
+  * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others
+  * go but a directory's cards, which attach only by ref or a strand's link, at most `perRun` strands and `perRun` cards, each
   * numbered in the order shown, as are the topics shown (those attached to, and at most
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new

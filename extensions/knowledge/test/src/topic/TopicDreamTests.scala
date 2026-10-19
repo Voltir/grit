@@ -28,7 +28,7 @@ import grit.core.store.{Conversation, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded}
 import grit.dbos.sql.TestTx
-import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
+import grit.knowledge.card.{Card, CardShelf, CardSummary, Scope, UnitVersion}
 import grit.knowledge.ref.{Ref, TopicKey}
 
 import utest.*
@@ -200,6 +200,39 @@ object TopicDreamTests extends TestSuite {
             c.docKey,
             Label.Public,
             integrity,
+            Place.Everywhere,
+            c.text,
+            c.data,
+            Some(c.pointer),
+            at
+          )
+      )
+    }
+
+    /** A card of the repository `o/r`'s directory `path`, kept by the knowledge plugin `at`. */
+    def directory(path: String, says: String, at: Instant = Now): Unit = {
+      val c = Card.directory(
+        right(CorpusName.of("repo")),
+        path,
+        right(UnitVersion.of("2026-01-01T00:00:00Z")),
+        Scope.of(Set("**")),
+        right(CardSummary.of(says, Vector.empty)),
+        right(
+          Pointer.of(
+            right(ToolName.of("github_get_file_contents")),
+            "owner" -> ujson.Str("o"),
+            "repo" -> ujson.Str("r"),
+            "path" -> ujson.Str(path)
+          )
+        )
+      )
+      val _ = ok(
+        documents
+          .keeper(Knowledge, CardTerms)
+          .write(
+            c.docKey,
+            Label.Public,
+            Integrity.Member,
             Place.Everywhere,
             c.text,
             c.data,
@@ -689,6 +722,30 @@ object TopicDreamTests extends TestSuite {
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 ref too long to keep",
         Vector(true)
       )
+    }
+
+    test("a directory's card is never shown to the attach ask") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      runs.directory("skills", "The skills, a folder each.", Now.minusSeconds(60))
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val _ = runs.run(attach = placing("none"))
+      runs.asked.map(x =>
+        (counted(x.shown), x.shown.contains("The skills"), x.shown.contains("The deploy plan."))
+      ) ==> Vector(((1, 0, 1), false, true))
+    }
+
+    test("a directory's card attaches when a strand links its folder") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.directory("skills", "The skills, a folder each.", Now.minusSeconds(60))
+      val a = strand(w, "C1", "the skills are in https://github.com/o/r/tree/main/skills")
+      val _ = runs.run()
+      (
+        runs.asked.map(x => (x.kind, x.shown.contains("The skills"))),
+        runs.referring(Ref.GitHub("o", "r", "skills"))
+      ) ==> (Vector(("attach", false), ("write", true)), Vector(key(a)))
     }
 
     test("a new entry of cards alone sets them aside and opens no topic") {

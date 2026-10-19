@@ -30,10 +30,16 @@ trait CardShelf extends caps.Pure {
 object CardShelf {
 
   /** A card as [[CardShelf.changed]] sees it: its document's `version`, its `key`, its `title`
-    * (its unit's name, or its path when its source gave none) and the `unit` its pointer reads.
+    * (its unit's name, or its path when its source gave none), the `unit` its pointer reads, and
+    * whether that is a file or a directory (`kind`).
     */
-  final case class Seen(version: DocumentVersion, key: CardKey, title: String, unit: Option[Ref])
-      extends caps.Pure
+  final case class Seen(
+      version: DocumentVersion,
+      key: CardKey,
+      title: String,
+      unit: Option[Ref],
+      kind: UnitKind
+  ) extends caps.Pure
 
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
@@ -80,6 +86,7 @@ object CardShelf {
       d.version,
       key,
       o.get("title").flatMap(_.strOpt).getOrElse(path),
-      d.pointer.flatMap(Ref.ofPointer)
+      d.pointer.flatMap(Ref.ofPointer),
+      UnitKind.of(o.get("kind").flatMap(_.strOpt))
     )
 }
