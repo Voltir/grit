@@ -81,6 +81,7 @@ import grit.eval.harness.loss.{LossWindow, Measure}
 import grit.eval.harness.pull.{Pull, ShadowLog}
 import grit.eval.harness.reply.{
   Admission,
+  Answered,
   Assembled,
   Duplication,
   Expect,
@@ -89,6 +90,7 @@ import grit.eval.harness.reply.{
   Reference,
   Refound,
   ReplyReview,
+  Summaries,
   Synthetic,
   TurnAnswers,
   TurnAsk,
@@ -169,6 +171,7 @@ object Main {
       case "recall" :: rest => exit(flags(rest).flatMap(recall))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "duplication" :: rest => exit(flags(rest).flatMap(duplication(_, clock)))
+      case "summaries" :: rest => exit(flags(rest).flatMap(summaries(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
       case "lab-stitch" :: rest => exit(flags(rest).flatMap(labStitch(_, clock)))
@@ -601,6 +604,90 @@ object Main {
         } yield Duplication.of(windows, links)
       }
     } yield counted.lines.foreach(println)
+
+  /** `summaries --capture <dir> --url <jdbc> --models <id>,<id>… --cache <dir> --out <file>
+    * --spend <usd> [--first <n>] [--dry-run true]`: the first `--first` turns (30 when not
+    * given) the restored database recorded before its dump that kept a summary
+    * ([[Summaries.of]]), each one's summary request asked again of each model named, an
+    * OpenRouter model id, under the seed catalog's summary pin with its model replaced, each
+    * answer kept under `<cache>` so it is paid for once, under the `--spend` cap in USD over
+    * all the models: refused before any call when the asks not kept are estimated over it
+    * ([[Queries.Usd]] each), and each call past it skipped. Written to `<file>`, the summaries'
+    * text side by side for a person to read ([[Summaries.review]]); printed: counts, the
+    * estimate and the spend. `--dry-run true` prints the cases and the estimate and asks
+    * nothing. OpenRouter's key comes from the environment over `GRIT_ENV_FILE` (`.env` when
+    * unset), read only when an ask is to be made; the database's login from
+    * `GRIT_DATABASE_USER` and `_PASSWORD`. A call's latency is measured on `clock`.
+    */
+  private def summaries(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      dir <- need(f, "capture").map(Path.of(_))
+      url <- need(f, "url")
+      models <- need(f, "models").flatMap(ms =>
+        Traversal.traverse(ms.split(",").toVector.map(_.trim).filter(_.nonEmpty))(m =>
+          grit.core.model.ModelId.of(m).toRight(s"--models $m: not an OpenRouter model id")
+        )
+      )
+      _ <- Either.cond(models.nonEmpty, (), "--models names none")
+      cacheDir <- need(f, "cache").map(Path.of(_))
+      store = Cache.at[String](cacheDir)(using Queries.text)
+      out <- need(f, "out").map(Path.of(_))
+      cap <- need(f, "spend").flatMap(decimal("spend"))
+      first <- f.get("first").fold(Right(30))(positive("first"))
+      dry = f.get("dry-run").contains("true")
+      manifest <- read(dir.resolve("capture.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
+      )
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      cases <- opened(config)(reader => Summaries.of(reader, manifest.dump.at, first))
+      pin <- Seed.catalog.map(_.pin.summary.first)
+      requests = cases.map(_.request)
+      // Each model's settings name it, so they key its answers; the key itself is read only
+      // when an ask is to be made.
+      keyless = models.map(m =>
+        OpenRouterConfig.of("", pin).copy(model = grit.core.model.ModelId.value(m))
+      )
+      estimated = keyless.map(Queries.estimate(requests, _, store)).sum
+      _ = println(
+        s"summaries: ${cases.size} cases, ${cases.count(_.live.isDefined)} with a live summary; " +
+          s"${models.size} models, estimated ${Cost.cents(estimated)}, cap ${Cost.cents(cap)}"
+      )
+      _ <-
+        if (dry) Right(())
+        else
+          for {
+            budget <- Budget.of(cap, estimated).left.map(refused)
+            key <-
+              if (estimated == 0) Right("")
+              else OpenRouterConfig.key(env).left.map(_.message)
+            answered = keyless.foldLeft((budget, Vector.empty[Answered])) { (done, c) =>
+              val asking: Provider^ =
+                if (estimated == 0) Queries.unasked() else new OpenRouterProvider(c.copy(apiKey = key))
+              val a = Queries.answer(requests, c, store, asking, done._1, clock)
+              (a.budget, done._2 :+ a)
+            }
+            (spent, each) = answered
+            _ <- write(
+              out,
+              Summaries.review(
+                dir.getFileName.toString,
+                cases,
+                keyless.map(_.model).zip(each.map(_.answers))
+              )
+            )
+          } yield {
+            keyless.zip(each).foreach { (c, a) =>
+              println(
+                s"  ${c.model}: asked ${a.asked}, cached ${a.cached}, skipped ${a.skipped}, " +
+                  s"failed ${a.failed}"
+              )
+            }
+            println(s"spent ${Cost.cents(spent.spent)}; review: $out")
+          }
+    } yield ()
 
   /** `recipes --eval <dir> --capture <yyyymmdd> --url <jdbc> --variants <name,…> --context
     * <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels <file>] [--window

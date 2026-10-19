@@ -326,6 +326,17 @@
 #       from, or a Standing document of one of that strand's conversations; with their
 #       workflow ids. Text-free.
 #
+#   scripts/eval summaries <yyyymmdd> --models <id>,<id> --spend <usd> [--first <n>]
+#                          [--dry-run]
+#       The first --first turns (30) grit_eval_<date> recorded that kept a summary, each one's
+#       summary request rebuilt by the turn's own builder and asked of each OpenRouter model
+#       named, at the catalog's summary settings, each answer kept in .local/eval/cache/ so it
+#       is paid for once, under the --spend cap in USD over all of them (refused when the
+#       estimate is over it). Written side by side, the live summary first, each with its
+#       tokens and cost, to .local/eval/review/summaries-<date>.md, which holds the summaries'
+#       text; prints counts, the estimate and the spend. --dry-run prints the cases and the
+#       estimate and asks nothing. OpenRouter's key as for rebuild.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -732,6 +743,27 @@ duplication() {
   harness duplication --capture "$dir" --url "jdbc:postgresql://localhost:5432/$db" "$@"
 }
 
+summaries() {
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
+  shift
+  local args=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --dry-run) args+=(--dry-run true); shift ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
+  mkdir -p "$main/.local/eval/review"
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness summaries --capture "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+    --cache "$main/.local/eval/cache" --out "$main/.local/eval/review/summaries-$capture.md" \
+    "${args[@]}"
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -743,6 +775,7 @@ case $1 in
   capture) shift; capture "$@" ;;
   backfill) shift; backfill "$@" ;;
   duplication) shift; duplication "$@" ;;
+  summaries) shift; summaries "$@" ;;
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;

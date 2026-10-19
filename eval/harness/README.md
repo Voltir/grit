@@ -17,8 +17,9 @@ Every file it writes is text-free (ids, digests, numbers, lengths and field name
 files for a person to read: the review files `scripts/eval inputs` and `scripts/eval context`
 write under `.local/eval/review/`, the stitch lab's report, whose rows of openings show a
 synthetic room's own text, and the reply reviews `scripts/eval replies` writes under
-`.local/eval/replies/`, which print only ids and counts unless asked to show the file; and
-the search queries a rebuild's window-only cases had written, each kept in the cache under
+`.local/eval/replies/`, which print only ids and counts unless asked to show the file, the
+summary comparison `scripts/eval summaries` writes under `.local/eval/review/`, and the
+search queries a rebuild's window-only cases had written, each kept in the cache under
 its request's key and never printed. A capture's text stays in Postgres, in the database the
 capture was restored to.
 
@@ -78,7 +79,9 @@ Packages, each importing only those above it:
   database records no deployment's groups, so it cannot read as the turn was cleared to. The
   duplication measure draws each window again with its documents as a database holds them
   now, its search run again whatever the turn recorded of it, since a recorded search could
-  not find a topic written later. ← `stats`, `capture`, `label`, `log`, `jev`
+  not find a topic written later. A summary comparison asks a turn's summary request again,
+  rebuilt by the turn's own builder over its conversation as it stood when its summary step
+  started, and writes the answers beside the live one for a person to read. ← `stats`, `capture`, `label`, `log`, `jev`
 - **`run`**: a run's calls asked of Jev through the shipped calls, answered from the cache when
   it holds them, else asked, timed and kept, within the cap. ← `capture`, `log`, `jev`
 - **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered

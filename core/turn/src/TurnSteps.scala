@@ -560,7 +560,7 @@ private[turn] object TurnSteps {
               .left
               .map(TurnFailure.ofStore)
               .flatMap { all =>
-                val request = summaryRequest(all, turn)
+                val request = TurnSummary.of(all, turn)
                 Asking
                   .reply(env.models.provider(pin), request, Hearing.silent(), env.clock)
                   .left
@@ -1008,12 +1008,6 @@ private[turn] object TurnSteps {
     } yield outcome
   }
 
-  /** The summary request for `turn`, from `all` of its conversation's entries: asking after
-    * its item too when it has one.
-    */
-  private def summaryRequest(all: Vector[Entry], turn: TurnRef): ModelRequest =
-    TurnSummary.request(own(all, turn), TurnAgenda.itemOf(all, turn))
-
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger beside the
@@ -1054,7 +1048,7 @@ private[turn] object TurnSteps {
         )
         .left
         .map(TurnFailure.ofStore)
-      estimate = estimator.request(summaryRequest(all, turn))
+      estimate = estimator.request(TurnSummary.of(all, turn))
       _ <- Asking
         .spent(ledger, id, turn, message, Some(grade), estimate)
         .left

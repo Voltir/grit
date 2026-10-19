@@ -59,6 +59,12 @@ object TurnSummary {
     }
   }
 
+  /** The request that summarises `turn`, from `all` of its conversation's entries: its own,
+    * asking after its item too when it has one. The summary step's own request.
+    */
+  def of(all: Vector[Entry], turn: TurnRef): ModelRequest =
+    request(TurnShown.own(all, turn), TurnAgenda.itemOf(all, turn))
+
   /** A summary as [[read]] reads it: the turn's `summary`, and its item's `name` and what
     * it is `about`, when the reply gave both.
     */
