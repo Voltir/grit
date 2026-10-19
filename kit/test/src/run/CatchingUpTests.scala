@@ -15,6 +15,7 @@ import grit.core.edge.{
   InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
+  InMemoryOrigins,
   Unheard,
   Variable
 }
@@ -85,6 +86,7 @@ object CatchingUpTests extends TestSuite {
       inbox.ledger,
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
+      new InMemoryOrigins(inbox.conversations),
       FakeJot,
       new InMemoryEdges,
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())

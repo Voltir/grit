@@ -11,6 +11,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryJoins,
+  InMemoryOrigins,
   Membership,
   Part
 }
@@ -184,6 +185,7 @@ object SlackEdgeTests extends TestSuite {
           if (spendReadable) inbox.ledger else Unspendable,
           acknowledgements,
           InMemoryReviews.over(inbox),
+          new InMemoryOrigins(inbox.conversations),
           FakeJot,
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())

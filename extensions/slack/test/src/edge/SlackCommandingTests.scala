@@ -18,7 +18,8 @@ import grit.core.edge.{
   InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
-  InMemoryJoins
+  InMemoryJoins,
+  InMemoryOrigins
 }
 import grit.core.identity.{Account, Realm, TestAccounts}
 import grit.core.inbox.InMemoryInbox
@@ -167,6 +168,7 @@ object SlackCommandingTests extends TestSuite {
           inbox.ledger,
           new InMemoryAcknowledgements,
           InMemoryReviews.over(inbox),
+          new InMemoryOrigins(inbox.conversations),
           FakeJot,
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())

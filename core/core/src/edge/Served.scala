@@ -17,7 +17,7 @@ import grit.core.visibility.Compartment
   * records its bot's memberships through, the accounts it names, the replies it awaits and
   * what their turns spent (`spending`, read alone), the messages it marks as
   * being answered while their turns run, the review prompts it posts
-  * and the labels their rater gives, `jot`, the short transactions it writes those in,
+  * and the labels their rater gives, where conversations happen (`origins`, read alone), `jot`, the short transactions it writes those in,
   * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
   * source says who the accounts of the realms its attester answers for are.
   */
@@ -30,6 +30,7 @@ final case class EdgeStores(
     spending: Spending,
     acknowledgements: Acknowledgements,
     reviews: Reviews[Prompt, Verdict],
+    origins: Origins,
     jot: Jot,
     desks: Desks^,
     attesting: Attesting^

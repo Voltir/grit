@@ -175,6 +175,7 @@ object ReminderLiveTests extends TestSuite {
         engine.spending,
         engine.acknowledgements,
         engine.reviews,
+        engine.origins,
         engine.jot,
         engine,
         // grit's team's realm trusted, so the asker is a member: remind_me requires one.

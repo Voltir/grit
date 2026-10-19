@@ -98,6 +98,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The review prompts an edge posts, and the labels their rater gives. */
   val reviews: grit.core.review.Reviews[grit.core.review.Prompt, grit.core.review.Verdict]
 
+  /** Where each conversation happens, as an edge links back to one. */
+  val origins: grit.core.edge.Origins
+
   /** Short read transactions. */
   val db: Db
 
@@ -287,6 +290,8 @@ private[engine] final class Attached(
 
   val reviews: grit.core.review.Reviews[grit.core.review.Prompt, grit.core.review.Verdict] =
     new grit.dbos.sql.SqlReviews
+
+  val origins: grit.core.edge.Origins = new grit.dbos.sql.SqlOrigins
 
   private val opener = new Opener(visibility)
 

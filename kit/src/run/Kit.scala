@@ -366,6 +366,7 @@ object Kit {
       link.spending,
       link.acknowledgements,
       link.reviews,
+      link.origins,
       link.jot,
       link,
       attesting

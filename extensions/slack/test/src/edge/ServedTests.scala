@@ -16,6 +16,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryJoins,
+  InMemoryOrigins,
   Membership,
   ServedEdge,
   Unheard,
@@ -132,6 +133,7 @@ object ServedTests extends TestSuite {
         inbox.ledger,
         acknowledgements,
         picks.reviews,
+        new InMemoryOrigins(inbox.conversations),
         jot,
         edges,
         new Attesting(voucher, jot, _ => ())

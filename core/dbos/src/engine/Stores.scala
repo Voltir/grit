@@ -131,6 +131,9 @@ class Stores private[engine] (visibility: Visibility) {
     */
   val reviews: grit.core.review.ReviewStore = new grit.dbos.sql.SqlReviews
 
+  /** Where each conversation happens, as an edge links back to one. */
+  val origins: grit.core.edge.Origins = new grit.dbos.sql.SqlOrigins
+
   /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
   val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
 

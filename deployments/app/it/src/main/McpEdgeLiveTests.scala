@@ -108,6 +108,7 @@ object McpEdgeLiveTests extends TestSuite {
             engine.spending,
             engine.acknowledgements,
             engine.reviews,
+            engine.origins,
             engine.jot,
             engine,
             new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())

@@ -9,7 +9,8 @@ import grit.core.edge.{
   EdgeStores,
   InMemoryAcknowledgements,
   InMemoryDeliveries,
-  InMemoryEdges
+  InMemoryEdges,
+  InMemoryOrigins
 }
 import grit.core.id.EntryId
 import grit.core.identity.{Account, TestAccounts}
@@ -122,6 +123,7 @@ object ReviewingTests extends TestSuite {
         inbox.ledger,
         new InMemoryAcknowledgements,
         watched,
+        new InMemoryOrigins(inbox.conversations),
         FakeJot,
         new InMemoryEdges,
         new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())

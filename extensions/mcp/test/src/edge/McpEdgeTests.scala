@@ -17,6 +17,7 @@ import grit.core.edge.{
   InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
+  InMemoryOrigins,
   Variable
 }
 import grit.core.id.{EdgeName, PrincipalId}
@@ -86,6 +87,7 @@ object McpEdgeTests extends TestSuite {
       inbox.ledger,
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
+      new InMemoryOrigins(inbox.conversations),
       FakeJot,
       if (reachable) edges else Unreachable,
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())

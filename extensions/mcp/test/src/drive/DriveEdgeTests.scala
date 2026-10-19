@@ -15,6 +15,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryJoins,
+  InMemoryOrigins,
   OutcomeJson,
   Permit,
   Registration,
@@ -79,6 +80,7 @@ object DriveEdgeTests extends TestSuite {
       inbox.ledger,
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
+      new InMemoryOrigins(inbox.conversations),
       FakeJot,
       edges,
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
