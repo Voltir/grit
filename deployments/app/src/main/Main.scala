@@ -1062,7 +1062,7 @@ object Main {
   /** What `grit serve` says at start, served by OpenRouter under `policy`, of each role whose
     * first pin's upstream OpenRouter picks, so whose calls a labelled room cannot make: the
     * variable that would name its one upstream, and the clearance that pair then gets
-    * ([[cleared]]).
+    * ([[cleared]]); the dream summary's adds that it follows no other role's variables.
     */
   private[main] def uncleared(policy: Policy): Vector[String] = {
     def routed(l: Ladder) = Party.of(l.first.assignment.ref).isEmpty
@@ -1077,7 +1077,9 @@ object Main {
       case role if routed(role.in(policy)) =>
         s"${role.upstreamVar(role.in(policy).first.grade)} is unset: the ${name(role)}'s first " +
           "model, whose upstream OpenRouter picks, is cleared for public rooms alone; naming its " +
-          "one upstream there clears that pair for every label"
+          "one upstream there clears that pair for every label" +
+          (if (role == ModelRole.Dream) s" (the ${name(role)} follows no other role's variables)"
+           else "")
     }
   }
 

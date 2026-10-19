@@ -92,7 +92,8 @@ object ClearanceChoiceTests extends TestSuite {
         "GRIT_HEARD_PROVIDER is unset: the heard closing's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
         "GRIT_DREAM_PROVIDER is unset: the dream summary's first model, whose upstream OpenRouter picks, is " +
-          "cleared for public rooms alone; naming its one upstream there clears that pair for every label"
+          "cleared for public rooms alone; naming its one upstream there clears that pair for every label " +
+          "(the dream summary follows no other role's variables)"
       )
     }
   }

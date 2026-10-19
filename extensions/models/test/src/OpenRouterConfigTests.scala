@@ -196,7 +196,7 @@ object OpenRouterConfigTests extends TestSuite {
         .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("small/one", "groq")))
     }
     test(
-      "policy: the dream role reads its own variables; naming neither, it follows the summary's"
+      "policy: the dream role reads its own variables alone; naming neither, it keeps its ladder whatever the summary's or the turn's say"
     ) {
       overlay(
         "GRIT_DREAM_MODEL" -> "d/m",
@@ -204,10 +204,10 @@ object OpenRouterConfigTests extends TestSuite {
         "GRIT_DREAM_MAX_TOKENS" -> "900"
       )
         .map(p => one(p.dream)) ==> Right(Some(Assignment(ref("d/m", "groq"), 900, None)))
-      overlay("GRIT_SUMMARY_MODEL" -> "s/m", "GRIT_SUMMARY_PROVIDER" -> "groq")
-        .map(p => one(p.dream).map(_.ref)) ==> Right(Some(ref("s/m", "groq")))
-      overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "cerebras").map(p => one(p.dream)) ==>
-        Right(Some(Assignment(ref("x/y", "cerebras"), 1024, None)))
+      Seq(
+        overlay("GRIT_SUMMARY_MODEL" -> "s/m", "GRIT_SUMMARY_PROVIDER" -> "groq"),
+        overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "cerebras")
+      ).map(_.map(_.dream)) ==> Seq.fill(2)(Right(seedLike.dream))
     }
     test("forRole: each role runs on its own variables, over the seed's budgets") {
       val env = Map(
