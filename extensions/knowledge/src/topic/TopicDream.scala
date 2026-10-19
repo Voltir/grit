@@ -10,7 +10,7 @@ import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
-import grit.knowledge.card.CardShelf
+import grit.knowledge.card.{CardMoves, CardShelf}
 import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
@@ -229,7 +229,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       TopicDream.WriteReply
     )
     moves.summarise(
-      TopicDream.move("write", i),
+      CardMoves.numbered("write", i),
       t.strands,
       t.version.toVector ++ t.cards.map(_.version),
       run.tainted.map(_ => summary)
@@ -241,7 +241,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       case Right(Some(s)) =>
         val shownCards = t.cards.filter(c => s.shown.contains(c.version))
         val touch = t.copy(cards = shownCards)
-        moves.keep(TopicDream.move("keep", i), s.asked.reply)((w, keeper, at) =>
+        moves.keep(CardMoves.numbered("keep", i), s.asked.reply)((w, keeper, at) =>
           TopicDream.kept(touch, units, day, w, review, keeper, at)
         ) match {
           case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), false)
@@ -279,12 +279,12 @@ object TopicDream {
     */
   val LeadChars: Int = 400
 
-  private val Scan: MoveName = move("scan")
+  private val Scan: MoveName = MoveName("scan")
 
-  private val Attach: MoveName = move("attach")
+  private val Attach: MoveName = MoveName("attach")
 
   /** The attach ask again, made only when its reply named an item twice or one not shown. */
-  private val AttachAgain: MoveName = move("attach-again")
+  private val AttachAgain: MoveName = MoveName("attach-again")
 
   /** What the attach ask asked again is told besides. */
   private val Again: String =
@@ -295,13 +295,7 @@ object TopicDream {
   private val Uncovered: String =
     "its reply named a discussion or card twice, or one or a topic not shown"
 
-  private val SetAside: MoveName = move("aside")
-
-  private def move(kind: String, i: Int): MoveName = move(s"$kind-$i")
-
-  private def move(name: String): MoveName =
-    // Lower case words and digits joined by `-`: MoveName.of never refuses them.
-    MoveName.of(name).fold(e => throw new IllegalStateException(e), identity)
+  private val SetAside: MoveName = MoveName("aside")
 
   /** How many strands and cards `ts` attach. */
   private def items(ts: Vector[Touch]): Int = ts.map(t => t.strands.size + t.cards.size).sum

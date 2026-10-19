@@ -13,7 +13,7 @@ import grit.core.job.{DreamingJob, JobRun}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.knowledge.card.CardSummary
+import grit.knowledge.card.{CardMoves, CardSummary, NotWritten}
 
 /** What a dream run is told: at most how many strands it summarises, and how far back a
   * strand's last message may be for it to be looked at when it holds no document.
@@ -77,7 +77,7 @@ final class StrandDream(perRunMost: Int, labels: Vector[Label]) extends Dreaming
         scan.due.zipWithIndex
           .foldLeft(Dreamt.of(scan)) { case (done, (seen, i)) =>
             moves.summarise(
-              StrandDream.move("summary", i),
+              CardMoves.numbered("summary", i),
               Vector(seen),
               Vector.empty,
               run.tainted.map(_ => StrandDream.Asked)
@@ -85,7 +85,7 @@ final class StrandDream(perRunMost: Int, labels: Vector[Label]) extends Dreaming
               case Left(e) => done.unwritten(seen.root, MoveError.said(e))
               case Right(None) => done.changed
               case Right(Some(summarised)) =>
-                moves.keep(StrandDream.move("write", i), summarised.asked.reply)(
+                moves.keep(CardMoves.numbered("write", i), summarised.asked.reply)(
                   (summary, keeper, at) => StrandDream.written(seen, summary, keeper, at)
                 ) match {
                   case Left(e) => done.unwritten(seen.root, MoveError.said(e))
@@ -114,7 +114,7 @@ object StrandDream {
   /** 6,000: the most characters of a strand a summary is asked of. */
   val Chars: Int = 6000
 
-  private val Scan: MoveName = move("scan")
+  private val Scan: MoveName = MoveName("scan")
 
   /** What the summary model is told, before the strand. */
   private val System: String =
@@ -138,13 +138,6 @@ object StrandDream {
   private val Asked: Dreaming.Summary[CardSummary] =
     // It shows no documents, so their budget is never spent.
     Dreaming.Summary(System, Chars, 0, Reply)
-
-  /** The move `{kind}-{i}`. */
-  private def move(kind: String, i: Int): MoveName = move(s"$kind-$i")
-
-  private def move(name: String): MoveName =
-    // Lower case words and digits joined by `-`: MoveName.of never refuses them.
-    MoveName.of(name).fold(e => throw new IllegalStateException(e), identity)
 
   /** Whether `seen` is big enough to hold a document, in a room at `floor`. */
   private def holds(seen: Strand.Digested, floor: Label): Boolean =
@@ -301,11 +294,8 @@ final case class Dreamt(
       if (undeclared == 0) ""
       else if (undeclared == 1) "; 1 room at a label no schedule declares"
       else s"; $undeclared rooms at a label no schedule declares"
-    val named = unwritten.take(Dreamt.Shown).map((r, why) => s"${ConversationId.value(r)} ($why)")
-    val more = unwritten.size - named.size
     val notWritten =
-      if (unwritten.isEmpty) ""
-      else s"; not written: ${(named ++ Option.when(more > 0)(s"and $more more")).mkString(", ")}"
+      NotWritten.tail(unwritten.map((r, why) => (ConversationId.value(r), why)), Dreamt.Shown)
     counts + rooms + notWritten + stopped.fold("")(why => s"; stopped: $why")
   }
 

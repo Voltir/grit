@@ -1,6 +1,7 @@
 package grit.knowledge.sync
 
 import grit.core.id.CorpusName
+import grit.knowledge.card.NotWritten
 
 /** A unit whose card a run could not write, at `path`, and `why`. */
 final case class Unwritten(path: String, why: String) extends caps.Pure
@@ -33,11 +34,7 @@ final case class Synced(
   def line: String = {
     val counts = s"${CorpusName.value(source)}: $written written, $relabelled relabelled, " +
       s"$withdrawn withdrawn, $unchanged unchanged, ${left + unwritten.size} left for the next run"
-    val named = unwritten.take(Synced.Shown).map(u => s"${u.path} (${u.why})")
-    val more = unwritten.size - named.size
-    val notWritten =
-      if (unwritten.isEmpty) ""
-      else s"; not written: ${(named ++ Option.when(more > 0)(s"and $more more")).mkString(", ")}"
+    val notWritten = NotWritten.tail(unwritten.map(u => (u.path, u.why)), Synced.Shown)
     val notTaken =
       if (refused == 0) ""
       else s"; $refused new units not taken, the source holding its most cards"

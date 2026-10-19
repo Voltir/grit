@@ -19,7 +19,8 @@ Packages, in one-way order (each names only those before it):
   names. Names core alone.
 - **`card`**: what a card is, whatever its source: its version (a git SHA, or when a file last
   changed), its title, its summary, and its document's key, text and data; the names of a
-  sync run's moves (`{phase}/{key}`, `held`, `drop`); and `CardShelf`, cards as another plugin
+  sync run's moves (`{phase}/{key}`, `held`, `drop`) and a dreaming run's numbered ones
+  (`{kind}-{i}`); the tail of a run's reply naming what it did not write; and `CardShelf`, cards as another plugin
   reads them through `Knowledge`'s export. Imports `ref`.
 - **`sync`**: a sync run over any source. A `Source` says how a run reads it: the tool and
   arguments of each list and read, what an answer holds, what of a listing is checked, and its

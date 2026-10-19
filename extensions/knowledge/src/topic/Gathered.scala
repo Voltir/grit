@@ -1,5 +1,7 @@
 package grit.knowledge.topic
 
+import grit.knowledge.card.NotWritten
+
 /** What a topics run came to: how many topics it `written`, of them how many it `opened`; how
   * many passages it `withdrawn`; how many strands and cards it found `unchanged` since the
   * topic they are in was written or they were set aside, how many its attach ask placed in no topic (`aside`), and how
@@ -39,11 +41,7 @@ final case class Gathered(
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"
       else s"; $skipped refs too long to keep"
-    val named = unwritten.take(Gathered.Shown).map((n, why) => s"$n ($why)")
-    val more = unwritten.size - named.size
-    val notWritten =
-      if (unwritten.isEmpty) ""
-      else s"; not written: ${(named ++ Option.when(more > 0)(s"and $more more")).mkString(", ")}"
+    val notWritten = NotWritten.tail(unwritten, Gathered.Shown)
     counts + missed + asked + refs + notWritten + stopped.fold("")(why => s"; stopped: $why")
   }
 }
