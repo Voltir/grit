@@ -4,6 +4,8 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.admin.Command
 import grit.core.clock.Clock
 import grit.core.edge.{
@@ -29,7 +31,7 @@ import grit.core.speech.{Rate, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
-import grit.prose.form.{Block, Doc, Text}
+import grit.prose.form.{Block, Doc, Mark, Span, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
 import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
@@ -369,7 +371,7 @@ final class SlackEdge(
     * may be acknowledged.
     */
   private def reacted(r: Event.Reacted): Boolean = {
-    val emoji = ReviewPrompt.named(r.emoji)
+    val emoji = Prompting.named(r.emoji)
     val keeping = promptings.filter((_, p) => p.verdicts.contains(emoji))
     review.filter(v => r.team == self.team && r.user == v.rater && keeping.nonEmpty) match {
       case None => true
@@ -1301,10 +1303,15 @@ object SlackEdge {
     Served.serving(command, backfill, posting, review, note, Socket, Backfilling.Virtual)
 
   /** Triage's review, over `reviews`, as an edge of `team` prompts for it: each prompt of the
-    * heard message it names in `team`'s Slack, linked under the channel's name, with
-    * [[ReviewPrompt.Reactions]]; one of another workspace's, or of none, never posted.
+    * heard message it names in `team`'s Slack, the bold question "Would a reply here have been
+    * welcome?" and that message linked under the channel's name, then the reactions' legend;
+    * one of another workspace's, or of none, never posted. Its reactions: `+1` welcome, `-1`
+    * an interruption, `bust_in_silhouette` meant for someone in particular.
     */
-  private def triage(reviews: Reviews[Prompt, Verdict], team: TeamId): Prompting[Prompt, Verdict] =
+  private[edge] def triage(
+      reviews: Reviews[Prompt, Verdict],
+      team: TeamId
+  ): Prompting[Prompt, Verdict] =
     Prompting(
       reviews,
       p => EntryId.value(p.entry),
@@ -1323,8 +1330,32 @@ object SlackEdge {
         },
       _ => None,
       // Every prompt of triage's is of a message, so linked is always given.
-      (_, linked, _) => linked.fold(Doc.empty)((shown, link) => ReviewPrompt.doc(shown, link)),
-      ReviewPrompt.Reactions
+      (_, linked, _) =>
+        linked.fold(Doc.empty)((channel, link) =>
+          Doc(
+            Vector(
+              Block.Paragraph(
+                Text(
+                  Vector(
+                    Span("Would a reply here have been welcome?", Set(Mark.Strong)),
+                    Span.plain(" "),
+                    Span(s"A message in $channel", Set(Mark.Link(link)))
+                  )
+                )
+              ),
+              Block.Paragraph(
+                Text.plain(
+                  "👍 welcome · 👎 an interruption · 👤 meant for someone in particular (even if an answer would have helped)"
+                )
+              )
+            )
+          )
+        ),
+      VectorMap(
+        "+1" -> Verdict.Welcome,
+        "-1" -> Verdict.Interruption,
+        "bust_in_silhouette" -> Verdict.CutIn
+      )
     )
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links

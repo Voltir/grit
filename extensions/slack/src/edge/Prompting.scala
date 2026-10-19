@@ -46,4 +46,13 @@ object Prompting {
     * documents put up ([[grit.core.edge.EdgeStores.documentReviews]]).
     */
   type OverDocuments = (PluginName -> Reviews[DocumentReview, ReviewWord]) -> Prompting[?, ?]
+
+  /** `emoji` as Slack names it, a skin tone after `::` dropped: how [[Prompting.verdicts]] is
+    * keyed.
+    */
+  def named(emoji: String): String =
+    emoji.indexOf("::skin-tone-") match {
+      case -1 => emoji
+      case i => emoji.take(i)
+    }
 }

@@ -20,6 +20,7 @@ import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
+import grit.prose.form.{Block, Doc, Mark, Span, Text}
 import grit.slack.client.{FakeSlack, Self, Tag}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.RichText
@@ -186,10 +187,29 @@ object ReviewingTests extends TestSuite {
       val w = new World
       val entry = w.picked(Said)
       val first = w.edge.prompt()
+      // The bold question, its message in its channel linked, and the legend: no gate, reason
+      // or number.
       val shown = RichText.render(
-        ReviewPrompt.doc(
-          "#standup",
-          s"https://fake.slack.com/archives/C123ABC456/p1515449522000016"
+        Doc(
+          Vector(
+            Block.Paragraph(
+              Text(
+                Vector(
+                  Span("Would a reply here have been welcome?", Set(Mark.Strong)),
+                  Span.plain(" "),
+                  Span(
+                    "A message in #standup",
+                    Set(Mark.Link("https://fake.slack.com/archives/C123ABC456/p1515449522000016"))
+                  )
+                )
+              )
+            ),
+            Block.Paragraph(
+              Text.plain(
+                "👍 welcome · 👎 an interruption · 👤 meant for someone in particular (even if an answer would have helped)"
+              )
+            )
+          )
         )
       )
       val ts = w.promptOf(entry)
