@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.admin.{Answer, Command, InMemoryAdministration}
 import grit.core.clock.{Clock, SetClock}
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Acknowledgement,
   Acknowledgements,
@@ -134,6 +135,7 @@ object ServedTests extends TestSuite {
         acknowledgements,
         picks.reviews,
         new InMemoryOrigins(inbox.conversations),
+        (new InMemoryDocuments).reviews.of,
         jot,
         edges,
         new Attesting(voucher, jot, _ => ())

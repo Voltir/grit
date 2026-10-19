@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.Clock
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Attesting,
   EdgeRefusal,
@@ -81,6 +82,7 @@ object DriveEdgeTests extends TestSuite {
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
+      (new InMemoryDocuments).reviews.of,
       FakeJot,
       edges,
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())

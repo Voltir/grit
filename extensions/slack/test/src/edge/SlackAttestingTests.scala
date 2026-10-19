@@ -5,6 +5,7 @@ import java.time.ZoneOffset
 import scala.concurrent.duration.*
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
@@ -95,6 +96,7 @@ object SlackAttestingTests extends TestSuite {
           new InMemoryAcknowledgements,
           InMemoryReviews.over(inbox),
           new InMemoryOrigins(inbox.conversations),
+          (new InMemoryDocuments).reviews.of,
           FakeJot,
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, r => reported = reported :+ r)

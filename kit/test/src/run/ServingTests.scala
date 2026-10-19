@@ -2,6 +2,7 @@ package grit.kit.run
 
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.InMemoryJoins
 import grit.core.edge.{
   Attesting,
@@ -51,6 +52,7 @@ object ServingTests extends TestSuite {
       new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
+      (new InMemoryDocuments).reviews.of,
       FakeJot,
       new InMemoryEdges,
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())

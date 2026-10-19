@@ -367,6 +367,7 @@ object Kit {
       link.acknowledgements,
       link.reviews,
       link.origins,
+      link.documentReviewsOf,
       link.jot,
       link,
       attesting

@@ -169,6 +169,12 @@ class Stores private[engine] (visibility: Visibility) {
     */
   val documentReviews: grit.core.review.DocumentReviews = new grit.dbos.sql.SqlDocumentReviews
 
+  /** Each plugin's documents put up for review, as an edge posts them. */
+  val documentReviewsOf: grit.core.id.PluginName -> grit.core.review.Reviews[
+    grit.core.review.DocumentReview,
+    grit.core.review.ReviewWord
+  ] = documentReviews.of
+
   /** Each plugin's own documents as its tools and its service read them: given a plugin's
     * name, its own, and no other plugin's.
     */

@@ -4,10 +4,10 @@ import java.time.Instant
 
 import grit.core.admin.Administration
 import grit.core.clock.Clock
-import grit.core.id.{AttesterName, EdgeName}
+import grit.core.id.{AttesterName, EdgeName, PluginName}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
-import grit.core.review.{Prompt, Reviews, Verdict}
+import grit.core.review.{DocumentReview, Prompt, ReviewWord, Reviews, Verdict}
 import grit.core.spend.Spending
 import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
@@ -16,8 +16,10 @@ import grit.core.visibility.Compartment
   * reads turns from, the administration it runs a person's commands through, the joins it
   * records its bot's memberships through, the accounts it names, the replies it awaits and
   * what their turns spent (`spending`, read alone), the messages it marks as
-  * being answered while their turns run, the review prompts it posts
-  * and the labels their rater gives, where conversations happen (`origins`, read alone), `jot`, the short transactions it writes those in,
+  * being answered while their turns run, the review prompts it posts and the labels their
+  * rater gives, where conversations happen (`origins`, read alone), each plugin's documents put
+  * up for review (`documentReviews`, by plugin), `jot`, the short transactions it writes those
+  * in,
   * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
   * source says who the accounts of the realms its attester answers for are.
   */
@@ -31,6 +33,7 @@ final case class EdgeStores(
     acknowledgements: Acknowledgements,
     reviews: Reviews[Prompt, Verdict],
     origins: Origins,
+    documentReviews: PluginName -> Reviews[DocumentReview, ReviewWord],
     jot: Jot,
     desks: Desks^,
     attesting: Attesting^

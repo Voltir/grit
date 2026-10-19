@@ -3,6 +3,7 @@ package grit.slack.edge
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Acknowledgement,
   Attesting,
@@ -186,6 +187,7 @@ object SlackEdgeTests extends TestSuite {
           acknowledgements,
           InMemoryReviews.over(inbox),
           new InMemoryOrigins(inbox.conversations),
+          (new InMemoryDocuments).reviews.of,
           FakeJot,
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())

@@ -101,6 +101,12 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** Where each conversation happens, as an edge links back to one. */
   val origins: grit.core.edge.Origins
 
+  /** Each plugin's documents put up for review, as an edge posts them. */
+  val documentReviewsOf: grit.core.id.PluginName -> grit.core.review.Reviews[
+    grit.core.review.DocumentReview,
+    grit.core.review.ReviewWord
+  ]
+
   /** Short read transactions. */
   val db: Db
 
@@ -292,6 +298,13 @@ private[engine] final class Attached(
     new grit.dbos.sql.SqlReviews
 
   val origins: grit.core.edge.Origins = new grit.dbos.sql.SqlOrigins
+
+  private val documentReviews = new grit.dbos.sql.SqlDocumentReviews
+
+  val documentReviewsOf: grit.core.id.PluginName -> grit.core.review.Reviews[
+    grit.core.review.DocumentReview,
+    grit.core.review.ReviewWord
+  ] = documentReviews.of
 
   private val opener = new Opener(visibility)
 

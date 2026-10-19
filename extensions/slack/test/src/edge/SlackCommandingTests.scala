@@ -12,6 +12,7 @@ import grit.core.admin.{
   PlaceNames,
   Refusal
 }
+import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Attesting,
   EdgeStores,
@@ -169,6 +170,7 @@ object SlackCommandingTests extends TestSuite {
           new InMemoryAcknowledgements,
           InMemoryReviews.over(inbox),
           new InMemoryOrigins(inbox.conversations),
+          (new InMemoryDocuments).reviews.of,
           FakeJot,
           new InMemoryEdges,
           new Attesting(voucher, FakeJot, _ => ())
