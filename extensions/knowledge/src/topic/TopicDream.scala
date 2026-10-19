@@ -22,8 +22,10 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * cards changed within `cardRecent`; withdraws from a topic each passage naming a strand it no
   * longer reads at its floor (its room at another label now, or its messages gone), the topic
   * itself when none is left; attaches each strand or card a topic already refers to (a card by the
-  * unit its pointer reads, which a topic refers to when it was written from that card or links it),
-  * and asks (`attach`) where the others go, at most `perRun` strands and `perRun` cards, each
+  * unit its pointer reads, which a topic refers to when it was written from that card, links it,
+  * or a strand of it links it); pairs each card a strand it takes up links ([[TopicScan.Linked]],
+  * read whatever its age or whether it was set aside) with that strand, to go wherever the strand
+  * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others go, at most `perRun` strands and `perRun` cards, each
   * numbered in the order shown, as are the topics shown (those attached to, and at most
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
@@ -36,8 +38,9 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * topics first, asks once (`write-{i}`) for its new lead and the day's passage, from the strands
   * and cards attached and its current text, and keeps it (`keep-{i}`): the day's passage replacing
   * one the topic holds for that day, its lineage joined. A topic's version refers to each strand it
-  * was written from, each card's unit, each topic it links and the unit of each other link; a ref
-  * [[Ref.written]] refuses is left out and counted. It puts up at most [[TopicDream.Reviewed]] of
+  * was written from, each card's unit and each card unit its strands link (newest first), each
+  * topic it links and the unit of each other link; a ref [[Ref.written]] refuses, or one past
+  * [[grit.core.document.DocRef.Most]] (the oldest units first), is left out and counted. It puts up at most [[TopicDream.Reviewed]] of
   * the topics it writes for review, new first. A strand or card already in a topic's lineage or set
   * aside at the same digest or version touches nothing. Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
@@ -72,13 +75,25 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
         val begun =
           Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, 0, Vector.empty, None)
         val (placed, done) = attach(run, moves, scan, begun)
-        val touched = TopicDream.joined(scan.attached ++ placed)
+        // Each topic takes the cards its strands link, wherever those strands went.
+        val touched = TopicDream
+          .joined(scan.attached ++ placed)
+          .map(t => t.copy(cards = (t.cards ++ scan.of(t.strands)._2).distinctBy(_.version)))
         val ordered = touched.filter(_.opened) ++ touched.filterNot(_.opened)
         val (now, later) = ordered.splitAt(most)
         now.zipWithIndex
           .foldLeft((done.copy(left = done.left + TopicDream.items(later)), 0)) {
             case ((g, reviewed), (t, i)) =>
-              written(run, moves, day, t, i, reviewed < TopicDream.Reviewed, g) match {
+              written(
+                run,
+                moves,
+                day,
+                t,
+                scan.of(t.strands)._1,
+                i,
+                reviewed < TopicDream.Reviewed,
+                g
+              ) match {
                 case (next, up) => (next, if (up) reviewed + 1 else reviewed)
               }
           }
@@ -162,7 +177,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           val unopened = touches.collect { case Left(why) => ("a strand", why) }
           val setAside =
             p.asideDiscussions.map(st => Lineage.Tag.Strand(st.root, st.room, st.digest)) ++
-              p.asideCards.map(c => Lineage.Tag.Card(c.version))
+              (p.asideCards ++ scan.of(p.asideDiscussions)._2)
+                .distinctBy(_.version)
+                .map(c => Lineage.Tag.Card(c.version))
           val kept =
             if (setAside.isEmpty) Vector.empty
             else
@@ -192,6 +209,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       moves: Dreaming^,
       day: LocalDate,
       t: Touch,
+      units: Vector[Ref],
       i: Int,
       review: Boolean,
       g: Gathered
@@ -218,7 +236,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
         val shownCards = t.cards.filter(c => s.shown.contains(c.version))
         val touch = t.copy(cards = shownCards)
         moves.keep(TopicDream.move("keep", i), s.asked.reply)((w, keeper, at) =>
-          TopicDream.kept(touch, day, w, review, keeper, at)
+          TopicDream.kept(touch, units, day, w, review, keeper, at)
         ) match {
           case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), false)
           case Right(Kept(None, _)) => (g.copy(left = g.left + TopicDream.items(Vector(t))), false)
@@ -406,9 +424,12 @@ object TopicDream {
       .read(schema)
       .fold(why => throw new IllegalStateException(why.toString), s => Typed(s, c => read(c.json)))
 
-  /** `w` kept as `t`'s topic for `day`, put up for review when `review` and written. */
+  /** `w` kept as `t`'s topic for `day`, referring besides to the `units` its strands link, put
+    * up for review when `review` and written.
+    */
   private def kept(
       t: Touch,
+      units: Vector[Ref],
       day: LocalDate,
       w: Wrote,
       review: Boolean,
@@ -439,7 +460,7 @@ object TopicDream {
         val before = old.flatMap(_.today).filter(_.day == day)
         val held = Held(
           Topic.of(TopicWrite.prose(w.lead), passages.filterNot(_.day == day) :+ passage),
-          (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit)).distinct,
+          (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit) ++ units).distinct,
           Some(
             Today(
               day,

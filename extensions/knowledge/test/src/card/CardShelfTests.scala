@@ -141,6 +141,22 @@ object CardShelfTests extends TestSuite {
       )
     }
 
+    test("linked: the cards of the units named, written by until, of any age, most recent first") {
+      val (docs, versions) = kept(
+        Vector(
+          card("f1", None) -> at(1),
+          card("f2", None) -> at(2),
+          card("f3", None) -> at(3),
+          card("f4", None) -> at(50)
+        )
+      )
+      val shelf = CardShelf.over(docs.shelf(name))
+      val units: Set[Ref] = Set(Ref.Drive("f1"), Ref.Drive("f3"), Ref.Drive("f4"), Ref.Drive("f9"))
+      shelf.linked(units, at(10), 10).map(_.map(_.version)) ==>
+        Right(Vector(versions(2), versions(0)))
+      shelf.linked(units, at(100), 1).map(_.map(_.version)) ==> Right(Vector(versions(3)))
+    }
+
     test("a document of the plugin that is no card is not seen") {
       val docs = new InMemoryDocuments
       right(

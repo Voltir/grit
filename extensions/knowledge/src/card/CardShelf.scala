@@ -18,6 +18,13 @@ trait CardShelf extends caps.Pure {
   def changed(since: Instant, until: Instant, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[CardShelf.Seen]]
+
+  /** Every card its transaction reads written by `until`, whatever its age, whose unit
+    * ([[CardShelf.Seen.unit]]) is one of `units`, most recent first, at most `n`.
+    */
+  def linked(units: Set[Ref], until: Instant, n: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[CardShelf.Seen]]
 }
 
 object CardShelf {
@@ -32,13 +39,29 @@ object CardShelf {
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
     def changed(since: Instant, until: Instant, n: Int)(using
         Tx^
+    ): Either[StoreError, Vector[Seen]] =
+      newest(since, until, n)(_ => true)
+
+    def linked(units: Set[Ref], until: Instant, n: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[Seen]] =
+      if (units.isEmpty) Right(Vector.empty)
+      else newest(Instant.MIN, until, n)(_.unit.exists(units.contains))
+
+    /** The cards `keep` keeps among those written from `since` until `until`, most recent first,
+      * at most `n`.
+      */
+    private def newest(since: Instant, until: Instant, n: Int)(keep: Seen => Boolean)(using
+        Tx^
     ): Either[StoreError, Vector[Seen]] = {
-      // The newest `k` documents, `k` doubled until they hold `n` cards written between, reach one
-      // written before it (every later one is older), or are all there are.
+      // The newest `k` documents, `k` doubled until they hold `n` cards kept, reach one written
+      // before `since` (every later one is older), or are all there are.
       def from(k: Int): Either[StoreError, Vector[Seen]] =
         documents.newest(k).flatMap { ds =>
-          val seen =
-            ds.filterNot(d => d.written.isBefore(since) || d.written.isAfter(until)).flatMap(card)
+          val seen = ds
+            .filterNot(d => d.written.isBefore(since) || d.written.isAfter(until))
+            .flatMap(card)
+            .filter(keep)
           val done =
             seen.size >= n || ds.size < k || ds.lastOption.exists(_.written.isBefore(since))
           if (done || k > Int.MaxValue / 2) Right(seen.take(n)) else from(k * 2)

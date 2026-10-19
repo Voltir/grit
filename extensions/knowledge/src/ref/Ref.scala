@@ -62,38 +62,39 @@ object Ref {
     * `tree`, then a ref of one segment, which is dropped), is its [[GitHub]] path; any other,
     * a Drive folder's included, is its [[Url]], as an [[Href]] normalises it.
     */
-  def ofLink(link: String): Option[Ref] = Href
-    .of(link)
-    .flatMap(href =>
-      Href.value(href) match {
-        case Normal(authority, rest) =>
-          val host = authority.drop(authority.lastIndexOf('@') + 1)
-          val normal = Url(href)
-          Some(host match {
-            case "docs.google.com" =>
-              rest match {
-                case DocsFile(id) => Drive(id)
-                case _ => normal
-              }
-            case "drive.google.com" =>
-              rest match {
-                case DriveFile(id) => Drive(id)
-                case DriveOpen(id) => Drive(id)
-                case _ => normal
-              }
-            case "github.com" | "www.github.com" =>
-              rest match {
-                case GitHubRepository(owner, repo) => GitHub(owner, repo, "/")
-                case GitHubPath(owner, repo, path) =>
-                  val inside = path.stripPrefix("/").stripSuffix("/")
-                  GitHub(owner, repo, if (inside.isEmpty) "/" else inside)
-                case _ => normal
-              }
-            case _ => normal
-          })
-        case _ => None
-      }
-    )
+  def ofLink(link: String): Option[Ref] = Href.of(link).map(of)
+
+  /** The unit `href` names: [[Drive]], [[GitHub]] or [[Url]] by the rules of [[ofLink]]. */
+  def of(href: Href): Ref =
+    Href.value(href) match {
+      case Normal(authority, rest) =>
+        val host = authority.drop(authority.lastIndexOf('@') + 1)
+        val normal = Url(href)
+        host match {
+          case "docs.google.com" =>
+            rest match {
+              case DocsFile(id) => Drive(id)
+              case _ => normal
+            }
+          case "drive.google.com" =>
+            rest match {
+              case DriveFile(id) => Drive(id)
+              case DriveOpen(id) => Drive(id)
+              case _ => normal
+            }
+          case "github.com" | "www.github.com" =>
+            rest match {
+              case GitHubRepository(owner, repo) => GitHub(owner, repo, "/")
+              case GitHubPath(owner, repo, path) =>
+                val inside = path.stripPrefix("/").stripSuffix("/")
+                GitHub(owner, repo, if (inside.isEmpty) "/" else inside)
+              case _ => normal
+            }
+          case _ => normal
+        }
+      // Href.of writes `{scheme}://{host}…` with its scheme lower-cased, which Normal matches.
+      case _ => Url(href)
+    }
 
   /** The unit a card's pointer reads: [[Drive]] for `drive_read` with its `file`, [[GitHub]]
     * for `{server}_get_file_contents` with its `owner`, `repo` and `path`; else `None`.

@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
 import grit.core.document.{
   DocLabel,
+  DocRef,
   DocText,
   DocWeight,
   Document,
@@ -69,6 +70,9 @@ object TopicDreamTests extends TestSuite {
 
   private val Lead = "The deploy pipeline and what breaks it."
   private val Passage = "Ana traced the flaky deploy to the shared database."
+
+  /** A link to the Drive file `plan1`, as a person pastes it. */
+  private val PlanLink = "https://docs.google.com/document/d/plan1/edit."
 
   /** A strand of two threads in `channel`: the root saying `says`, a follower `reply`. */
   private def strand(w: StrandWorld, channel: String, says: String, at: Long = 0): Conversation = {
@@ -685,6 +689,126 @@ object TopicDreamTests extends TestSuite {
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 ref too long to keep",
         Vector(true)
       )
+    }
+
+    test("a card a strand links goes to the strand's topic and is not shown to the attach ask") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val a = strand(w, "C1", s"the plan is at $PlanLink")
+      val reply = runs.run()
+      (
+        reply,
+        runs.asked.map(x => (x.kind, counted(x.shown)._3, x.shown.contains("The deploy plan."))),
+        runs.kept.map(_._1)
+      ) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(("attach", 0, false), ("write", 1, true)),
+        Vector(key(a))
+      )
+    }
+
+    test("a card a strand links, written before cardRecent, is attached all the same") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(5 * 86400))
+      val a = strand(w, "C1", s"the plan is at $PlanLink")
+      val _ = runs.run()
+      (runs.asked.map(_.shown.contains("The deploy plan.")), runs.referring(Ref.Drive("plan1"))) ==>
+        (Vector(false, true), Vector(key(a)))
+    }
+
+    test("a card set aside is paired when a strand later links it, and leaves the aside") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val first = runs.run(attach = placing("none"))
+      val setAside = runs.aside._2.size
+      val b = strand(w, "C2", s"the plan is at $PlanLink", 100)
+      val _ = runs.run(now = Now.plusSeconds(600))
+      (
+        first,
+        setAside,
+        runs.asked.drop(1).map(x => (x.kind, x.shown.contains("The deploy plan."))),
+        runs.aside,
+        runs.referring(Ref.Drive("plan1"))
+      ) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        1,
+        Vector(("attach", false), ("write", true)),
+        (Vector(), Vector()),
+        Vector(key(b))
+      )
+    }
+
+    test(
+      "a strand's topic refers to the units it links, so a card of one written later attaches by ref"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", s"the plan is at $PlanLink")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val _ = runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
+      val second = runs.run(now = Now.plusSeconds(600))
+      (second, runs.asked.map(_.kind), runs.referring(Ref.Drive("plan1"))) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector("attach", "write", "write"),
+        Vector(key(a))
+      )
+    }
+
+    test("a strand set aside takes the cards it links to the aside") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val a = strand(w, "C1", s"the plan is at $PlanLink")
+      val reply = runs.run(attach = placing("none"))
+      (reply, runs.asked.map(x => counted(x.shown)), runs.aside._1, runs.aside._2.size) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 2 set aside, 0 left for the next run",
+        Vector((1, 0, 0)),
+        Vector(a.id),
+        1
+      )
+    }
+
+    test("a card paired by a guest's link is written no higher than the guest's strand") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val root = w.thread("C1", "1.0")
+      w.say(root, s"the plan is at $PlanLink", 0, Integrity.Outside)
+      w.follow(w.say(w.thread("C1", "2.0"), "thanks", 10), root)
+      val _ = runs.run()
+      runs.topics.map(d => (DocKey.value(d.key), d.integrity)) ==>
+        Vector((key(root), Integrity.Outside))
+    }
+
+    test("a topic over DocRef.Most refs keeps its strands and drops its oldest units first") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      given Tx = TestTx.fake
+      val a = strand(w, "C1", "deploy pipeline")
+      val units = (1 to DocRef.Most + 5).map(i => Ref.Drive(s"f$i")).toVector
+      val tags = w.of(a, Now).map(s => Lineage.Tag.Strand(s.root, s.room, s.digest))
+      val topic = Topic.of(
+        TopicWrite.prose(Lead),
+        Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage)))
+      )
+      val k = ok(
+        TopicWrite.kept(
+          runs.documents.keeper(Plugin, Terms),
+          right(TopicKey.strand(a.id)),
+          Label.Public,
+          TopicWrite.Held(topic, units, None),
+          Now
+        )
+      )
+      (
+        k.skipped,
+        runs.referring(Ref.Strand(a.id)).size,
+        runs.referring(Ref.Drive("f1")).size,
+        runs.referring(Ref.Drive(s"f${DocRef.Most + 5}")).size
+      ) ==> (6, 1, 0, 1)
     }
 
     test("a topic written from a card believed at Outside is believed no more than that") {

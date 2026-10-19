@@ -78,8 +78,9 @@ private[topic] object TopicWrite {
         )
     }
 
-  /** What `t` refers to: each strand its passages and claims were written from, `units`, each
-    * topic it links, and the unit each other link in it names ([[Ref.ofLink]]), each once.
+  /** What `t` refers to: each strand its passages and claims were written from, `units` newest
+    * first, each topic it links, and the unit each other link in it names ([[Ref.ofLink]]), each
+    * once.
     */
   def refs(t: Topic, units: Vector[Ref]): Vector[Ref] = {
     val docs = t.lead +: t.passages.map(_.body)
@@ -96,7 +97,8 @@ private[topic] object TopicWrite {
         ).notes
       )
       .flatMap(l => Ref.ofLink(l.href))
-    (strands ++ units ++ topics ++ mentions).distinct
+    // Newest units first, so a topic past DocRef.Most refs drops its oldest.
+    (strands ++ units.reverse ++ topics ++ mentions).distinct
   }
 
   /** The topic `key`'s document `data` holds, or why not ([[Topic.read]]). */
