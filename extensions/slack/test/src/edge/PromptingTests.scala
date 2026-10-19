@@ -20,7 +20,7 @@ import grit.core.id.{ConversationId, DocKey, PluginName}
 import grit.core.identity.TestAccounts
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Place
-import grit.core.review.{DocumentReview, InMemoryReviews, ReviewWord, Reviews}
+import grit.core.review.{DocumentReview, InMemoryReviews, ReviewWord}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, Subject}
 import grit.dbos.sql.TestTx
@@ -62,7 +62,6 @@ object PromptingTests extends TestSuite {
   private val ReviewPlace: Place = Origin.channel(Team, "C0REVIEW1")
 
   private val Nick = "U0NICK001"
-  private val Rater = TestAccounts.account(s"slack:$Team/$Nick")
 
   private val Thread = "1515449522.000016"
 
