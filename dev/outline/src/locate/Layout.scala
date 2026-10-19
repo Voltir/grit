@@ -46,7 +46,8 @@ object MillLayout extends Layout {
     val out = root.dir / "out"
     if (!os.isDir(out)) Vector.empty
     else
-      os.walk(out, skip = prune(out))
+      Locate
+        .walk(out, skip = prune(out))
         .filter(p => p.last == "classes" && os.isDir(p) && (p / os.up).last == "compile.dest")
         .sortBy(_.toString)
         .toVector
@@ -56,7 +57,8 @@ object MillLayout extends Layout {
     val out = root.dir / "out"
     if (!os.isDir(out)) Vector.empty
     else
-      os.walk(out, skip = prune(out))
+      Locate
+        .walk(out, skip = prune(out))
         .filter(p => p.last == "resolvedMvnDeps.json" && os.isFile(p))
         .flatMap(recorded)
         .filter(p => p.ext == "jar" && os.isFile(p))

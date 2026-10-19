@@ -613,7 +613,8 @@ object Query {
           Left(s"no area $name; areas naming $name: ${naming.map(_.name).mkString(", ")}")
         else {
           val packages = classes.filterNot(layout.isTest).flatMap { dir =>
-            os.walk(dir)
+            Locate
+              .walk(dir)
               .filter(os.isDir)
               .filter(_.relativeTo(dir).segments.exists(_.equalsIgnoreCase(name)))
               .flatMap { pkg =>

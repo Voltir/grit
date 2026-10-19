@@ -18,6 +18,15 @@ object LocateTests extends TestSuite {
   private def at(root: Root, p: String): os.Path = root.dir / os.RelPath(p)
 
   def tests = Tests {
+    test("forTopLevelIn finds nothing in a classes dir a compile removed before its walk") {
+      val root = tree("out/a/compile.dest/classes/p/Moves.tasty")
+      scala.util
+        .Try(Locate.forTopLevelIn(Vector(at(root, "out/gone/compile.dest/classes")), "Moves"))
+        .toEither
+        .left
+        .map(_.getClass.getSimpleName) ==> Right(Vector())
+    }
+
     test(
       "forTopLevel with a package reads only that package's dir; without one it searches every classes dir"
     ) {

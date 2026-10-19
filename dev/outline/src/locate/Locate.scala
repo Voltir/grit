@@ -54,6 +54,25 @@ object Locate {
       )
   }
 
+  /** Every path under `dir`, parents before their children, as `os.walk` gives them but for those `skip` holds to and what
+    * is under them; a path gone when the walk reaches it (a compile rewriting its output meanwhile) is left out with all
+    * under it, and none when `dir` is gone.
+    */
+  def walk(dir: os.Path, skip: os.Path => Boolean = _ => false): Vector[os.Path] =
+    under(dir, skip).getOrElse(Vector.empty)
+
+  /** What [[walk]] finds under `dir`, or `None` when `dir` is gone or no longer a directory. */
+  private def under(dir: os.Path, skip: os.Path => Boolean): Option[Vector[os.Path]] =
+    (try Some(os.list(dir).toVector)
+    catch {
+      case _: java.nio.file.NoSuchFileException | _: java.nio.file.NotDirectoryException => None
+    }).map(_.flatMap { p =>
+      if (skip(p)) Vector.empty
+      else if (os.isDir(p, followLinks = false)) under(p, skip).fold(Vector.empty[os.Path])(p +: _)
+      else if (os.exists(p, followLinks = false)) Vector(p)
+      else Vector.empty
+    })
+
   /** The `.tasty` files that can hold `sym`, searched in every classes dir `layout` names under `root`; empty when none match. */
   def forTopLevel(root: Root, layout: Layout, sym: String): Vector[os.Path] =
     forTopLevelIn(layout.classesDirs(root), sym)
@@ -68,7 +87,7 @@ object Locate {
         val pkg = segments.take(segments.length - rest.length)
         val names = Set(s"$top.tasty", s"$top$$package.tasty")
         val found =
-          if (pkg.isEmpty) dirs.flatMap(c => os.walk(c).filter(p => names.contains(p.last)))
+          if (pkg.isEmpty) dirs.flatMap(c => walk(c).filter(p => names.contains(p.last)))
           else {
             val rel = os.RelPath(pkg.mkString("/"))
             dirs.flatMap(c => names.toVector.map(n => c / rel / n))
