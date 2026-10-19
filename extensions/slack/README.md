@@ -58,7 +58,11 @@ In dependency order:
     open. A prompt names the message's channel and permalink alone, never its text, a draft's,
     why it was picked or what either gate decided, so the rater answers cold. A crash between
     posting a prompt and keeping it posts it again. Only the rater's reactions, and only the
-    three verdict emoji, are kept.
+    three verdict emoji, are kept. A deployment adds other reviews after triage's
+    (`Prompting`, by `SlackReview.also`), over a plugin's documents put up for review: each is
+    read for the review's place (`Subject.Room`), its prompt links a conversation it names by
+    its thread when the thread is this workspace's, and it is posted and kept only while the
+    place is written at a label dominating the document's, rechecked as it is posted.
   - **Attesting** (ADR 0032): the edge is its workspace's attester. An author is attested
     through core's `Attesting.before` unless Slack answered for them within a minute; one Slack
     cannot answer for and never has is not recorded, so Slack sends the message again, and a

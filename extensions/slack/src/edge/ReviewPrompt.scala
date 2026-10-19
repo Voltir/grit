@@ -21,11 +21,14 @@ private[edge] object ReviewPrompt {
   /** The verdict `emoji` gives, as Slack names it, a skin tone after `::` ignored; `None` for
     * any emoji not in [[Reactions]].
     */
-  def verdict(emoji: String): Option[Verdict] =
-    Reactions.get(emoji.indexOf(SkinTone) match {
+  def verdict(emoji: String): Option[Verdict] = Reactions.get(named(emoji))
+
+  /** `emoji` as Slack names it, a skin tone after `::` dropped. */
+  def named(emoji: String): String =
+    emoji.indexOf(SkinTone) match {
       case -1 => emoji
       case i => emoji.take(i)
-    })
+    }
 
   private val SkinTone = "::skin-tone-"
 
