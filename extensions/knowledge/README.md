@@ -58,7 +58,9 @@ Packages, in one-way order (each names only those before it):
   `TopicDream`, the dreaming job `topics-dream`, which scans topics, strands and cards by ids,
   asks once where the unplaced ones go, remembering those it sets aside (`Aside`, one document
   per label), and once per topic touched for its new lead and the day's passage, and keeps it
-  with refs to what it was written from and links. Its code never
+  with refs to what it was written from and links; and a topic's review as an edge posts it
+  (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
+  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`). Its code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `strand`,
   `sync` or a source.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
