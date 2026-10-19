@@ -76,8 +76,7 @@ object DocTests extends TestSuite {
       Every.notes ==> Vector(1, 2, 3, 4, 5, 5, 6, 7, 8, 9).map(N(_))
     }
 
-    test("foldMap agrees with notes") {
-      Every.foldMap("", _ + _)(n => s"${n.n},") ==> Every.notes.map(n => s"${n.n},").mkString
+    test("foldMap folds the notes in notes' order") {
       Every.foldMap("", _ + _)(n => s"${n.n},") ==> "1,2,3,4,5,5,6,7,8,9,"
     }
 

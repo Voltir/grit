@@ -132,26 +132,33 @@ object TopicPromptTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a topic put up is offered as its prompt: not opened that day, its lead plain, that day's strands by root once each, and its cards"
+      "a topic put up is offered as its prompt: opened that day as its review says, its lead plain, that day's strands by root once each, and its cards"
     ) {
       given Tx = Reading
       val offered = ok(prompts(putUp(Grown, Some(Today))).unposted(Review))
-      offered.map(p =>
-        (DocKey.value(p.review.key), p.opened, p.lead, p.strands, p.cards)
-      ) ==> Vector(
-        (
-          TopicKey.value(right(TopicKey.strand(Old))),
-          false,
-          Doc(
-            Vector(
-              Block.Paragraph(
-                Text(Vector(Span.plain("The deploy pipeline"), Span.plain(" and what breaks it.")))
+      val opened = ok(prompts(putUp(Grown, Some(Today.copy(opened = true)))).unposted(Review))
+      (
+        offered.map(p => (DocKey.value(p.review.key), p.opened, p.lead, p.strands, p.cards)),
+        opened.map(_.opened)
+      ) ==> (
+        Vector(
+          (
+            TopicKey.value(right(TopicKey.strand(Old))),
+            false,
+            Doc(
+              Vector(
+                Block.Paragraph(
+                  Text(
+                    Vector(Span.plain("The deploy pipeline"), Span.plain(" and what breaks it."))
+                  )
+                )
               )
-            )
-          ),
-          Vector(Second, First),
-          Vector("Deploy runbook")
-        )
+            ),
+            Vector(Second, First),
+            Vector("Deploy runbook")
+          )
+        ),
+        Vector(true)
       )
     }
 
@@ -183,7 +190,7 @@ object TopicPromptTests extends TestSuite {
         c => Option.when(c == First)("https://example.slack.com/archives/C1/p1")
       val grew = Markdown.write(TopicPrompt.doc(p, link))
       val opened = Markdown.write(TopicPrompt.doc(p.copy(opened = true), link))
-      (grew, opened.linesIterator.next(), grew.contains(Said)) ==> (
+      (grew, opened.linesIterator.next()) ==> (
         Vector(
           "**Is this one topic, told right?** It grew today.",
           "",
@@ -193,8 +200,7 @@ object TopicPromptTests extends TestSuite {
           "",
           "Cards: Deploy runbook"
         ).mkString("\n"),
-        "**Is this one topic, told right?** New today.",
-        false
+        "**Is this one topic, told right?** New today."
       )
     }
   }

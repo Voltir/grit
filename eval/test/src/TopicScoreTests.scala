@@ -94,6 +94,17 @@ object TopicScoreTests extends TestSuite {
       counts(TopicScore.of(truth, placed)) ==> ((1, 2), (1, 4), 2, 1, 1, 2, 0)
     }
 
+    test("a topic holding two truth topics as often is most-held by the greater name") {
+      val truth = Vector(
+        Truth("o1", Some("deploy"), Day1),
+        Truth("o4", Some("hire"), Day1),
+        Truth("o5", Some("hire"), Day2)
+      )
+      // t2 holds deploy and hire once each: only its greater name, hire, pairs it with t3.
+      val s = TopicScore.of(truth, Map("o1" -> Set("t2"), "o4" -> Set("t2"), "o5" -> Set("t3")))
+      (s.precision, s.mergeable) ==> (Vector("t2" -> false), 1)
+    }
+
     test("a placement that is the truth scores whole, and an opening in no topic is unplaced") {
       val truth = Vector(
         Truth("o1", Some("deploy"), Day1),

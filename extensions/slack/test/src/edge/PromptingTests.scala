@@ -122,7 +122,9 @@ object PromptingTests extends TestSuite {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val documents = new InMemoryDocuments
 
-    // Read and set by the test, on its one thread, around the edge calls it makes.
+    // Read and set by the test, on its one thread, around the edge calls it makes. It counts the
+    // pass's transactions, not its reads of the place: a pass that opens one more before it posts
+    // moves the fall, and each test setting it names the transactions it counts.
     @caps.unsafe.untrackedCaptures
     var fallAfter: Option[Int] = None
     // Counted by the jot's transactions, made by the edge on the test's thread.

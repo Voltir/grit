@@ -414,6 +414,9 @@ object TopicDreamTests extends TestSuite {
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
+      // A full page of newer topics, so a's is not shown as one of the newest.
+      (1 to TopicScan.Leads).foreach(i => strand(w, s"N$i", s"matter $i", 20))
+      val _ = runs.run(perRun = TopicScan.Leads, most = TopicScan.Leads, now = Now.plusSeconds(300))
       w.say(a, "the rollback works now", 50)
       val b = strand(w, "C2", "deploy rollback", 100)
       val reply = runs.run(
@@ -422,8 +425,8 @@ object TopicDreamTests extends TestSuite {
       )
       val attach = runs.asked.filter(_.kind == "attach").last
       (reply, counted(attach.shown), runs.referring(Ref.Strand(b.id))) ==> (
-        "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        (1, 1, 0),
+        s"topics: 1 written (0 opened), 0 withdrawn, ${TopicScan.Leads} unchanged, 0 set aside, 0 left for the next run",
+        (1, TopicScan.Leads + 1, 0),
         Vector(key(a))
       )
     }
@@ -611,12 +614,12 @@ object TopicDreamTests extends TestSuite {
 
     test("past perRun, the rest are left and counted") {
       val w = new StrandWorld
-      (1 to 3).foreach(i => strand(w, s"C$i", s"subject $i", i * 100L))
+      val roots = (1 to 3).map(i => strand(w, s"C$i", s"subject $i", i * 100L))
       val runs = new Runs(w)
       val reply = runs.run(perRun = 2)
-      (reply, runs.kept.size) ==> (
+      (reply, runs.kept.map(_._1)) ==> (
         "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
-        2
+        roots.take(2).map(key).toVector
       )
     }
 
@@ -757,10 +760,19 @@ object TopicDreamTests extends TestSuite {
       )
       val first = runs.run(attach = placing("none"))
       val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      (first, second, runs.asked.map(x => counted(x.shown)._3)) ==> (
+      val files = runs.asked.map(x => "File number \\d+\\.".r.findAllIn(x.shown).toSet)
+      val shown = files.headOption.getOrElse(Set.empty)
+      val next = files.lift(1).getOrElse(Set.empty)
+      (
+        first,
+        second,
+        runs.asked.map(x => counted(x.shown)._3),
+        (next, next.intersect(shown))
+      ) ==> (
         s"topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, ${TopicScan.Cards} set aside, 0 left for the next run",
         s"topics: 0 written (0 opened), 0 withdrawn, ${TopicScan.Cards} unchanged, 5 set aside, 0 left for the next run",
-        Vector(TopicScan.Cards, 5)
+        Vector(TopicScan.Cards, 5),
+        ((1 to 5).map(i => s"File number $i.").toSet, Set.empty[String])
       )
     }
 
@@ -897,8 +909,10 @@ object TopicDreamTests extends TestSuite {
       w.say(root, s"the plan is at $PlanLink", 0, Integrity.Outside)
       w.follow(w.say(w.thread("C1", "2.0"), "thanks", 10), root)
       val _ = runs.run()
-      runs.topics.map(d => (DocKey.value(d.key), d.integrity)) ==>
-        Vector((key(root), Integrity.Outside))
+      (
+        runs.topics.map(d => (DocKey.value(d.key), d.integrity)),
+        runs.referring(Ref.Drive("plan1"))
+      ) ==> (Vector((key(root), Integrity.Outside)), Vector(key(root)))
     }
 
     test("a topic over DocRef.Most refs keeps its strands and drops its oldest units first") {

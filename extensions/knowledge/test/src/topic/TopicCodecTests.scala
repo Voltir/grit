@@ -82,14 +82,14 @@ object TopicCodecTests extends TestSuite {
       val v = Topic.write(topic)
       v("v") = 2
       val read = Topic.read(key, v)
-      assert(read.left.exists(_.contains("version 2")))
+      read ==> Left("a topic of version 2, which this reader does not know")
     }
 
     test("a topic with no lead is refused, naming it") {
       val v = Topic.write(topic)
       v.obj.remove("lead")
       val read = Topic.read(key, v)
-      assert(read.left.exists(_.contains("lead")))
+      read ==> Left("a topic with no lead")
     }
 
     test("a relation to a claim of its own topic that it does not hold is refused, naming it") {
@@ -139,7 +139,7 @@ object TopicCodecTests extends TestSuite {
         )
       )
       val read = Topic.read(key, Topic.write(t))
-      assert(read.left.exists(_.contains("c1")))
+      read ==> Left("two different claims of id c1")
     }
 
     test("a topic keeps its newest passages, oldest first, past its most dropping the oldest") {

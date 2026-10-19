@@ -386,16 +386,6 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
-    test("a strand's summary is asked of its system text then its excerpt") {
-      val (w, root) = strand()
-      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
-      val (got, shown) = dreaming(limits(1, 0), w)(m => Seen(Vector(summarised(m, "s", seen))))
-      (got, shown) ==> (
-        Seen(Vector(Right(s"$Shaped at outside"))),
-        Vector((SummarySystem, Vector("Someone: the deploy is stuck\nSomeone: still stuck?")))
-      )
-    }
-
     test(
       "a strand's summary's reply is believed at the meet of the summary, the run and every message read"
     ) {
@@ -467,7 +457,7 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a summary leaves out a shown version gone, above its clearance or of a plugin neither its own nor needed, and still asks"
+      "a strand's summary is asked of its system text then its excerpt, leaving out a shown version gone, above its clearance or of a plugin neither its own nor needed"
     ) {
       val (w, root) = strand()
       val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))

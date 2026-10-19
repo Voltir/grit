@@ -93,12 +93,6 @@ object CardShelfTests extends TestSuite {
         Right(Vector(versions(1)))
     }
 
-    test("at most n, the most recent") {
-      val (docs, versions) = kept(Vector(card("f1", None) -> at(1), card("f2", None) -> at(2)))
-      CardShelf.over(docs.shelf(name)).changed(at(0), at(100), 1).map(_.map(_.version)) ==>
-        Right(Vector(versions(1)))
-    }
-
     test("n cards written since are seen past newer documents that are no cards and older cards") {
       val docs = new InMemoryDocuments
       val keeper = docs.keeper(name, terms)

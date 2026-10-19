@@ -111,7 +111,7 @@ object RefTests extends TestSuite {
       Ref.ofPointer(other) ==> None
     }
 
-    test("every kind of ref reads back as written") {
+    test("every kind of ref is written in its stored form and reads back as written") {
       val refs = Vector(
         Ref.Strand(ConversationId("c-1")),
         Ref.Topic(right(TopicKey.strand(ConversationId("c-2")))),
@@ -120,8 +120,16 @@ object RefTests extends TestSuite {
         Ref.GitHub("octocat", "Hello-World", "docs/a/b.md"),
         url("https://example.com/a")
       )
-      refs.map(r => right(Ref.written(r)).kind) ==>
-        Vector("strand", "topic", "drive", "github", "github", "url")
+      // The stored form: documents already written hold these, so a change to one finds none of
+      // them by that ref again.
+      refs.map(r => right(Ref.written(r))).map(d => (d.kind, d.ref)) ==> Vector(
+        ("strand", "c-1"),
+        ("topic", "topic:strand-c-2"),
+        ("drive", "1AbC"),
+        ("github", "octocat/Hello-World//"),
+        ("github", "octocat/Hello-World/docs/a/b.md"),
+        ("url", "https://example.com/a")
+      )
       refs.map(r => Ref.read(right(Ref.written(r)))) ==> refs.map(Some(_))
     }
 
@@ -138,7 +146,8 @@ object RefTests extends TestSuite {
     }
 
     test("a ref over what a reference holds is refused, naming why") {
-      assert(Ref.written(url("https://example.com/" + "a" * 8200)).isLeft)
+      Ref.written(url("https://example.com/" + "a" * 8200)) ==>
+        Left("a reference is 1 to 8192 characters, not 8220")
     }
 
     test("a topic key is opened by a strand and read back from its document's key") {

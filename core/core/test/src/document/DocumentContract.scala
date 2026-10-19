@@ -951,6 +951,8 @@ abstract class DocumentContract extends TestSuite {
       put(kp, "four", "fourth", 4, refs = Set(a))
       put(kp, "four", "fourth again", 5, refs = Set(b))
       put(kq, "theirs", "theirs", 6, refs = Set(a))
+      // Stored last but written earliest: latest written is by its date, not by when it was stored.
+      put(kp, "five", "fifth", 1, refs = Set(b))
       def referring(of: DocRef, n: Int) = transaction(keys(ok(shelf(p).referring(of, n))))
       (
         referring(a, 10),
@@ -961,7 +963,7 @@ abstract class DocumentContract extends TestSuite {
         transaction(keys(ok(shelf(q).referring(a, 10))))
       ) ==> (
         Vector("two", "one"),
-        Vector("four", "two"),
+        Vector("four", "two", "five"),
         Vector("two"),
         Vector(),
         Vector(),

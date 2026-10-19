@@ -38,14 +38,14 @@ object LeavesTests extends TestSuite {
       None
     )
 
-  /** The topic opened by `root`, written from the strands of `roots`. */
-  private def topic(root: String, roots: String*): Document = {
+  /** The topic opened by `root`, a passage of `passages` each written from the strands of its roots. */
+  private def topic(root: String, passages: Vector[String]*): Document = {
     val t = Topic.of(
       Markdown.parse("A lead."),
-      Vector(
+      passages.toVector.map(roots =>
         Passage(
           LocalDate.parse("2026-10-12"),
-          Lineage.of(roots.toVector.map(r => Lineage.Tag.Strand(ConversationId(r), room, digest))),
+          Lineage.of(roots.map(r => Lineage.Tag.Strand(ConversationId(r), room, digest))),
           Markdown.parse("A passage.")
         )
       )
@@ -57,8 +57,8 @@ object LeavesTests extends TestSuite {
     doc("standing", right(DocKey.of(s"standing:$c/3")))
 
   val tests = Tests {
-    test("a topic's roots are the strands its passages were written from") {
-      val t = topic("a", "a", "b")
+    test("a topic's roots are the strands its passages were written from, each once") {
+      val t = topic("a", Vector("a", "b"), Vector("a"))
       Leaves.roots(Vector(t, standing("a"))) ==> Vector(
         t.key -> Vector(ConversationId("a"), ConversationId("b"))
       )
@@ -67,7 +67,7 @@ object LeavesTests extends TestSuite {
     test(
       "a topic's own leaves are its strands' documents and their conversations' Standing ones, no others"
     ) {
-      val t = topic("a", "a")
+      val t = topic("a", Vector("a"))
       val window = Vector(
         t,
         doc("strands", StrandDocument.key(ConversationId("a"))),
@@ -83,7 +83,7 @@ object LeavesTests extends TestSuite {
     }
 
     test("a topic's root no conversation follows has its own Standing document as a leaf") {
-      val t = topic("a", "a")
+      val t = topic("a", Vector("a"))
       Leaves.pairs(Vector(t, standing("a")), Vector.empty) ==>
         Vector(Leaves.Own(t.key, right(DocKey.of("standing:a/3")), Leaves.Kind.Standing))
     }
