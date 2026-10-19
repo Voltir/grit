@@ -32,7 +32,7 @@ import grit.kit.run.Launch
 import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.ref.{CardKey, Ref, TopicKey}
-import grit.knowledge.topic.{Aside, Lineage, TopicDream, TopicParams}
+import grit.knowledge.topic.{Aside, Lineage, Passage, Topic, TopicDream, TopicParams}
 
 /** A real topics run over a room of the eval's shape (`eval/resources/rooms`), one run per past
   * day, scored against the room's truth: run by hand, never by the suites.
@@ -50,7 +50,9 @@ import grit.knowledge.topic.{Aside, Lineage, TopicDream, TopicParams}
   * line; the score at opening level ([[TopicScore]]), each opening placed in the topics
   * referring to a strand holding it, each card in those referring to its file; each truth item
   * sharing no topic with another of its truth topic, by id, and where it went (the topics
-  * holding it, set aside, or left); and the day's spend.
+  * holding it, set aside, or left); each topic holding two truth topics, by key, each truth
+  * topic with the day it entered and whether it came in the group that opened the topic or
+  * joined it later; and the day's spend.
   */
 object TopicRoom {
 
@@ -149,6 +151,7 @@ object TopicRoom {
             s"cross-day ${score.crossDay}, unplaced ${score.unplaced}"
         )
         missed(truth, where).foreach(println)
+        merged(truth, where, opened(engine, terms)).foreach(println)
         println(s"spent ${RoomRun.spent(engine)}")
       } finally engine.close()
     }
@@ -252,7 +255,37 @@ object TopicRoom {
   /** Where a truth item went: an `opening` or a card, in `topics` (by key), and whether it is
     * in its floor's aside at any digest or version (`aside`).
     */
-  private final case class Where(opening: Boolean, topics: Set[String], aside: Boolean)
+  private final case class Where(
+      opening: Boolean,
+      topics: Set[String],
+      aside: Boolean,
+      entered: Map[String, LocalDate]
+  )
+
+  /** Each topic holding items of two truth topics or more: `merge {key} (opened {day}):`, then
+    * for each truth topic the day its first item entered, and `in the new group` when that is
+    * the day the topic opened (the attach ask's `new` group held both), else `joined` (a group
+    * placed it in the topic as it stood).
+    */
+  private def merged(
+      truth: Vector[TopicScore.Truth],
+      where: Map[String, Where],
+      opened: Map[String, LocalDate]
+  ): Vector[String] = {
+    val topical = truth.collect { case TopicScore.Truth(id, Some(t), _) => id -> t }
+    where.values.flatMap(_.topics).toVector.distinct.sorted.flatMap { key =>
+      val held = topical
+        .flatMap((id, t) => where.get(id).flatMap(_.entered.get(key)).map(t -> _))
+        .groupMapReduce(_._1)(_._2)((a, b) => if (a.isBefore(b)) a else b)
+      Option.when(held.size > 1) {
+        val day = opened.get(key)
+        s"merge $key (opened ${day.fold("?")(_.toString)}): " + held.toVector
+          .sortBy(_._2)
+          .map((t, d) => s"$t on $d ${if (day.contains(d)) "in the new group" else "joined"}")
+          .mkString(", ")
+      }
+    }
+  }
 
   /** Each topical item of `truth` that shares no topic with one of its truth topic's others:
     * `missed {id} ({opening|card} of {topic}): {where}`, where is the topics holding it, `set
@@ -319,26 +352,46 @@ object TopicRoom {
           .atFloor(now.minus(Duration.ofDays(30)), now)
       )
     )
+    // Each topic's passages, oldest first, by key.
+    val passages: Map[String, Vector[Passage]] =
+      kept(engine, terms).map((k, t) => k -> t.passages.sortBy(_.day))
+    // The day of each topic's first passage holding a tag `holds` accepts.
+    def entered(holds: Lineage.Tag => Boolean): Map[String, LocalDate] =
+      passages.flatMap((k: String, ps: Vector[Passage]) =>
+        ps.find(_.from.tags.exists(holds)).map(p => k -> p.day)
+      )
     val byStrand = strands.map(s => s -> referring(Ref.Strand(s.root)))
     val openings = conversations.map { (id, c) =>
       val holding = byStrand.filter(_._1.members.contains(c))
+      def ofHolding(tag: Lineage.Tag) = tag match {
+        case Lineage.Tag.Strand(root, _, _) => holding.exists(_._1.root == root)
+        case _ => false
+      }
       id -> Where(
         true,
         holding.flatMap(_._2).toSet,
-        holding.exists((s, _) =>
-          aside.exists {
-            case Lineage.Tag.Strand(root, _, _) => root == s.root
-            case _ => false
-          }
-        )
+        aside.exists(ofHolding),
+        entered(ofHolding)
       )
     }
-    openings ++ room.cards.map(c =>
-      c.id -> Where(
-        false,
-        referring(Ref.Drive(c.id)),
-        cardVersion(c.id).exists(v => aside.contains(Lineage.Tag.Card(v)))
-      )
-    )
+    openings ++ room.cards.map { c =>
+      val version = cardVersion(c.id)
+      def ofCard(tag: Lineage.Tag) = version.exists(v => tag == Lineage.Tag.Card(v))
+      c.id -> Where(false, referring(Ref.Drive(c.id)), aside.exists(ofCard), entered(ofCard))
+    }
   }
+
+  /** The day each current topic's first passage is for, by key. */
+  private def opened(engine: Engine^, terms: DocumentTerms): Map[String, LocalDate] =
+    kept(engine, terms).flatMap((k, t) => t.passages.map(_.day).minOption.map(k -> _))
+
+  /** The topics current at public, read, by key; one whose data does not read is left out. */
+  private def kept(engine: Engine^, terms: DocumentTerms): Map[String, Topic] =
+    right(engine.db.read(Subject.Public)(engine.keeper(Topics, terms).newest(Int.MaxValue)))
+      .flatMap(d =>
+        TopicKey
+          .read(d.key)
+          .flatMap(k => Topic.read(k, d.data).toOption.map(t => TopicKey.value(k) -> t))
+      )
+      .toMap
 }
