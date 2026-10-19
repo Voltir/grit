@@ -177,14 +177,14 @@ object TopicDreamTests extends TestSuite {
       ok(documents.shelf(Plugin).referring(right(Ref.written(r)), 10)).map(d => DocKey.value(d.key))
 
     /** A card of the Drive file `id`, kept by the knowledge plugin `at`, believed at
-      * `integrity`: the key of the topic it would open.
+      * `integrity`.
       */
     def card(
         id: String,
         says: String,
         at: Instant = Now,
         integrity: Integrity = Integrity.Member
-    ): String = {
+    ): Unit = {
       val c = Card.file(
         right(CorpusName.of("shared")),
         id,
@@ -207,7 +207,6 @@ object TopicDreamTests extends TestSuite {
             at
           )
       )
-      TopicKey.value(TopicKey.card(c.key))
     }
 
     /** The topics put up for review, each key and day, as an edge at a public room is offered
@@ -426,11 +425,11 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "an attach reply omitting a card shown, or naming a discussion twice, is asked once more, the second placed and counted asked again, within the job's limits"
+      "an attach reply naming a card not shown, or a discussion twice, is asked once more, the second placed and counted asked again, within the job's limits"
     ) {
-      // A reply omitting card 1, then one naming discussion 1 twice.
+      // A reply naming card 2 of one, then one naming discussion 1 twice.
       val wrong = Seq(
-        placed(Seq(group("new", Seq(1)))),
+        placed(Seq(group("new", Seq(1), Seq(1, 2)))),
         placed(Seq(group("new", Seq(1), Seq(1))), asideDiscussions = Seq(1))
       )
       wrong.map { first =>
@@ -455,14 +454,14 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "an attach reply not naming each discussion and card shown once, twice, leaves all it was shown"
+      "an attach reply naming a discussion twice, twice over, leaves all it was shown"
     ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val reply = runs.run(attach = (_, _) => placed(Nil, asideDiscussions = Seq(1, 1)))
       (reply, runs.asked.map(_.kind), runs.kept, runs.aside._1) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply did not name each discussion and card shown once)",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply named a discussion or card twice, or one or a topic not shown)",
         Vector("attach", "attach"),
         Vector(),
         Vector()
@@ -666,6 +665,7 @@ object TopicDreamTests extends TestSuite {
     }
 
     test("a run for a past day is shown no card written after that day's end") {
+      // The card shown goes to a new entry of its own, so is set aside: no topic writes it.
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
@@ -676,7 +676,7 @@ object TopicDreamTests extends TestSuite {
         .map(a =>
           (a.kind, a.shown.contains("The deploy plan."), a.shown.contains("The lunch menu."))
         ) ==>
-        Vector(("attach", true, false), ("write", false, false), ("write", true, false))
+        Vector(("attach", true, false), ("write", false, false))
     }
 
     test("a link too long to keep as a ref is counted, and stays in the topic's text") {
@@ -688,6 +688,38 @@ object TopicDreamTests extends TestSuite {
       (reply, runs.kept.map(_._2.contains(long))) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 ref too long to keep",
         Vector(true)
+      )
+    }
+
+    test("a new entry of cards alone sets them aside and opens no topic") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply =
+        runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1)), group("new", Nil, Seq(1)))))
+      (reply, runs.kept.map(_._1), runs.aside._2.size, runs.asked.map(_.kind)) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector(key(a)),
+        1,
+        Vector("attach", "write")
+      )
+    }
+
+    test(
+      "a reply that misses a card places the rest, not asked again, and the card unnamed is offered again"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val first = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1)))))
+      val again = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      (first, again, runs.kept.map(_._1), runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 unnamed, offered again",
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
+        Vector(key(a)),
+        Vector(("attach", (1, 0, 1)), ("write", (1, 0, 0)), ("attach", (0, 1, 1)))
       )
     }
 
@@ -814,11 +846,12 @@ object TopicDreamTests extends TestSuite {
     test("a topic written from a card believed at Outside is believed no more than that") {
       val w = new StrandWorld
       val runs = new Runs(w)
-      val opened = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), Integrity.Outside)
-      val reply = runs.run()
+      val a = strand(w, "C1", "deploy pipeline")
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), Integrity.Outside)
+      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector((opened, Integrity.Outside))
+        Vector((key(a), Integrity.Outside))
       )
     }
   }

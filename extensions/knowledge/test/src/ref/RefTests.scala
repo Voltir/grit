@@ -114,7 +114,7 @@ object RefTests extends TestSuite {
     test("every kind of ref reads back as written") {
       val refs = Vector(
         Ref.Strand(ConversationId("c-1")),
-        Ref.Topic(TopicKey.card(CardKey.of(right(CorpusName.of("repo")), "docs/a.md"))),
+        Ref.Topic(right(TopicKey.strand(ConversationId("c-2")))),
         Ref.Drive("1AbC"),
         Ref.GitHub("octocat", "Hello-World", "/"),
         Ref.GitHub("octocat", "Hello-World", "docs/a/b.md"),
@@ -141,19 +141,14 @@ object RefTests extends TestSuite {
       assert(Ref.written(url("https://example.com/" + "a" * 8200)).isLeft)
     }
 
-    test("a topic key is opened by a strand or a card and read back from its document's key") {
+    test("a topic key is opened by a strand and read back from its document's key") {
       val strand = right(TopicKey.strand(ConversationId("c-1")))
-      val card = TopicKey.card(right(CardKey.parse(hex)))
       DocKey.value(TopicKey.doc(strand)) ==> "topic:strand-c-1"
-      DocKey.value(TopicKey.doc(card)) ==> s"topic:card-$hex"
-      Vector(strand, card).map(k => TopicKey.read(TopicKey.doc(k))) ==> Vector(
-        Some(strand),
-        Some(card)
-      )
+      TopicKey.read(TopicKey.doc(strand)) ==> Some(strand)
     }
 
-    test("a key of another plugin, or a card's key that is not one, is no topic's") {
-      Vector("standing:c/1", "topic:card-abc", "topic:strand-", "topic:other-x")
+    test("a key of another plugin, or one a card opened, is no topic's") {
+      Vector("standing:c/1", s"topic:card-$hex", "topic:strand-", "topic:other-x")
         .map(k => TopicKey.read(right(DocKey.of(k)))) ==> Vector(None, None, None, None)
     }
 

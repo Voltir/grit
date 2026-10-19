@@ -3,10 +3,10 @@ package grit.knowledge.topic
 import java.time.LocalDate
 
 import grit.core.document.DocText
-import grit.core.id.{ConversationId, CorpusName, DocumentVersion}
+import grit.core.id.{ConversationId, DocumentVersion}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
-import grit.knowledge.ref.{CardKey, TopicKey}
+import grit.knowledge.ref.TopicKey
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
 
 import utest.*
@@ -20,7 +20,7 @@ object TopicCodecTests extends TestSuite {
     DocumentVersion.of(n).getOrElse(throw new java.lang.AssertionError(n))
 
   private val key: TopicKey = right(TopicKey.strand(ConversationId("c-1")))
-  private val other: TopicKey = TopicKey.card(CardKey.of(right(CorpusName.of("repo")), "docs/a.md"))
+  private val other: TopicKey = right(TopicKey.strand(ConversationId("c-2")))
 
   private val strand = Lineage.Tag.Strand(
     ConversationId("c-1"),

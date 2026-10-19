@@ -29,12 +29,12 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * numbered in the order shown, as are the topics shown (those attached to, and at most
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
-  * one, keyed by the group's first strand, or its first card when it holds none; groups naming
-  * one topic are one. Those it puts in none are set aside (`aside`), in a document of its floor
-  * under `topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or
-  * version set aside. A reply not naming each strand and card shown exactly once, or naming a
-  * topic not shown, is asked once more (`attach-again`), and when that one does too, all are
-  * left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
+  * one, keyed by the group's first strand; groups naming one topic are one. A new group holding
+  * no strand is set aside, so no card alone opens a topic. Those it puts in none are set aside
+  * (`aside`), in a document of its floor under `topic:aside` holding no topic, while within
+  * `recent` or `cardRecent` at the digest or version set aside. One it names nowhere is counted
+  * unnamed and offered again. A reply naming a strand or card twice, or a number or topic not
+  * shown, is asked once more (`attach-again`), and when that one does too, all are left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
   * topics first, asks once (`write-{i}`) for its new lead and the day's passage, from the strands
   * and cards attached and its current text, and keeps it (`keep-{i}`): the day's passage replacing
   * one the topic holds for that day, its lineage joined. A topic's version refers to each strand it
@@ -73,7 +73,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       case Left(e) => Gathered.stopped(s"scanning its topics: ${MoveError.said(e)}").line
       case Right(scan) =>
         val begun =
-          Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, 0, Vector.empty, None)
+          Gathered(0, 0, scan.withdrew, scan.unchanged, 0, scan.left, 0, 0, 0, Vector.empty, None)
         val (placed, done) = attach(run, moves, scan, begun)
         // Each topic takes the cards its strands link, wherever those strands went.
         val touched = TopicDream
@@ -162,18 +162,12 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
             g.copy(left = g.left + n, unwritten = g.unwritten :+ ("attach", TopicDream.Uncovered))
           )
         case Right(Some((s, Some(p)))) =>
-          // A new topic is keyed by its first discussion, or its first card when it has none.
-          val touches = p.topics.flatMap(w =>
-            w.to match {
-              case _ if w.discussions.isEmpty && w.cards.isEmpty => None
-              case Some((k, v)) => Some(Right(Touch(k, Some(v), w.discussions, w.cards)))
-              case None =>
-                w.discussions.headOption
-                  .map(st => TopicKey.strand(st.root))
-                  .orElse(w.cards.headOption.map(c => Right(TopicKey.card(c.key))))
-                  .map(_.map(Touch(_, None, w.discussions, w.cards)))
-            }
-          )
+          // A new topic is keyed by its first discussion.
+          val touches = p.topics.map {
+            case Placing.Went.Into((k, v), ds, cs) => Right(Touch(k, Some(v), ds, cs))
+            case Placing.Went.Opened(first, more, cs) =>
+              TopicKey.strand(first.root).map(Touch(_, None, first +: more, cs))
+          }
           val unopened = touches.collect { case Left(why) => ("a strand", why) }
           val setAside =
             p.asideDiscussions.map(st => Lineage.Tag.Strand(st.root, st.room, st.digest)) ++
@@ -195,6 +189,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               aside = g.aside + setAside.size,
               // Those not shown.
               left = g.left + scan.cards.count(c => !s.shown.contains(c.version)),
+              unnamed = g.unnamed + p.unnamedDiscussions + p.unnamedCards,
               again = g.again + again,
               unwritten = g.unwritten ++ unopened ++ kept
             )
@@ -277,16 +272,17 @@ object TopicDream {
 
   private val Attach: MoveName = move("attach")
 
-  /** The attach ask again, made only when its reply did not name each item shown once. */
+  /** The attach ask again, made only when its reply named an item twice or one not shown. */
   private val AttachAgain: MoveName = move("attach-again")
 
   /** What the attach ask asked again is told besides. */
   private val Again: String =
-    "Your previous reply did not name each discussion and card shown exactly once across " +
-      "`topics` and `aside`, or named a topic not shown: name each exactly once."
+    "Your previous reply named a discussion or card more than once across `topics` and " +
+      "`aside`, or a number or topic not shown: name each exactly once, from those shown."
 
   /** Why a run left all its attach ask was shown. */
-  private val Uncovered: String = "its reply did not name each discussion and card shown once"
+  private val Uncovered: String =
+    "its reply named a discussion or card twice, or one or a topic not shown"
 
   private val SetAside: MoveName = move("aside")
 
@@ -340,9 +336,11 @@ object TopicDream {
       "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
       "go to it, by number. Each entry is one topic, about one matter: a discussion of a " +
       "matter no other shown is about gets a `new` entry of its own, however short. Put two " +
-      "in one `new` entry only when they are about the same matter, such as a card and the " +
-      "discussions about its file; never two different matters, even related ones. Give `aside` the discussions and cards too slight to " +
-      "keep. Name each discussion and card shown exactly once."
+      "discussions in one `new` entry only when they are about the same matter; never two " +
+      "different matters, even related ones. A `new` entry holds at least one discussion: a " +
+      "card goes to the topic shown or the discussion it is about, and to `aside` when none " +
+      "is. Give `aside` the discussions and cards too slight to keep. Name each discussion " +
+      "and card shown exactly once."
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
@@ -483,10 +481,11 @@ object TopicDream {
 private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Placing.Items)
     extends caps.Pure {
 
-  /** Where each of `discussions`, `cards` and `topics`, as numbered in their order, went: each
-    * group's topic (`None` for a new one) with its discussions and cards, then those set aside;
-    * `None` unless every discussion and card is named exactly once and nothing else is named,
-    * each topic named among `topics`.
+  /** Where each of `discussions`, `cards` and `topics`, as numbered in their order, went: the
+    * groups holding any, each into a topic shown or opening one from its discussions, then those
+    * set aside, the cards of a new group holding no discussion among them, and how many of each
+    * it named nowhere; `None` when it names a discussion or card twice, a number not shown, or a
+    * topic not among `topics`.
     */
   def placed[S, C, T](
       discussions: Vector[S],
@@ -494,30 +493,33 @@ private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Pl
       topics: Vector[T]
   ): Option[Placing.Placed[S, C, T]] = {
     val items = this.topics.map(_.items) :+ aside
-    def once(named: Vector[Int], n: Int) = named.sorted == (1 to n).toVector
+    def atMostOnce(named: Vector[Int], n: Int) =
+      named.distinct.size == named.size && named.forall(i => i >= 1 && i <= n)
+    val ds = items.flatMap(_.discussions)
+    val cs = items.flatMap(_.cards)
+    def of[A](as: Vector[A], is: Vector[Int]) = is.flatMap(i => as.lift(i - 1))
     val groups = this.topics.map(g =>
       (g.to match {
         case Placing.To.In(k) => topics.lift(k - 1).map(Some(_))
         case Placing.To.New => Some(None)
-      }).map(t =>
-        Placing.Went(
-          t,
-          g.items.discussions.flatMap(i => discussions.lift(i - 1)),
-          g.items.cards.flatMap(j => cards.lift(j - 1))
-        )
-      )
+      }).map(t => (t, of(discussions, g.items.discussions), of(cards, g.items.cards)))
     )
-    Option
-      .when(
-        once(items.flatMap(_.discussions), discussions.size) &&
-          once(items.flatMap(_.cards), cards.size) && groups.forall(_.nonEmpty)
-      )(
-        Placing.Placed(
-          groups.flatten,
-          aside.discussions.flatMap(i => discussions.lift(i - 1)),
-          aside.cards.flatMap(j => cards.lift(j - 1))
-        )
+    Option.when(
+      atMostOnce(ds, discussions.size) && atMostOnce(cs, cards.size) && groups.forall(_.nonEmpty)
+    ) {
+      val went = groups.flatten
+      Placing.Placed(
+        went.flatMap {
+          case (Some(t), d, c) if d.nonEmpty || c.nonEmpty => Some(Placing.Went.Into(t, d, c))
+          case (None, first +: more, c) => Some(Placing.Went.Opened(first, more, c))
+          case _ => None
+        },
+        of(discussions, aside.discussions),
+        of(cards, aside.cards) ++ went.collect { case (None, d, c) if d.isEmpty => c }.flatten,
+        discussions.size - ds.size,
+        cards.size - cs.size
       )
+    }
   }
 }
 
@@ -543,11 +545,20 @@ private[topic] object Placing {
   final case class Placed[S, C, T](
       topics: Vector[Went[S, C, T]],
       asideDiscussions: Vector[S],
-      asideCards: Vector[C]
+      asideCards: Vector[C],
+      unnamedDiscussions: Int,
+      unnamedCards: Int
   )
 
-  /** The discussions and cards a group took to its topic, `None` for a new one. */
-  final case class Went[S, C, T](to: Option[T], discussions: Vector[S], cards: Vector[C])
+  /** Where a group's discussions and cards went. */
+  enum Went[S, C, T] {
+
+    /** Into the topic `to`, shown. */
+    case Into(to: T, discussions: Vector[S], cards: Vector[C])
+
+    /** Into a new topic, opened by its `first` discussion: a new topic always holds one. */
+    case Opened(first: S, more: Vector[S], cards: Vector[C])
+  }
 
   def read(v: ujson.Value): Either[String, Placing] = {
     def numbers(o: ujson.Value, key: String, where: String): Either[String, Vector[Int]] =
