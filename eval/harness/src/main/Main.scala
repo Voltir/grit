@@ -82,6 +82,7 @@ import grit.eval.harness.pull.{Pull, ShadowLog}
 import grit.eval.harness.reply.{
   Admission,
   Assembled,
+  Duplication,
   Expect,
   Queries,
   Rebuild,
@@ -167,6 +168,7 @@ object Main {
       case "churn" :: rest => exit(flags(rest).flatMap(churn))
       case "recall" :: rest => exit(flags(rest).flatMap(recall))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
+      case "duplication" :: rest => exit(flags(rest).flatMap(duplication(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
       case "lab-stitch" :: rest => exit(flags(rest).flatMap(labStitch(_, clock)))
@@ -553,6 +555,52 @@ object Main {
         }
       }
     } yield ()
+
+  /** `duplication --capture <dir> --url <jdbc> [--window <tokens>] [--tail <tokens>]`: every
+    * turn the restored database recorded before its dump, its window drawn again by the shipped
+    * assembler as of its assembly but for its documents, read as the database holds them now
+    * ([[Rebuild.redrawn]], its query replayed, nothing spent), and counted for a topic held
+    * with one of its own leaves ([[Duplication.of]]): run over a copy the topics job was run
+    * over since the dump, so the topics it wrote are found. The assembler is built as
+    * `rebuild`'s. The database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts
+    * and workflow ids, never text.
+    */
+  private def duplication(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      dir <- need(f, "capture").map(Path.of(_))
+      url <- need(f, "url")
+      window <- f
+        .get("window")
+        .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
+      tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
+      assembled = Assembled.Shipped.copy(window = window, tail = tail)
+      manifest <- read(dir.resolve("capture.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
+      )
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      counted <- opened(config) { reader =>
+        val now = clock.now()
+        def unread(what: String)(e: grit.core.store.StoreError) = s"$what unread: ${Capture.kind(e)}"
+        for {
+          workflows <- reader.turns(manifest.dump.at).left.map(unread("turn workflows"))
+          windows = workflows.map((w, _) =>
+            w -> Rebuild
+              .redrawn(reader, w, assembled, Width.Deployed, now)
+              .flatMap(drawn =>
+                reader.all
+                  .read(reader.documents.read(drawn.documents.distinct))
+                  .left
+                  .map(unread("its documents"))
+              )
+          )
+          roots = Duplication.roots(windows.flatMap(_._2.toOption).flatten)
+          links <- reader.all.read(reader.stitches.links(roots)).left.map(unread("links"))
+        } yield Duplication.of(windows, links)
+      }
+    } yield counted.lines.foreach(println)
 
   /** `recipes --eval <dir> --capture <yyyymmdd> --url <jdbc> --variants <name,…> --context
     * <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels <file>] [--window

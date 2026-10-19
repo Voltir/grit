@@ -317,6 +317,15 @@
 #       the models' variables are read from the environment over GRIT_ENV_FILE (the main
 #       checkout's .env when unset).
 #
+#   scripts/eval duplication <yyyymmdd> [--window <tokens>] [--tail <tokens>]
+#       Every turn capture <date> recorded, its window drawn again over grit_eval_shadow (the
+#       copy backfill left) as rebuild draws it, but for its documents, read as the copy holds
+#       them now, so the topics backfill wrote are found; its search run again under the query
+#       it recorded, all it finds packed, nothing spent. Prints how many windows held a topic,
+#       and how many held a topic with its own leaf: the document of a strand it was written
+#       from, or a Standing document of one of that strand's conversations; with their
+#       workflow ids. Text-free.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -712,6 +721,17 @@ backfill() {
     ./mill --ticker false grit.app.it.runMain grit.app.main.TopicBackfill "$spend" "$perRun" $days
 }
 
+duplication() {
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
+  shift
+  local dir="$main/.local/eval/capture/$capture" db=grit_eval_shadow
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$db" || { echo "eval: no $db; run backfill first" >&2; exit 1; }
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness duplication --capture "$dir" --url "jdbc:postgresql://localhost:5432/$db" "$@"
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -722,6 +742,7 @@ reply_labels() {
 case $1 in
   capture) shift; capture "$@" ;;
   backfill) shift; backfill "$@" ;;
+  duplication) shift; duplication "$@" ;;
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;

@@ -14,6 +14,7 @@ import grit.core.context.{
   Width,
   Window
 }
+import grit.core.durable.StepRecord
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.Pinned
@@ -141,20 +142,8 @@ object Rebuild {
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
       reader.all.read(body).left.map(e => s"$what of $name unread: ${Capture.kind(e)}")
     for {
-      turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
-      at <- steps
-        .find(_.name == Turn.Step.Assemble)
-        .toRight(s"$name recorded no assemble step")
-        .flatMap(_.started.toRight(s"$name's assemble step recorded no start"))
-      query <- read("query")(reader.entries.get(Turn.queryId(turn, 0))).map(
-        _.flatMap(e =>
-          e.payload match {
-            case Payload.Query(q) => Some(q)
-            case _ => None
-          }
-        )
-      )
+      begun <- this.begun(reader, workflow)
+      Begun(turn, steps, at, query) = begun
       recorded <- read("window")(reader.entries.get(Turn.windowId(turn))).map(
         _.flatMap(e =>
           e.payload match {
@@ -188,21 +177,79 @@ object Rebuild {
             )(using reader.db)
             .left
             .map(unbuilt(turn))
-        case None =>
-          // The writer replays the query the turn recorded, and sends nothing.
-          Seed.catalog.flatMap(seed =>
-            window(
-              AsOf(reader, at),
-              turn,
-              assembled,
-              new Replayed(query),
-              width,
-              Some(seed.pin.query.first)
-            )(using reader.db)
-          )
+        case None => replayed(AsOf(reader, at), begun, assembled, width)(using reader.db)
       }
     } yield RebuiltWindow(at, recorded, rebuilt, lost)
   }
+
+  /** The window of the turn `workflow` recorded, drawn again by the shipped assembler
+    * ([[window]]) over `reader`'s database as it stood when the turn's `assemble` step started,
+    * but for its documents, read as they stood at `documents` ([[AsOf.documentsAsOf]]), so a
+    * document written since can be found: its search run again under the query the turn
+    * recorded, whatever it recorded of its search, packing all it finds, no classifier asked
+    * and nothing spent. `Left` as [[recorded]]'s.
+    */
+  def redrawn(
+      reader: Reader^,
+      workflow: WorkflowId,
+      assembled: Assembled,
+      width: Width,
+      documents: Instant
+  ): Either[String, Window] =
+    begun(reader, workflow).flatMap(b =>
+      replayed(AsOf(reader, b.at).documentsAsOf(documents), b, assembled, width)(using reader.db)
+    )
+
+  /** What a turn recorded of its start: its `steps`, when its `assemble` step started (`at`),
+    * and the query it recorded.
+    */
+  private final case class Begun(
+      turn: TurnRef,
+      steps: Vector[StepRecord],
+      at: Instant,
+      query: Option[String]
+  )
+
+  private def begun(reader: Reader^, workflow: WorkflowId): Either[String, Begun] = {
+    val name = WorkflowId.value(workflow)
+    for {
+      turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
+      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
+      at <- steps
+        .find(_.name == Turn.Step.Assemble)
+        .toRight(s"$name recorded no assemble step")
+        .flatMap(_.started.toRight(s"$name's assemble step recorded no start"))
+      query <- reader.all
+        .read(reader.entries.get(Turn.queryId(turn, 0)))
+        .left
+        .map(e => s"query of $name unread: ${Capture.kind(e)}")
+        .map(
+          _.flatMap(e =>
+            e.payload match {
+              case Payload.Query(q) => Some(q)
+              case _ => None
+            }
+          )
+        )
+    } yield Begun(turn, steps, at, query)
+  }
+
+  /** `begun`'s window drawn over `view`, the writer replaying the query the turn recorded, so
+    * nothing is sent.
+    */
+  private def replayed(view: AsOf, begun: Begun, assembled: Assembled, width: Width)(using
+      Db^
+  ): Either[String, Window] =
+    Seed.catalog.flatMap(seed =>
+      window(
+        view,
+        begun.turn,
+        assembled,
+        new Replayed(begun.query),
+        width,
+        Some(seed.pin.query.first)
+      )
+    )
 
   /** `rebuilt`, each turn's window rebuilt or why not, as lines to print: how many were
     * rebuilt, each [[Drift]]'s count and how many recorded no window, then each turn that

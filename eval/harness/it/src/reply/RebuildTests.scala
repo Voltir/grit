@@ -419,10 +419,11 @@ object RebuildTests extends TestSuite {
     } finally engine.close()
   }
 
-  /** A turn at task "late" asking the Falcon budget, then a document kept there that tells it;
-    * a moment between the two; and the document's version.
+  /** A turn at task "late" asking the Falcon budget, after another task's turn so it writes a
+    * query, then a document kept there that tells it; a moment between the two; the document's
+    * version; and the asking turn.
     */
-  private lazy val late: (Reader, Instant, DocumentVersion) = {
+  private lazy val late: (Reader, Instant, DocumentVersion, TurnRef) = {
     val config = TestPostgres.freshDatabase("harness_refound_late")
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
@@ -431,7 +432,8 @@ object RebuildTests extends TestSuite {
       val terms =
         right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
       right(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
-      val _ = ask(engine, "late", "what is the Falcon budget?")
+      val _ = ask(engine, "early", "the Falcon plan is drafted")
+      val asking = ask(engine, "late", "what is the Falcon budget?")
       val between = now()
       val version = right(
         engine.jot.write(Subject.Public)(
@@ -452,7 +454,7 @@ object RebuildTests extends TestSuite {
         case Written.Versioned(v, _, _) => v
         case other => throw new java.lang.AssertionError(s"not written: $other")
       }
-      (Reader.open(config), between, version)
+      (Reader.open(config), between, version, asking)
     } finally engine.close()
   }
 
@@ -615,7 +617,7 @@ object RebuildTests extends TestSuite {
     test(
       "documents read at the end find one kept after the moment a read asks for; as of that moment, none"
     ) {
-      val (reader, between, version) = late
+      val (reader, between, version, asking) = late
       val end = now()
       def found(view: AsOf) = right(reader.all.read {
         for {
@@ -626,6 +628,27 @@ object RebuildTests extends TestSuite {
       })
       (found(AsOf(reader, end).documentsAtEnd), found(AsOf(reader, end))) ==>
         (Vector(version), Vector.empty)
+    }
+    test("documents read as of a later moment find one kept after the stores' own moment") {
+      val (reader, between, version, asking) = late
+      val end = now()
+      def found(view: AsOf) = right(reader.all.read {
+        for {
+          plugins <- view.documents.declared()
+          shelves <- view.documents.shelved(plugins.map(_._1), between)
+          hits <- view.documents.search(shelves, "Falcon budget", 10, between)
+          read <- view.documents.read(Vector(version))
+        } yield (hits.map(_.document.version), read.map(_.version))
+      })
+      (found(AsOf(reader, between).documentsAsOf(end)), found(AsOf(reader, between).documentsAtEnd)) ==>
+        ((Vector(version), Vector(version)), (Vector.empty, Vector.empty))
+    }
+    test("a turn drawn again with documents as of now holds one kept after it ran") {
+      val (reader, between, version, asking) = late
+      def drawn(documents: Instant) = right(
+        Rebuild.redrawn(reader, asking.workflowId, Assembled.Shipped, Width.Deployed, documents)
+      ).documents
+      (drawn(now()), drawn(between)) ==> (Vector(version), Vector.empty)
     }
     test("a turn that followed no document is left out of the recall replay") {
       val (reader, _, _, _, _, _) = judged

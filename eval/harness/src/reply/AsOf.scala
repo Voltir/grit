@@ -73,7 +73,8 @@ final class AsOf private (
     val lifecycle: LifecycleStore,
     val search: EntrySearch,
     val documents: DocumentSearch,
-    val stitches: StitchStore
+    val stitches: StitchStore,
+    every: DocumentSearch
 ) {
 
   /** These stores, but for the lifecycle settings, read as `settings` whatever the database
@@ -89,14 +90,16 @@ final class AsOf private (
       new AsOf.Settled(lifecycle, settings),
       search,
       documents,
-      stitches
+      stitches,
+      every
     )
 
-  /** These stores, but every document read as current at `at`, whatever earlier moment a read
+  /** These stores, but every document read as current at `end`, whatever earlier moment a read
     * asks for: a turn draws its documents as of its root, and this draws them as they stood at
-    * `at` instead, so a turn recorded before a document was written can find it.
+    * `end` instead, so a turn recorded before a document was written can find it; `end` may be
+    * later than `at`.
     */
-  def documentsAtEnd: AsOf =
+  def documentsAsOf(end: Instant): AsOf =
     new AsOf(
       at,
       entries,
@@ -105,9 +108,13 @@ final class AsOf private (
       principals,
       lifecycle,
       search,
-      new AsOf.AtEnd(documents, at),
-      stitches
+      new AsOf.AtEnd(new AsOf.Documents(every, end), end),
+      stitches,
+      every
     )
+
+  /** [[documentsAsOf]] `at`. */
+  def documentsAtEnd: AsOf = documentsAsOf(at)
 }
 
 object AsOf {
@@ -125,7 +132,8 @@ object AsOf {
       reader.lifecycle,
       new Search(reader.search, reader.entries, at),
       new Documents(reader.documents, at),
-      new Stitches(reader.stitches, reader.conversations, at)
+      new Stitches(reader.stitches, reader.conversations, at),
+      reader.documents
     )
   }
 
@@ -329,7 +337,7 @@ object AsOf {
       under.read(versions).map(_.filter(d => before(d.written, at)))
   }
 
-  /** `under`'s documents, each read asked for as of any moment read as of `at` ([[documentsAtEnd]]). */
+  /** `under`'s documents, each read asked for as of any moment read as of `at` ([[documentsAsOf]]). */
   private final class AtEnd(under: DocumentSearch, at: Instant) extends DocumentSearch {
     def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
       under.declared()

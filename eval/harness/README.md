@@ -8,7 +8,8 @@ instrument, not a model.
 It names grit's code alone (core, `grit.dbos`'s `Reader`, and its `Engine` to write the
 synthetic reference's database and the stitch lab's alone, the turn's reading of its records,
 the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, the
-models' Jev and OpenRouter clients, and `grit.eval`'s hand-written cases and their layout),
+models' Jev and OpenRouter clients, the knowledge plugin's reading of a topic's own leaves,
+and `grit.eval`'s hand-written cases and their layout),
 but for the kit's `.env` loader (`DotEnv`), through which a run reads Jev's key, and a rebuild
 OpenRouter's, as grit does.
 
@@ -74,7 +75,10 @@ Packages, each importing only those above it:
   documents too (a turn draws them as of its root, which would hide every document written
   since), and ranks each document the turn followed by its current version, matched by plugin
   and key, since a resync supersedes every version it rewrites. It reads every row: a restored
-  database records no deployment's groups, so it cannot read as the turn was cleared to. ← `stats`, `capture`, `label`, `log`, `jev`
+  database records no deployment's groups, so it cannot read as the turn was cleared to. The
+  duplication measure draws each window again with its documents as a database holds them
+  now, its search run again whatever the turn recorded of it, since a recorded search could
+  not find a topic written later. ← `stats`, `capture`, `label`, `log`, `jev`
 - **`run`**: a run's calls asked of Jev through the shipped calls, answered from the cache when
   it holds them, else asked, timed and kept, within the cap. ← `capture`, `log`, `jev`
 - **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered

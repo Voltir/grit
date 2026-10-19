@@ -512,6 +512,7 @@ object grit extends Module {
           grit.lifecycle,
           grit.models,
           grit.kit,
+          grit.knowledge,
           grit.eval
         )
       def mainClass = Some("grit.eval.harness.main.Main")
