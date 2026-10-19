@@ -648,10 +648,16 @@ object Main {
     */
   private val TopicLabelsVar = "GRIT_TOPIC_LABELS"
 
+  /** The last day the topics plugin's nightly runs seed, `yyyy-mm-dd` ([[TopicDocuments.of]]'s
+    * `seedUntil`); unset, none do.
+    */
+  private val TopicSeedVar = "GRIT_TOPICS_SEED_UNTIL"
+
   /** The topics plugin `name` ([[TopicDocuments]]), its runs daily at 05:00 in `zone`, after
     * the knowledge plugin's syncs and the strands', one schedule at each label
-    * [[TopicLabelsVar]] names, reading `cards`' cards when given; or why not: the variable
-    * unset, blank, or naming no label, or [[TopicDocuments.of]]'s refusal under `visibility`.
+    * [[TopicLabelsVar]] names, reading `cards`' cards when given, seeding through the day
+    * [[TopicSeedVar]] names; or why not: the labels' variable unset, blank, or naming no label,
+    * the seed's not `yyyy-mm-dd`, or [[TopicDocuments.of]]'s refusal under `visibility`.
     */
   private[main] def topics(
       name: PluginName,
@@ -662,8 +668,17 @@ object Main {
   ): Either[String, TopicDocuments] =
     for {
       labels <- labelsOf(env, TopicLabelsVar, "topics")
+      seed <- env.get(TopicSeedVar).map(_.trim).filter(_.nonEmpty) match {
+        case None => Right(None)
+        case Some(d) =>
+          scala.util
+            .Try(java.time.LocalDate.parse(d))
+            .toOption
+            .map(Some(_))
+            .toRight(s"topics: $TopicSeedVar is yyyy-mm-dd: $d")
+      }
       plugin <- TopicDocuments
-        .of(name, labels, java.time.LocalTime.of(5, 0), zone, visibility, cards)
+        .of(name, labels, java.time.LocalTime.of(5, 0), zone, visibility, cards, seed)
         .left
         .map(why => s"topics: $why")
     } yield plugin

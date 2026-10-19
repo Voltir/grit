@@ -220,6 +220,27 @@ object PluginChoiceTests extends TestSuite {
       )
     }
 
+    test("topics seeds through the day GRIT_TOPICS_SEED_UNTIL names, and refuses one not a day") {
+      val env = Map("GRIT_PLUGINS" -> "topics", "GRIT_TOPIC_LABELS" -> "public")
+      (
+        scheduled(env + ("GRIT_TOPICS_SEED_UNTIL" -> "2026-10-30"))
+          .map((all: Vector[(String, SlotRule, ujson.Value, Label)]) => all.map(_._3)),
+        choice(env + ("GRIT_TOPICS_SEED_UNTIL" -> "soon")).map(_.size)
+      ) ==> (
+        Right(
+          Vector(
+            ujson.Obj(
+              "perRun" -> 10,
+              "recent" -> "PT48H",
+              "cardRecent" -> "PT48H",
+              "seedUntil" -> "2026-10-30"
+            )
+          )
+        ),
+        Left("GRIT_PLUGINS: topics: GRIT_TOPICS_SEED_UNTIL is yyyy-mm-dd: soon")
+      )
+    }
+
     test(
       "topics with no label, or listed before knowledge, is refused, naming what to change"
     ) {

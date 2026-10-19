@@ -99,11 +99,12 @@ object TopicRoom {
         LocalTime.of(5, 0),
         ZoneOffset.UTC,
         Visibility.Shipped,
-        cards
+        cards,
+        None
       )
       dream <- topics.jobs.collectFirst { case d: TopicDream => d }.toRight("no topics job")
       params = (d: LocalDate) =>
-        TopicParams(perRun, TopicDocuments.Recent, (days.size + 2).days, Some(d))
+        TopicParams(perRun, TopicDocuments.Recent, (days.size + 2).days, Some(d), None)
       day = (i: Int, at: Instant) =>
         RoomRun.deployment(
           env,

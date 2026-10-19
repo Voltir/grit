@@ -25,9 +25,10 @@ object TopicDocumentsTests extends TestSuite {
   private def of(
       labels: Vector[Label],
       visibility: Visibility = Visibility.Shipped,
-      cards: Option[Exports[CardShelf]] = None
+      cards: Option[Exports[CardShelf]] = None,
+      seedUntil: Option[java.time.LocalDate] = None
   ) =
-    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards)
+    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil)
 
   /** A plugin exporting its cards, as the knowledge plugin does. */
   private val cards: Exports[CardShelf] = new Exports[CardShelf] {
@@ -42,7 +43,7 @@ object TopicDocumentsTests extends TestSuite {
     ) {
       val internal = Label.at(Level.Internal)
       val params =
-        TopicParams(TopicDocuments.PerRun, TopicDocuments.Recent, TopicDocuments.Recent, None)
+        TopicParams(TopicDocuments.PerRun, TopicDocuments.Recent, TopicDocuments.Recent, None, None)
       of(Vector(Label.Public, internal)).map(p =>
         (
           p.schedules.map(d =>
@@ -57,6 +58,22 @@ object TopicDocumentsTests extends TestSuite {
             ("topics-dream-internal", SlotRule.Daily(At, ZoneOffset.UTC), "internal", params)
           ),
           Some(("topic", 2 * TopicDocuments.Bound))
+        )
+      )
+    }
+
+    test("a seed day reaches every label's schedule as its runs' seedUntil") {
+      val until = java.time.LocalDate.parse("2026-10-30")
+      of(Vector(Label.Public, Label.at(Level.Internal)), seedUntil = Some(until))
+        .map(_.schedules.map(_.params)) ==> Right(
+        Vector.fill(2)(
+          TopicParams(
+            TopicDocuments.PerRun,
+            TopicDocuments.Recent,
+            TopicDocuments.Recent,
+            None,
+            Some(until)
+          )
         )
       )
     }

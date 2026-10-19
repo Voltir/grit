@@ -1,6 +1,6 @@
 package grit.knowledge.plugin
 
-import java.time.{LocalTime, ZoneId}
+import java.time.{LocalDate, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
@@ -27,7 +27,8 @@ final class TopicDocuments private (
     rule: SlotRule,
     zone: ZoneId,
     terms: DocumentTerms,
-    cards: Option[Exports[CardShelf]]
+    cards: Option[Exports[CardShelf]],
+    seedUntil: Option[LocalDate]
 ) extends Plugin {
 
   private val labels: Vector[Label] = keyed.map(_._2)
@@ -48,7 +49,13 @@ final class TopicDocuments private (
         key,
         dream,
         rule,
-        TopicParams(TopicDocuments.PerRun, TopicDocuments.Recent, TopicDocuments.Recent, None),
+        TopicParams(
+          TopicDocuments.PerRun,
+          TopicDocuments.Recent,
+          TopicDocuments.Recent,
+          None,
+          seedUntil
+        ),
         l
       )
     )
@@ -68,6 +75,7 @@ object TopicDocuments {
   val Recent: FiniteDuration = 2.days
 
   /** The plugin at `labels`, its runs daily `at` in `zone`, reading `cards`' cards when given,
+    * each night's run until `seedUntil` (its day included) seeding ([[TopicParams.seedUntil]]),
     * under the deployment's `visibility`; or why not: no label, one given twice, one holding a
     * compartment `visibility` does not declare, or one whose written form makes no schedule key.
     */
@@ -77,12 +85,13 @@ object TopicDocuments {
       at: LocalTime,
       zone: ZoneId,
       visibility: Visibility,
-      cards: Option[Exports[CardShelf]]
+      cards: Option[Exports[CardShelf]],
+      seedUntil: Option[LocalDate]
   ): Either[String, TopicDocuments] =
     for {
       keyed <- DreamSchedules.keyed("topics", "topics-dream", labels, visibility)
       terms <- DocLabel
         .of("topic")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))
-    } yield new TopicDocuments(name, keyed, SlotRule.Daily(at, zone), zone, terms, cards)
+    } yield new TopicDocuments(name, keyed, SlotRule.Daily(at, zone), zone, terms, cards, seedUntil)
 }

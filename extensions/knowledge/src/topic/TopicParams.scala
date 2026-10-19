@@ -6,20 +6,27 @@ import scala.concurrent.duration.*
 
 /** What a topics run is told: at most how many topics it writes (`perRun`); how far back a
   * strand's last message (`recent`) and a card's write (`cardRecent`) may be for it to be looked
-  * at; and the `day` it writes for, the day of its slot in its job's zone when none: a backfill
-  * names a past day, and its strands are read as they stood at that day's end.
+  * at; the `day` it writes for, the day of its slot in its job's zone when none: a backfill
+  * names a past day, and its strands are read as they stood at that day's end; and the last day
+  * it seeds on (`seedUntil`): a run for that day or one before reads the cards written within
+  * [[TopicParams.SeedReach]] instead of `cardRecent`, so each night offers the next batch of
+  * the cards no run has placed.
   */
 final case class TopicParams(
     perRun: Int,
     recent: FiniteDuration,
     cardRecent: FiniteDuration,
-    day: Option[LocalDate]
+    day: Option[LocalDate],
+    seedUntil: Option[LocalDate]
 ) extends caps.Pure
 
 object TopicParams {
 
-  /** Its record: `{"perRun", "recent", "cardRecent", "day"?}`, durations ISO-8601, the day
-    * `yyyy-mm-dd`.
+  /** 3,650 days: how far back a seeding run reads cards. */
+  val SeedReach: FiniteDuration = 3650.days
+
+  /** Its record: `{"perRun", "recent", "cardRecent", "day"?, "seedUntil"?}`, durations
+    * ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
     val o = ujson.Obj(
@@ -28,6 +35,7 @@ object TopicParams {
       "cardRecent" -> java.time.Duration.ofSeconds(p.cardRecent.toSeconds).toString
     )
     p.day.foreach(d => o("day") = d.toString)
+    p.seedUntil.foreach(d => o("seedUntil") = d.toString)
     o
   }
 
@@ -52,14 +60,22 @@ object TopicParams {
         .toRight(s"a topics run's parameters hold perRun, a whole number at least 1: $shown")
       recent <- duration(o, "recent")
       cardRecent <- duration(o, "cardRecent")
-      day <- o.get("day") match {
-        case None => Right(None)
-        case Some(d) =>
-          d.strOpt
-            .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
-            .map(Some(_))
-            .toRight(s"a topics run's day is yyyy-mm-dd: $shown")
-      }
-    } yield TopicParams(perRun.toInt, recent, cardRecent, day)
+      day <- date(o, "day", shown)
+      seedUntil <- date(o, "seedUntil", shown)
+    } yield TopicParams(perRun.toInt, recent, cardRecent, day, seedUntil)
   }
+
+  private def date(
+      o: collection.Map[String, ujson.Value],
+      key: String,
+      shown: String
+  ): Either[String, Option[LocalDate]] =
+    o.get(key) match {
+      case None => Right(None)
+      case Some(d) =>
+        d.strOpt
+          .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+          .map(Some(_))
+          .toRight(s"a topics run's $key is yyyy-mm-dd: $shown")
+    }
 }

@@ -100,6 +100,7 @@ object TopicDreamTests extends TestSuite {
         perRun: Int = 10,
         most: Int = 10,
         day: Option[LocalDate] = Some(Day),
+        seedUntil: Option[LocalDate] = None,
         now: Instant = Now,
         rooms: Recorded = Recorded.Empty,
         attach: (String, String) -> ujson.Value = everyNew,
@@ -132,7 +133,7 @@ object TopicDreamTests extends TestSuite {
         rooms = rooms
       )
       dream.run(
-        TestTainted.trusted(JobRun(TopicParams(perRun, 2.days, 2.days, day), now, now)),
+        TestTainted.trusted(JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil), now, now)),
         moves
       )
     }
@@ -746,6 +747,34 @@ object TopicDreamTests extends TestSuite {
         runs.asked.map(x => (x.kind, x.shown.contains("The skills"))),
         runs.referring(Ref.GitHub("o", "r", "skills"))
       ) ==> (Vector(("attach", false), ("write", true)), Vector(key(a)))
+    }
+
+    test("a run shows up to Cards cards; the next shows those it did not place, not those it did") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      (1 to TopicScan.Cards + 5).foreach(i =>
+        runs.card(s"f$i", s"File number $i.", Now.minusSeconds(3000L - i))
+      )
+      val first = runs.run(attach = placing("none"))
+      val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      (first, second, runs.asked.map(x => counted(x.shown)._3)) ==> (
+        s"topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, ${TopicScan.Cards} set aside, 0 left for the next run",
+        s"topics: 0 written (0 opened), 0 withdrawn, ${TopicScan.Cards} unchanged, 5 set aside, 0 left for the next run",
+        Vector(TopicScan.Cards, 5)
+      )
+    }
+
+    test("a run for a day up to seedUntil reads the cards written within SeedReach") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.card("old1", "An old plan.", Now.minusSeconds(30 * 86400))
+      val before = runs.run(seedUntil = Some(Day.minusDays(1)), attach = placing("none"))
+      val seeding = runs.run(seedUntil = Some(Day), attach = placing("none"))
+      (before, seeding, runs.asked.map(_.shown.contains("An old plan."))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector(true)
+      )
     }
 
     test("a new entry of cards alone sets them aside and opens no topic") {

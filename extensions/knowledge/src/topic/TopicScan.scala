@@ -63,7 +63,7 @@ private[topic] object TopicScan {
   /** 40: the most topics the attach ask shows besides those attached by ref. */
   val Leads: Int = 40
 
-  /** 50: the most changed cards a scan reads. */
+  /** 50: the most cards one run's attach ask is shown. */
   val Cards: Int = 50
 
   /** 10: the most card units a scan keeps of one strand's links. */
@@ -76,7 +76,8 @@ private[topic] object TopicScan {
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
     * the digest or version set aside; each already in a topic's lineage or the aside at its
     * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
-    * `most` strands and `most` cards to place, oldest first, the others left. Each strand
+    * `most` strands and [[Cards]] cards to place, oldest first, the others left; the cards read
+    * past as many as those topics and the aside hold, so successive runs page through them. Each strand
     * attached or to place is [[Linked]] to the cards its messages link, read whatever their age
     * and taken out of the aside and of those to place.
     */
@@ -97,11 +98,17 @@ private[topic] object TopicScan {
         strands
           .atFloor(until.minusSeconds(params.recent.toSeconds), until)
           .flatMap((recent: Vector[Strand.Digested]) =>
-            changed(shelf, until.minusSeconds(params.cardRecent.toSeconds), until)
-              .flatMap((seen: Vector[CardShelf.Seen]) =>
-                Aside
-                  .read(keeper, floor)
-                  .flatMap((held: Lineage) =>
+            Aside
+              .read(keeper, floor)
+              .flatMap((held: Lineage) =>
+                // Read past the cards already placed, so successive runs page through the rest.
+                changed(
+                  shelf,
+                  until.minusSeconds(params.cardRecent.toSeconds),
+                  until,
+                  Cards + placedCards(kept, held)
+                )
+                  .flatMap((seen: Vector[CardShelf.Seen]) =>
                     placed(keeper, kept.flatMap(_.topic), held, recent, seen).flatMap((p: Placed) =>
                       linking(strands, shelf, inPlay(most, p), until).flatMap(
                         (linked: Vector[Linked]) =>
@@ -115,6 +122,13 @@ private[topic] object TopicScan {
       )
     )
   }
+
+  /** How many card versions the topics of `kept` and the aside `held` hold. */
+  private def placedCards(kept: Vector[Pruned], held: Lineage): Int =
+    (kept.flatMap(_.topic).flatMap(_._3.topic.passages.flatMap(_.from.tags)) ++ held.tags)
+      .collect { case Lineage.Tag.Card(v) => v }
+      .distinct
+      .size
 
   /** The strands of `p` a run takes up: those attached by ref, then at most `most` to place. */
   private def inPlay(most: Int, p: Placed): Vector[Strand.Digested] =
@@ -227,15 +241,16 @@ private[topic] object TopicScan {
     }
   }
 
-  /** The cards changed from `since` until `until`, at most [[Cards]], through `cards`' service;
-    * none when there is no such plugin or it is not among the needs.
+  /** The cards changed from `since` until `until`, at most `n`, through `shelf`; none when
+    * there is none (no such plugin, or it is not among the needs).
     */
   private def changed(
       shelf: Option[CardShelf],
       since: Instant,
-      until: Instant
+      until: Instant,
+      n: Int
   )(using Tx^): Either[StoreError, Vector[CardShelf.Seen]] =
-    shelf.fold(Right(Vector.empty))(_.changed(since, until, Cards))
+    shelf.fold(Right(Vector.empty))(_.changed(since, until, n))
 
   /** The floor's aside `held`, kept to the strands of `recent` and the cards of `seen` it holds
     * at the digest or version they are now, less the cards `linked` pairs: the aside after.
@@ -315,12 +330,12 @@ private[topic] object TopicScan {
     Scanned(
       attached,
       strands.take(most),
-      cards.take(most),
+      cards.take(Cards),
       leads,
       kept.map(_.withdrew).sum,
       (recent.size - p.strands.size) +
         seen.count(c => !p.cards.exists(_._1.version == c.version) && !paired.contains(c.version)),
-      (strands.size - most).max(0) + (cards.size - most).max(0),
+      (strands.size - most).max(0) + (cards.size - Cards).max(0),
       linked
     )
   }

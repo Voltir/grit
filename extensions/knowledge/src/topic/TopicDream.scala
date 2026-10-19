@@ -19,14 +19,14 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its
   * floor, reading strands as they stood at that day's end (or now, if sooner) and the cards written
   * by then: scans its topics, the strands of rooms at its floor spoken in within `recent`, and the
-  * cards changed within `cardRecent`; withdraws from a topic each passage naming a strand it no
+  * cards changed within `cardRecent` ([[TopicParams.SeedReach]] on a night up to its `seedUntil`); withdraws from a topic each passage naming a strand it no
   * longer reads at its floor (its room at another label now, or its messages gone), the topic
   * itself when none is left; attaches each strand or card a topic already refers to (a card by the
   * unit its pointer reads, which a topic refers to when it was written from that card, links it,
   * or a strand of it links it); pairs each card a strand it takes up links ([[TopicScan.Linked]],
   * read whatever its age or whether it was set aside) with that strand, to go wherever the strand
   * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others
-  * go but a directory's cards, which attach only by ref or a strand's link, at most `perRun` strands and `perRun` cards, each
+  * go but a directory's cards, which attach only by ref or a strand's link, at most `perRun` strands and [[TopicScan.Cards]] cards past those already placed, each
   * numbered in the order shown, as are the topics shown (those attached to, and at most
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
@@ -67,9 +67,19 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     val end = day.plusDays(1).atStartOfDay(zone).toInstant
     val most = params.perRun.min(perRunMost.max(0))
     val shelf = cards
+    // A seeding night reads every card written within SeedReach in place of cardRecent.
+    val seeding = params.seedUntil.exists(last => !day.isAfter(last))
     moves.scan(TopicDream.Scan, run.tainted.map(_.params))((p, keeper, strands, needs, at) =>
-      TopicScan
-        .scanned(p, most, if (end.isBefore(at)) end else at, shelf, keeper, strands, needs, at)
+      TopicScan.scanned(
+        if (seeding) p.copy(cardRecent = TopicParams.SeedReach) else p,
+        most,
+        if (end.isBefore(at)) end else at,
+        shelf,
+        keeper,
+        strands,
+        needs,
+        at
+      )
     ) match {
       case Left(e) => Gathered.stopped(s"scanning its topics: ${MoveError.said(e)}").line
       case Right(scan) =>
