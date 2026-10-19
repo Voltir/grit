@@ -13,7 +13,8 @@ In dependency order, each with the core packages it imports:
   core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
-- **`id`**: the opaque ids, and the one short content hash every content-addressed id uses. A
+- **`id`**: the opaque ids, a web link as grit keeps it (`Href`), and the one short content hash
+  every content-addressed id uses. A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
   (enola-intent.yaml). Imports nothing in core.
 - **`persona`**: who grit presents as; a deployment declares one (ADR 0021). Imports nothing in

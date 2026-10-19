@@ -226,7 +226,8 @@ trait Keeping extends Moves {
 /** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's
   * needs: what a [[grit.core.job.DreamingJob]]'s run is handed. Their messages' text, and a
   * document's text it is to read, reach a model only through [[summarise]], read in its own
-  * step, and never the job's code.
+  * step, and never the job's code, which is handed only the links in them
+  * ([[grit.core.stitch.StrandShelf.links]]).
   */
 trait Dreaming extends Keeping {
 

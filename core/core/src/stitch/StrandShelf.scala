@@ -2,7 +2,7 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, Href}
 import grit.core.message.Cut
 import grit.core.store.{ConversationStore, StoreError, Tx}
 
@@ -27,6 +27,12 @@ trait StrandShelf {
   def of(roots: Vector[ConversationId], asOf: Instant)(using
       Tx^
   ): Either[StoreError, Vector[Strand.Digested]]
+
+  /** The links `seen`'s members' messages hold ([[Href.in]] over each, oldest first, each link
+    * once), of those said before its `asOf` that the transaction reads: the one part of their
+    * text a run's code is handed.
+    */
+  def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]]
 }
 
 object StrandShelf {
@@ -71,6 +77,11 @@ object StrandShelf {
         (acc, root) =>
           acc.flatMap(done => seen(root, asOf).map(done ++ _))
       }
+
+    def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]] =
+      saidIn(stitches, seen.root, seen.asOf).map(
+        _.flatMap(Stitching.spoken).flatMap(Href.in).distinct
+      )
 
     private def seen(root: ConversationId, asOf: Instant)(using
         Tx^

@@ -1,6 +1,6 @@
 package grit.core.stitch
 
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, Href}
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, Recorded, TestLabels}
 import grit.dbos.sql.TestTx
@@ -48,6 +48,23 @@ object StrandShelfTests extends TestSuite {
       seen.map(s => (s.root, s.members, s.said, s.chars, s.since, s.touched, s.asOf)) ==>
         Vector((a.id, Vector(a.id, c.id, b.id), 3, 3 + 300 + 5, at(0), at(60), at(600)))
       seen.map(_.room) ==> Vector(Origin.Slack("T", "C1", "1.0").room)
+    }
+
+    test(
+      "links lists the links of its members' messages said before asOf, each once, oldest first"
+    ) {
+      val w = new StrandWorld
+      val a = w.thread("C1", "1.0")
+      val b = w.thread("C1", "2.0")
+      val other = w.thread("C1", "3.0")
+      w.say(a, "the plan (https://h.io/plan)", 0)
+      w.follow(w.say(b, "see https://h.io/b and https://h.io/plan", 30), a)
+      w.say(b, "later https://h.io/late", 900)
+      w.say(other, "not ours https://h.io/other", 10)
+      given Tx = TestTx.fake
+      val seen = w.of(a, at(600))
+      seen.map(s => right(w.shelf.links(s)).map(Href.value)) ==>
+        Vector(Vector("https://h.io/plan", "https://h.io/b"))
     }
 
     test("a member with nothing said before asOf is no member; a root with nothing is left out") {

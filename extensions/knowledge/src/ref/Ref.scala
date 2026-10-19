@@ -1,7 +1,7 @@
 package grit.knowledge.ref
 
 import grit.core.document.{DocRef, Pointer}
-import grit.core.id.{ConversationId, DocKey}
+import grit.core.id.{ConversationId, DocKey, Href}
 import grit.core.tool.ToolName
 
 /** What a knowledge document refers to, kept as a [[grit.core.document.DocRef]]

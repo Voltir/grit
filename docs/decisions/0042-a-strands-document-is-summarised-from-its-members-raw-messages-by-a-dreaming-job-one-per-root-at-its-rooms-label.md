@@ -1,6 +1,6 @@
 # 0042. A strand's document is summarised from its members' raw messages by a dreaming job, one per root at its room's label
 
-Status: accepted (2026-10-18)
+Status: revised (2026-10-18)
 
 Context: a room's topic is scattered over the threads ADR 0023 stitches into a strand, and a
 turn's window ranks those threads one by one. A document per strand, a short summary with
@@ -44,8 +44,10 @@ Decision:
 
 Consequences:
 
-- A plugin's code never holds a message's text; ADR 0027's rule holds for it, and ADR 0034's
-  moves gain a read inside a keep and an ask core frames.
+- A plugin's code never holds a message's text, only the links in it as `Href`s
+  (`StrandShelf.links`); ADR 0027's rule holds for it, and ADR 0034's moves gain a read inside a
+  keep and an ask core frames. A planted link can place a card the plugin already reads into a
+  write already capped by the guest's strand, which is the influence the attach ask's placing has.
 - A document's integrity is never above its least-believed message's, and its label never
   below its room's: the keeper joins with the floor, and the run reads no room above it.
 - A strand that goes quiet past the stitch's horizon keeps its document until its members age

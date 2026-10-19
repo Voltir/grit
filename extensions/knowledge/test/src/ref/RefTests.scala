@@ -4,7 +4,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 import grit.core.document.{DocRef, Pointer}
-import grit.core.id.{ConversationId, CorpusName, DocKey, ScheduleKey}
+import grit.core.id.{ConversationId, CorpusName, DocKey, Href, ScheduleKey}
 import grit.core.job.SlotRule
 import grit.core.place.Service
 import grit.core.tool.ToolName
