@@ -627,6 +627,14 @@ object RepositoryWalkTests extends TestSuite {
       )
     }
 
+    test("an include root dropped, the cards beneath it are dropped") {
+      val (steps, _) = run(
+        heldAll() ++ Vector(heldDir("src", 90, floor, source().scope), held("src/x.md", 7)),
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide)
+      )
+      assert(steps.lastOption == Some("drop src at confidential, src/x.md at confidential"))
+    }
+
     test("include narrowed beneath a directory, that directory's card is dropped with the rest") {
       val (steps, _) = run(
         heldAll(),
