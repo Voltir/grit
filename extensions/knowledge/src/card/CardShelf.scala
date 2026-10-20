@@ -11,11 +11,12 @@ import grit.knowledge.ref.{CardKey, Ref}
 trait CardShelf extends caps.Pure {
 
   /** Every card its transaction reads written from `since` until `until`, both included, most
-    * recent first, at most `n`, each by its version, key, title and what its pointer reads
-    * ([[Ref.ofPointer]]): never its summary, which a model reads only as a document shown to
+    * recent first, up to the `n`th of them `counts` holds to (so at most `n` when it holds to
+    * all), each by its version, key, title and what its pointer reads ([[Ref.ofPointer]]):
+    * never its summary, which a model reads only as a document shown to
     * [[grit.core.act.Dreaming.summarise]].
     */
-  def changed(since: Instant, until: Instant, n: Int)(using
+  def changed(since: Instant, until: Instant, n: Int, counts: CardShelf.Seen -> Boolean)(using
       Tx^
   ): Either[StoreError, Vector[CardShelf.Seen]]
 
@@ -43,17 +44,20 @@ object CardShelf {
 
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
-    def changed(since: Instant, until: Instant, n: Int)(using
+    def changed(since: Instant, until: Instant, n: Int, counts: Seen -> Boolean)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
-      documents.newestWhere(n, _.written.isBefore(since))(card(until))
+      documents.newestWhere(n, _.written.isBefore(since))(card(until), counts)
 
     def linked(units: Set[Ref], until: Instant, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
       if (units.isEmpty) Right(Vector.empty)
       else
-        documents.newestWhere(n, _ => false)(card(until)(_).filter(_.unit.exists(units.contains)))
+        documents.newestWhere(n, _ => false)(
+          card(until)(_).filter(_.unit.exists(units.contains)),
+          _ => true
+        )
   }
 
   /** `d` as a card seen, or `None` when it is no card or written after `until`. */

@@ -77,7 +77,7 @@ object CardShelfTests extends TestSuite {
       val b = card("f2", None)
       val c = card("f3", Some("Notes"))
       val (docs, versions) = kept(Vector(a -> at(1), b -> at(2), c -> at(3)))
-      CardShelf.over(docs.shelf(name)).changed(at(2), at(100), 10) ==> Right(
+      CardShelf.over(docs.shelf(name)).changed(at(2), at(100), 10, _ => true) ==> Right(
         Vector(
           CardShelf.Seen(versions(2), c.key, "Notes", Some(Ref.Drive("f3")), UnitKind.File),
           CardShelf.Seen(versions(1), b.key, "f2", Some(Ref.Drive("f2")), UnitKind.File)
@@ -89,7 +89,7 @@ object CardShelfTests extends TestSuite {
       val (docs, versions) = kept(
         Vector(card("f1", None) -> at(1), card("f2", None) -> at(2), card("f3", None) -> at(3))
       )
-      CardShelf.over(docs.shelf(name)).changed(at(0), at(2), 1).map(_.map(_.version)) ==>
+      CardShelf.over(docs.shelf(name)).changed(at(0), at(2), 1, _ => true).map(_.map(_.version)) ==>
         Right(Vector(versions(1)))
     }
 
@@ -127,10 +127,16 @@ object CardShelfTests extends TestSuite {
             .isRight
         )
       )
-      CardShelf.over(docs.shelf(name)).changed(at(5), at(100), 2).map(_.map(_.key)) ==> Right(
+      CardShelf
+        .over(docs.shelf(name))
+        .changed(at(5), at(100), 2, _ => true)
+        .map(_.map(_.key)) ==> Right(
         Vector(b.key, a.key)
       )
-      CardShelf.over(docs.shelf(name)).changed(at(5), at(100), 5).map(_.map(_.key)) ==> Right(
+      CardShelf
+        .over(docs.shelf(name))
+        .changed(at(5), at(100), 5, _ => true)
+        .map(_.map(_.key)) ==> Right(
         Vector(b.key, a.key)
       )
     }
@@ -169,7 +175,9 @@ object CardShelfTests extends TestSuite {
           .left
           .map(_.toString)
       )
-      CardShelf.over(docs.shelf(name)).changed(at(0), at(100), 10) ==> Right(Vector.empty)
+      CardShelf.over(docs.shelf(name)).changed(at(0), at(100), 10, _ => true) ==> Right(
+        Vector.empty
+      )
     }
   }
 }

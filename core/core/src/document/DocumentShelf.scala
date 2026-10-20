@@ -26,20 +26,30 @@ trait DocumentShelf {
     */
   def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]]
 
-  /** What `keep` reads of its [[newest]] documents, most recently written first, at most `n`,
-    * back no further than the first `past` holds to; none when `n` is not positive.
+  /** What `keep` reads of its [[newest]] documents, most recently written first, back no further
+    * than the first `past` holds to, and up to the `n`th of them `counts` holds to (so at most `n`
+    * when it holds to all); none when `n` is not positive.
     */
-  final def newestWhere[A](n: Int, past: Document => Boolean)(keep: Document => Option[A])(using
+  final def newestWhere[A](n: Int, past: Document => Boolean)(
+      keep: Document => Option[A],
+      counts: A => Boolean
+  )(using
       Tx^
   ): Either[StoreError, Vector[A]] = {
-    // The newest `k`, `k` doubled until they hold `n` kept, reach one past, or are all.
+    // Those kept up to and including the `n`th counted, or all when fewer are.
+    def upTo(kept: Vector[A]): Vector[A] =
+      kept.zipWithIndex
+        .filter((a, _) => counts(a))
+        .lift(n - 1)
+        .fold(kept)((_, i) => kept.take(i + 1))
+    // The newest `k`, `k` doubled until they hold `n` counted, reach one past, or are all.
     def from(k: Int): Either[StoreError, Vector[A]] =
       newest(k).flatMap { ds =>
         val kept = ds.takeWhile(d => !past(d)).flatMap(keep(_))
-        val done = kept.size >= n || ds.size < k || ds.exists(past)
-        if (done || k > Int.MaxValue / 2) Right(kept.take(n)) else from(k * 2)
+        val done = kept.count(counts) >= n || ds.size < k || ds.exists(past)
+        if (done || k > Int.MaxValue / 2) Right(upTo(kept)) else from(k * 2)
       }
-    from(n)
+    if (n <= 0) Right(Vector.empty) else from(n)
   }
 
   /** Its current documents this transaction reads that hold `ref`, most recently written first,

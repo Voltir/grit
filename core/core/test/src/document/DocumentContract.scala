@@ -507,12 +507,35 @@ abstract class DocumentContract extends TestSuite {
       def where(n: Int, before: Int) =
         transaction(
           ok(
-            shelf(p).newestWhere(n, _.written.isBefore(at(before)))(d =>
-              Option.when(DocKey.value(d.key).last.asDigit % 2 == 0)(DocKey.value(d.key))
+            shelf(p).newestWhere(n, _.written.isBefore(at(before)))(
+              d => Option.when(DocKey.value(d.key).last.asDigit % 2 == 0)(DocKey.value(d.key)),
+              _ => true
             )
           )
         )
       (where(2, 0), where(10, 5), where(0, 0)) ==> (Vector("k6", "k4"), Vector("k6"), Vector())
+    }
+
+    test(
+      "newestWhere reads back for n counted, keeping those it does not count between, and none past the nth"
+    ) {
+      val p = name("doc-newest-counted")
+      val k = keeper(p, terms())
+      (1 to 6).foreach(i => put(k, s"k$i", "words", i))
+      def where(n: Int) =
+        transaction(
+          ok(
+            shelf(p).newestWhere(n, _ => false)(
+              d => Some(DocKey.value(d.key)),
+              _.last.asDigit % 3 == 0
+            )
+          )
+        )
+      (where(1), where(2), where(3)) ==> (
+        Vector("k6"),
+        Vector("k6", "k5", "k4", "k3"),
+        Vector("k6", "k5", "k4", "k3", "k2", "k1")
+      )
     }
 
     test("each version that stops being current, and each withdrawal, is marked when it does") {

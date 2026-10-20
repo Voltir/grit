@@ -776,6 +776,34 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a seeding run shows Cards file cards past newer directories' cards and cards set aside") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      (1 to 5).foreach(i => runs.card(s"a$i", s"Aside number $i.", Now.minusSeconds(100L - i)))
+      val _ = runs.run(attach = placing("none"))
+      (1 to TopicScan.Cards + 5).foreach(i =>
+        runs.card(s"f$i", s"File number $i.", Now.minusSeconds(3000L - i))
+      )
+      // Within the 100 documents the plugin's terms keep.
+      (1 to TopicScan.Cards - 15).foreach(i =>
+        runs.directory(s"d$i", s"Folder number $i.", Now.minusSeconds(1000L - i))
+      )
+      val seeding =
+        runs.run(now = Now.plusSeconds(600), seedUntil = Some(Day), attach = placing("none"))
+      val shown = runs.asked.lift(1).map(_.shown).getOrElse("")
+      (
+        seeding,
+        counted(shown)._3,
+        "File number (\\d+)\\.".r.findAllMatchIn(shown).map(_.group(1).toInt).toVector,
+        shown.contains("Folder number") || shown.contains("Aside number")
+      ) ==> (
+        s"topics: 0 written (0 opened), 0 withdrawn, 5 unchanged, ${TopicScan.Cards} set aside, 0 left for the next run",
+        TopicScan.Cards,
+        (6 to TopicScan.Cards + 5).toVector,
+        false
+      )
+    }
+
     test("a run for a day up to seedUntil reads the cards written within SeedReach") {
       val w = new StrandWorld
       val runs = new Runs(w)
