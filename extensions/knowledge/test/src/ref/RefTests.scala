@@ -41,6 +41,7 @@ object RefTests extends TestSuite {
         "Hello-World",
         "main",
         Vector("docs"),
+        Vector.empty,
         Set("md"),
         "documentation",
         100,

@@ -82,6 +82,7 @@ object KnowledgeTests extends TestSuite {
           "Hello-World",
           "main",
           Vector(""),
+          Vector.empty,
           Set.empty,
           "files",
           10,

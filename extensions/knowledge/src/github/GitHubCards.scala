@@ -16,9 +16,9 @@ import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
   * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
   * `readTool`, `{server}_get_file_contents`, `server` being the name the deployment gave that
   * MCP server. Of the repository, the paths under `include` (each a path prefix, or a file's
-  * path, with no leading or trailing `/`; `""` for every path) and, of files, those whose
-  * extension is in `extensions` (each with no dot; every one when empty), which [[scope]]
-  * digests; at most `maxUnits` cards. `keeps` says in a few plain words what those files are
+  * path, with no leading or trailing `/`; `""` for every path) but those under `exclude` (each
+  * written as an include is), and, of files, those whose extension is in `extensions` (each
+  * with no dot; every one when empty), which [[scope]] digests; at most `maxUnits` cards. `keeps` says in a few plain words what those files are
   * (`documentation or data`): a directory's card says it holds that, so it reaches the model and
   * the people a window's cards are shown to, and [[scope]] digests it too.
   *
@@ -40,6 +40,7 @@ final case class GitHubCards private (
     repo: String,
     ref: String,
     include: Vector[String],
+    exclude: Vector[String],
     extensions: Set[String],
     keeps: String,
     maxUnits: Int,
@@ -49,11 +50,13 @@ final case class GitHubCards private (
 ) extends Source[Listing] {
 
   /** What of the repository becomes cards, and what a directory's card says of it: [[include]],
-    * [[extensions]], [[keeps]] and the form directories' cards are written in, as a digest.
+    * [[exclude]], [[extensions]], [[keeps]] and the form directories' cards are written in, as a
+    * digest.
     */
   def scope: Scope =
     Scope.of(
-      include.map(i => s"include $i").toSet ++ extensions.map(e => s"extension $e") +
+      include.map(i => s"include $i").toSet ++ exclude.map(x => s"exclude $x") ++
+        extensions.map(e => s"extension $e") +
         s"keeps $keeps" + s"directory form ${GitHubCards.DirectoryForm}"
     )
 
@@ -110,7 +113,7 @@ object GitHubCards {
   // it holds as `keeps` names it, by name alone).
   private val DirectoryForm = 3
 
-  /** These, `include`'s paths without a leading or trailing `/`, `extensions` without a leading
+  /** These, `include`'s and `exclude`'s paths without a leading or trailing `/`, `extensions` without a leading
     * dot and `keeps` trimmed, or why not: `corpus` supplies no service; `server` makes no tool
     * name (`grit.core.tool.ToolName.of` of `{server}_get_file_contents`); `owner`, `repo`, `ref`
     * or `keeps` blank; `maxUnits` under 1; no `syncs`, or two of one key.
@@ -122,6 +125,7 @@ object GitHubCards {
       repo: String,
       ref: String,
       include: Vector[String],
+      exclude: Vector[String],
       extensions: Set[String],
       keeps: String,
       maxUnits: Int,
@@ -155,6 +159,7 @@ object GitHubCards {
       repo,
       ref,
       include.map(_.stripPrefix("/").stripSuffix("/")),
+      exclude.map(_.stripPrefix("/").stripSuffix("/")),
       extensions.map(_.stripPrefix(".")),
       keeps.trim,
       maxUnits,

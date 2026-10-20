@@ -42,6 +42,7 @@ object GitHubCardsTests extends TestSuite {
       repo,
       ref,
       Vector("docs"),
+      Vector.empty,
       Set("md"),
       keeps,
       maxUnits,
@@ -113,9 +114,14 @@ object GitHubCardsTests extends TestSuite {
     }
 
     test(
-      "of trims include's slashes, extensions' dots and keeps, and its scope digests them and the form"
+      "of trims include's and exclude's slashes, extensions' dots and keeps, and its scope digests them and the form"
     ) {
-      def of(include: Vector[String], extensions: Set[String], keeps: String = "documentation") =
+      def of(
+          include: Vector[String],
+          extensions: Set[String],
+          keeps: String = "documentation",
+          exclude: Vector[String] = Vector.empty
+      ) =
         right(
           GitHubCards.of(
             corpus,
@@ -124,6 +130,7 @@ object GitHubCardsTests extends TestSuite {
             "Hello-World",
             "main",
             include,
+            exclude,
             extensions,
             keeps,
             100,
@@ -144,7 +151,12 @@ object GitHubCardsTests extends TestSuite {
             Set("include docs", "extension md", "extension txt", "keeps documentation", form)
           ),
         of(Vector("docs"), Set("md"), "notes").scope ==
-          Scope.of(Set("include docs", "extension md", "keeps notes", form))
+          Scope.of(Set("include docs", "extension md", "keeps notes", form)),
+        of(Vector("docs"), Set("md"), exclude = Vector("/docs/raw/")).exclude == Vector("docs/raw"),
+        of(Vector("docs"), Set("md"), exclude = Vector("docs/raw")).scope ==
+          Scope.of(
+            Set("include docs", "exclude docs/raw", "extension md", "keeps documentation", form)
+          )
       )
     }
 

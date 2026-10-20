@@ -777,6 +777,7 @@ object Main {
         repo,
         ref,
         Vector(""),
+        Vector.empty,
         Set("md"),
         "Markdown documents",
         600,

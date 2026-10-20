@@ -6,9 +6,9 @@ import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
 
 /** One run's walk of a repository ([[Walking]]): depth first by path from the repository's root,
-  * `/`. Of the repository it walks the paths `include` names and, of files, those whose extension
-  * is one of `extensions`; the directories on the way to an included path are listed and carry
-  * no card.
+  * `/`. Of the repository it walks the paths `include` names but those under `exclude`, and, of
+  * files, those whose extension is one of `extensions`; the directories on the way to an
+  * included path are listed and carry no card.
   *
   * A directory whose held card records its tree SHA, made under the source's
   * [[GitHubCards.scope]], is not listed: each card held beneath it is unchanged. One made under
@@ -181,7 +181,8 @@ object RepositoryWalk {
   }
 
   private def inScope(cards: GitHubCards, entry: Entry): Boolean =
-    cards.include.exists(i => i.isEmpty || entry.path == i || entry.path.startsWith(i + "/")) &&
+    cards.include.exists(i => i.isEmpty || under(entry.path, i)) &&
+      !excluded(cards, entry) &&
       (entry.kind == UnitKind.Directory || cards.extensions.isEmpty || {
         val name = entry.path.substring(entry.path.lastIndexOf('/') + 1)
         val dot = name.lastIndexOf('.')
@@ -190,7 +191,15 @@ object RepositoryWalk {
 
   /** Whether `entry` is a directory on the way to an included path. */
   private def passage(cards: GitHubCards, entry: Entry): Boolean =
-    entry.kind == UnitKind.Directory && cards.include.exists(_.startsWith(entry.path + "/"))
+    entry.kind == UnitKind.Directory && !excluded(cards, entry) &&
+      cards.include.exists(_.startsWith(entry.path + "/"))
+
+  private def excluded(cards: GitHubCards, entry: Entry): Boolean =
+    cards.exclude.exists(under(entry.path, _))
+
+  /** Whether `path` is `prefix` or beneath it. */
+  private def under(path: String, prefix: String): Boolean =
+    path == prefix || path.startsWith(prefix + "/")
 
   /** Whether `task`, never taken, is a unit seen changed or new, or one to relabel. */
   private def left(cards: GitHubCards, task: Task, w: W): Boolean = task match {

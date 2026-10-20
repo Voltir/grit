@@ -52,7 +52,8 @@ object RepositoryWalkTests extends TestSuite {
       maxUnits: Int = 100,
       include: Vector[String] = Vector("docs"),
       extensions: Set[String] = Set("md"),
-      keeps: String = "documentation"
+      keeps: String = "documentation",
+      exclude: Vector[String] = Vector.empty
   ): GitHubCards = right(
     GitHubCards.of(
       corpus,
@@ -61,6 +62,7 @@ object RepositoryWalkTests extends TestSuite {
       "Hello-World",
       "main",
       include,
+      exclude,
       extensions,
       keeps,
       maxUnits,
@@ -172,10 +174,16 @@ object RepositoryWalkTests extends TestSuite {
       perRun: Int = 5,
       maxUnits: Int = 100,
       include: Vector[String] = Vector("docs"),
-      extensions: Set[String] = Set("md")
+      extensions: Set[String] = Set("md"),
+      exclude: Vector[String] = Vector.empty
   ): (Vector[String], Synced) = {
     val (steps, synced) = drive(
-      RepositoryWalk.start(source(maxUnits, include, extensions), perRun, floor, held),
+      RepositoryWalk.start(
+        source(maxUnits, include, extensions, exclude = exclude),
+        perRun,
+        floor,
+        held
+      ),
       moves(listings, files)
     )
     (steps.map(shown), synced)
@@ -633,6 +641,34 @@ object RepositoryWalkTests extends TestSuite {
         Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide)
       )
       assert(steps.lastOption == Some("drop src at confidential, src/x.md at confidential"))
+    }
+
+    test("an excluded directory or file is neither listed, read nor named in its parent's card") {
+      val (steps, _) = run(
+        Vector.empty,
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+        Map("docs/a.md" -> read("docs/a.md", 1), "docs/b.md" -> read("docs/b.md", 2)),
+        exclude = Vector("docs/guide", "docs/b.md")
+      )
+      (
+        steps.filter(s => s.startsWith("list") || s.startsWith("read")),
+        steps.filter(_.startsWith("write")).map(_.split(' ')(1))
+      ) ==> (
+        Vector("list /", "list docs", "read docs/a.md"),
+        Vector("docs/a.md", "docs")
+      )
+    }
+
+    test("an exclude added, the cards held under it are dropped") {
+      val (steps, _) = run(
+        heldAll(),
+        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+        exclude = Vector("docs/guide")
+      )
+      (steps.lastOption, steps.exists(_.startsWith("list docs/guide"))) ==> (
+        Some("drop docs/guide at confidential, docs/guide/c.md at confidential"),
+        false
+      )
     }
 
     test("include narrowed beneath a directory, that directory's card is dropped with the rest") {

@@ -124,6 +124,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
         "Hello-World",
         "main",
         Vector(""),
+        Vector.empty,
         Set.empty,
         "files",
         100,
