@@ -210,7 +210,12 @@ object PluginChoiceTests extends TestSuite {
             (
               "topics-dream-public",
               SlotRule.Daily(LocalTime.of(5, 0), zone),
-              ujson.Obj("perRun" -> 10, "recent" -> "PT48H", "cardRecent" -> "PT48H"),
+              ujson.Obj(
+                "perRun" -> 10,
+                "recent" -> "PT48H",
+                "cardRecent" -> "PT48H",
+                "asideFor" -> "PT168H"
+              ),
               Label.Public
             )
           )
@@ -233,6 +238,7 @@ object PluginChoiceTests extends TestSuite {
               "perRun" -> 10,
               "recent" -> "PT48H",
               "cardRecent" -> "PT48H",
+              "asideFor" -> "PT168H",
               "seedUntil" -> "2026-10-30"
             )
           )
