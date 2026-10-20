@@ -57,6 +57,8 @@ import grit.turn.{
   */
 private[grit] object Launch {
 
+  private val Log = org.slf4j.LoggerFactory.getLogger("grit.launch")
+
   /** What a process wants beside its deployment: whether each model call is printed with
     * the model it goes to (`announced`: a run with arguments, where a replayed turn is then
     * visibly one that did not call), and how long the stub model waits before it answers, in
@@ -95,7 +97,7 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
-    org.slf4j.LoggerFactory.getLogger("grit.launch").info(s"database: ${s.database.endpoint}")
+    Log.info(s"database: ${s.database.endpoint}")
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
       case Some(key) =>
@@ -143,9 +145,7 @@ private[grit] object Launch {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
       case Right(inForce) =>
-        org.slf4j.LoggerFactory
-          .getLogger("grit.launch")
-          .info(s"lifecycle settings: ${written(inForce)}")
+        Log.info(s"lifecycle settings: ${written(inForce)}")
     }
     // Before anything runs, so the clock edge's first pass sees the schedules as declared.
     reconcile(runtime.schedules, runtime.jot, d, clock.now()).left.foreach { error =>
