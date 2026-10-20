@@ -23,6 +23,8 @@ new one overlaps with one that already existed. The brief names the range.
    `scripts/outline area` for the areas whose description covers what it does, and
    `uses` of the nearest candidate.
    outline answers from the compiled code; read a file by `sed -n` range only where it cannot.
+   A `find` over the whole tree can take minutes: give its Bash call a 300000 ms timeout, and run
+   it in the foreground rather than moving it to the background.
 
 ## What counts
 

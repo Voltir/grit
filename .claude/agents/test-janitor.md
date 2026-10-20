@@ -17,7 +17,10 @@ to check a claim; reading is usually enough.
 
 Read `STYLE.md`'s **Tests** section: it is the rubric, and this file does not restate it.
 Then, for every suite, read the production code it targets. A test cannot be judged
-without the code it claims to pin.
+without the code it claims to pin. Read that code through `scripts/outline` first:
+`tests <Suite>` for a suite's tests and helpers, `show <Sym> --body <members>` for what a test
+targets, `uses <Owner.member>` for a fake's other callers; read a file by `sed -n` range only
+where outline cannot answer.
 
 ## Verdicts
 
