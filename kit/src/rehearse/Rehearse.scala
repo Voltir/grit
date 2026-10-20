@@ -14,7 +14,10 @@ import grit.lifecycle.shadow.ShadowAsking
 /** Rehearsing a situation through a deployment's shipped workflow bodies. */
 object Rehearse {
 
-  /** Why [[dry]] refuses a database named as [[DbConfig.Local]]'s is, the operator's own. */
+  /** `docker-compose.yml`'s database, the operator's own: [[dry]] refuses one of its name. */
+  val Own: String = "grit"
+
+  /** Why [[dry]] refuses a database named [[Own]]. */
   val Mine: String =
     "a rehearsal never runs on the operator's own database: name another in GRIT_DATABASE_URL"
 
@@ -29,7 +32,7 @@ object Rehearse {
     * draft judged, and stops before [[grit.turn.Turn.Step.RecordSpeech]] would post it.
     * The message and every workflow are dated by `clock`. Nothing written outlives it
     * ([[Rehearsing]]). `Left`, opening nothing, when `config`'s URL names no database
-    * ([[Unnamed]]) or the one [[DbConfig.Local]] names, the operator's own ([[Mine]]); `Left`
+    * ([[Unnamed]]) or names [[Own]] ([[Mine]]); `Left`
     * when the seed catalog cannot be read, the database cannot be
     * opened, `d`'s lifecycle settings or schedules cannot be written there, the inbox refuses
     * the message (one at a place `d` does not serve among them), or the rehearsal outlasts
@@ -75,27 +78,15 @@ object Rehearse {
       }
     }
 
-  /** `config`, unless its URL names no database ([[Unnamed]]) or names the one
-    * [[DbConfig.Local]] does ([[Mine]]), whatever its host: what `DbConfig.fromEnv` falls back
-    * to when no database is named.
+  /** `config`, unless its URL names no database ([[Unnamed]]) or names [[Own]], whatever its
+    * host ([[Mine]]).
     */
   private def rehearsable(config: DbConfig): Either[String, DbConfig] =
-    database(config.jdbcUrl) match {
+    config.place.database match {
       case None => Left(Unnamed)
-      case Some(name) if database(DbConfig.Local.jdbcUrl).contains(name) => Left(Mine)
+      case Some(Own) => Left(Mine)
       case Some(_) => Right(config)
     }
-
-  /** The database a `jdbc:postgresql:` URL names: after its host's `/` when it has a host, else
-    * all of it, up to its parameters; `None` when that is empty.
-    */
-  private def database(url: String): Option[String] = {
-    val rest = url.stripPrefix("jdbc:postgresql:")
-    val path =
-      if (rest.startsWith("//")) rest.drop(2).dropWhile(_ != '/').drop(1)
-      else rest.stripPrefix("/")
-    Some(path.takeWhile(_ != '?')).filter(_.nonEmpty)
-  }
 
   /** Each of `d`'s shadows by name, asking its question through `classifier` of the model the
     * live engine's would ask of ([[Launch.shadowModel]]).

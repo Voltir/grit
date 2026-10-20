@@ -4,27 +4,34 @@ import utest.*
 
 object DbConfigTests extends TestSuite {
 
-  import DbConfig.{Invalid, Local, PasswordVar, UrlVar, UserVar}
+  import DbConfig.{Invalid, PasswordVar, UrlVar, UserVar}
+
+  private val url = "jdbc:postgresql://db.example:5432/prod"
 
   val tests = Tests {
-    test("an empty environment is the local database") {
-      assert(DbConfig.fromEnv(Map.empty) == Right(Local))
+    test("an unset or blank URL is refused, naming the variable and the URL's form") {
+      Vector(Map.empty[String, String], Map(UrlVar -> " "), Map(UserVar -> "app"))
+        .map(env => DbConfig.fromEnv(env).left.map(_.message)) ==> Vector.fill(3)(
+        Left(
+          "GRIT_DATABASE_URL is unset or blank: set it to grit's database, as jdbc:postgresql://host:port/db"
+        )
+      )
     }
 
-    test("each variable overrides only its own field") {
-      val url = "jdbc:postgresql://db.example:5432/prod"
-      assert(DbConfig.fromEnv(Map(UrlVar -> url)) == Right(Local.copy(jdbcUrl = url)))
-      assert(DbConfig.fromEnv(Map(UserVar -> "app")) == Right(Local.copy(user = "app")))
-      assert(DbConfig.fromEnv(Map(PasswordVar -> "s3")) == Right(Local.copy(password = "s3")))
+    test("the URL is used as given; user and password default to docker-compose's login") {
+      (
+        DbConfig.fromEnv(Map(UrlVar -> url)),
+        DbConfig.fromEnv(Map(UrlVar -> url, UserVar -> "app", PasswordVar -> "s3")),
+        DbConfig.fromEnv(Map(UrlVar -> url, PasswordVar -> ""))
+      ) ==> (
+        Right(DbConfig(url, "grit", "grit")),
+        Right(DbConfig(url, "app", "s3")),
+        Right(DbConfig(url, "grit", ""))
+      )
     }
 
-    test("an empty password is accepted") {
-      assert(DbConfig.fromEnv(Map(PasswordVar -> "")) == Right(Local.copy(password = "")))
-    }
-
-    test("a blank URL or user is rejected") {
-      assert(DbConfig.fromEnv(Map(UrlVar -> " ")) == Left(Invalid.Empty(UrlVar)))
-      assert(DbConfig.fromEnv(Map(UserVar -> "")) == Left(Invalid.Empty(UserVar)))
+    test("a blank user is rejected") {
+      assert(DbConfig.fromEnv(Map(UrlVar -> url, UserVar -> "")) == Left(Invalid.Empty(UserVar)))
     }
 
     test("a URL that is not jdbc:postgresql is rejected") {
@@ -32,6 +39,20 @@ object DbConfigTests extends TestSuite {
       bad.foreach { url =>
         assert(DbConfig.fromEnv(Map(UrlVar -> url)) == Left(Invalid.NotPostgresJdbc(UrlVar)))
       }
+    }
+
+    test("a place is the URL's hosts, each with its port, and database, never its parameters") {
+      Vector(
+        "jdbc:postgresql://db.example:6543/prod?user=u&password=hunter2",
+        "jdbc:postgresql://a,b:5433,[::1]/prod",
+        "jdbc:postgresql:prod",
+        "jdbc:postgresql://db.example/"
+      ).map(u => DbConfig(u, "u", "p").place.toString) ==> Vector(
+        "db.example:6543/prod",
+        "a:5432,b:5433,[::1]:5432/prod",
+        "localhost:5432/prod",
+        "db.example:5432/"
+      )
     }
 
     test("neither toString nor an error message shows a secret") {

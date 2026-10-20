@@ -48,7 +48,7 @@ object RehearseTests extends TestSuite {
           )
           .map(_ => "rehearsed")
       (
-        dry(DbConfig.Local.jdbcUrl),
+        dry("jdbc:postgresql://localhost:5432/grit"),
         dry("jdbc:postgresql://elsewhere:5432/grit?ssl=true"),
         dry("jdbc:postgresql://localhost:5432/")
       ) ==> (

@@ -8,14 +8,16 @@ import utest.*
 /** What [[Secrets.of]] reads from the environment, and refuses. */
 object SecretsTests extends TestSuite {
 
+  private val db = Map("GRIT_DATABASE_URL" -> "jdbc:postgresql://localhost:5432/grit_test")
+
   val tests = Tests {
     test("Jev's settings are read only for Jev as placer, and a blank key is refused, naming it") {
       val jev = Deployments.accepted(placer = Placer.Jev)
       val stub = Deployments.accepted(placer = Placer.Stub)
       (
-        Secrets.of(Map("JEV_API_KEY" -> "sk-jev-1"), jev).map(_.jev.map(_.apiKey)),
-        Secrets.of(Map("JEV_API_KEY" -> "sk-jev-1"), stub).map(_.jev.map(_.apiKey)),
-        Secrets.of(Map("JEV_API_KEY" -> " "), jev).map(_ => ())
+        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), jev).map(_.jev.map(_.apiKey)),
+        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), stub).map(_.jev.map(_.apiKey)),
+        Secrets.of(db + ("JEV_API_KEY" -> " "), jev).map(_ => ())
       ) ==> (
         Right(Some("sk-jev-1")),
         Right(None),
@@ -26,9 +28,9 @@ object SecretsTests extends TestSuite {
     test("without OpenRouter's key the model is the stub; a blank key is refused, naming it") {
       val d = Deployments.accepted()
       (
-        Secrets.of(Map.empty, d).map(_.openRouter),
-        Secrets.of(Map("OPENROUTER_API_KEY" -> "sk-or-1"), d).map(_.openRouter),
-        Secrets.of(Map("OPENROUTER_API_KEY" -> " "), d).map(_ => ())
+        Secrets.of(db, d).map(_.openRouter),
+        Secrets.of(db + ("OPENROUTER_API_KEY" -> "sk-or-1"), d).map(_.openRouter),
+        Secrets.of(db + ("OPENROUTER_API_KEY" -> " "), d).map(_ => ())
       ) ==> (
         Right(None),
         Right(Some("sk-or-1")),

@@ -70,8 +70,9 @@ private[grit] object Launch {
     val Served: Run = Run(announced = false, stubDelay = 0)
   }
 
-  /** `engine` with `d`'s lifecycle settings written over those its database keeps (logged as
-    * they stand after), its declared schedules made the stored ones ([[reconcile]]), and its
+  /** `engine`, opened on `s.database`, logged first as `database: <host:port/name>` (its
+    * [[grit.dbos.sql.DbConfig.place]], never its login), with `d`'s lifecycle settings written
+    * over those its database keeps (logged as they stand after), its declared schedules made the stored ones ([[reconcile]]), and its
     * workflows launched on it, each job's run by `d.allJobs`, sweeping every `d.sweep` and
     * starting what the schedules have waiting every [[ClockEdge.Every]] when `sweeping`
     * (otherwise its caller sweeps it, and nothing starts a schedule's slot): the assembler reads
@@ -94,6 +95,7 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
+    org.slf4j.LoggerFactory.getLogger("grit.launch").info(s"database: ${s.database.place}")
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
       case Some(key) =>

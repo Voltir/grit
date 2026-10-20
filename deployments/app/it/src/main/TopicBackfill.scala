@@ -66,7 +66,7 @@ object TopicBackfill {
         )
       _ <- Either.cond(days.nonEmpty, (), "no day")
       env <- RoomRun.env
-      config <- DbConfig.fromEnv(env).left.map(_.toString)
+      config <- DbConfig.fromEnv(env).left.map(_.message)
       cards = new TopicRuns.Cards(CardsName, TopicRuns.CardTerms)
       topics <- TopicDocuments.of(
         Topics,

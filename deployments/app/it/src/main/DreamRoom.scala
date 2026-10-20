@@ -40,7 +40,7 @@ object DreamRoom {
       file <- args.headOption.toRight("no room file")
       cap <- args.lift(1).toRight("no cap").flatMap(DailyCap.of)
       env <- RoomRun.env
-      config <- DbConfig.fromEnv(env).left.map(_.toString)
+      config <- DbConfig.fromEnv(env).left.map(_.message)
       room <- RoomRun.room(file)
       last <- room.messages.map(_.at).maxOption.toRight("an empty room")
       now = Instant.now()

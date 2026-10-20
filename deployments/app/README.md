@@ -5,7 +5,9 @@ filled from `GRIT_*` variables into a `grit.kit` `Deployment` and run through th
 ([`kit/README.md`](../../kit/README.md)). The only module that depends on every other one,
 and so the only place quarantine modules meet. Because Mill's `moduleDeps` are transitive,
 DBOS is on its classpath; enola's `only-dbos-imports-*` rules are what keep it out, and it
-reaches Postgres only through `grit.dbos.engine.Engine`. Run it with `scripts/grit`. Its types
+reaches Postgres only through `grit.dbos.engine.Engine`. Run it with `scripts/grit`, with
+`GRIT_DATABASE_URL` set (in `.env`, as `.env.example` shows): without it, every command refuses
+to start, and every start logs the database it opened (`grit.launch`). Its types
 are the code's (`scripts/outline area app`); this file holds the package order and what a
 person sets and sees.
 

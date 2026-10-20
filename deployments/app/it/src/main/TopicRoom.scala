@@ -77,7 +77,7 @@ object TopicRoom {
           n.toIntOption.filter(_ > 0).toRight(s"no number of days: $n")
         )
       env <- RoomRun.env
-      config <- DbConfig.fromEnv(env).left.map(_.toString)
+      config <- DbConfig.fromEnv(env).left.map(_.message)
       room <- RoomRun.room(file)
       days = (room.messages.map(_.at) ++ room.cards.map(_.at))
         .map(LocalDate.ofInstant(_, ZoneOffset.UTC))
