@@ -31,7 +31,8 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
   * one, keyed by the group's first strand; groups naming one topic are one. A new group holding
-  * no strand is set aside, so no card alone opens a topic. Those it puts in none are set aside
+  * no strand is set aside, so no card alone opens a topic; shown no strand, the ask is offered
+  * neither discussions nor a new topic to name. Those it puts in none are set aside
   * (`aside`), in a document of its floor under `topic:aside` holding no topic, while within
   * `recent` or `cardRecent` at the digest or version set aside. One it names nowhere is counted
   * unnamed and offered again. A number or topic not shown is dropped from the reply, its topic's
@@ -148,7 +149,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           system,
           TopicDream.AttachChars,
           TopicDream.LeadChars,
-          TopicDream.AttachReply
+          TopicDream.attachReply(scan.strands.nonEmpty)
         )
         moves.summarise(
           name,
@@ -336,33 +337,44 @@ object TopicDream {
   /** What the attach ask is told, before what it is shown: how many discussions, all of which
     * it is shown or it asks nothing; that it is shown no topic or no card when the scan holds
     * none (`topics`, `cards`), and otherwise no count of them, since one it cannot read is not
-    * shown.
+    * shown. Shown no discussion, it is told only of the topics and cards, and that a card goes to
+    * a topic shown or `aside`.
     */
-  private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String =
-    "You sort a team's recent discussions and documents into topics: what the team comes " +
-      s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
-      "each a block of messages under their speakers' names, oldest first, numbered from 1 in " +
-      "the order shown" +
-      (if (topics)
-         "; then the topics, each under `topic:`, how its text begins, numbered from 1 in the " +
-           "order shown"
-       else "") +
-      (if (cards)
-         "; then the cards, each a document describing a file under its label, numbered from 1 " +
-           "in the order shown. "
-       else ". ") +
-      (if (topics) "" else "No topic is shown yet, so none has a number. ") +
-      (if (cards) "" else "No card is shown: every `cards` is an empty list. ") +
-      "Reply by calling `reply` with `topics`, one entry per topic discussions or cards go to: " +
-      "its `topic`, the number of a topic shown, or `new` for a new topic, one no topic shown " +
-      "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
-      "go to it, by number. Each entry is one topic, about one matter: a discussion of a " +
-      "matter no other shown is about gets a `new` entry of its own, however short. Put two " +
-      "discussions in one `new` entry only when they are about the same matter; never two " +
-      "different matters, even related ones. A `new` entry holds at least one discussion: a " +
-      "card goes to the topic shown or the discussion it is about, and to `aside` when none " +
-      "is. Give `aside` the discussions and cards too slight to keep. Name each discussion " +
-      "and card shown exactly once."
+  private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
+    val topicsShown =
+      "the topics, each under `topic:`, how its text begins, numbered from 1 in the order shown"
+    val cardsShown =
+      "the cards, each a document describing a file under its label, numbered from 1 in the " +
+        "order shown"
+    if (strands == 0)
+      "You sort a team's recent documents into topics: what the team comes back to across " +
+        "rooms and days. You are shown, in this order, " +
+        (if (topics) s"$topicsShown; then " else "") + s"$cardsShown. " +
+        (if (topics) "" else "No topic is shown yet: `topics` is an empty list. ") +
+        "Reply by calling `reply` with `topics`, one entry per topic shown that cards go to: " +
+        "its `topic`, the number of the topic, and the `cards` that go to it, by number. A " +
+        "card goes to the topic shown it is about, and to `aside` when none is. Give `aside` " +
+        "the cards too slight to keep. Name each card shown exactly once."
+    else
+      "You sort a team's recent discussions and documents into topics: what the team comes " +
+        s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
+        "each a block of messages under their speakers' names, oldest first, numbered from 1 in " +
+        "the order shown" +
+        (if (topics) s"; then $topicsShown" else "") +
+        (if (cards) s"; then $cardsShown. " else ". ") +
+        (if (topics) "" else "No topic is shown yet, so none has a number. ") +
+        (if (cards) "" else "No card is shown: every `cards` is an empty list. ") +
+        "Reply by calling `reply` with `topics`, one entry per topic discussions or cards go to: " +
+        "its `topic`, the number of a topic shown, or `new` for a new topic, one no topic shown " +
+        "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
+        "go to it, by number. Each entry is one topic, about one matter: a discussion of a " +
+        "matter no other shown is about gets a `new` entry of its own, however short. Put two " +
+        "discussions in one `new` entry only when they are about the same matter; never two " +
+        "different matters, even related ones. A `new` entry holds at least one discussion: a " +
+        "card goes to the topic shown or the discussion it is about, and to `aside` when none " +
+        "is. Give `aside` the discussions and cards too slight to keep. Name each discussion " +
+        "and card shown exactly once."
+  }
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
@@ -379,7 +391,10 @@ object TopicDream {
       s"the messages do. When the topic holds a passage for $day already, yours replaces it, " +
       "so keep what it says. Keep links to other topics (`topic:…`) and to files as written."
 
-  private val AttachReply: Typed[Placing] = {
+  /** The attach ask's reply: with no `discussions` and no `new` topic when it was shown no
+    * discussion (`discussions`).
+    */
+  private def attachReply(discussions: Boolean): Typed[Placing] = {
     def numbers(what: String) = ujson.Obj(
       "type" -> "array",
       "items" -> ujson.Obj("type" -> "integer", "minimum" -> 1),
@@ -393,28 +408,28 @@ object TopicDream {
         "additionalProperties" -> false
       ) ++ description.map(d => "description" -> ujson.Str(d))
     )
-    val discussions = "discussions" -> numbers("discussion")
-    val cards = "cards" -> numbers("card")
+    val placed = Option.when(discussions)("discussions" -> numbers("discussion")).toVector :+
+      ("cards" -> numbers("card"))
+    val what = if (discussions) "discussions and cards" else "cards"
     typed(
       items(None)(
         "topics" -> ujson.Obj(
           "type" -> "array",
           "items" -> items(None)(
-            "topic" -> ujson.Obj(
+            ("topic" -> ujson.Obj(
               "type" -> "string",
-              "description" -> "The number of the topic shown these go to, or `new` for a new one."
-            ),
-            discussions,
-            cards
+              "description" -> (
+                if (discussions)
+                  "The number of the topic shown these go to, or `new` for a new one."
+                else "The number of the topic shown these go to."
+              )
+            )) +: placed*
           ),
-          "description" -> "One entry per topic its discussions and cards go to."
+          "description" -> s"One entry per topic its $what go to."
         ),
-        "aside" -> items(Some("The discussions and cards too slight to keep, in no topic."))(
-          discussions,
-          cards
-        )
+        "aside" -> items(Some(s"The $what too slight to keep, in no topic."))(placed*)
       ),
-      Placing.read
+      Placing.read(discussions)
     )
   }
 
@@ -604,7 +619,8 @@ private[topic] object Placing {
     case Opened(first: S, more: Vector[S], cards: Vector[C])
   }
 
-  def read(v: ujson.Value): Either[String, Placing] = {
+  /** `v` as an attach reply, its `discussions` read only when it was offered them. */
+  def read(discussions: Boolean)(v: ujson.Value): Either[String, Placing] = {
     def numbers(o: ujson.Value, key: String, where: String): Either[String, Vector[Int]] =
       o.objOpt
         .flatMap(_.get(key))
@@ -621,7 +637,7 @@ private[topic] object Placing {
         )
     def items(o: ujson.Value, where: String): Either[String, Items] =
       for {
-        ds <- numbers(o, "discussions", where)
+        ds <- if (discussions) numbers(o, "discussions", where) else Right(Vector.empty)
         cs <- numbers(o, "cards", where)
       } yield Items(ds, cs)
     def group(o: ujson.Value): Either[String, Group] =

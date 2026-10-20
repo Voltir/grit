@@ -316,18 +316,28 @@ object TopicDreamTests extends TestSuite {
     )
 
   /** Everything shown placed `place`: each in a new topic of its own for `new`, set aside for
-    * `none`, else all in the topic of that number.
+    * `none`, else all in the topic of that number; with no `discussions` anywhere when none was
+    * shown.
     */
   private def placing(place: String): (String, String) -> ujson.Value = (_, shown) => {
     val (discussions, _, cards) = counted(shown)
     val ds = 1 to discussions
     val cs = 1 to cards
-    place match {
+    val reply = place match {
       case "new" =>
         placed(ds.map(i => group("new", Seq(i))) ++ cs.map(j => group("new", Nil, Seq(j))))
       case "none" => placed(Nil, ds, cs)
       case n => placed(Seq(group(n, ds, cs)))
     }
+    if (discussions == 0) cardsOnly(reply) else reply
+  }
+
+  /** `v` with every `discussions` key left out, as an attach reply shown no discussion is. */
+  private def cardsOnly(v: ujson.Value): ujson.Value = v match {
+    case o: ujson.Obj =>
+      ujson.Obj.from(o.value.collect { case (k, x) if k != "discussions" => k -> cardsOnly(x) })
+    case a: ujson.Arr => ujson.Arr.from(a.value.map(cardsOnly))
+    case x => x
   }
 
   private val everyNew: (String, String) -> ujson.Value = placing("new")
@@ -551,6 +561,22 @@ object TopicDreamTests extends TestSuite {
         .map(a =>
           (a.system.contains("No topic is shown yet"), a.system.contains("No card is shown"))
         ) ==> Vector((true, true), (false, false))
+    }
+
+    test("an attach ask shown no discussion is offered none to name, nor a new topic") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(attach = placing("none"))
+      (
+        reply,
+        runs.asked.map(a =>
+          (a.kind, Seq("`discussions`", "`new`", "0 discussions").filter(a.system.contains))
+        )
+      ) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector(("attach", Seq()))
+      )
     }
 
     test("a strand a topic already refers to is attached to it without the attach ask") {
