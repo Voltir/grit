@@ -1055,7 +1055,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val runs3 = Vector(0L, 1800L, 7200L).map(after =>
+      val runs3 = Vector(0L, 1800L, 4000L).map(after =>
         runs.run(now = Now.plusSeconds(after), attach = placing("none"), asideFor = 1.hour)
       )
       (runs3, runs.asked.map(x => counted(x.shown)._3)) ==> (
