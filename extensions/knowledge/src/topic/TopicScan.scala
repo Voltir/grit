@@ -111,7 +111,7 @@ private[topic] object TopicScan {
           .flatMap((recent: Vector[Strand.Digested]) =>
             Aside
               .read(keeper, floor)
-              .flatMap { (all: Vector[Aside.Entry]) =>
+              .flatMap { (all: Vector[Aside.Item]) =>
                 val since = until.minusSeconds(params.asideFor.toSeconds)
                 val held = all.filterNot(_.at.isBefore(since))
                 val topics = kept.flatMap(_.topic)
@@ -139,7 +139,7 @@ private[topic] object TopicScan {
                           (cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
                             val p = Placed(ss, cs)
                             aside(keeper, floor, all, held, recent, seen, linked, at).flatMap {
-                              (_: Vector[Aside.Entry]) =>
+                              (_: Vector[Aside.Item]) =>
                                 val s = gathered(most, floor, kept, recent, seen, p, linked)
                                 holding(shelf, kept, s.leads.map(_._1), until)
                                   .map(hs => s.copy(holds = hs))
@@ -312,13 +312,13 @@ private[topic] object TopicScan {
   private def aside(
       keeper: DocumentKeeper,
       floor: Label,
-      all: Vector[Aside.Entry],
-      held: Vector[Aside.Entry],
+      all: Vector[Aside.Item],
+      held: Vector[Aside.Item],
       recent: Vector[Strand.Digested],
       seen: Vector[CardShelf.Seen],
       linked: Vector[Linked],
       at: Instant
-  )(using Tx^): Either[StoreError, Vector[Aside.Entry]] = {
+  )(using Tx^): Either[StoreError, Vector[Aside.Item]] = {
     val paired = linked.flatMap(_.cards.map(_.version)).toSet
     val now = held.filter(_.tag match {
       case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))

@@ -17,7 +17,7 @@ import grit.knowledge.topic.TopicWrite.Kept
 object Aside {
 
   /** One strand or card set aside (`tag`), and when (`at`). */
-  final case class Entry(tag: Lineage.Tag, at: Instant) extends caps.Pure
+  final case class Item(tag: Lineage.Tag, at: Instant) extends caps.Pure
 
   /** `topic:aside`. */
   private[topic] val Key: DocKey =
@@ -34,7 +34,7 @@ object Aside {
     * before entries were dated is dated when the aside was last written, the latest it can
     * have been set aside, so it never leaves the aside early.
     */
-  def read(keeper: DocumentKeeper, floor: Label)(using Tx^): Either[StoreError, Vector[Entry]] =
+  def read(keeper: DocumentKeeper, floor: Label)(using Tx^): Either[StoreError, Vector[Item]] =
     keeper
       .current(Key, floor)
       .map(_.flatMap(d => TopicJson.readAside(d.data, d.written).toOption).getOrElse(Vector.empty))
@@ -47,7 +47,7 @@ object Aside {
   ): Either[StoreError, Kept] = {
     val floor = Tx.floor(tx)
     read(keeper, floor).flatMap(held =>
-      kept(keeper, floor, held.filterNot(e => tags.contains(e.tag)) ++ tags.map(Entry(_, at)), at)
+      kept(keeper, floor, held.filterNot(e => tags.contains(e.tag)) ++ tags.map(Item(_, at)), at)
     )
   }
 
@@ -55,7 +55,7 @@ object Aside {
     * withdrawn when it holds nothing; `Kept(None, 0)` when nothing was written, it being so
     * already.
     */
-  private[topic] def kept(keeper: DocumentKeeper, floor: Label, aside: Vector[Entry], at: Instant)(
+  private[topic] def kept(keeper: DocumentKeeper, floor: Label, aside: Vector[Item], at: Instant)(
       using Tx^
   ): Either[StoreError, Kept] =
     if (aside.isEmpty)

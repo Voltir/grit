@@ -1046,7 +1046,7 @@ object TopicDreamTests extends TestSuite {
           written
         )
       )
-      ok(Aside.read(keeper, Label.Public)) ==> Vector(Aside.Entry(Lineage.Tag.Card(card), written))
+      ok(Aside.read(keeper, Label.Public)) ==> Vector(Aside.Item(Lineage.Tag.Card(card), written))
     }
 
     test("a card set aside more than asideFor ago is offered again") {

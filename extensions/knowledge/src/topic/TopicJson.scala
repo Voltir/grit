@@ -98,7 +98,7 @@ private object TopicJson {
   /** An aside's data ([[Aside]]): `{"v": 2, "aside": [tag]}`, each tag as a lineage writes it
     * with `"at"`, when it was set aside, an ISO-8601 instant.
     */
-  def aside(entries: Vector[Aside.Entry]): ujson.Value =
+  def aside(entries: Vector[Aside.Item]): ujson.Value =
     ujson.Obj(
       "v" -> 2,
       "aside" -> ujson.Arr.from(entries.map(e => {
@@ -109,11 +109,11 @@ private object TopicJson {
     )
 
   /** The entries [[aside]] wrote; of version 1, which dated none, each dated `written`. */
-  def readAside(v: ujson.Value, written: Instant): Read[Vector[Aside.Entry]] =
+  def readAside(v: ujson.Value, written: Instant): Read[Vector[Aside.Item]] =
     obj(v, "an aside").flatMap(o =>
       o.get("v").flatMap(_.numOpt) match {
         case Some(1) =>
-          readLineage(o.get("aside")).map(_.tags.map(Aside.Entry(_, written)))
+          readLineage(o.get("aside")).map(_.tags.map(Aside.Item(_, written)))
         case Some(2) =>
           array(o.get("aside"), "an aside's entries").flatMap(
             traverse(_)(e =>
@@ -121,7 +121,7 @@ private object TopicJson {
                 t <- readTag(e)
                 at <- string(obj(e, "an aside's entry").toOption.flatMap(_.get("at")), "its at")
                   .flatMap(s => Try(Instant.parse(s)).toOption.toRight(s"no instant: $s"))
-              } yield Aside.Entry(t, at)
+              } yield Aside.Item(t, at)
             )
           )
         case other => Left(s"an aside of version ${other.fold("none")(_.toString)}")
