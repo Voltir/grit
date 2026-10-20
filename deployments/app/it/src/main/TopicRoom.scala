@@ -264,7 +264,7 @@ object TopicRoom {
     val now = Instant.now()
     val aside = right(
       engine.db.read(Subject.Public)(Aside.read(engine.keeper(Topics, terms), Label.Public))
-    ).tags
+    ).map(_.tag)
     val cardTerms = RoomCards.documents.map(_.terms).getOrElse(sys.error("the cards' terms"))
     def cardVersion(id: String): Option[DocumentVersion] =
       CorpusName

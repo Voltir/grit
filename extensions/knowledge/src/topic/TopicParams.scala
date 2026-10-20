@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 /** What a topics run is told: at most how many topics it writes (`perRun`); how far back a
   * strand's last message (`recent`) and a card's write (`cardRecent`) may be for it to be looked
-  * at; the `day` it writes for, the day of its slot in its job's zone when none: a backfill
+  * at; how long one set aside stays aside before it is offered again (`asideFor`); the `day` it writes for, the day of its slot in its job's zone when none: a backfill
   * names a past day, and its strands are read as they stood at that day's end; and the last day
   * it seeds on (`seedUntil`): a run for that day or one before reads the cards written within
   * [[TopicParams.SeedReach]] instead of `cardRecent`, so each night offers the next batch of
@@ -17,7 +17,8 @@ final case class TopicParams(
     recent: FiniteDuration,
     cardRecent: FiniteDuration,
     day: Option[LocalDate],
-    seedUntil: Option[LocalDate]
+    seedUntil: Option[LocalDate],
+    asideFor: FiniteDuration = TopicParams.AsideFor
 ) extends caps.Pure
 
 object TopicParams {
@@ -25,22 +26,27 @@ object TopicParams {
   /** 3,650 days: how far back a seeding run reads cards. */
   val SeedReach: FiniteDuration = 3650.days
 
-  /** Its record: `{"perRun", "recent", "cardRecent", "day"?, "seedUntil"?}`, durations
-    * ISO-8601, the days `yyyy-mm-dd`.
+  /** 7 days: how long a strand or card set aside stays aside, unless a schedule says. */
+  val AsideFor: FiniteDuration = 7.days
+
+  /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "day"?, "seedUntil"?}`,
+    * durations ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
     val o = ujson.Obj(
       "perRun" -> p.perRun,
       "recent" -> java.time.Duration.ofSeconds(p.recent.toSeconds).toString,
-      "cardRecent" -> java.time.Duration.ofSeconds(p.cardRecent.toSeconds).toString
+      "cardRecent" -> java.time.Duration.ofSeconds(p.cardRecent.toSeconds).toString,
+      "asideFor" -> java.time.Duration.ofSeconds(p.asideFor.toSeconds).toString
     )
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
     o
   }
 
-  /** The parameters [[write]] wrote, or why `v` holds none: `perRun` not a whole number at
-    * least 1, a duration not positive ISO-8601, or a day not `yyyy-mm-dd`.
+  /** The parameters [[write]] wrote, `asideFor` [[AsideFor]] when absent (kept before it was),
+    * or why `v` holds none: `perRun` not a whole number at least 1, a duration not positive
+    * ISO-8601, or a day not `yyyy-mm-dd`.
     */
   def read(v: ujson.Value): Either[String, TopicParams] = {
     val shown = ujson.write(v).take(100)
@@ -60,9 +66,10 @@ object TopicParams {
         .toRight(s"a topics run's parameters hold perRun, a whole number at least 1: $shown")
       recent <- duration(o, "recent")
       cardRecent <- duration(o, "cardRecent")
+      asideFor <- if (o.contains("asideFor")) duration(o, "asideFor") else Right(AsideFor)
       day <- date(o, "day", shown)
       seedUntil <- date(o, "seedUntil", shown)
-    } yield TopicParams(perRun.toInt, recent, cardRecent, day, seedUntil)
+    } yield TopicParams(perRun.toInt, recent, cardRecent, day, seedUntil, asideFor)
   }
 
   private def date(

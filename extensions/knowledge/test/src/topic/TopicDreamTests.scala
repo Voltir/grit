@@ -107,7 +107,8 @@ object TopicDreamTests extends TestSuite {
         attach: (String, String) -> ujson.Value = everyNew,
         write: String -> ujson.Value = _ => wrote(Lead, Passage),
         unread: Document -> Boolean = _ => false,
-        floor: Label = Label.Public
+        floor: Label = Label.Public,
+        asideFor: FiniteDuration = TopicParams.AsideFor
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -135,7 +136,9 @@ object TopicDreamTests extends TestSuite {
         rooms = rooms
       )
       dream.run(
-        TestTainted.trusted(JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil), now, now)),
+        TestTainted.trusted(
+          JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil, asideFor), now, now)
+        ),
         moves
       )
     }
@@ -168,7 +171,7 @@ object TopicDreamTests extends TestSuite {
 
     /** The roots of the strands and the versions of the cards set aside at the public label. */
     def aside: (Vector[ConversationId], Vector[DocumentVersion]) = {
-      val tags = ok(Aside.read(documents.keeper(Plugin, Terms), Label.Public)).tags
+      val tags = ok(Aside.read(documents.keeper(Plugin, Terms), Label.Public)).map(_.tag)
       (
         tags.collect { case Lineage.Tag.Strand(root, _, _) => root },
         tags.collect { case Lineage.Tag.Card(v) => v }
@@ -1003,19 +1006,65 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a reply that misses a card places the rest, not asked again, and the card unnamed is offered again"
+      "a reply that places something sets aside each card it names nowhere, and offers again each discussion it names nowhere"
     ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
+      val _ = strand(w, "C2", "lunch order", 10)
       val runs = new Runs(w)
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val first = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1)))))
-      val again = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      (first, again, runs.kept.map(_._1), runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 unnamed, offered again",
-        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
+      val setAside = runs.aside._2.size
+      val _ = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      (
+        first,
+        setAside,
+        runs.kept.map(_._1),
+        runs.asked.map(x => (x.kind, counted(x.shown)))
+      ) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run; 1 unnamed, offered again",
+        1,
         Vector(key(a)),
-        Vector(("attach", (1, 0, 1)), ("write", (1, 0, 0)), ("attach", (0, 1, 1)))
+        Vector(("attach", (2, 0, 1)), ("write", (1, 0, 0)), ("attach", (1, 1, 0)))
+      )
+    }
+
+    test("an aside entry kept before entries were dated is dated when its aside was last written") {
+      val runs = new Runs(new StrandWorld)
+      given Tx = TestTx.fake
+      val keeper = runs.documents.keeper(Plugin, Terms)
+      val written = Now.minusSeconds(7200)
+      val card = DocumentVersion.of(7L).getOrElse(throw new java.lang.AssertionError("7"))
+      val _ = ok(
+        keeper.write(
+          Aside.Key,
+          Label.Public,
+          Integrity.Authority,
+          Place.Everywhere,
+          right(DocText.of("…")),
+          ujson.Obj("v" -> 1, "aside" -> ujson.Arr(ujson.Obj("card" -> 7))),
+          None,
+          written
+        )
+      )
+      ok(Aside.read(keeper, Label.Public)) ==> Vector(Aside.Entry(Lineage.Tag.Card(card), written))
+    }
+
+    test("a card set aside more than asideFor ago is offered again") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic()
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val runs3 = Vector(0L, 1800L, 7200L).map(after =>
+        runs.run(now = Now.plusSeconds(after), attach = placing("none"), asideFor = 1.hour)
+      )
+      (runs3, runs.asked.map(x => counted(x.shown)._3)) ==> (
+        Vector(
+          "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+          "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+          "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run"
+        ),
+        Vector(1, 1)
       )
     }
 

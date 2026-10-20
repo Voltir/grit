@@ -36,8 +36,9 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * neither discussions nor a new topic to name, and with no topic to show either it is not
   * made, its cards left for a later run. Those it puts in none are set aside
   * (`aside`), in a document of its floor under `topic:aside` holding no topic, while within
-  * `recent` or `cardRecent` at the digest or version set aside. One it names nowhere is counted
-  * unnamed and offered again. A number or topic not shown is dropped from the reply, its topic's
+  * `recent` or `cardRecent` at the digest or version set aside, and for at most `asideFor`. A
+  * card a reply placing anything names nowhere is set aside too; a discussion it names nowhere
+  * is counted unnamed and offered again. A number or topic not shown is dropped from the reply, its topic's
   * group with it, and a strand or card it names in two groups, or in a group and the aside, is
   * dropped from both, so unnamed; each counted dropped. A reply that places nothing it was shown
   * is asked once more (`attach-again`), and when that one does not either, all are left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
@@ -201,9 +202,10 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               TopicKey.strand(first.root).map(Touch(_, None, first +: more, cs))
           }
           val unopened = touches.collect { case Left(why) => ("a strand", why) }
+          // A reply that placed something and named a card nowhere judged it fits no topic shown.
           val setAside =
             p.asideDiscussions.map(st => Lineage.Tag.Strand(st.root, st.room, st.digest)) ++
-              (p.asideCards ++ scan.of(p.asideDiscussions)._2)
+              (p.asideCards ++ p.omittedCards ++ scan.of(p.asideDiscussions)._2)
                 .distinctBy(_.version)
                 .map(c => Lineage.Tag.Card(c.version))
           val kept =
@@ -536,11 +538,12 @@ private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Pl
 
   /** Where each of `discussions`, `cards` and `topics`, as numbered in their order, went: the
     * groups holding any, each into a topic shown or opening one from its discussions, then those
-    * set aside, the cards of a new group holding no discussion among them, how many of each it
-    * named nowhere, and how many names it `dropped`: each number not shown, each topic not among
-    * `topics` (its group with it), and each discussion or card named in more than one group or
-    * the aside, dropped from all of them and so named nowhere. `None` when nothing is left to
-    * place.
+    * set aside, the cards of a new group holding no discussion among them; the cards it named in
+    * no group and not in the aside (`omittedCards`); how many discussions it placed nowhere, and
+    * how many cards it named but placed nowhere; and how many names it `dropped`: each number not
+    * shown, each topic not among `topics` (its group with it), and each discussion or card named
+    * in more than one group or the aside, dropped from all of them and so placed nowhere. `None`
+    * when nothing is left to place.
     */
   def placed[S, C, T](
       discussions: Vector[S],
@@ -584,13 +587,18 @@ private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Pl
       case Placing.Went.Into(_, _, c) => c.size
       case Placing.Went.Opened(_, _, c) => c.size
     }.sum + asideCards.size
+    // Named in no list at all, as against named in two and dropped.
+    val omittedCards = cards.zipWithIndex.collect {
+      case (c, i) if !cPlaces.contains(i + 1) => c
+    }
     Option.when(placedDiscussions + placedCards > 0)(
       Placing.Placed(
         went,
         asideDiscussions,
         asideCards,
+        omittedCards,
         discussions.size - placedDiscussions,
-        cards.size - placedCards,
+        cards.size - placedCards - omittedCards.size,
         unclear(dPlaces, discussions.size) + unclear(cPlaces, cards.size) + unshown.size
       )
     )
@@ -620,6 +628,7 @@ private[topic] object Placing {
       topics: Vector[Went[S, C, T]],
       asideDiscussions: Vector[S],
       asideCards: Vector[C],
+      omittedCards: Vector[C],
       unnamedDiscussions: Int,
       unnamedCards: Int,
       dropped: Int

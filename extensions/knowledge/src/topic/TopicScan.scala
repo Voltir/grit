@@ -83,7 +83,7 @@ private[topic] object TopicScan {
     * another label now, or its messages gone) withdrawn, the topic itself when none is left;
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
-    * the digest or version set aside; each already in a topic's lineage or the aside at its
+    * the digest or version set aside, and set aside within `asideFor` before `until`; each already in a topic's lineage or the aside at its
     * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
     * `most` strands and [[Cards]] cards of files kept at the floor to place, oldest first, the
     * others left (a card kept below the floor is its own label's run's to place); the cards read
@@ -111,11 +111,13 @@ private[topic] object TopicScan {
           .flatMap((recent: Vector[Strand.Digested]) =>
             Aside
               .read(keeper, floor)
-              .flatMap { (held: Lineage) =>
+              .flatMap { (all: Vector[Aside.Entry]) =>
+                val since = until.minusSeconds(params.asideFor.toSeconds)
+                val held = all.filterNot(_.at.isBefore(since))
                 val topics = kept.flatMap(_.topic)
                 val keys = topics.map(_._1).toSet
                 val lineage = (topics.flatMap(_._3.topic.passages.flatMap(_.from.tags)) ++
-                  held.tags).toSet
+                  held.map(_.tag)).toSet
                 def unplaced(c: CardShelf.Seen) = !lineage.contains(Lineage.Tag.Card(c.version))
                 referrers(keeper, keys, recent.filterNot(s => lineage.exists(isStrand(s))))(s =>
                   Some(Ref.Strand(s.root))
@@ -136,8 +138,8 @@ private[topic] object TopicScan {
                         referrers(keeper, keys, seen.filter(unplaced))(_.unit).flatMap(
                           (cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
                             val p = Placed(ss, cs)
-                            aside(keeper, floor, held, recent, seen, linked, at).flatMap {
-                              (_: Lineage) =>
+                            aside(keeper, floor, all, held, recent, seen, linked, at).flatMap {
+                              (_: Vector[Aside.Entry]) =>
                                 val s = gathered(most, floor, kept, recent, seen, p, linked)
                                 holding(shelf, kept, s.leads.map(_._1), until)
                                   .map(hs => s.copy(holds = hs))
@@ -303,25 +305,27 @@ private[topic] object TopicScan {
   )(using Tx^): Either[StoreError, Vector[CardShelf.Seen]] =
     shelf.fold(Right(Vector.empty))(_.changed(since, until, n, counts))
 
-  /** The floor's aside `held`, kept to the strands of `recent` and the cards of `seen` it holds
-    * at the digest or version they are now, less the cards `linked` pairs: the aside after.
+  /** The floor's aside, `all` of it, kept to those `held` (not expired) that are strands of
+    * `recent` and cards of `seen` at the digest or version they are now, less the cards
+    * `linked` pairs: the aside after.
     */
   private def aside(
       keeper: DocumentKeeper,
       floor: Label,
-      held: Lineage,
+      all: Vector[Aside.Entry],
+      held: Vector[Aside.Entry],
       recent: Vector[Strand.Digested],
       seen: Vector[CardShelf.Seen],
       linked: Vector[Linked],
       at: Instant
-  )(using Tx^): Either[StoreError, Lineage] = {
+  )(using Tx^): Either[StoreError, Vector[Aside.Entry]] = {
     val paired = linked.flatMap(_.cards.map(_.version)).toSet
-    val now = Lineage.of(held.tags.filter {
+    val now = held.filter(_.tag match {
       case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))
       case Lineage.Tag.Card(v) => seen.exists(_.version == v) && !paired.contains(v)
       case Lineage.Tag.Topic(_) => false
     })
-    if (now == held) Right(held) else Aside.kept(keeper, floor, now, at).map(_ => now)
+    if (now == all) Right(all) else Aside.kept(keeper, floor, now, at).map(_ => now)
   }
 
   /** Each of `as`, with the topic among `held` that refers to what `ref` reads of it, if any. */

@@ -150,6 +150,19 @@ object TopicCodecTests extends TestSuite {
       kept ==> days.drop(2)
     }
 
+    test(
+      "a topics run's parameters read back as written, asideFor among them; ones kept before asideFor read it as AsideFor"
+    ) {
+      import scala.concurrent.duration.*
+      val p = TopicParams(3, 2.days, 4.days, Some(LocalDate.parse("2026-10-12")), None, 3.days)
+      val stored = ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H")
+      (
+        TopicParams.read(TopicParams.write(p)),
+        TopicParams.read(stored).map(_.asideFor),
+        TopicParams.AsideFor
+      ) ==> (Right(p), Right(TopicParams.AsideFor), 7.days)
+    }
+
     test("a lineage names each tag once, in the order first named") {
       val card = Lineage.Tag.Card(version(7))
       Lineage.of(Vector(card, strand, card)).tags ==> Vector(card, strand)

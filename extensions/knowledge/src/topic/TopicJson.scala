@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import java.time.LocalDate
+import java.time.{Instant, LocalDate}
 
 import scala.util.Try
 
@@ -95,53 +95,71 @@ private object TopicJson {
       body <- o.get("body").toRight("a passage with no body").flatMap(readDoc)
     } yield Passage(day, from, body)
 
-  /** An aside's data ([[Aside]]): `{"v": 1, "aside": lineage}`. */
-  def aside(l: Lineage): ujson.Value = ujson.Obj("v" -> 1, "aside" -> lineage(l))
+  /** An aside's data ([[Aside]]): `{"v": 2, "aside": [tag]}`, each tag as a lineage writes it
+    * with `"at"`, when it was set aside, an ISO-8601 instant.
+    */
+  def aside(entries: Vector[Aside.Entry]): ujson.Value =
+    ujson.Obj(
+      "v" -> 2,
+      "aside" -> ujson.Arr.from(entries.map(e => {
+        val o = tag(e.tag)
+        o("at") = e.at.toString
+        o
+      }))
+    )
 
-  def readAside(v: ujson.Value): Read[Lineage] =
-    for {
-      o <- obj(v, "an aside")
-      _ <- o.get("v").flatMap(_.numOpt) match {
-        case Some(1) => Right(())
+  /** The entries [[aside]] wrote; of version 1, which dated none, each dated `written`. */
+  def readAside(v: ujson.Value, written: Instant): Read[Vector[Aside.Entry]] =
+    obj(v, "an aside").flatMap(o =>
+      o.get("v").flatMap(_.numOpt) match {
+        case Some(1) =>
+          readLineage(o.get("aside")).map(_.tags.map(Aside.Entry(_, written)))
+        case Some(2) =>
+          array(o.get("aside"), "an aside's entries").flatMap(
+            traverse(_)(e =>
+              for {
+                t <- readTag(e)
+                at <- string(obj(e, "an aside's entry").toOption.flatMap(_.get("at")), "its at")
+                  .flatMap(s => Try(Instant.parse(s)).toOption.toRight(s"no instant: $s"))
+              } yield Aside.Entry(t, at)
+            )
+          )
         case other => Left(s"an aside of version ${other.fold("none")(_.toString)}")
       }
-      l <- readLineage(o.get("aside"))
-    } yield l
+    )
 
-  private def lineage(l: Lineage): ujson.Value =
-    ujson.Arr.from(l.tags.map {
-      case Lineage.Tag.Strand(root, room, digest) =>
-        ujson.Obj(
-          "strand" -> ConversationId.value(root),
-          "room" -> room.written,
-          "digest" -> StrandDigest.value(digest)
-        )
-      case Lineage.Tag.Card(version) => ujson.Obj("card" -> DocumentVersion.value(version).toDouble)
-      case Lineage.Tag.Topic(version) =>
-        ujson.Obj("topic" -> DocumentVersion.value(version).toDouble)
-    })
+  private def lineage(l: Lineage): ujson.Value = ujson.Arr.from(l.tags.map(tag))
+
+  private def tag(t: Lineage.Tag): ujson.Obj = t match {
+    case Lineage.Tag.Strand(root, room, digest) =>
+      ujson.Obj(
+        "strand" -> ConversationId.value(root),
+        "room" -> room.written,
+        "digest" -> StrandDigest.value(digest)
+      )
+    case Lineage.Tag.Card(version) => ujson.Obj("card" -> DocumentVersion.value(version).toDouble)
+    case Lineage.Tag.Topic(version) =>
+      ujson.Obj("topic" -> DocumentVersion.value(version).toDouble)
+  }
 
   private def readLineage(v: Option[ujson.Value]): Read[Lineage] =
-    array(v, "a lineage")
-      .flatMap(
-        traverse(_)(t =>
-          obj(t, "a lineage's tag").flatMap(o =>
-            (o.get("strand"), o.get("card"), o.get("topic")) match {
-              case (Some(root), _, _) =>
-                for {
-                  r <- string(Some(root), "a strand tag's root")
-                  room <- string(o.get("room"), "a strand tag's room").flatMap(Place.read)
-                  digest <- string(o.get("digest"), "a strand tag's digest")
-                    .flatMap(StrandDigest.read)
-                } yield Lineage.Tag.Strand(ConversationId(r), room, digest)
-              case (_, Some(n), _) => version(n).map(Lineage.Tag.Card(_))
-              case (_, _, Some(n)) => version(n).map(Lineage.Tag.Topic(_))
-              case _ => Left(s"a lineage's tag of no kind: ${ujson.write(t)}")
-            }
-          )
-        )
-      )
-      .map(Lineage.of)
+    array(v, "a lineage").flatMap(traverse(_)(readTag)).map(Lineage.of)
+
+  private def readTag(t: ujson.Value): Read[Lineage.Tag] =
+    obj(t, "a lineage's tag").flatMap(o =>
+      (o.get("strand"), o.get("card"), o.get("topic")) match {
+        case (Some(root), _, _) =>
+          for {
+            r <- string(Some(root), "a strand tag's root")
+            room <- string(o.get("room"), "a strand tag's room").flatMap(Place.read)
+            digest <- string(o.get("digest"), "a strand tag's digest")
+              .flatMap(StrandDigest.read)
+          } yield Lineage.Tag.Strand(ConversationId(r), room, digest)
+        case (_, Some(n), _) => version(n).map(Lineage.Tag.Card(_))
+        case (_, _, Some(n)) => version(n).map(Lineage.Tag.Topic(_))
+        case _ => Left(s"a lineage's tag of no kind: ${ujson.write(t)}")
+      }
+    )
 
   private def version(v: ujson.Value): Read[DocumentVersion] =
     v.numOpt
