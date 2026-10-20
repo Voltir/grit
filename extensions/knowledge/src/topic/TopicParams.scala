@@ -33,11 +33,12 @@ object TopicParams {
     * durations ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
+    def iso(d: FiniteDuration): String = java.time.Duration.ofSeconds(d.toSeconds).toString
     val o = ujson.Obj(
       "perRun" -> p.perRun,
-      "recent" -> java.time.Duration.ofSeconds(p.recent.toSeconds).toString,
-      "cardRecent" -> java.time.Duration.ofSeconds(p.cardRecent.toSeconds).toString,
-      "asideFor" -> java.time.Duration.ofSeconds(p.asideFor.toSeconds).toString
+      "recent" -> iso(p.recent),
+      "cardRecent" -> iso(p.cardRecent),
+      "asideFor" -> iso(p.asideFor)
     )
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
