@@ -947,7 +947,7 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a seeding run shows Cards file cards past newer directories' cards and cards set aside") {
+    test("a run shows Cards file cards past newer directories' cards and cards set aside") {
       val w = new StrandWorld
       val runs = new Runs(w)
       runs.topic()
@@ -960,11 +960,10 @@ object TopicDreamTests extends TestSuite {
       (1 to TopicScan.Cards - 15).foreach(i =>
         runs.directory(s"d$i", s"Folder number $i.", Now.minusSeconds(1000L - i))
       )
-      val seeding =
-        runs.run(now = Now.plusSeconds(600), seedUntil = Some(Day), attach = placing("none"))
+      val ran = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
       val shown = runs.asked.lift(1).map(_.shown).getOrElse("")
       (
-        seeding,
+        ran,
         counted(shown)._3,
         "File number (\\d+)\\.".r.findAllMatchIn(shown).map(_.group(1).toInt).toVector,
         shown.contains("Folder number") || shown.contains("Aside number")
