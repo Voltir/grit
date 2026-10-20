@@ -85,9 +85,10 @@ private[topic] object TopicScan {
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
     * the digest or version set aside; each already in a topic's lineage or the aside at its
     * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
-    * `most` strands and [[Cards]] cards to place, oldest first, the others left; the cards read
-    * back until [[Cards]] of them are files in no lineage, the aside or a pairing, so successive
-    * runs page through them. Each strand
+    * `most` strands and [[Cards]] cards of files kept at the floor to place, oldest first, the
+    * others left (a card kept below the floor is its own label's run's to place); the cards read
+    * back until [[Cards]] of them are such files in no lineage, the aside or a pairing, so
+    * successive runs page through them. Each strand
     * attached or to place is [[Linked]] to the cards its messages link, read whatever their age
     * and taken out of the aside and of those to place.
     */
@@ -123,20 +124,21 @@ private[topic] object TopicScan {
                     (linked: Vector[Linked]) =>
                       val paired = linked.flatMap(_.cards.map(_.version)).toSet
                       // Read back until Cards could be offered, so successive runs page through
-                      // them: a directory's card, or one placed, set aside or paired, is not.
+                      // them: a directory's card, one kept at another label, or one placed, set
+                      // aside or paired, is not.
                       changed(
                         shelf,
                         until.minusSeconds(params.cardRecent.toSeconds),
                         until,
                         Cards,
-                        c => c.kind == UnitKind.File && unplaced(c) && !paired.contains(c.version)
+                        c => offered(c, floor) && unplaced(c) && !paired.contains(c.version)
                       ).flatMap((seen: Vector[CardShelf.Seen]) =>
                         referrers(keeper, keys, seen.filter(unplaced))(_.unit).flatMap(
                           (cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
                             val p = Placed(ss, cs)
                             aside(keeper, floor, held, recent, seen, linked, at).flatMap {
                               (_: Lineage) =>
-                                val s = gathered(most, kept, recent, seen, p, linked)
+                                val s = gathered(most, floor, kept, recent, seen, p, linked)
                                 holding(shelf, kept, s.leads.map(_._1), until)
                                   .map(hs => s.copy(holds = hs))
                             }
@@ -333,6 +335,7 @@ private[topic] object TopicScan {
   /** The scan's result, from what its reads found. */
   private def gathered(
       most: Int,
+      floor: Label,
       kept: Vector[Pruned],
       recent: Vector[Strand.Digested],
       seen: Vector[CardShelf.Seen],
@@ -352,9 +355,8 @@ private[topic] object TopicScan {
     )
     val strands = p.strands.collect { case (s, None) => s }
     // Most recent first as the shelf gives them: placed oldest first, as strands are.
-    // A directory's card describes a container, not a matter: it attaches only by ref or a link.
     val cards = p.cards.collect {
-      case (c, None) if !paired.contains(c.version) && c.kind == UnitKind.File => c
+      case (c, None) if !paired.contains(c.version) && offered(c, floor) => c
     }.reverse
     val byRef = attached.flatMap(t => t.version.map(t.key -> _))
     val leads = byRef ++ topics
@@ -375,6 +377,13 @@ private[topic] object TopicScan {
       Vector.empty
     )
   }
+
+  /** Whether the attach ask of a run at `floor` may be shown `c`: a file's card kept at `floor`.
+    * A directory's card describes a container, not a matter, and one kept below `floor` is its
+    * own label's run's to place: either attaches only by ref or a strand's link.
+    */
+  private def offered(c: CardShelf.Seen, floor: Label): Boolean =
+    c.kind == UnitKind.File && c.label == floor
 
   private def isStrand(s: Strand.Digested)(t: Lineage.Tag): Boolean = t match {
     case Lineage.Tag.Strand(root, _, digest) => root == s.root && digest == s.digest
@@ -503,7 +512,8 @@ private[topic] object TopicScan {
       "version" -> DocumentVersion.value(c.version).toDouble,
       "key" -> CardKey.value(c.key),
       "title" -> c.title,
-      "kind" -> c.kind.word
+      "kind" -> c.kind.word,
+      "label" -> Label.written(c.label)
     )
     c.unit.flatMap(u => Ref.written(u).toOption).foreach(r => o("unit") = refJson(r))
     o
@@ -519,13 +529,20 @@ private[topic] object TopicScan {
         .toRight("a card seen with no key")
         .flatMap(CardKey.parse)
       title <- o.get("title").flatMap(_.strOpt).toRight("a card seen with no title")
+      // Recorded since version 3, before which a run is superseded, never replayed.
+      label <- o
+        .get("label")
+        .flatMap(_.strOpt)
+        .toRight("a card seen with no label")
+        .flatMap(Label.read)
     } yield CardShelf.Seen(
       version,
       key,
       title,
       o.get("unit").flatMap(readRef),
       // A card seen before its kind was recorded reads as a file's.
-      UnitKind.of(o.get("kind").flatMap(_.strOpt))
+      UnitKind.of(o.get("kind").flatMap(_.strOpt)),
+      label
     )
 
   private def lead(k: TopicKey, v: DocumentVersion): ujson.Value =

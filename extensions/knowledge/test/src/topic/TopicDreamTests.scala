@@ -92,9 +92,10 @@ object TopicDreamTests extends TestSuite {
 
     def asked: Vector[Ask] = heard.asked
 
-    /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`; its attach ask answered by `attach` of what
-      * it was told and shown, its write asks by `write`; its rooms labelled as `rooms` records
-      * them; its asks reading no document `unread` holds to: its reply.
+    /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`, kept at
+      * `floor`; its attach ask answered by `attach` of what it was told and shown, its write asks
+      * by `write`; its rooms labelled as `rooms` records them; its asks reading no document
+      * `unread` holds to: its reply.
       */
     def run(
         perRun: Int = 10,
@@ -105,7 +106,8 @@ object TopicDreamTests extends TestSuite {
         rooms: Recorded = Recorded.Empty,
         attach: (String, String) -> ujson.Value = everyNew,
         write: String -> ujson.Value = _ => wrote(Lead, Passage),
-        unread: Document -> Boolean = _ => false
+        unread: Document -> Boolean = _ => false,
+        floor: Label = Label.Public
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -123,7 +125,7 @@ object TopicDreamTests extends TestSuite {
         }
       val moves = new ScriptedDreaming(
         dream.limits,
-        Label.Public,
+        floor,
         Plugin,
         Terms,
         Dreaming.Reads(w.shelf, _ => needs, w.excerpts, reading(unread)),
@@ -177,14 +179,40 @@ object TopicDreamTests extends TestSuite {
     def referring(r: Ref): Vector[String] =
       ok(documents.shelf(Plugin).referring(right(Ref.written(r)), 10)).map(d => DocKey.value(d.key))
 
+    /** A topic of [[Lead]], not opened by any strand here, kept at `floor` with one passage of
+      * [[Day]] written from nothing, so a run at `floor` shows it to its attach ask.
+      */
+    def topic(floor: Label = Label.Public): Unit = {
+      val held = TopicWrite.Held(
+        Topic.of(
+          TopicWrite.prose(Lead),
+          Vector(
+            grit.knowledge.topic.Passage(Day, Lineage.of(Vector.empty), TopicWrite.prose(Passage))
+          )
+        ),
+        Vector.empty,
+        None
+      )
+      val _ = ok(
+        TopicWrite.kept(
+          documents.keeper(Plugin, Terms),
+          right(TopicKey.strand(ConversationId("held"))),
+          floor,
+          held,
+          Now.minusSeconds(3600)
+        )
+      )
+    }
+
     /** A card of the Drive file `id`, kept by the knowledge plugin `at`, believed at
-      * `integrity`.
+      * `integrity`, at `label`.
       */
     def card(
         id: String,
         says: String,
         at: Instant = Now,
-        integrity: Integrity = Integrity.Member
+        integrity: Integrity = Integrity.Member,
+        label: Label = Label.Public
     ): Unit = {
       val c = Card.file(
         right(CorpusName.of("shared")),
@@ -199,7 +227,7 @@ object TopicDreamTests extends TestSuite {
           .keeper(Knowledge, CardTerms)
           .write(
             c.docKey,
-            Label.Public,
+            label,
             integrity,
             Place.Everywhere,
             c.text,
@@ -566,6 +594,7 @@ object TopicDreamTests extends TestSuite {
     test("an attach ask shown no discussion is offered none to name, nor a new topic") {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val reply = runs.run(attach = placing("none"))
       (
@@ -844,9 +873,56 @@ object TopicDreamTests extends TestSuite {
       ) ==> (Vector(("attach", false), ("write", true)), Vector(key(a)))
     }
 
+    test(
+      "a run is offered only the cards kept at its own label; a lower one reaches its topic by a strand's link"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      runs.card("menu2", "The lunch menu.", Now.minusSeconds(60))
+      runs.card("budget3", "The budget.", Now.minusSeconds(60), label = Internal)
+      val _ = strand(w, "C1", s"the plan is at $PlanLink")
+      val _ = runs.run(floor = Internal, rooms = labelled(Internal, "C1"))
+      val said = Seq("The deploy plan.", "The lunch menu.", "The budget.")
+      runs.asked.map(x => (x.kind, said.filter(x.shown.contains))) ==>
+        Vector(("attach", Seq("The budget.")), ("write", Seq("The deploy plan.")))
+    }
+
+    test("a card kept below a run's label attaches by ref to a topic that refers to it") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = strand(w, "C1", s"the plan is at $PlanLink")
+      val _ = runs.run(floor = Internal, rooms = labelled(Internal, "C1"))
+      runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
+      val second =
+        runs.run(now = Now.plusSeconds(600), floor = Internal, rooms = labelled(Internal, "C1"))
+      // The topic is written again only when the card attached to it.
+      (second, runs.asked.map(x => (x.kind, x.shown.contains("The deploy plan.")))) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(("attach", false), ("write", false), ("write", true))
+      )
+    }
+
+    test(
+      "a run with no discussion and no topic to show asks nothing, and leaves its cards for a later run"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val first = runs.run(attach = placing("none"))
+      runs.topic()
+      val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      (first, second, runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector(("attach", (0, 1, 1)))
+      )
+    }
+
     test("a run shows up to Cards cards; the next shows those it did not place, not those it did") {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic()
       (1 to TopicScan.Cards + 5).foreach(i =>
         runs.card(s"f$i", s"File number $i.", Now.minusSeconds(3000L - i))
       )
@@ -871,6 +947,7 @@ object TopicDreamTests extends TestSuite {
     test("a seeding run shows Cards file cards past newer directories' cards and cards set aside") {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic()
       (1 to 5).foreach(i => runs.card(s"a$i", s"Aside number $i.", Now.minusSeconds(100L - i)))
       val _ = runs.run(attach = placing("none"))
       (1 to TopicScan.Cards + 5).foreach(i =>
@@ -899,6 +976,7 @@ object TopicDreamTests extends TestSuite {
     test("a run for a day up to seedUntil reads the cards written within SeedReach") {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic()
       runs.card("old1", "An old plan.", Now.minusSeconds(30 * 86400))
       val before = runs.run(seedUntil = Some(Day.minusDays(1)), attach = placing("none"))
       val seeding = runs.run(seedUntil = Some(Day), attach = placing("none"))
@@ -971,6 +1049,7 @@ object TopicDreamTests extends TestSuite {
     test("a card set aside is paired when a strand later links it, and leaves the aside") {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val first = runs.run(attach = placing("none"))
       val setAside = runs.aside._2.size

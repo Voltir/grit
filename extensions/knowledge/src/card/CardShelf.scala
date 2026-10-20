@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.document.{Document, DocumentShelf}
 import grit.core.id.{DocKey, DocumentVersion}
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Label
 import grit.knowledge.ref.{CardKey, Ref}
 
 /** Cards as another plugin reads them through [[grit.knowledge.plugin.Knowledge]]'s export. */
@@ -31,15 +32,16 @@ trait CardShelf extends caps.Pure {
 object CardShelf {
 
   /** A card as [[CardShelf.changed]] sees it: its document's `version`, its `key`, its `title`
-    * (its unit's name, or its path when its source gave none), the `unit` its pointer reads, and
-    * whether that is a file or a directory (`kind`).
+    * (its unit's name, or its path when its source gave none), the `unit` its pointer reads,
+    * whether that is a file or a directory (`kind`), and the `label` it is kept at.
     */
   final case class Seen(
       version: DocumentVersion,
       key: CardKey,
       title: String,
       unit: Option[Ref],
-      kind: UnitKind
+      kind: UnitKind,
+      label: Label
   ) extends caps.Pure
 
   /** The cards among `documents`, the knowledge plugin's own. */
@@ -72,6 +74,7 @@ object CardShelf {
       key,
       o.get("title").flatMap(_.strOpt).getOrElse(path),
       d.pointer.flatMap(Ref.ofPointer),
-      UnitKind.of(o.get("kind").flatMap(_.strOpt))
+      UnitKind.of(o.get("kind").flatMap(_.strOpt)),
+      d.label
     )
 }

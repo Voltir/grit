@@ -15,7 +15,7 @@ import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
 
-/** The job `topics-dream`, version 2, its days reckoned in `zone`, its cards through `cards` when
+/** The job `topics-dream`, version 3, its days reckoned in `zone`, its cards through `cards` when
   * its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its
   * floor, reading strands as they stood at that day's end (or now, if sooner) and the cards written
   * by then: scans its topics, the strands of rooms at its floor spoken in within `recent`, and the
@@ -26,13 +26,15 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * or a strand of it links it); pairs each card a strand it takes up links ([[TopicScan.Linked]],
   * read whatever its age or whether it was set aside) with that strand, to go wherever the strand
   * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others
-  * go but a directory's cards, which attach only by ref or a strand's link, at most `perRun` strands and [[TopicScan.Cards]] cards past those already placed, each
+  * go but a directory's cards and those kept below its floor, which attach only by ref or a
+  * strand's link, at most `perRun` strands and [[TopicScan.Cards]] cards past those already placed, each
   * numbered in the order shown, as are the topics shown (those attached to, and at most
   * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
   * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
   * one, keyed by the group's first strand; groups naming one topic are one. A new group holding
   * no strand is set aside, so no card alone opens a topic; shown no strand, the ask is offered
-  * neither discussions nor a new topic to name. Those it puts in none are set aside
+  * neither discussions nor a new topic to name, and with no topic to show either it is not
+  * made, its cards left for a later run. Those it puts in none are set aside
   * (`aside`), in a document of its floor under `topic:aside` holding no topic, while within
   * `recent` or `cardRecent` at the digest or version set aside. One it names nowhere is counted
   * unnamed and offered again. A number or topic not shown is dropped from the reply, its topic's
@@ -56,7 +58,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
 
   val name: JobName = TopicDream.Name
 
-  val version: Int = 2
+  val version: Int = 3
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -143,6 +145,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   ): (Vector[Touch], Gathered) = {
     val n = scan.strands.size + scan.cards.size
     if (n == 0) (Vector.empty, g)
+    // With no discussion and no topic shown, a card could only be set aside: none is asked of.
+    else if (scan.strands.isEmpty && scan.leads.isEmpty) (Vector.empty, g.copy(left = g.left + n))
     else {
       val system =
         TopicDream.attachSystem(scan.strands.size, scan.leads.nonEmpty, scan.cards.nonEmpty)
