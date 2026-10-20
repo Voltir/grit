@@ -598,6 +598,39 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
+      "a write ask is told to date days absolutely, to write the matter not the assistant's conduct, to name no day atop the passage, and to doubt nothing a card states"
+    ) {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val system = runs.asked.find(_.kind == "write").fold("")(_.system)
+      Vector(
+        "Write about the matter, not the exchange: never about the assistant's own conduct, " +
+          "such as a message it sent twice, its corrections of its own earlier answers, or a " +
+          "test of it.",
+        "Write each day as its date (yyyy-mm-dd), never as \"today\", \"tomorrow\", " +
+          "\"yesterday\" or a weekday's name: a message's relative day is reckoned from the day " +
+          "it was said, 2026-10-12 for that day's messages.",
+        "The passage is shown under its day, so it begins with what it adds, with no line " +
+          "naming its day.",
+        "Never call something unverified, unknown or unconfirmed that a card shown states."
+      ).filterNot(system.contains) ==> Vector()
+    }
+
+    test("a topic's write ask is shown every card it holds, not only those attached that day") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("runbook", "The rollback runbook.", Now.minusSeconds(60))
+      val _ = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      w.say(a, "the rollback works now", 50)
+      val _ = runs.run(now = Now.plusSeconds(600))
+      runs.asked.map(x => (x.kind, x.shown.contains("The rollback runbook."))) ==>
+        Vector(("attach", true), ("write", true), ("write", true))
+    }
+
+    test(
       "a changed card a topic links to attaches to it by its unit; one no topic refers to goes to the attach ask, and placed in none is counted set aside"
     ) {
       val w = new StrandWorld

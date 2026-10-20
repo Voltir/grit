@@ -31,7 +31,8 @@ private[topic] object TopicScan {
     * attach ask places, and the topics it shows (`leads`, by key and version: those attached to,
     * then at most [[Leads]] others, newest first); how
     * many passages it `withdrew`, and how many strands and cards it found `unchanged` or `left`
-    * past the run's most.
+    * past the run's most; and, of each topic shown that holds cards, the current versions of
+    * at most [[Holds]] of them, most recently written first (`holds`).
     */
   final case class Scanned(
       attached: Vector[Touch],
@@ -41,7 +42,8 @@ private[topic] object TopicScan {
       withdrew: Int,
       unchanged: Int,
       left: Int,
-      linked: Vector[Linked]
+      linked: Vector[Linked],
+      holds: Vector[(TopicKey, Vector[DocumentVersion])]
   ) extends caps.Pure {
 
     /** The card units `strands` link, and the cards paired with them, each once. */
@@ -50,6 +52,10 @@ private[topic] object TopicScan {
       val mine = linked.filter(l => roots.contains(l.root))
       (mine.flatMap(_.units).distinct, mine.flatMap(_.cards).distinctBy(_.version))
     }
+
+    /** The versions of the cards `topic` holds ([[holds]]): none for a topic not shown. */
+    def holding(topic: TopicKey): Vector[DocumentVersion] =
+      holds.collectFirst { case (k, vs) if k == topic => vs }.getOrElse(Vector.empty)
   }
 
   /** A strand in play that links a card's unit: its `root`, the card `units` its messages link
@@ -68,6 +74,9 @@ private[topic] object TopicScan {
 
   /** 10: the most card units a scan keeps of one strand's links. */
   val Links: Int = 10
+
+  /** 20: the most cards a topic holds that its write ask is shown besides those attached. */
+  val Holds: Int = 20
 
   /** The scan at `until`: its floor's topics read, one whose data does not read withdrawn;
     * from each, the passages naming a strand `strands` no longer reads at the floor (its room at
@@ -125,8 +134,12 @@ private[topic] object TopicScan {
                         referrers(keeper, keys, seen.filter(unplaced))(_.unit).flatMap(
                           (cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
                             val p = Placed(ss, cs)
-                            aside(keeper, floor, held, recent, seen, linked, at)
-                              .map(_ => gathered(most, kept, recent, seen, p, linked))
+                            aside(keeper, floor, held, recent, seen, linked, at).flatMap {
+                              (_: Lineage) =>
+                                val s = gathered(most, kept, recent, seen, p, linked)
+                                holding(shelf, kept, s.leads.map(_._1), until)
+                                  .map(hs => s.copy(holds = hs))
+                            }
                           }
                         )
                       )
@@ -170,6 +183,30 @@ private[topic] object TopicScan {
             named
               .map((root, us) => Linked(root, us, first.collect { case (c, r) if r == root => c }))
         }
+      }
+    }
+
+  /** Of each of `shown` among `kept`, the cards of the units it refers to written by `until`,
+    * at most [[Holds]], most recently written first; a topic holding none left out.
+    */
+  private def holding(
+      shelf: Option[CardShelf],
+      kept: Vector[Pruned],
+      shown: Vector[TopicKey],
+      until: Instant
+  )(using Tx^): Either[StoreError, Vector[(TopicKey, Vector[DocumentVersion])]] =
+    shelf.fold[Either[StoreError, Vector[(TopicKey, Vector[DocumentVersion])]]](
+      Right(Vector.empty)
+    ) { cards =>
+      val topics = kept.flatMap(_.topic).collect {
+        case (k, _, h) if shown.contains(k) => k -> h.units.filter(isUnit).toSet
+      }
+      val units = topics.flatMap(_._2).toSet
+      // A unit has one current card, so this reads every one held.
+      cards.linked(units, until, units.size).map { (found: Vector[CardShelf.Seen]) =>
+        topics
+          .map((k, us) => k -> found.filter(_.unit.exists(us.contains)).map(_.version).take(Holds))
+          .filter(_._2.nonEmpty)
       }
     }
 
@@ -334,7 +371,8 @@ private[topic] object TopicScan {
       (recent.size - p.strands.size) +
         seen.count(c => !p.cards.exists(_._1.version == c.version) && !paired.contains(c.version)),
       (strands.size - most).max(0) + (cards.size - Cards).max(0),
-      linked
+      linked,
+      Vector.empty
     )
   }
 
@@ -365,8 +403,8 @@ private[topic] object TopicScan {
     )
 
   /** Its record: `{"attached": [...], "strands": [...], "cards": [...], "leads": [...],
-    * "withdrew", "unchanged", "left", "linked": [...]}`, read as linking none when `linked` is
-    * absent.
+    * "withdrew", "unchanged", "left", "linked": [...], "holds": [{"key", "cards": [...]}]}`,
+    * read as linking none when `linked` is absent and holding none when `holds` is.
     */
   given Journaled[Scanned] = Journaled.json(
     s =>
@@ -378,7 +416,8 @@ private[topic] object TopicScan {
         "withdrew" -> s.withdrew,
         "unchanged" -> s.unchanged,
         "left" -> s.left,
-        "linked" -> ujson.Arr.from(s.linked.map(linkedJson))
+        "linked" -> ujson.Arr.from(s.linked.map(linkedJson)),
+        "holds" -> ujson.Arr.from(s.holds.map(holdsJson))
       ),
     v =>
       for {
@@ -392,8 +431,22 @@ private[topic] object TopicScan {
         left <- count(o.get("left"), "left")
         // A scan recorded before strands were linked holds none.
         linked <- list(o.get("linked").orElse(Some(ujson.Arr())), "linked")(readLinked)
-      } yield Scanned(attached, strands, cards, leads, withdrew, unchanged, left, linked)
+        // A scan recorded before a write ask was shown the cards its topic holds holds none.
+        holds <- list(o.get("holds").orElse(Some(ujson.Arr())), "holds")(readHolds)
+      } yield Scanned(attached, strands, cards, leads, withdrew, unchanged, left, linked, holds)
   )
+
+  private def holdsJson(h: (TopicKey, Vector[DocumentVersion])): ujson.Value = ujson.Obj(
+    "key" -> TopicKey.value(h._1),
+    "cards" -> ujson.Arr.from(h._2.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+  )
+
+  private def readHolds(v: ujson.Value): Either[String, (TopicKey, Vector[DocumentVersion])] =
+    for {
+      o <- v.objOpt.toRight("a topic's holding is an object")
+      key <- topicKey(o.get("key"))
+      cards <- list(o.get("cards"), "a topic's cards held")(version)
+    } yield (key, cards)
 
   private def linkedJson(l: Linked): ujson.Value = ujson.Obj(
     "root" -> ConversationId.value(l.root),

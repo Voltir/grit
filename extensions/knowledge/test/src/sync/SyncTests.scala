@@ -711,13 +711,15 @@ object SyncTests extends TestSuite {
     }
 
     test(
-      "the summary model is told what the file is in the line before it, and to call it that"
+      "the summary model is told what the file is in the line before it, to call it that, and not to repeat its path or type"
     ) {
       val asked = Sync.summarising("A text file named `notes` in Google Drive", "Plans.")
       (
         asked.system.contains(
           "The line before the file says what it is and where it is kept: call it what that " +
-            "line calls it, whatever its text looks like."
+            "line calls it, whatever its text looks like. The catalog shows the file's path " +
+            "beside your summary, so do not repeat its path or its type (\"This CSV file…\", " +
+            "\"README for…\"): begin with what it holds."
         ),
         asked.messages
       ) ==> (

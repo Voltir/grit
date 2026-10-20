@@ -106,7 +106,9 @@ object Sync {
   private val System: String =
     "You summarise one file for a catalog that tells an assistant what each file holds, so it " +
       "can choose which to read. The line before the file says what it is and where it is " +
-      "kept: call it what that line calls it, whatever its text looks like. Reply by calling " +
+      "kept: call it what that line calls it, whatever its text looks like. The catalog shows " +
+      "the file's path beside your summary, so do not repeat its path or its type (\"This CSV " +
+      "file…\", \"README for…\"): begin with what it holds. Reply by calling " +
       "`reply` with `summary`, " +
       s"at most ${CardSummary.Words} words on what the file is and what it holds, and `terms`, " +
       s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +

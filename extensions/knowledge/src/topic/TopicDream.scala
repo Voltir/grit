@@ -5,7 +5,7 @@ import java.time.{Instant, LocalDate, ZoneId}
 import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName}
 import grit.core.document.DocumentKeeper
 import grit.core.flow.Trusted
-import grit.core.id.JobName
+import grit.core.id.{DocumentVersion, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.schema.{JsonSchema, Typed}
@@ -40,7 +40,8 @@ import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
   * dropped from both, so unnamed; each counted dropped. A reply that places nothing it was shown
   * is asked once more (`attach-again`), and when that one does not either, all are left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
   * topics first, asks once (`write-{i}`) for its new lead and the day's passage, from the strands
-  * and cards attached and its current text, and keeps it (`keep-{i}`): the day's passage replacing
+  * and cards attached, the current cards of at most [[TopicScan.Holds]] more units it refers to,
+  * and its current text, and keeps it (`keep-{i}`): the day's passage replacing
   * one the topic holds for that day, its lineage joined. A topic's version refers to each strand it
   * was written from, each card's unit and each card unit its strands link (newest first), each
   * topic it links and the unit of each other link; a ref [[Ref.written]] refuses, or one past
@@ -116,6 +117,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                 day,
                 t,
                 scan.of(t.strands)._1,
+                scan.holding(t.key),
                 i,
                 reviewed < TopicDream.Reviewed,
                 g
@@ -225,13 +227,16 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     }
   }
 
-  /** `t`'s write ask and keep, the `i`th; whether it was put up for review. */
+  /** `t`'s write ask, shown besides the cards it `holds`, and keep, the `i`th; whether it was
+    * put up for review.
+    */
   private def written(
       run: Trusted[JobRun[TopicParams]],
       moves: Dreaming^,
       day: LocalDate,
       t: Touch,
       units: Vector[Ref],
+      holds: Vector[DocumentVersion],
       i: Int,
       review: Boolean,
       g: Gathered
@@ -247,7 +252,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     moves.summarise(
       CardMoves.numbered("write", i),
       t.strands,
-      t.version.toVector ++ t.cards.map(_.version),
+      t.version.toVector ++ (t.cards.map(_.version) ++ holds).distinct,
       run.tainted.map(_ => summary)
     ) match {
       case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), false)
@@ -381,15 +386,22 @@ object TopicDream {
   /** What a write ask is told, before what it is shown. */
   private def writeSystem(day: LocalDate): String =
     "You keep one topic of a team's knowledge: a durable subject, written as a lead and dated " +
-      s"passages. You are shown the discussions and the cards attached to it on $day, each " +
-      "discussion a block of messages under their speakers' names and each card a document " +
-      "describing a file under its label; then, when the topic exists, its text under " +
-      "`topic:`: its lead, then its passages newest first, each under its day. Reply by " +
-      s"calling `reply` with `lead`, what the topic is about now, in at most $LeadChars " +
-      s"characters of markdown, and `passage`, in markdown, what $day's discussions and cards " +
-      "add to it: what was decided, what is known and what is still open, naming people as " +
-      s"the messages do. When the topic holds a passage for $day already, yours replaces it, " +
-      "so keep what it says. Keep links to other topics (`topic:…`) and to files as written."
+      s"passages. You are shown the discussions and the cards attached to it on $day and the " +
+      "other cards it holds, each discussion a block of messages under their speakers' names " +
+      "and each card a document describing a file under its label; then, when the topic " +
+      "exists, its text under `topic:`: its lead, then its passages newest first, each under " +
+      s"its day. Reply by calling `reply` with `lead`, what the topic is about now, in at most " +
+      s"$LeadChars characters of markdown, and `passage`, in markdown, what $day's discussions " +
+      "and cards add to it: what was decided, what is known and what is still open, naming " +
+      "people as the messages do. Write about the matter, not the exchange: never about the " +
+      "assistant's own conduct, such as a message it sent twice, its corrections of its own " +
+      "earlier answers, or a test of it. Write each day as its date (yyyy-mm-dd), never as " +
+      "\"today\", \"tomorrow\", \"yesterday\" or a weekday's name: a message's relative day is " +
+      s"reckoned from the day it was said, $day for that day's messages. The passage is shown " +
+      "under its day, so it begins with what it adds, with no line naming its day. Never call " +
+      "something unverified, unknown or unconfirmed that a card shown states. When the topic " +
+      s"holds a passage for $day already, yours replaces it, so keep what it says. Keep links " +
+      "to other topics (`topic:…`) and to files as written."
 
   /** The attach ask's reply: with no `discussions` and no `new` topic when it was shown no
     * discussion (`discussions`).
