@@ -7,7 +7,7 @@ import grit.knowledge.card.NotWritten
   * topic they are in was written or they were set aside, how many its attach ask placed in no topic (`aside`), and how
   * many it `left` for the next run (past its most, not shown, or changed since its scan), and
   * apart from those, how many the attach ask's reply named nowhere (`unnamed`), offered again; how
-  * many times its attach ask was asked `again` and the second reply placed what the first did
+  * many names that reply gave were `dropped` (named in two places, or not shown); how many times its attach ask was asked `again` and the second reply placed what the first did
   * not; how many refs it `skipped` (too long to keep, their links still in the text); what it
   * did not write, each named, and why; and why it stopped, if it did. [[line]] is its reply.
   */
@@ -19,6 +19,7 @@ final case class Gathered(
     aside: Int,
     left: Int,
     unnamed: Int,
+    dropped: Int,
     again: Int,
     skipped: Int,
     unwritten: Vector[(String, String)],
@@ -27,7 +28,8 @@ final case class Gathered(
 
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
     * unchanged, {aside} set aside, {left} left for the next run`, then, when some were, `;
-    * {unnamed} unnamed, offered again`, then, when it was, `; {again}
+    * {unnamed} unnamed, offered again`, then, when some were, `; {dropped} named twice or not
+    * shown, dropped`, then, when it was, `; {again}
     * asked again`, then, when some were, `; {n} refs too long to keep`, then `; not written: {name} ({why})` for at most [[Gathered.Shown]] of them,
     * separated by `, `, and `and {n} more` for the rest; then, when it stopped, `; stopped:
     * {why}`.
@@ -36,13 +38,16 @@ final case class Gathered(
     val counts = s"topics: $written written ($opened opened), $withdrawn withdrawn, " +
       s"$unchanged unchanged, $aside set aside, $left left for the next run"
     val missed = if (unnamed == 0) "" else s"; $unnamed unnamed, offered again"
+    val wrong = if (dropped == 0) "" else s"; $dropped named twice or not shown, dropped"
     val asked = if (again == 0) "" else s"; $again asked again"
     val refs =
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"
       else s"; $skipped refs too long to keep"
     val notWritten = NotWritten.tail(unwritten, Gathered.Shown)
-    counts + missed + asked + refs + notWritten + stopped.fold("")(why => s"; stopped: $why")
+    counts + missed + wrong + asked + refs + notWritten + stopped.fold("")(why =>
+      s"; stopped: $why"
+    )
   }
 }
 
@@ -53,5 +58,5 @@ object Gathered {
 
   /** A run that stopped before writing anything, and why. */
   private[topic] def stopped(why: String): Gathered =
-    Gathered(0, 0, 0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
+    Gathered(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
 }

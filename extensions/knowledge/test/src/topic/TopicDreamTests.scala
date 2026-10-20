@@ -462,43 +462,76 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "an attach reply naming a card not shown, or a discussion twice, is asked once more, the second placed and counted asked again, within the job's limits"
+      "an attach reply's numbers and topics not shown are dropped and counted, the rest placed, not asked again"
     ) {
-      // A reply naming card 2 of one, then one naming discussion 1 twice.
-      val wrong = Seq(
-        placed(Seq(group("new", Seq(1), Seq(1, 2)))),
-        placed(Seq(group("new", Seq(1), Seq(1))), asideDiscussions = Seq(1))
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      // Card 2 and discussion 2 were not shown, nor was topic 3.
+      val reply = runs.run(attach =
+        (_, _) => placed(Seq(group("new", Seq(1), Seq(1, 2)), group("3", Seq(2))))
       )
-      wrong.map { first =>
-        val w = new StrandWorld
-        val a = strand(w, "C1", "deploy pipeline")
-        val runs = new Runs(w)
-        val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-        val reply = runs.run(
-          most = 1,
-          attach = (system, _) =>
-            if (system.contains("Your previous reply")) placed(Seq(group("new", Seq(1), Seq(1))))
-            else first
-        )
-        (reply, runs.asked.map(_.kind), runs.kept.map(_._1) == Vector(key(a)))
-      } ==> Seq.fill(2)(
-        (
-          "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 asked again",
-          Vector("attach", "attach", "write"),
-          true
-        )
+      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 3 named twice or not shown, dropped",
+        Vector("attach", "write"),
+        Vector(key(a))
       )
     }
 
     test(
-      "an attach reply naming a discussion twice, twice over, leaves all it was shown"
+      "a discussion or card an attach reply names in two places is dropped from both and offered again, the rest placed"
+    ) {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val b = strand(w, "C2", "lunch order", 10)
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val first = runs.run(attach =
+        (_, _) =>
+          placed(
+            Seq(group("new", Seq(1, 1), Seq(1)), group("new", Seq(2))),
+            asideDiscussions = Seq(1),
+            asideCards = Seq(1)
+          )
+      )
+      val _ = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      (first, runs.kept.map(_._1), runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 2 unnamed, offered again; 2 named twice or not shown, dropped",
+        Vector(key(b)),
+        Vector(("attach", (2, 0, 1)), ("write", (1, 0, 0)), ("attach", (1, 1, 1)))
+      )
+    }
+
+    test(
+      "an attach reply placing nothing it was shown is asked once more, the second placed and counted asked again, within the job's limits"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(
+        most = 1,
+        attach = (system, _) =>
+          if (system.contains("Your previous reply")) placed(Seq(group("new", Seq(1), Seq(1))))
+          else placed(Nil, asideDiscussions = Seq(2), asideCards = Seq(2))
+      )
+      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 asked again",
+        Vector("attach", "attach", "write"),
+        Vector(key(a))
+      )
+    }
+
+    test(
+      "an attach reply placing nothing it was shown, twice over, leaves all it was shown"
     ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
-      val reply = runs.run(attach = (_, _) => placed(Nil, asideDiscussions = Seq(1, 1)))
+      val reply = runs.run(attach = (_, _) => placed(Seq(group("2", Seq(1)))))
       (reply, runs.asked.map(_.kind), runs.kept, runs.aside._1) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply named a discussion or card twice, or one or a topic not shown)",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply placed nothing shown: each it named was named twice, or not shown, or in a topic not shown)",
         Vector("attach", "attach"),
         Vector(),
         Vector()
