@@ -82,7 +82,7 @@ object Rehearse {
     * host ([[Mine]]).
     */
   private def rehearsable(config: DbConfig): Either[String, DbConfig] =
-    config.place.database match {
+    config.endpoint.database match {
       case None => Left(Unnamed)
       case Some(Own) => Left(Mine)
       case Some(_) => Right(config)

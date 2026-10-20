@@ -4,12 +4,12 @@ package grit.dbos.sql
   * password.
   */
 final case class DbConfig(jdbcUrl: String, user: String, password: String) {
-  override def toString: String = s"DbConfig($jdbcUrl, $user, <redacted>)"
+  override def toString: String = s"DbConfig(${endpoint}, $user, <redacted>)"
 
   /** The hosts and database `jdbcUrl` names, never its parameters: those can carry
     * credentials.
     */
-  def place: DbConfig.Place = DbConfig.Place.of(jdbcUrl)
+  def endpoint: DbConfig.Endpoint = DbConfig.Endpoint.of(jdbcUrl)
 }
 
 object DbConfig {
@@ -22,14 +22,14 @@ object DbConfig {
     * port, 5432 when it names none; `localhost:5432` when it names no host. `database` is
     * `None` when the URL names none. `toString` is `hosts/database`.
     */
-  final case class Place(hosts: String, database: Option[String]) {
+  final case class Endpoint(hosts: String, database: Option[String]) {
     override def toString: String = s"$hosts/${database.getOrElse("")}"
   }
 
-  object Place {
+  object Endpoint {
 
-    /** The place `url` names, read as pgjdbc reads a `jdbc:postgresql:` URL. */
-    def of(url: String): Place = {
+    /** The endpoint `url` names, read as pgjdbc reads a `jdbc:postgresql:` URL. */
+    def of(url: String): Endpoint = {
       val rest = url.stripPrefix("jdbc:postgresql:")
       val (hosts, path) =
         if (rest.startsWith("//")) {
@@ -40,7 +40,7 @@ object DbConfig {
           }
           (if (named.isEmpty) "localhost:5432" else named.mkString(","), path.drop(1))
         } else ("localhost:5432", rest.stripPrefix("/"))
-      Place(hosts, Some(path.takeWhile(_ != '?')).filter(_.nonEmpty))
+      Endpoint(hosts, Some(path.takeWhile(_ != '?')).filter(_.nonEmpty))
     }
   }
 
@@ -49,14 +49,14 @@ object DbConfig {
     */
   enum Invalid {
 
-    /** `GRIT_DATABASE_URL` is unset or blank: grit never picks a database for itself. */
-    case Unnamed
+    /** `GRIT_DATABASE_URL` is unset: grit never picks a database for itself. */
+    case Unset
     case Empty(variable: String)
     case NotPostgresJdbc(variable: String)
 
     def message: String = this match {
-      case Unnamed =>
-        s"$UrlVar is unset or blank: set it to grit's database, as jdbc:postgresql://host:port/db"
+      case Unset =>
+        s"$UrlVar is unset: set it to grit's database, as jdbc:postgresql://host:port/db"
       case Empty(v) => s"$v is set but blank"
       case NotPostgresJdbc(v) => s"$v must be a jdbc:postgresql: URL"
     }
@@ -69,7 +69,11 @@ object DbConfig {
     */
   def fromEnv(env: Map[String, String]): Either[Invalid, DbConfig] =
     for {
-      url <- env.get(UrlVar).filter(_.trim.nonEmpty).toRight(Invalid.Unnamed)
+      url <- env.get(UrlVar) match {
+        case None => Left(Invalid.Unset)
+        case Some(v) if v.trim.isEmpty => Left(Invalid.Empty(UrlVar))
+        case Some(v) => Right(v)
+      }
       _ <- Either.cond(
         url.startsWith("jdbc:postgresql:"),
         (),
