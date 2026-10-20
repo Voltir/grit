@@ -644,19 +644,26 @@ object RepositoryWalkTests extends TestSuite {
     }
 
     test("an excluded directory or file is neither listed, read nor named in its parent's card") {
-      val (steps, _) = run(
-        Vector.empty,
-        Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
-        Map("docs/a.md" -> read("docs/a.md", 1), "docs/b.md" -> read("docs/b.md", 2)),
-        exclude = Vector("docs/guide", "docs/b.md")
+      val (walked, _) = drive(
+        RepositoryWalk.start(
+          source(exclude = Vector("docs/guide", "docs/b.md")),
+          5,
+          floor,
+          Vector.empty
+        ),
+        moves(
+          Map("/" -> root(), "docs" -> Listing.Complete(docs()), "docs/guide" -> guide),
+          Map("docs/a.md" -> read("docs/a.md", 1), "docs/b.md" -> read("docs/b.md", 2))
+        )
       )
       (
-        steps.filter(s => s.startsWith("list") || s.startsWith("read")),
-        steps.filter(_.startsWith("write")).map(_.split(' ')(1))
+        walked.map(shown).filter(s => s.startsWith("list") || s.startsWith("read")),
+        walked.map(shown).filter(_.startsWith("write")).map(_.split(' ')(1))
       ) ==> (
         Vector("list /", "list docs", "read docs/a.md"),
         Vector("docs/a.md", "docs")
       )
+      said(walked, "docs") ==> Vector("The directory docs holds documentation: a.md.")
     }
 
     test("an exclude added, the cards held under it are dropped") {
