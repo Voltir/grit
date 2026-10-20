@@ -63,8 +63,8 @@ private[topic] object TopicScan {
   /** 40: the most topics the attach ask shows besides those attached by ref. */
   val Leads: Int = 40
 
-  /** 50: the most cards one run's attach ask is shown. */
-  val Cards: Int = 50
+  /** 20: the most cards one run's attach ask is shown. */
+  val Cards: Int = 20
 
   /** 10: the most card units a scan keeps of one strand's links. */
   val Links: Int = 10
