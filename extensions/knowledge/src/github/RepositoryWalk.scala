@@ -116,7 +116,7 @@ object RepositoryWalk {
       // current at this form does (none is written empty).
       val children = all.filterNot(c => w.own.empty.contains(c.path))
       val undone = w.own.undone ++ w.tally.unwritten.map(_.path)
-      if (undone.exists(u => u == path || u.startsWith(path + "/")))
+      if (undone.exists(under(_, path)))
         w.recording(w.own.copy(undone = w.own.undone + path))
       else if (children.isEmpty) w.recording(w.own.copy(empty = w.own.empty + path))
       else if (w.full(CardKey.of(cards.corpus, path))) refuse(w, path)
