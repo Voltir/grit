@@ -15,7 +15,7 @@ import grit.lifecycle.shadow.ShadowAsking
 object Rehearse {
 
   /** `docker-compose.yml`'s database, the operator's own: [[dry]] refuses one of its name. */
-  val Own: String = "grit"
+  val Own: String = DbConfig.DefaultDatabase
 
   /** Why [[dry]] refuses a database named [[Own]]. */
   val Mine: String =

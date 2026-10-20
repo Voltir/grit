@@ -18,6 +18,11 @@ object DbConfig {
   val UserVar = "GRIT_DATABASE_USER"
   val PasswordVar = "GRIT_DATABASE_PASSWORD"
 
+  /** `docker-compose.yml`'s database name, user and password: the operator's own. */
+  val DefaultDatabase: String = "grit"
+  val DefaultUser: String = "grit"
+  val DefaultPassword: String = "grit"
+
   /** Where a `jdbc:postgresql:` URL points. `hosts` is as the URL writes them, each with its
     * port, 5432 when it names none; `localhost:5432` when it names no host. `database` is
     * `None` when the URL names none. `toString` is `hosts/database`.
@@ -27,6 +32,8 @@ object DbConfig {
   }
 
   object Endpoint {
+
+    private val LocalHost = "localhost:5432"
 
     /** The endpoint `url` names, read as pgjdbc reads a `jdbc:postgresql:` URL. */
     def of(url: String): Endpoint = {
@@ -38,8 +45,8 @@ object DbConfig {
             // No port when no `:` follows an IPv6 literal's `]`.
             if (host.lastIndexOf(':') <= host.lastIndexOf(']')) s"$host:5432" else host
           }
-          (if (named.isEmpty) "localhost:5432" else named.mkString(","), path.drop(1))
-        } else ("localhost:5432", rest.stripPrefix("/"))
+          (if (named.isEmpty) LocalHost else named.mkString(","), path.drop(1))
+        } else (LocalHost, rest.stripPrefix("/"))
       Endpoint(hosts, Some(path.takeWhile(_ != '?')).filter(_.nonEmpty))
     }
   }
@@ -80,9 +87,9 @@ object DbConfig {
         Invalid.NotPostgresJdbc(UrlVar)
       )
       user <- env.get(UserVar) match {
-        case None => Right("grit")
+        case None => Right(DefaultUser)
         case Some(v) if v.trim.isEmpty => Left(Invalid.Empty(UserVar))
         case Some(v) => Right(v)
       }
-    } yield DbConfig(url, user, env.getOrElse(PasswordVar, "grit"))
+    } yield DbConfig(url, user, env.getOrElse(PasswordVar, DefaultPassword))
 }
