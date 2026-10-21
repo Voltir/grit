@@ -3,7 +3,7 @@ package grit.eval
 import grit.core.id.EntryId
 import grit.core.message.Tokens
 import grit.dbos.engine.{Engine, LiveEngine}
-import grit.dbos.sql.TestPostgres
+import grit.dbos.sql.{DbConfig, TestPostgres}
 
 import utest.*
 
@@ -26,12 +26,13 @@ object EvalTests extends TestSuite {
 
   private def parsed(text: String): Case = Case.parse("sample", text).fold(sys.error, identity)
 
-  private lazy val config = TestPostgres.freshDatabase("eval_tests")
-
-  /** An engine on the eval tests' database, closed after `body`. */
-  private def withEngine[A](body: Engine^ => A): A = {
+  /** An engine on a database of the test's own, as the eval draws each case in, closed after
+    * `body`.
+    */
+  private def withEngine[A](body: (DbConfig, Engine^) => A): A = {
+    val config = TestPostgres.freshDatabase("eval_tests")
     val engine = LiveEngine.open(config, "eval")
-    try body(engine)
+    try body(config, engine)
     finally engine.close()
   }
 
@@ -39,7 +40,7 @@ object EvalTests extends TestSuite {
     test(
       "a loaded cross-place case: its others' periods as written, rooted under the case, and scored"
     ) {
-      withEngine { engine =>
+      withEngine { (config, engine) =>
         val c = Case
           .parse(
             "near",
@@ -76,7 +77,7 @@ object EvalTests extends TestSuite {
     test(
       "a documented case: its document written as a plugin keeps it, retrieval draws it and linear never does"
     ) {
-      withEngine { engine =>
+      withEngine { (_, engine) =>
         val c = Case
           .parse(
             "kept",
@@ -104,7 +105,7 @@ object EvalTests extends TestSuite {
     }
 
     test("a loaded case: one entry per line, the ask recorded as the turn assembled for") {
-      withEngine { engine =>
+      withEngine { (_, engine) =>
         val plain = Eval.load(engine, parsed(sample), Variant.Plain)
         plain.must.map(EntryId.value) ==> Vector("sample/plain/t0:1", "sample/plain/t1:2")
         plain.messages.size ==> 4
@@ -122,7 +123,7 @@ object EvalTests extends TestSuite {
     }
 
     test("the score counts labelled entries held, the window's tokens, and what was missed") {
-      withEngine { engine =>
+      withEngine { (_, engine) =>
         // Its own name: a case's ids are unique in the database.
         val renamed = Case.parse("sample2", sample).fold(sys.error, identity)
         val loaded = Eval.load(engine, renamed, Variant.Plain)
@@ -135,7 +136,7 @@ object EvalTests extends TestSuite {
     }
 
     test("every case parses, has a query, and linear sees it all at 24k as written") {
-      withEngine { engine =>
+      withEngine { (_, engine) =>
         Cases.all.foreach { (name, text) =>
           val c = Case.parse(name, text).fold(e => sys.error(e), identity)
           assert(c.turns.flatten.exists(_.must), c.query.nonEmpty)

@@ -5,15 +5,15 @@ import grit.core.document.DocWeight
 import grit.core.id.TurnRef
 import grit.core.message.Tokens
 import grit.dbos.engine.LiveEngine
-import grit.dbos.internal.Reader
+import grit.dbos.internal.{Reader, Scratch}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Layout, Load, Variant}
 
 import utest.*
 
-/** grit.eval's cases as a reference over a database they were loaded into as
-  * `scripts/eval reference-build` loads them: `invoice` holds its answer in another
+/** grit.eval's cases as a reference, over a database they were loaded into together, or each
+  * apart in its own as a run draws them: `invoice` holds its answer in another
   * conversation of its own; `decoy` holds the same words in one of its own and labels nothing;
   * `closed` holds them in a period of its own since closed, labelled `[never]`.
   */
@@ -106,7 +106,7 @@ object SyntheticTests extends TestSuite {
       val built =
         try
           Synthetic.build(
-            Vector(invoice, decoy, closed),
+            Synthetic.laid(Vector(invoice, decoy, closed)),
             engine.jot,
             engine.conversations,
             engine.entries,
@@ -121,7 +121,8 @@ object SyntheticTests extends TestSuite {
 
     test("a case is found as loaded, and one labelling no [must] or [never] is left out by name") {
       withReader { reader =>
-        val Synthetic.Found(asked, nothing) = right(Synthetic.found(reader, Vector(invoice, decoy)))
+        val Synthetic.Found(asked, nothing) =
+          right(Synthetic.found(reader, Synthetic.laid(Vector(invoice, decoy))))
         asked.map(a => (a.name, a.turn)) ==> Vector(
           "invoice/plain" -> built._2("invoice/plain"),
           "invoice/buried" -> built._2("invoice/buried")
@@ -136,7 +137,7 @@ object SyntheticTests extends TestSuite {
 
     test("a case's [never] lines are found as omits of their conversation's seqs") {
       withReader { reader =>
-        val asked = right(Synthetic.found(reader, Vector(closed))).asked
+        val asked = right(Synthetic.found(reader, Synthetic.laid(Vector(closed)))).asked
         asked.map(a =>
           a.name -> a.expected.map {
             case Expect.Omits(Locator.Messages(c, seqs)) => (c != a.turn.conversationId, seqs)
@@ -152,30 +153,68 @@ object SyntheticTests extends TestSuite {
     test("a case not in the database is refused, naming it") {
       withReader { reader =>
         val missing = parsed("missing", "query: q\nturn\nyou: a [must]\nask\nyou: b?\n")
-        Synthetic.found(reader, Vector(missing)).left.map(_.takeWhile(_ != ':')) ==>
+        Synthetic.found(reader, Synthetic.laid(Vector(missing))).left.map(_.takeWhile(_ != ':')) ==>
           Left("missing/plain")
       }
     }
 
-    test("a case's window is drawn within its own scope: no other case's conversation is in it") {
-      withReader { reader =>
-        val asked = right(Synthetic.found(reader, Vector(invoice))).asked
-        asked.foreach { a =>
-          val own = Set(a.turn.conversationId) ++ a.expected.collect {
-            case Expect.Holds(Locator.Messages(c, _)) => c
-          }
-          val shown = right(Synthetic.window(reader, a, Assembled.Shipped, Width.Deployed)).parts
-            .map(_.conversation)
-            .toSet
-          assert(shown.nonEmpty)
-          (a.name, shown -- own) ==> (a.name, Set.empty)
+    test(
+      "each case is drawn apart, in a database of its own: no other case is there, its window " +
+        "shows only its own conversations, and the database is dropped after"
+    ) {
+      val beside = TestPostgres.freshDatabase("synthetic_beside")
+      val prefix = s"synthetic_apart_${ProcessHandle.current().pid()}"
+      val laid = Synthetic.laid(Vector(invoice, decoy))
+      val drawn = right(Synthetic.apart(beside, prefix, laid) { (db, one) =>
+        val engine = LiveEngine.open(db, "eval")
+        val built =
+          try
+            Synthetic.build(
+              Vector(one),
+              engine.jot,
+              engine.conversations,
+              engine.entries,
+              engine.periods,
+              engine.documents,
+              engine.keeper
+            )
+          finally engine.close()
+        built.map { _ =>
+          val reader = Reader.open(db)
+          try {
+            val others =
+              laid.filterNot(_ == one).filter(o => Synthetic.found(reader, Vector(o)).isRight)
+            val strays = right(Synthetic.found(reader, Vector(one))).asked.flatMap { a =>
+              val own = Set(a.turn.conversationId) ++ a.expected.collect {
+                case Expect.Holds(Locator.Messages(c, _)) => c
+              }
+              val shown =
+                right(Synthetic.window(reader, a, Assembled.Shipped, Width.Deployed)).parts
+                  .map(_.conversation)
+                  .toSet
+              assert(shown.nonEmpty)
+              shown -- own
+            }
+            (s"${one._1.name}/${one._2.label}", others.size, strays.size)
+          } finally reader.close()
         }
-      }
+      })
+      drawn ==> Vector(
+        ("invoice/plain", 0, 0),
+        ("invoice/buried", 0, 0),
+        ("decoy/plain", 0, 0),
+        ("decoy/buried", 0, 0)
+      )
+      // Made again under the first's name: the run dropped it.
+      (Scratch.create(beside, s"${prefix}_0") match {
+        case Right(again) => again.drop()
+        case Left(why) => Left(why)
+      }) ==> Right(())
     }
 
     test("a case is judged by its window at a width: held when deployed, missed when narrow") {
       withReader { reader =>
-        val asked = right(Synthetic.found(reader, Vector(invoice))).asked
+        val asked = right(Synthetic.found(reader, Synthetic.laid(Vector(invoice)))).asked
         def judged(width: Width) = asked.map(a =>
           a.name -> Reference.judge(
             a.expected.toVector,

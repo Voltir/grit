@@ -1,10 +1,10 @@
 package grit.dbos.sql
 
 import java.nio.file.Paths
-import java.sql.DriverManager
 
-import scala.util.Using
 import scala.util.control.NonFatal
+
+import grit.dbos.internal.Scratch
 
 import org.testcontainers.images.builder.ImageFromDockerfile
 import org.testcontainers.postgresql.PostgreSQLContainer
@@ -90,11 +90,10 @@ object TestPostgres {
     created += 1
     val pid = ProcessHandle.current().pid()
     val name = s"${suite.toLowerCase.replaceAll("[^a-z0-9]", "_")}_${pid}_$created"
-    Using.resource(
-      DriverManager.getConnection(server.url("postgres"), server.user, server.password)
-    ) { conn =>
-      Using.resource(conn.createStatement())(_.execute(s"CREATE DATABASE $name"))
+    // Never dropped: the server is thrown away with the run.
+    Scratch.create(DbConfig(server.url("postgres"), server.user, server.password), name) match {
+      case Left(why) => throw new IllegalStateException(why)
+      case Right(scratch) => scratch.config
     }
-    DbConfig(server.url(name), server.user, server.password)
   }
 }

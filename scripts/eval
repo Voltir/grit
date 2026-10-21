@@ -280,22 +280,18 @@
 #       ids only) and every answer .local/eval/reply-labels.json found in records shown. Jev's
 #       key is JEV_API_KEY, read only when a call is to be asked. Text-free.
 #
-#   scripts/eval reference-build
-#       grit.eval's hand-written cases (eval/src/Cases.scala) written into grit_eval_synthetic,
-#       dropped and created afresh, through an engine opened on it: each case as written and
-#       buried in filler, one entry per line, as the assembly eval writes them. Prints counts,
-#       and the cases that label no [must] or [never] entry.
-#
 #   scripts/eval recipes synthetic --variant <name>... --context <tokens>
 #                        [--window <tokens>] [--tail <tokens>]
-#       The synthetic reference: each case of grit_eval_synthetic in each variant a turn said
-#       to grit, expected to hold its [must] entries and none of its [never] entries (a case
-#       labelling neither left out), judged under shipped and each named variant (as recipes
-#       names them) by its window drawn at the variant's width by the shipped retrieval
-#       assembler over the database as it stands, searched with the case's own query within
-#       the case's scope; written to .local/eval/reports/recipes-synthetic.md and printed: each
-#       variant's pass rate, clustered by case, and its failing turns by name. --context and the assembler's window
-#       and tail are as for recipes. Spends nothing; build the database first.
+#       The synthetic reference: grit.eval's hand-written cases (eval/src/Cases.scala), each as
+#       written and buried in filler, one entry per line as the assembly eval writes them, in a
+#       database of its own (grit_eval_synthetic_<i>, created and dropped by the run, so no
+#       case's window draws on another's), a turn said to grit, expected to hold its [must]
+#       entries and none of its [never] entries (a case labelling neither left out), judged
+#       under shipped and each named variant (as recipes names them) by its window drawn at the
+#       variant's width by the shipped retrieval assembler, searched with the case's own query
+#       within the case's scope; written to .local/eval/reports/recipes-synthetic.md and
+#       printed: each variant's pass rate, clustered by case, and its failing turns by name.
+#       --context and the assembler's window and tail are as for recipes. Spends nothing.
 #
 #   scripts/eval lab stitch --room <name | file> [--spend <usd>] [--follows-at <p>]
 #                           [--lexical <n>] [--recent <n>] [--repeats <n>]
@@ -683,14 +679,6 @@ recipes() {
     --labels "$main/.local/eval/reply-labels.json" "${rest[@]}"
 }
 
-reference_build() {
-  [ $# -eq 0 ] || usage
-  local db=grit_eval_synthetic
-  compose dropdb -U grit --if-exists "$db"
-  compose createdb -U grit "$db"
-  harness reference-build --url "jdbc:postgresql://localhost:5432/$db"
-}
-
 synthetic() {
   local variants=() rest=()
   while [ $# -gt 0 ]; do
@@ -703,10 +691,9 @@ synthetic() {
     esac
   done
   [ ${#variants[@]} -gt 0 ] || usage
-  exists grit_eval_synthetic ||
-    { echo "eval: grit_eval_synthetic is gone; build it with scripts/eval reference-build" >&2; exit 1; }
+  # The cases' databases are made beside the server's own maintenance database.
   harness synthetic --eval "$main/.local/eval" \
-    --url "jdbc:postgresql://localhost:5432/grit_eval_synthetic" \
+    --url "jdbc:postgresql://localhost:5432/postgres" \
     --variants "$(IFS=,; echo "${variants[*]}")" "${rest[@]}"
 }
 
@@ -820,7 +807,6 @@ case $1 in
   recall) shift; recall "$@" ;;
   rebuild) shift; rebuild "$@" ;;
   recipes) shift; recipes "$@" ;;
-  reference-build) shift; reference_build "$@" ;;
   lab) shift; lab "$@" ;;
   pull) shift; pull "$@" ;;
   bounds) shift; bounds "$@" ;;

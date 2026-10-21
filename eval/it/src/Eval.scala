@@ -354,13 +354,13 @@ object Eval {
       case None => NoLive
     }
     val writer = new Once(model)
-    val config = TestPostgres.freshDatabase("eval")
-    val engine = LiveEngine.open(config, "eval")
-    try {
-      val results = for {
-        c <- cases.collect { case Right(c) => c }
-        variant <- Variant.values.toVector
-      } yield {
+    val results = for {
+      c <- cases.collect { case Right(c) => c }
+      variant <- Variant.values.toVector
+    } yield {
+      // Each case in a database of its own, so no window draws on another case's.
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("eval"), "eval")
+      try {
         val loaded = load(engine, c, variant)
         val scores =
           strategies(live.nonEmpty, c.elsewhere.nonEmpty, c.documents.nonEmpty).map(s =>
@@ -368,34 +368,34 @@ object Eval {
           )
         report(loaded, scores)
         (Group.of(c), variant, scores)
+      } finally engine.close()
+    }
+    // The single-conversation cases' totals stay comparable with every earlier report.
+    totals(
+      "Totals: labelled entries held, over every case with one conversation",
+      results.collect { case (Group.One, v, s) =>
+        (v, s)
       }
-      // The single-conversation cases' totals stay comparable with every earlier report.
-      totals(
-        "Totals: labelled entries held, over every case with one conversation",
-        results.collect { case (Group.One, v, s) =>
-          (v, s)
-        }
-      )
-      totals(
-        "Cross-place totals: labelled entries held, and [never] entries held (strays)",
-        results.collect { case (Group.CrossPlace, v, s) =>
-          (v, s)
-        }
-      )
-      totals(
-        "Document totals: labelled entries and documents held",
-        results.collect { case (Group.Documented, v, s) =>
-          (v, s)
-        }
-      )
-      live.foreach { c =>
-        val spent = writer.spent match {
-          case Cost.Exact(usd) => s"$$${usd.bigDecimal.toPlainString}"
-          case Cost.AtLeast(usd) => s"at least $$${usd.bigDecimal.toPlainString}"
-        }
-        println(s"Query model ${c.model}: $spent in all")
+    )
+    totals(
+      "Cross-place totals: labelled entries held, and [never] entries held (strays)",
+      results.collect { case (Group.CrossPlace, v, s) =>
+        (v, s)
       }
-    } finally engine.close()
+    )
+    totals(
+      "Document totals: labelled entries and documents held",
+      results.collect { case (Group.Documented, v, s) =>
+        (v, s)
+      }
+    )
+    live.foreach { c =>
+      val spent = writer.spent match {
+        case Cost.Exact(usd) => s"$$${usd.bigDecimal.toPlainString}"
+        case Cost.AtLeast(usd) => s"at least $$${usd.bigDecimal.toPlainString}"
+      }
+      println(s"Query model ${c.model}: $spent in all")
+    }
   }
 
   /** Which totals a case is counted in: one conversation's, cross-place, or with documents. */

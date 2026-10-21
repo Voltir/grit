@@ -2,6 +2,8 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
+import scala.util.control.NonFatal
+
 import grit.core.context.Width
 import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.either.Traversal
@@ -11,15 +13,16 @@ import grit.core.place.{Locality, Scope, Weight}
 import grit.core.recipe.Rooted
 import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.core.visibility.Subject
-import grit.dbos.internal.Reader
+import grit.dbos.internal.{Reader, Scratch}
+import grit.dbos.sql.DbConfig
 import grit.eval.harness.capture.{Capture, Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
 import grit.models.Seed
 
-/** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in the
-  * synthetic database `scripts/eval reference-build` writes ([[Layout]]), expected to hold its
-  * `[must]` entries and none of its `[never]` entries.
+/** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in a
+  * database of its own ([[apart]], [[Layout]]), expected to hold its `[must]` entries and none
+  * of its `[never]` entries.
   */
 object Synthetic {
 
@@ -44,13 +47,13 @@ object Synthetic {
     */
   final case class Found(asked: Vector[Asked], unlabelled: Vector[String])
 
-  /** Each of `cases` in each variant, laid out ([[Layout.of]]) and found through `reader` as
-    * `scripts/eval reference-build` wrote it, in order. `Left` naming the case when one cannot
-    * be laid out, has no query, or a conversation of it is not in the database.
+  /** Each of `laid`, laid out ([[Layout.of]]) and found through `reader` as [[build]] wrote it,
+    * in order. `Left` naming the case when one cannot be laid out, has no query, or a
+    * conversation of it is not in the database.
     */
-  def found(reader: Reader^, cases: Vector[Case]): Either[String, Found] =
+  def found(reader: Reader^, laid: Vector[(Case, Variant)]): Either[String, Found] =
     Traversal
-      .traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _))) { (c, v) =>
+      .traverse(laid) { (c, v) =>
         val name = s"${c.name}/${v.label}"
         for {
           layout <- Layout.of(c, v)
@@ -72,6 +75,29 @@ object Synthetic {
       }
       .map(all => Found(all.collect { case Right(a) => a }, all.collect { case Left(n) => n }))
 
+  /** Each of `cases` in each variant, in order. */
+  def laid(cases: Vector[Case]): Vector[(Case, Variant)] =
+    cases.flatMap(c => Variant.values.toVector.map(c -> _))
+
+  /** `each` of every one of `laid`, alone: its database made empty beside `beside`, named
+    * `{prefix}_{i}` for its index `i` in `laid` ([[Scratch.create]]), and dropped after `each`
+    * returns, so no case's window can draw on another's. `Left` at the first that cannot be
+    * made, `each` refuses, or cannot be dropped; those before it are dropped.
+    */
+  def apart[A](beside: DbConfig, prefix: String, laid: Vector[(Case, Variant)])(
+      each: (DbConfig, (Case, Variant)) => Either[String, A]
+  ): Either[String, Vector[A]] =
+    Traversal.traverse(laid.zipWithIndex) { (one, i) =>
+      Scratch.create(beside, s"${prefix}_$i") match {
+        case Left(why) => Left(why)
+        case Right(scratch) =>
+          val done =
+            try each(scratch.config, one)
+            catch { case NonFatal(e) => Left(s"${one._1.name}: ${e.getClass.getName}") }
+          scratch.drop().flatMap(_ => done)
+      }
+    }
+
   /** Every case of `grit.eval` ([[Cases.all]], then [[Cases.crossPlace]], then
     * [[Cases.documented]]), read; `Left` naming the first that does not read.
     */
@@ -85,14 +111,13 @@ object Synthetic {
     */
   final case class Built(cases: Int, turns: Int, entries: Int, unlabelled: Vector[String])
 
-  /** `cases`, each in each variant, laid out ([[Layout.of]]) and written through `jot` and the
-    * stores ([[Load.into]]), its documents through `keeper`, whose terms are first declared
-    * the ones in force in `documents` ([[Load.Plugin]]'s, unscaled), into the database
-    * `scripts/eval reference-build` creates afresh. `Left` naming the case that cannot be laid
-    * out or written; those before it stay written.
+  /** `laid`, each laid out ([[Layout.of]]) and written through `jot` and the stores
+    * ([[Load.into]]), its documents through `keeper`, whose terms are first declared the ones
+    * in force in `documents` ([[Load.Plugin]]'s, unscaled), into an empty database ([[apart]]).
+    * `Left` naming the case that cannot be laid out or written; those before it stay written.
     */
   def build(
-      cases: Vector[Case],
+      laid: Vector[(Case, Variant)],
       jot: Jot^,
       conversations: ConversationStore,
       entries: EntryStore,
@@ -102,9 +127,7 @@ object Synthetic {
   ): Either[String, Built] = {
     val terms = Load.terms(DocWeight.Unscaled)
     for {
-      layouts <- Traversal.traverse(cases.flatMap(c => Variant.values.toVector.map(c -> _)))(
-        (c, v) => Layout.of(c, v)
-      )
+      layouts <- Traversal.traverse(laid)((c, v) => Layout.of(c, v))
       _ <- jot
         .write(Subject.Public)(documents.declare(Vector(Load.Plugin -> terms)))
         .left
@@ -115,7 +138,7 @@ object Synthetic {
           .map(_ => l.entries.size)
       )
     } yield Built(
-      cases.size,
+      laid.map(_._1.name).distinct.size,
       layouts.size,
       written.sum,
       layouts.filter(l => l.must.isEmpty && l.never.isEmpty).map(_.c.name).distinct
@@ -179,7 +202,7 @@ object Synthetic {
       .map(e => s"$name: its conversations unread: ${Capture.kind(e)}")
       .flatMap(
         _.map(_.id).toRight(
-          s"$name: ${origin.place.written} is not in the database: build it with scripts/eval reference-build"
+          s"$name: ${origin.place.written} is not in the database"
         )
       )
 }
