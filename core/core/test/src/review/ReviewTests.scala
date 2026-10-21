@@ -78,6 +78,8 @@ object ReviewTests extends TestSuite {
         Silence.Unasked(Reading.Yes(Tags.V1.helps)),
         Silence.AskedOf(TestAccounts.account("slack:T/U1")),
         Silence.Unanswered(TurnRef(ConversationId("c"), TurnSeq(1))),
+        Silence.Spoken(EntryId("s9")),
+        Silence.Continued(EntryId("e9")),
         Silence.Thread(1),
         Silence.Room(1),
         Silence.Deployment(1),
@@ -95,19 +97,13 @@ object ReviewTests extends TestSuite {
         Some(false),
         Some(true),
         Some(true),
+        None,
+        Some(true),
         Some(true),
         Some(true),
         Some(true),
         Some(true)
       )
-    }
-
-    test("Spoken is a hold after the gate") {
-      Review.gated(Settled.Held(Silence.Spoken(EntryId("s9")))) ==> Some(true)
-    }
-
-    test("Continued never reaches the gate") {
-      Review.gated(Settled.Held(Silence.Continued(EntryId("e9")))) ==> None
     }
 
     test("the shadow's gate reads a candidate's answers and the cues live's decision kept") {
