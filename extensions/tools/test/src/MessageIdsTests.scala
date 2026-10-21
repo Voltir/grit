@@ -272,7 +272,7 @@ object MessageIdsTests extends TestSuite {
       )
     }
 
-    test("a message recorded with no link is said to have none from its app") {
+    test("a message kept with no link is said to have none, without guessing why") {
       val w = new World
       val now = w.say("5.0", "my id?", 5, None)
       w.ask("first", now) ==> Outcome.Done(
@@ -281,7 +281,8 @@ object MessageIdsTests extends TestSuite {
           s"entry id: in:${dm("5.0").place.written}:5.0.0\n" +
           s"conversation id: ${dm("5.0").place.written}\n" +
           "said: Wed 2026-10-21 14:08 UTC\n" +
-          "link: none; the app it came from (Slack, say) gives no link to it\n" +
+          "link: none kept for it (grit keeps none for messages from before links were recorded, " +
+          "or from an app that gives none)\n" +
           "it begins: \"my id?\"",
         Some(Integrity.Member)
       )

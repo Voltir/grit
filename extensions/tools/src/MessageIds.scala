@@ -181,9 +181,12 @@ object MessageIds {
       s"entry id: ${EntryId.value(entry.id)}",
       s"conversation id: ${ConversationId.value(entry.conversationId)}",
       s"said: ${Utc.toDayMinute(entry.createdAt)}",
-      link.fold("link: none; the app it came from (Slack, say) gives no link to it")(l =>
-        s"link: ${Href.value(l)}"
-      ),
+      // None is either a message recorded before links were kept or one from an edge that links
+      // none; nothing tells which, so the line claims neither.
+      link.fold(
+        "link: none kept for it (grit keeps none for messages from before links were recorded, " +
+          "or from an app that gives none)"
+      )(l => s"link: ${Href.value(l)}"),
       s"it begins: \"$shown\""
     ).mkString("\n")
   }
