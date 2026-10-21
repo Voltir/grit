@@ -135,8 +135,9 @@ enum Silence {
     */
   case AskedOf(other: Account)
 
-  /** The assistant's own reply to this message, `by`, is already in the conversation: the
-    * message was answered.
+  /** The assistant's own reply to this message, `by`, is already in the conversation or its
+    * strand when triage decides ([[grit.core.triage.Cues.spoken]]): the message was answered,
+    * so no turn starts. A reply that lands while a turn drafts is its [[Outcome.Spoken]].
     */
   case Spoken(by: EntryId)
 
@@ -206,7 +207,9 @@ enum Outcome {
   case NothingRecalled
 
   /** The assistant already replied after its root (`by`, its entry), in the thread or its
-    * strand: not posted, so it never posts twice.
+    * strand, by the time the draft was decided on: not posted, so it never posts twice. Unlike
+    * [[Silence.Spoken]], read as triage decides, it sees a reply that landed while the turn
+    * drafted.
     */
   case Spoken(by: EntryId)
 
