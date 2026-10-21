@@ -6,7 +6,9 @@ import grit.core.document.{DocLabel, DocumentSearch}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, Payload, StoreError, Tx}
 
-/** The team's records near a heard message: what they are searched by. */
+/** The documents near a heard message, the team's records: what they are searched by, and the
+  * search.
+  */
 object Records {
 
   /** 400: the most of the thread before a message its records search reads. */
