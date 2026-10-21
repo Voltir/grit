@@ -276,7 +276,7 @@ object TriageTests extends TestSuite {
       w.awaited ==> Vector.empty
     }
 
-    test("a heard message is asked about no sooner than Quiet after it was said") {
+    test("a heard message is asked about no sooner than Wait after it was said") {
       val w = new World
       val fresh = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
       val older = w.hear("and the retro to Friday", "Bo", 1)
