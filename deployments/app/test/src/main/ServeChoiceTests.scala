@@ -27,7 +27,7 @@ object ServeChoiceTests extends TestSuite {
   private object Quiet extends ServedEdge {
     def name: EdgeName = EdgeName("slack")
     def needs: Vector[Variable] = Vector.empty
-    def answersAsks: Boolean = false
+    def asks: ServedEdge.Asks = ServedEdge.Asks.Unanswered
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

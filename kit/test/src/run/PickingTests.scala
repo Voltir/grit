@@ -6,6 +6,7 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.DurationInt
 
 import grit.core.classify.Answer
+import grit.core.edge.ServedEdge
 import grit.core.id.{ConversationId, EntryId, EntrySeq, QuestionName, ShadowName, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
@@ -90,7 +91,9 @@ object PickingTests extends TestSuite {
     )
     Deployments
       .of(
-        edges = Vector(Deployments.edge("slack", asks = false, reviews = Some(room))),
+        edges = Vector(
+          Deployments.edge("slack", asks = ServedEdge.Asks.Unanswered, reviews = Some(room))
+        ),
         speaking = Speaking.Shadow(limits),
         shadows = Vector(variant),
         review = Reviewing.of(shadow, perDay, 1, 24.hours)

@@ -2,6 +2,7 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.DurationInt
 
+import grit.core.edge.ServedEdge
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.job.Owned
 import grit.core.tool.ToolName
@@ -84,11 +85,29 @@ object DeploymentTests extends TestSuite {
     Deployments.of(edges = edges, tools = tools).map(_ => ())
 
   val tests = Tests {
+    test(
+      "Offered.All is refused while an edge is Unanswered; an edge that is Never does not block it"
+    ) {
+      (
+        of(Vector(edge("slack", asks = ServedEdge.Asks.Unanswered)), Offered.All),
+        of(Vector(edge("github", asks = ServedEdge.Asks.Never)), Offered.All)
+      ) ==> (
+        Left(DeploymentRefusal.AsksUnanswered(Vector(EdgeName("slack")))),
+        Right(())
+      )
+    }
+
     test("tools that ask first are refused when an edge served cannot answer an ask, naming it") {
       (
-        of(Vector(edge("slack", asks = false), edge("pager", asks = true)), Offered.All),
-        of(Vector(edge("pager", asks = true)), Offered.All),
-        of(Vector(edge("slack", asks = false)), Offered.Read),
+        of(
+          Vector(
+            edge("slack", asks = ServedEdge.Asks.Unanswered),
+            edge("pager", asks = ServedEdge.Asks.Answered)
+          ),
+          Offered.All
+        ),
+        of(Vector(edge("pager", asks = ServedEdge.Asks.Answered)), Offered.All),
+        of(Vector(edge("slack", asks = ServedEdge.Asks.Unanswered)), Offered.Read),
         of(Vector.empty, Offered.All)
       ) ==> (
         Left(DeploymentRefusal.AsksUnanswered(Vector(EdgeName("slack")))),
@@ -99,7 +118,12 @@ object DeploymentTests extends TestSuite {
     }
 
     test("two edges of one name are refused") {
-      of(Vector(edge("slack", asks = false), edge("slack", asks = false))) ==>
+      of(
+        Vector(
+          edge("slack", asks = ServedEdge.Asks.Unanswered),
+          edge("slack", asks = ServedEdge.Asks.Unanswered)
+        )
+      ) ==>
         Left(DeploymentRefusal.EdgeRepeated(EdgeName("slack")))
     }
 
@@ -186,7 +210,7 @@ object DeploymentTests extends TestSuite {
         grit.core.review.Reviewing.of(name(of), 8, 20, 24.hours).getOrElse(sys.error("a review"))
       val prompting = edge(
         "slack",
-        asks = false,
+        asks = ServedEdge.Asks.Unanswered,
         reviews = Some(grit.core.place.Place.read("slack:T1/C1").fold(sys.error, identity))
       )
       def reviewed(of: String, speaks: grit.core.speech.Speaking = speaking) =
@@ -236,7 +260,7 @@ object DeploymentTests extends TestSuite {
         grit.core.review.Reviewing.of(name("v2"), 8, 20, 24.hours).getOrElse(sys.error("a review"))
       def at(text: String) = grit.core.place.Place.read(text).fold(sys.error, identity)
       def reviewing(called: String, place: String) =
-        edge(called, asks = false, reviews = Some(at(place)))
+        edge(called, asks = ServedEdge.Asks.Unanswered, reviews = Some(at(place)))
       def reviewed(edges: grit.core.edge.ServedEdge*) =
         Deployments
           .of(
@@ -246,7 +270,7 @@ object DeploymentTests extends TestSuite {
             review = Some(review)
           )
           .map(_.review.map(_.place))
-      val quiet = edge("mcp", asks = false)
+      val quiet = edge("mcp", asks = ServedEdge.Asks.Unanswered)
       (
         reviewed(quiet),
         reviewed(reviewing("slack", "slack:T1/C1"), reviewing("other", "slack:T1/C2")),
@@ -645,7 +669,8 @@ object DeploymentTests extends TestSuite {
     test(
       "an edge naming a compartment its deployment's visibility does not declare is refused, naming both"
     ) {
-      def naming(cs: Compartment*) = Vector(edge("slack", asks = false, naming = cs.toVector))
+      def naming(cs: Compartment*) =
+        Vector(edge("slack", asks = ServedEdge.Asks.Unanswered, naming = cs.toVector))
       (
         Deployments.of(edges = naming(trial, client), visibility = trialDeclared).map(_ => ()),
         Deployments.of(edges = naming(trial)).map(_ => ()),
@@ -665,13 +690,17 @@ object DeploymentTests extends TestSuite {
         .fold(r => sys.error(r.message), identity)
       // An edge named slack is not the attester slack unless it says so.
       val refused =
-        Deployments.of(edges = Vector(edge("slack", asks = false)), identities = trusting)
+        Deployments.of(
+          edges = Vector(edge("slack", asks = ServedEdge.Asks.Unanswered)),
+          identities = trusting
+        )
       (
         refused.map(_ => ()),
         refused.left.map(_.message),
         Deployments
           .of(
-            edges = Vector(edge("chat", asks = false, attests = Some("slack"))),
+            edges =
+              Vector(edge("chat", asks = ServedEdge.Asks.Unanswered, attests = Some("slack"))),
             identities = trusting
           )
           .map(_.identities.realmsOf(AttesterName("slack")))
@@ -685,8 +714,8 @@ object DeploymentTests extends TestSuite {
     test("two edges served saying they are one attester are refused, naming both") {
       val refused = Deployments.of(edges =
         Vector(
-          edge("slack", asks = false, attests = Some("slack")),
-          edge("chat", asks = false, attests = Some("slack"))
+          edge("slack", asks = ServedEdge.Asks.Unanswered, attests = Some("slack")),
+          edge("chat", asks = ServedEdge.Asks.Unanswered, attests = Some("slack"))
         )
       )
       (refused.map(_ => ()), refused.left.map(_.message)) ==> (
@@ -717,7 +746,7 @@ object DeploymentTests extends TestSuite {
         .fold(r => sys.error(r.message), identity)
       def deployed(realm: grit.core.identity.Realm) =
         Deployments.of(
-          edges = Vector(edge("slack", asks = false, attests = Some("slack"))),
+          edges = Vector(edge("slack", asks = ServedEdge.Asks.Unanswered, attests = Some("slack"))),
           visibility = grouping(realm),
           identities = trusting
         )
@@ -804,9 +833,13 @@ object DeploymentTests extends TestSuite {
           Vector.empty
         )
         .fold(r => sys.error(r.toString), identity)
-      val posting = edge("slack", asks = false, reviews = Some(at("slack:acme/C1")))
+      val posting =
+        edge("slack", asks = ServedEdge.Asks.Unanswered, reviews = Some(at("slack:acme/C1")))
       Deployments
-        .of(edges = Vector(edge("mcp", asks = false), posting), visibility = labelled)
+        .of(
+          edges = Vector(edge("mcp", asks = ServedEdge.Asks.Unanswered), posting),
+          visibility = labelled
+        )
         .map(_ => ()) ==> Right(())
     }
 

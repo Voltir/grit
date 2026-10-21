@@ -71,7 +71,7 @@ private[slack] object Served {
   ): ServedEdge^{connect} = new ServedEdge {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
-    def answersAsks: Boolean = false
+    def asks: ServedEdge.Asks = ServedEdge.Asks.Unanswered
     override def attester: Option[AttesterName] = Some(SlackAccounts.Attester)
     override def reviewsAt: Option[Place] = review.map(_.place)
     def open(

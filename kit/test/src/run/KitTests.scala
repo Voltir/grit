@@ -1,6 +1,6 @@
 package grit.kit.run
 
-import grit.core.edge.{EdgeRefusal, Variable}
+import grit.core.edge.{EdgeRefusal, ServedEdge, Variable}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Domain, Identities, Realm, Vouching}
 import grit.kit.deployment.{Deployments, Placer}
@@ -16,7 +16,10 @@ object KitTests extends TestSuite {
 
   private def deployment(placer: Placer) =
     Deployments.accepted(
-      edges = Vector(Deployments.edge("slack", asks = false, needs = Vector("SLACK_BOT_TOKEN"))),
+      edges = Vector(
+        Deployments
+          .edge("slack", asks = ServedEdge.Asks.Unanswered, needs = Vector("SLACK_BOT_TOKEN"))
+      ),
       placer = placer
     )
 

@@ -688,10 +688,10 @@ object ServedTests extends TestSuite {
       )
     }
 
-    test("serving cannot answer a tool call that asks first") {
+    test("serving holds conversations but shows no ask yet: a call that asks first is unanswered") {
       Served
         .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, new World().connect, Inline)
-        .answersAsks ==> false
+        .asks ==> ServedEdge.Asks.Unanswered
     }
 
     test(

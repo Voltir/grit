@@ -21,6 +21,7 @@ import grit.core.edge.{
   Permit,
   Registration,
   Route,
+  ServedEdge,
   ToolRequest,
   Variable
 }
@@ -174,15 +175,15 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "the edge is named for its service, needs its credential's variable, and answers no ask; blank instructions or an API that is no URL are refused"
+      "the edge is named for its service, needs its credential's variable, and is never asked; blank instructions or an API that is no URL are refused"
     ) {
       val edge = right(DriveEdge.serving(Credential.static(Token), reading))
       (
-        (edge.name, edge.needs, edge.answersAsks),
+        (edge.name, edge.needs, edge.asks),
         DriveEdge.serving(Credential.static(Token), reading, instructions = " ").map(_ => ()),
         DriveEdge.serving(Credential.static(Token), reading, api = "drive/v3").map(_ => ())
       ) ==> (
-        (EdgeName("drive"), Vector(Token), false),
+        (EdgeName("drive"), Vector(Token), ServedEdge.Asks.Never),
         Left("the instructions declared for service:drive are blank"),
         Left("Drive's API drive/v3 is not an absolute URL")
       )

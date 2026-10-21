@@ -32,7 +32,7 @@ object DriveEdge {
     * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
     * serves them, and serves the requests addressed there with [[DriveTools]], logging what
     * they say of each run. It needs the
-    * credential's variables, answers no ask, and delivers no replies. Opening it is refused,
+    * credential's variables, is never asked, and delivers no replies. Opening it is refused,
     * naming the credential's variables, when the credential does not open (its key read from
     * this machine's files, [[KeyFiles.Local]]) or Drive does not
     * take its token; when Drive cannot be reached, is busy or answers what cannot be read, saying
@@ -65,7 +65,7 @@ object DriveEdge {
 
     def needs: Vector[Variable] = credential.needs
 
-    def answersAsks: Boolean = false
+    def asks: ServedEdge.Asks = ServedEdge.Asks.Never
 
     def open(
         stores: EdgeStores^,

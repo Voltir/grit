@@ -1313,7 +1313,7 @@ object SlackEdge {
     * at open (found then, or left by a crash or a close) as it opens, and each join after from
     * the next delivery; closing waits for one under way at most [[Backfill.StopWithin]], and
     * one cut short is heard from where it stopped at the next open. Refused at open when Slack
-    * will not list its channels. It cannot answer a tool call that asks first. It is the
+    * will not list its channels. It shows no ask ([[ServedEdge.Asks.Unanswered]]). It is the
     * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a
     * deployment trusts it there, it says who each account is as Slack states it
     * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists

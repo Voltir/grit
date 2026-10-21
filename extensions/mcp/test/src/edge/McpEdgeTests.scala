@@ -19,6 +19,7 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryOrigins,
+  ServedEdge,
   Variable
 }
 import grit.core.id.{EdgeName, PrincipalId}
@@ -112,12 +113,12 @@ object McpEdgeTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("the edge is named for its service, needs each server's token once, answers no ask") {
+    test("the edge is named for its service, needs each server's token once, and is never asked") {
       withFake { fake =>
         McpEdge
           .serving(Github, Vector(server(fake), server(fake, "other")))
-          .map(e => (EdgeName.value(e.name), e.needs, e.answersAsks)) ==>
-          Right(("github", Vector(Token), false))
+          .map(e => (EdgeName.value(e.name), e.needs, e.asks)) ==>
+          Right(("github", Vector(Token), ServedEdge.Asks.Never))
       }
     }
 

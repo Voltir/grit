@@ -90,10 +90,8 @@ trait ServedEdge {
     */
   def needs: Vector[Variable]
 
-  /** Whether a person on this edge can answer a tool call that asks first. A deployment that
-    * offers such tools is refused when any edge it serves cannot.
-    */
-  def answersAsks: Boolean
+  /** What its people can do with a tool call that asks first ([[ServedEdge.Asks]]). */
+  def asks: ServedEdge.Asks
 
   /** Where it posts a deployment's review prompts, when it answers a review: the kit picks only
     * messages that place may receive ([[grit.core.review.ReviewStore.candidates]]).
@@ -123,6 +121,25 @@ trait ServedEdge {
 }
 
 object ServedEdge {
+
+  /** What an edge does with a tool call that asks first. */
+  enum Asks {
+
+    /** Its people answer: it shows each open ask to its asker ([[Deliveries.asks]]) and sends their
+      * answer ([[grit.core.inbox.Inbox.answer]]).
+      */
+    case Answered
+
+    /** It holds conversations but shows no ask, so a call that asks first there waits until its
+      * time runs out.
+      */
+    case Unanswered
+
+    /** It holds no conversation, as a service's edge does, so no turn there asks anything; a run
+      * with no one to ask is closed to asking by its acting instead ([[grit.core.act.Gates.Closed]]).
+      */
+    case Never
+  }
 
   /** An edge while it is served. */
   trait Open {

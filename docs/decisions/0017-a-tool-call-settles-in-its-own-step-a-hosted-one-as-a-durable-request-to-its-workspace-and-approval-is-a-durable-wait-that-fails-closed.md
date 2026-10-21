@@ -47,19 +47,21 @@ a store that cannot be written, or a provider that fails, fails the turn.
 **Approval.** For a gated call the turn keeps a `Payload.Ask` entry (`call:n:j:approve`), so
 every edge sees what it is asked, then waits with `Durable.recv` on `Approval.topic(call)`,
 outside any step, up to the call's own wait: its tool's (`Gate.Ask`'s `within`, by default
-`Gate.AnswerWithin`, a day), at most its loop's, met in `Calling.gate`. The ask entry records
-when that wait ends (`until`), and the approve step how long it is; the wait is labelled
-`call:n:j:wait`. DBOS records the wait's end and the answer, so a restarted turn
-waits only for what is left, and a replay gets the same answer. An edge answers with
-`Inbox.answer`, naming the account that answered: only an account of the turn's asker
-(`Askers.of`) may answer (`NotAsker`), and only while the ask is open, its call unsettled and
-its `until` ahead by the database's clock (`Closed`). The answer goes under an idempotency key
-fixed by the workflow and call: only the first answer counts. It fails closed: no answer in time is `TimedOut`, an answer that does not decode is
-`Declined`, and both deny the call.
+`Gate.AnswerWithin`, a day), at most its loop's, met in `Calling.gate`; the ask records when it
+ends (`until`). The wait is labelled `call:n:j:wait`. DBOS records the wait's end and the
+answer, so a restarted turn waits only for what is left, and a replay gets the same answer. An
+edge answers with `Inbox.answer`, naming the account that answered: only an account of the
+turn's asker (`Askers.of`) may answer (`NotAsker`), and only while the ask is open, its call
+unsettled and its `until` ahead by the database's clock (`Closed`). The answer goes under an
+idempotency key fixed by the workflow and call: only the first answer counts. It fails closed:
+no answer in time is `TimedOut`, an answer that does not decode is `Declined`, and both deny
+the call.
 
 Consequences: a crash mid-loop reruns at most one read, never a change; an interrupted change
 is reported, not retried. No open edge means no access, which the turn is told. A hosted call
 costs a round trip through Postgres instead of a function call. A turn left waiting holds a
-DBOS workflow, not a thread. A run with no edge to answer cannot offer gated tools. Requests
-are journal-class, purged with their period (ADR 0014). Enforced by the replay gate and the
-contract suite `EdgesContract`, with `TurnToolsTests`.
+DBOS workflow, not a thread. An edge says what it does with an ask (`ServedEdge.Asks`): one
+that answers lists a turn's open asks (`Deliveries.asks`) under that turn's subject; gated
+tools are refused while an edge shows none (`Unanswered`), never for a service's (`Never`).
+Requests are journal-class, purged with their period (ADR 0014). Enforced by the replay gate
+and the contract suite `EdgesContract`, with `TurnToolsTests`.

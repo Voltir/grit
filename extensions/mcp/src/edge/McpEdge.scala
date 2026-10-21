@@ -22,7 +22,7 @@ object McpEdge {
     * there each server's tools ([[McpTools.offered]]) with `instructions`, when given, as the
     * place's Place layer ([[PlaceFragments.declared]]): an aid to the model, never a bound on
     * what it reaches, which is each server's scope; and serves the requests addressed there
-    * with [[McpTools]]. It needs each server's credential's variables, answers no ask, and
+    * with [[McpTools]]. It needs each server's credential's variables, is never asked, and
     * delivers no replies. Opening it is refused when a credential cannot be opened
     * ([[Credential.open]]); when a server's list cannot be read, it naming the server and why,
     * and for a refused token or one not got its credential's variables; when a server lists
@@ -58,7 +58,7 @@ object McpEdge {
 
     def needs: Vector[Variable] = servers.flatMap(_.credential.needs).distinct
 
-    def answersAsks: Boolean = false
+    def asks: ServedEdge.Asks = ServedEdge.Asks.Never
 
     def open(
         stores: EdgeStores^,

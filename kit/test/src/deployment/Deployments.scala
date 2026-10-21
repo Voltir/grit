@@ -16,22 +16,23 @@ import grit.turn.TurnLoop
 /** Deployments for tests: every field but the ones a test varies fixed. */
 object Deployments {
 
-  /** An edge named `called` that needs `needs`, says whether it can answer an ask, posts
+  /** An edge named `called` that needs `needs`, does `asks` with a call that asks first, posts
     * review prompts at `reviews`, names `naming`, is the attester `attests`, and never opens.
     */
   def edge(
       called: String,
-      asks: Boolean,
+      asks: ServedEdge.Asks,
       needs: Vector[String] = Vector.empty,
       naming: Vector[Compartment] = Vector.empty,
       reviews: Option[Place] = None,
       attests: Option[String] = None
   ): ServedEdge = {
     val wanted = needs.map(Variable(_))
+    val asked = asks
     new ServedEdge {
       def name: EdgeName = EdgeName(called)
       def needs: Vector[Variable] = wanted
-      def answersAsks: Boolean = asks
+      def asks: ServedEdge.Asks = asked
       override def reviewsAt: Option[Place] = reviews
       override def compartments: Vector[Compartment] = naming
       override def attester: Option[AttesterName] = attests.map(AttesterName(_))

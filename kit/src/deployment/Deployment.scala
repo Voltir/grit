@@ -121,7 +121,7 @@ enum Requirer {
 /** Why [[Deployment.of]] refused. */
 enum DeploymentRefusal {
 
-  /** The offer asks a person first ([[Offered.All]]), and `edges` cannot answer an ask. */
+  /** The offer asks a person first ([[Offered.All]]), and `edges` are `Unanswered`. */
   case AsksUnanswered(edges: Vector[EdgeName])
 
   /** Two edges are named `name`. */
@@ -415,7 +415,7 @@ object Deployment {
       version: DeploymentVersion = DeploymentVersion.First
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
-    val unanswered = edges.filterNot(_.answersAsks).map(_.name)
+    val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)
     val live = TriageQuestions.shipped(persona)
     val pluginNames = plugins.map(_.name)
     // grit's own, then every plugin's: a name taken twice is the second one's to give up.
