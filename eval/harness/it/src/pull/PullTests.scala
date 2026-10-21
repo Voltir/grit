@@ -7,8 +7,9 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
 import grit.core.clock.Clock
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.durable.Durable
-import grit.core.id.{QuestionName, ShadowName, SourceId, WorkflowId}
+import grit.core.id.{DocKey, PluginName, QuestionName, ShadowName, SourceId, WorkflowId}
 import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
 import grit.core.speech.{Limits, Reach, Speaking}
@@ -16,6 +17,7 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
 import grit.core.triage.{Corpora, Cues, Gate, ShadowAnswers, Shadowed, Shadowing}
+import grit.core.visibility.{Integrity, Label, Subject}
 import grit.dbos.engine.{Build, Engine, LiveEngine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, TestPostgres}
@@ -48,6 +50,9 @@ object PullTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
+
+  private def kept[E, A](e: Either[E, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(s"$why"), identity)
 
   private val Far = Instant.parse("2100-01-01T00:00:00Z")
 
@@ -368,17 +373,38 @@ object PullTests extends TestSuite {
       try {
         val cap = DailyCap.of("1").getOrElse(sys.error("a cap"))
         launch(engine, Speaking.Shadow(Limits.suggested(cap, Gate.Open)))
+        // A note sharing a word with the first case alone, kept before either is heard.
+        val notes = kept(PluginName.of("notes"))
+        val terms =
+          kept(DocumentTerms.of(kept(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
+        kept(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
+        val _ = kept(
+          engine.jot.write(Subject.Public)(
+            engine
+              .keeper(notes, terms)
+              .write(
+                kept(DocKey.of("falcon")),
+                Label.Public,
+                Integrity.Member,
+                Origin.Task("pull", "d").room,
+                kept(DocText.of("falcon budget 4200")),
+                ujson.Obj(),
+                None,
+                now().minusSeconds(120)
+              )
+          )
+        )
         val someone = Account.read("slack:T1/U2").getOrElse(sys.error("an account"))
         // Each opens its own thread in its own room: neither is the other's next message.
         val heard = Vector(
-          ("C1", "3000.1", Reach(Some("C1/3000.1"), Set(someone))),
-          ("C2", "3000.2", Reach(Some("C2/3000.2"), Set.empty))
+          ("C1", "3000.1", Reach(Some("C1/3000.1"), Set(someone)), "falcon release"),
+          ("C2", "3000.2", Reach(Some("C2/3000.2"), Set.empty), "release")
         )
-        heard.zipWithIndex.foreach { case ((channel, ts, reach), i) =>
+        heard.zipWithIndex.foreach { case ((channel, ts, reach, what), i) =>
           engine.inbox.hear(
             Origin.Slack("T1", channel, ts),
             SourceId(ts),
-            s"is the release on day $i? ~back:question ~0.3",
+            s"is the $what on day $i? ~back:question ~0.3",
             Account.Local,
             now().minusSeconds(60L - i),
             reach
@@ -401,9 +427,22 @@ object PullTests extends TestSuite {
               )
             right(Pull(reader, "c", Digest.text("c"), c.cases, Vector.empty, Instant.EPOCH, now()))
           } finally reader.close()
-        pulled.heard.toVector.map((id, h) => (id.written, h.reach, h.cues)) ==> Vector(
-          ("C1/3000.1", heard(0)._3, Cues(named = true, None, None, None, None)),
-          ("C2/3000.2", heard(1)._3, Cues.Empty)
+        // A match's score is on the index's own scale: only that it matched is pinned.
+        pulled.heard.toVector.map((id, h) =>
+          (
+            id.written,
+            h.reach,
+            h.cues.copy(records = None),
+            h.cues.records.map(m => (m.plugin, m.matched, m.score > 0))
+          )
+        ) ==> Vector(
+          (
+            "C1/3000.1",
+            heard(0)._3,
+            Cues(named = true, None, None, None, None),
+            Some((notes, 1, true))
+          ),
+          ("C2/3000.2", heard(1)._3, Cues.Empty, None)
         )
       } finally engine.close()
     }
