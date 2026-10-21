@@ -1,10 +1,22 @@
 package grit.core.edge
 
-import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
-import grit.core.store.{StoreError, Tx}
+import java.time.Instant
 
-/** In-memory [[Deliveries]] for tests, keeping [[DeliveriesContract]]. It ignores the `Tx`. */
-final class InMemoryDeliveries extends Deliveries {
+import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.store.{EntryStore, InMemoryEntryStore, InMemoryPrincipals, StoreError, Tx}
+
+/** In-memory [[Deliveries]] for tests, keeping [[DeliveriesContract]]. It ignores the `Tx`,
+  * but for a turn's asks, read from `entries` as its clearance reads them, the first's account
+  * from `principals`, at [[now]].
+  */
+final class InMemoryDeliveries(
+    entries: EntryStore = new InMemoryEntryStore(),
+    principals: InMemoryPrincipals = new InMemoryPrincipals
+) extends Deliveries {
+
+  /** When a turn's asks are read: an ask whose `until` is not after it is closed. */
+  @caps.unsafe.untrackedCaptures
+  var now: Instant = Instant.EPOCH
 
   private final case class Row(pending: Pending, delivered: Boolean)
 
@@ -42,6 +54,13 @@ final class InMemoryDeliveries extends Deliveries {
 
   def delivered(turn: TurnRef)(using Tx^): Either[StoreError, Unit] =
     change(turn)(_.copy(delivered = true))
+
+  def asks(turn: TurnRef)(using Tx^): Either[StoreError, Vector[OpenAsk]] =
+    entries
+      .ofTurn(turn)
+      .map(kept =>
+        OpenAsk.of(kept, kept.headOption.flatMap(first => principals.author(first.id)), now)
+      )
 
   /** Deletes the deliveries of `conversation`'s turns `first` to `last`: a purge's. */
   def forget(conversation: ConversationId, first: TurnSeq, last: TurnSeq): Unit =

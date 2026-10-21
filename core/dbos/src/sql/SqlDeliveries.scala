@@ -2,12 +2,14 @@ package grit.dbos.sql
 
 import scala.util.Using
 
-import grit.core.edge.{Deliveries, Part, Pending}
-import grit.core.id.{TurnRef, WorkflowId}
+import grit.core.edge.{Deliveries, OpenAsk, Part, Pending}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.store.{StoreError, Tx}
 
 /** [[Deliveries]] over `grit.deliveries` (a turn awaited, where it goes, whether delivered)
-  * and `grit.delivery_parts` (each part begun, and what it was posted as).
+  * and `grit.delivery_parts` (each part begun, and what it was posted as); a turn's asks over
+  * its entries.
   */
 final class SqlDeliveries extends Deliveries {
   import SqlStatements.{attempt, update}
@@ -89,6 +91,25 @@ final class SqlDeliveries extends Deliveries {
     update("UPDATE grit.deliveries SET delivered = true WHERE workflow = ?") { ps =>
       ps.setString(1, WorkflowId.value(turn.workflowId))
     }.flatMap(n => if (n == 0) missing(turn) else Right(()))
+
+  /** Over `turn`'s entries as the transaction's clearance reads them, the account of its first
+    * by `grit.inbound`, and the database's clock ([[OpenAsk.of]]).
+    */
+  def asks(turn: TurnRef)(using tx: Tx^): Either[StoreError, Vector[OpenAsk]] =
+    for {
+      kept <- entries.ofTurn(turn)
+      written <- kept.headOption.fold[Either[StoreError, Option[String]]](Right(None))(first =>
+        SqlStatements.one("SELECT account FROM grit.inbound WHERE entry_id = ?")(
+          _.setString(1, EntryId.value(first.id))
+        )(_.getString(1))
+      )
+      to <- written.fold[Either[StoreError, Option[Account]]](Right(None))(
+        SqlIdentities.read(_).map(Some(_))
+      )
+      now <- SqlStatements.now
+    } yield OpenAsk.of(kept, to, now)
+
+  private val entries = new SqlEntryStore()
 
   private def missing(turn: TurnRef): Either[StoreError, Unit] =
     Left(StoreError.Invalid(s"no delivery awaited for ${WorkflowId.value(turn.workflowId)}"))
