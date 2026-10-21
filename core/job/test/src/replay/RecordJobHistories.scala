@@ -80,7 +80,8 @@ object RecordJobHistories {
             Origin.Task("remind", "main"),
             SourceId("v1"),
             Message.User("go"),
-            Account.Grit
+            Account.Grit,
+            None
           )
           .fold(e => sys.error(s"$e"), identity)
         d.run(turn.workflowId)(Run.body(w.env(), jobs(1)))

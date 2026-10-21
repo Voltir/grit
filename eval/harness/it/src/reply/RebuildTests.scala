@@ -318,7 +318,13 @@ object RebuildTests extends TestSuite {
   private def ask(engine: Engine^, name: String, text: String): TurnRef = {
     val turn = right(
       engine.inbox
-        .ingest(Origin.Task("rebuild", name), SourceId(name), Message.User(text), Account.Local)
+        .ingest(
+          Origin.Task("rebuild", name),
+          SourceId(name),
+          Message.User(text),
+          Account.Local,
+          None
+        )
     )
     right(engine.inbox.startTurn(turn))
     val _ = engine.awaitTurn(turn)
@@ -332,7 +338,8 @@ object RebuildTests extends TestSuite {
       text,
       Account.Local,
       now(),
-      Reach(Some(s"C1/$ts/$ts"), Set.empty)
+      Reach(Some(s"C1/$ts/$ts"), Set.empty),
+      None
     ) ==> Right(())
 
   /** The confidential task conversation [[world]] holds, with nothing said in it. */

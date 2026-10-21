@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, EntryId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, Href, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.job.Slot
 import grit.core.message.Message
@@ -27,13 +27,17 @@ trait Inbox extends caps.SharedCapability {
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]] whose account is not `by`: a
     * person writes only their own direct message. [[InboxError.Sealed]] for a new message in a
     * direct message's thread begun when its person was cleared for more than they are now: nothing
-    * is recorded, and a message in a new thread begins one at their clearance now.
+    * is recorded, and a message in a new thread begins one at their clearance now. `link` opens
+    * the message where it was said, as its edge links it (`None` from an edge that links none);
+    * the first recording's stands, read back with its author ([[grit.core.store.Principals]]),
+    * and one over [[grit.core.id.Href.Chars]] characters is not kept.
     */
   def ingest(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: Account
+      by: Account,
+      link: Option[Href]
   ): Either[InboxError, TurnRef]
 
   /** The refusal a new message would get now over the day's cap ([[InboxError.OverCap]]), by
@@ -55,7 +59,7 @@ trait Inbox extends caps.SharedCapability {
     * if that was lost. Its turn runs only when grit drafts a reply to it
     * ([[grit.core.speech.Speech.decide]]). Never refused over the day's cap.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]]: a direct message is
-    * never heard.
+    * never heard. `link` is kept as [[ingest]] keeps it.
     */
   def hear(
       origin: Origin,
@@ -63,7 +67,8 @@ trait Inbox extends caps.SharedCapability {
       text: String,
       by: Account,
       at: Instant,
-      reach: Reach
+      reach: Reach,
+      link: Option[Href]
   ): Either[InboxError, Unit]
 
   /** Records `text`, grit's post that `origin`'s thread begins with, as its conversation's

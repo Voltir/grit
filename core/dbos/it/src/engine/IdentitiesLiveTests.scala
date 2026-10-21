@@ -46,7 +46,8 @@ object IdentitiesLiveTests extends TestSuite {
       Origin.Slack("T1", "C1", thread),
       SourceId(thread),
       Message.User("hello"),
-      by
+      by,
+      None
     )
 
   /** Who wrote the message `turn` began with, as a room's reads name them. */

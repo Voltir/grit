@@ -362,7 +362,7 @@ object TurnCaptureTests extends TestSuite {
   /** `text` said to grit at `origin` as `source`, and its turn run to its end. */
   private def ask(engine: Engine^, origin: Origin, source: String, text: String): TurnRef = {
     val turn = right(
-      engine.inbox.ingest(origin, SourceId(source), Message.User(text), Account.Local)
+      engine.inbox.ingest(origin, SourceId(source), Message.User(text), Account.Local, None)
     )
     right(engine.inbox.startTurn(turn))
     val _ = engine.awaitTurn(turn)
@@ -424,7 +424,8 @@ object TurnCaptureTests extends TestSuite {
             text,
             Account.Local,
             now(),
-            Reach(Some(s"C1/$ts/$ts"), Set.empty)
+            Reach(Some(s"C1/$ts/$ts"), Set.empty),
+            None
           ) ==> Right(())
           assert(
             eventually(

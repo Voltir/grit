@@ -62,7 +62,7 @@ object SettleLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local, None)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   private def eventually(done: => Boolean): Boolean = {

@@ -58,7 +58,8 @@ object AttachLiveTests extends TestSuite {
             Origin.Task("attach", "send"),
             SourceId("m1"),
             Message.User("hi"),
-            Account.Local
+            Account.Local,
+            None
           )
           _ <- link.inbox.startTurn(t)
         } yield t).fold(e => sys.error(s"$e"), identity)
@@ -112,7 +113,8 @@ object AttachLiveTests extends TestSuite {
             Origin.Task("attach", "stream"),
             SourceId("m1"),
             Message.User("hi"),
-            Account.Local
+            Account.Local,
+            None
           )
           .fold(e => sys.error(s"$e"), identity)
         Try(link.stream(turn, "reply").toVector) ==> Success(Vector())

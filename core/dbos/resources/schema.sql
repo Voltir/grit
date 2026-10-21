@@ -465,11 +465,15 @@ CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
 
 -- Who wrote each inbound entry: the account it came through (Inbox.ingest). Every other entry
 -- is grit's own. A table beside `entries` rather than a column on it, so no entry needs an
--- author it does not have.
--- Retention: journal: with its entry (Target.Raw), by cascade.
+-- author it does not have. `link` opens the message where it was said, as its edge recorded it
+-- with the message (Inbox.ingest; read back by Principals.speakers): NULL from an edge that links
+-- none, and for a message recorded before links were kept. At most Href.Chars characters.
+-- Retention: journal: with its entry (Target.Raw), by cascade; one row per inbound entry, its
+-- link a hundred or so bytes.
 CREATE TABLE IF NOT EXISTS grit.inbound (
     entry_id TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
-    account  TEXT NOT NULL REFERENCES grit.identities(account)
+    account  TEXT NOT NULL REFERENCES grit.identities(account),
+    link     TEXT CHECK (length(link) <= 500)
 );
 
 -- Who wrote each inbound entry, as linked now (grit.links): the one definition every reader of

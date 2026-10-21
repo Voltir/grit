@@ -7,7 +7,16 @@ import scala.util.Using
 
 import grit.core.admin.{Answer, Command}
 import grit.core.durable.Durable
-import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  CloseRef,
+  ConversationId,
+  EntryId,
+  Href,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.{Account, Standing, TestAccounts, Vouched}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
@@ -148,6 +157,16 @@ object SqlInboxContractTests extends InboxContract {
             names <- engine.principals.speakers(all.map(_.id))
           } yield all.map(e => (e.payload, names.of(e.id))))
           .fold(e => sys.error(e.toString), identity)
+      def linked(origin: Origin): Vector[Option[Href]] =
+        engine.db
+          .read(Subject.Public)(for {
+            found <- engine.conversations.find(origin)
+            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+              engine.entries.list(c.id)
+            )
+            read <- engine.principals.speakers(all.map(_.id))
+          } yield all.map(e => read.link(e.id)))
+          .fold(e => sys.error(e.toString), identity)
       def dated(origin: Origin): Vector[java.time.Instant] =
         engine.db
           .read(Subject.Public)(
@@ -283,7 +302,8 @@ object SqlInboxContractTests extends InboxContract {
                   .vouch(vouched)
               )
               .fold(e => sys.error(e.toString), _ => ()),
-          room => quieted(engine, room)
+          room => quieted(engine, room),
+          linked
         )
       )
     } finally engine.close()

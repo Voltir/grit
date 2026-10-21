@@ -52,7 +52,8 @@ object TriageLiveTests extends TestSuite {
           "standup moves to 10:00",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==>
           Right(())
         engine.inbox.hear(
@@ -61,7 +62,8 @@ object TriageLiveTests extends TestSuite {
           "standup moves to 10:00",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==>
           Right(())
         val c = LiveDb.conversation(config, here).id
@@ -92,7 +94,8 @@ object TriageLiveTests extends TestSuite {
           "one",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==>
           Right(())
         engine.inbox.hear(
@@ -101,7 +104,8 @@ object TriageLiveTests extends TestSuite {
           "two",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==>
           Right(())
         assert(started.await(30, TimeUnit.SECONDS))
@@ -122,14 +126,15 @@ object TriageLiveTests extends TestSuite {
       try {
         engine.launch(nothing, nothing, nothing, nothing, triage, LiveEngine.Unplaced, Vector.empty)
         val here = Origin.Task("triage", "addressed")
-        engine.inbox.ingest(here, SourceId("m1"), Message.User("@grit hi"), Account.Local)
+        engine.inbox.ingest(here, SourceId("m1"), Message.User("@grit hi"), Account.Local, None)
         engine.inbox.hear(
           here,
           SourceId("m1"),
           "@grit hi",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==> Right(())
         engine.inbox.hear(
           here,
@@ -137,7 +142,8 @@ object TriageLiveTests extends TestSuite {
           "and this",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==> Right(())
         val c = LiveDb.conversation(config, here).id
         assert(eventually(ran.size >= 1))

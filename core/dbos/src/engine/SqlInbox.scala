@@ -12,6 +12,7 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   EntryId,
+  Href,
   JobName,
   ScheduleId,
   SourceId,
@@ -73,18 +74,20 @@ final class SqlInbox(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: Account
+      by: Account,
+      link: Option[Href]
   ): Either[InboxError, TurnRef] =
-    SqlInbox.writtenBy(origin, by).flatMap(_ => ingested(origin, source, message, by))
+    SqlInbox.writtenBy(origin, by).flatMap(_ => ingested(origin, source, message, by, link))
 
   private def ingested(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: Account
+      by: Account,
+      link: Option[Href]
   ): Either[InboxError, TurnRef] = {
     val now = clock.now()
-    inTransaction(recorder.said(origin, source, message, by, now)).flatMap {
+    inTransaction(recorder.said(origin, source, message, by, now, link)).flatMap {
       case Left(refused) => Left(refused)
       case Right(said) =>
         // Queued after the commit, and again on a redelivery: enqueued twice, it runs once.
@@ -100,11 +103,12 @@ final class SqlInbox(
       text: String,
       by: Account,
       at: Instant,
-      reach: Reach
+      reach: Reach,
+      link: Option[Href]
   ): Either[InboxError, Unit] =
     SqlInbox
       .undirected(origin, "a direct message is never heard")
-      .flatMap(_ => heard(origin, source, text, by, at, reach))
+      .flatMap(_ => heard(origin, source, text, by, at, reach, link))
 
   private def heard(
       origin: Origin,
@@ -112,9 +116,10 @@ final class SqlInbox(
       text: String,
       by: Account,
       at: Instant,
-      reach: Reach
+      reach: Reach,
+      link: Option[Href]
   ): Either[InboxError, Unit] =
-    inTransaction(recorder.heard(origin, source, text, by, at, reach)).flatMap { heard =>
+    inTransaction(recorder.heard(origin, source, text, by, at, reach, link)).flatMap { heard =>
       // Enqueued after the commit, and again on a redelivery: a workflow enqueued twice runs
       // once, so a redelivery after a lost enqueue repairs it. The placement first, so a
       // room's openings queue in the order they were heard, each tried whether or not the
@@ -396,7 +401,8 @@ final class SqlInbox(
         label,
         Some(integrity),
         at,
-        capped = false
+        capped = false,
+        link = None
       )
       .flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))
 

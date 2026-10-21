@@ -109,7 +109,8 @@ object StitchLiveTests extends TestSuite {
       text,
       TestAccounts.account(s"slack:T1/$who"),
       Now.minusSeconds(ago),
-      Reach(Some(s"C1/$ts/$ts"), Set.empty)
+      Reach(Some(s"C1/$ts/$ts"), Set.empty),
+      None
     ) ==> Right(())
     val c =
       right(engine.db.read(Subject.Public)(engine.conversations.find(thread(ts))))
@@ -240,7 +241,8 @@ object StitchLiveTests extends TestSuite {
             thread("6.0"),
             SourceId("6.0"),
             Message.User("@grit is this a real question? ~back:exchange 1"),
-            TestAccounts.account("slack:T1/U0DAVID")
+            TestAccounts.account("slack:T1/U0DAVID"),
+            None
           )
           .fold(e => sys.error(e.toString), identity)
         engine.inbox.startTurn(mention) ==> Right(())

@@ -124,7 +124,8 @@ object ShadowLaunchLiveTests extends TestSuite {
         "is the release on Thursday? ~back:question ~0.8",
         Account.Local,
         Instant.now(),
-        Reach.Nowhere
+        Reach.Nowhere,
+        None
       ) ==> Right(())
       val c = right(engine.db.read(Subject.Public)(engine.conversations.find(here)))
         .getOrElse(sys.error("heard"))

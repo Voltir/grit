@@ -184,7 +184,8 @@ object StitchLab {
               m.text,
               by,
               m.at,
-              Reach(Some(s"${heard.channel}/$root/${heard.tsOf(m.id)}"), Set.empty)
+              Reach(Some(s"${heard.channel}/$root/${heard.tsOf(m.id)}"), Set.empty),
+              None
             )
             .left
             .map((e: InboxError) => s"${m.id}: not heard: $e")

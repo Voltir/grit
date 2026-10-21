@@ -28,7 +28,7 @@ object AskersLiveTests extends TestSuite {
   /** `by`'s message `ts` from `origin`, as its turn. */
   private def told(e: Engine, origin: Origin, by: Account, ts: String): TurnRef =
     e.inbox
-      .ingest(origin, SourceId(ts), Message.User(s"message $ts"), by)
+      .ingest(origin, SourceId(ts), Message.User(s"message $ts"), by, None)
       .fold(err => throw new java.lang.AssertionError(s"ingest: $err"), identity)
 
   /** `turn`'s asker, and the clearance a transaction opened for it reads at. */

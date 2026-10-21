@@ -198,7 +198,8 @@ object TurnSentTests extends TestSuite {
         launch(engine, model)
         val origin = Origin.Tui(right(Directory.of("/tmp/harness-sent")), "s")
         val turn = right(
-          engine.inbox.ingest(origin, SourceId("t0"), Message.User("echo twice"), Account.Local)
+          engine.inbox
+            .ingest(origin, SourceId("t0"), Message.User("echo twice"), Account.Local, None)
         )
         right(engine.inbox.startTurn(turn))
         val _ = engine.awaitTurn(turn)

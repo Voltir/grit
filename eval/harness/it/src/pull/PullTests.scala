@@ -221,7 +221,8 @@ object PullTests extends TestSuite {
             s"is the release on day $i? ~back:question ~0.3",
             Account.Local,
             start.plusSeconds(60L * i),
-            Reach.Nowhere
+            Reach.Nowhere,
+            None
           ) ==> Right(())
           assert(
             eventually(
@@ -404,7 +405,8 @@ object PullTests extends TestSuite {
             s"is the $what on day $i? ~back:question ~0.3",
             Account.Local,
             now().minusSeconds(60L - i),
-            reach
+            reach,
+            None
           ) ==> Right(())
           assert(
             eventually(

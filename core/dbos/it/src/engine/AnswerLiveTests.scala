@@ -39,7 +39,7 @@ object AnswerLiveTests extends TestSuite {
   private def started(engine: Engine^, source: String): TurnRef = {
     val origin = Origin.Task("answer", source)
     val turn = for {
-      t <- engine.inbox.ingest(origin, SourceId(source), Message.User(source), Account.Local)
+      t <- engine.inbox.ingest(origin, SourceId(source), Message.User(source), Account.Local, None)
       _ <- engine.inbox.startTurn(t)
     } yield t
     turn.fold(e => sys.error(s"inbox: $e"), identity)
@@ -90,7 +90,7 @@ object AnswerLiveTests extends TestSuite {
         )
         val origin = Origin.Task("answer", "early")
         val turn = engine.inbox
-          .ingest(origin, SourceId("early"), Message.User("early"), Account.Local)
+          .ingest(origin, SourceId("early"), Message.User("early"), Account.Local, None)
           .fold(e => sys.error(s"inbox: $e"), identity)
         // The workflow must exist to be sent to: enqueued, then answered before it runs.
         engine.inbox.startTurn(turn) ==> Right(())

@@ -2,7 +2,7 @@ package grit.core.inbox
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, Href, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
@@ -63,6 +63,15 @@ object InMemoryInboxTests extends InboxContract {
           .speakers(all.map(_.id))(using tx)
           .fold(e => sys.error(e.toString), identity)
         all.map(e => (e.payload, names.of(e.id)))
+      }
+    def linked(origin: Origin): Vector[Option[Href]] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
+        val tx = TestTx.fake
+        val all = inbox.entries.list(c.id)(using tx).fold(e => sys.error(e.toString), identity)
+        val read = inbox.principals
+          .speakers(all.map(_.id))(using tx)
+          .fold(e => sys.error(e.toString), identity)
+        all.map(e => read.link(e.id))
       }
     def dated(origin: Origin): Vector[java.time.Instant] =
       inbox.conversations.all
@@ -156,7 +165,8 @@ object InMemoryInboxTests extends InboxContract {
         v => {
           val _ = voucher.vouch(v)(using TestTx.fake)
         },
-        room => inbox.quiet(room)
+        room => inbox.quiet(room),
+        linked
       )
     )
   }
@@ -175,7 +185,7 @@ object InMemoryInboxFinishTests extends TestSuite {
         "m"
       )
       val turn = inbox
-        .ingest(Origin.Task("t", "r"), SourceId("m"), Message.User("x"), Account.Local)
+        .ingest(Origin.Task("t", "r"), SourceId("m"), Message.User("x"), Account.Local, None)
         .fold(e => sys.error(e.toString), identity)
       inbox.finish(turn, Some(reply), "done")
       inbox.progress(turn) ==> Right(Progress.Done(Some(reply), "done"))

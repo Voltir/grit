@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, Href, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
@@ -137,16 +137,18 @@ final class InMemoryInbox(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: Account
+      by: Account,
+      link: Option[Href]
   ): Either[InboxError, TurnRef] =
-    refusing.toLeft(()).flatMap(_ => taken(origin, source, message, by))
+    refusing.toLeft(()).flatMap(_ => taken(origin, source, message, by, link))
 
   /** [[ingest]], unscripted. */
   private def taken(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: Account
+      by: Account,
+      link: Option[Href]
   ): Either[InboxError, TurnRef] =
     origin match {
       case Origin.Direct(account, _) if (account: Account) != by =>
@@ -160,7 +162,8 @@ final class InMemoryInbox(
           labelOf(origin),
           None,
           java.time.Instant.EPOCH,
-          capped = true
+          capped = true,
+          link
         )
     }
 
@@ -180,7 +183,8 @@ final class InMemoryInbox(
       text: String,
       by: Account,
       at: java.time.Instant,
-      reach: Reach
+      reach: Reach,
+      link: Option[Href]
   ): Either[InboxError, Unit] =
     (origin match {
       case Origin.Direct(_, _) => Left(InboxError.Invalid("a direct message is never heard"))
@@ -193,7 +197,8 @@ final class InMemoryInbox(
           Tx.roomLabel(origin.room)(using inForce),
           None,
           at,
-          capped = false
+          capped = false,
+          link
         )
     }).flatMap { turn =>
       val kept = Reach.heardIn(origin.room, reach)(using inForce)
@@ -205,8 +210,8 @@ final class InMemoryInbox(
     }
 
   /** `payload` recorded as the first entry of a new turn of `origin`'s conversation, dated
-    * `at` as the period it opens is, unless `source` was recorded before (its turn then) or,
-    * when `capped`, the day's spend refuses it.
+    * `at` as the period it opens is, with `link`, unless `source` was recorded before (its turn
+    * then) or, when `capped`, the day's spend refuses it.
     */
   private def recorded(
       origin: Origin,
@@ -216,7 +221,8 @@ final class InMemoryInbox(
       label: Label,
       believed: Option[Integrity],
       at: java.time.Instant,
-      capped: Boolean
+      capped: Boolean,
+      link: Option[Href]
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
     else
@@ -254,7 +260,7 @@ final class InMemoryInbox(
                   )
                 )(using capping)
               } yield {
-                principals.authored(id, by)
+                principals.authored(id, by, link.filter(l => Href.value(l).length <= Href.Chars))
                 Right(TurnRef(conversation.id, next.turnSeq))
               }
           }
@@ -419,7 +425,8 @@ final class InMemoryInbox(
                 label,
                 Some(integrity),
                 now,
-                capped = false
+                capped = false,
+                link = None
               )
                 .map { turn =>
                   schedules.start(slot, v, following)

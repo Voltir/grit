@@ -1205,7 +1205,8 @@ object SlackEdgeTests extends TestSuite {
           slot.origin(JobName.of("remind").fold(sys.error, identity)),
           Slot.source(1),
           Message.User("due"),
-          Account.Grit
+          Account.Grit,
+          None
         )
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       FakeJot.write(Subject.Turn(run))(w.deliveries.await(run, "C123ABC456/5.0/5.0")) ==> Right(())

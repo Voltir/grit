@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, Href}
 import grit.core.identity.Account
 
 /** An in-memory [[Principals]] for tests, keeping [[PrincipalsContract]]. It ignores the `Tx`.
@@ -16,8 +16,17 @@ final class InMemoryPrincipals extends Principals {
   @caps.unsafe.untrackedCaptures
   private var authors = Map.empty[EntryId, Account]
 
-  /** Records that `by` wrote the inbound entry `entry`. */
-  def authored(entry: EntryId, by: Account): Unit = authors = authors.updated(entry, by)
+  @caps.unsafe.untrackedCaptures
+  private var links = Map.empty[EntryId, Href]
+
+  /** Records that `by` wrote the inbound entry `entry`, recorded with no link. */
+  def authored(entry: EntryId, by: Account): Unit = authored(entry, by, None)
+
+  /** Records that `by` wrote the inbound entry `entry`, recorded with `link`. */
+  def authored(entry: EntryId, by: Account, link: Option[Href]): Unit = {
+    authors = authors.updated(entry, by)
+    link.foreach(l => links = links.updated(entry, l))
+  }
 
   /** Who [[authored]] `entry`, if anyone. */
   def author(entry: EntryId): Option[Account] = authors.get(entry)
@@ -31,5 +40,10 @@ final class InMemoryPrincipals extends Principals {
     }
 
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers] =
-    Right(Speakers(entries.flatMap(e => authors.get(e).flatMap(names.get).map(e -> _)).toMap))
+    Right(
+      Speakers(
+        entries.flatMap(e => authors.get(e).flatMap(names.get).map(e -> _)).toMap,
+        entries.flatMap(e => links.get(e).map(e -> _)).toMap
+      )
+    )
 }

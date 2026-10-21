@@ -48,7 +48,8 @@ object PlacementsLiveTests extends TestSuite {
           "anyone seen the staging logs?",
           Account.Local,
           Clock.system().now(),
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         val opening =
           right(engine.db.read(Subject.Public)(engine.conversations.find(thread))).flatMap { c =>

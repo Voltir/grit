@@ -437,7 +437,8 @@ final class ChatHost(
         origin,
         SourceId(fresh.nonce()),
         Message.User(text),
-        Account.Local
+        Account.Local,
+        None
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn

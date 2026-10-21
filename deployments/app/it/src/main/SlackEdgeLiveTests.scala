@@ -6,7 +6,7 @@ import scala.util.Using
 
 import grit.core.approval.Approval
 import grit.core.edge.{Attesting, EdgeStores}
-import grit.core.id.{CallSlot, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, Href, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.inbox.{Inbox, InboxError, Progress, Slotted}
 import grit.core.message.Message
@@ -149,10 +149,11 @@ object SlackEdgeLiveTests extends TestSuite {
         origin: Origin,
         source: SourceId,
         message: Message.User,
-        by: Account
+        by: Account,
+        link: Option[Href]
     ): Either[InboxError, TurnRef] = {
       seen(Left(by))
-      inner.ingest(origin, source, message, by)
+      inner.ingest(origin, source, message, by, link)
     }
     def hear(
         origin: Origin,
@@ -160,10 +161,11 @@ object SlackEdgeLiveTests extends TestSuite {
         text: String,
         by: Account,
         at: Instant,
-        reach: Reach
+        reach: Reach,
+        link: Option[Href]
     ): Either[InboxError, Unit] = {
       seen(Left(by))
-      inner.hear(origin, source, text, by, at, reach)
+      inner.hear(origin, source, text, by, at, reach, link)
     }
     def posted(
         origin: Origin,

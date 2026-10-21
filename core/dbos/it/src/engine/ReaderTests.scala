@@ -147,7 +147,8 @@ object ReaderTests extends TestSuite {
           "standup moves to 10:00",
           Account.Local,
           Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==> Right(())
         val c = LiveDb.conversation(config, here).id
         val ref = TriageRef(PeriodRef(c, PeriodSeq.First), TurnSeq(0))
@@ -197,7 +198,8 @@ object ReaderTests extends TestSuite {
                 Origin.Task("reader", session),
                 SourceId("m"),
                 Message.User("hi"),
-                Account.Local
+                Account.Local,
+                None
               )
               .left
               .map(e => StoreError.Invalid(e.toString))

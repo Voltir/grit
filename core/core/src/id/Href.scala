@@ -7,7 +7,9 @@ opaque type Href = String
 
 object Href {
 
-  /** 500: the longest link [[in]] finds. */
+  /** 500: the longest link [[in]] finds, and the longest an inbound message is kept with
+    * ([[grit.core.inbox.Inbox.ingest]]; `grit.inbound.link` holds none longer).
+    */
   val Chars: Int = 500
 
   /** `text` as an href, normalised, or `None` when it is not `{scheme}://{host}…`. */

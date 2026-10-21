@@ -51,7 +51,7 @@ abstract class RecordedContract extends TestSuite {
       withStores { (admin, _, inbox, label) =>
         val here = room("C-unheard")
         val set = ok(admin.run(ada, here.room, Command.SetLabel(confidentialTrial), t(1)))
-        ok(inbox.ingest(here, SourceId("m1"), Message.User("hello"), mia))
+        ok(inbox.ingest(here, SourceId("m1"), Message.User("hello"), mia, None))
         (set, label(here)) ==> (
           Answer.relabelled(
             new Change.Relabel(here.room, Label.Public, Change.To.Set(confidentialTrial)),

@@ -109,7 +109,8 @@ object UnpromptedLiveTests extends TestSuite {
       "morning " * (grit.turn.TurnJudge.ThreadChars / 8 + 1),
       Account.Local,
       now,
-      Reach.Nowhere
+      Reach.Nowhere,
+      None
     ) ==>
       Right(())
     val c = right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
@@ -133,7 +134,8 @@ object UnpromptedLiveTests extends TestSuite {
       s"where does the refi page's byline go? ${if (named) "" else "~0.4 "}~back:asks",
       Account.Local,
       now,
-      Reach(Some(s"C1/$thread/$thread:1"), Set.empty)
+      Reach(Some(s"C1/$thread/$thread:1"), Set.empty),
+      None
     ) ==> Right(())
     TurnRef(c.id, TurnSeq(1))
   }

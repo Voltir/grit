@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, Href}
 import grit.core.identity.{Account, TestAccounts}
 
 import utest.*
@@ -13,10 +13,10 @@ abstract class PrincipalsContract extends TestSuite {
   /** A store with no account named. */
   protected def fresh(): Principals
 
-  /** Records a new inbound entry written by `by` (named, or `local`), in the database
-    * `principals` reads; its id.
+  /** Records a new inbound entry written by `by` (named, or `local`), with `link`, in the
+    * database `principals` reads; its id.
     */
-  protected def said(principals: Principals, by: Account): EntryId
+  protected def said(principals: Principals, by: Account, link: Option[Href]): EntryId
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -29,8 +29,8 @@ abstract class PrincipalsContract extends TestSuite {
     ) {
       val principals = fresh()
       transaction(principals.name(ana, "Ana Lima")) ==> Right(())
-      val hers = said(principals, ana)
-      val mine = said(principals, Account.Local)
+      val hers = said(principals, ana, None)
+      val mine = said(principals, Account.Local, None)
       val none = EntryId("reply:nobody:0")
       transaction(principals.speakers(Vector(hers, mine, none))) ==>
         Right(Speakers(Map(hers -> "Ana Lima")))
@@ -39,9 +39,22 @@ abstract class PrincipalsContract extends TestSuite {
     test("naming an account again renames it, the name trimmed") {
       val principals = fresh()
       transaction(principals.name(ana, "Ana")) ==> Right(())
-      val hers = said(principals, ana) // named as she is now, not as she was when she wrote it
+      val hers =
+        said(principals, ana, None) // named as she is now, not as she was when she wrote it
       transaction(principals.name(ana, "  Ana Lima ")) ==> Right(())
       transaction(principals.speakers(Vector(hers))) ==> Right(Speakers(Map(hers -> "Ana Lima")))
+    }
+
+    test("each inbound entry is read with the link it was recorded with, named or not") {
+      val principals = fresh()
+      transaction(principals.name(ana, "Ana Lima")) ==> Right(())
+      val link = Href.of("https://acme.slack.com/archives/C1/p1712300000000100")
+      val hers = said(principals, ana, link)
+      val unnamed = said(principals, TestAccounts.account("slack:T1/U2"), link)
+      val unlinked = said(principals, ana, None)
+      val read = transaction(principals.speakers(Vector(hers, unnamed, unlinked)))
+      read.map(s => Vector(hers, unnamed, unlinked).map(e => (s.of(e), s.link(e)))) ==>
+        Right(Vector((Some("Ana Lima"), link), (None, link), (Some("Ana Lima"), None)))
     }
 
     test("a blank name, or local or grit, is refused") {

@@ -77,7 +77,8 @@ object ShadowLiveTests extends TestSuite {
         text,
         Account.Local,
         Instant.now(),
-        grit.core.speech.Reach.Nowhere
+        grit.core.speech.Reach.Nowhere,
+        None
       ) ==> Right(())
     }
     val c = LiveDb.conversation(config, here).id

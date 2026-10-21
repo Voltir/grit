@@ -113,7 +113,8 @@ object StitchOrderLiveTests extends TestSuite {
             text,
             TestAccounts.account("slack:T1/U0NICK"),
             Now.minusSeconds(ago),
-            Reach.Nowhere
+            Reach.Nowhere,
+            None
           ) ==> Right(())
         def entries(ts: String): Vector[Entry] =
           right(engine.db.read(Subject.Public)(engine.conversations.find(thread(ts)))).toVector

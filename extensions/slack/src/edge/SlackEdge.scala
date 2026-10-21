@@ -591,7 +591,7 @@ final class SlackEdge(
             )
           _ <- opening(m, origin, author)
           _ <- stores.inbox
-            .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked))
+            .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked), None)
             .left
             .map(_.toString)
         } yield ()
@@ -669,7 +669,7 @@ final class SlackEdge(
       message: Message.User,
       author: Account
   ): Either[String, Unit] =
-    stores.inbox.ingest(origin, SourceId(Ts.value(at.answered)), message, author) match {
+    stores.inbox.ingest(origin, SourceId(Ts.value(at.answered)), message, author, None) match {
       case Left(over @ InboxError.OverCap(_, _, _)) =>
         said(
           s"slack: message ${Ts.value(at.answered)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"

@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{EntryId, SourceId, TriageRef, TurnRef}
+import grit.core.id.{EntryId, Href, SourceId, TriageRef, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
@@ -45,11 +45,12 @@ private[engine] final class Recorder(
       text: String,
       by: Account,
       at: Instant,
-      reach: Reach
+      reach: Reach,
+      link: Option[Href]
   )(using Tx^): Either[StoreError, Starts.Heard] =
     roomOf(origin)
       .flatMap(label =>
-        recorded(origin, source, Payload.Heard(text), by, label, None, at, capped = false)
+        recorded(origin, source, Payload.Heard(text), by, label, None, at, capped = false, link)
       )
       .flatMap {
         case Left(_) => Right(Starts.Heard(None, None))
@@ -77,7 +78,8 @@ private[engine] final class Recorder(
       source: SourceId,
       message: Message.User,
       by: Account,
-      at: Instant
+      at: Instant,
+      link: Option[Href]
   )(using Tx^): Either[StoreError, Either[InboxError, Starts.Said]] =
     conversations
       .find(origin)
@@ -97,7 +99,8 @@ private[engine] final class Recorder(
                   label,
                   None,
                   at,
-                  capped = true
+                  capped = true,
+                  link
                 )
               )
           }
@@ -111,7 +114,8 @@ private[engine] final class Recorder(
               label,
               None,
               at,
-              capped = true
+              capped = true,
+              link
             )
           )
       }
@@ -158,7 +162,8 @@ private[engine] final class Recorder(
       label: Label,
       believed: Option[Integrity],
       at: Instant,
-      capped: Boolean
+      capped: Boolean,
+      link: Option[Href]
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     for {
       conversation <- conversations.findOrCreate(origin, by, label)
@@ -195,7 +200,7 @@ private[engine] final class Recorder(
                   integrity
                 )
               )
-              .flatMap(_ => Recorder.authored(id, by))
+              .flatMap(_ => Recorder.authored(id, by, link))
               .map(_ => Right(TurnRef(conversation.id, next.turnSeq)))
           }
       }
@@ -226,15 +231,19 @@ private[engine] final class Recorder(
 
 private[dbos] object Recorder {
 
-  /** Records that the inbound entry `id` was written through `by`, kept as a new person's one
-    * account when not seen before.
+  /** Records that the inbound entry `id` was written through `by`, with `link`, kept as a new
+    * person's one account when not seen before.
     */
-  private[dbos] def authored(id: EntryId, by: Account)(using Tx^): Either[StoreError, Unit] =
+  private[dbos] def authored(id: EntryId, by: Account, link: Option[Href])(using
+      Tx^
+  ): Either[StoreError, Unit] =
     SqlIdentities.enroll(Set(by)).flatMap { _ =>
       SqlStatements
-        .update("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)") { ps =>
+        .update("INSERT INTO grit.inbound (entry_id, account, link) VALUES (?, ?, ?)") { ps =>
           ps.setString(1, EntryId.value(id))
           ps.setString(2, SqlIdentities.written(by))
+          // One over Href.Chars is not kept (Inbox.ingest), so the column's CHECK never refuses.
+          ps.setString(3, link.map(Href.value).filter(_.length <= Href.Chars).orNull)
         }
         .map(_ => ())
     }

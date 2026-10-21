@@ -48,7 +48,7 @@ object CloseLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local, None)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   /** Asks `done` until it holds, for up to 30 s, and whether it did. */
@@ -245,7 +245,8 @@ object CloseLiveTests extends TestSuite {
           "standup moves",
           Account.Local,
           said,
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==>
           Right(())
         val c = LiveDb.conversation(config, here).id

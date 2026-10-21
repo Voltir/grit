@@ -82,13 +82,14 @@ object SqlInboxTests extends TestSuite {
           "lunch?",
           Account.Local,
           at,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==>
           Right(())
-        engine.inbox.hear(heard, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere) ==>
+        engine.inbox.hear(heard, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere, None) ==>
           Right(())
         val asked = engine.inbox
-          .ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), Account.Local)
+          .ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), Account.Local, None)
           .fold(e => sys.error(e.toString), identity)
         val h = LiveDb.conversation(config, heard).id
         val placement = StitchRef(TurnRef(h, TurnSeq.First), at).workflowId
@@ -146,7 +147,13 @@ object SqlInboxTests extends TestSuite {
           new grit.core.clock.SetClock(at)
         )
         val turn = inbox
-          .ingest(Origin.Task("sql", "clocked"), SourceId("m1"), Message.User("hi"), Account.Local)
+          .ingest(
+            Origin.Task("sql", "clocked"),
+            SourceId("m1"),
+            Message.User("hi"),
+            Account.Local,
+            None
+          )
           .fold(e => sys.error(e.toString), identity)
         LiveDb.transaction(config)(
           for {
@@ -199,7 +206,7 @@ object SqlInboxTests extends TestSuite {
             execute("ALTER TABLE dbos.workflow_status RENAME TO workflow_status_gone")
           )
           engine.inbox
-            .ingest(origin, SourceId("m1"), Message.User("one"), Account.Local)
+            .ingest(origin, SourceId("m1"), Message.User("one"), Account.Local, None)
             .flatMap(engine.inbox.progress)
         } finally engine.close()
       progress.left.map {

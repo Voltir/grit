@@ -55,7 +55,15 @@ final class PickedPrompts(inbox: InMemoryInbox) {
   ): EntryId = {
     val at = Instant.parse("2026-10-02T10:00:00Z")
     right(
-      inbox.hear(origin, SourceId(ts), "hm", TestAccounts.account("slack:T/U1"), at, Reach.Nowhere)
+      inbox.hear(
+        origin,
+        SourceId(ts),
+        "hm",
+        TestAccounts.account("slack:T/U1"),
+        at,
+        Reach.Nowhere,
+        None
+      )
     )
     val conversation = right(
       inbox.conversations.all.find(_.origin == origin).toRight("no conversation")

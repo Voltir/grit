@@ -328,7 +328,8 @@ object KnowledgeSyncLiveTests extends TestSuite {
         Origin.Task(room, id),
         SourceId(id),
         Message.User(text),
-        Account.Local
+        Account.Local,
+        None
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn).fold(e => sys.error(s"inbox: $e"), identity)

@@ -3,7 +3,7 @@ package grit.dbos.engine
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-import grit.core.id.{EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, Href, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Entry, Origin, Payload, Principals, PrincipalsContract, Tx}
@@ -32,7 +32,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
     new SqlPrincipals()
   }
 
-  protected def said(principals: Principals, by: Account): EntryId = {
+  protected def said(principals: Principals, by: Account, link: Option[Href]): EntryId = {
     val c = LiveDb.conversation(config, Origin.Task("principals", UUID.randomUUID().toString)).id
     val id = EntryId(s"in:${UUID.randomUUID()}")
     LiveDb.transaction(config) { (tx: Tx^) ?=>
@@ -50,7 +50,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
           )
         )
         .fold(e => sys.error(s"arranging an entry: $e"), identity)
-      LiveDb.authored(id, by).fold(e => sys.error(s"arranging an author: $e"), identity)
+      LiveDb.authored(id, by, link).fold(e => sys.error(s"arranging an author: $e"), identity)
     }
     id
   }

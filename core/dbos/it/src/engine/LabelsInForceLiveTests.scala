@@ -177,7 +177,8 @@ object LabelsInForceLiveTests extends TestSuite {
               Origin.Slack("T1", "C1", "1.0"),
               SourceId("m1"),
               Message.User("hello"),
-              cleared
+              cleared,
+              None
             ),
             engine.sweep(Instant.parse("2026-10-08T00:00:00Z")).left.toOption
           )

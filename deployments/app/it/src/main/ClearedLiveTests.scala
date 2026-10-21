@@ -56,7 +56,8 @@ object ClearedLiveTests extends TestSuite {
             )
           )
           val turn = right(
-            launched.inbox.ingest(origin, SourceId("secret"), Message.User("hello"), Account.Local)
+            launched.inbox
+              .ingest(origin, SourceId("secret"), Message.User("hello"), Account.Local, None)
           )
           right(launched.inbox.startTurn(turn))
           val _ = launched.awaitTurn(turn)

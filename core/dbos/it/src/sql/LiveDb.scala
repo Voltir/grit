@@ -134,9 +134,19 @@ object LiveDb {
       } yield ()
     }.fold(e => sys.error(s"asking: $e"), identity)
 
-  /** Records that the inbound entry `id` was written through `by`, as the inbox does. */
+  /** Records that the inbound entry `id` was written through `by`, with no link, as the inbox
+    * does.
+    */
   def authored(id: EntryId, by: Account)(using Tx^): Either[StoreError, Unit] =
-    grit.dbos.engine.Recorder.authored(id, by)
+    authored(id, by, None)
+
+  /** Records that the inbound entry `id` was written through `by`, with `link`, as the inbox
+    * does.
+    */
+  def authored(id: EntryId, by: Account, link: Option[grit.core.id.Href])(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    grit.dbos.engine.Recorder.authored(id, by, link)
 
   /** The principal `account` is linked to now; throws when it was never seen. */
   def principal(config: DbConfig, account: Account): PrincipalId =

@@ -92,8 +92,8 @@ final class Rehearsing private (
   ): Unit =
     runner.launched(this, turn, close, settle, post, triage, stitch, shadow, run)
 
-  /** `text` recorded as [[grit.core.inbox.Inbox.hear]] records it, and what that starts; the
-    * inbox's refusals, and `Unavailable` when a statement fails.
+  /** `text` recorded as [[grit.core.inbox.Inbox.hear]] records it, with no link, and what that
+    * starts; the inbox's refusals, and `Unavailable` when a statement fails.
     */
   def hear(
       origin: Origin,
@@ -106,12 +106,13 @@ final class Rehearsing private (
     SqlInbox
       .undirected(origin, "a direct message is never heard")
       .flatMap(_ =>
-        maintained(recorder.heard(origin, source, text, by, at, reach)).left.map(InboxError.stored)
+        maintained(recorder.heard(origin, source, text, by, at, reach, None)).left
+          .map(InboxError.stored)
       )
 
-  /** `message` recorded as [[grit.core.inbox.Inbox.ingest]] records it, dated now, and what
-    * that starts; the inbox's refusals (over the day's cap among them), and `Unavailable` when
-    * a statement fails.
+  /** `message` recorded as [[grit.core.inbox.Inbox.ingest]] records it, with no link, dated now,
+    * and what that starts; the inbox's refusals (over the day's cap among them), and
+    * `Unavailable` when a statement fails.
     */
   def ingest(
       origin: Origin,
@@ -123,7 +124,7 @@ final class Rehearsing private (
     SqlInbox
       .writtenBy(origin, by)
       .flatMap(_ =>
-        maintained(recorder.said(origin, source, message, by, now)).left
+        maintained(recorder.said(origin, source, message, by, now, None)).left
           .map(InboxError.stored)
           .flatMap(identity)
       )

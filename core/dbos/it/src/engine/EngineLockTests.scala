@@ -105,7 +105,8 @@ object EngineLockTests extends TestSuite {
         Origin.Task("lock", source),
         SourceId(source),
         Message.User(source),
-        Account.Local
+        Account.Local,
+        None
       )
       _ <- inbox.startTurn(t)
     } yield t).fold(e => sys.error(s"inbox: $e"), identity)

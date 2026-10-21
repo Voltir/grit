@@ -108,7 +108,8 @@ object PluginLiveTests extends TestSuite {
           ),
           SourceId(s"m$i"),
           Message.User(s"message $i"),
-          Account.Local
+          Account.Local,
+          None
         )
         .fold(e => sys.error(s"$e"), identity)
       val closing = TestClosings.prose(s"Period $i. More.")

@@ -139,7 +139,8 @@ object RehearseLiveTests extends TestSuite {
       "staging deploys from main",
       Account.Local,
       Now,
-      Reach.Nowhere
+      Reach.Nowhere,
+      None
     ) ==>
       Right(())
     within(() => settled(config)) ==> true
@@ -198,7 +199,8 @@ object RehearseLiveTests extends TestSuite {
       "morning " * (TurnJudge.ThreadChars / 8 + 1),
       Account.Local,
       Now,
-      Reach.Nowhere
+      Reach.Nowhere,
+      None
     ) ==> Right(())
     within(() => settled(config)) ==> true
     val c = right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
@@ -308,7 +310,8 @@ object RehearseLiveTests extends TestSuite {
           "the noodle place on 5th is good for lunch",
           Account.Local,
           Now.minusNanos((Tuning.Default.horizon + 1.day).toNanos),
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         within(() => settled(config)) ==> true
         val before = (model.sent.size, classifier.sent.size)
@@ -323,7 +326,7 @@ object RehearseLiveTests extends TestSuite {
           )
           .fold(sys.error, identity)
         engine.inbox
-          .ingest(origin, SourceId("2.0"), Message.User(text), Account.Local)
+          .ingest(origin, SourceId("2.0"), Message.User(text), Account.Local, None)
           .flatMap(engine.inbox.startTurn)
           .fold(e => sys.error(s"inbox: $e"), identity)
         val requests = shown.calls.collect {
@@ -489,7 +492,8 @@ object RehearseLiveTests extends TestSuite {
             "the deploy pipeline failed again on the integration suite",
             Account.Local,
             Now,
-            Reach.Nowhere
+            Reach.Nowhere,
+            None
           ) ==> Right(())
           within(() => settled(config)) ==> true
           def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)

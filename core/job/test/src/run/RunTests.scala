@@ -115,7 +115,13 @@ object RunTests extends TestSuite {
     ) {
       val w = new World
       val main = w.inbox
-        .ingest(Origin.Task("remind", "main"), SourceId("v1"), Message.User("go"), Account.Grit)
+        .ingest(
+          Origin.Task("remind", "main"),
+          SourceId("v1"),
+          Message.User("go"),
+          Account.Grit,
+          None
+        )
         .fold(e => sys.error(s"$e"), identity)
       val standup = w.declared("standup")
       val gone = w.started(standup)

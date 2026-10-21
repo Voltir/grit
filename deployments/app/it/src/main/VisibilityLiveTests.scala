@@ -218,7 +218,7 @@ object VisibilityLiveTests extends TestSuite {
 
       def ask(label: String, origin: Origin, text: String, by: Account): TurnRef = {
         val turn = ok("ingesting")(
-          engine.inbox.ingest(origin, SourceId(label), Message.User(text), by)
+          engine.inbox.ingest(origin, SourceId(label), Message.User(text), by, None)
         )
         names.update(turn.conversationId, label)
         turn

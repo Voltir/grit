@@ -6,6 +6,7 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   Declarer,
+  Href,
   ScheduleId,
   ScheduleKey,
   SourceId,
@@ -237,7 +238,8 @@ abstract class InboxContract extends TestSuite {
           Origin.Task("remind", "main"),
           SourceId("m1"),
           said("once"),
-          Account.Local
+          Account.Local,
+          None
         )
         (oneShot.flatMap(inbox.startTurn), inbox.startTurn(run)) ==>
           (Right(()), Left(InboxError.SlotRun(slot)))
@@ -248,7 +250,7 @@ abstract class InboxContract extends TestSuite {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "ingested")
         val there = Origin.Task("inbox", "elsewhere")
-        val turn = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
+        val turn = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
         inbox.ingested(here, SourceId("m1")) ==> turn.map(Some(_))
         inbox.ingested(here, SourceId("m2")) ==> Right(None)
         inbox.ingested(there, SourceId("m1")) ==> Right(None)
@@ -261,8 +263,8 @@ abstract class InboxContract extends TestSuite {
         val there = Origin.Task("inbox", "recorded-elsewhere")
         val asked = Set(SourceId("m1"), SourceId("m2"), SourceId("m3"))
         inbox.recorded(here, asked) ==> Right(Set.empty)
-        inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
-        inbox.hear(here, SourceId("m2"), "two", Account.Local, Said, Reach.Nowhere) ==> Right(
+        inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
+        inbox.hear(here, SourceId("m2"), "two", Account.Local, Said, Reach.Nowhere, None) ==> Right(
           ()
         )
         inbox.hear(
@@ -271,7 +273,8 @@ abstract class InboxContract extends TestSuite {
           "three",
           Account.Local,
           Said,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         inbox.recorded(here, asked) ==> Right(Set(SourceId("m1"), SourceId("m2")))
       }
@@ -280,9 +283,10 @@ abstract class InboxContract extends TestSuite {
     test("ingest: the same source is the same turn, a new one the next turn") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "same-source")
-        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
-        val again = inbox.ingest(here, SourceId("m1"), said("one, redelivered"), Account.Local)
-        val second = inbox.ingest(here, SourceId("m2"), said("two"), Account.Local)
+        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
+        val again =
+          inbox.ingest(here, SourceId("m1"), said("one, redelivered"), Account.Local, None)
+        val second = inbox.ingest(here, SourceId("m2"), said("two"), Account.Local, None)
         (first.map(_.turnSeq), again, second.map(_.turnSeq)) ==>
           (Right(TurnSeq.First), first, Right(TurnSeq.First.next))
         store.written(here).map(_._1) ==> Vector(
@@ -295,11 +299,11 @@ abstract class InboxContract extends TestSuite {
     test("ingest opens a conversation's first period, and after a close the next, at its turn") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "periods")
-        val one = inbox.ingest(here, SourceId("p1"), said("one"), Account.Local)
+        val one = inbox.ingest(here, SourceId("p1"), said("one"), Account.Local, None)
         store.periods(here).map(p => (p.first, p.state)) ==>
           Vector((TurnSeq.First, PeriodState.Open))
         one.foreach(store.close)
-        val two = inbox.ingest(here, SourceId("p2"), said("two"), Account.Local)
+        val two = inbox.ingest(here, SourceId("p2"), said("two"), Account.Local, None)
         two.map(_.turnSeq) ==> Right(TurnSeq.First.next)
         store.periods(here).map(p => (p.first, p.state == PeriodState.Open)) ==>
           Vector((TurnSeq.First, false), (TurnSeq.First.next, true))
@@ -313,16 +317,40 @@ abstract class InboxContract extends TestSuite {
         val bo = TestAccounts.account("task:bo")
         store.name(ana, "Ana")
         store.name(bo, "Bo")
-        inbox.ingest(here, SourceId("a1"), said("one"), ana)
-        inbox.ingest(here, SourceId("a1"), said("one"), bo)
+        inbox.ingest(here, SourceId("a1"), said("one"), ana, None)
+        inbox.ingest(here, SourceId("a1"), said("one"), bo, None)
         store.written(here) ==> Vector((Payload.Message(said("one")), Some("Ana")))
+      }
+    }
+
+    test(
+      "a message's link is kept with it, ingested or heard; a redelivery's is not, nor one too long"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "links")
+        val first = Href.of("https://acme.slack.com/archives/C1/p1712300000000100")
+        val other = Href.of("https://acme.slack.com/archives/C1/p1712300000000999")
+        val heard = Href.of("https://acme.slack.com/archives/C1/p1712300000000200")
+        inbox.ingest(here, SourceId("l1"), said("one"), Account.Local, first).map(_ => ()) ==>
+          Right(())
+        inbox.ingest(here, SourceId("l1"), said("one"), Account.Local, other).map(_ => ()) ==>
+          Right(())
+        inbox.hear(here, SourceId("l2"), "two", Account.Local, Said, Reach.Nowhere, heard) ==>
+          Right(())
+        inbox.ingest(here, SourceId("l3"), said("three"), Account.Local, None).map(_ => ()) ==>
+          Right(())
+        // One character over the cap.
+        val long = Href.of("https://acme.slack.com/".padTo(Href.Chars + 1, 'a'))
+        inbox.ingest(here, SourceId("l4"), said("four"), Account.Local, long).map(_ => ()) ==>
+          Right(())
+        store.linked(here) ==> Vector(first, heard, None, None)
       }
     }
 
     test("a turn recorded but never started is Open") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "open")
-        val turn = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
+        val turn = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
         turn.flatMap(inbox.progress) ==> Right(Progress.Open)
       }
     }
@@ -340,7 +368,8 @@ abstract class InboxContract extends TestSuite {
           "standup moves to 10:00",
           ana,
           Said,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         inbox.hear(
           here,
@@ -348,7 +377,8 @@ abstract class InboxContract extends TestSuite {
           "standup moves to 10:00",
           ana,
           Said,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         store.written(here) ==> Vector((Payload.Heard("standup moves to 10:00"), Some("Ana")))
         inbox.ingested(here, SourceId("m1")) ==> Right(None)
@@ -369,9 +399,17 @@ abstract class InboxContract extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       withInbox(Uncapped, capping) { (inbox, store) =>
         val ana = TestAccounts.account("task:ana-inbound")
-        inbox.ingest(open, SourceId("m1"), said("from the operator"), Account.Local)
-        inbox.hear(open, SourceId("m2"), "from a person no realm vouches", ana, Said, Reach.Nowhere)
-        inbox.ingest(capped, SourceId("m1"), said("from the operator, capped"), Account.Local)
+        inbox.ingest(open, SourceId("m1"), said("from the operator"), Account.Local, None)
+        inbox.hear(
+          open,
+          SourceId("m2"),
+          "from a person no realm vouches",
+          ana,
+          Said,
+          Reach.Nowhere,
+          None
+        )
+        inbox.ingest(capped, SourceId("m1"), said("from the operator, capped"), Account.Local, None)
         store.believed(open) ==> Vector(Integrity.at(Integrity.Level.Authority), Integrity.Outside)
         store.believed(capped) ==> Vector(Integrity.Outside)
       }
@@ -398,13 +436,13 @@ abstract class InboxContract extends TestSuite {
             .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
         // The operator's turn, believed at authority, posts in the capped room.
         val clean = inbox
-          .ingest(asking, SourceId("m1"), said("post the summary"), Account.Local)
+          .ingest(asking, SourceId("m1"), said("post the summary"), Account.Local, None)
           .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
         // The turn of a person no realm vouches, believed at outside, posts in the open room
         // through the operator's account: the post is believed as its turn, not its account.
         val ana = TestAccounts.account("task:ana-posting")
         val lowered = inbox
-          .ingest(askingOutside, SourceId("m1"), said("post the summary"), ana)
+          .ingest(askingOutside, SourceId("m1"), said("post the summary"), ana, None)
           .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
         inbox.posted(
           capped,
@@ -433,10 +471,12 @@ abstract class InboxContract extends TestSuite {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "reach")
         val first = Reach(Some("C/1"), Set(TestAccounts.account("task:ben")))
-        inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, first) ==> Right(())
-        inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, Reach.Nowhere) ==>
+        inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, first, None) ==> Right(())
+        inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, Reach.Nowhere, None) ==>
           Right(())
-        inbox.ingest(here, SourceId("m2"), said("hi"), Account.Local).map(_ => ()) ==> Right(())
+        inbox.ingest(here, SourceId("m2"), said("hi"), Account.Local, None).map(_ => ()) ==> Right(
+          ()
+        )
         store.reached(here) ==> Vector(Some(first), None)
       }
     }
@@ -452,7 +492,8 @@ abstract class InboxContract extends TestSuite {
           "ask Ben",
           Account.Local,
           Said,
-          Reach(Some("C/1"), Set(ben))
+          Reach(Some("C/1"), Set(ben)),
+          None
         ) ==>
           Right(())
         store.reached(here) ==> Vector(Some(Reach(None, Set(ben))))
@@ -469,7 +510,8 @@ abstract class InboxContract extends TestSuite {
           "standup moves to 10:00",
           Account.Local,
           Said,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==>
           Right(())
         inbox.hear(
@@ -478,7 +520,8 @@ abstract class InboxContract extends TestSuite {
           "fine by me",
           Account.Local,
           later,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         (store.dated(here), store.periods(here).map(_.openedAt)) ==> (
           Vector(Said, later),
@@ -496,7 +539,7 @@ abstract class InboxContract extends TestSuite {
         store.name(ana, "Ana")
         inbox.begun(here) ==> Right(false)
         inbox.posted(here, SourceId("root"), "the summary", PostedAt, Asking, ana) ==> Right(true)
-        inbox.hear(here, SourceId("r1"), "why this?", ana, Said, Reach.Nowhere) ==> Right(())
+        inbox.hear(here, SourceId("r1"), "why this?", ana, Said, Reach.Nowhere, None) ==> Right(())
         store.written(here) ==> Vector(
           (Payload.Posted("the summary"), None),
           (Payload.Heard("why this?"), Some("Ana"))
@@ -527,12 +570,12 @@ abstract class InboxContract extends TestSuite {
         val heard = Origin.Slack("T", "C", "2.0")
         val posted = Origin.Slack("T", "C", "3.0")
         val elsewhere = Origin.Slack("T", "D", "1.0")
-        val _ = inbox.ingest(asked, SourceId("m1"), said("one"), Account.Local)
-        inbox.hear(heard, SourceId("m1"), "two", Account.Local, Said, Reach.Nowhere) ==>
+        val _ = inbox.ingest(asked, SourceId("m1"), said("one"), Account.Local, None)
+        inbox.hear(heard, SourceId("m1"), "two", Account.Local, Said, Reach.Nowhere, None) ==>
           Right(())
         inbox.posted(posted, SourceId("root"), "three", PostedAt, Asking, Account.Grit) ==>
           Right(true)
-        val _ = inbox.ingest(elsewhere, SourceId("m1"), said("four"), Account.Local)
+        val _ = inbox.ingest(elsewhere, SourceId("m1"), said("four"), Account.Local, None)
         Vector(asked, heard, posted, elsewhere).map(store.labelled) ==>
           Vector(Some(internal), Some(internal), Some(internal), Some(Label.Public))
         store.declare(
@@ -581,8 +624,8 @@ abstract class InboxContract extends TestSuite {
       withInbox(Uncapped, visibility) { (inbox, store) =>
         val hers = Origin.Direct(dana, "1.0")
         val his = Origin.Direct(ed, "1.0")
-        val _ = inbox.ingest(hers, SourceId("1.0"), said("one"), dana)
-        val _ = inbox.ingest(his, SourceId("1.0"), said("two"), ed)
+        val _ = inbox.ingest(hers, SourceId("1.0"), said("one"), dana, None)
+        val _ = inbox.ingest(his, SourceId("1.0"), said("two"), ed, None)
         Vector(hers, his).map(store.labelled) ==> Vector(Some(confidential), Some(Label.Public))
       }
     }
@@ -594,11 +637,11 @@ abstract class InboxContract extends TestSuite {
       val old: Origin.Direct = Origin.Direct(dana, "1.0")
       val next = Origin.Direct(dana, "2.0")
       reopening(Uncapped, naming(Set(dana)), naming(Set.empty))((inbox, _) =>
-        inbox.ingest(old, SourceId("1.0"), said("one"), dana)
+        inbox.ingest(old, SourceId("1.0"), said("one"), dana, None)
       ) { (turn, inbox, store) =>
-        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), dana)
-        val again = inbox.ingest(old, SourceId("1.0"), said("one"), dana)
-        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), dana)
+        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), dana, None)
+        val again = inbox.ingest(old, SourceId("1.0"), said("one"), dana, None)
+        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), dana, None)
         (
           refused,
           again,
@@ -624,12 +667,12 @@ abstract class InboxContract extends TestSuite {
       val next = Origin.Direct(dana, "2.0")
       reopening(Budget(ZoneOffset.UTC, Some(cap)), naming(Set(dana)), naming(Set.empty)) {
         (inbox, store) =>
-          val _ = inbox.ingest(old, SourceId("1.0"), said("one"), dana)
+          val _ = inbox.ingest(old, SourceId("1.0"), said("one"), dana, None)
           store.spend(BigDecimal("1"))
       } { (_, inbox, store) =>
         (
-          inbox.ingest(old, SourceId("1.1"), said("more"), dana),
-          inbox.ingest(next, SourceId("2.0"), said("two"), dana).left.map {
+          inbox.ingest(old, SourceId("1.1"), said("more"), dana, None),
+          inbox.ingest(next, SourceId("2.0"), said("two"), dana, None).left.map {
             case InboxError.OverCap(_, c, _) => c
             case other => other
           },
@@ -651,7 +694,7 @@ abstract class InboxContract extends TestSuite {
         store.vouch(Vouched(ben, Standing.Full(None)))
         val dms = Vector(dana, ben, ed).map(a => Origin.Direct(a, "1.0"))
         dms.zip(Vector(dana, ben, ed)).foreach { (dm, by) =>
-          val _ = inbox.ingest(dm, SourceId("1.0"), said("hi"), by)
+          val _ = inbox.ingest(dm, SourceId("1.0"), said("hi"), by, None)
         }
         dms.map(store.labelled) ==>
           Vector(Some(ConfidentialTrial), Some(Internal), Some(Label.Public))
@@ -666,10 +709,10 @@ abstract class InboxContract extends TestSuite {
       val next = Origin.Direct(ben, "2.0")
       withInbox(Uncapped, naming(Set.empty)) { (inbox, store) =>
         store.vouch(Vouched(ben, Standing.Full(None)))
-        val _ = inbox.ingest(old, SourceId("1.0"), said("one"), ben)
+        val _ = inbox.ingest(old, SourceId("1.0"), said("one"), ben, None)
         store.vouch(Vouched(ben, Standing.Outside))
-        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), ben)
-        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), ben)
+        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), ben, None)
+        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), ben, None)
         (refused, store.labelled(old), store.labelled(next)) ==>
           (Left(InboxError.Sealed(old)), Some(Internal), Some(Label.Public))
       }
@@ -683,7 +726,7 @@ abstract class InboxContract extends TestSuite {
         val other = TestAccounts.account("slack:T/U-ed-own")
         (
           inbox
-            .ingest(dm, SourceId("1.0"), said("as her"), other)
+            .ingest(dm, SourceId("1.0"), said("as her"), other, None)
             .left
             .map(_.getClass.getSimpleName),
           store.exists(dm)
@@ -697,7 +740,7 @@ abstract class InboxContract extends TestSuite {
         val dm = Origin.Direct(dana, "1.0")
         (
           inbox
-            .hear(dm, SourceId("1.0"), "heard", dana, Said, Reach.Nowhere)
+            .hear(dm, SourceId("1.0"), "heard", dana, Said, Reach.Nowhere, None)
             .left
             .map(_.getClass.getSimpleName),
           inbox
@@ -714,11 +757,11 @@ abstract class InboxContract extends TestSuite {
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "unreadable")
-        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
+        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
         store.unreadable(here)
         Vector(
-          inbox.ingest(here, SourceId("m2"), said("two"), Account.Local).map(_ => ()),
-          inbox.hear(here, SourceId("m3"), "three", Account.Local, Said, Reach.Nowhere),
+          inbox.ingest(here, SourceId("m2"), said("two"), Account.Local, None).map(_ => ()),
+          inbox.hear(here, SourceId("m3"), "three", Account.Local, Said, Reach.Nowhere, None),
           inbox
             .posted(here, SourceId("root"), "four", PostedAt, Asking, Account.Local)
             .map(_ => ()),
@@ -733,7 +776,7 @@ abstract class InboxContract extends TestSuite {
     test("a post records nothing once its origin has anything, a repeat of itself included") {
       withInbox(Uncapped) { (inbox, store) =>
         val heard = Origin.Task("inbox", "posted-late")
-        inbox.hear(heard, SourceId("r1"), "first", Account.Local, Said, Reach.Nowhere) ==>
+        inbox.hear(heard, SourceId("r1"), "first", Account.Local, Said, Reach.Nowhere, None) ==>
           Right(())
         inbox.begun(heard) ==> Right(true)
         inbox.posted(heard, SourceId("root"), "late", PostedAt, Asking, Account.Local) ==>
@@ -755,13 +798,13 @@ abstract class InboxContract extends TestSuite {
       val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
       withInbox(Budget(ZoneOffset.UTC, Some(cap))) { (inbox, store) =>
         val here = Origin.Task("inbox", "capped")
-        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local)
+        val first = inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None)
         store.spend(BigDecimal("0.4"))
         val under = inbox.overCap()
         store.spend(BigDecimal("0.6"))
         val over = inbox.overCap()
-        inbox.ingest(here, SourceId("m1"), said("one"), Account.Local) ==> first
-        val refused = inbox.ingest(here, SourceId("m2"), said("two"), Account.Local)
+        inbox.ingest(here, SourceId("m1"), said("one"), Account.Local, None) ==> first
+        val refused = inbox.ingest(here, SourceId("m2"), said("two"), Account.Local, None)
         refused.left.map {
           case InboxError.OverCap(spent, c, _) => (spent.calls, spent.cost, c)
           case other => other
@@ -769,7 +812,7 @@ abstract class InboxContract extends TestSuite {
         (under, over.map(_.toLeft(()))) ==> (Right(None), Right(refused.map(_ => ())))
         inbox.ingested(here, SourceId("m2")) ==> Right(None)
         val fresh = Origin.Task("inbox", "capped-first")
-        inbox.ingest(fresh, SourceId("m1"), said("one"), Account.Local).left.map {
+        inbox.ingest(fresh, SourceId("m1"), said("one"), Account.Local, None).left.map {
           case InboxError.OverCap(_, c, _) => c
           case other => other
         } ==> Left(cap)
@@ -781,7 +824,8 @@ abstract class InboxContract extends TestSuite {
           "lunch?",
           Account.Local,
           Said,
-          Reach.Nowhere
+          Reach.Nowhere,
+          None
         ) ==> Right(())
         store.written(heard) ==> Vector((Payload.Heard("lunch?"), None))
         val posted = Origin.Task("inbox", "capped-posted")
@@ -827,7 +871,8 @@ object InboxContract {
     * at; `unreadable` leaves an origin's conversation, which exists, holding what its store
     * reads as `Invalid`; `vouch` records what an account's realm says of it now, by a voucher of
     * [[T1]] and [[T2]] claiming [[Claimed]], as an edge attesting it would; `quiet` makes a
-    * room quiet, as a person's command would.
+    * room quiet, as a person's command would; `linked`, the link each of an origin's
+    * conversation's entries was recorded with, in order, as its speakers read it.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -848,6 +893,7 @@ object InboxContract {
       labelled: Origin => Option[Label],
       unreadable: Origin => Unit,
       vouch: Vouched => Unit,
-      quiet: Place => Unit
+      quiet: Place => Unit,
+      linked: Origin => Vector[Option[Href]]
   )
 }

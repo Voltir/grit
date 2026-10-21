@@ -16,8 +16,9 @@ trait Principals {
     */
   def name(account: Account, name: String)(using Tx^): Either[StoreError, Unit]
 
-  /** The names their accounts go by, of whoever wrote `entries`: an entry that is not
-    * inbound, or whose account has no name, is not among them.
+  /** The names their accounts go by, of whoever wrote `entries`, and the link each was recorded
+    * with ([[grit.core.inbox.Inbox.ingest]]): an entry that is not inbound is not among them;
+    * one whose account has no name is among them by its link alone, when it has one.
     */
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers]
 }

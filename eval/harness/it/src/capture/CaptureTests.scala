@@ -152,7 +152,8 @@ object CaptureTests extends TestSuite {
             text,
             Account.Local,
             start.plusSeconds(60L * i),
-            Reach.Nowhere
+            Reach.Nowhere,
+            None
           ) ==> Right(())
           assert(
             eventually(

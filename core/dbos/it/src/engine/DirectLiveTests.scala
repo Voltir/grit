@@ -89,7 +89,7 @@ object DirectLiveTests extends TestSuite {
   /** `text`, dana's message `ts` in her direct message's thread `thread`, as its turn. */
   private def told(e: Engine, by: Account.Sourced, thread: String, ts: String): TurnRef =
     e.inbox
-      .ingest(Origin.Direct(by, thread), SourceId(ts), Message.User(s"message $ts"), by)
+      .ingest(Origin.Direct(by, thread), SourceId(ts), Message.User(s"message $ts"), by, None)
       .fold(err => throw new java.lang.AssertionError(s"ingest: $err"), identity)
 
   /** The label `origin`'s conversation was created at. */

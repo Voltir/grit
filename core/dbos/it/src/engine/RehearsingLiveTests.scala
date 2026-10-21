@@ -47,7 +47,7 @@ object RehearsingLiveTests extends TestSuite {
   private def seeded(suite: String): (DbConfig, Engine^, ConversationId) = {
     val config = TestPostgres.freshDatabase(suite)
     val engine = LiveEngine.open(config, "test")
-    engine.inbox.hear(room, SourceId("1.0"), "lunch?", Account.Local, at, Reach.Nowhere) ==>
+    engine.inbox.hear(room, SourceId("1.0"), "lunch?", Account.Local, at, Reach.Nowhere, None) ==>
       Right(())
     (config, engine, LiveDb.conversation(config, room).id)
   }
@@ -282,7 +282,8 @@ object RehearsingLiveTests extends TestSuite {
                   "hello",
                   Account.Local,
                   at,
-                  Reach.Nowhere
+                  Reach.Nowhere,
+                  None
                 )
               )(using ExecutionContext.global)
               (

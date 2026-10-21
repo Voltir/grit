@@ -249,7 +249,7 @@ object CollectorLiveTests extends TestSuite {
   /** `text` ingested on `origin` and its turn run to its end. */
   private def turnOn(engine: Engine^, origin: Origin, text: String): TurnRef = {
     val t = engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local, None)
       .fold(e => sys.error(s"$e"), identity)
     engine.inbox.startTurn(t) ==> Right(())
     engine.awaitTurn(t)
@@ -571,7 +571,7 @@ object CollectorLiveTests extends TestSuite {
         minutes(config)
         val origin = Origin.Task("retention", "purge")
         val t0 = engine.inbox
-          .ingest(origin, SourceId("one"), Message.User("one"), Account.Local)
+          .ingest(origin, SourceId("one"), Message.User("one"), Account.Local, None)
           .fold(e => sys.error(s"$e"), identity)
         engine.inbox.startTurn(t0) ==> Right(())
         engine.awaitTurn(t0)
@@ -694,7 +694,8 @@ object CollectorLiveTests extends TestSuite {
             Origin.Task("retention", "prefix"),
             SourceId("one"),
             Message.User("one"),
-            Account.Local
+            Account.Local,
+            None
           )
           .fold(e => sys.error(s"$e"), identity)
         // Turn 1 is heard: its triage runs, and no turn workflow ever does.
@@ -704,7 +705,8 @@ object CollectorLiveTests extends TestSuite {
           "heard",
           Account.Local,
           java.time.Instant.now(),
-          grit.core.speech.Reach.Nowhere
+          grit.core.speech.Reach.Nowhere,
+          None
         ) ==> Right(())
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         val triaged = TriageRef(p1, TurnSeq(1)).workflowId
@@ -807,7 +809,8 @@ object CollectorLiveTests extends TestSuite {
             Origin.Task("collect", "deferred"),
             SourceId("one"),
             Message.User("one"),
-            Account.Local
+            Account.Local,
+            None
           )
           .fold(e => sys.error(s"$e"), identity)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)

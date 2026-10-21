@@ -358,7 +358,8 @@ object LiveTurn {
         session,
         SourceId(source),
         Message.User(s"message $source"),
-        Account.Local
+        Account.Local,
+        None
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn
