@@ -10,6 +10,7 @@ import grit.core.place.{Place, Service}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
 import grit.core.tool.{
   Args,
+  Believed,
   Bound,
   Field,
   Gate,
@@ -91,8 +92,9 @@ object TurnToolsTests extends TestSuite {
     new Hosted(
       ToolSpec(ToolName("said"), "Says.", Args.of((p = Field.text("What."))).map(_.p)),
       Gate.Free,
-      (p: String) => p
-    ).believed(Integrity.Outside).over(_ => outcome)
+      (p: String) => p,
+      Believed.At(Integrity.Outside)
+    ).over(_ => outcome)
 
   /** What a kept entry is believed at. */
   private def believed(entries: InMemoryEntryStore, id: EntryId): Option[Integrity] =

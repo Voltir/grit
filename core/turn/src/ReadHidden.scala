@@ -2,7 +2,18 @@ package grit.turn
 
 import grit.core.message.AssistantBlock
 import grit.core.store.{Entry, Payload}
-import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{
+  Args,
+  ArgsError,
+  Believed,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Tool,
+  ToolName,
+  ToolSpec
+}
 
 /** `read_hidden`: how the model reads an item a round's request shows only as its stub
   * ([[TurnGate.stub]]). Reading it is the call: the next round's gate shows the item in full,
@@ -39,7 +50,7 @@ object ReadHidden {
   def tool(gated: Option[Gated]): Tool[HiddenName] = {
     val hidden: Map[HiddenName, Item] =
       gated.fold(Vector.empty)(_.hidden).map((item, h) => h.name -> item).toMap
-    new Hosted(spec, Gate.Free, HiddenName.value).own.over { name =>
+    new Hosted(spec, Gate.Free, HiddenName.value, Believed.Own).over { name =>
       val n = HiddenName.value(name)
       hidden.get(name) match {
         case Some(item) =>

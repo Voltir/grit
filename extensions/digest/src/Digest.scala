@@ -13,7 +13,7 @@ import grit.core.period.{CloseOrdinal, CloseReason}
 import grit.core.place.Place
 import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginTool}
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
+import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Integrity
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
@@ -238,7 +238,8 @@ object Digest {
             .map(_.n.getOrElse(DefaultShown))
         ),
         Gate.Free,
-        n => n.toString
+        n => n.toString,
+        Believed.At(Integrity.Untrusted)
       )
 
     def bind(

@@ -6,6 +6,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
 import grit.core.tool.{
   Args,
+  Believed,
   Gate,
   Hosted,
   Outcome,
@@ -17,6 +18,7 @@ import grit.core.tool.{
   Toolbox,
   Writes
 }
+import grit.core.visibility.Integrity
 import grit.edge.{Run, Tools}
 import grit.mcp.client.McpClient
 import grit.mcp.wire.McpTool
@@ -105,7 +107,9 @@ object McpTools {
     new Hosted[ujson.Value](
       ToolSpec(tool.offered, tool.does, Args.raw(tool.inputSchema), Retry.Rerun),
       Gate.Free,
-      args => args.render().take(Hosted.ShownMax)
+      args => args.render().take(Hosted.ShownMax),
+      // A call at its service is believed at the service's output; this holds where none is.
+      Believed.At(Integrity.Untrusted)
     )
 
   /** `tool` as an edge advertises it. */

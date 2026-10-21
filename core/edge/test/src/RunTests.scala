@@ -90,7 +90,7 @@ object RunTests extends TestSuite {
     test("a tool that reads grit's store is not run here, free or approved") {
       val text = Args.of((text = Field.text("What."))).map(_.text)
       def reading(name: ToolName, gate: Gate[String]) =
-        new Hosted(ToolSpec(name, "Reads.", text), gate, t => t)
+        new Hosted(ToolSpec(name, "Reads.", text), gate, t => t, Believed.Default)
           .reading((_, _, reads) =>
             reads.read(Right("read")).fold(_ => Outcome.Failed("unread"), Outcome.Done(_))
           )
@@ -106,7 +106,7 @@ object RunTests extends TestSuite {
     test("a tool made with calling is told the request's slot, free or approved") {
       val text = Args.of((text = Field.text("What."))).map(_.text)
       def where(name: ToolName, gate: Gate[String]) =
-        new Hosted(ToolSpec(name, "Where.", text), gate, t => t)
+        new Hosted(ToolSpec(name, "Where.", text), gate, t => t, Believed.Default)
           .calling((_, at) => Outcome.Done(at.key))
       val told = Toolbox
         .of(where(ToolName("where"), Gate.Free), where(ToolName("asked"), Gate.Ask(t => t)))

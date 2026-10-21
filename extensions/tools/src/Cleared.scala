@@ -3,8 +3,8 @@ package grit.tools
 import scala.NamedTuple
 
 import grit.core.store.{Askers, Tx}
-import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
-import grit.core.visibility.{Explanation, Label}
+import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
+import grit.core.visibility.{Explanation, Integrity, Label}
 
 /** `clearance`: what the person asking is cleared for, and why. It takes no argument, so it
   * concerns only the asker. Each call reads in one transaction of the reads its turn hands it
@@ -67,6 +67,7 @@ object Cleared {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      _ => ""
+      _ => "",
+      Believed.At(Integrity.Untrusted)
     )
 }

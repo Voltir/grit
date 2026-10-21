@@ -38,7 +38,7 @@ object JobCaptureTests extends TestSuite {
       |}
       |object Remember extends PluginTool[Int] {
       |  val described: Hosted[Int] =
-      |    new Hosted(ToolSpec(ToolName("remember"), "Remember.", Args.of((n = Field.count("In how many minutes.", 1, 5))).map(_.n)), Gate.Free, n => n.toString)
+      |    new Hosted(ToolSpec(ToolName("remember"), "Remember.", Args.of((n = Field.count("In how many minutes.", 1, 5))).map(_.n)), Gate.Free, n => n.toString, Believed.Default)
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    jobs.of(Remind).map(booking =>
       |      new PluginRun[Int] {

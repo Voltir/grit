@@ -37,7 +37,7 @@ object ToolCaptureTests extends TestSuite {
   /** A toolbox of the store handed a tool, told its call, whose run also edits. */
   private val toldEdits =
     """def told(store: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{store}]] =
-      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { val _ = RelPath.of(p).map(e.write(_, at.key)); reads(store); Outcome.Done(at.key) }))
+      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p, Believed.Default).calling((p, at) => { val _ = RelPath.of(p).map(e.write(_, at.key)); reads(store); Outcome.Done(at.key) }))
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -48,7 +48,7 @@ object ToolCaptureTests extends TestSuite {
       |def all(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws, e}]] =
       |  Toolbox.of(reads(ws), writes(e))
       |def told(store: Workspace^): Either[DuplicateName, Toolbox[{store}]] =
-      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
+      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p, Believed.Default).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
       |""".stripMargin
 
   private val sneaky =

@@ -5,6 +5,7 @@ import grit.core.edge.{Route, ToolRequest}
 import grit.core.tool.{
   Args,
   ArgsError,
+  Believed,
   Field,
   Gate,
   Hosted,
@@ -16,6 +17,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
+import grit.core.visibility.Integrity
 import grit.edge.{Run, Tools}
 
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
@@ -107,6 +109,11 @@ object DriveTools {
   /** `why`, a clause [[FileId.of]] gives, as the sentence a refused argument says. */
   private def sentence(why: String): String = s"${why.capitalize}."
 
+  /** What Drive's tools' results are believed at where no service is named: a call at Drive's
+    * service is believed at that service's output instead, as its items say.
+    */
+  private val AtNoService: Believed = Believed.At(Integrity.Untrusted)
+
   /** A search's arguments: its words, and the folder it is held to, if any. */
   final case class Searching(text: String, folder: Option[FileId])
 
@@ -140,7 +147,8 @@ object DriveTools {
       Retry.Rerun
     ),
     Gate.Free,
-    s => s.text
+    s => s.text,
+    AtNoService
   )
 
   /** `drive_list`: the shared drives grit is a member of, or the files and folders directly in
@@ -174,7 +182,8 @@ object DriveTools {
       Retry.Rerun
     ),
     Gate.Free,
-    folder => folder.map(FileId.value).getOrElse("the shared drives")
+    folder => folder.map(FileId.value).getOrElse("the shared drives"),
+    AtNoService
   )
 
   /** `drive_read`: one file's text, by its id. */
@@ -191,7 +200,8 @@ object DriveTools {
       Retry.Rerun
     ),
     Gate.Free,
-    id => FileId.value(id)
+    id => FileId.value(id),
+    AtNoService
   )
 
   /** The three, as an edge advertises them. */

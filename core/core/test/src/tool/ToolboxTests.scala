@@ -81,7 +81,8 @@ object ToolboxTests extends TestSuite {
         "reply. If they decline, nothing runs."
       box.schemas(strict = false).map(_.description) ==>
         Vector("Says it back.", s"Says it loudly. $asks")
-      val hosted = new Hosted(shout.spec, Gate.Ask((t: String) => t), (t: String) => t)
+      val hosted =
+        new Hosted(shout.spec, Gate.Ask((t: String) => t), (t: String) => t, Believed.Default)
       hosted.schema(false).description ==> s"Says it loudly. $asks"
       Tool.gone(hosted.entry).schema(false).description ==> s"Says it loudly. $asks"
       Tool.gone(echo.entry).schema(false).description ==> "Says it back."
@@ -116,9 +117,13 @@ object ToolboxTests extends TestSuite {
       "a call stamped below its tool's requirement is withheld, saying plainly what can't be done; one at or above it binds"
     ) {
       val guarded = Toolbox
-        .of(new Hosted(echo.spec, Gate.Free, (t: String) => t).requiring(Integrity.Member).over {
-          t => Outcome.Done(t)
-        })
+        .of(
+          new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default)
+            .requiring(Integrity.Member)
+            .over { t =>
+              Outcome.Done(t)
+            }
+        )
         .fold(d => throw new java.lang.AssertionError(d.toString), identity)
       val sent: AssistantBlock.ToolCall =
         AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
@@ -138,9 +143,13 @@ object ToolboxTests extends TestSuite {
 
     test("a request an edge was sent binds unstamped, whatever its tool requires") {
       val guarded = Toolbox
-        .of(new Hosted(echo.spec, Gate.Free, (t: String) => t).requiring(Integrity.Member).over {
-          t => Outcome.Done(t)
-        })
+        .of(
+          new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default)
+            .requiring(Integrity.Member)
+            .over { t =>
+              Outcome.Done(t)
+            }
+        )
         .fold(d => throw new java.lang.AssertionError(d.toString), identity)
       val sent: AssistantBlock.ToolCall =
         AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
@@ -158,7 +167,7 @@ object ToolboxTests extends TestSuite {
         echo.entry.requires,
         writing.entry.requires,
         writing.over((t, _) => Outcome.Done(t)).entry.requires,
-        new Hosted(echo.spec, Gate.Free, (t: String) => t)
+        new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default)
           .requiring(Integrity.Member)
           .entry
           .requires

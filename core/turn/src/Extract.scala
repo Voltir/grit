@@ -6,7 +6,18 @@ import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, WorkflowId}
 import grit.core.model.StrictSchemas
 import grit.core.provider.ModelRequest
-import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{
+  Args,
+  ArgsError,
+  Believed,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Tool,
+  ToolName,
+  ToolSpec
+}
 import grit.core.visibility.Integrity
 
 /** `extract`: how the model asks a question of an item a round's request shows only as its
@@ -106,21 +117,25 @@ object Extract {
   def tool(gated: Option[Gated], answer: Answer^): Tool[Asking]^{answer} = {
     val hidden: Map[HiddenName, Item] =
       gated.fold(Vector.empty)(_.hidden).map((item, h) => h.name -> item).toMap
-    new Hosted(spec, Gate.Free, a => s"${HiddenName.value(a.name)}: ${a.question}").own.calling {
-      (a, slot) =>
-        val n = HiddenName.value(a.name)
-        hidden.get(a.name) match {
-          case None => Outcome.Done(s"Nothing in the request you answered is hidden as $n.")
-          case Some(item) =>
-            answer(item, a.question, a.shape, slot) match {
-              case Left(_) => Outcome.Failed(s"$n gave no answer that reads as ${named(a.shape)}.")
-              case Right(said) =>
-                said.extract match {
-                  case None => Outcome.Done(s"$n does not say.", Some(said.integrity))
-                  case Some(x) => Outcome.Done(s"$n answers: ${written(x)}.", Some(said.integrity))
-                }
-            }
-        }
+    new Hosted(
+      spec,
+      Gate.Free,
+      a => s"${HiddenName.value(a.name)}: ${a.question}",
+      Believed.Own
+    ).calling { (a, slot) =>
+      val n = HiddenName.value(a.name)
+      hidden.get(a.name) match {
+        case None => Outcome.Done(s"Nothing in the request you answered is hidden as $n.")
+        case Some(item) =>
+          answer(item, a.question, a.shape, slot) match {
+            case Left(_) => Outcome.Failed(s"$n gave no answer that reads as ${named(a.shape)}.")
+            case Right(said) =>
+              said.extract match {
+                case None => Outcome.Done(s"$n does not say.", Some(said.integrity))
+                case Some(x) => Outcome.Done(s"$n answers: ${written(x)}.", Some(said.integrity))
+              }
+          }
+      }
     }
   }
 

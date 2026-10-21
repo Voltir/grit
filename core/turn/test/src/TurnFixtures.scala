@@ -628,7 +628,8 @@ object TurnFixtures {
   val hostedPost: Hosted[String] = new Hosted(
     ToolSpec(ToolName("post"), "Posts a note.", path),
     Gate.Free,
-    p => p
+    p => p,
+    Believed.Default
   ).requiring(Integrity.Member)
 
   /** `peek` over `ws`, its results believed at nothing, then `post`, which requires
@@ -706,14 +707,24 @@ object TurnFixtures {
 
   /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
   val hostedFetch: Hosted[String] =
-    new Hosted(ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun), Gate.Free, p => p)
+    fetchBelieved(Believed.Default)
+
+  /** `fetch`, hosted, free, its results believed at `output`. */
+  def fetchBelieved(output: Believed): Hosted[String] =
+    new Hosted(
+      ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun),
+      Gate.Free,
+      p => p,
+      output
+    )
 
   /** `prod`, hosted, asking first. */
   val hostedProd: Hosted[String] =
     new Hosted(
       ToolSpec(ToolName("prod"), "Prods a file, asking first.", path),
       Gate.Ask(p => s"prod $p"),
-      p => p
+      p => p,
+      Believed.Default
     )
 
   /** Both hosted tools. */

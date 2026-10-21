@@ -33,7 +33,7 @@ object PluginCaptureTests extends TestSuite {
       |}
       |object Recent extends PluginTool[Int] {
       |  val described: Hosted[Int] =
-      |    new Hosted(ToolSpec(ToolName("recent"), "Recent lines.", Args.of((n = Field.count("How many.", 1, 5))).map(_.n)), Gate.Free, n => n.toString)
+      |    new Hosted(ToolSpec(ToolName("recent"), "Recent lines.", Args.of((n = Field.count("How many.", 1, 5))).map(_.n)), Gate.Free, n => n.toString, Believed.Default)
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    Right(new PluginRun[Int] {
       |      def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =

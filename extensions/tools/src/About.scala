@@ -4,7 +4,18 @@ import scala.io.{Codec, Source}
 import scala.util.Using
 
 import grit.core.persona.Persona
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
+import grit.core.tool.{
+  Args,
+  Believed,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSpec
+}
 
 /** `about`: what grit is and how it works, for when the person asks, from docs shipped with
   * this module.
@@ -85,8 +96,9 @@ object About {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      topic => topic.fold("")(_.key)
-    ).own.over {
+      topic => topic.fold("")(_.key),
+      Believed.Own
+    ).over {
       case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Section.Grit, "")}")
       case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
     }

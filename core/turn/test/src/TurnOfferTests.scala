@@ -209,7 +209,8 @@ object TurnOfferTests extends TestSuite {
     new Hosted(
       ToolSpec(named(name), s"Does $name.", Args.of((text = Field.text("What."))).map(_.text)),
       Gate.Free,
-      t => t
+      t => t,
+      Believed.Default
     )
 
   /** The recorded offer of `slack`'s first turn, linked by `links`, and its set's names, while

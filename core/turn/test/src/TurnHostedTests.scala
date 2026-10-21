@@ -14,7 +14,7 @@ import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
-import grit.core.tool.{CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
+import grit.core.tool.{Believed, CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
 import grit.core.visibility.{
   Accounts,
   Clearance,
@@ -262,7 +262,7 @@ object TurnHostedTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
-      val trusted = hostedFetch.believed(Integrity.Member)
+      val trusted = fetchBelieved(Believed.At(Integrity.Member))
       val edge = new Served(
         new InMemoryEdges,
         durable,
@@ -466,7 +466,7 @@ object TurnHostedTests extends TestSuite {
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
       // The tool declares member; github declares nothing, so its results are untrusted.
-      val trusted = hostedFetch.believed(Integrity.Member)
+      val trusted = fetchBelieved(Believed.At(Integrity.Member))
       val edge = new Served(
         new InMemoryEdges,
         durable,

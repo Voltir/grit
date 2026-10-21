@@ -12,7 +12,18 @@ import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, PlainJob, ScheduleDes
 import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.plugin.{Plugin, PluginRun, PluginTool}
 import grit.core.store.Reads
-import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
+import grit.core.tool.{
+  Args,
+  ArgsError,
+  Believed,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  ToolName,
+  ToolSpec
+}
 import grit.core.visibility.Integrity
 
 /** Reminders (ADR 0029's first use): `remind_me` sets a one-off reminder, which its job
@@ -162,8 +173,9 @@ object Reminders {
           action = Some("set reminders")
         ),
         Gate.Free,
-        a => s"${shown(a.when)}: ${a.reminder.text}"
-      ).requiring(Integrity.Member).own
+        a => s"${shown(a.when)}: ${a.reminder.text}",
+        Believed.Own
+      ).requiring(Integrity.Member)
 
     def bind(
         own: PluginReads,
@@ -216,8 +228,9 @@ object Reminders {
           retry = Retry.Rerun
         ),
         Gate.Free,
-        _ => ""
-      ).believed(Integrity.Member)
+        _ => "",
+        Believed.At(Integrity.Member)
+      )
 
     def bind(
         own: PluginReads,
@@ -274,8 +287,9 @@ object Reminders {
           action = Some("cancel reminders")
         ),
         Gate.Free,
-        ScheduleId.value
-      ).requiring(Integrity.Member).own
+        ScheduleId.value,
+        Believed.Own
+      ).requiring(Integrity.Member)
 
     def bind(
         own: PluginReads,

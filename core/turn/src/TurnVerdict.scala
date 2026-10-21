@@ -4,7 +4,18 @@ import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.ModelRequest
-import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{
+  Args,
+  ArgsError,
+  Believed,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Tool,
+  ToolName,
+  ToolSpec
+}
 
 /** The main model asked where a message went, when the classifier was unsure
   * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of the tool loop's tools
@@ -119,7 +130,7 @@ object TurnVerdict {
     * call, not from running it ([[of]]).
     */
   def tool(c: TurnAgenda.Classification): Tool[Agenda.Verdict] =
-    new Hosted(spec(c), Gate.Free, shown).own.over(_ => Outcome.Done(Noted))
+    new Hosted(spec(c), Gate.Free, shown, Believed.Own).over(_ => Outcome.Done(Noted))
 
   /** `verdict` as a transcript shows a `topic` call that gave it. */
   private def shown(verdict: Agenda.Verdict): String = verdict match {

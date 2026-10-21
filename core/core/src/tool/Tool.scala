@@ -132,7 +132,7 @@ object Tool {
       output: Believed,
       run: A => Outcome
   ): Tool[A]^{run} =
-    new Hosted(spec, gate, shown, Integrity.Untrusted, output).over(run)
+    new Hosted(spec, gate, shown, output).over(run)
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
     * under its recorded name and schema, asking first when it did, writing to the
@@ -210,8 +210,7 @@ object Tool {
   * whether a person approves each call, how a call is shown, what a call requires, and what
   * its results are believed at. An engine offers it and binds calls to it ([[Bound.Hosted]]);
   * an edge runs them, with the [[Tool]] [[over]] makes from the same description, so both read
-  * arguments with one spec. As described, it requires nothing, and its results are believed
-  * at [[Believed.Default]].
+  * arguments with one spec. As described, it requires nothing.
   */
 final class Hosted[A] private[tool] (
     val spec: ToolSpec[A],
@@ -221,9 +220,11 @@ final class Hosted[A] private[tool] (
     val output: Believed
 ) extends Tool.Offered {
 
-  /** A tool described by `spec`, `gate` and `shown`. */
-  def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String) =
-    this(spec, gate, shown, Integrity.Untrusted, Believed.Default)
+  /** A tool described by `spec`, `gate` and `shown`, its results believed at `output` when a
+    * call does not say.
+    */
+  def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String, output: Believed) =
+    this(spec, gate, shown, Integrity.Untrusted, output)
 
   def name: ToolName = spec.name
 
@@ -246,14 +247,6 @@ final class Hosted[A] private[tool] (
   /** This hosted tool, its calls bound only when stamped at `integrity` or above. */
   def requiring(integrity: Integrity): Hosted[A] =
     new Hosted(spec, gate, shown, integrity, output)
-
-  /** This tool, its results believed at `integrity` when a call does not say ([[output]]). */
-  def believed(integrity: Integrity): Hosted[A] =
-    new Hosted(spec, gate, shown, requires, Believed.At(integrity))
-
-  /** This tool, its results grit's own words when a call does not say ([[Believed.Own]]). */
-  def own: Hosted[A] =
-    new Hosted(spec, gate, shown, requires, Believed.Own)
 
   /** This tool, run by `run`. */
   def over(run: A => Outcome): Tool[A]^{run} =

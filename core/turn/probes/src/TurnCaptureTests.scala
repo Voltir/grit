@@ -23,7 +23,7 @@ object TurnCaptureTests extends TestSuite {
       |import grit.core.tool.*
       |import grit.turn.*
       |val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
-      |extension (s: ToolSpec[String]) def hosted: Hosted[String] = new Hosted(s, Gate.Free, p => p)
+      |extension (s: ToolSpec[String]) def hosted: Hosted[String] = new Hosted(s, Gate.Free, p => p, Believed.Default)
       |def reads(ws: Workspace^): Tool[String]^{ws} =
       |  Tool(spec, Gate.Free, p => p, Believed.Default, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
       |def writes(e: Edits^): Tool[String]^{e} =

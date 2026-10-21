@@ -20,7 +20,7 @@ import grit.core.job.{
 import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginTool}
 import grit.core.store.{Reads, StoreError, Tx}
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
+import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Compartment
 
 /** Plugins for tests of how a deployment takes them: one that exports its documents' keys, and
@@ -42,7 +42,8 @@ object TestPlugins {
       new Hosted(
         ToolSpec(called, "Lists keys.", Args.of((n = Field.count("How many.", 1, 9))).map(_.n)),
         Gate.Free,
-        n => n.toString
+        n => n.toString,
+        Believed.Default
       )
     def bind(
         own: PluginReads,
@@ -140,7 +141,8 @@ object TestPlugins {
         new Hosted(
           ToolSpec(called, "Books.", Args.of((n = Field.count("How many.", 1, 9))).map(_.n)),
           Gate.Free,
-          n => n.toString
+          n => n.toString,
+          Believed.Default
         )
       def bind(
           own: PluginReads,

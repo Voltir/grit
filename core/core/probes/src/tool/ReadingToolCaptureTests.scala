@@ -15,7 +15,7 @@ object ReadingToolCaptureTests extends TestSuite {
       |import grit.core.store.*
       |import grit.core.tool.*
       |val described: Hosted[Unit] =
-      |  Hosted(ToolSpec(ToolName("probe"), "A probe.", Args.of(NamedTuple.Empty).map(_ => ())), Gate.Free, _ => "")
+      |  Hosted(ToolSpec(ToolName("probe"), "A probe.", Args.of(NamedTuple.Empty).map(_ => ())), Gate.Free, _ => "", Believed.Default)
       |""".stripMargin
 
   private val readsThrough =

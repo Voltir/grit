@@ -8,7 +8,7 @@ import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -154,7 +154,7 @@ object TurnLoopTurnTests extends TestSuite {
       val ws = new Files(files)
       val path = Args.of((path = Field.text("A path."))).map(_.path)
       def where(name: ToolName, gate: Gate[String]) =
-        new Hosted(ToolSpec(name, "Says which call it is.", path), gate, p => p)
+        new Hosted(ToolSpec(name, "Says which call it is.", path), gate, p => p, Believed.Default)
           .calling((_, at) => Outcome.Done(at.key))
       val toolbox = Toolbox
         .of[caps.CapSet^{ws}](

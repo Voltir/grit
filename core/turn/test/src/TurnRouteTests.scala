@@ -30,7 +30,7 @@ import grit.core.model.{
 import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
 import grit.core.route.Uncleared
 import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
-import grit.core.tool.{Args, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.TestLabels.place
 import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Recorded, Subject, Visibility}
 import grit.dbos.sql.TestTx
@@ -595,7 +595,8 @@ object TurnRouteTests extends TestSuite {
           Hosted[Unit](
             ToolSpec(ToolName("look"), "Reads the floor.", Args.of(NamedTuple.Empty).map(_ => ())),
             Gate.Free,
-            _ => ""
+            _ => "",
+            Believed.Default
           ).reading((_, _, reads) =>
             reads
               .read((tx: Tx^) ?=> Right(Label.shown(Tx.floor(tx))))

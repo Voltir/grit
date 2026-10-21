@@ -12,7 +12,7 @@ object ClearedCaptureTests extends TestSuite {
   private val prelude =
     """package outside
       |import grit.core.store.{Askers, Db, Tx}
-      |import grit.core.tool.{Args, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
+      |import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, Tool, ToolName, ToolSpec}
       |import grit.core.visibility.Subject
       |import grit.tools.Cleared
       |""".stripMargin
@@ -23,7 +23,8 @@ object ClearedCaptureTests extends TestSuite {
        |    Hosted[Unit](
        |      ToolSpec(ToolName("clearance"), "d", Args.of(NamedTuple.Empty).map(_ => ())),
        |      Gate.Free,
-       |      _ => ""
+       |      _ => "",
+       |      Believed.Default
        |    ).reading((_, at, handed) =>
        |      $reads.read((tx: Tx^) ?=> Right("x")).fold(_ => Outcome.Failed("x"), Outcome.Done(_))
        |    )""".stripMargin

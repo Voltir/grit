@@ -6,6 +6,7 @@ import grit.core.host.{Clipped, Edits, HostError, Lines, RelPath, Replace, Shell
 import grit.core.tool.{
   Args,
   ArgsError,
+  Believed,
   DuplicateName,
   Field,
   Gate,
@@ -97,8 +98,9 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o")
-    ).believed(Integrity.Member)
+      a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
+      Believed.At(Integrity.Member)
+    )
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
@@ -132,8 +134,9 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => RelPath.value(a.path)
-    ).believed(Integrity.Member)
+      a => RelPath.value(a.path),
+      Believed.At(Integrity.Member)
+    )
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
     listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
@@ -165,8 +168,9 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => s"\"${a.pattern}\" ${RelPath.value(a.path)}"
-    ).believed(Integrity.Member)
+      a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
+      Believed.At(Integrity.Member)
+    )
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
     searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
@@ -198,8 +202,9 @@ object Coding {
         s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
           preview(lines, "+ ")
       }),
-      a => RelPath.value(a.path)
-    ).requiring(Integrity.Member).believed(Integrity.Member)
+      a => RelPath.value(a.path),
+      Believed.At(Integrity.Member)
+    ).requiring(Integrity.Member)
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
     writeHosted.over(a =>
@@ -248,8 +253,9 @@ object Coding {
         s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
           shown.mkString("\n")
       }),
-      a => RelPath.value(a.path)
-    ).requiring(Integrity.Member).believed(Integrity.Member)
+      a => RelPath.value(a.path),
+      Believed.At(Integrity.Member)
+    ).requiring(Integrity.Member)
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
     editHosted.over(a =>
@@ -292,8 +298,9 @@ object Coding {
           .map(a => (command = a.command, timeout = a.timeout.fold(DefaultTimeout)(_.seconds)))
       ),
       Gate.Ask(a => s"Run in the checkout (timeout ${a.timeout.toSeconds} s):\n${a.command}"),
-      a => a.command
-    ).requiring(Integrity.Member).believed(Integrity.Member)
+      a => a.command,
+      Believed.At(Integrity.Member)
+    ).requiring(Integrity.Member)
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a =>

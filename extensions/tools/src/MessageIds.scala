@@ -12,6 +12,7 @@ import grit.core.store.{Askers, Entry, EntrySearch, EntryStore, Payload, Princip
 import grit.core.tool.{
   Args,
   ArgsError,
+  Believed,
   Field,
   Gate,
   Hosted,
@@ -21,6 +22,7 @@ import grit.core.tool.{
   ToolName,
   ToolSpec
 }
+import grit.core.visibility.Integrity
 
 /** `message_ids`: the id grit keeps this conversation under, and the asker's first or last
   * message in this room, or the message there whose words best match a quote, by its entry id,
@@ -235,6 +237,9 @@ object MessageIds {
         case Pointed.First => "first"
         case Pointed.Last => "last"
         case Pointed.Quoted(words) => s"quoted \"$words\""
-      }
+      },
+      // Not grit's own words: its "it begins" line quotes a person's message, anyone's under
+      // `quoted`.
+      Believed.At(Integrity.Untrusted)
     )
 }

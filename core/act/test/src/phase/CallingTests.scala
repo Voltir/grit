@@ -30,6 +30,7 @@ import grit.core.place.{Directory, Place, Service}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{
   Args,
+  Believed,
   Bound,
   Field,
   Gate,
@@ -93,8 +94,8 @@ object CallingTests extends TestSuite {
   private val box: Toolbox[{}] =
     Toolbox
       .of(
-        new Hosted(spec(ToolName("fetch")), Gate.Free, p => p),
-        new Hosted(spec(ToolName("prod")), Gate.Ask(p => s"Prod $p?"), p => p)
+        new Hosted(spec(ToolName("fetch")), Gate.Free, p => p, Believed.Default),
+        new Hosted(spec(ToolName("prod")), Gate.Ask(p => s"Prod $p?"), p => p, Believed.Default)
       )
       .fold(d => throw new java.lang.AssertionError(d.toString), identity)
 
