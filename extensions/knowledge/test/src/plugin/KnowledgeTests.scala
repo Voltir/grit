@@ -3,7 +3,7 @@ package grit.knowledge.plugin
 import java.time.{Instant, LocalTime, ZoneId}
 
 import grit.core.document.{DocLabel, Document, Placement, Pointer}
-import grit.core.id.{CorpusName, DocumentVersion, PluginName, ScheduleKey}
+import grit.core.id.{CorpusName, DocumentVersionId, PluginName, ScheduleKey}
 import grit.core.job.{Declared, SlotRule}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.tool.ToolName
@@ -52,7 +52,7 @@ object KnowledgeTests extends TestSuite {
       pointer
     )
     Document(
-      right(DocumentVersion.of(1).toRight("no version")),
+      right(DocumentVersionId.of(1).toRight("no version")),
       name,
       card.docKey,
       label,

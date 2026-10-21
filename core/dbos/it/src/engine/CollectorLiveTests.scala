@@ -13,7 +13,7 @@ import grit.core.id.{
   ConversationId,
   Declarer,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -486,7 +486,7 @@ object CollectorLiveTests extends TestSuite {
       plugin: PluginName,
       at: Instant,
       texts: String*
-  ): Vector[DocumentVersion] = {
+  ): Vector[DocumentVersionId] = {
     val keeper = documents.keeper(plugin, Terms)
     val key = DocKey.of("k").getOrElse(sys.error("key"))
     val here = Place.under(Namespace.Task, Vector("collect"))

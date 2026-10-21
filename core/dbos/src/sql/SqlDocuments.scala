@@ -20,7 +20,7 @@ import grit.core.document.{
   Shelved,
   Written
 }
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
@@ -56,7 +56,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]] = reads.search(shelves, query, limit, at)
 
-  def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+  def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
     reads.read(versions)
 
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using
@@ -83,7 +83,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
       }
     } yield ()
 
-  def placed(versions: Vector[DocumentVersion], at: Instant)(using
+  def placed(versions: Vector[DocumentVersionId], at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Unit] =
     if (versions.isEmpty) Right(())
@@ -99,7 +99,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
         ps.setString(2, numbers(versions))
       }.map(_ => ())
 
-  def followed(versions: Vector[DocumentVersion], at: Instant)(using
+  def followed(versions: Vector[DocumentVersionId], at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Unit] =
     if (versions.isEmpty) Right(())
@@ -127,9 +127,9 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
         |) kept ORDER BY plugin COLLATE "C"""".stripMargin
     )(_ => ())(rs => PluginName.of(rs.getString("plugin")))
 
-  def forget(version: DocumentVersion)(using tx: Tx^): Either[StoreError, Unit] =
+  def forget(version: DocumentVersionId)(using tx: Tx^): Either[StoreError, Unit] =
     update("DELETE FROM grit.documents WHERE version = ?")(
-      _.setLong(1, DocumentVersion.value(version))
+      _.setLong(1, DocumentVersionId.value(version))
     ).map(_ => ())
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
@@ -213,8 +213,8 @@ private[sql] object SqlDocuments {
   /** `versions` as a JSON array of their numbers written as strings: a JSON number past 2^53
     * would lose digits.
     */
-  def numbers(versions: Vector[DocumentVersion]): String =
-    strings(versions.map(v => DocumentVersion.value(v).toString))
+  def numbers(versions: Vector[DocumentVersionId]): String =
+    strings(versions.map(v => DocumentVersionId.value(v).toString))
 
   def path(place: Place): ujson.Arr = ujson.Arr.from(place.segments.map(ujson.Str(_)))
 
@@ -251,7 +251,7 @@ private[sql] object SqlDocuments {
   /** The version `rs` holds ([[Columns]]), or why not: one withdrawn holds nothing. */
   def document(rs: ResultSet): Either[String, Document] =
     for {
-      version <- DocumentVersion.of(rs.getLong("version")).toRight("a document's version")
+      version <- DocumentVersionId.of(rs.getLong("version")).toRight("a document's version")
       plugin <- PluginName.of(rs.getString("plugin"))
       key <- DocKey.of(rs.getString("key"))
       place <- placeOf(rs.getString("place"))
@@ -405,7 +405,7 @@ private[sql] object SqlDocuments {
             ps.setInt(11, id)
           }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
             // The parameter's type written out: inferred, it is Vector's array-holding refinement.
-            (head: Vector[(DocumentVersion, Boolean)]) =>
+            (head: Vector[(DocumentVersionId, Boolean)]) =>
               head match {
                 case Vector((current, true)) => Right(Written.Unchanged(current, kept))
                 case before =>
@@ -444,7 +444,7 @@ private[sql] object SqlDocuments {
                           """INSERT INTO grit.document_refs (version, kind, ref)
                           |SELECT ?, r.kind, r.ref FROM jsonb_to_recordset(?::jsonb) AS r(kind text, ref text)""".stripMargin
                         ) { ps =>
-                          ps.setLong(1, DocumentVersion.value(version))
+                          ps.setLong(1, DocumentVersionId.value(version))
                           ps.setString(2, held)
                         }
                     gone <- excess(key, id)
@@ -459,10 +459,10 @@ private[sql] object SqlDocuments {
 
     def withdraw(key: DocKey, label: Label, at: Instant)(using
         tx: Tx^
-    ): Either[StoreError, Option[DocumentVersion]] =
+    ): Either[StoreError, Option[DocumentVersionId]] =
       SqlLabels.intern(label).flatMap(withdrawn(key, _, at))
 
-    def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+    def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         tx: Tx^
     ): Either[StoreError, Boolean] = {
       val clearance = Tx.clearance(tx)
@@ -478,7 +478,7 @@ private[sql] object SqlDocuments {
         SqlClearance.bind(ps, 1, clearance)
         ps.setObject(SqlClearance.Params + 1, day)
         ps.setObject(SqlClearance.Params + 2, utc(at))
-        ps.setLong(SqlClearance.Params + 3, DocumentVersion.value(version))
+        ps.setLong(SqlClearance.Params + 3, DocumentVersionId.value(version))
         ps.setString(SqlClearance.Params + 4, PluginName.value(plugin))
       }.map(_ == 1)
     }
@@ -486,7 +486,7 @@ private[sql] object SqlDocuments {
     /** As [[withdraw]], at the label whose id is `label`. */
     private def withdrawn(key: DocKey, label: Int, at: Instant)(using
         tx: Tx^
-    ): Either[StoreError, Option[DocumentVersion]] =
+    ): Either[StoreError, Option[DocumentVersionId]] =
       rows(
         """SELECT version FROM grit.documents
           | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
@@ -496,7 +496,7 @@ private[sql] object SqlDocuments {
         ps.setString(1, PluginName.value(plugin))
         ps.setString(2, DocKey.value(key))
         ps.setInt(3, label)
-      }(versionOf).flatMap { (found: Vector[DocumentVersion]) =>
+      }(versionOf).flatMap { (found: Vector[DocumentVersionId]) =>
         // At most one: idx_documents_current allows one per key and label.
         found.headOption match {
           case None => Right(None)
@@ -514,7 +514,7 @@ private[sql] object SqlDocuments {
               ) { ps =>
                 ps.setObject(1, utc(at))
                 ps.setObject(2, utc(at))
-                ps.setLong(3, DocumentVersion.value(current))
+                ps.setLong(3, DocumentVersionId.value(current))
               }(versionOf)
               withdrawal <- written.headOption.toRight(
                 StoreError.Invalid("a withdrawal returned no version")
@@ -525,13 +525,13 @@ private[sql] object SqlDocuments {
       }
 
     /** `version` no longer current from `at`, and marked for deletion. */
-    private def supersede(version: DocumentVersion, at: Instant)(using
+    private def supersede(version: DocumentVersionId, at: Instant)(using
         tx: Tx^
     ): Either[StoreError, Unit] =
       for {
         _ <- update("UPDATE grit.documents SET superseded_at = ? WHERE version = ?") { ps =>
           ps.setObject(1, utc(at))
-          ps.setLong(2, DocumentVersion.value(version))
+          ps.setLong(2, DocumentVersionId.value(version))
         }
         _ <- tombstones.write(Target.Document(version), at)
       } yield ()
@@ -573,6 +573,6 @@ private[sql] object SqlDocuments {
       .from(refs.toVector.map(r => ujson.Obj("kind" -> r.kind, "ref" -> r.ref)))
       .render()
 
-  def versionOf(rs: ResultSet): Either[String, DocumentVersion] =
-    DocumentVersion.of(rs.getLong("version")).toRight("a document's version")
+  def versionOf(rs: ResultSet): Either[String, DocumentVersionId] =
+    DocumentVersionId.of(rs.getLong("version")).toRight("a document's version")
 }

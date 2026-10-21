@@ -5,7 +5,7 @@ import java.time.{Instant, LocalDate, ZoneId}
 import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName}
 import grit.core.document.DocumentKeeper
 import grit.core.flow.Trusted
-import grit.core.id.{DocumentVersion, JobName}
+import grit.core.id.{DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.schema.{JsonSchema, Typed}
@@ -242,7 +242,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       day: LocalDate,
       t: Touch,
       units: Vector[Ref],
-      holds: Vector[DocumentVersion],
+      holds: Vector[DocumentVersionId],
       i: Int,
       review: Boolean,
       g: Gathered

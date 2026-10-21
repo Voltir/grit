@@ -7,7 +7,7 @@ import grit.core.context.{AssemblyNote, Shown, Window}
 import grit.core.document.{DocLabel, Document, Pointer}
 import grit.core.durable.StepRecord
 import grit.core.either.Traversal
-import grit.core.id.{DocumentVersion, EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{DocumentVersionId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, ToolSchema}
@@ -279,9 +279,9 @@ object TurnCapture {
   /** Each of `versions` as a window holding it shows it today: its document, if it is still
     * kept, and its plugin's label, if its plugin is enabled.
     */
-  private def held(reader: Reader^, versions: Vector[DocumentVersion])(using
+  private def held(reader: Reader^, versions: Vector[DocumentVersionId])(using
       Tx^
-  ): Either[StoreError, Vector[(DocumentVersion, Option[(Document, Option[DocLabel])])]] =
+  ): Either[StoreError, Vector[(DocumentVersionId, Option[(Document, Option[DocLabel])])]] =
     for {
       kept <- reader.documents.read(versions)
       labelled <- reader.documents.labelled(versions)
@@ -300,7 +300,7 @@ object TurnCapture {
       recalled: Set[grit.core.id.TurnSeq],
       nearby: Vector[Nearby],
       near: Vector[Entry],
-      documents: Vector[(DocumentVersion, Option[(Document, Option[DocLabel])])],
+      documents: Vector[(DocumentVersionId, Option[(Document, Option[DocLabel])])],
       offered: ToolName => Boolean,
       mine: Vector[Entry],
       named: Speakers,

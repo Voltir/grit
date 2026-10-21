@@ -1,7 +1,7 @@
 package grit.eval.harness.reply
 
 import grit.core.context.{AssemblyNote, Window}
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, TurnSeq, WorkflowId}
 import grit.core.place.Place
 import grit.core.store.Nearby
 
@@ -31,7 +31,7 @@ object DriftTests extends TestSuite {
     }
 
     test("a document changed, added or reordered is nearby drift") {
-      def held(vs: Long*) = vs.toVector.flatMap(DocumentVersion.of)
+      def held(vs: Long*) = vs.toVector.flatMap(DocumentVersionId.of)
       val documented = recorded.copy(documents = held(7))
       Drift.of(documented, documented.copy(documents = held(8)), lost = false) ==> Drift.Elsewhere
       Drift.of(

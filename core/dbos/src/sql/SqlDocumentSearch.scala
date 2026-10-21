@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.id.{DocumentVersion, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.store.{StoreError, Tx}
 
 /** [[DocumentSearch]] over `grit.documents` and `grit.document_terms`: reads only, so it needs
@@ -68,7 +68,7 @@ final class SqlDocumentSearch extends DocumentSearch {
       }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
     }
 
-  def read(versions: Vector[DocumentVersion])(using
+  def read(versions: Vector[DocumentVersionId])(using
       tx: Tx^
   ): Either[StoreError, Vector[Document]] =
     if (versions.isEmpty) Right(Vector.empty)

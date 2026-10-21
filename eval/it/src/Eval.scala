@@ -13,7 +13,7 @@ import grit.core.context.{
   Window
 }
 import grit.core.document.DocWeight
-import grit.core.id.{DocumentVersion, EntryId, TurnRef}
+import grit.core.id.{DocumentVersionId, EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -101,7 +101,7 @@ object Eval {
       missed: Vector[EntryId],
       notes: Vector[AssemblyNote],
       strays: Int = 0,
-      missedDocuments: Vector[DocumentVersion] = Vector.empty
+      missedDocuments: Vector[DocumentVersionId] = Vector.empty
   )
 
   /** A case written into the eval's database as its [[Layout]] lays it out: the turn it asks
@@ -117,8 +117,8 @@ object Eval {
       messages: Map[EntryId, Message],
       never: Vector[EntryId] = Vector.empty,
       scope: Scope = Scope.Off,
-      mustDocuments: Vector[DocumentVersion] = Vector.empty,
-      documents: Map[DocumentVersion, Message] = Map.empty
+      mustDocuments: Vector[DocumentVersionId] = Vector.empty,
+      documents: Map[DocumentVersionId, Message] = Map.empty
   )
 
   /** `c` as `variant` lays it out, written into `engine`'s database, its documents through
@@ -317,7 +317,7 @@ object Eval {
       loaded: Loaded,
       shown: Vector[EntryId],
       notes: Vector[AssemblyNote] = Vector.empty,
-      documents: Vector[DocumentVersion] = Vector.empty
+      documents: Vector[DocumentVersionId] = Vector.empty
   ): Score = {
     val held = shown.toSet
     val kept = documents.toSet
@@ -416,7 +416,7 @@ object Eval {
       case (s, Left(e)) => println(f"  ${s.label}%-22s failed: $e")
       case (s, Right(r)) =>
         val gists = r.missed.map(id => gist(loaded, id)) ++
-          r.missedDocuments.map(v => s"document ${DocumentVersion.value(v)}")
+          r.missedDocuments.map(v => s"document ${DocumentVersionId.value(v)}")
         val missed = if (gists.isEmpty) "" else gists.mkString("  missed: ", "; ", "")
         val strays = if (loaded.never.isEmpty) "" else s"  ${r.strays}/${loaded.never.size} strays"
         println(

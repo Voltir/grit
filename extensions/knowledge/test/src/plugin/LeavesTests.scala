@@ -3,7 +3,7 @@ package grit.knowledge.plugin
 import java.time.{Instant, LocalDate}
 
 import grit.core.document.{DocText, Document, Placement}
-import grit.core.id.{ConversationId, DocKey, DocumentVersion, PluginName}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.stitch.{Link, StrandDigest}
 import grit.core.visibility.{Integrity, Label}
@@ -24,7 +24,7 @@ object LeavesTests extends TestSuite {
 
   private def doc(plugin: String, key: DocKey, data: ujson.Value = ujson.Obj()): Document =
     Document(
-      right(DocumentVersion.of(1).toRight("no version")),
+      right(DocumentVersionId.of(1).toRight("no version")),
       right(PluginName.of(plugin)),
       key,
       Label.Public,

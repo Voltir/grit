@@ -45,7 +45,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -245,13 +245,15 @@ object RetrievalAssemblerTests extends TestSuite {
             .sortBy(-_.score)
         )
     }
-    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] = {
+    def read(
+        versions: Vector[DocumentVersionId]
+    )(using Tx^): Either[StoreError, Vector[Document]] = {
       reads = reads :+ versions
       under.read(versions)
     }
     // Only ever holds immutable vectors; nothing reads it but the test that owns it.
     @caps.unsafe.untrackedCaptures
-    var reads = Vector.empty[Vector[DocumentVersion]]
+    var reads = Vector.empty[Vector[DocumentVersionId]]
   }
 
   /** `under`'s entries, keeping which conversation each `list` asked for. */
@@ -301,7 +303,7 @@ object RetrievalAssemblerTests extends TestSuite {
       place: Place,
       text: String,
       at: Instant = Before
-  ): DocumentVersion =
+  ): DocumentVersionId =
     docs.under
       .keeper(plugin(p), termsOf(1))
       .write(
@@ -321,7 +323,7 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
   /** What the version `v` of `docs` costs as the window shows it, under the label "Notes". */
-  private def docCost(docs: ScriptedDocs, v: DocumentVersion): Long =
+  private def docCost(docs: ScriptedDocs, v: DocumentVersionId): Long =
     docs.under
       .read(Vector(v))(using TestTx.fake)
       .toOption
@@ -1290,7 +1292,7 @@ object RetrievalAssemblerTests extends TestSuite {
       search.near = Vector((named, "document::t1:3", 2.0))
       val w =
         assemble(world, new Writer(Some("probe budget")), 1000, search, at = 0, documents = docs)
-      (DocumentVersion.value(v), w.nearby.map(_.conversation), w.documents) ==>
+      (DocumentVersionId.value(v), w.nearby.map(_.conversation), w.documents) ==>
         (1L, Vector(named), Vector(v))
     }
 

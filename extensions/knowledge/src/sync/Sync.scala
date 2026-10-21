@@ -8,7 +8,7 @@ import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{CorpusName, DocumentVersion, JobName}
+import grit.core.id.{CorpusName, DocumentVersionId, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
 import grit.core.place.Place
@@ -386,7 +386,7 @@ object Sync {
   )(using Tx^): Either[StoreError, Kept] =
     for {
       // Withdrawn before the write, so the old copy never counts against the bound beside it.
-      old <- replacing.fold[Either[StoreError, Option[DocumentVersion]]](Right(None))(
+      old <- replacing.fold[Either[StoreError, Option[DocumentVersionId]]](Right(None))(
         keeper.withdraw(card.docKey, _, now)
       )
       w <- keeper.write(

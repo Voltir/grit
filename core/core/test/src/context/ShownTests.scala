@@ -7,7 +7,7 @@ import grit.core.host.{RelPath, Replace}
 import grit.core.id.{
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodSeq,
@@ -635,7 +635,7 @@ object ShownTests extends TestSuite {
         e.fold(why => throw new java.lang.AssertionError(why), identity)
       val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
       val document = Document(
-        got(DocumentVersion.of(7).toRight("version")),
+        got(DocumentVersionId.of(7).toRight("version")),
         got(PluginName.of("digest")),
         got(DocKey.of("week")),
         grit.core.visibility.Label.Public,
@@ -666,7 +666,7 @@ object ShownTests extends TestSuite {
         )
       )
       val document = Document(
-        got(DocumentVersion.of(7).toRight("version")),
+        got(DocumentVersionId.of(7).toRight("version")),
         got(PluginName.of("cards")),
         got(DocKey.of("docs/a b.md")),
         grit.core.visibility.Label.Public,

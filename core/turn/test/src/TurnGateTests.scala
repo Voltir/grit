@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, ToolCallId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, ToolCallId}
 import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.core.visibility.Integrity.Level
 import grit.core.visibility.{Compartment, Integrity}
@@ -29,8 +29,8 @@ object TurnGateTests extends TestSuite {
       entry(note, Integrity.Outside, None)
     )
 
-  private val version: DocumentVersion =
-    DocumentVersion.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
+  private val version: DocumentVersionId =
+    DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
 
   private val issue =
     Item(ItemRef.Result(ToolCallId("c1")), Integrity.Untrusted, "github_get_issue")

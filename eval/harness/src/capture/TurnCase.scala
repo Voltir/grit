@@ -7,7 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.document.Pointer
 import grit.core.id.{
   ConversationId,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PluginName,
@@ -113,7 +113,7 @@ final case class Parts(parts: Vector[Part], documents: Vector[Held], gaps: Token
 
 /** A document a window held, by its version. */
 enum Held {
-  def version: DocumentVersion
+  def version: DocumentVersionId
 
   /** One still kept: the `plugin` that kept it; the tool its pointer names, as offered, `None`
     * without one; its tokens as [[grit.core.context.Shown]] shows it today (0 when its plugin is
@@ -123,7 +123,7 @@ enum Held {
     *   the reply's support in it; `None` when the turn has no reply, or its reply passed
     */
   case Kept(
-      version: DocumentVersion,
+      version: DocumentVersionId,
       plugin: PluginName,
       pointer: Option[ToolName],
       tokens: Tokens,
@@ -131,7 +131,7 @@ enum Held {
   )
 
   /** One no longer kept, forgotten since: nothing more is known of it. */
-  case Gone(version: DocumentVersion)
+  case Gone(version: DocumentVersionId)
 }
 
 /** One part of a window: what kind it is, the conversation and the entries (by seq) it shows,

@@ -23,7 +23,7 @@ import grit.core.either.Traversal.sequence
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   PluginName,
   ToolCallId,
@@ -134,7 +134,7 @@ private[moves] object Act {
       name: MoveName,
       acting: Acting,
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
       documentChars: Int,

@@ -2,7 +2,7 @@ package grit.eval.harness.reply
 
 import grit.core.context.{Retrieved, SectionTag}
 import grit.core.document.{DocText, Document}
-import grit.core.id.DocumentVersion
+import grit.core.id.DocumentVersionId
 import grit.core.message.Message
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolName
@@ -26,7 +26,7 @@ object PointerLines {
       "so not shown; any of them can still be read:"
 
   /** The documents `retrieval`'s verdicts rejected, in its results' order. */
-  def rejected(retrieval: TurnRecord.Retrieval): Vector[DocumentVersion] = {
+  def rejected(retrieval: TurnRecord.Retrieval): Vector[DocumentVersionId] = {
     val no = retrieval.verdicts.collect { case (r, Verdict.Rejected(_)) => r }.toSet
     retrieval.results.ranked.collect { case (r @ Retrieved.Doc(v), _) if no(r) => v }
   }

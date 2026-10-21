@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.retention.Target
@@ -39,7 +39,7 @@ final class InMemoryDocuments extends DocumentStore {
 
   /** Where its keepers mark the versions they leave for deletion. */
   val tombstones: InMemoryTombstones =
-    new InMemoryTombstones(v => rows.get(DocumentVersion.value(v)).map(_.plugin))
+    new InMemoryTombstones(v => rows.get(DocumentVersionId.value(v)).map(_.plugin))
 
   /** Its part of a transaction undone: what its keepers wrote, and the versions they marked. */
   val savepoints: Savepoints = new Savepoints {
@@ -118,7 +118,7 @@ final class InMemoryDocuments extends DocumentStore {
 
       def withdraw(key: DocKey, label: Label, at: Instant)(using
           Tx^
-      ): Either[StoreError, Option[DocumentVersion]] =
+      ): Either[StoreError, Option[DocumentVersionId]] =
         head(plugin, key, label) match {
           case Some((v, r)) if r.text.nonEmpty =>
             for {
@@ -140,10 +140,10 @@ final class InMemoryDocuments extends DocumentStore {
           case _ => Right(None)
         }
 
-      def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+      def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
           Tx^
       ): Either[StoreError, Boolean] = {
-        val v = DocumentVersion.value(version)
+        val v = DocumentVersionId.value(version)
         Right(
           rows
             .get(v)
@@ -296,18 +296,22 @@ final class InMemoryDocuments extends DocumentStore {
           }
           .filter(_.score > 0)
           .sortBy(h =>
-            (-h.score, -h.document.written.toEpochMilli, -DocumentVersion.value(h.document.version))
+            (
+              -h.score,
+              -h.document.written.toEpochMilli,
+              -DocumentVersionId.value(h.document.version)
+            )
           )
           .take(limit max 0)
     )
   }
 
-  def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+  def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
     Right(versions.flatMap { v =>
       rows
-        .get(DocumentVersion.value(v))
+        .get(DocumentVersionId.value(v))
         .filter(reads)
-        .flatMap(r => r.text.map(document(DocumentVersion.value(v), r, _)))
+        .flatMap(r => r.text.map(document(DocumentVersionId.value(v), r, _)))
     })
 
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using Tx^): Either[StoreError, Unit] = {
@@ -316,10 +320,10 @@ final class InMemoryDocuments extends DocumentStore {
   }
 
   def placed(
-      versions: Vector[DocumentVersion],
+      versions: Vector[DocumentVersionId],
       at: Instant
   )(using Tx^): Either[StoreError, Unit] = {
-    versions.map(DocumentVersion.value).foreach { v =>
+    versions.map(DocumentVersionId.value).foreach { v =>
       rows.get(v).foreach { r =>
         val latest = if (at.isAfter(r.placement.lastPlaced)) at else r.placement.lastPlaced
         rows = rows.updated(v, r.copy(placement = Placement(r.placement.count + 1, latest)))
@@ -329,10 +333,10 @@ final class InMemoryDocuments extends DocumentStore {
   }
 
   def followed(
-      versions: Vector[DocumentVersion],
+      versions: Vector[DocumentVersionId],
       at: Instant
   )(using Tx^): Either[StoreError, Unit] = {
-    versions.map(DocumentVersion.value).foreach { v =>
+    versions.map(DocumentVersionId.value).foreach { v =>
       rows.get(v).filter(reads).foreach { r =>
         val count = r.following.fold(0L)(_.count) + 1
         val latest = r.following.map(_.last).filter(_.isAfter(at)).getOrElse(at)
@@ -345,8 +349,8 @@ final class InMemoryDocuments extends DocumentStore {
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]] =
     Right((rows.values.map(_.plugin).toVector ++ terms.keys).distinct)
 
-  def forget(version: DocumentVersion)(using Tx^): Either[StoreError, Unit] = {
-    val v = DocumentVersion.value(version)
+  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Unit] = {
+    val v = DocumentVersionId.value(version)
     rows = rows - v
     ups = ups.map((u, up) => u -> (if (up.version.contains(v)) up.copy(version = None) else up))
     Right(())
@@ -355,7 +359,7 @@ final class InMemoryDocuments extends DocumentStore {
   def remove(plugin: PluginName, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     val gone = rows.collect { case (v, r) if r.plugin == plugin => v }.toSet
     val ended = tombstones.pending.map(_.target).foldLeft[Either[StoreError, Unit]](Right(())) {
-      case (acc, t @ Target.Document(v)) if gone(DocumentVersion.value(v)) =>
+      case (acc, t @ Target.Document(v)) if gone(DocumentVersionId.value(v)) =>
         acc.flatMap(_ => tombstones.collected(t, at))
       case (acc, _) => acc
     }
@@ -414,8 +418,8 @@ final class InMemoryDocuments extends DocumentStore {
     last
   }
 
-  private def version(v: Long): DocumentVersion =
-    DocumentVersion.of(v).getOrElse(throw new IllegalStateException(s"version $v"))
+  private def version(v: Long): DocumentVersionId =
+    DocumentVersionId.of(v).getOrElse(throw new IllegalStateException(s"version $v"))
 
   private def document(v: Long, r: Row, text: DocText): Document =
     Document(

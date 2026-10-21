@@ -3,7 +3,7 @@ package grit.knowledge.card
 import java.time.Instant
 
 import grit.core.document.{Document, DocumentShelf}
-import grit.core.id.{DocKey, DocumentVersion}
+import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
 import grit.knowledge.ref.{CardKey, Ref}
@@ -36,7 +36,7 @@ object CardShelf {
     * whether that is a file or a directory (`kind`), and the `label` it is kept at.
     */
   final case class Seen(
-      version: DocumentVersion,
+      version: DocumentVersionId,
       key: CardKey,
       title: String,
       unit: Option[Ref],

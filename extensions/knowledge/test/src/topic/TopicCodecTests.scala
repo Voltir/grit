@@ -3,7 +3,7 @@ package grit.knowledge.topic
 import java.time.LocalDate
 
 import grit.core.document.DocText
-import grit.core.id.{ConversationId, DocumentVersion}
+import grit.core.id.{ConversationId, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
@@ -16,8 +16,8 @@ object TopicCodecTests extends TestSuite {
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
-  private def version(n: Long): DocumentVersion =
-    DocumentVersion.of(n).getOrElse(throw new java.lang.AssertionError(n))
+  private def version(n: Long): DocumentVersionId =
+    DocumentVersionId.of(n).getOrElse(throw new java.lang.AssertionError(n))
 
   private val key: TopicKey = right(TopicKey.strand(ConversationId("c-1")))
   private val other: TopicKey = right(TopicKey.strand(ConversationId("c-2")))

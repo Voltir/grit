@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import grit.core.document.{DocRef, DocumentKeeper, Written}
 import grit.core.durable.Journaled
-import grit.core.id.{DocKey, DocumentVersion}
+import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
@@ -30,7 +30,7 @@ private[topic] object TopicWrite {
   /** What a write did: the version written, `None` when the store held it already; and how
     * many refs it left out ([[kept]]).
     */
-  final case class Kept(version: Option[DocumentVersion], skipped: Int) extends caps.Pure
+  final case class Kept(version: Option[DocumentVersionId], skipped: Int) extends caps.Pure
 
   object Kept {
 
@@ -39,7 +39,7 @@ private[topic] object TopicWrite {
       k =>
         ujson.Obj(
           "version" -> k.version.fold[ujson.Value](ujson.Null)(v =>
-            DocumentVersion.value(v).toDouble
+            DocumentVersionId.value(v).toDouble
           ),
           "skipped" -> k.skipped
         ),
@@ -51,7 +51,7 @@ private[topic] object TopicWrite {
             case Some(n) =>
               n.numOpt
                 .filter(_.isWhole)
-                .flatMap(x => DocumentVersion.of(x.toLong))
+                .flatMap(x => DocumentVersionId.of(x.toLong))
                 .map(Some(_))
                 .toRight("no version")
             case None => Left("a topic's keep holds no version")

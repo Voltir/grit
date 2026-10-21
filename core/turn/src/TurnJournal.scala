@@ -9,7 +9,7 @@ import grit.core.either.Traversal.sequence
 import grit.core.id.{
   ConversationId,
   CorpusName,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   ToolCallId,
@@ -983,7 +983,7 @@ private[turn] object TurnJournal {
           "turn" -> ujson.Num(TurnSeq.value(t).toDouble)
         )
       case Retrieved.Closed(c) => Vector("closed" -> ujson.Str(ConversationId.value(c)))
-      case Retrieved.Doc(d) => Vector("doc" -> ujson.Num(DocumentVersion.value(d).toDouble))
+      case Retrieved.Doc(d) => Vector("doc" -> ujson.Num(DocumentVersionId.value(d).toDouble))
     }
     ujson.Obj.from(fields ++ more)
   }
@@ -1010,7 +1010,7 @@ private[turn] object TurnJournal {
       o.get("doc")
         .flatMap(_.numOpt)
         .filter(_.isWhole)
-        .flatMap(n => DocumentVersion.of(n.toLong))
+        .flatMap(n => DocumentVersionId.of(n.toLong))
         .toRight("found: expected an own, near, closed or doc candidate")
         .map(Retrieved.Doc(_))
   }
@@ -1098,7 +1098,7 @@ private[turn] object TurnJournal {
           case ItemRef.Document(version) =>
             ujson.Obj(
               "kind" -> "document",
-              "version" -> ujson.Num(DocumentVersion.value(version).toDouble)
+              "version" -> ujson.Num(DocumentVersionId.value(version).toDouble)
             )
           case ItemRef.Result(call) =>
             ujson.Obj("kind" -> "result", "call" -> ToolCallId.value(call))
@@ -1156,7 +1156,7 @@ private[turn] object TurnJournal {
             } yield ItemRef.Nearby(ConversationId(c), EntrySeq(s))
           case "document" =>
             long(o, "version").flatMap(n =>
-              DocumentVersion.of(n).map(ItemRef.Document(_)).toRight(s"gate: version $n")
+              DocumentVersionId.of(n).map(ItemRef.Document(_)).toRight(s"gate: version $n")
             )
           case "result" => str(o, "call").map(c => ItemRef.Result(ToolCallId(c)))
           case other => Left(s"gate: no ref kind $other")

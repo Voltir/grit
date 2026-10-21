@@ -1,6 +1,6 @@
 package grit.eval.harness.report
 
-import grit.core.id.{DocumentVersion, WorkflowId}
+import grit.core.id.{DocumentVersionId, WorkflowId}
 import grit.eval.harness.reply.Refound
 import grit.eval.harness.stats.Proportion
 
@@ -21,7 +21,7 @@ private[report] object RecallLines {
     def row(what: String, a: Refound.At): Vector[String] =
       what +: (a.cuts.values.toVector :+ a.ranked :+ a.recorded).map(rate)
     def followed(f: Refound.Followed): String = {
-      val v = DocumentVersion.value(f.version)
+      val v = DocumentVersionId.value(f.version)
       f.found match {
         case Found.Forgotten => s"$v forgotten"
         case Found.Kept(source, recorded, now) =>

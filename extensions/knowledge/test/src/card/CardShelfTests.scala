@@ -13,7 +13,7 @@ import grit.core.document.{
   Pointer,
   Written
 }
-import grit.core.id.{CorpusName, DocKey, DocumentVersion, PluginName}
+import grit.core.id.{CorpusName, DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Label}
@@ -49,7 +49,9 @@ object CardShelfTests extends TestSuite {
     )
 
   /** A store holding `cards`, each written at its instant, and the versions it gave them. */
-  private def kept(cards: Vector[(Card, Instant)]): (InMemoryDocuments, Vector[DocumentVersion]) = {
+  private def kept(
+      cards: Vector[(Card, Instant)]
+  ): (InMemoryDocuments, Vector[DocumentVersionId]) = {
     val docs = new InMemoryDocuments
     val keeper = docs.keeper(name, terms)
     val versions = cards.map((c, t) =>

@@ -7,7 +7,7 @@ import grit.core.allot.Router
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
-import grit.core.id.{DocumentVersion, EntryId, EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{Grade, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
@@ -225,7 +225,7 @@ private[turn] object TurnSteps {
   /** What `append` kept: the reply or draft, and the window's documents whose pointer its
     * calls followed, each counted as followed.
     */
-  final case class Appended(reply: EntryId, followed: Vector[DocumentVersion])
+  final case class Appended(reply: EntryId, followed: Vector[DocumentVersionId])
 
   /** What a turn's steps from `stitched` to `append` came to. */
   enum Result {

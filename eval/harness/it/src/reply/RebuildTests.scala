@@ -15,7 +15,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   PluginName,
   QuestionName,
   SourceId,
@@ -378,7 +378,7 @@ object RebuildTests extends TestSuite {
     * that turn's window rebuilt while the document is kept, then once it is forgotten (as its
     * retention would collect it); and the document's version.
     */
-  private lazy val documented: (Reader, RebuiltWindow, RebuiltWindow, DocumentVersion) = {
+  private lazy val documented: (Reader, RebuiltWindow, RebuiltWindow, DocumentVersionId) = {
     val config = TestPostgres.freshDatabase("harness_rebuild_documents")
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
@@ -423,7 +423,7 @@ object RebuildTests extends TestSuite {
     * query, then a document kept there that tells it; a moment between the two; the document's
     * version; and the asking turn.
     */
-  private lazy val late: (Reader, Instant, DocumentVersion, TurnRef) = {
+  private lazy val late: (Reader, Instant, DocumentVersionId, TurnRef) = {
     val config = TestPostgres.freshDatabase("harness_refound_late")
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {

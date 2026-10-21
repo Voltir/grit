@@ -30,7 +30,7 @@ import grit.core.document.{
 }
 import grit.core.durable.Journaled
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
 import grit.core.place.{Namespace, Place, Service}
@@ -419,7 +419,7 @@ abstract class MovesContract extends TestSuite {
         Seen(
           Vector(
             Right(
-              s"$Shaped at outside shown ${DocumentVersion.value(card)},${DocumentVersion.value(own)}"
+              s"$Shaped at outside shown ${DocumentVersionId.value(card)},${DocumentVersionId.value(own)}"
             )
           )
         ),
@@ -463,7 +463,7 @@ abstract class MovesContract extends TestSuite {
       val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
       val shelves = Shelves(needed = Vector(Cards))
       declared(shelves)
-      val gone = DocumentVersion.of(999).getOrElse(throw new java.lang.AssertionError("version"))
+      val gone = DocumentVersionId.of(999).getOrElse(throw new java.lang.AssertionError("version"))
       val above = put(
         shelves,
         Cards.name,
@@ -830,7 +830,7 @@ object MovesContract {
       n: String,
       seen: Vector[Strand.Digested],
       believed: Integrity = Believed,
-      shown: Vector[DocumentVersion] = Vector.empty
+      shown: Vector[DocumentVersionId] = Vector.empty
   ): Either[MoveError, String] =
     m.summarise(
       name(n),
@@ -844,7 +844,7 @@ object MovesContract {
       _.fold("none")(s =>
         s"${replied(s.asked).text} at ${Integrity.written(s.asked.reply.integrity)}" +
           (if (s.shown.isEmpty) ""
-           else s" shown ${s.shown.map(DocumentVersion.value).mkString(",")}")
+           else s" shown ${s.shown.map(DocumentVersionId.value).mkString(",")}")
       )
     )
 
@@ -883,7 +883,7 @@ object MovesContract {
       integrity: Integrity,
       label: Label = Label.Public,
       clearance: Label = Floor
-  ): DocumentVersion =
+  ): DocumentVersionId =
     shelves.documents
       .keeper(plugin, MovesWorld.NotesTerms)
       .write(

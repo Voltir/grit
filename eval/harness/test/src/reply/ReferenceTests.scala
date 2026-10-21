@@ -2,7 +2,7 @@ package grit.eval.harness.reply
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PluginName, WorkflowId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PluginName, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.place.Service
 import grit.eval.harness.capture.{Held, Part, Parts}
@@ -25,7 +25,7 @@ object ReferenceTests extends TestSuite {
   private val record = Locator.Record(c, EntrySeq(4))
   private val messages = Locator.Messages(c, ::(EntrySeq(1), List(EntrySeq(2))))
 
-  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def version(n: Long) = DocumentVersionId.of(n).getOrElse(sys.error(s"version $n"))
   private def holding(ds: Held*) =
     Some(Parts(Vector(part(Part.Kind.Open, 1)), ds.toVector, Tokens.Zero, Tokens.Zero))
 

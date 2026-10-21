@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.Instant
 
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.tool.{ToolName, Writes}
 import grit.core.visibility.Integrity
@@ -27,8 +27,8 @@ object PointerTests extends TestSuite {
   private def at(path: String): Option[Pointer] =
     Pointer.of(tool, "path" -> ujson.Str(path)).toOption
 
-  private def version(n: Long): DocumentVersion =
-    DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def version(n: Long): DocumentVersionId =
+    DocumentVersionId.of(n).getOrElse(sys.error(s"version $n"))
 
   /** Version `n`, pointing as `pointer` says. */
   private def document(n: Long, pointer: Option[Pointer]): Document =

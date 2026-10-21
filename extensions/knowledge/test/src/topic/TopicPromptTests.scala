@@ -5,7 +5,7 @@ import java.time.{Instant, LocalDate}
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms, InMemoryDocuments}
-import grit.core.id.{ConversationId, DocKey, DocumentVersion, PluginName}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.TestAccounts
 import grit.core.place.Place
 import grit.core.review.Reviews
@@ -89,7 +89,7 @@ object TopicPromptTests extends TestSuite {
         Lineage.of(
           Vector(
             strand(Second),
-            Lineage.Tag.Card(right(DocumentVersion.of(7).toRight("no version"))),
+            Lineage.Tag.Card(right(DocumentVersionId.of(7).toRight("no version"))),
             strand(First),
             strand(Second)
           )

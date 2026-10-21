@@ -1,6 +1,13 @@
 package grit.core.retention
 
-import grit.core.id.{ConversationId, DocumentVersion, PeriodRef, PeriodSeq, PluginName, ScheduleId}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  PeriodRef,
+  PeriodSeq,
+  PluginName,
+  ScheduleId
+}
 import grit.core.period.{CloseOrdinal, Windows}
 
 /** Something grit has decided to delete. */
@@ -42,7 +49,7 @@ enum Target {
   /** A version of a plugin's document that stopped being current (superseded, or withdrawn)
     * or is itself a withdrawal.
     */
-  case Document(version: DocumentVersion)
+  case Document(version: DocumentVersionId)
 
   /** An ended schedule's row (ADR 0029). Spared when it was declared again since it ended. */
   case Schedule(id: ScheduleId)
@@ -102,7 +109,7 @@ object Target {
       s"${PluginName.value(plugin)}:$version:${CloseOrdinal.value(cursor)}"
     case Restarted(plugin) => PluginName.value(plugin)
     case Disabled(plugin) => PluginName.value(plugin)
-    case Document(version) => DocumentVersion.value(version).toString
+    case Document(version) => DocumentVersionId.value(version).toString
     case Schedule(id) => ScheduleId.value(id)
   }
 
@@ -127,7 +134,7 @@ object Target {
       case Kind.Disabled => pluginOf(Disabled(_))
       case Kind.Document =>
         key.toLongOption
-          .flatMap(DocumentVersion.of)
+          .flatMap(DocumentVersionId.of)
           .map(Document(_))
           .toRight(s"document $key: not a version")
       case Kind.Schedule =>

@@ -3,7 +3,7 @@ package grit.eval.harness.label
 import scala.util.Try
 
 import grit.core.either.Traversal
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, WorkflowId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, WorkflowId}
 import grit.eval.harness.capture.{Fields, Part, Parts}
 
 /** How good a reply is, as a person judged it. */
@@ -45,7 +45,7 @@ enum Locator {
   case Messages(of: ConversationId, seqs: ::[EntrySeq])
 
   /** A document, by its version. */
-  case Document(version: DocumentVersion)
+  case Document(version: DocumentVersionId)
 }
 
 object Locator {
@@ -101,7 +101,7 @@ object Locator {
         )
       )
     case Document(version) =>
-      ujson.Obj("document" -> ujson.Obj("version" -> DocumentVersion.value(version).toDouble))
+      ujson.Obj("document" -> ujson.Obj("version" -> DocumentVersionId.value(version).toDouble))
   }
 
   /** The locator `v` holds, as [[json]] writes it; why not, when it is not of that form. */
@@ -128,7 +128,7 @@ object Locator {
       case Some(Vector("document")) =>
         Fields("locator: document", v("document"))
           .long("version")
-          .flatMap(n => DocumentVersion.of(n).toRight("locator: document version"))
+          .flatMap(n => DocumentVersionId.of(n).toRight("locator: document version"))
           .map(Document(_))
       case _ => Left("locator: neither record, messages nor document")
     }

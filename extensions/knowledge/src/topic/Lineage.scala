@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import grit.core.id.{ConversationId, DocumentVersion}
+import grit.core.id.{ConversationId, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 
@@ -16,10 +16,10 @@ object Lineage {
     case Strand(root: ConversationId, room: Place, digest: StrandDigest)
 
     /** A card's version. */
-    case Card(version: DocumentVersion)
+    case Card(version: DocumentVersionId)
 
     /** Another topic's version. */
-    case Topic(version: DocumentVersion)
+    case Topic(version: DocumentVersionId)
   }
 
   /** `tags`, each once where first named. */

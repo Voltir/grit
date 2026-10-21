@@ -2,7 +2,14 @@ package grit.core.retention
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, DocumentVersion, PeriodRef, PeriodSeq, PluginName, ScheduleId}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  PeriodRef,
+  PeriodSeq,
+  PluginName,
+  ScheduleId
+}
 import grit.core.period.{CloseOrdinal, Windows}
 
 import utest.*
@@ -12,7 +19,7 @@ object TargetTests extends TestSuite {
   private val p = PeriodRef(ConversationId("c1"), PeriodSeq.of(3).getOrElse(PeriodSeq.First))
   private val digest = PluginName.of("digest").fold(sys.error, identity)
   private val seven = CloseOrdinal.of(7).getOrElse(CloseOrdinal.Start)
-  private val version = DocumentVersion.of(42).getOrElse(sys.error("version"))
+  private val version = DocumentVersionId.of(42).getOrElse(sys.error("version"))
   private val schedule = ScheduleId.of("declared:plugin:digest:daily").fold(sys.error, identity)
 
   private val all: Vector[Target] = Vector(

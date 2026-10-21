@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.id.{DocKey, DocumentVersion}
+import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
@@ -98,14 +98,14 @@ trait DocumentKeeper extends DocumentShelf {
     */
   def withdraw(key: DocKey, label: Label, at: Instant)(using
       Tx^
-  ): Either[StoreError, Option[DocumentVersion]]
+  ): Either[StoreError, Option[DocumentVersionId]]
 
   /** Puts `version`, one of its own current documents, up for review on `day`, at `at`, for an
     * edge to post ([[grit.core.review.DocumentReviews]]); `false`, writing nothing, when its key
     * at its label is up for `day` already, or `version` is not one of its current documents.
     * The label it is given outlives the version.
     */
-  def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+  def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
 }
@@ -142,9 +142,9 @@ object DocumentKeeper {
 
     def withdraw(key: DocKey, label: Label, at: Instant)(using
         Tx^
-    ): Either[StoreError, Option[DocumentVersion]] = keeper.withdraw(key, label, at)
+    ): Either[StoreError, Option[DocumentVersionId]] = keeper.withdraw(key, label, at)
 
-    def forReview(version: DocumentVersion, day: LocalDate, at: Instant)(using
+    def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = keeper.forReview(version, day, at)
   }

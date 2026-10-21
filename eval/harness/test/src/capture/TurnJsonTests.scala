@@ -9,7 +9,7 @@ import grit.core.context.Width
 import grit.core.id.{
   ConversationId,
   CorpusName,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PluginName,
@@ -39,7 +39,7 @@ object TurnJsonTests extends TestSuite {
   private val c = ConversationId("c1")
   private val at = Instant.parse("2026-10-02T17:05:00Z")
   private def p(x: Double) = Probability.clamped(x)
-  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def version(n: Long) = DocumentVersionId.of(n).getOrElse(sys.error(s"version $n"))
 
   private val repo = right(CorpusName.of("repo"))
 

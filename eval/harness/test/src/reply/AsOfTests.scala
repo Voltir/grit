@@ -13,7 +13,7 @@ import grit.core.document.{
   Shelved,
   Written
 }
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.Tx
 import grit.core.visibility.Integrity
@@ -72,7 +72,7 @@ object AsOfTests extends TestSuite {
       (shelved, found.map(_.document.version), read.map(_.version)) ==> (
         Vector(Shelved(notes, place("a"))),
         Vector(before),
-        Vector[DocumentVersion](before)
+        Vector[DocumentVersionId](before)
       )
     }
   }

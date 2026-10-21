@@ -18,7 +18,7 @@ import grit.core.document.{
   Shelved
 }
 import grit.core.flow.TestTainted
-import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersion, PluginName}
+import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.{Exported, Needs, PluginDocs, PluginReads}
@@ -154,7 +154,7 @@ object TopicDreamTests extends TestSuite {
           Tx^
       ): Either[StoreError, Vector[DocumentSearch.Hit]] =
         documents.search(shelves, query, limit, at)
-      def read(versions: Vector[DocumentVersion])(using
+      def read(versions: Vector[DocumentVersionId])(using
           Tx^
       ): Either[StoreError, Vector[Document]] =
         documents.read(versions).map(_.filterNot(unread))
@@ -170,7 +170,7 @@ object TopicDreamTests extends TestSuite {
       ok(documents.shelf(Plugin).newest(Int.MaxValue)).filter(d => TopicKey.read(d.key).nonEmpty)
 
     /** The roots of the strands and the versions of the cards set aside at the public label. */
-    def aside: (Vector[ConversationId], Vector[DocumentVersion]) = {
+    def aside: (Vector[ConversationId], Vector[DocumentVersionId]) = {
       val tags = ok(Aside.read(documents.keeper(Plugin, Terms), Label.Public)).map(_.tag)
       (
         tags.collect { case Lineage.Tag.Strand(root, _, _) => root },
@@ -1033,7 +1033,7 @@ object TopicDreamTests extends TestSuite {
       given Tx = TestTx.fake
       val keeper = runs.documents.keeper(Plugin, Terms)
       val written = Now.minusSeconds(7200)
-      val card = DocumentVersion.of(7L).getOrElse(throw new java.lang.AssertionError("7"))
+      val card = DocumentVersionId.of(7L).getOrElse(throw new java.lang.AssertionError("7"))
       val _ = ok(
         keeper.write(
           Aside.Key,

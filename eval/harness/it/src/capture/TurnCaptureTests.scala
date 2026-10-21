@@ -25,7 +25,7 @@ import grit.core.durable.Durable
 import grit.core.id.{
   CloseRef,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   PluginName,
   SourceId,
   TurnRef,
@@ -156,7 +156,7 @@ object TurnCaptureTests extends TestSuite {
   private val asks = grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
 
   /** `under`'s windows, each holding `held` too, as a retrieval assembler's would. */
-  private final class Holding(under: LinearAssembler, held: Vector[DocumentVersion])
+  private final class Holding(under: LinearAssembler, held: Vector[DocumentVersionId])
       extends ContextAssembler {
     def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
       under.prepare(request)
@@ -178,7 +178,7 @@ object TurnCaptureTests extends TestSuite {
     right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
 
   /** A document of `notes` under `key`, pointing at `pointer`, written now. */
-  private def keep(engine: Engine^, key: String, pointer: Option[Pointer]): DocumentVersion =
+  private def keep(engine: Engine^, key: String, pointer: Option[Pointer]): DocumentVersionId =
     right(
       engine.jot.write(Subject.Public)(
         engine
@@ -199,7 +199,7 @@ object TurnCaptureTests extends TestSuite {
       case other => throw new java.lang.AssertionError(s"not written: $other")
     }
 
-  private def launch(engine: Engine^, held: Vector[DocumentVersion]): Unit = {
+  private def launch(engine: Engine^, held: Vector[DocumentVersionId]): Unit = {
     val speaking = Speaking.Within(Limits.suggested(right(DailyCap.of("0.25")), asks))
     val classifier = new StubClassifier
     val tooling = TurnTooling[{}](

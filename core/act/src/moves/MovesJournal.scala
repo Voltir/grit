@@ -6,7 +6,7 @@ import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.{ConversationId, DocumentVersion}
+import grit.core.id.{ConversationId, DocumentVersionId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -50,7 +50,7 @@ private[moves] enum AskMade extends Asked {
       at: Label,
       level: Integrity,
       calls: Vector[AskMade.Call],
-      shown: Vector[DocumentVersion] = Vector.empty
+      shown: Vector[DocumentVersionId] = Vector.empty
   )
 
   /** A JSON ask's reply did not read, `why`, after `calls`, its model calls in order. */
@@ -70,7 +70,7 @@ private[moves] enum AskMade extends Asked {
   /** This record, a shaped reply holding `shown` as the documents it was shown; any other as
     * it is.
     */
-  def withShown(shown: Vector[DocumentVersion]): AskMade = this match {
+  def withShown(shown: Vector[DocumentVersionId]): AskMade = this match {
     case s: Shaped => s.copy(shown = shown)
     case other => other
   }
@@ -265,7 +265,7 @@ object MovesJournal {
     */
   def strands(
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
       documentChars: Int,
@@ -279,7 +279,7 @@ object MovesJournal {
   def sameStrands(
       recorded: String,
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
       documentChars: Int,
@@ -346,7 +346,7 @@ object MovesJournal {
   /** v2's canonical form of a summary, which [[strands]] hashes. */
   private[moves] def strandsForm(
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
       documentChars: Int,
@@ -356,7 +356,7 @@ object MovesJournal {
       text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
         text(s.asOf.toString)
     }.mkString + count(shown.size) + shown
-      .map(v => text(DocumentVersion.value(v).toString))
+      .map(v => text(DocumentVersionId.value(v).toString))
       .mkString +
       count(chars) + count(documentChars) + text(system) + text(ujson.write(schema.json))
 
@@ -601,7 +601,9 @@ object MovesJournal {
             "level" -> Integrity.written(level),
             "calls" -> ujson.Arr.from(calls.map(writeCost))
           ) ++ Option.when(shown.nonEmpty)(
-            "shown" -> ujson.Arr.from(shown.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+            "shown" -> ujson.Arr.from(
+              shown.map(v => ujson.Num(DocumentVersionId.value(v).toDouble))
+            )
           )
         )
       )
@@ -723,17 +725,17 @@ object MovesJournal {
     */
   private def versions(
       f: collection.Map[String, ujson.Value]
-  ): Either[String, Vector[DocumentVersion]] =
+  ): Either[String, Vector[DocumentVersionId]] =
     f.get("shown") match {
       case None => Right(Vector.empty)
       case Some(v) =>
         v.arrOpt
           .toRight("ask: shown is not a list")
-          .flatMap(_.toVector.foldLeft[Either[String, Vector[DocumentVersion]]](Right(Vector())) {
+          .flatMap(_.toVector.foldLeft[Either[String, Vector[DocumentVersionId]]](Right(Vector())) {
             (acc, n) =>
               acc.flatMap(done =>
                 n.numOpt
-                  .flatMap(d => DocumentVersion.of(d.toLong))
+                  .flatMap(d => DocumentVersionId.of(d.toLong))
                   .toRight(s"ask: shown holds no version: $n")
                   .map(done :+ _)
               )

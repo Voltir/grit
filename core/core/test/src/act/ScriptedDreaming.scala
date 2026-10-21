@@ -6,7 +6,7 @@ import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.Journaled
 import grit.core.either.Traversal.sequence
 import grit.core.flow.{Tainted, TestTainted, Trusted}
-import grit.core.id.{DocumentVersion, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.Message
 import grit.core.need.Needs
 import grit.core.stitch.{Strand, StrandShelf}
@@ -59,7 +59,7 @@ final class ScriptedDreaming(
   def summarise[T](
       name: MoveName,
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]] = {
     val Dreaming.Summary(system, chars, documentChars, reply) = Trusted.asIs(summary).extract

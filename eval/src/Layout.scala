@@ -9,7 +9,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -281,7 +281,7 @@ object Load {
   /** What loading a case wrote: the turn it asks in, and its documents' versions, in the order
     * laid out.
     */
-  final case class Written(turn: TurnRef, documents: Vector[DocumentVersion])
+  final case class Written(turn: TurnRef, documents: Vector[DocumentVersionId])
 
   /** `layout` written through `jot`, one transaction for the case's own rows, one for each
     * period of each other conversation and one for each document: each conversation found or
@@ -367,7 +367,7 @@ object Load {
           _ <- insert(conversation, o.second, open = true)
         } yield ()
       }
-      documents <- layout.documents.foldLeft[Either[String, Vector[DocumentVersion]]](
+      documents <- layout.documents.foldLeft[Either[String, Vector[DocumentVersionId]]](
         Right(Vector.empty)
       ) { (acc, d) =>
         acc.flatMap(done =>

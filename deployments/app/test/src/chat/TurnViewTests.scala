@@ -9,7 +9,7 @@ import grit.core.durable.StepRecord
 import grit.core.id.{
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodSeq,
@@ -387,7 +387,7 @@ object TurnViewTests extends TestSuite {
       def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val board = got(Place.read("slack:T1/C1"))
       def document(version: Long, text: String) = Document(
-        DocumentVersion.of(version).getOrElse(sys.error("version")),
+        DocumentVersionId.of(version).getOrElse(sys.error("version")),
         got(PluginName.of("digest")),
         got(DocKey.of(s"week-$version")),
         grit.core.visibility.Label.Public,

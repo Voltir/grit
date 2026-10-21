@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.document.{DocRef, Document, DocumentKeeper}
 import grit.core.durable.Journaled
-import grit.core.id.{ConversationId, DocKey, DocumentVersion}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
 import grit.core.need.{Exported, Needs}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
@@ -20,7 +20,7 @@ private[topic] object TopicScan {
     */
   final case class Touch(
       key: TopicKey,
-      version: Option[DocumentVersion],
+      version: Option[DocumentVersionId],
       strands: Vector[Strand.Digested],
       cards: Vector[CardShelf.Seen]
   ) extends caps.Pure {
@@ -38,12 +38,12 @@ private[topic] object TopicScan {
       attached: Vector[Touch],
       strands: Vector[Strand.Digested],
       cards: Vector[CardShelf.Seen],
-      leads: Vector[(TopicKey, DocumentVersion)],
+      leads: Vector[(TopicKey, DocumentVersionId)],
       withdrew: Int,
       unchanged: Int,
       left: Int,
       linked: Vector[Linked],
-      holds: Vector[(TopicKey, Vector[DocumentVersion])]
+      holds: Vector[(TopicKey, Vector[DocumentVersionId])]
   ) extends caps.Pure {
 
     /** The card units `strands` link, and the cards paired with them, each once. */
@@ -54,7 +54,7 @@ private[topic] object TopicScan {
     }
 
     /** The versions of the cards `topic` holds ([[holds]]): none for a topic not shown. */
-    def holding(topic: TopicKey): Vector[DocumentVersion] =
+    def holding(topic: TopicKey): Vector[DocumentVersionId] =
       holds.collectFirst { case (k, vs) if k == topic => vs }.getOrElse(Vector.empty)
   }
 
@@ -198,8 +198,8 @@ private[topic] object TopicScan {
       kept: Vector[Pruned],
       shown: Vector[TopicKey],
       until: Instant
-  )(using Tx^): Either[StoreError, Vector[(TopicKey, Vector[DocumentVersion])]] =
-    shelf.fold[Either[StoreError, Vector[(TopicKey, Vector[DocumentVersion])]]](
+  )(using Tx^): Either[StoreError, Vector[(TopicKey, Vector[DocumentVersionId])]] =
+    shelf.fold[Either[StoreError, Vector[(TopicKey, Vector[DocumentVersionId])]]](
       Right(Vector.empty)
     ) { cards =>
       val topics = kept.flatMap(_.topic).collect {
@@ -226,7 +226,7 @@ private[topic] object TopicScan {
     * withdrawn; and how many of its passages were.
     */
   private final case class Pruned(
-      topic: Option[(TopicKey, DocumentVersion, TopicWrite.Held)],
+      topic: Option[(TopicKey, DocumentVersionId, TopicWrite.Held)],
       withdrew: Int
   )
 
@@ -364,7 +364,7 @@ private[topic] object TopicScan {
     }.reverse
     val byRef = attached.flatMap(t => t.version.map(t.key -> _))
     val leads = byRef ++ topics
-      .sortBy((_, v, _) => -DocumentVersion.value(v))
+      .sortBy((_, v, _) => -DocumentVersionId.value(v))
       .map((k, v, _) => (k, v))
       .filterNot((k, _) => byRef.exists(_._1 == k))
       .take(Leads)
@@ -449,12 +449,12 @@ private[topic] object TopicScan {
       } yield Scanned(attached, strands, cards, leads, withdrew, unchanged, left, linked, holds)
   )
 
-  private def holdsJson(h: (TopicKey, Vector[DocumentVersion])): ujson.Value = ujson.Obj(
+  private def holdsJson(h: (TopicKey, Vector[DocumentVersionId])): ujson.Value = ujson.Obj(
     "key" -> TopicKey.value(h._1),
-    "cards" -> ujson.Arr.from(h._2.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+    "cards" -> ujson.Arr.from(h._2.map(v => ujson.Num(DocumentVersionId.value(v).toDouble)))
   )
 
-  private def readHolds(v: ujson.Value): Either[String, (TopicKey, Vector[DocumentVersion])] =
+  private def readHolds(v: ujson.Value): Either[String, (TopicKey, Vector[DocumentVersionId])] =
     for {
       o <- v.objOpt.toRight("a topic's holding is an object")
       key <- topicKey(o.get("key"))
@@ -498,7 +498,7 @@ private[topic] object TopicScan {
       "strands" -> ujson.Arr.from(t.strands.map(Strand.Digested.write)),
       "cards" -> ujson.Arr.from(t.cards.map(card))
     )
-    t.version.foreach(v => o("version") = DocumentVersion.value(v).toDouble)
+    t.version.foreach(v => o("version") = DocumentVersionId.value(v).toDouble)
     o
   }
 
@@ -513,7 +513,7 @@ private[topic] object TopicScan {
 
   private def card(c: CardShelf.Seen): ujson.Value = {
     val o = ujson.Obj(
-      "version" -> DocumentVersion.value(c.version).toDouble,
+      "version" -> DocumentVersionId.value(c.version).toDouble,
       "key" -> CardKey.value(c.key),
       "title" -> c.title,
       "kind" -> c.kind.word,
@@ -549,10 +549,10 @@ private[topic] object TopicScan {
       label
     )
 
-  private def lead(k: TopicKey, v: DocumentVersion): ujson.Value =
-    ujson.Obj("key" -> TopicKey.value(k), "version" -> DocumentVersion.value(v).toDouble)
+  private def lead(k: TopicKey, v: DocumentVersionId): ujson.Value =
+    ujson.Obj("key" -> TopicKey.value(k), "version" -> DocumentVersionId.value(v).toDouble)
 
-  private def readLead(v: ujson.Value): Either[String, (TopicKey, DocumentVersion)] =
+  private def readLead(v: ujson.Value): Either[String, (TopicKey, DocumentVersionId)] =
     for {
       o <- v.objOpt.toRight("a lead is an object")
       key <- topicKey(o.get("key"))
@@ -565,10 +565,10 @@ private[topic] object TopicScan {
       .flatMap(TopicKey.read)
       .toRight(s"no topic's key: ${v.fold("none")(ujson.write(_))}")
 
-  private def version(v: ujson.Value): Either[String, DocumentVersion] =
+  private def version(v: ujson.Value): Either[String, DocumentVersionId] =
     v.numOpt
       .filter(_.isWhole)
-      .flatMap(n => DocumentVersion.of(n.toLong))
+      .flatMap(n => DocumentVersionId.of(n.toLong))
       .toRight(s"no document's version: ${ujson.write(v)}")
 
   private def count(v: Option[ujson.Value], key: String): Either[String, Int] =

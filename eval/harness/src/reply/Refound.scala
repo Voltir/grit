@@ -6,7 +6,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.context.{AssemblyError, AssemblyRequest, Results, Retrieved, Width}
 import grit.core.document.Document
-import grit.core.id.{DocKey, DocumentVersion, PluginName, TurnRef, WorkflowId}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, TurnRef, WorkflowId}
 import grit.core.place.Place
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -53,7 +53,7 @@ object Refound {
     * all: what a followed version is looked up in, never a search's hits, which hold only what
     * was ranked.
     */
-  final case class Current private (byKey: Map[(PluginName, DocKey), DocumentVersion])
+  final case class Current private (byKey: Map[(PluginName, DocKey), DocumentVersionId])
 
   object Current {
     def of(documents: Vector[Document]): Current =
@@ -83,7 +83,7 @@ object Refound {
   }
 
   /** A version a turn counted followed, and what became of it. */
-  final case class Followed(version: DocumentVersion, found: Found)
+  final case class Followed(version: DocumentVersionId, found: Found)
 
   /** 5, 10 and the judged cut ([[Admission.Shipped]]'s `judged`): none ranked past it is ever
     * packed.
@@ -98,7 +98,7 @@ object Refound {
   def rank(
       recorded: Results,
       now: Results,
-      followed: Vector[DocumentVersion],
+      followed: Vector[DocumentVersionId],
       kept: Vector[Document],
       current: Current
   ): Vector[Followed] = {
@@ -131,7 +131,7 @@ object Refound {
   }
 
   /** Each document version `results` ranked, by its first position, 1 the best. */
-  private def positions(results: Results): Map[DocumentVersion, Int] =
+  private def positions(results: Results): Map[DocumentVersionId, Int] =
     results.ranked.zipWithIndex
       .collect { case ((Retrieved.Doc(v), _), i) => v -> (i + 1) }
       .reverse

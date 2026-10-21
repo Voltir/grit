@@ -6,7 +6,7 @@ import scala.util.Try
 
 import grit.core.document.DocText
 import grit.core.either.Traversal.traverse
-import grit.core.id.{ConversationId, DocKey, DocumentVersion}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
@@ -137,9 +137,9 @@ private object TopicJson {
         "room" -> room.written,
         "digest" -> StrandDigest.value(digest)
       )
-    case Lineage.Tag.Card(version) => ujson.Obj("card" -> DocumentVersion.value(version).toDouble)
+    case Lineage.Tag.Card(version) => ujson.Obj("card" -> DocumentVersionId.value(version).toDouble)
     case Lineage.Tag.Topic(version) =>
-      ujson.Obj("topic" -> DocumentVersion.value(version).toDouble)
+      ujson.Obj("topic" -> DocumentVersionId.value(version).toDouble)
   }
 
   private def readLineage(v: Option[ujson.Value]): Read[Lineage] =
@@ -161,10 +161,10 @@ private object TopicJson {
       }
     )
 
-  private def version(v: ujson.Value): Read[DocumentVersion] =
+  private def version(v: ujson.Value): Read[DocumentVersionId] =
     v.numOpt
       .filter(_.isWhole)
-      .flatMap(n => DocumentVersion.of(n.toLong))
+      .flatMap(n => DocumentVersionId.of(n.toLong))
       .toRight(s"no document's version: ${ujson.write(v)}")
 
   private def doc(d: Doc[TopicNote]): ujson.Value = blocks(d.blocks)

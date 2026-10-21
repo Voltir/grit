@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, ToolCallId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, ToolCallId}
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -10,7 +10,7 @@ import grit.core.visibility.Integrity
 enum ItemRef derives CanEqual {
   case Own(seq: EntrySeq)
   case Nearby(conversation: ConversationId, seq: EntrySeq)
-  case Document(version: DocumentVersion)
+  case Document(version: DocumentVersionId)
   case Result(call: ToolCallId)
 }
 

@@ -8,7 +8,7 @@ import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
 import grit.core.id.{
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodSeq,
@@ -282,7 +282,7 @@ object TurnJudgeTests extends TestSuite {
       def got[A](e: Either[String, A]): A =
         e.fold(why => throw new java.lang.AssertionError(why), identity)
       val card = Document(
-        got(DocumentVersion.of(7).toRight("version")),
+        got(DocumentVersionId.of(7).toRight("version")),
         got(PluginName.of("cards")),
         got(DocKey.of("docs/release.md")),
         grit.core.visibility.Label.Public,

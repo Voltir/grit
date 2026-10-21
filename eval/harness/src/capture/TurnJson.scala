@@ -7,7 +7,7 @@ import grit.core.either.Traversal.traverse
 import grit.core.id.{
   ConversationId,
   CorpusName,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PluginName,
@@ -305,7 +305,7 @@ object TurnJson {
       case Held.Kept(version, plugin, pointer, count, support) =>
         ujson.Obj(
           "kept" -> ujson.Obj(
-            "version" -> DocumentVersion.value(version).toDouble,
+            "version" -> DocumentVersionId.value(version).toDouble,
             "plugin" -> PluginName.value(plugin),
             "pointer" -> pointer.fold[ujson.Value](ujson.Null)(n => ujson.Str(ToolName.value(n))),
             "tokens" -> tokens(count),
@@ -313,7 +313,7 @@ object TurnJson {
           )
         )
       case Held.Gone(version) =>
-        ujson.Obj("gone" -> ujson.Obj("version" -> DocumentVersion.value(version).toDouble))
+        ujson.Obj("gone" -> ujson.Obj("version" -> DocumentVersionId.value(version).toDouble))
     }),
     "gaps" -> tokens(p.gaps),
     "own" -> tokens(p.own)
@@ -354,7 +354,8 @@ object TurnJson {
 
   private def readHeld(v: ujson.Value): Either[String, Held] = {
     def version(f: Fields) =
-      f.long("version").flatMap(n => DocumentVersion.of(n).toRight(s"window: document version $n"))
+      f.long("version")
+        .flatMap(n => DocumentVersionId.of(n).toRight(s"window: document version $n"))
     v.objOpt.map(_.keys.toVector) match {
       case Some(Vector("kept")) =>
         val f = Fields("window: document", v("kept"))

@@ -4,7 +4,7 @@ import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
-import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -227,7 +227,7 @@ object TurnJournalTests extends TestSuite {
     }
 
     test("a window's documents are recorded by version after its nearby sections, and read back") {
-      val versions = Vector(7L, 3L).flatMap(DocumentVersion.of)
+      val versions = Vector(7L, 3L).flatMap(DocumentVersionId.of)
       val j = summon[Journaled[Either[TurnFailure, Window]]]
       val documented: Either[TurnFailure, Window] =
         Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions))
@@ -487,7 +487,7 @@ object TurnJournalTests extends TestSuite {
           """"fate":{"kind":"lowered"}}],""" +
           """"withheld":[{"tool":"slack_post","requires":"member"}]}}"""
       val three =
-        DocumentVersion.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
+        DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
       val gated = j.decode(pinned)
       gated.map(_.map(_.decided.map(_.item.ref))) ==> Right(
         Right(
@@ -514,7 +514,7 @@ object TurnJournalTests extends TestSuite {
           Retrieved.Closed(ConversationId("c3"))
         )
       val doc =
-        Retrieved.Doc(DocumentVersion.of(7).getOrElse(sys.error("unreachable: 7 is a version")))
+        Retrieved.Doc(DocumentVersionId.of(7).getOrElse(sys.error("unreachable: 7 is a version")))
       val results = Results(Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5), beyond = 3)
       val verdicts = Vector(
         own -> TurnRelevance.Verdict.Passed(Probability.clamped(0.75)),

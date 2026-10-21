@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersion, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 
@@ -39,12 +39,12 @@ trait DocumentSearch {
   /** The versions among `versions` still kept, holding something and read by its transaction,
     * in their order.
     */
-  def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]]
+  def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]]
 
   /** The versions among `versions` still kept whose plugin is enabled, in their order, each
     * with its plugin's label: what a window holding `versions` shows.
     */
-  final def labelled(versions: Vector[DocumentVersion])(using
+  final def labelled(versions: Vector[DocumentVersionId])(using
       Tx^
   ): Either[StoreError, Vector[(Document, DocLabel)]] =
     for {
@@ -70,13 +70,13 @@ trait DocumentStore extends DocumentSearch {
   /** Counts each of `versions` placed by a window recorded at `at`: count up by one, last
     * placement `at` unless later. One no longer kept is skipped.
     */
-  def placed(versions: Vector[DocumentVersion], at: Instant)(using Tx^): Either[StoreError, Unit]
+  def placed(versions: Vector[DocumentVersionId], at: Instant)(using Tx^): Either[StoreError, Unit]
 
   /** Counts each of `versions` followed by a turn whose reply or draft was appended at `at`:
     * count up by one, last follow `at` unless later. One no longer kept, or that its transaction
     * does not read, is skipped.
     */
-  def followed(versions: Vector[DocumentVersion], at: Instant)(using
+  def followed(versions: Vector[DocumentVersionId], at: Instant)(using
       Tx^
   ): Either[StoreError, Unit]
 
@@ -84,7 +84,7 @@ trait DocumentStore extends DocumentSearch {
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]]
 
   /** Deletes `version`: [[read]] no longer finds it. Nothing when it is gone already. */
-  def forget(version: DocumentVersion)(using Tx^): Either[StoreError, Unit]
+  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Unit]
 
   /** Deletes every version of `plugin`'s documents and its terms, and ends at `at` the
     * tombstones pending on those versions, so none is left naming a version gone.

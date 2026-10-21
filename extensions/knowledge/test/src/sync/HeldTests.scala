@@ -3,7 +3,7 @@ package grit.knowledge.sync
 import java.time.Instant
 
 import grit.core.document.{Document, Placement, Pointer}
-import grit.core.id.{CorpusName, DocKey, DocumentVersion, PluginName}
+import grit.core.id.{CorpusName, DocKey, DocumentVersionId, PluginName}
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -29,7 +29,7 @@ object HeldTests extends TestSuite {
 
   private def document(key: DocKey = card.docKey, data: ujson.Value = card.data): Document =
     Document(
-      DocumentVersion.of(1).getOrElse(throw new java.lang.AssertionError("no version")),
+      DocumentVersionId.of(1).getOrElse(throw new java.lang.AssertionError("no version")),
       right(PluginName.of("knowledge")),
       key,
       label,

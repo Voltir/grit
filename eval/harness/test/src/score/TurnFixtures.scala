@@ -7,7 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.context.Width
 import grit.core.id.{
   ConversationId,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PluginName,
@@ -55,7 +55,7 @@ object TurnFixtures {
   private def support(x: Double) = Support.read(x)
   private def part(kind: Part.Kind, tokens: Long, s: Option[Double] = None) =
     Part(kind, ConversationId("x"), Vector(EntrySeq(1)), Tokens(tokens), s.flatMap(support))
-  private def version(n: Long) = DocumentVersion.of(n).getOrElse(sys.error(s"version $n"))
+  private def version(n: Long) = DocumentVersionId.of(n).getOrElse(sys.error(s"version $n"))
   private def held(v: Long, pointer: Option[ToolName], tokens: Long) = Held.Kept(
     version(v),
     PluginName.of("notes").fold(sys.error, identity),

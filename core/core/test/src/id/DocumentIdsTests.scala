@@ -15,9 +15,9 @@ object DocumentIdsTests extends TestSuite {
     }
 
     test("a version is at least 1") {
-      DocumentVersion.of(1).map(DocumentVersion.value) ==> Some(1L)
-      DocumentVersion.of(0) ==> None
-      DocumentVersion.of(-4) ==> None
+      DocumentVersionId.of(1).map(DocumentVersionId.value) ==> Some(1L)
+      DocumentVersionId.of(0) ==> None
+      DocumentVersionId.of(-4) ==> None
     }
   }
 }

@@ -35,7 +35,7 @@ import grit.core.id.{
   ConversationId,
   Declarer,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   PluginName,
   PrincipalId,
@@ -246,7 +246,7 @@ object RunFixtures {
   /** `text` kept under `key` at [[Notes]]' place, publicly, believed a member's: its version. */
   private def noted(keeper: DocumentKeeper, key: String, text: String, at: Instant)(using
       Tx^
-  ): Either[StoreError, DocumentVersion] =
+  ): Either[StoreError, DocumentVersionId] =
     (for {
       k <- DocKey.of(key)
       t <- DocText.of(text)
@@ -287,14 +287,16 @@ object RunFixtures {
   /** What [[Gatherer]]'s scan gathered, as it records them: the strands as
     * [[Strand.Digested.write]] writes them, and the versions to show.
     */
-  final case class Gathered(seen: Vector[Strand.Digested], shown: Vector[DocumentVersion])
+  final case class Gathered(seen: Vector[Strand.Digested], shown: Vector[DocumentVersionId])
       extends caps.Pure
   object Gathered {
     given Journaled[Gathered] = Journaled.json(
       g =>
         ujson.Obj(
           "seen" -> ujson.Arr.from(g.seen.map(Strand.Digested.write)),
-          "shown" -> ujson.Arr.from(g.shown.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+          "shown" -> ujson.Arr.from(
+            g.shown.map(v => ujson.Num(DocumentVersionId.value(v).toDouble))
+          )
         ),
       v =>
         for {
@@ -313,11 +315,11 @@ object RunFixtures {
             .flatMap(_.arrOpt)
             .toRight("no versions")
             .flatMap(
-              _.toVector.foldLeft[Either[String, Vector[DocumentVersion]]](Right(Vector())) {
+              _.toVector.foldLeft[Either[String, Vector[DocumentVersionId]]](Right(Vector())) {
                 (acc, x) =>
                   acc.flatMap(done =>
                     x.numOpt
-                      .flatMap(n => DocumentVersion.of(n.toLong))
+                      .flatMap(n => DocumentVersionId.of(n.toLong))
                       .toRight("no version")
                       .map(done :+ _)
                   )

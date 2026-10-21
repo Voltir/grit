@@ -20,7 +20,7 @@ import grit.core.classify.{Answer, AnswersJson, Ask, Request}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
-import grit.core.id.{CallSlot, DocumentVersion, PluginName}
+import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
@@ -101,7 +101,7 @@ object DurableMoves {
     def summarise[T](
         name: MoveName,
         seen: Vector[Strand.Digested],
-        shown: Vector[DocumentVersion],
+        shown: Vector[DocumentVersionId],
         summary: Tainted[Dreaming.Summary[T]]
     ): Either[MoveError, Option[Dreaming.Summarised[T]]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>

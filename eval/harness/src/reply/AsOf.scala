@@ -8,7 +8,7 @@ import grit.core.id.{
   CallSlot,
   CloseRef,
   ConversationId,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -333,7 +333,7 @@ object AsOf {
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] =
       under.search(shelves, query, limit, earlier(at, this.at))
-    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+    def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions).map(_.filter(d => before(d.written, at)))
   }
 
@@ -347,7 +347,7 @@ object AsOf {
     def search(shelves: Vector[Shelved], query: String, limit: Int, asked: Instant)(using
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] = under.search(shelves, query, limit, at)
-    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+    def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions)
   }
 

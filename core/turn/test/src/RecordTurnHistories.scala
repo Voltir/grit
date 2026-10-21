@@ -303,7 +303,7 @@ object RecordTurnHistories {
       given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
       documents.declare(Vector(digest -> terms))
       val board = got(grit.core.place.Place.read("slack:T1/C1"))
-      def write(key: String, text: String): grit.core.id.DocumentVersion =
+      def write(key: String, text: String): grit.core.id.DocumentVersionId =
         documents
           .keeper(digest, terms)
           .write(

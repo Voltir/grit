@@ -6,7 +6,7 @@ import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.{DocLabel, DocText, DocumentKeeper, DocumentSearch}
 import grit.core.durable.Journaled
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
-import grit.core.id.{DocumentVersion, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
 import grit.core.place.Service
@@ -257,7 +257,7 @@ trait Dreaming extends Keeping {
   def summarise[T](
       name: MoveName,
       seen: Vector[Strand.Digested],
-      shown: Vector[DocumentVersion],
+      shown: Vector[DocumentVersionId],
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]]
 }
@@ -276,7 +276,7 @@ object Dreaming {
   )
 
   /** A summary's reply, and the versions of `shown` it was shown, in their order. */
-  final case class Summarised[T](asked: Asked[T], shown: Vector[DocumentVersion])
+  final case class Summarised[T](asked: Asked[T], shown: Vector[DocumentVersionId])
 
   /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
     * document (`documentChars`); and the reply it reads as.

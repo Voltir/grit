@@ -6,7 +6,7 @@ import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.flow.{TestTainted, Trusted}
-import grit.core.id.{ConversationId, DocumentVersion, ToolCallId}
+import grit.core.id.{ConversationId, DocumentVersionId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
@@ -206,7 +206,7 @@ object MovesJournalTests extends TestSuite {
       "a summary's shaped step holds the versions it showed after its calls; one recorded without them showed none"
     ) {
       val versions = Vector(3L, 7L).map(n =>
-        DocumentVersion.of(n).getOrElse(throw new java.lang.AssertionError(s"version $n"))
+        DocumentVersionId.of(n).getOrElse(throw new java.lang.AssertionError(s"version $n"))
       )
       val shaped =
         AskMade.Shaped("v2:ab", """{"a":"x"}""", Label.Public, Integrity.Member, Vector())
@@ -452,7 +452,7 @@ object MovesJournalTests extends TestSuite {
       MovesJournal.strands(Vector(seen), Vector.empty, "Summarise.", 1000, 500, schema) ==>
         MovesJournal.strand(seen, "Summarise.", 1000, schema)
       val version =
-        DocumentVersion.of(7).getOrElse(throw new java.lang.AssertionError("version"))
+        DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("version"))
       val many =
         MovesJournal.strands(Vector(seen), Vector(version), "Summarise.", 1000, 500, schema)
       (

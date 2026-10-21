@@ -1,6 +1,6 @@
 package grit.core.document
 
-import grit.core.id.DocumentVersion
+import grit.core.id.DocumentVersionId
 import grit.core.tool.{ToolName, Writes}
 
 /** The hosted call that reads what a document stands for: `tool`, named as the model is
@@ -42,7 +42,7 @@ object Pointer {
   /** The versions among `documents` whose pointer one of `calls` followed and that succeeded;
     * once each, in `documents`' order.
     */
-  def followedIn(documents: Vector[Document], calls: Vector[Call]): Vector[DocumentVersion] =
+  def followedIn(documents: Vector[Document], calls: Vector[Call]): Vector[DocumentVersionId] =
     documents.collect {
       case d
           if d.pointer

@@ -17,7 +17,7 @@ import grit.core.context.{
   Window
 }
 import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.id.{CallSlot, ConversationId, DocumentVersion, PluginName, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, DocumentVersionId, PluginName, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.TokenEstimator
@@ -205,7 +205,7 @@ final class RetrievalAssembler(
     }.distinct
     def one(
         r: Retrieved,
-        docs: Map[DocumentVersion, Document],
+        docs: Map[DocumentVersionId, Document],
         theirs: Map[ConversationId, Vector[Entry]]
     )(using grit.core.store.Tx^): Either[StoreError, Option[Candidate]] =
       r match {

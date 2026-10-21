@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.agenda.AgendaJson
 import grit.core.either.Traversal.traverse
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
@@ -350,16 +350,16 @@ object PayloadJson {
     }
 
   /** Document versions' stored form: an array of numbers, in the order given. */
-  def writeVersions(versions: Vector[DocumentVersion]): ujson.Value =
-    ujson.Arr.from(versions.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+  def writeVersions(versions: Vector[DocumentVersionId]): ujson.Value =
+    ujson.Arr.from(versions.map(v => ujson.Num(DocumentVersionId.value(v).toDouble)))
 
   /** The document versions `v` stores ([[writeVersions]]' form), or why none. */
-  def readVersions(v: ujson.Value): Either[String, Vector[DocumentVersion]] =
+  def readVersions(v: ujson.Value): Either[String, Vector[DocumentVersionId]] =
     v match {
       case ujson.Arr(items) =>
         traverse(items.toVector) {
           case ujson.Num(n) if n.isWhole =>
-            DocumentVersion.of(n.toLong).toRight("a document version is a whole number from 1")
+            DocumentVersionId.of(n.toLong).toRight("a document version is a whole number from 1")
           case _ => Left("a document version is a whole number from 1")
         }
       case _ => Left("document versions are not an array")

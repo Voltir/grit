@@ -1,7 +1,7 @@
 package grit.core.store
 
 import grit.core.agenda.{Agenda, Placement, Weights}
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
@@ -134,7 +134,7 @@ object PayloadJsonTests extends TestSuite {
 
     test("a window's documents are stored by version after its sections, and read back") {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      val versions = Vector(7L, 3L).flatMap(DocumentVersion.of)
+      val versions = Vector(7L, 3L).flatMap(DocumentVersionId.of)
       val window = Payload.Window(
         Vector(EntrySeq(0)),
         Vector.empty,

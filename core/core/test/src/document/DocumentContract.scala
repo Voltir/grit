@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
@@ -107,7 +107,7 @@ abstract class DocumentContract extends TestSuite {
       data: ujson.Value = Empty,
       pointer: Option[Pointer] = None,
       refs: Set[DocRef] = Set.empty
-  ): DocumentVersion =
+  ): DocumentVersionId =
     transaction(
       ok(
         k.write(
@@ -190,7 +190,7 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val one = put(k, "k", "first words", 1)
       val two = put(k, "k", "second words", 2)
-      assert(DocumentVersion.value(one) < DocumentVersion.value(two))
+      assert(DocumentVersionId.value(one) < DocumentVersionId.value(two))
       texts(transaction(ok(shelf(p).current(key("k"), Label.Public))).toVector) ==> Vector(
         "second words"
       )
@@ -389,7 +389,7 @@ abstract class DocumentContract extends TestSuite {
       val v = put(k, "k", "placed words", 1)
       def placement = transaction(ok(search.read(Vector(v)))).map(_.placement)
       placement ==> Vector(Placement(0, at(1)))
-      val unknown = DocumentVersion.of(Long.MaxValue).toVector
+      val unknown = DocumentVersionId.of(Long.MaxValue).toVector
       transaction(ok(store.placed(v +: unknown, at(3))))
       placement ==> Vector(Placement(1, at(3)))
       transaction(ok(store.placed(Vector(v), at(2))))
@@ -434,7 +434,7 @@ abstract class DocumentContract extends TestSuite {
         case Written.Versioned(v, _, _) => v
         case w => throw new java.lang.AssertionError(s"$w")
       }
-      val unknown = DocumentVersion.of(Long.MaxValue).toVector
+      val unknown = DocumentVersionId.of(Long.MaxValue).toVector
       transaction(ok(store.followed(Vector(gone, high) ++ unknown, at(3))))
       opened(Clearance.of(TestLabels.Trial))(ok(search.read(Vector(gone, high))))
         .map(d => DocKey.value(d.key) -> d.following) ==> Vector("high" -> None)

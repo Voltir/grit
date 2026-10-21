@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.context.{Results, Retrieved}
 import grit.core.document.{DocText, Document, Placement}
-import grit.core.id.{DocKey, DocumentVersion, PluginName, TurnSeq, WorkflowId}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, TurnSeq, WorkflowId}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.visibility.{Integrity, Label}
 
@@ -18,7 +18,7 @@ object RefoundTests extends TestSuite {
 
   private def got[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
-  private def version(n: Long): DocumentVersion = got(DocumentVersion.of(n).toRight("version"))
+  private def version(n: Long): DocumentVersionId = got(DocumentVersionId.of(n).toRight("version"))
   private val at = Instant.parse("2026-10-17T12:00:00Z")
 
   /** Card `key` of plugin "cards" at `place`, its version `n`. */

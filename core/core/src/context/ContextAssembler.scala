@@ -1,6 +1,6 @@
 package grit.core.context
 
-import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Db, Nearby, StoreError}
@@ -107,7 +107,7 @@ enum Retrieved {
   case Own(turn: TurnSeq)
   case Near(conversation: ConversationId, turn: TurnSeq)
   case Closed(conversation: ConversationId)
-  case Doc(version: DocumentVersion)
+  case Doc(version: DocumentVersionId)
 }
 
 /** What a search found, best first, each with its weighted score; `beyond`, how many more
@@ -175,7 +175,7 @@ final case class Window(
     entries: Vector[EntrySeq],
     notes: Vector[AssemblyNote] = Vector.empty,
     nearby: Vector[Nearby] = Vector.empty,
-    documents: Vector[DocumentVersion] = Vector.empty
+    documents: Vector[DocumentVersionId] = Vector.empty
 )
 
 /** Something an assembler did while choosing a window, kept for the record and never shown

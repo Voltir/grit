@@ -335,7 +335,7 @@ object StrandDreamTests extends TestSuite {
       val data = seen.map(StrandDocument.data)
       val doc = (d: ujson.Value) =>
         Document(
-          grit.core.id.DocumentVersion.of(1).getOrElse(sys.error("no version")),
+          grit.core.id.DocumentVersionId.of(1).getOrElse(sys.error("no version")),
           Plugin,
           StrandDocument.key(root.id),
           Label.Public,

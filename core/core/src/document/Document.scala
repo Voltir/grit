@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.Instant
 
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.visibility.{Integrity, Label}
 
@@ -44,7 +44,7 @@ object Following {
   * `place`; current from `written`.
   */
 final case class Document(
-    version: DocumentVersion,
+    version: DocumentVersionId,
     plugin: PluginName,
     key: DocKey,
     label: Label,
@@ -66,12 +66,12 @@ enum Written {
   /** The current version already held the same place, text, data, pointer, integrity and refs:
     * nothing was written.
     */
-  case Unchanged(current: DocumentVersion, kept: Label)
+  case Unchanged(current: DocumentVersionId, kept: Label)
 
   /** `version` was written and is current; `withdrew`, each key and label whose document was
     * withdrawn to keep within the bound.
     */
-  case Versioned(version: DocumentVersion, kept: Label, withdrew: Vector[(DocKey, Label)])
+  case Versioned(version: DocumentVersionId, kept: Label, withdrew: Vector[(DocKey, Label)])
 
   def kept: Label
 }

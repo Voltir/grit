@@ -3,7 +3,7 @@ package grit.core.review
 import java.time.{Instant, LocalDate}
 
 import grit.core.document.Document
-import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.Account
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
@@ -42,7 +42,7 @@ final case class DocumentLabel(
     key: DocKey,
     label: Label,
     day: LocalDate,
-    version: Option[DocumentVersion],
+    version: Option[DocumentVersionId],
     verdict: ReviewWord,
     rater: Account,
     at: Instant

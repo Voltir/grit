@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing}
 
@@ -47,7 +47,7 @@ enum Payload {
       entries: Vector[EntrySeq],
       recalled: Vector[TurnSeq],
       nearby: Vector[Nearby] = Vector.empty,
-      documents: Vector[DocumentVersion] = Vector.empty
+      documents: Vector[DocumentVersionId] = Vector.empty
   )
 
   /** What happened to the conversation's agenda during the turn the entry belongs to

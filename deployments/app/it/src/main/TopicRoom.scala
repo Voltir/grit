@@ -6,7 +6,7 @@ import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocumentTerms, Pointer}
-import grit.core.id.{ConversationId, CorpusName, DocumentVersion, PluginName, ScheduleKey}
+import grit.core.id.{ConversationId, CorpusName, DocumentVersionId, PluginName, ScheduleKey}
 import grit.core.place.Place
 import grit.core.spend.DailyCap
 import grit.core.stitch.StrandShelf
@@ -266,7 +266,7 @@ object TopicRoom {
       engine.db.read(Subject.Public)(Aside.read(engine.keeper(Topics, terms), Label.Public))
     ).map(_.tag)
     val cardTerms = RoomCards.documents.map(_.terms).getOrElse(sys.error("the cards' terms"))
-    def cardVersion(id: String): Option[DocumentVersion] =
+    def cardVersion(id: String): Option[DocumentVersionId] =
       CorpusName
         .of("room")
         .toOption

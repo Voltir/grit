@@ -21,7 +21,7 @@ import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
 import grit.core.id.{
   ConversationId,
   DocKey,
-  DocumentVersion,
+  DocumentVersionId,
   EntryId,
   EntrySeq,
   PluginName,
@@ -76,7 +76,7 @@ object TurnDocumentsTests extends TestSuite {
       text: String,
       pointer: Option[Pointer] = None,
       integrity: Integrity = Integrity.Member
-  ): DocumentVersion =
+  ): DocumentVersionId =
     ok(
       documents
         .keeper(plugin, terms(label))
@@ -150,7 +150,7 @@ object TurnDocumentsTests extends TestSuite {
   private def followingBody(
       entries: InMemoryEntryStore,
       documents: InMemoryDocuments,
-      held: Vector[DocumentVersion],
+      held: Vector[DocumentVersionId],
       provider: Provider^,
       tools: Toolbox[caps.CapSet^{NoCheckout}],
       clock: Clock^ = fixed
@@ -165,7 +165,7 @@ object TurnDocumentsTests extends TestSuite {
       tools = tools
     )(id)
 
-  private def following(documents: InMemoryDocuments, versions: Vector[DocumentVersion]) =
+  private def following(documents: InMemoryDocuments, versions: Vector[DocumentVersionId]) =
     ok(documents.read(versions)(using TestTx.fake)).map(_.following)
 
   val tests = Tests {

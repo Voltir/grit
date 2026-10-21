@@ -2,14 +2,14 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersion, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.retention.{Target, Tombstone}
 
 /** An in-memory [[Tombstones]] for tests, keeping [[TombstonesContract]]. It ignores the `Tx`.
   * `owner` says which plugin's a document version is, as its row would; `None` for one with
   * no row.
   */
-final class InMemoryTombstones(owner: DocumentVersion -> Option[PluginName] = _ => None)
+final class InMemoryTombstones(owner: DocumentVersionId -> Option[PluginName] = _ => None)
     extends Tombstones {
   import InMemoryTombstones.Row
 

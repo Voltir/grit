@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, SectionTag}
 import grit.core.document.{DocText, Document, Placement, Pointer}
-import grit.core.id.{DocKey, DocumentVersion, PluginName, TurnSeq}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -20,7 +20,7 @@ import utest.*
 object PointerLinesTests extends TestSuite {
 
   private def got[A](e: Either[String, A]): A = e.fold(sys.error(_), identity)
-  private def version(n: Long): DocumentVersion = got(DocumentVersion.of(n).toRight("version"))
+  private def version(n: Long): DocumentVersionId = got(DocumentVersionId.of(n).toRight("version"))
   private def p(x: Double): Probability = Probability.clamped(x)
   private val at = Instant.parse("2026-10-16T12:00:00Z")
 

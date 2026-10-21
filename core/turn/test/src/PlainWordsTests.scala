@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.id.{DocumentVersion, EntrySeq, ToolCallId}
+import grit.core.id.{DocumentVersionId, EntrySeq, ToolCallId}
 import grit.core.tool.{CallError, Retry, ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -36,8 +36,8 @@ object PlainWordsTests extends TestSuite {
       )
       .getOrElse(throw new java.lang.AssertionError("distinct names"))
 
-  private val version: DocumentVersion =
-    DocumentVersion.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
+  private val version: DocumentVersionId =
+    DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3 is a version"))
 
   private val issue =
     Item(ItemRef.Result(ToolCallId("c1")), Integrity.Untrusted, "github_get_issue")

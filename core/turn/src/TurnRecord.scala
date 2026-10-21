@@ -6,7 +6,7 @@ import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
 import grit.core.either.Traversal.sequence
-import grit.core.id.{DocumentVersion, EntryId, TurnRef, WorkflowId}
+import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
@@ -325,7 +325,7 @@ object TurnRecord {
   /** The document versions the turn's reply or draft counted as followed; `None` when `append`
     * is not recorded, or recorded a failure. `Left` when its output does not read.
     */
-  def followed(steps: Vector[StepRecord]): Either[String, Option[Vector[DocumentVersion]]] =
+  def followed(steps: Vector[StepRecord]): Either[String, Option[Vector[DocumentVersionId]]] =
     read[Either[TurnFailure, TurnSteps.Appended]](steps, Turn.Step.Append)
       .map(_.flatMap(_.toOption).map(_.followed))
 
