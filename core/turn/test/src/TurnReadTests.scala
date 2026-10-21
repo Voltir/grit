@@ -18,8 +18,12 @@ object TurnReadTests extends TestSuite {
   /** The two records a wait leaves, which a reader names by the wait's label. */
   private val Waits = Set(StepRecord.Received, StepRecord.Slept)
 
-  /** The markers of the turn's patches. */
-  private val Patches = Set(StepRecord.marker("heard-quiet-exit"))
+  /** The markers of the turn's patches, each with the records its point may follow:
+    * `heard-quiet-exit` comes after the last batch judged, `ask:relevance-2`, or that batch's
+    * record when it kept one.
+    */
+  private val Patches: Map[String, Set[String]] =
+    Map(StepRecord.marker("heard-quiet-exit") -> Set("ask:relevance-2", "ask:relevance-2:record"))
 
   /** The histories a recorder stopped while their turn was in flight, at a crash it did not
     * resume: each reads as a run whose next step is not recorded yet.
@@ -42,10 +46,12 @@ object TurnReadTests extends TestSuite {
   private def misread(turn: TurnRef, history: History, inFlight: Boolean): Vector[String] = {
     val records: Vector[StepRecord] = history.steps.map(FlowFixtures.recorded)
     val names = records.map(_.name)
-    // A history recorded before a patch shipped reads, at the patch's point, as naming its
-    // marker next: a run resumed there takes the patch (ADR 0004).
+    // A history recorded before a patch shipped reads, at the patch's point and only there, as
+    // naming its marker next: a run resumed there takes the patch (ADR 0004).
     def expected(k: Int, named: String): Boolean =
-      named == label(names, k) || (Patches(named) && !names.contains(named))
+      named == label(names, k) || (Patches.get(named).exists(after =>
+        names.lift(k - 1).exists(after)
+      ) && !names.contains(named))
     val prefixes = records.indices.toVector.flatMap { k =>
       val read = Flows.read(TurnFlow.flow, turn, records.take(k)).map(_.at) match {
         case Right(Flows.Read.Next(step, at)) if at == k && expected(k, step) => None
